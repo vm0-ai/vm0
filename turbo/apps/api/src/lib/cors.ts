@@ -21,6 +21,12 @@ const STATIC_ALLOWED_ORIGINS = Object.freeze(
   ]),
 );
 const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
+const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
+  /^(?:staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u;
+
+export function isOkouAppWorkerPreviewHostname(hostname: string): boolean {
+  return OKOU_APP_WORKER_PREVIEW_HOST_PATTERN.test(hostname.toLowerCase());
+}
 
 export function allowedCorsOrigin(origin: string | undefined): string | null {
   if (!origin) {
@@ -57,7 +63,9 @@ export function allowedCorsOrigin(origin: string | undefined): string | null {
     deployEnv === "preview" &&
     (hostname.endsWith(".vm7.ai") ||
       hostname.endsWith(".omby.ai") ||
-      (url.port === "" && hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX)))
+      (url.port === "" &&
+        (hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) ||
+          isOkouAppWorkerPreviewHostname(hostname))))
   ) {
     return normalizedOrigin;
   }

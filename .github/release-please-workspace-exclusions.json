@@ -1,5 +1,6 @@
 {
   "crates/xtask": "Development-only Rust task runner",
+  "turbo/apps/app-worker": "Preview-only deployment package until the standalone Worker production cutover",
   "turbo/packages/api-services": "Unshipped package with no workspace consumer",
   "turbo/packages/eslint-config": "Development-only lint configuration",
   "turbo/packages/eslint-rules": "Development-only lint rules",

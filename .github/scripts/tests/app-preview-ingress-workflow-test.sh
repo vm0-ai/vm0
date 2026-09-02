@@ -48,62 +48,71 @@ unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
   raise "deploy-app artifact identity must derive from the checked-out commit"
 end
 
-expected_deployment_url = "${{ steps.pages-deploy.outputs.url }}"
+expected_deployment_url = "${{ steps.worker-deploy.outputs.url }}"
 if deploy_app.fetch("outputs").key?("deployment-url")
-  raise "deploy-app must not expose the immutable Pages deployment URL"
+  raise "deploy-app must not expose a second provider deployment URL"
 end
-expected_gateway_url = "${{ steps.app-preview.outputs.url }}"
-unless deploy_app.fetch("outputs").fetch("preview-url") == expected_gateway_url
-  raise "deploy-app preview-url must expose the app preview gateway"
+unless deploy_app.fetch("outputs").fetch("preview-url") == expected_deployment_url
+  raise "deploy-app preview-url must expose the deployed Worker version"
 end
 
-deploy_step = find_step.call("Deploy Cloudflare Pages preview")
+deploy_step = find_step.call("Deploy standalone app Worker preview")
 if deploy_step.key?("if")
-  raise "Pages branch deployment must remain unconditional within deploy-app"
+  raise "Worker version deployment must remain unconditional within deploy-app"
+end
+unless deploy_step.dig("env", "CLOUDFLARE_API_TOKEN") == "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
+  raise "Worker preview deployment must use the isolated Worker deploy token"
+end
+deploy_source = deploy_step.fetch("run")
+unless deploy_source.include?("wrangler versions upload") &&
+    deploy_source.include?('--preview-alias "$WORKER_PREVIEW_ALIAS"') &&
+    deploy_source.include?("--env preview")
+  raise "Worker preview deployment must upload an aliased preview environment version"
 end
 
-readiness_step = find_step.call("Wait for Cloudflare Pages deployment readiness")
-unless readiness_step.fetch("env").fetch("PAGES_URL") == expected_deployment_url
-  raise "Pages readiness must probe the immutable deployment URL"
+readiness_step = find_step.call("Wait for standalone app Worker readiness")
+unless readiness_step.fetch("env").fetch("WORKER_URL") == expected_deployment_url
+  raise "Worker readiness must probe the deployed preview URL"
 end
 readiness_source = readiness_step.fetch("run")
-unless readiness_source.include?('${PAGES_URL%/}/sign-up')
-  raise "Pages readiness must probe an application document"
+unless readiness_source.include?('${WORKER_URL%/}/sign-up')
+  raise "Worker readiness must probe an application document"
 end
 unless readiness_source.include?('id="app-bootstrap-skeleton"')
-  raise "Pages readiness must verify the application document marker"
+  raise "Worker readiness must verify the application document marker"
 end
 unless readiness_source.include?("ready_passes >= 2")
-  raise "Pages readiness must require consecutive successful passes"
+  raise "Worker readiness must require consecutive successful passes"
 end
 unless readiness_source.include?('--output "$document_body"')
-  raise "Pages readiness must fetch the application document in the parallel probe"
+  raise "Worker readiness must fetch the application document in the parallel probe"
 end
 unless readiness_source.include?("probe_succeeded")
-  raise "Pages readiness must retain curl transfer status"
+  raise "Worker readiness must retain curl transfer status"
 end
 if readiness_source.include?("2>/dev/null || true")
-  raise "Pages readiness must not ignore curl transfer failures"
+  raise "Worker readiness must not ignore curl transfer failures"
 end
 
-preview_step = find_step.call("Resolve app preview gateway URL")
+preview_step = find_step.call("Resolve app Worker preview URL")
 raise "app preview step id changed" unless preview_step["id"] == "app-preview"
 if preview_step.key?("if")
-  raise "app preview gateway URL must be resolved on every deploy-app run"
+  raise "app Worker preview URL must be resolved on every deploy-app run"
 end
-unless preview_step.fetch("run").include?("CF_PAGES_PREVIEW_DOMAIN")
-  raise "app preview URL must use the configured preview domain"
+unless preview_step.fetch("run").include?("CF_WORKERS_SUBDOMAIN") &&
+    preview_step.fetch("run").include?("resolve-app-preview-url.sh")
+  raise "app preview URL must use the configured Workers subdomain"
 end
 
-smoke_step = find_step.call("Smoke test app preview gateway")
-unless smoke_step.fetch("if").include?("steps.app-preview.outputs.url != ''")
-  raise "gateway smoke test must run for every stable app preview"
+smoke_step = find_step.call("Smoke test standalone app Worker")
+if smoke_step.key?("if")
+  raise "Worker smoke test must run for every deployed app preview"
 end
-unless smoke_step.fetch("env").fetch("APP_PREVIEW_URL") == expected_gateway_url
-  raise "gateway smoke test must use the stable app preview URL"
+unless smoke_step.fetch("env").fetch("APP_PREVIEW_URL") == expected_deployment_url
+  raise "Worker smoke test must use the deployed preview URL"
 end
-unless smoke_step.fetch("run").include?("x-vm0-preview-gateway")
-  raise "gateway smoke test must verify the gateway response header"
+unless smoke_step.fetch("run").include?("verify-okou-app-runtime.sh")
+  raise "Worker smoke test must verify the app runtime and SharedWorker proxy"
 end
 
 browser_e2e = jobs.fetch("cli-e2e-02-browser")
@@ -124,10 +133,10 @@ raise "missing browser E2E run step" unless browser_run
 browser_env = browser_run.fetch("env")
 expected_downstream_preview = "${{ needs.deploy-app.outputs.preview-url }}"
 unless browser_env.fetch("OKOU_AUTH_URL") == expected_downstream_preview
-  raise "browser E2E must use the smoke-tested app preview gateway"
+  raise "browser E2E must use the smoke-tested app Worker preview"
 end
 unless browser_env.fetch("OKOU_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
-  raise "browser E2E redirect must stay on the app preview gateway"
+  raise "browser E2E redirect must stay on the app Worker preview"
 end
 expected_auth_domain = "${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}"
 unless browser_env.fetch("OKOU_AUTH_DOMAIN") == expected_auth_domain
@@ -149,6 +158,8 @@ legacy_markers = [
   "manage-okou-pages-domain.sh",
   "Begin Cloudflare Pages custom preview domain validation",
   "Finalize Cloudflare Pages custom preview domain",
+  "Deploy Cloudflare Pages preview",
+  "CF_PAGES_DEPLOY_API_TOKEN",
 ]
 legacy_markers.each do |marker|
   raise "legacy app preview ingress remains: #{marker}" if turbo_source.include?(marker)

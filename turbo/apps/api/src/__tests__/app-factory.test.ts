@@ -1012,6 +1012,42 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBe(origin);
     });
 
+    it("allows standalone okou app Worker origins in preview", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
+      const origin = "https://pr-22085-app-okou-app-preview.vm0.workers.dev";
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    });
+
+    it("does not allow app Worker lookalike origins in preview", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
+      for (const origin of [
+        "https://pr-22085-app-okou-app-preview.vm0.workers.dev.evil.example",
+        "https://pr-22085-app-okou-app-preview.attacker.workers.dev",
+      ]) {
+        const response = await app.request("/health", {
+          method: "GET",
+          headers: { origin },
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("access-control-allow-origin")).toBeNull();
+      }
+    });
+
     it("does not allow okou Pages deployment origins in production", async () => {
       mockEnv("ENV", "production");
       const app = createApp({

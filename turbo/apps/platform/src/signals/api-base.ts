@@ -1,5 +1,6 @@
 import {
   derivePlatformServiceOrigin,
+  okouAppWorkerPreviewJobRef,
   resolvePlatformEnvironment,
   rewritePlatformHostname,
   type PlatformService,
@@ -64,7 +65,8 @@ function configuredProductionApiOrigin(currentUrl: URL): string | null {
 function configuredPreviewApiOrigin(currentUrl: URL): string | null {
   if (
     currentUrl.protocol !== "https:" ||
-    !currentUrl.hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX)
+    (!currentUrl.hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) &&
+      okouAppWorkerPreviewJobRef(currentUrl.hostname) === null)
   ) {
     return null;
   }
@@ -90,7 +92,7 @@ function configuredPreviewApiOrigin(currentUrl: URL): string | null {
     configuredUrl.hash !== "" ||
     !PREVIEW_API_HOSTNAME_PATTERN.test(configuredUrl.hostname)
   ) {
-    throw new Error("Invalid Cloudflare Pages preview API origin");
+    throw new Error("Invalid app preview API origin");
   }
 
   return configuredUrl.origin;

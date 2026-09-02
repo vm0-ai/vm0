@@ -17,6 +17,14 @@ const PRODUCTION_API_ORIGINS = new Map([
   ["app.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
+const SECURITY_HEADERS = {
+  "Permissions-Policy":
+    "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(self), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
 
 const VM0_APP_METADATA = {
   brandName: "VM0",
@@ -43,7 +51,13 @@ const OKOU_APP_METADATA = {
     "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
 };
 
-function appMetadata(hostname) {
+function appMetadata(hostname, configuredPublicBrand) {
+  if (configuredPublicBrand === "okou") {
+    return OKOU_APP_METADATA;
+  }
+  if (configuredPublicBrand === "vm0") {
+    return VM0_APP_METADATA;
+  }
   const normalizedHostname = hostname.toLowerCase();
   const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
     return (
@@ -148,6 +162,7 @@ function noIndexResponse(response) {
   headers.delete("Content-Encoding");
   headers.delete("Content-Length");
   headers.delete("ETag");
+  headers.set("Cache-Control", "public, max-age=0, must-revalidate");
   headers.set("X-Robots-Tag", "noindex, nofollow");
   return new Response(response.body, {
     status: response.status,
@@ -230,6 +245,7 @@ async function rewriteManifest(response, metadata) {
   headers.delete("Content-Encoding");
   headers.delete("Content-Length");
   headers.delete("ETag");
+  headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
   headers.set("Content-Type", "application/manifest+json; charset=UTF-8");
   return new Response(JSON.stringify(manifest), {
     status: response.status,
@@ -238,13 +254,7 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(
-  response,
-  title,
-  canonicalUrl,
-  metadata,
-  apiOrigin,
-) {
+function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
   const sharedDescription = `A conversation shared from ${metadata.brandName}`;
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
@@ -340,11 +350,7 @@ function metaRequestHeaders(requestUrl, origin) {
   return headers;
 }
 
-function proxyAppAsset(request, requestUrl) {
-  const staticUrl = new URL(
-    `${requestUrl.pathname}${requestUrl.search}`,
-    OKOU_APP_METADATA.staticAssetsOrigin,
-  );
+function appAssetRequestHeaders(request) {
   const headers = new Headers();
   for (const name of APP_ASSET_REQUEST_HEADER_NAMES) {
     const value = request.headers.get(name);
@@ -352,120 +358,195 @@ function proxyAppAsset(request, requestUrl) {
       headers.set(name, value);
     }
   }
-  return fetch(
-    new Request(staticUrl, {
-      headers,
-      method: request.method,
-    }),
+  return headers;
+}
+
+async function proxyAppAsset(request, requestUrl, env) {
+  if (!env.STATIC_ASSETS_BUCKET) {
+    const staticUrl = new URL(
+      `${requestUrl.pathname}${requestUrl.search}`,
+      OKOU_APP_METADATA.staticAssetsOrigin,
+    );
+    return fetch(
+      new Request(staticUrl, {
+        headers: appAssetRequestHeaders(request),
+        method: request.method,
+      }),
+    );
+  }
+
+  const key = requestUrl.pathname.replace(/^\//u, "");
+  const requestHeaders = appAssetRequestHeaders(request);
+  const object = await env.STATIC_ASSETS_BUCKET.get(key, {
+    onlyIf: requestHeaders,
+    range: requestHeaders,
+  });
+  if (!object) {
+    return new Response("Not found", {
+      status: 404,
+      headers: { "Cache-Control": "public, max-age=60" },
+    });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("ETag", object.httpEtag);
+  if (!object.body) {
+    return new Response(null, { headers, status: 304 });
+  }
+
+  let status = 200;
+  if (object.range && "offset" in object.range) {
+    const offset = object.range.offset;
+    const length = object.range.length;
+    headers.set(
+      "Content-Range",
+      `bytes ${offset}-${offset + length - 1}/${object.size}`,
+    );
+    headers.set("Content-Length", String(length));
+    status = 206;
+  } else {
+    headers.set("Content-Length", String(object.size));
+  }
+  return new Response(request.method === "HEAD" ? null : object.body, {
+    headers,
+    status,
+  });
+}
+
+function withAppHeaders(response, requestUrl) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    headers.set(name, value);
+  }
+  if (requestUrl.pathname === "/sw.js") {
+    headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+    headers.set("Service-Worker-Allowed", "/");
+  } else if (requestUrl.pathname === "/robots.txt") {
+    headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
+  } else if (requestUrl.pathname.startsWith("/icons/")) {
+    headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
+  }
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+async function handleRequest(request, env, requestUrl) {
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
+  ) {
+    return proxyAppAsset(request, requestUrl, env);
+  }
+  const match = SHARED_THREAD_PATH.exec(requestUrl.pathname);
+  if (match && request.method === "GET") {
+    let assetResponse;
+    let indexHtml;
+    let origin;
+    try {
+      const indexRequestUrl = new URL("/index.html", requestUrl);
+      assetResponse = await env.ASSETS.fetch(indexRequestUrl);
+      if (!assetResponse.ok) {
+        return gatewayResponse(503);
+      }
+      indexHtml = await assetResponse.text();
+      origin = apiOrigin(requestUrl, indexHtml);
+    } catch {
+      return gatewayResponse(503);
+    }
+    const metaUrl = `${origin}/api/shared-threads/${match[1]}/meta`;
+    let metaResponse;
+    try {
+      metaResponse = await fetch(metaUrl, {
+        headers: metaRequestHeaders(requestUrl, origin),
+        cf: { cacheEverything: true },
+      });
+    } catch {
+      return gatewayResponse(503);
+    }
+
+    if (metaResponse.status === 404) {
+      return rewriteNotFound(
+        htmlResponse(
+          indexHtml,
+          assetResponse,
+          404,
+          "public, max-age=60, s-maxage=60",
+        ),
+        appMetadata(requestUrl.hostname, env.PUBLIC_BRAND),
+        origin,
+      );
+    }
+    if (!metaResponse.ok) {
+      return gatewayResponse(metaResponse.status === 503 ? 503 : 502);
+    }
+    let metadata;
+    try {
+      metadata = await metaResponse.json();
+    } catch {
+      return gatewayResponse(502);
+    }
+    if (
+      typeof metadata.title !== "string" ||
+      metadata.title.length === 0 ||
+      (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
+    ) {
+      return gatewayResponse(502);
+    }
+    const publicBrand = metadata.publicBrand;
+    const sharedAppMetadata =
+      publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
+    const canonicalUrl = new URL(
+      requestUrl.pathname,
+      sharedAppMetadata.canonicalUrl,
+    ).toString();
+    return rewriteFound(
+      htmlResponse(
+        indexHtml,
+        assetResponse,
+        200,
+        "public, max-age=0, must-revalidate",
+      ),
+      metadata.title,
+      canonicalUrl,
+      sharedAppMetadata,
+      origin,
+    );
+  }
+
+  const assetResponse = await env.ASSETS.fetch(request);
+  if (request.method !== "GET") {
+    return assetResponse;
+  }
+
+  const metadata = appMetadata(requestUrl.hostname, env.PUBLIC_BRAND);
+  if (requestUrl.pathname === "/manifest.webmanifest") {
+    return rewriteManifest(assetResponse, metadata);
+  }
+  if (
+    !assetResponse.headers
+      .get("Content-Type")
+      ?.toLowerCase()
+      .startsWith("text/html")
+  ) {
+    return assetResponse;
+  }
+  return rewriteAppPage(
+    assetResponse,
+    metadata,
+    PRODUCTION_API_ORIGINS.get(requestUrl.hostname),
   );
 }
 
 export default {
   async fetch(request, env) {
     const requestUrl = new URL(request.url);
-    if (
-      (request.method === "GET" || request.method === "HEAD") &&
-      requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
-    ) {
-      return proxyAppAsset(request, requestUrl);
-    }
-    const match = SHARED_THREAD_PATH.exec(requestUrl.pathname);
-    if (match && request.method === "GET") {
-      let assetResponse;
-      let indexHtml;
-      let origin;
-      try {
-        const indexRequestUrl = new URL("/index.html", requestUrl);
-        assetResponse = await env.ASSETS.fetch(indexRequestUrl);
-        if (!assetResponse.ok) {
-          return gatewayResponse(503);
-        }
-        indexHtml = await assetResponse.text();
-        origin = apiOrigin(requestUrl, indexHtml);
-      } catch {
-        return gatewayResponse(503);
-      }
-      const metaUrl = `${origin}/api/shared-threads/${match[1]}/meta`;
-      let metaResponse;
-      try {
-        metaResponse = await fetch(metaUrl, {
-          headers: metaRequestHeaders(requestUrl, origin),
-          cf: { cacheEverything: true },
-        });
-      } catch {
-        return gatewayResponse(503);
-      }
-
-      if (metaResponse.status === 404) {
-        return rewriteNotFound(
-          htmlResponse(
-            indexHtml,
-            assetResponse,
-            404,
-            "public, max-age=60, s-maxage=60",
-          ),
-          appMetadata(requestUrl.hostname),
-          origin,
-        );
-      }
-      if (!metaResponse.ok) {
-        return gatewayResponse(metaResponse.status === 503 ? 503 : 502);
-      }
-      let metadata;
-      try {
-        metadata = await metaResponse.json();
-      } catch {
-        return gatewayResponse(502);
-      }
-      if (
-        typeof metadata.title !== "string" ||
-        metadata.title.length === 0 ||
-        (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
-      ) {
-        return gatewayResponse(502);
-      }
-      const publicBrand = metadata.publicBrand;
-      const sharedAppMetadata =
-        publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
-      const canonicalUrl = new URL(
-        requestUrl.pathname,
-        sharedAppMetadata.canonicalUrl,
-      ).toString();
-      return rewriteFound(
-        htmlResponse(
-          indexHtml,
-          assetResponse,
-          200,
-          "public, max-age=0, must-revalidate",
-        ),
-        metadata.title,
-        canonicalUrl,
-        sharedAppMetadata,
-        origin,
-      );
-    }
-
-    const assetResponse = await env.ASSETS.fetch(request);
-    if (request.method !== "GET") {
-      return assetResponse;
-    }
-
-    const metadata = appMetadata(requestUrl.hostname);
-    if (requestUrl.pathname === "/manifest.webmanifest") {
-      return rewriteManifest(assetResponse, metadata);
-    }
-    if (
-      !assetResponse.headers
-        .get("Content-Type")
-        ?.toLowerCase()
-        .startsWith("text/html")
-    ) {
-      return assetResponse;
-    }
-    return rewriteAppPage(
-      assetResponse,
-      metadata,
-      PRODUCTION_API_ORIGINS.get(requestUrl.hostname),
-    );
+    const response = await handleRequest(request, env, requestUrl);
+    return withAppHeaders(response, requestUrl);
   },
 };

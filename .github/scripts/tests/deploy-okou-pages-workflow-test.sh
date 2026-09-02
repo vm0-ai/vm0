@@ -53,17 +53,17 @@ rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
 
 build_step = find_step(turbo_job, "Build canonical app artifact")
-preview_step = find_step(turbo_job, "Deploy Cloudflare Pages preview")
-prepare_preview_step = find_step(turbo_job, "Prepare Cloudflare Pages preview")
+preview_step = find_step(turbo_job, "Deploy standalone app Worker preview")
+prepare_preview_step = find_step(turbo_job, "Prepare standalone app Worker preview")
 publish_assets_step = find_step(turbo_job, "Publish immutable app assets to R2")
 verify_preview_assets_step = find_step(
     turbo_job, "Verify immutable app assets on CDN"
 )
 preview_readiness_step = find_step(
-    turbo_job, "Wait for Cloudflare Pages deployment readiness"
+    turbo_job, "Wait for standalone app Worker readiness"
 )
-preview_gateway_step = find_step(turbo_job, "Smoke test app preview gateway")
-app_preview_url_step = find_step(turbo_job, "Resolve app preview gateway URL")
+preview_gateway_step = find_step(turbo_job, "Smoke test standalone app Worker")
+app_preview_url_step = find_step(turbo_job, "Resolve app Worker preview URL")
 prepare_release_step = find_step(
     release_job, "Prepare Cloudflare Pages production deployment"
 )
@@ -105,7 +105,12 @@ if "VITE_GIT_COMMIT_SHA" in build_step.get("env", {}):
     raise RuntimeError("App commit SHA must not enter the public Vite env object")
 require_fragments(
     preview_step,
-    [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', '"$PAGES_BRANCH"', '"$ARTIFACT_SHA"'],
+    [
+        "wrangler versions upload",
+        "--env preview",
+        '--preview-alias "$WORKER_PREVIEW_ALIAS"',
+        '--message "app artifact ${ARTIFACT_SHA}"',
+    ],
 )
 require_fragments(prepare_preview_step, ['echo "canonical-dist=$canonical_dist"'])
 require_fragments(
@@ -118,7 +123,7 @@ require_fragments(
     ],
 )
 if publish_assets_step.get("env", {}).get("CANONICAL_ASSETS") != (
-    "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
+    "${{ steps.worker-preview.outputs.canonical-dist }}/assets"
 ):
     raise RuntimeError("R2 publication must use canonical app assets")
 
@@ -126,7 +131,7 @@ asset_verifier = "bash .github/scripts/verify-okou-app-assets.sh"
 for step, canonical_assets in (
     (
         verify_preview_assets_step,
-        "${{ steps.pages-preview.outputs.canonical-dist }}/assets",
+        "${{ steps.worker-preview.outputs.canonical-dist }}/assets",
     ),
     (
         verify_release_assets_step,
@@ -154,7 +159,7 @@ if not (
     < turbo_steps.index(preview_step)
 ):
     raise RuntimeError(
-        "R2 asset publication and CDN verification must run before Pages deployment"
+        "R2 asset publication and CDN verification must run before Worker deployment"
     )
 
 release_steps = release_job["steps"]
@@ -172,16 +177,15 @@ readiness_source = require_fragments(
     preview_readiness_step,
     [
         'id="app-bootstrap-skeleton"',
-        "Cloudflare Pages shell is ready",
+        "Standalone app Worker shell is ready",
     ],
 )
-if "PAGES_DIST" in preview_readiness_step.get("env", {}):
-    raise RuntimeError("Pages shell readiness must not inspect removed app assets")
-# A Pages alias can serve the shell and then 404 again while the edge converges.
-# Readiness only waits for that propagation; point sampling the runtime contract
-# here fails the job on flapping the very next second.
+if "CANONICAL_ASSETS" in preview_readiness_step.get("env", {}):
+    raise RuntimeError("Worker shell readiness must not inspect immutable app assets")
+# Readiness only waits for Worker alias propagation. The following bounded
+# smoke test owns the full runtime contract.
 if "verify-okou-app-runtime.sh" in readiness_source:
-    raise RuntimeError("Pages readiness must not point sample the runtime contract")
+    raise RuntimeError("Worker readiness must not point sample the runtime contract")
 gateway_source = require_fragments(
     preview_gateway_step,
     [
@@ -193,7 +197,7 @@ gateway_source = require_fragments(
     ],
 )
 if preview_gateway_step.get("env", {}).get("CANONICAL_ASSETS") != (
-    "${{ steps.pages-preview.outputs.canonical-dist }}/assets"
+    "${{ steps.worker-preview.outputs.canonical-dist }}/assets"
 ):
     raise RuntimeError("SharedWorker smoke test must use canonical app assets")
 if turbo_source.count("bash .github/scripts/verify-okou-app-runtime.sh") != 1:
@@ -202,7 +206,7 @@ if turbo_source.count("bash .github/scripts/verify-okou-app-runtime.sh") != 1:
     )
 if "if" in app_preview_url_step:
     raise RuntimeError(
-        "the app preview gateway URL must always resolve, "
+        "the app Worker preview URL must always resolve, "
         "or runtime verification silently skips"
     )
 release_step_source = require_fragments(
@@ -257,7 +261,7 @@ require_fragments(
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$TARGET_COMMIT"'],
 )
 
-for step in (preview_step, release_step, rollback_step):
+for step in (release_step, rollback_step):
     if "working-directory" in step:
         raise RuntimeError(f"shared Pages deployment must run from the repository root: {step['name']}")
 
@@ -269,12 +273,10 @@ for path, source in (
     if "wrangler pages deploy" in source:
         raise RuntimeError(f"direct Pages deployment remains in {path}")
 
-require_fragments(
-    preview_step,
-    ["pages-deploy-detailed", "deployment_url", "deployment_commit"],
-)
-if "WRANGLER_OUTPUT_FILE_PATH" not in preview_step.get("env", {}):
-    raise RuntimeError("preview deployment no longer captures Wrangler output")
+if preview_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
+    "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
+):
+    raise RuntimeError("preview Worker deployment must use the Worker deploy token")
 
 require_fragments(
     release_step,

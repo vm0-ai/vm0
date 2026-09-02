@@ -473,6 +473,43 @@ describe("portable platform runtime environment", () => {
     });
   });
 
+  it("uses the configured API and preview siblings for an app Worker version", async () => {
+    setBrowserUrl(
+      "https://pr-23364-app-okou-app-preview.vm0.workers.dev/agents",
+      "https://pr-23364-api.vm6.ai",
+    );
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-23364-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-23364-api.vm6.ai",
+    );
+    expect(runtime.auth.resolveWebOrigin()).toBe(
+      "https://pr-23364-www.omby.ai",
+    );
+    expect(runtime.apiBase.resolvePlatformOriginForTarget("app")).toBe(
+      "https://pr-23364-app-okou-app-preview.vm0.workers.dev",
+    );
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "preview",
+      publicBrand: "okou",
+      publicStaticAssetsBaseUrl: "https://static.okou.io",
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
+    });
+    expect(
+      runtime.platformHost.isOkouHostname(
+        "pr-23364-app-okou-app-preview.vm0.workers.dev.evil.example",
+      ),
+    ).toBeFalsy();
+    expect(
+      runtime.platformHost.isOkouHostname(
+        "pr-23364-app-okou-app-preview.attacker.workers.dev",
+      ),
+    ).toBeFalsy();
+  });
+
   it("rejects an invalid API origin on an immutable Pages deployment", async () => {
     setBrowserUrl(
       "https://3508a2f5.okou-app.pages.dev/agents",
@@ -481,7 +518,7 @@ describe("portable platform runtime environment", () => {
     const runtime = await loadRuntimeSurfaces();
 
     expect(() => runtime.apiBase.resolveApiBase()).toThrow(
-      "Invalid Cloudflare Pages preview API origin",
+      "Invalid app preview API origin",
     );
   });
 

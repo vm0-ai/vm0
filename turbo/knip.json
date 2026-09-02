@@ -60,6 +60,12 @@
       "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
       "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
     },
+    "apps/app-worker": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.{js,ts}", "*.config.mjs"],
+      "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
+      "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
+    },
     "apps/desktop": {
       "entry": [
         "forge.config.js",
