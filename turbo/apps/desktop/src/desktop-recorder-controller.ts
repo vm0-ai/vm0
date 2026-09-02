@@ -4,7 +4,9 @@ import {
   type DesktopRecorderError,
   type DesktopRecorderPrepareRequest,
   type DesktopRecorderRecording,
-  type DesktopRecorderSourceList,
+  type DesktopRecorderCapabilities,
+  type DesktopRecorderSource,
+  type DesktopRecorderWindowPreview,
   type DesktopRecorderState,
   type DesktopRecorderStatus,
   type RecorderNativeBackend,
@@ -107,8 +109,33 @@ export class DesktopRecorderController {
     void this.releaseAfterDisable();
   }
 
-  async listSources(): Promise<DesktopRecorderSourceList> {
+  async getCapabilities(): Promise<DesktopRecorderCapabilities> {
+    return await this.requireBackend().getCapabilities();
+  }
+
+  /**
+   * Makes sure the system has been asked for the recording grant.
+   *
+   * Called before anything that reads the screen, because the helper refuses
+   * to touch ScreenCaptureKit without the grant and the prompt is the only way
+   * a first-time user can give it.
+   */
+  async ensureScreenRecordingPermission(): Promise<void> {
+    const granted =
+      await this.requireBackend().requestScreenRecordingPermission();
+    if (!granted) {
+      throw new Error(
+        "Okou needs Screen Recording permission in System Settings",
+      );
+    }
+  }
+
+  async listSources(): Promise<readonly DesktopRecorderSource[]> {
     return await this.requireBackend().listSources();
+  }
+
+  async listWindowPreviews(): Promise<readonly DesktopRecorderWindowPreview[]> {
+    return await this.requireBackend().listWindowPreviews();
   }
 
   async prepare(request: DesktopRecorderPrepareRequest): Promise<void> {
