@@ -17,7 +17,10 @@ import {
   verifyConnectorOpenIdAuthCallbackWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@okouai/connectors/auth-providers";
-import { appUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 
 import { request$, setResHeader$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
@@ -235,7 +238,16 @@ function callbackOriginForStoredState(
     return new URL(appUrlForPublicBrand(env("APP_URL"), "okou")).origin;
   }
   const configuredAppOrigin = new URL(env("APP_URL")).origin;
-  if (new URL(state.redirectUri).origin !== configuredAppOrigin) {
+  const redirectOrigin = new URL(state.redirectUri).origin;
+  const configuredApiUrl = env("OKOU_API_BACKEND_URL");
+  if (
+    configuredApiUrl &&
+    redirectOrigin ===
+      new URL(apiUrlForPublicBrand(configuredApiUrl, "vm0")).origin
+  ) {
+    return configuredAppOrigin;
+  }
+  if (redirectOrigin !== configuredAppOrigin) {
     return origin;
   }
   return new URL(appUrlForPublicBrand(env("APP_URL"), state.publicBrand))
@@ -943,13 +955,29 @@ const handleOpenIdConnectorCallback$ = command(
   },
 );
 
-function authCodeCallbackPreflight(args: {
-  readonly connectorSlug: ConnectorSlug;
-  readonly query: ConnectorCallbackQuery;
-  readonly request: Request;
-  readonly origin: string;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-}): Response | null {
+function requestMatchesStoredCallback(
+  request: Request,
+  redirectUri: string,
+): boolean {
+  const requestUrl = new URL(request.url);
+  const storedCallbackUrl = new URL(redirectUri);
+  return (
+    requestUrl.origin === storedCallbackUrl.origin &&
+    requestUrl.pathname === storedCallbackUrl.pathname
+  );
+}
+
+async function authCodeCallbackPreflight(
+  db: Db,
+  args: {
+    readonly connectorSlug: ConnectorSlug;
+    readonly query: ConnectorCallbackQuery;
+    readonly request: Request;
+    readonly origin: string;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+  },
+  signal: AbortSignal,
+): Promise<Response | null> {
   const connectorResult = resolveConnectorWithGrant({
     snapshot: args.snapshot,
     connectorSlug: args.connectorSlug,
@@ -972,9 +1000,27 @@ function authCodeCallbackPreflight(args: {
         return runtimeMethod.method;
       }),
   );
-  return canonicalRedirectUrl
-    ? connectorOAuthRedirectResponse(canonicalRedirectUrl)
-    : null;
+  if (!canonicalRedirectUrl) {
+    return null;
+  }
+  if (args.connectorSlug === "github" && args.query.state) {
+    const stateStatus = await getConnectorOAuthStateStatus(
+      db,
+      {
+        state: args.query.state,
+        target: { kind: "builtin", connectorSlug: args.connectorSlug },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (
+      stateStatus.kind === "usable" &&
+      requestMatchesStoredCallback(args.request, stateStatus.redirectUri)
+    ) {
+      return null;
+    }
+  }
+  return connectorOAuthRedirectResponse(canonicalRedirectUrl);
 }
 
 function storedOAuthStateCallbackArgs(
@@ -1067,7 +1113,11 @@ const handleAuthCodeConnectorCallback$ = command(
     },
     signal: AbortSignal,
   ): Promise<Response> => {
-    const preflightResponse = authCodeCallbackPreflight(args);
+    const preflightResponse = await authCodeCallbackPreflight(
+      set(writeDb$),
+      args,
+      signal,
+    );
     if (preflightResponse) {
       return preflightResponse;
     }
