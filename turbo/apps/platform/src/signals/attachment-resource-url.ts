@@ -18,17 +18,33 @@ function isAuthenticatedAttachmentUrl(url: string): boolean {
   );
 }
 
+export interface AttachmentUrls {
+  /**
+   * URL this browser can load right now. Presigned for a private attachment,
+   * so it expires and is scoped to the viewer.
+   */
+  readonly resourceUrl: string;
+  /**
+   * URL that still works for whoever receives it, or null when the attachment
+   * has no such address. Never the canonical API URL: that one answers only to
+   * the owner's credentials, so a recipient gets a 401 instead of the file.
+   */
+  readonly shareUrl: string | null;
+}
+
 /**
- * Persisted chat attachments live in a private bucket behind an authenticated
- * API route, and a bare `src` attribute cannot carry an Authorization header.
- * Exchange the canonical API URL for a short-lived presigned object URL the
- * browser can load on its own; the API still runs the ownership check before
- * signing.
+ * Persisted chat attachments live behind an authenticated API route, and a bare
+ * `src` attribute cannot carry an Authorization header. Exchange the canonical
+ * API URL for the URLs the browser can actually use; the API still runs the
+ * ownership check before answering.
  */
-function createAttachmentResourceUrl$(url: string): Computed<Promise<string>> {
+function createAttachmentResourceUrl$(
+  url: string,
+): Computed<Promise<AttachmentUrls>> {
   return computed(async (get) => {
     if (!isAuthenticatedAttachmentUrl(url)) {
-      return url;
+      // Already a public address, so it both renders and shares as-is.
+      return { resourceUrl: url, shareUrl: url };
     }
 
     const sourceUrl = new URL(url);
@@ -46,21 +62,29 @@ function createAttachmentResourceUrl$(url: string): Computed<Promise<string>> {
       [200],
       signal,
     );
-    return response.body.url;
+    return {
+      resourceUrl: response.body.url,
+      // Rollout fallback, surface new web/app -> old API: a newly promoted app
+      // can reach an API deployed before `publicUrl` existed. Report no share
+      // URL rather than a presigned one that expires under the recipient.
+      // Remove once that API is no longer serving and is no longer retained as
+      // a rollback target; follow-up #30847.
+      shareUrl: response.body.publicUrl ?? null,
+    };
   });
 }
 
 export type AttachmentResourceUrlResolver = (
   url: string,
-) => Computed<Promise<string>>;
+) => Computed<Promise<AttachmentUrls>>;
 
 /**
  * Create the URL join owned by one thread or page. The returned map is private:
  * consumers only receive the resolved item's computed, never the keyed store.
  */
 export function createAttachmentResourceUrlResolver(): AttachmentResourceUrlResolver {
-  const resourceUrlByUrl = new Map<string, Computed<Promise<string>>>();
-  return (url: string): Computed<Promise<string>> => {
+  const resourceUrlByUrl = new Map<string, Computed<Promise<AttachmentUrls>>>();
+  return (url: string): Computed<Promise<AttachmentUrls>> => {
     const existing = resourceUrlByUrl.get(url);
     if (existing) {
       return existing;

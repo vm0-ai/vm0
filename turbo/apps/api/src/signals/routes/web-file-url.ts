@@ -35,7 +35,10 @@ const fileUrlInner$ = computed(async (get) => {
     ),
   );
 
-  return { status: 200 as const, body: { url } };
+  // `object.url` addresses the same object on the public artifacts domain. It
+  // carries no credential and does not expire, so it is the form to hand to
+  // someone else; the presigned URL stays the one this browser renders from.
+  return { status: 200 as const, body: { url, publicUrl: object.url } };
 });
 
 export const webFileUrlRoutes: readonly RouteEntry[] = [

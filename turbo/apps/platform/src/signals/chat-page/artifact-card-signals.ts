@@ -53,7 +53,10 @@ function createArtifactSignals(
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
   resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactSignals {
-  const resourceUrl$ = resolveResourceUrl(descriptor.url);
+  const attachmentUrls$ = resolveResourceUrl(descriptor.url);
+  const resourceUrl$ = computed(async (get) => {
+    return (await get(attachmentUrls$)).resourceUrl;
+  });
   const previewImageLoad = createImageLoadSignals();
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {

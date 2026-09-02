@@ -53,10 +53,8 @@ import {
 } from "../../signals/okou-page/settings/connectors.ts";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
-import {
-  copyAttachmentLinkToClipboard,
-  publicAttachmentUrl,
-} from "./attachment-url.ts";
+import { copyAttachmentLinkToClipboard } from "./attachment-url.ts";
+import { useAttachmentShareUrl } from "./attachment-resource.ts";
 
 const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
 const ARTIFACT_FLOATING_TRANSITION_CLASS =
@@ -324,21 +322,31 @@ export function ArtifactShareButton({
   url: string;
 }) {
   const { t } = useTranslation();
+  const shareUrl = useAttachmentShareUrl(url);
   const label =
     ariaLabel ??
     t(($) => {
       return $.artifacts.actions.share;
     });
+  if (shareUrl === null) {
+    // No address a recipient could open. Offering the action anyway would hand
+    // out a link that only works for the person who copied it.
+    return null;
+  }
   return (
     <ArtifactActionTooltip label={label}>
       <a
-        href={publicAttachmentUrl(url)}
+        href={shareUrl}
         onClick={(event) => {
           if (!isPlainPrimaryLinkClick(event)) {
             return;
           }
           event.preventDefault();
-          detach(shareArtifactUrl(url), Reason.DomCallback, "artifact share");
+          detach(
+            shareArtifactUrl(shareUrl),
+            Reason.DomCallback,
+            "artifact share",
+          );
         }}
         aria-label={label}
         className={iconButtonClassName(className)}

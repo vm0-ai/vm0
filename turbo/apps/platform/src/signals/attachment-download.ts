@@ -22,7 +22,7 @@ export const downloadAttachment$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
-    const resourceUrl = await get(
+    const { resourceUrl } = await get(
       resolveResourceUrl(publicAttachmentUrl(attachment.url)),
     );
     signal.throwIfAborted();
