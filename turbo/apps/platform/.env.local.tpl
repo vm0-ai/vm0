@@ -1,7 +1,7 @@
 # App Environment Configuration
 # Use 1Password CLI to inject secrets: ./scripts/sync-env.sh
 VITE_CLERK_PUBLISHABLE_KEY_PREVIEW=op://Development/clerk/CLERK_PUBLISHABLE_KEY
-VITE_CLERK_PUBLISHABLE_KEY_PROD=
+VITE_CLERK_PUBLISHABLE_KEY_PROD=op://Development/clerk/CLERK_PUBLISHABLE_KEY_PROD
 VITE_API_URL=http://localhost:3000
 PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
 
