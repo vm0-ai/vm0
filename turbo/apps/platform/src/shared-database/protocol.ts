@@ -11,7 +11,12 @@ export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
 const requestIdSchema = z.string().min(1);
 
 const registerTabMessageSchema = z
-  .object({ type: z.literal("register-tab") })
+  .object({
+    type: z.literal("register-tab"),
+    // Only a page can read the dev browser JWT a development Clerk instance
+    // needs, so the tab passes it along when it registers.
+    devBrowserJwt: z.string().min(1).optional(),
+  })
   .strict();
 
 const queryRequestSchema = z

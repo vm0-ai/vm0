@@ -159,6 +159,17 @@ describe("shared database browser bridge", () => {
     );
   });
 
+  it("hands the dev browser JWT to the Worker when it registers the tab", async () => {
+    context.mocks.browser.cookie("__clerk_db_jwt_MGaxFrJr=dev-browser-jwt");
+    const { workers } = installSharedWorkerMock();
+
+    await setupBridge();
+
+    expect(workers[0]!.port.messages).toStrictEqual([
+      { type: "register-tab", devBrowserJwt: "dev-browser-jwt" },
+    ]);
+  });
+
   it("does not create a Worker without a settled signed-in session", async () => {
     const { constructorCalls } = installSharedWorkerMock();
     mockUser(null, null);

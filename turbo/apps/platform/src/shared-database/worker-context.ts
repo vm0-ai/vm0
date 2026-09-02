@@ -26,6 +26,9 @@ export type WorkerBroadcastMessage = Extract<
   }
 >;
 
+const lastConnectionStatusState$ = state<SharedDatabaseConnectionStatus | null>(
+  null,
+);
 const connectionControllersState$ = state<
   ReadonlyMap<ConnectionId, AbortController>
 >(new Map());
@@ -106,6 +109,12 @@ export const registerConnection$ = command(
       },
       { once: true },
     );
+    // The Worker owns the realtime connection and boots without waiting for a
+    // tab, so a tab that registers later has to be told the status it missed.
+    const status = get(lastConnectionStatusState$);
+    if (status) {
+      port.postMessage({ type: "status", status });
+    }
     return signal;
   },
 );
@@ -143,6 +152,7 @@ export const reloadConnections$ = command(({ set }): void => {
 
 export const updateRealtimeStatusForConnections$ = command(
   ({ set }, status: SharedDatabaseConnectionStatus): void => {
+    set(lastConnectionStatusState$, status);
     set(broadcastSharedDatabaseWorkerMessage$, { type: "status", status });
   },
 );

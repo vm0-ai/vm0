@@ -29,7 +29,7 @@ import {
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
 import { settle } from "../signals/utils.ts";
-import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
+import { startWorkerClerk$ } from "../signals/worker-auth.ts";
 import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import {
@@ -172,7 +172,7 @@ function resolveWorkerIdentity(): SharedDatabaseIdentity {
 }
 
 export const bootstrapWorker$ = command(
-  ({ get, set }, signal: AbortSignal): Promise<void> | null => {
+  ({ set }, signal: AbortSignal): Promise<void> | null => {
     const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
     const vercelProtectionBypass = new URL(location.href).searchParams.get(
       VERCEL_PROTECTION_BYPASS_NAME,
@@ -187,7 +187,7 @@ export const bootstrapWorker$ = command(
         appVersion: __OKOU_APP_VERSION__,
         identity: resolveWorkerIdentity(),
         apiBaseUrl,
-        clerk: get(workerClerk$),
+        clerk: set(startWorkerClerk$, signal),
         oauthApiBaseUrl,
         onForceUpgrade: () => {
           set(reloadConnections$);
