@@ -499,6 +499,11 @@ describe("thread-owned utility sidebar", () => {
     },
     {
       contentType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      filename: "launch-metrics.xlsx",
+    },
+    {
+      contentType:
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       filename: "quarterly-review.pptx",
     },

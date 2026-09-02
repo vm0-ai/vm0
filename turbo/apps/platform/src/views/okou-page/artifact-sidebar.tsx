@@ -70,11 +70,9 @@ import {
 } from "./artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
-import {
-  isOfficeDocumentPreview,
-  OfficeDocumentPreview,
-} from "./office-document-preview.tsx";
 import { officeDocumentPreviewEnabled$ } from "../../signals/external/feature-switch.ts";
+import { OfficeDocumentPreview } from "./office-document-preview.tsx";
+import { isOfficeFilePreview } from "./office-file-preview.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -863,7 +861,7 @@ function ArtifactBody({
       />
     );
   }
-  if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
+  if (officeDocumentPreviewEnabled && isOfficeFilePreview(filename)) {
     return (
       <ArtifactOfficeDocumentBody
         filename={filename}
