@@ -507,31 +507,6 @@ describe("Pi sandbox execution contract", () => {
     });
   });
 
-  it("keeps the ignored stored-context marker exact and optional", () => {
-    const canonical = piApiFirstTurnConfigSchema.parse(
-      piStoredContext.piLaunchConfig.apiFirstTurn,
-    );
-    const configured = piApiFirstTurnConfigSchema.parse({
-      ...piStoredContext.piLaunchConfig.apiFirstTurn,
-      ownershipTransfer: { schemaVersion: 1 },
-    });
-
-    expect(canonical).not.toHaveProperty("ownershipTransfer");
-    expect(configured.ownershipTransfer).toStrictEqual({ schemaVersion: 1 });
-    expect(
-      piApiFirstTurnConfigSchema.safeParse({
-        ...piStoredContext.piLaunchConfig.apiFirstTurn,
-        ownershipTransfer: { schemaVersion: 2 },
-      }).success,
-    ).toBe(false);
-    expect(
-      piApiFirstTurnConfigSchema.safeParse({
-        ...piStoredContext.piLaunchConfig.apiFirstTurn,
-        ownershipTransfer: { schemaVersion: 1, futureField: true },
-      }).success,
-    ).toBe(false);
-  });
-
   it.each([
     {
       name: "legacy outcome",

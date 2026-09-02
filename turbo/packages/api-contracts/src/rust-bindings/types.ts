@@ -203,18 +203,6 @@ export const rustTypeBindings = [
           sandboxEventSequenceStart: [
             "First sandbox event sequence number for the resumed session.",
           ],
-          ownershipTransfer: [
-            "Optional proof that the selected Sandbox supports ownership-transfer manifests.",
-          ],
-        },
-      },
-      {
-        rustTypeName: "PiLaunchConfigApiFirstTurnOwnershipTransfer",
-        rustDoc: [
-          "Sandbox capability for the versioned Pi ownership-transfer manifest.",
-        ],
-        fields: {
-          schemaVersion: ["Pi ownership-transfer capability version."],
         },
       },
       {
