@@ -424,10 +424,33 @@ function sourceFromFile(
   };
 }
 
+/**
+ * Return the wizard to a closed, empty source step.
+ *
+ * Closing the dialog and finishing a submission both discard the whole draft,
+ * so the field list lives here rather than being repeated by each caller and
+ * drifting apart as the wizard gains state.
+ */
+function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
+  return command(({ set }): void => {
+    set(internal.source$, null);
+    set(internal.sourcePersisted$, false);
+    set(internal.sourceUploaded$, false);
+    set(internal.avatar$, null);
+    set(internal.voice$, null);
+    set(internal.placement$, "left");
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.step$, "source");
+    set(internal.busy$, false);
+    set(internal.open$, false);
+  });
+}
+
 function createSourceCommands(
   internal: IntroVideoInternalState,
   runtime: RecordingRuntime,
   resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+  resetWizardDraft$: Command<void, []>,
 ) {
   const openWizard$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -483,19 +506,10 @@ function createSourceCommands(
     set(resetRecordingAttempt$);
     releaseRecordingRuntime(runtime, true);
     releasePreviewUrl(get(internal.source$));
-    set(internal.open$, false);
-    set(internal.busy$, false);
+    set(resetWizardDraft$);
     set(internal.countdown$, 3);
     set(internal.recordingSeconds$, 0);
     set(internal.error$, null);
-    set(internal.source$, null);
-    set(internal.sourcePersisted$, false);
-    set(internal.sourceUploaded$, false);
-    set(internal.avatar$, null);
-    set(internal.voice$, null);
-    set(internal.placement$, "left");
-    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-    set(internal.step$, "source");
     set(internal.draftDiscarded$, true);
   });
   const setStep$ = command(
@@ -968,7 +982,9 @@ function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   });
 }
 
-function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
+function createClearCompletedDraftCommand(
+  resetWizardDraft$: Command<void, []>,
+) {
   return command(
     async (
       { set },
@@ -978,16 +994,7 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
       // A stale local draft is harmless if cleanup fails after the server send.
       await settle(deleteIntroVideoDraft(), signal);
       releasePreviewUrl(source);
-      set(internal.source$, null);
-      set(internal.sourcePersisted$, false);
-      set(internal.sourceUploaded$, false);
-      set(internal.avatar$, null);
-      set(internal.voice$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.placement$, "left");
-      set(internal.step$, "source");
-      set(internal.busy$, false);
-      set(internal.open$, false);
+      set(resetWizardDraft$);
     },
   );
 }
@@ -995,6 +1002,7 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
 function createSubmissionCommands(
   internal: IntroVideoInternalState,
   downloadSource$: Command<void, []>,
+  resetWizardDraft$: Command<void, []>,
 ) {
   const uploadSourceIfNeeded$ = command(
     async (
@@ -1022,7 +1030,8 @@ function createSubmissionCommands(
       return true;
     },
   );
-  const clearCompletedDraft$ = createClearCompletedDraftCommand(internal);
+  const clearCompletedDraft$ =
+    createClearCompletedDraftCommand(resetWizardDraft$);
   const submitComposer$ = command(
     async (
       { get, set },
@@ -1110,10 +1119,12 @@ function createIntroVideoWizardSignals() {
   const runtime = createRecordingRuntime();
   const resetRecordingAttempt$ = resetSignal();
   const selectors = createIntroVideoSelectors(internal);
+  const resetWizardDraft$ = createResetWizardDraftCommand(internal);
   const sourceCommands = createSourceCommands(
     internal,
     runtime,
     resetRecordingAttempt$,
+    resetWizardDraft$,
   );
   const selectionCommands = createSelectionCommands(internal);
   const recordingCommands = createRecordingCommands(
@@ -1125,6 +1136,7 @@ function createIntroVideoWizardSignals() {
   const submissionCommands = createSubmissionCommands(
     internal,
     downloadSource$,
+    resetWizardDraft$,
   );
   return {
     ...selectors,
