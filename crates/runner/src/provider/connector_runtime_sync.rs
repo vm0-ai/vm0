@@ -4805,6 +4805,9 @@ mod tests {
             .await
             .expect("registry should be readable before notification");
 
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _subscriber_guard = tracing::subscriber::set_default(subscriber);
         tokio::time::timeout(
             Duration::from_secs(1),
             core.notify_connector_runtime_sync(run_id, builtin_target("slack")),
@@ -4831,6 +4834,7 @@ mod tests {
         })
         .await
         .expect("queue saturation should install a retry");
+        let events = captured.entries();
 
         let mut queued = 0;
         while requests.try_recv().is_ok() {
@@ -4844,30 +4848,6 @@ mod tests {
             policy_before
         );
         assert_retry_scheduled(&core, run_id, "slack", 1).await;
-        drop(lock_guard);
-    }
-
-    #[tokio::test]
-    async fn queue_full_warning_is_primary_and_retry_detail_stays_local() {
-        let server = MockServer::start();
-        let (core, _requests) = core_without_worker(&server);
-        let run_id = RunId::nil();
-        let dir = tempfile::tempdir().expect("tempdir should be created");
-        let registry = ProxyRegistryHandle::new(
-            dir.path().join("proxy-registry.json"),
-            dir.path().join("proxy-registry.lock"),
-        );
-        let active = active_run_connector_runtime_state(registry);
-        let registration_cancel = active.cancel.clone();
-        core.inner.active_runs.lock().await.insert(run_id, active);
-        let request = SyncRequest {
-            cancel: registration_cancel,
-            ..sync_request(run_id, "slack")
-        };
-
-        let (_, events) =
-            capture_sync_events(core.handle_scheduled_enqueue_error(Full(request))).await;
-
         let warning = captured_event(
             &events,
             "connector runtime sync queue full; retaining last-known-good state",
@@ -4887,8 +4867,7 @@ mod tests {
             tracing::Level::INFO,
         );
         assert_eq!(warning_count(&events), 1, "events={events:#?}");
-        assert_retry_scheduled(&core, run_id, "slack", 1).await;
-        core.unregister_run(run_id).await;
+        drop(lock_guard);
     }
 
     #[tokio::test(start_paused = true)]
