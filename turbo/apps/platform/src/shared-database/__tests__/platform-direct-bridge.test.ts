@@ -90,9 +90,10 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
 }
 
 describe("shared database direct Platform bridge", () => {
-  it("renders cache first, reacts to append, and catches up unread threads in the background", async () => {
+  it("renders cache first, reacts to append, and catches up active and unread threads in the background", async () => {
     const threadId = crypto.randomUUID();
     const unreadThreadId = crypto.randomUUID();
+    const activeThreadId = crypto.randomUUID();
     const cachedRow = row(threadId, 1);
     const caughtUpRow = row(threadId, 2);
     const realtimeRow = row(threadId, 3);
@@ -101,8 +102,9 @@ describe("shared database direct Platform bridge", () => {
 
     const initialPage = context.mocks.deferred<void>();
     let availableRows: readonly ChatEventRow[] = [caughtUpRow];
-    let indicatorThreads: Record<string, "unread"> = {
+    let indicatorThreads: Record<string, "active" | "unread"> = {
       [unreadThreadId]: "unread",
+      [activeThreadId]: "active",
     };
     const requestedSeqIds: number[] = [];
     const prewarmedThreadIds: string[] = [];
@@ -123,7 +125,10 @@ describe("shared database direct Platform bridge", () => {
     context.mocks.api(
       chatThreadEventsContract.rows,
       async ({ params, query, respond }) => {
-        if (params.threadId === unreadThreadId) {
+        if (
+          params.threadId === unreadThreadId ||
+          params.threadId === activeThreadId
+        ) {
           prewarmedThreadIds.push(params.threadId);
           return respond(200, chatEventRowsResponse([], query));
         }
@@ -157,6 +162,7 @@ describe("shared database direct Platform bridge", () => {
     });
     await vi.waitFor(() => {
       expect(prewarmedThreadIds).toContain(unreadThreadId);
+      expect(prewarmedThreadIds).toContain(activeThreadId);
     });
 
     const owner = createChildAbortController(context.signal);

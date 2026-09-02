@@ -103,20 +103,15 @@ const workerChatThreadIndicators$ = computed(
     signal.throwIfAborted();
     const runtime = requireRuntime(get(workerRuntimeState$));
     await Promise.all(
-      Object.entries(indicators.threads).flatMap(([threadId, indicator]) => {
-        if (indicator !== "unread") {
-          return [];
-        }
-        return [
-          runtime.query(
-            {
-              dataKey: { kind: "chat-event", threadId },
-              afterSeqId: null,
-              consistency: "catch-up",
-            },
-            signal,
-          ),
-        ];
+      Object.keys(indicators.threads).map((threadId) => {
+        return runtime.query(
+          {
+            dataKey: { kind: "chat-event", threadId },
+            afterSeqId: null,
+            consistency: "catch-up",
+          },
+          signal,
+        );
       }),
     );
     return indicators;
