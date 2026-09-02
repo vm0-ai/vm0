@@ -602,15 +602,8 @@ async fn run_start_with_home(
         "resource budget initialized"
     );
     match &pre_spawn_capacity {
-        host::PreSpawnCpuCapacity::ExactPhysical(_) => {
-            info!(
-                capacity_source = pre_spawn_capacity.source(),
-                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
-                host_logical_cpus = host_cpus,
-                "pre-spawn admission initialized"
-            );
-        }
-        host::PreSpawnCpuCapacity::RestrictedPhysical(_) => {
+        host::PreSpawnCpuCapacity::ExactPhysical(_)
+        | host::PreSpawnCpuCapacity::RestrictedPhysical(_) => {
             info!(
                 capacity_source = pre_spawn_capacity.source(),
                 pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
@@ -621,7 +614,7 @@ async fn run_start_with_home(
         host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
             warn!(
                 capacity_source = pre_spawn_capacity.source(),
-                reason = "topology directories are absent for all online CPUs",
+                reason = "topology directories are absent for all effective CPUs",
                 pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
                 host_logical_cpus = host_cpus,
                 "pre-spawn admission initialized"
