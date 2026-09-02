@@ -131,17 +131,17 @@ verify_run() {
 
 verify_run default https://preview-default.test
 
-removed_scope_log="${test_root}/removed-scope.curl.log"
-: > "$removed_scope_log"
+extra_argument_log="${test_root}/extra-argument.curl.log"
+: > "$extra_argument_log"
 if PATH="${fake_bin}:$PATH" \
-  MOCK_CURL_LOG="$removed_scope_log" \
-  bash "$script" https://preview-api.test api-promotion \
-    > "${test_root}/removed-scope.output" 2>&1; then
-  fail "obsolete api-promotion scope succeeded"
+  MOCK_CURL_LOG="$extra_argument_log" \
+  bash "$script" https://preview-extra.test unexpected \
+    > "${test_root}/extra-argument.output" 2>&1; then
+  fail "extra argument succeeded"
 fi
-grep -Fq 'usage:' "${test_root}/removed-scope.output" ||
-  fail "obsolete api-promotion scope did not print usage"
-[[ ! -s "$removed_scope_log" ]] || fail "obsolete api-promotion scope reached curl"
+grep -Fq 'usage:' "${test_root}/extra-argument.output" ||
+  fail "extra argument did not print usage"
+[[ ! -s "$extra_argument_log" ]] || fail "extra argument reached curl"
 
 missing_log="${test_root}/missing.curl.log"
 : > "$missing_log"
