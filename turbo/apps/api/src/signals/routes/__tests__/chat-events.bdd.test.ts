@@ -52,6 +52,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import { modelProvidersMainContract } from "@okouai/api-contracts/contracts/model-provider-routes";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { v5 as uuidv5 } from "uuid";
 import { z } from "zod";
 import { createApp } from "../../../app-factory";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -140,6 +141,10 @@ import {
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
+import {
+  deleteModelStatsObservations,
+  readModelStatsObservations,
+} from "./helpers/model-stats-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -160,6 +165,7 @@ import {
   acquireBddVm0ApiKey,
   completeRunWithoutCallbacksFixture,
   deleteAgentRunFixture,
+  deletePiApiFirstTurnUsageEventsFixture,
   holdAgentRunRowLockFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -168,6 +174,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  insertPiApiFirstTurnUsageEventsFixture,
   readCanonicalChatEventStorageFixture,
   readRunUsageEventsFixture,
   releaseBddVm0ApiKey,
@@ -220,6 +227,10 @@ const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
+const PI_API_FIRST_TURN_USAGE_NAMESPACE =
+  "26e1c547-485d-4438-bf6d-4b77959da0cb";
+const PI_API_FIRST_TURN_OBSERVATION_NAMESPACE =
+  "670e6ebc-79c3-4f44-b322-e26d1be7cf2e";
 const TERRA_USAGE_PRICING = [
   "tokens.input",
   "tokens.output",
@@ -541,11 +552,51 @@ async function expectTerraApiFirstTurnUsage(
     cacheRead: 3,
     cacheWrite: 2,
   });
+  if (firstAssistant?.role !== "assistant") {
+    throw new Error("Expected the Terra first turn to persist an assistant");
+  }
+  const responseSourceId =
+    firstAssistant.responseId ??
+    createHash("sha256").update(sessionBytes).digest("hex");
+  const observationIdempotencyKey = uuidv5(
+    JSON.stringify([runId, responseSourceId]),
+    PI_API_FIRST_TURN_OBSERVATION_NAMESPACE,
+  );
+  onTestFinished(async () => {
+    await deleteModelStatsObservations(context, [observationIdempotencyKey]);
+  });
+  await expect(
+    readModelStatsObservations(context, [observationIdempotencyKey]),
+  ).resolves.toStrictEqual([]);
   await expectTerraApiUsage(runId, "", {
     input: 5,
     output: 3,
     cacheRead: 3,
     cacheCreation: 2,
+  });
+}
+
+function terraApiFirstTurnUsageEvents(
+  runId: string,
+  responseSourceId: string,
+): readonly {
+  readonly idempotencyKey: string;
+  readonly category: string;
+  readonly quantity: number;
+}[] {
+  return [
+    { category: "tokens.input", quantity: 5 },
+    { category: "tokens.output", quantity: 3 },
+    { category: "tokens.cache_read", quantity: 3 },
+    { category: "tokens.cache_creation", quantity: 2 },
+  ].map((entry) => {
+    return {
+      ...entry,
+      idempotencyKey: uuidv5(
+        JSON.stringify([runId, responseSourceId, entry.category]),
+        PI_API_FIRST_TURN_USAGE_NAMESPACE,
+      ),
+    };
   });
 }
 
@@ -5554,6 +5605,180 @@ describe("CHAT-02: model-first provider policies", () => {
     },
     90_000,
   );
+
+  it("keeps Terra first-turn billing idempotent for matching usage identities", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseProvider.settled()) {
+        releaseProvider.resolve(undefined);
+      }
+    });
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(
+          piResponsesTextSse("idempotent Terra billing", 0, {
+            input_tokens: 10,
+            output_tokens: 3,
+            total_tokens: 13,
+            input_tokens_details: {
+              cached_tokens: 3,
+              cache_write_tokens: 2,
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const run = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "reuse matching Terra billing identities",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await providerEntered.promise;
+    const usageEvents = terraApiFirstTurnUsageEvents(
+      run.runId,
+      "resp_pi_api_0",
+    );
+    const idempotencyKeys = usageEvents.map((event) => {
+      return event.idempotencyKey;
+    });
+    onTestFinished(async () => {
+      await deletePiApiFirstTurnUsageEventsFixture(idempotencyKeys);
+    });
+    await insertPiApiFirstTurnUsageEventsFixture({
+      runId: run.runId,
+      orgId,
+      userId: actor.userId,
+      events: usageEvents,
+    });
+
+    releaseProvider.resolve(undefined);
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    await expectTerraApiUsage(run.runId, "", {
+      input: 5,
+      output: 3,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
+  }, 90_000);
+
+  it("fails Terra first-turn billing on a conflicting usage identity", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiLoop]: true },
+    );
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+
+    const providerEntered = createDeferredPromise<void>(context.signal);
+    const releaseProvider = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseProvider.settled()) {
+        releaseProvider.resolve(undefined);
+      }
+    });
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async () => {
+        modelCalls += 1;
+        if (!providerEntered.settled()) {
+          providerEntered.resolve(undefined);
+        }
+        await releaseProvider.promise;
+        return new HttpResponse(
+          piResponsesTextSse("conflicting Terra billing", 0, {
+            input_tokens: 10,
+            output_tokens: 3,
+            total_tokens: 13,
+            input_tokens_details: {
+              cached_tokens: 3,
+              cache_write_tokens: 2,
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const run = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "reject a conflicting Terra billing identity",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await providerEntered.promise;
+    const [expectedEvent] = terraApiFirstTurnUsageEvents(
+      run.runId,
+      "resp_pi_api_0",
+    );
+    if (!expectedEvent) {
+      throw new Error("Expected a Terra billing identity fixture");
+    }
+    onTestFinished(async () => {
+      await deletePiApiFirstTurnUsageEventsFixture([
+        expectedEvent.idempotencyKey,
+      ]);
+    });
+    await insertPiApiFirstTurnUsageEventsFixture({
+      runId: run.runId,
+      orgId,
+      userId: actor.userId,
+      events: [{ ...expectedEvent, quantity: expectedEvent.quantity + 1 }],
+    });
+
+    releaseProvider.resolve(undefined);
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+
+    expect(modelCalls).toBe(1);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("[PI_API_MODEL_FAILED]"),
+    });
+    await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual([
+      expect.objectContaining({
+        category: expectedEvent.category,
+        quantity: expectedEvent.quantity + 1,
+      }),
+    ]);
+  }, 90_000);
 
   it("resumes pre-migration OpenRouter Chat JSONL through API-first Responses", async () => {
     const { actor, agentId } = await entitledChatActor();

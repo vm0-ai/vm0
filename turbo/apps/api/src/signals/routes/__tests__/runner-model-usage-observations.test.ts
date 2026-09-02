@@ -44,7 +44,7 @@ function observation(idempotencyKey: string, model: string) {
 }
 
 describe("POST /api/runners/model-usage-observations", () => {
-  it("persists supported observations idempotently and excludes unsupported models", async () => {
+  it("accepts valid observations without storing them", async () => {
     const supportedKey = randomUUID();
     const unsupportedKey = randomUUID();
     const idempotencyKeys = [supportedKey, unsupportedKey];
@@ -75,12 +75,39 @@ describe("POST /api/runners/model-usage-observations", () => {
 
     await expect(
       readModelStatsObservations(context, idempotencyKeys),
-    ).resolves.toStrictEqual([
-      {
-        idempotencyKey: supportedKey,
-        aggregatedAt: null,
-      },
-    ]);
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("preserves request validation without storing invalid observations", async () => {
+    const idempotencyKey = randomUUID();
+    onTestFinished(async () => {
+      await deleteModelStatsObservations(context, [idempotencyKey]);
+    });
+
+    await accept(
+      client().report({
+        headers: officialRunnerHeaders(),
+        body: {
+          events: [
+            {
+              ...observation(
+                idempotencyKey,
+                DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+              ),
+              inputTokens: 0,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+      }),
+      [400],
+    );
+
+    await expect(
+      readModelStatsObservations(context, [idempotencyKey]),
+    ).resolves.toStrictEqual([]);
   });
 
   it("accepts only official runner authentication", async () => {

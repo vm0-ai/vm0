@@ -3069,6 +3069,42 @@ export async function readRunUsageEventsFixture(runId: string): Promise<
     .orderBy(usageEvent.category);
 }
 
+export async function insertPiApiFirstTurnUsageEventsFixture(args: {
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly events: readonly {
+    readonly idempotencyKey: string;
+    readonly category: string;
+    readonly quantity: number;
+  }[];
+}): Promise<void> {
+  await db()
+    .insert(usageEvent)
+    .values(
+      args.events.map((event) => {
+        return {
+          runId: args.runId,
+          idempotencyKey: event.idempotencyKey,
+          orgId: args.orgId,
+          userId: args.userId,
+          kind: "model",
+          provider: "gpt-5.6-terra",
+          category: event.category,
+          quantity: event.quantity,
+        };
+      }),
+    );
+}
+
+export async function deletePiApiFirstTurnUsageEventsFixture(
+  idempotencyKeys: readonly string[],
+): Promise<void> {
+  await db()
+    .delete(usageEvent)
+    .where(inArray(usageEvent.idempotencyKey, [...idempotencyKeys]));
+}
+
 /**
  * Exercise the production predicates shared by artifact catalog/realtime,
  * thread/Google Drive, and Feishu/AgentPhone/Teams/Telegram dispatch readers.
