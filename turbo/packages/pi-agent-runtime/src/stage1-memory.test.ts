@@ -237,12 +237,13 @@ describe("Pi memory Stage 1 runtime", () => {
       "-",
       "abcdefghijklmnop",
     ].join("");
+    const awsAccessKeyId = ["A", "K", "I", "A", "ABCDEFGHIJKLMNOP"].join("");
     const secrets = [
       "sk-proj-abcdefghijklmnopqrstuvwxyz012345",
       "github_pat_abcdefghijklmnopqrstuvwxyz0123456789",
       "ghp_abcdefghijklmnopqrstuvwxyz012345",
       slackToken,
-      "AKIAABCDEFGHIJKLMNOP",
+      awsAccessKeyId,
       "eyJabcdefghijk.eyJmnopqrstuv.abcdefghijklm",
       "json-super-secret",
       "basic-credential",
@@ -274,6 +275,11 @@ describe("Pi memory Stage 1 runtime", () => {
     for (const secret of secrets) {
       expect(redacted).not.toContain(secret);
     }
+    expect(
+      redactPiMemoryStage1Secrets(
+        "before\n-----BEGIN RSA PRIVATE KEY-----\nunclosed-secret",
+      ),
+    ).toBe("before\n[REDACTED_SECRET]");
 
     const source = `${"head ".repeat(100)}MIDDLE${" tail".repeat(100)}`;
     const first = truncatePiMemoryStage1History({

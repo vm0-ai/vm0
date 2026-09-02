@@ -667,6 +667,18 @@ async function failWork(
   return { kind };
 }
 
+async function retryOwnedWorkAfterAbort(
+  db: Db,
+  owned: ReadonlySet<ClaimedPiMemoryStage1Work>,
+  reason: unknown,
+): Promise<void> {
+  await Promise.all(
+    [...owned].map(async (work) => {
+      await failWork(db, work, reason, performance.now());
+    }),
+  );
+}
+
 function providerConfig(args: {
   readonly route: NonNullable<
     Awaited<ReturnType<typeof resolveBuiltInModelRuntimeRoute>>
@@ -861,8 +873,12 @@ export const executePiMemoryStage1Work$ = command(
   ): Promise<PiMemoryStage1WorkerResult> => {
     const startedAt = performance.now();
     const db = set(writeDb$);
-    // eslint-disable-next-line api/signal-check-await -- claimed leases must be retried before cancellation propagates
     const claim = await claimPiMemoryStage1Work(db, input);
+    if (signal.aborted) {
+      await retryOwnedWorkAfterAbort(db, new Set(claim.claimed), signal.reason);
+      signal.throwIfAborted();
+    }
+    const owned = new Set(claim.claimed);
     const base = {
       scanned: claim.scanned,
       succeeded: 0,
@@ -873,23 +889,17 @@ export const executePiMemoryStage1Work$ = command(
       sourceActive: claim.sourceActive,
       staleDiscarded: 0,
     };
-    if (signal.aborted && claim.claimed.length > 0) {
-      await Promise.all(
-        claim.claimed.map(async (work) => {
-          return await failWork(db, work, signal.reason, performance.now());
-        }),
-      );
-      signal.throwIfAborted();
-    }
-    signal.throwIfAborted();
     if (claim.claimed.length === 0) {
       return logBatchResult({ ...base, claimed: 0 }, startedAt);
     }
 
-    // eslint-disable-next-line api/signal-check-await -- exact leases must be retried before cancellation propagates
     const resolvedModel = await settleIncludingAbort(
       resolveStage1ProviderConfig(db, signal),
     );
+    if (signal.aborted) {
+      await retryOwnedWorkAfterAbort(db, owned, signal.reason);
+      signal.throwIfAborted();
+    }
     if (!resolvedModel.ok) {
       const outcomes = await Promise.all(
         claim.claimed.map(async (work) => {
@@ -902,6 +912,7 @@ export const executePiMemoryStage1Work$ = command(
         }),
       );
       signal.throwIfAborted();
+      owned.clear();
       return logBatchResult(
         countOutcomes(base, outcomes, claim.claimed.length),
         startedAt,
@@ -917,14 +928,18 @@ export const executePiMemoryStage1Work$ = command(
     // buffers have fallen out of scope.
     for (const work of claim.claimed) {
       const workStartedAt = performance.now();
-      // eslint-disable-next-line api/signal-check-await -- exact leases must be retried before cancellation propagates
       const loaded = await settleIncludingAbort(
         set(loadAndProjectHistory$, { work, contextWindow }, signal),
       );
+      if (signal.aborted) {
+        await retryOwnedWorkAfterAbort(db, owned, signal.reason);
+        signal.throwIfAborted();
+      }
       if (loaded.ok) {
         prepared.push(loaded.value);
       } else {
         outcomes.push(await failWork(db, work, loaded.error, workStartedAt));
+        owned.delete(work);
       }
     }
 

@@ -16,8 +16,10 @@ import type { PiAgentModelConfig } from "./types";
 
 const MEMORY_TOOL_PREFIX = "memories.";
 const REDACTED_SECRET = "[REDACTED_SECRET]";
-const PRIVATE_KEY_BLOCK =
-  /-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----/gu;
+const PRIVATE_KEY_BEGIN_PREFIX = "-----BEGIN ";
+const PRIVATE_KEY_LABEL_SUFFIX = " PRIVATE KEY";
+const PRIVATE_KEY_MARKER_SUFFIX = "-----";
+const PRIVATE_KEY_TYPE_MAX_LENGTH = 32;
 const AUTHORIZATION_HEADER =
   /(\b(?:authorization|proxy-authorization)\s*:\s*)(?:bearer|basic)\s+[^\s`"'<>]+/giu;
 const COOKIE_HEADER = /(\b(?:cookie|set-cookie)\s*:\s*)[^\r\n]+/giu;
@@ -67,10 +69,73 @@ export class PiMemoryStage1ProviderError extends Error {
   }
 }
 
+function privateKeyLabelAt(input: string, start: number): string | null {
+  const labelStart = start + PRIVATE_KEY_BEGIN_PREFIX.length;
+  const boundedMarker = input.slice(
+    labelStart,
+    labelStart +
+      PRIVATE_KEY_TYPE_MAX_LENGTH +
+      PRIVATE_KEY_LABEL_SUFFIX.length +
+      PRIVATE_KEY_MARKER_SUFFIX.length,
+  );
+  const markerEnd = boundedMarker.indexOf(PRIVATE_KEY_MARKER_SUFFIX);
+  if (markerEnd < 0) {
+    return null;
+  }
+  const label = boundedMarker.slice(0, markerEnd);
+  if (label === "PRIVATE KEY") {
+    return label;
+  }
+  if (!label.endsWith(PRIVATE_KEY_LABEL_SUFFIX)) {
+    return null;
+  }
+  const type = label.slice(0, -PRIVATE_KEY_LABEL_SUFFIX.length);
+  if (type.length === 0 || type.length > PRIVATE_KEY_TYPE_MAX_LENGTH) {
+    return null;
+  }
+  for (const character of type) {
+    const code = character.charCodeAt(0);
+    if (!((code >= 48 && code <= 57) || (code >= 65 && code <= 90))) {
+      return null;
+    }
+  }
+  return label;
+}
+
+function redactPrivateKeyBlocks(input: string): string {
+  const parts: string[] = [];
+  let cursor = 0;
+  let searchFrom = 0;
+  while (searchFrom < input.length) {
+    const begin = input.indexOf(PRIVATE_KEY_BEGIN_PREFIX, searchFrom);
+    if (begin < 0) {
+      break;
+    }
+    const label = privateKeyLabelAt(input, begin);
+    if (label === null) {
+      searchFrom = begin + PRIVATE_KEY_BEGIN_PREFIX.length;
+      continue;
+    }
+    const endMarker = `-----END ${label}-----`;
+    const end = input.indexOf(
+      endMarker,
+      begin + PRIVATE_KEY_BEGIN_PREFIX.length + label.length,
+    );
+    parts.push(input.slice(cursor, begin), REDACTED_SECRET);
+    if (end < 0) {
+      cursor = input.length;
+      break;
+    }
+    cursor = end + endMarker.length;
+    searchFrom = cursor;
+  }
+  parts.push(input.slice(cursor));
+  return parts.join("");
+}
+
 /** Deterministic redaction for both Stage 1 trust boundaries. */
 export function redactPiMemoryStage1Secrets(input: string): string {
-  return input
-    .replace(PRIVATE_KEY_BLOCK, REDACTED_SECRET)
+  return redactPrivateKeyBlocks(input)
     .replace(AUTHORIZATION_HEADER, `$1${REDACTED_SECRET}`)
     .replace(COOKIE_HEADER, `$1${REDACTED_SECRET}`)
     .replace(URL_USER_INFO, `$1${REDACTED_SECRET}@`)
