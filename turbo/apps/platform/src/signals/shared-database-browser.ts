@@ -3,7 +3,12 @@ import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
 import { i18n } from "../i18n/index.ts";
+import {
+  getCapturedPreviewBypassForTarget,
+  VERCEL_PROTECTION_BYPASS_NAME,
+} from "../lib/preview-bypass-cookie.ts";
 import { sentryLogContext } from "../lib/sentry-config.ts";
+import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
@@ -71,6 +76,14 @@ function createBrowserSharedDatabaseBridge(
   workerUrl.search = "";
   workerUrl.searchParams.set("userId", identity.userId);
   workerUrl.searchParams.set("orgId", identity.orgId);
+  const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
+  const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
+  if (vercelProtectionBypass) {
+    workerUrl.searchParams.set(
+      VERCEL_PROTECTION_BYPASS_NAME,
+      vercelProtectionBypass,
+    );
+  }
   const worker = new SharedWorker(workerUrl, {
     name: `okou_${identity.userId}_${identity.orgId}`,
     type: "module",

@@ -5,6 +5,7 @@ import {
   derivePlatformServiceOrigin,
   resolvePlatformEnvironment,
 } from "../lib/platform-host.ts";
+import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-cookie.ts";
 import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
@@ -173,6 +174,9 @@ function resolveWorkerIdentity(): SharedDatabaseIdentity {
 export const bootstrapWorker$ = command(
   ({ get, set }, signal: AbortSignal): Promise<void> | null => {
     const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
+    const vercelProtectionBypass = new URL(location.href).searchParams.get(
+      VERCEL_PROTECTION_BYPASS_NAME,
+    );
     const oauthApiBaseUrl =
       resolvePlatformEnvironment() === "production"
         ? derivePlatformServiceOrigin(location.origin, "www")
@@ -188,6 +192,7 @@ export const bootstrapWorker$ = command(
         onForceUpgrade: () => {
           set(reloadConnections$);
         },
+        ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },
       signal,
     );

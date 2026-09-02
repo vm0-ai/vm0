@@ -852,10 +852,7 @@ export class SharedDatabaseWorkerRuntime {
         },
       });
       const nextEntry: ChatDatabaseEntry = {
-        promise: opener.openChatIdb(
-          this.identity.userId,
-          this.identity.orgId,
-        ),
+        promise: opener.openChatIdb(this.identity.userId, this.identity.orgId),
         database: null,
         invalidated: false,
       };

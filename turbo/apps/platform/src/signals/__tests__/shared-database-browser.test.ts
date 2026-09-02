@@ -143,6 +143,22 @@ describe("shared database browser bridge", () => {
     expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
   });
 
+  it("forwards a captured Preview bypass through the Worker URL", async () => {
+    context.mocks.browser.url("https://pr-31037-app.omby.ai/");
+    context.mocks.browser.cookie("x-vercel-protection-bypass=preview-secret");
+    const { constructorCalls } = installSharedWorkerMock();
+
+    await setupBridge();
+
+    expect(constructorCalls).toHaveLength(1);
+    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
+    expect(workerUrl.searchParams.get("userId")).toBe("test-user-123");
+    expect(workerUrl.searchParams.get("orgId")).toBe("test-org-123");
+    expect(workerUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
+      "preview-secret",
+    );
+  });
+
   it("does not create a Worker without a settled signed-in session", async () => {
     const { constructorCalls } = installSharedWorkerMock();
     mockUser(null, null);
