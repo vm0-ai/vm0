@@ -20,8 +20,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   testContext,
@@ -228,7 +228,7 @@ async function openDrawer(
   sharedWorkerTestTransport: "direct" | "message-port" = "direct",
 ): Promise<void> {
   mockQueuedThread();
-  detachedSetupPage({
+  await setupPageAndWaitForContent({
     context,
     path: `/chats/${THREAD_ID}`,
     sharedWorkerTestTransport,
