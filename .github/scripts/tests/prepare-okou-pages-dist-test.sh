@@ -36,6 +36,9 @@ test -f "${pages_dist}/assets/404.html"
 test -f "${pages_dist}/icons/icon-192.png"
 test -f "${pages_dist}/_headers"
 test -f "${pages_dist}/_worker.js"
+cmp -s \
+  "${repo_root}/turbo/apps/app-worker/src/worker.js" \
+  "${pages_dist}/_worker.js"
 test -f "${pages_dist}/robots.txt"
 test ! -e "${pages_dist}/404.html"
 test ! -e "${pages_dist}/assets/app-123.js"

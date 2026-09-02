@@ -800,12 +800,8 @@ class TestErrorHandler:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
 
-        assert webhook.request_count == 2
+        assert webhook.request_count == 1
         requests_by_path = {request.path: request for request in webhook.requests}
-        assert set(requests_by_path) == {
-            "/api/webhooks/agent/usage-event",
-            "/api/runners/model-usage-observations",
-        }
         body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-002"
         assert [
@@ -821,21 +817,4 @@ class TestErrorHandler:
         ]
         billing_key = body["events"][0]["idempotencyKey"]
         uuid.UUID(billing_key)
-        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
-        assert set(observation_body) == {"events"}
-        assert [
-            {key: value for key, value in event.items() if key != "idempotencyKey"}
-            for event in observation_body["events"]
-        ] == [
-            {
-                "model": "claude-sonnet-4-6",
-                "inputTokens": 80,
-                "outputTokens": 0,
-                "cacheReadInputTokens": 0,
-                "cacheCreationInputTokens": 0,
-            }
-        ]
-        observation_key = observation_body["events"][0]["idempotencyKey"]
-        uuid.UUID(observation_key)
-        assert observation_key != billing_key
         assert not (tmp_path / "network.jsonl").exists()

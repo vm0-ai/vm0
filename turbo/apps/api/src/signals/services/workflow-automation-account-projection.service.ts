@@ -7,6 +7,7 @@ import { reprojectGoogleFormsAutomationsForOwner } from "./google-forms-automati
 import { reprojectGoogleMeetAutomationsForOwner } from "./google-meet-automation-account.service";
 import { reprojectNotionAutomationsForOwner } from "./notion-automation-account.service";
 import { reprojectStripeInvoicePaidAutomationsForOwner } from "./stripe-invoice-paid-workflow-automation.service";
+import { isWorkflowAutomationAccountConnectorSlug } from "./workflow-automation-account-classification.service";
 
 export async function reprojectWorkflowAutomationsForOwner(
   db: Db,
@@ -17,35 +18,42 @@ export async function reprojectWorkflowAutomationsForOwner(
   },
   signal: AbortSignal,
 ): Promise<void> {
-  if (args.target.kind !== "builtin") {
+  if (
+    args.target.kind !== "builtin" ||
+    !isWorkflowAutomationAccountConnectorSlug(args.target.connectorSlug)
+  ) {
     return;
   }
-  if (args.target.connectorSlug === "gmail") {
-    await reprojectGmailAutomationsForOwner(db, args);
-    signal.throwIfAborted();
-    return;
+  switch (args.target.connectorSlug) {
+    case "gmail": {
+      await reprojectGmailAutomationsForOwner(db, args);
+      signal.throwIfAborted();
+      return;
+    }
+    case "google-calendar": {
+      await reprojectGoogleCalendarAutomationsForOwner(db, args);
+      signal.throwIfAborted();
+      return;
+    }
+    case "google-forms": {
+      await reprojectGoogleFormsAutomationsForOwner(db, args);
+      signal.throwIfAborted();
+      return;
+    }
+    case "google-meet": {
+      await reprojectGoogleMeetAutomationsForOwner(db, args);
+      signal.throwIfAborted();
+      return;
+    }
+    case "notion": {
+      await reprojectNotionAutomationsForOwner(db, args);
+      signal.throwIfAborted();
+      return;
+    }
+    case "stripe": {
+      await reprojectStripeInvoicePaidAutomationsForOwner(db, args, signal);
+      return;
+    }
   }
-  if (args.target.connectorSlug === "google-calendar") {
-    await reprojectGoogleCalendarAutomationsForOwner(db, args);
-    signal.throwIfAborted();
-    return;
-  }
-  if (args.target.connectorSlug === "notion") {
-    await reprojectNotionAutomationsForOwner(db, args);
-    signal.throwIfAborted();
-    return;
-  }
-  if (args.target.connectorSlug === "google-forms") {
-    await reprojectGoogleFormsAutomationsForOwner(db, args);
-    signal.throwIfAborted();
-    return;
-  }
-  if (args.target.connectorSlug === "google-meet") {
-    await reprojectGoogleMeetAutomationsForOwner(db, args);
-    signal.throwIfAborted();
-    return;
-  }
-  if (args.target.connectorSlug === "stripe") {
-    await reprojectStripeInvoicePaidAutomationsForOwner(db, args, signal);
-  }
+  return args.target.connectorSlug satisfies never;
 }

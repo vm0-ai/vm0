@@ -153,11 +153,15 @@ async fn put_presigned_429_retries() {
 
     // 429 is retriable — should exhaust all retries.
     mock.assert_calls_async(3).await;
-    assert!(result.is_err());
+    let error = result.unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "http: PUT presigned failed after 3 attempts; last failure: HTTP 429"
+    );
 }
 
 #[tokio::test]
-async fn put_presigned_transport_error_does_not_log_presigned_url() {
+async fn put_presigned_connect_error_does_not_log_presigned_url() {
     let _api = SharedApiMock::new().await;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -175,7 +179,11 @@ async fn put_presigned_transport_error_does_not_log_presigned_url() {
         )
         .await;
 
-    assert!(result.is_err());
+    let error = result.unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "http: PUT presigned failed after 3 attempts; last failure: connect"
+    );
     let system_log = std::fs::read_to_string(&system_log_path).unwrap();
     assert!(
         system_log.contains("HTTP PUT presigned failed (attempt 1/3)"),
@@ -192,6 +200,18 @@ async fn put_presigned_transport_error_does_not_log_presigned_url() {
     assert!(
         !system_log.contains(signature),
         "system log leaked presigned signature: {system_log}"
+    );
+    assert!(
+        !error.contains(&url),
+        "returned error leaked full presigned URL: {error}"
+    );
+    assert!(
+        !error.contains("X-Amz-Signature"),
+        "returned error leaked presigned query key: {error}"
+    );
+    assert!(
+        !error.contains(signature),
+        "returned error leaked presigned signature: {error}"
     );
 }
 
@@ -317,7 +337,11 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
         .await;
 
     assert!(mutation_done.load(Ordering::SeqCst));
-    assert!(result.is_err());
+    let error = result.unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "http: PUT presigned failed after 3 attempts; last failure: transport"
+    );
     let calls = mock.calls_async().await;
     assert_eq!(calls, 1);
 }
@@ -453,6 +477,33 @@ async fn put_presigned_file_4xx_no_retry() {
     assert!(result.is_err());
 }
 
+#[tokio::test]
+async fn put_presigned_file_retry_exhausted_includes_final_status() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("exhausted.bin");
+    std::fs::write(&file_path, b"exhausted file data").unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(PUT).path("/test/put-file-exhaust");
+        then.status(503);
+    });
+
+    let url = api.url("/test/put-file-exhaust");
+    let result = http_client!()
+        .put_presigned_file(&url, &file_path, "application/gzip")
+        .await;
+
+    mock.assert_calls_async(3).await;
+    let error = result.unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "http: PUT presigned failed after 3 attempts; last failure: HTTP 503"
+    );
+}
+
 // =========================================================================
 // Edge cases
 // =========================================================================
@@ -474,5 +525,9 @@ async fn put_presigned_retry_exhausted() {
         .await;
 
     mock.assert_calls_async(3).await;
-    assert!(result.is_err());
+    let error = result.unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "http: PUT presigned failed after 3 attempts; last failure: HTTP 500"
+    );
 }

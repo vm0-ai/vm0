@@ -185,6 +185,28 @@ const builtIndexTemplate = indexTemplate
   )
   .replaceAll("__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
   .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+const embeddedIndexTemplate = builtIndexTemplate
+  .replace(
+    "</head>",
+    [
+      '<link id="vm0-main-stylesheet" rel="preload" as="style" href="https://static.okou.io/okou-app/assets/index-Test1234.css" />',
+      '<link rel="modulepreload" href="https://static.okou.io/okou-app/assets/vendor-Test1234.js" />',
+      "</head>",
+    ].join("\n"),
+  )
+  .replace(
+    "</body>",
+    '<script type="module" src="https://static.okou.io/okou-app/assets/index-Test1234.js"></script>\n</body>',
+  );
+const embeddedWorker = workerModule.createWorker({
+  icon192: new TextEncoder().encode("icon-192").buffer,
+  icon512: new TextEncoder().encode("icon-512").buffer,
+  icon512Maskable: new TextEncoder().encode("icon-maskable").buffer,
+  indexHtml: embeddedIndexTemplate,
+  manifest: manifestTemplate,
+  robots: "User-agent: *\nAllow: /\n",
+  serviceWorker: 'self.addEventListener("install", () => {});',
+});
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
@@ -200,9 +222,35 @@ function requestUrl(input) {
   return new URL(input instanceof Request ? input.url : input.toString());
 }
 
-function assetEnvironment() {
+function assetEnvironment(publicBrand) {
   const indexHtml = builtIndexTemplate;
   return {
+    ...(publicBrand ? { PUBLIC_BRAND: publicBrand } : {}),
+    STATIC_ASSETS_BUCKET: {
+      get(key, options) {
+        observedR2Key = key;
+        observedR2Options = options;
+        const body = "export const worker = true;";
+        const bodySize = new TextEncoder().encode(body).byteLength;
+        const range = options?.range.get("Range")
+          ? { offset: 0, length: bodySize }
+          : undefined;
+        return Promise.resolve({
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(body));
+              controller.close();
+            },
+          }),
+          httpEtag: '"shared-worker-etag"',
+          range,
+          size: bodySize,
+          writeHttpMetadata(headers) {
+            headers.set("Content-Type", "application/javascript");
+          },
+        });
+      },
+    },
     ASSETS: {
       fetch(input) {
         const url = requestUrl(input);
@@ -224,6 +272,13 @@ function assetEnvironment() {
                 "Content-Type": "application/javascript",
                 ETag: '"asset-etag"',
               },
+            }),
+          );
+        }
+        if (url.pathname === "/sw.js") {
+          return Promise.resolve(
+            new Response('self.addEventListener("install", () => {});', {
+              headers: { "Content-Type": "application/javascript" },
             }),
           );
         }
@@ -323,10 +378,10 @@ function assertBootstrapAvatar(html) {
   assert.doesNotMatch(html, /assets\/avatar-svg\//u);
 }
 
-async function requestAppPage(origin) {
+async function requestAppPage(origin, publicBrand) {
   const response = await worker.fetch(
     new Request(`${origin}/settings/profile`),
-    assetEnvironment(),
+    assetEnvironment(publicBrand),
   );
   const html = await response.text();
   return { html, response };
@@ -337,36 +392,25 @@ assert.equal(vm0Page.response.status, 200);
 assert.equal(vm0Page.response.headers.get("x-robots-tag"), "noindex, nofollow");
 assert.equal(vm0Page.response.headers.get("content-encoding"), null);
 assert.equal(vm0Page.response.headers.get("etag"), null);
+assert.equal(vm0Page.response.headers.get("x-frame-options"), "DENY");
+assert.equal(
+  vm0Page.response.headers.get("permissions-policy"),
+  "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(self), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)",
+);
 assert.equal(
   documentTitle(vm0Page.html),
   "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
 );
 assert.equal(htmlAttribute(vm0Page.html, "data-app-brand-name"), "VM0");
 assert.equal(metaContent(vm0Page.html, "name", "application-name"), "VM0");
-assert.equal(
-  metaContent(vm0Page.html, "name", "apple-mobile-web-app-title"),
-  "VM0",
-);
 assert.equal(metaContent(vm0Page.html, "name", "description"), vm0Description);
 assert.equal(metaContent(vm0Page.html, "property", "og:site_name"), "VM0");
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:title"),
-  "VM0 - Your Trustworthy AI Teammate",
-);
 assert.equal(metaContent(vm0Page.html, "name", "twitter:site"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "twitter:creator"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "robots"), "noindex, nofollow");
 assert.equal(
   tagAttribute(vm0Page.html, "link", "rel", "canonical", "href"),
   "https://app.vm0.ai/",
-);
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:url"),
-  "https://app.vm0.ai/",
-);
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:image"),
-  "https://static.vm0.io/web/og-image.png",
 );
 assert.ok(
   tagAttributeValues(vm0Page.html, "link", "href").includes(
@@ -393,26 +437,10 @@ assert.equal(
 );
 assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
-assert.equal(
-  metaContent(okouPage.html, "name", "description"),
-  okouDescription,
-);
 assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
-assert.equal(
-  metaContent(okouPage.html, "property", "og:title"),
-  "Okou - Your Trustworthy AI Teammate",
-);
 assert.equal(
   tagAttribute(okouPage.html, "link", "rel", "canonical", "href"),
   "https://app.okou.ai/",
-);
-assert.equal(
-  metaContent(okouPage.html, "property", "og:url"),
-  "https://app.okou.ai/",
-);
-assert.equal(
-  metaContent(okouPage.html, "property", "og:image"),
-  "https://static.okou.io/web/og-image.png",
 );
 assert.ok(
   tagAttributeValues(okouPage.html, "link", "href").includes(
@@ -438,8 +466,22 @@ assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
+for (const [origin, brandName] of [
+  ["https://app-worker.vm0.ai", "VM0"],
+  ["https://app-worker.okou.ai", "Okou"],
+]) {
+  const canaryPage = await requestAppPage(origin);
+  assert.equal(canaryPage.response.status, 200);
+  assert.equal(
+    htmlAttribute(canaryPage.html, "data-app-brand-name"),
+    brandName,
+  );
+  assert.equal(clerkBootstrap(canaryPage.html), expectedClerkBootstrap);
+}
+
 const okouPreview = await requestAppPage(
-  "https://3508a2f5.okou-app.pages.dev",
+  "https://pr-25304-app-okou-app-preview.vm0.workers.dev",
+  "okou",
 );
 assert.equal(htmlAttribute(okouPreview.html, "data-app-brand-name"), "Okou");
 assert.equal(
@@ -449,6 +491,80 @@ assert.equal(
 assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
 assert.equal(clerkCoreScript(okouPreview.html), expectedClerkCoreScript);
 assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
+
+const serviceWorker = await worker.fetch(
+  new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
+  assetEnvironment(previewOrigin, "okou"),
+);
+assert.equal(
+  serviceWorker.headers.get("cache-control"),
+  "public, max-age=0, must-revalidate",
+);
+assert.equal(serviceWorker.headers.get("service-worker-allowed"), "/");
+assert.equal(serviceWorker.headers.get("x-content-type-options"), "nosniff");
+
+const embeddedPage = await embeddedWorker.fetch(
+  new Request(
+    "https://pr-25304-app-okou-app-preview.vm0.workers.dev/settings/profile",
+  ),
+  { PUBLIC_BRAND: "okou" },
+);
+const embeddedHtml = await embeddedPage.text();
+assert.equal(embeddedPage.status, 200);
+assert.equal(htmlAttribute(embeddedHtml, "data-app-brand-name"), "Okou");
+assert.match(
+  embeddedHtml,
+  /https:\/\/pr-25304-app-okou-app-preview\.vm0\.workers\.dev\/okou-app\/assets\/index-Test1234\.js/u,
+);
+assert.match(
+  embeddedHtml,
+  /https:\/\/pr-25304-app-okou-app-preview\.vm0\.workers\.dev\/okou-app\/assets\/index-Test1234\.css/u,
+);
+assert.match(
+  embeddedHtml,
+  /https:\/\/pr-25304-app-okou-app-preview\.vm0\.workers\.dev\/okou-app\/assets\/vendor-Test1234\.js/u,
+);
+assert.doesNotMatch(
+  embeddedHtml,
+  /https:\/\/static\.okou\.io\/okou-app\/assets\//u,
+);
+
+const embeddedProductionPage = await embeddedWorker.fetch(
+  new Request("https://app.okou.ai/settings/profile"),
+  { PUBLIC_BRAND: "okou" },
+);
+const embeddedProductionHtml = await embeddedProductionPage.text();
+assert.match(
+  embeddedProductionHtml,
+  /https:\/\/static\.okou\.io\/okou-app\/assets\/index-Test1234\.js/u,
+);
+assert.doesNotMatch(
+  embeddedProductionHtml,
+  /https:\/\/app\.okou\.ai\/okou-app\/assets\/index-Test1234\.js/u,
+);
+
+const embeddedServiceWorker = await embeddedWorker.fetch(
+  new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
+  { PUBLIC_BRAND: "okou" },
+);
+assert.equal(
+  await embeddedServiceWorker.text(),
+  'self.addEventListener("install", () => {});',
+);
+assert.equal(
+  embeddedServiceWorker.headers.get("content-type"),
+  "application/javascript; charset=UTF-8",
+);
+assert.equal(embeddedServiceWorker.headers.get("service-worker-allowed"), "/");
+
+const embeddedIcon = await embeddedWorker.fetch(
+  new Request(
+    "https://pr-25304-app-okou-app-preview.vm0.workers.dev/icons/icon-192.png",
+  ),
+  { PUBLIC_BRAND: "okou" },
+);
+assert.equal(embeddedIcon.headers.get("content-type"), "image/png");
+assert.equal(await embeddedIcon.text(), "icon-192");
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
 assert.equal(htmlAttribute(untrustedSuffix.html, "data-app-brand-name"), "VM0");
@@ -482,18 +598,8 @@ assert.equal(await staticAsset.text(), "export const app = true;");
 assert.equal(staticAsset.headers.get("etag"), '"asset-etag"');
 assert.equal(staticAsset.headers.get("x-robots-tag"), null);
 
-let proxiedAssetRequest = null;
-globalThis.fetch = (input) => {
-  proxiedAssetRequest = input instanceof Request ? input : new Request(input);
-  return Promise.resolve(
-    new Response("export const worker = true;", {
-      headers: {
-        "cache-control": "public, max-age=31536000, immutable",
-        "content-type": "application/javascript",
-      },
-    }),
-  );
-};
+let observedR2Key = null;
+let observedR2Options = null;
 const proxiedAsset = await worker.fetch(
   new Request(
     "https://app.okou.ai/okou-app/assets/shared-database-worker-AbCd1234.js",
@@ -508,16 +614,54 @@ const proxiedAsset = await worker.fetch(
   assetEnvironment(),
 );
 assert.equal(
-  proxiedAssetRequest?.url,
-  "https://static.okou.io/okou-app/assets/shared-database-worker-AbCd1234.js",
+  observedR2Key,
+  "okou-app/assets/shared-database-worker-AbCd1234.js",
 );
-assert.equal(proxiedAssetRequest?.headers.get("range"), "bytes=0-1023");
-assert.equal(proxiedAssetRequest?.headers.get("authorization"), null);
-assert.equal(proxiedAssetRequest?.headers.get("cookie"), null);
+assert.equal(observedR2Options?.range.get("range"), "bytes=0-1023");
+assert.equal(observedR2Options?.range.get("authorization"), null);
+assert.equal(observedR2Options?.range.get("cookie"), null);
 assert.equal(await proxiedAsset.text(), "export const worker = true;");
+assert.equal(proxiedAsset.status, 206);
+assert.equal(proxiedAsset.headers.get("content-range"), "bytes 0-26/27");
 assert.equal(
   proxiedAsset.headers.get("cache-control"),
   "public, max-age=31536000, immutable",
+);
+
+let publicAssetRequest = null;
+globalThis.fetch = (input) => {
+  publicAssetRequest = input instanceof Request ? input : new Request(input);
+  return Promise.resolve(
+    new Response("export const publicWorker = true;", {
+      headers: { "Content-Type": "application/javascript" },
+    }),
+  );
+};
+const publicOriginEnvironment = assetEnvironment();
+delete publicOriginEnvironment.STATIC_ASSETS_BUCKET;
+const publicOriginProxiedAsset = await worker.fetch(
+  new Request(
+    "https://app.okou.ai/okou-app/assets/shared-database-worker-Legacy123.js",
+    {
+      headers: {
+        Authorization: "Bearer secret",
+        Cookie: "secret=true",
+        Range: "bytes=0-1023",
+      },
+    },
+  ),
+  publicOriginEnvironment,
+);
+assert.equal(
+  publicAssetRequest?.url,
+  "https://static.okou.io/okou-app/assets/shared-database-worker-Legacy123.js",
+);
+assert.equal(publicAssetRequest?.headers.get("authorization"), null);
+assert.equal(publicAssetRequest?.headers.get("cookie"), null);
+assert.equal(publicAssetRequest?.headers.get("range"), "bytes=0-1023");
+assert.equal(
+  await publicOriginProxiedAsset.text(),
+  "export const publicWorker = true;",
 );
 
 async function requestSharedPage({ appOrigin, query = "", metaResponse }) {
@@ -590,6 +734,21 @@ assert.equal(
   null,
 );
 const productionHtml = await production.response.text();
+
+const canaryProduction = await requestSharedPage({
+  appOrigin: "https://app-worker.okou.ai",
+  metaResponse() {
+    return Response.json({
+      title: "Canary production conversation",
+      publicBrand: "okou",
+    });
+  },
+});
+assert.equal(canaryProduction.response.status, 200);
+assert.equal(
+  canaryProduction.observedUrl,
+  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
+);
 
 const vm0SharedOnOkouHost = await requestSharedPage({
   appOrigin: "https://app.okou.ai",

@@ -147,6 +147,24 @@ export class DesktopAuthSession {
     }
 
     this.token = null;
+    const withCookies = await fetch(requestUrl, {
+      ...init,
+      headers: await this.headersFor(requestUrl, init?.headers),
+    });
+    if (withCookies.status !== 401) {
+      return withCookies;
+    }
+
+    // The token is short-lived, and a call made minutes after the last one —
+    // the click track uploaded after a long video — arrives with an expired
+    // bearer and cookies that no longer answer either. Delivering a recording
+    // must not depend on the token still being the one minted at sign-in:
+    // mint a fresh one and try once more. A refresh that yields nothing means
+    // the sign-in itself is gone, and the 401 stands.
+    const refreshed = await this.getToken({ forceRefresh: true });
+    if (!refreshed) {
+      return withCookies;
+    }
     return await fetch(requestUrl, {
       ...init,
       headers: await this.headersFor(requestUrl, init?.headers),
@@ -165,8 +183,12 @@ export class DesktopAuthSession {
       return signedOutDesktopAuthState();
     }
 
+    // With a cached token, a rejected request already refreshes and retries
+    // inside fetchWithSessionAuth; a second hidden refresh here would only
+    // open the window again for the same answer.
+    const hadToken = this.token !== null;
     const state = await this.fetchAuthState();
-    if (state.status !== "signed_out") {
+    if (state.status !== "signed_out" || hadToken) {
       return state;
     }
 

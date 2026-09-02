@@ -75,7 +75,7 @@ const BACKGROUND_FILL_ACTIVE_LIMIT: usize = CONCURRENCY;
 const BACKGROUND_FILL_QUEUE_CAPACITY: usize = 32;
 /// Maximum number of completed telemetry tasks reaped between scheduler polls.
 const BACKGROUND_FILL_REPORT_REAP_BATCH: usize = 32;
-const FRESH_DELIVERY_SCAN_LIMIT: usize = 32;
+const FRESH_DELIVERY_SCAN_LIMIT: usize = 64;
 const FRESH_DELIVERY_PER_RUN_LIMIT: usize = 4;
 const FRESH_DELIVERY_RUNNER_LIMIT: usize = 8;
 
@@ -4837,7 +4837,7 @@ mod tests {
 
     #[tokio::test]
     async fn fresh_delivery_reaches_later_misses_after_warm_prefix() {
-        const WARM_PREFIX_COUNT: usize = 16;
+        const WARM_PREFIX_COUNT: usize = 48;
 
         fn scan_fixture_plan(base_url: &str, body_size: u64) -> StoragePlan {
             let storages = (0..WARM_PREFIX_COUNT + 5)

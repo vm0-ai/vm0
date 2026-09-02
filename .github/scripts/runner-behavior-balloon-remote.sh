@@ -85,6 +85,10 @@ API_SOCK="/run/vm0/sock/$SANDBOX_ID/api.sock"
 PRESSURE_AVAILABLE_BOUNDARY_MIB=192
 PRESSURE_TARGET_AVAILABLE_MIB=128
 MAX_PRESSURE_ALLOC_MIB=512
+# The retired controller subtracted at most its 256 MiB free-memory target
+# deficit. Starting above this size guarantees that policy leaves a nonzero
+# partial target, so the target-zero assertion distinguishes the regression.
+RETIRED_PARTIAL_RELIEF_MAX_MIB=256
 DEFLATE_POLL_SECONDS=2
 DEFLATE_TIMEOUT_SECONDS=60
 PRESSURE_EXEC_TIMEOUT_SECONDS=$(( DEFLATE_TIMEOUT_SECONDS + 30 ))
@@ -169,11 +173,17 @@ echo "PASS: balloon idle inflate (actual_mib=$ACTUAL)"
 echo "--- Waiting for balloon to stabilize ---"
 PREV=0
 STABLE_COUNT=0
+STABLE_TARGET=""
 for _ in $(seq 1 30); do
   ensure_submit_running
   vm_alive || fail "VM exited during balloon stabilization"
-  ACTUAL=$(balloon_mib)
-  if [ "$ACTUAL" -eq "$PREV" ] && [ "$ACTUAL" -gt 0 ]; then
+  if ! SNAPSHOT=$(balloon_snapshot); then
+    fail "failed to read valid balloon stabilization statistics"
+  fi
+  IFS=$'\t' read -r STABLE_TARGET ACTUAL _ <<< "$SNAPSHOT"
+  if [ "$STABLE_TARGET" -eq "$ACTUAL" ] \
+    && [ "$ACTUAL" -eq "$PREV" ] \
+    && [ "$ACTUAL" -gt 0 ]; then
     STABLE_COUNT=$((STABLE_COUNT + 1))
     [ "$STABLE_COUNT" -ge 2 ] && break
   else
@@ -182,9 +192,13 @@ for _ in $(seq 1 30); do
   PREV=$ACTUAL
   sleep 3
 done
+[ "$STABLE_COUNT" -ge 2 ] \
+  || fail "balloon target and actual did not stabilize before pressure: target=${STABLE_TARGET:-unknown}MiB actual=${ACTUAL:-unknown}MiB"
 INFLATE_MIB=$ACTUAL
 [ "$INFLATE_MIB" -gt 0 ] || fail "balloon stabilized at zero; VM may have exited"
-echo "Balloon stabilized at ${INFLATE_MIB} MiB"
+[ "$INFLATE_MIB" -gt "$RETIRED_PARTIAL_RELIEF_MAX_MIB" ] \
+  || fail "balloon stabilized too low to distinguish full from retired partial relief: actual=${INFLATE_MIB}MiB required_above=${RETIRED_PARTIAL_RELIEF_MAX_MIB}MiB"
+echo "Balloon target and actual stabilized at ${INFLATE_MIB} MiB"
 
 # Verify guest-side: MemAvailable decreased
 ensure_submit_running
@@ -219,9 +233,11 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" \
   python3 -c "import ctypes,time; b=bytearray(${PRESSURE_ALLOC_MIB}*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(${PRESSURE_HOLD_SECONDS})  # BALLOON_ALLOC_MARKER" &
 ALLOC_PID=$!
 
-# Wait for balloon to deflate (actual_mib decreases)
+# Wait for the controller to request full relief and for physical balloon
+# memory to begin returning to the guest.
 DEFLATED=0
 PRESSURE_OBSERVED=0
+FULL_RELIEF_REQUESTED=0
 LAST_PRESSURE_TARGET_MIB=""
 LAST_AVAILABLE_MIB=""
 DEFLATE_DEADLINE=$(( SECONDS + DEFLATE_TIMEOUT_SECONDS ))
@@ -248,7 +264,12 @@ while [ "$SECONDS" -lt "$DEFLATE_DEADLINE" ]; do
   if [ "$LAST_AVAILABLE_MIB" -lt "$PRESSURE_AVAILABLE_BOUNDARY_MIB" ]; then
     PRESSURE_OBSERVED=1
   fi
-  if [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
+  if [ "$PRESSURE_OBSERVED" -eq 1 ] \
+    && [ "$LAST_PRESSURE_TARGET_MIB" -eq 0 ]; then
+    FULL_RELIEF_REQUESTED=1
+  fi
+  if [ "$FULL_RELIEF_REQUESTED" -eq 1 ] \
+    && [ "$ACTUAL" -lt "$INFLATE_MIB" ]; then
     DEFLATED=1
     break
   fi
@@ -258,11 +279,14 @@ if [ "$DEFLATED" -ne 1 ]; then
   if [ "$PRESSURE_OBSERVED" -ne 1 ]; then
     fail "guest memory pressure was not established: available=${LAST_AVAILABLE_MIB:-unknown}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB actual=${ACTUAL}MiB"
   fi
-  fail "balloon controller did not deflate after observed pressure: actual=${ACTUAL}MiB initial=${INFLATE_MIB}MiB available=${LAST_AVAILABLE_MIB:-unknown}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB"
+  if [ "$FULL_RELIEF_REQUESTED" -ne 1 ]; then
+    fail "balloon controller did not request full relief after observed pressure: target=${LAST_PRESSURE_TARGET_MIB:-unknown}MiB actual=${ACTUAL}MiB available=${LAST_AVAILABLE_MIB:-unknown}MiB boundary=${PRESSURE_AVAILABLE_BOUNDARY_MIB}MiB"
+  fi
+  fail "balloon did not physically deflate after target-zero relief: actual=${ACTUAL}MiB initial=${INFLATE_MIB}MiB available=${LAST_AVAILABLE_MIB:-unknown}MiB"
 fi
 DEFLATE_TARGET_MIB=$LAST_PRESSURE_TARGET_MIB
 DEFLATE_MIB=$ACTUAL
-echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB (target=${DEFLATE_TARGET_MIB}MiB)"
+echo "PASS: balloon requested target zero and deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB (current_target=${DEFLATE_TARGET_MIB}MiB)"
 
 # Test 3: re-inflate after pressure released — kill the host-side
 # exec first (prevents further output), then kill the guest-side
@@ -313,7 +337,9 @@ HIGH_FREE_SINCE=""
 LOW_FREE_SINCE=""
 TARGET_RAISED=0
 RECOVERY_RESULT=""
-MIN_TARGET_MIB=$DEFLATE_TARGET_MIB
+# Test 2 observed target zero before physical deflation, even if the controller
+# began recovery before its final pressure sample.
+MIN_TARGET_MIB=0
 MIN_ACTUAL_MIB=$DEFLATE_MIB
 LAST_TARGET=$DEFLATE_TARGET_MIB
 LAST_ACTUAL=$DEFLATE_MIB

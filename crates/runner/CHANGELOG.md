@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.184.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.4...runner-rs-v0.184.0) (2026-09-02)
+
+
+### Features
+
+* **runner:** isolate firecracker guests in weighted cgroups ([#31057](https://github.com/vm0-ai/vm0/issues/31057)) ([615235d](https://github.com/vm0-ai/vm0/commit/615235d8dd5475cdaafec5eead7209bb28ba18fc))
+
+
+### Bug Fixes
+
+* **python:** enforce inline firewall api lists ([#31089](https://github.com/vm0-ai/vm0/issues/31089)) ([fc1a3a0](https://github.com/vm0-ai/vm0/commit/fc1a3a0c57e2b90ca3c8c10ba548bad37c41d9d9))
+* **runner:** classify peer certificate serial warning as info ([#31082](https://github.com/vm0-ai/vm0/issues/31082)) ([513e421](https://github.com/vm0-ai/vm0/commit/513e421230e08ed665d0c9295e08637bf73a9713))
+
+
+### Refactoring
+
+* **python:** centralize model-provider usage reporting fixtures ([#31070](https://github.com/vm0-ai/vm0/issues/31070)) ([ef6365d](https://github.com/vm0-ai/vm0/commit/ef6365d70544dcd62145d6df246bc35e72b5224c))
+
 ## [0.183.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.3...runner-rs-v0.183.4) (2026-09-02)
 
 ## [0.183.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.2...runner-rs-v0.183.3) (2026-09-02)

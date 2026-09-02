@@ -14,7 +14,6 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.model_provider_flow_helpers import make_model_provider_usage_reporting_flow
-from tests.usage_helpers import compact_observation_quantities
 
 
 class TestReportModelProviderUsage:
@@ -126,7 +125,7 @@ class TestReportModelProviderUsage:
             f"tokens.output{expected_suffix}": 7,
         }
 
-    def test_cache_partitions_select_long_context_without_changing_observation(
+    def test_cache_partitions_select_long_context(
         self,
         tmp_path,
         real_flow,
@@ -150,7 +149,6 @@ class TestReportModelProviderUsage:
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
@@ -158,12 +156,6 @@ class TestReportModelProviderUsage:
             "tokens.output.long_context.fast": 9,
             "tokens.cache_read.long_context.fast": 70_000,
             "tokens.cache_creation.long_context.fast": 2_001,
-        }
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
-            "tokens.input": 200_000,
-            "tokens.output": 9,
-            "tokens.cache_read": 70_000,
-            "tokens.cache_creation": 2_001,
         }
 
     def test_output_without_input_skips_unclassifiable_terminal_billing(
@@ -186,15 +178,10 @@ class TestReportModelProviderUsage:
 
         with usage_webhook_api() as webhook:
             accepted = usage.report_model_provider_usage(flow, "run-abc-123")
-            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
         assert accepted is False
-        assert observed is True
         assert webhook.usage_events() == []
-        observations = webhook.model_usage_observation_events()
-        assert compact_observation_quantities(observations) == {"tokens.output": 12}
-        assert [observation["model"] for observation in observations] == ["gpt-5.5"]
         [entry] = [
             entry
             for entry in read_jsonl_entries_after_flush(proxy_log)
@@ -311,52 +298,7 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
-    def test_reports_non_billable_observable_model_provider(
-        self, tmp_path, real_flow, usage_webhook_api
-    ):
-        """BYOK model providers report observations without billing events."""
-        flow = make_model_provider_usage_reporting_flow(
-            real_flow,
-            tmp_path,
-            firewall_billable=False,
-            usage={
-                "model": "ignored-runtime-model",
-                "message_id": "msg-byok-usage-1",
-                "tokens.input": 100,
-            },
-        )
-
-        runner_token = str(uuid.uuid4())
-        with usage_webhook_api() as webhook:
-            usage.configure_model_usage_observation_reporting(
-                api_url=webhook.api_url,
-                runner_token=runner_token,
-            )
-            usage.report_model_provider_usage_observation(flow, "run-abc-123")
-            usage.flush_usage_events(trigger="test")
-
-        assert webhook.request_count == 1
-        request = webhook.requests[0]
-        assert request.path == "/api/runners/model-usage-observations"
-        assert request.header("authorization") == f"Bearer {runner_token}"
-        assert "tok-xyz" not in request.body.decode()
-        body = request.json_body()
-        assert set(body) == {"events"}
-        assert set(body["events"][0]) == {
-            "idempotencyKey",
-            "model",
-            "inputTokens",
-            "outputTokens",
-            "cacheReadInputTokens",
-            "cacheCreationInputTokens",
-        }
-        assert body["events"][0]["model"] == "claude-sonnet-4-6"
-        assert body["events"][0]["inputTokens"] == 100
-        assert body["events"][0]["outputTokens"] == 0
-
-    def test_billable_model_provider_reports_billing_and_observation(
-        self, tmp_path, real_flow, usage_webhook_api
-    ):
+    def test_billable_model_provider_reports_billing(self, tmp_path, real_flow, usage_webhook_api):
         flow = make_model_provider_usage_reporting_flow(
             real_flow,
             tmp_path,
@@ -369,24 +311,15 @@ class TestReportModelProviderUsage:
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
-            usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
-        requests_by_path = {request.path: request for request in webhook.requests}
-        assert set(requests_by_path) == {
-            "/api/webhooks/agent/usage-event",
-            "/api/runners/model-usage-observations",
-        }
-        usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
+        assert webhook.request_count == 1
+        assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
+        usage_body = webhook.requests[0].json_body()
         assert usage_body["events"][0]["provider"] == "claude-sonnet-4-6"
-        assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
-        assert (
-            usage_body["events"][0]["idempotencyKey"]
-            != observation_body["events"][0]["idempotencyKey"]
-        )
+        uuid.UUID(usage_body["events"][0]["idempotencyKey"])
 
-    def test_billable_model_provider_without_model_usage_provider_skips_observation(
+    def test_billable_model_provider_uses_response_model_without_context_model(
         self, tmp_path, real_flow, usage_webhook_api
     ):
         flow = make_model_provider_usage_reporting_flow(
@@ -402,43 +335,12 @@ class TestReportModelProviderUsage:
         )
 
         with usage_webhook_api() as webhook:
-            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            accepted = usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
-        assert observed is False
-        assert webhook.request_count == 0
-
-    def test_logs_warning_when_observation_missing_runner_token(
-        self, tmp_path, real_flow, mitm_ctx
-    ):
-        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow = make_model_provider_usage_reporting_flow(
-            real_flow,
-            tmp_path,
-            firewall_billable=False,
-            sandbox_token="",
-            proxy_log_path=proxy_log,
-            usage={"tokens.input": 50},
-        )
-
-        with mitm_ctx(api_url="https://api.vm0.ai"):
-            usage.configure_model_usage_observation_reporting(
-                api_url="https://api.vm0.ai",
-                runner_token="",
-            )
-            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
-
-        assert observed is False
-        assert jsonl_exists_after_flush(proxy_log)
-        [entry] = read_jsonl_entries_after_flush(proxy_log)
-        assert entry["level"] == "warn"
-        assert (
-            entry["message"]
-            == "Cannot report model usage observation: missing runner_token or api_url"
-        )
-        assert entry["type"] == "model_usage_observation"
-        assert entry["missing_runner_token"] is True
-        assert entry["missing_api_url"] is False
+        assert accepted is True
+        assert webhook.request_count == 1
+        assert webhook.usage_events()[0]["provider"] == "claude-sonnet-4-6"
 
     def test_skips_non_model_provider(self, tmp_path, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
@@ -625,17 +527,11 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-websocket")
             usage.report_model_provider_usage(flow, "run-websocket")
-            usage.report_model_provider_usage_observation(flow, "run-websocket")
-            usage.report_model_provider_usage_observation(flow, "run-websocket")
             usage.flush_usage_events(trigger="test")
 
-        requests_by_path = {request.path: request for request in webhook.requests}
-        assert set(requests_by_path) == {
-            "/api/webhooks/agent/usage-event",
-            "/api/runners/model-usage-observations",
-        }
-        usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
-        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
+        assert webhook.request_count == 1
+        assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
+        usage_body = webhook.requests[0].json_body()
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
             for event in usage_body["events"]
@@ -647,20 +543,7 @@ class TestReportModelProviderUsage:
                 "quantity": 13,
             }
         ]
-        assert [
-            {key: value for key, value in event.items() if key != "idempotencyKey"}
-            for event in observation_body["events"]
-        ] == [
-            {
-                "model": "gpt-5.5",
-                "inputTokens": 13,
-                "outputTokens": 0,
-                "cacheReadInputTokens": 0,
-                "cacheCreationInputTokens": 0,
-            }
-        ]
         uuid.UUID(usage_body["events"][0]["idempotencyKey"])
-        uuid.UUID(observation_body["events"][0]["idempotencyKey"])
 
     def test_source_dedupe_separates_billing_sources_by_response_model_without_context_model(
         self, tmp_path, real_flow, usage_webhook_api
@@ -722,11 +605,9 @@ class TestReportModelProviderUsage:
 
         with usage_webhook_api() as webhook:
             accepted = usage.report_model_provider_usage(flow, "run-websocket")
-            observed = usage.report_model_provider_usage_observation(flow, "run-websocket")
             usage.flush_usage_events(trigger="test")
 
         assert accepted is False
-        assert observed is False
         assert webhook.request_count == 0
 
     def test_source_dedupe_separates_flows_when_message_id_missing(
@@ -791,82 +672,6 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 20
 
-    def test_observation_source_dedupe_separates_flows_when_message_id_matches(
-        self, tmp_path, real_flow, usage_webhook_api
-    ):
-        first = make_model_provider_usage_reporting_flow(
-            real_flow,
-            tmp_path,
-            firewall_billable=False,
-            usage={
-                "model": "ignored-runtime-model",
-                "message_id": "msg_real_anthropic_id",
-                "tokens.input": 10,
-            },
-        )
-        first.id = "flow-first"
-        second = make_model_provider_usage_reporting_flow(
-            real_flow,
-            tmp_path,
-            firewall_billable=False,
-            usage={
-                "model": "ignored-runtime-model",
-                "message_id": "msg_real_anthropic_id",
-                "tokens.input": 10,
-            },
-        )
-        second.id = "flow-second"
-
-        with usage_webhook_api() as webhook:
-            usage.report_model_provider_usage_observation(first, "run-preserved")
-            usage.report_model_provider_usage_observation(second, "run-preserved")
-            usage.flush_usage_events(trigger="test")
-
-        body = webhook.requests[0].json_body()
-        assert body["events"][0]["inputTokens"] == 20
-
-    def test_incremental_observation_and_terminal_replay_share_source_identities(
-        self, tmp_path, real_flow, usage_webhook_api
-    ):
-        source_usage = {
-            "model": "gpt-5.5",
-            "tokens.input": 80,
-            "tokens.output": 40,
-            "tokens.cache_read": 20,
-        }
-        flow = make_model_provider_usage_reporting_flow(
-            real_flow,
-            tmp_path,
-            host="api.openai.com",
-            original_url="https://api.openai.com/v1/responses",
-            firewall_name="model-provider:openai-api-key",
-            firewall_billable=False,
-            model_usage_provider="gpt-5.5",
-            usage_sources={"resp-replayed": source_usage},
-        )
-        flow.id = "flow-incremental-terminal"
-
-        with usage_webhook_api() as webhook:
-            usage.report_model_provider_usage_source(
-                flow,
-                "run-replayed",
-                "resp-replayed",
-                source_usage,
-            )
-            usage.report_model_provider_usage_observation(
-                flow,
-                "run-replayed",
-            )
-            usage.flush_usage_events(trigger="test")
-
-        observations = webhook.model_usage_observation_events()
-        assert len(observations) == 2
-        assert compact_observation_quantities(observations) == {
-            "tokens.input": 80,
-            "tokens.output": 40,
-            "tokens.cache_read": 20,
-        }
-
 
 class TestModelProviderResponseHookUsage:
     """Tests for response hook wiring into model-provider usage reporting."""
@@ -878,9 +683,9 @@ class TestModelProviderResponseHookUsage:
 
         The response hook reaches terminal one-shot reporting through
         ``terminal_usage.report_model_provider_usage_once()``, which buffers
-        billing and model-observation payloads through the public ``usage``
-        facade. The explicit ``usage.flush_usage_events(trigger="test")`` call
-        admits those buffers to retry-capable webhook enqueue and delivery, and
+        billing payloads through the public ``usage`` facade. The explicit
+        ``usage.flush_usage_events(trigger="test")`` call admits the buffer to
+        retry-capable webhook enqueue and delivery, and
         this test verifies the successful loopback HTTP requests. It does not
         trigger a delivery retry.
         """
@@ -904,25 +709,11 @@ class TestModelProviderResponseHookUsage:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        requests_by_path = {request.path: request for request in webhook.requests}
-        assert set(requests_by_path) == {
-            "/api/webhooks/agent/usage-event",
-            "/api/runners/model-usage-observations",
-        }
-        body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        assert webhook.request_count == 1
+        assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
+        body = webhook.requests[0].json_body()
         assert body["runId"] == "run-int-001"
         by_category = {event["category"]: event for event in body["events"]}
         assert by_category["tokens.input"]["quantity"] == 100
         assert by_category["tokens.output"]["quantity"] == 500
         assert by_category["tokens.input"]["provider"] == "claude-sonnet-4-6"
-        observation_body = requests_by_path["/api/runners/model-usage-observations"].json_body()
-        assert observation_body["events"] == [
-            {
-                "idempotencyKey": observation_body["events"][0]["idempotencyKey"],
-                "model": "claude-sonnet-4-6",
-                "inputTokens": 100,
-                "outputTokens": 500,
-                "cacheReadInputTokens": 0,
-                "cacheCreationInputTokens": 0,
-            }
-        ]

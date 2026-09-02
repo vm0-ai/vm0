@@ -1,44 +1,31 @@
 """Process-local buffering for aggregate usage webhook uploads.
 
-This package owns the billing and model observation report buffers used by the
-mitmproxy addon. The buffers are created on import with default settings, but
-their flush timers are scheduled lazily only after source events are accepted.
+This package owns the billing report buffer used by the mitmproxy addon. The
+buffer is created on import with default settings, but its flush timer is
+scheduled lazily only after source events are accepted.
 
 Source event idempotency keys are deduped within each process-local buffer
 before destination bucketing. Each seen-key set survives flushes and is bounded
 by ``MAX_SOURCE_IDEMPOTENCY_KEYS``, evicting oldest keys first, so duplicate
-response/error observations do not become separate aggregate rows.
+response/error reports do not become separate aggregate rows.
 
-By default, accepted events are separated by webhook destination and output
-shape, then aggregated by ``run_id``, ``kind``, provider/model resource id, and
-``category``. Matching aggregate buckets sum ``quantity`` before delivery.
+By default, accepted events are separated by webhook destination, then
+aggregated by ``run_id``, ``kind``, provider, and ``category``. Matching
+aggregate buckets sum ``quantity`` before delivery.
 Source-preserving wrappers skip aggregation and keep the original event
 idempotency keys in the webhook payload for finalized source-level reports.
-
-``ModelUsageObservation`` is a separate payload shape from ``UsageEvent``. The
-observation lane is process-wide and aggregated by canonical ``model`` across
-jobs. It sums ``inputTokens``, ``outputTokens``,
-``cacheReadInputTokens``, and ``cacheCreationInputTokens`` independently, and
-starts a new segment before any one accumulated field would exceed the exact
-``MAX_USAGE_QUANTITY`` bound. The source-preserving observation wrapper skips
-that aggregation and retains each accepted observation's vector and original
-idempotency key.
 
 Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
 calls. Flush summaries include the conventional trigger labels captured by
 ``UsageFlushTrigger``. Billing summaries are ``usage_event_buffer_flush``
 proxy-log records, with billing-impacting retained or dropped batches promoted
-to ``usage_underbilling``. Successful model observation flushes are silent;
-their admission, delivery, retention, and drop anomalies use the generic addon
-process-event path documented by ``usage.buffer.logging``.
+to ``usage_underbilling``.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ..counters import set_buffered_model_usage_observations
-from ..webhook import enqueue_model_usage_observation_delivery
 from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     DEFAULT_FLUSH_JITTER_RATIO,
@@ -47,10 +34,7 @@ from .models import (
     MAX_BUFFERED_WEBHOOK_BATCHES,
     MAX_RETAINED_USAGE_BATCH_RETRIES,
     MAX_SOURCE_IDEMPOTENCY_KEYS,
-    MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS,
     USAGE_EVENT_BATCH_SIZE,
-    ModelUsageObservation,
-    ResourceFieldName,
     UsageEvent,
     UsageFlushTrigger,
 )
@@ -64,32 +48,20 @@ __all__ = [
     "MAX_BUFFERED_WEBHOOK_BATCHES",
     "MAX_RETAINED_USAGE_BATCH_RETRIES",
     "MAX_SOURCE_IDEMPOTENCY_KEYS",
-    "MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS",
     "USAGE_EVENT_BATCH_SIZE",
-    "ModelUsageObservation",
-    "ResourceFieldName",
     "UsageEvent",
     "UsageEventBuffer",
     "UsageFlushTrigger",
-    "buffer_model_usage_observations",
-    "buffer_source_model_usage_observations",
     "buffer_source_usage_events",
     "buffer_usage_events",
     "configure_usage_buffer",
     "drain_usage_events_after_executor_shutdown",
-    "flush_billing_usage_events",
-    "flush_model_usage_observations",
     "flush_usage_events",
     "reset_usage_buffer_for_tests",
     "seen_source_idempotency_keys",
 ]
 
 _usage_event_buffer = UsageEventBuffer()
-_model_usage_observation_buffer = UsageEventBuffer(
-    flush_interval_seconds=MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS,
-    enqueue_webhook=enqueue_model_usage_observation_delivery,
-    set_buffered_count=set_buffered_model_usage_observations,
-)
 
 
 def configure_usage_buffer(*, flush_interval_seconds: float) -> None:
@@ -126,41 +98,6 @@ def buffer_usage_events(
     )
 
 
-def buffer_model_usage_observations(
-    url: str,
-    runner_token: str,
-    run_id: str,
-    observations: Iterable[ModelUsageObservation],
-    proxy_log_path: str,
-    *,
-    accepted_source_keys: set[str] | None = None,
-) -> int:
-    """Buffer model observations and return the number admitted.
-
-    Each observation must have a nonnegative integer value within the exact
-    ``MAX_USAGE_QUANTITY`` bound for all four token fields before its source
-    idempotency key is recorded. Source keys already retained by the process
-    local admission history are skipped. The return value counts observations
-    admitted after those checks, not raw inputs or delivered webhook events.
-    When provided, ``accepted_source_keys`` is populated only with keys admitted
-    by this call.
-
-    The default output aggregates accepted observations by canonical ``model``
-    across jobs, summing each token field independently into safe segments. A
-    threshold flush may be performed before this function returns when buffer
-    bounds are reached; that flush does not mean final webhook delivery has
-    completed.
-    """
-    return _model_usage_observation_buffer.buffer_model_usage_observations(
-        url,
-        runner_token,
-        run_id,
-        observations,
-        proxy_log_path,
-        accepted_source_keys=accepted_source_keys,
-    )
-
-
 def buffer_source_usage_events(
     url: str,
     sandbox_token: str,
@@ -190,51 +127,13 @@ def buffer_source_usage_events(
     )
 
 
-def buffer_source_model_usage_observations(
-    url: str,
-    runner_token: str,
-    run_id: str,
-    observations: Iterable[ModelUsageObservation],
-    proxy_log_path: str,
-    *,
-    accepted_source_keys: set[str] | None = None,
-) -> int:
-    """Buffer model observations while preserving source identity.
-
-    The same four-field quantity validation and process-local source-key
-    deduplication as ``buffer_model_usage_observations`` apply. The return value
-    counts only observations admitted after validation and deduplication, and
-    ``accepted_source_keys`` (when provided) receives only keys admitted by this
-    call. Invalid and duplicate observations are not included.
-
-    Accepted observations are not aggregated: their original token vector and
-    ``idempotencyKey`` are retained in the source-level webhook payload. A
-    threshold flush may be performed before this function returns when buffer
-    bounds are reached; that flush does not mean final webhook delivery has
-    completed.
-    """
-    return _model_usage_observation_buffer.buffer_model_usage_observations(
-        url,
-        runner_token,
-        run_id,
-        observations,
-        proxy_log_path,
-        preserve_source_idempotency=True,
-        accepted_source_keys=accepted_source_keys,
-    )
-
-
 def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
-    """Attempt to admit buffered webhook batches from both usage lanes.
+    """Attempt to admit buffered billing webhook batches.
 
     ``runner`` and ``shutdown`` wait for flush ownership. ``timer``,
     ``threshold``, and ``test`` defer when another invocation owns the flush;
     when timers are enabled, the buffered work remains eligible for a later
     timer.
-
-    A ``runner`` trigger flushes only billing; the runner lifecycle explicitly
-    flushes observations as well after validating a formal flush marker. Other
-    triggers flush billing first and then observations.
 
     Return the number of webhook batches admitted by this invocation. Zero
     does not prove that the buffer is empty. Admission does not wait for final
@@ -242,23 +141,7 @@ def flush_usage_events(*, trigger: UsageFlushTrigger) -> int:
     retained work for a later timer when timers are enabled; shutdown does not
     schedule another timer.
     """
-    if trigger == "runner":
-        return flush_billing_usage_events(trigger=trigger)
-    try:
-        billing_batches = flush_billing_usage_events(trigger=trigger)
-    finally:
-        observation_batches = flush_model_usage_observations(trigger=trigger)
-    return billing_batches + observation_batches
-
-
-def flush_billing_usage_events(*, trigger: UsageFlushTrigger) -> int:
-    """Attempt to admit buffered billable usage batches."""
     return _usage_event_buffer.flush_usage_events(trigger=trigger)
-
-
-def flush_model_usage_observations(*, trigger: UsageFlushTrigger) -> int:
-    """Attempt to admit buffered process-level model observations."""
-    return _model_usage_observation_buffer.flush_usage_events(trigger=trigger)
 
 
 def seen_source_idempotency_keys(source_keys: Iterable[str]) -> set[str]:
@@ -267,11 +150,8 @@ def seen_source_idempotency_keys(source_keys: Iterable[str]) -> set[str]:
 
 
 def drain_usage_events_after_executor_shutdown() -> None:
-    """Synchronously drain usage retained after both executors have stopped."""
-    try:
-        _usage_event_buffer.drain_usage_events_after_executor_shutdown()
-    finally:
-        _model_usage_observation_buffer.drain_usage_events_after_executor_shutdown()
+    """Synchronously drain usage retained after the executor has stopped."""
+    _usage_event_buffer.drain_usage_events_after_executor_shutdown()
 
 
 def reset_usage_buffer_for_tests(
@@ -288,26 +168,12 @@ def reset_usage_buffer_for_tests(
     delivery bookkeeping, and source idempotency keys are discarded without
     flushing or waiting for delivery.
     """
-    global _usage_event_buffer, _model_usage_observation_buffer
+    global _usage_event_buffer
     _usage_event_buffer.close()
-    _model_usage_observation_buffer.close()
     _usage_event_buffer = UsageEventBuffer(
         timer_enabled=timer_enabled,
         timer_factory=timer_factory,
         enqueue_webhook=enqueue_webhook,
-        flush_owner_lock=flush_owner_lock,
-        max_retained_batch_retries=max_retained_batch_retries,
-    )
-    _model_usage_observation_buffer = UsageEventBuffer(
-        flush_interval_seconds=MODEL_USAGE_OBSERVATION_FLUSH_INTERVAL_SECONDS,
-        timer_enabled=timer_enabled,
-        timer_factory=timer_factory,
-        enqueue_webhook=(
-            enqueue_webhook
-            if enqueue_webhook is not None
-            else enqueue_model_usage_observation_delivery
-        ),
-        set_buffered_count=set_buffered_model_usage_observations,
         flush_owner_lock=flush_owner_lock,
         max_retained_batch_retries=max_retained_batch_retries,
     )

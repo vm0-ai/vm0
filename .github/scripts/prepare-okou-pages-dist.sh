@@ -11,6 +11,7 @@ pages_dist="$2"
 production_primary_app_domain="${CLERK_PRODUCTION_PRIMARY_APP_DOMAIN:-app.vm0.ai}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pages_config_dir="${script_dir}/../pages/okou-app"
+worker_source="${script_dir}/../../turbo/apps/app-worker/src/worker.js"
 
 case "$production_primary_app_domain" in
   app.vm0.ai | app.okou.ai) ;;
@@ -22,6 +23,11 @@ esac
 
 if [[ ! -f "${canonical_dist}/index.html" ]]; then
   echo "canonical app artifact must contain index.html" >&2
+  exit 1
+fi
+
+if [[ ! -f "$worker_source" ]]; then
+  echo "standalone app Worker source is unavailable: $worker_source" >&2
   exit 1
 fi
 
@@ -51,3 +57,4 @@ rm -f \
   "${pages_dist}/mockServiceWorker.js" \
   "${pages_dist}/ready.json"
 cp -a "${pages_config_dir}/." "$pages_dist/"
+cp "$worker_source" "${pages_dist}/_worker.js"

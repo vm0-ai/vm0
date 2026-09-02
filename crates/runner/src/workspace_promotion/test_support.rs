@@ -1,5 +1,6 @@
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
+use std::sync::Arc;
 
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
@@ -16,7 +17,7 @@ const TEST_WORKSPACE_IMAGE: &[u8] = b"workspace image";
 pub(crate) const TEST_WORKSPACE_IMAGE_SIZE_BYTES: u64 = TEST_WORKSPACE_IMAGE.len() as u64;
 
 pub(crate) struct WorkspacePromotionFixture {
-    pub(crate) _dir: tempfile::TempDir,
+    pub(crate) _dir: Arc<tempfile::TempDir>,
     pub(crate) cache: WorkspaceImageCache,
     pub(crate) promotion: WorkspaceImagePromotionContext,
     pub(crate) sandbox_id: SandboxId,
@@ -32,10 +33,35 @@ impl WorkspacePromotionFixture {
         reuse_key: &str,
         restored_session_identity: Option<&RestoredSessionIdentity>,
     ) -> Self {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = Arc::new(tempfile::tempdir().unwrap());
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = WorkspaceImageCache::new(paths.clone());
+
+        Self::new_with_cache(dir, cache, reuse_key, restored_session_identity).await
+    }
+
+    pub(crate) async fn new_with_restored_session_identity_and_export_capacity(
+        reuse_key: &str,
+        restored_session_identity: Option<&RestoredSessionIdentity>,
+        export_capacity: usize,
+    ) -> Self {
+        let dir = Arc::new(tempfile::tempdir().unwrap());
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = WorkspaceImageCache::new(paths.clone())
+            .with_session_history_sidecar_export_capacity_for_test(export_capacity);
+
+        Self::new_with_cache(dir, cache, reuse_key, restored_session_identity).await
+    }
+
+    pub(crate) async fn new_with_cache(
+        dir: Arc<tempfile::TempDir>,
+        cache: WorkspaceImageCache,
+        reuse_key: &str,
+        restored_session_identity: Option<&RestoredSessionIdentity>,
+    ) -> Self {
+        let paths = cache.paths().clone();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache

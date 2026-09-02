@@ -539,7 +539,9 @@ async fn upload_session_history(
             false,
             None,
         );
-        return Err(e);
+        return Err(AgentError::Checkpoint(format!(
+            "session history upload failed: {e}"
+        )));
     }
     record_sandbox_op(
         "session_history_s3_upload",

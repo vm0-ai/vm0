@@ -80,10 +80,11 @@ def _deduplicate_static_argument_outcomes(
 
 
 def _static_iterable_first_outcomes(node: ast.AST) -> tuple[list[ast.AST | None], bool]:
-    """Return ordered first-node/empty outcomes and whether any expansion is unknown.
+    """Return ordered first-node/empty outcomes and whether a first outcome is unknown.
 
     ``None`` represents a statically empty expansion. The unknown flag remains separate because
-    the linter conservatively treats any dynamic nested expansion as a possible empty call prefix.
+    the linter conservatively treats a dynamic expansion before a fixed first node as a possible
+    empty call prefix.
     """
     if isinstance(node, ast.NamedExpr):
         return _static_iterable_first_outcomes(node.value)
@@ -109,6 +110,8 @@ def _static_iterable_first_outcomes(node: ast.AST) -> tuple[list[ast.AST | None]
     outcomes: list[ast.AST | None] = [None]
     has_unknown_expansion = False
     for element in node.elts:
+        if not any(outcome is None for outcome in outcomes):
+            break
         if isinstance(element, ast.Starred):
             element_outcomes, element_has_unknown_expansion = _static_iterable_first_outcomes(
                 element.value
@@ -116,16 +119,15 @@ def _static_iterable_first_outcomes(node: ast.AST) -> tuple[list[ast.AST | None]
         else:
             element_outcomes = [element]
             element_has_unknown_expansion = False
-        if any(outcome is None for outcome in outcomes):
-            next_outcomes: list[ast.AST | None] = []
-            for outcome in outcomes:
-                if outcome is None:
-                    next_outcomes.extend(element_outcomes)
-                else:
-                    next_outcomes.append(outcome)
-            if element_has_unknown_expansion:
-                next_outcomes.extend(outcomes)
-            outcomes = _deduplicate_static_argument_outcomes(next_outcomes)
+        next_outcomes: list[ast.AST | None] = []
+        for outcome in outcomes:
+            if outcome is None:
+                next_outcomes.extend(element_outcomes)
+            else:
+                next_outcomes.append(outcome)
+        if element_has_unknown_expansion:
+            next_outcomes.extend(outcomes)
+        outcomes = _deduplicate_static_argument_outcomes(next_outcomes)
         has_unknown_expansion = has_unknown_expansion or element_has_unknown_expansion
     return outcomes, has_unknown_expansion
 

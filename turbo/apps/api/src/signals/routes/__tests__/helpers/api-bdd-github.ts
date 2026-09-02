@@ -9,6 +9,7 @@ import {
 import { connectorsBySlugContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../../app-factory";
@@ -438,6 +439,7 @@ export function createGithubBddApi(context: TestContext) {
         readonly beforeCallback?: () => Promise<void>;
         readonly targetType?: string;
         readonly targetLogin?: string;
+        readonly publicBrand?: PublicBrand;
       } = {},
     ): Promise<{
       readonly remoteInstallationId: string;
@@ -456,7 +458,12 @@ export function createGithubBddApi(context: TestContext) {
         orgId: actor.orgId,
         composeId,
       }).toString();
-      const install = await requestInstall(installQuery);
+      const brandedApiOrigin = options.publicBrand
+        ? `https://api.${options.publicBrand === "okou" ? "okou" : "vm0"}.ai`
+        : undefined;
+      const install = await requestInstall(installQuery, {
+        origin: brandedApiOrigin,
+      });
       if (install.status !== 307 || !install.location) {
         throw new Error(
           `Expected GitHub install redirect, received ${install.status}`,
@@ -498,7 +505,17 @@ export function createGithubBddApi(context: TestContext) {
         state,
         ...(options.oauthCode ? { code: options.oauthCode.code } : {}),
       }).toString();
-      const callback = await requestSetupCallback(callbackQuery);
+      let callback = await requestSetupCallback(callbackQuery, {
+        origin: options.publicBrand ? "https://api.okou.ai" : brandedApiOrigin,
+      });
+      if (callback.location) {
+        const replayUrl = new URL(callback.location);
+        if (replayUrl.pathname === "/api/github/app/setup/callback") {
+          callback = await requestSetupCallback(replayUrl.search.slice(1), {
+            origin: replayUrl.origin,
+          });
+        }
+      }
       if (callback.status !== 307 || !callback.location) {
         throw new Error(
           `Expected GitHub setup callback redirect, received ${callback.status}`,

@@ -430,13 +430,11 @@
         "agents": "Agentes",
         "artifacts": "Artefactos",
         "connectors": "Conectores",
-        "newChat": "Nuevo chat",
         "settings": "Configuración",
         "workflows": "Flujos de trabajo",
         "works": "Dónde trabaja {{agentName}}"
       },
       "rail": {
-        "new": "Nuevo",
         "workflows": "Flujos de trabajo",
         "works": "Integraciones"
       },
@@ -1852,7 +1850,7 @@
       "noAccounts": "No hay cuentas activas disponibles. Vuelve a conectar o repara la institución primero.",
       "oneDay": "24 horas",
       "oneHour": "1 hora",
-      "popupBlocked": "Permite las ventanas emergentes de Zero y vuelve a intentarlo.",
+      "popupBlocked": "Permite las ventanas emergentes de {{assistantName}} y vuelve a intentarlo.",
       "readOnly": "Cuentas, saldos y transacciones · solo lectura",
       "repair": "Reparar",
       "repairRequired": "{{institution}} necesita reparación",
@@ -1975,8 +1973,8 @@
       "providerIncompatibleAction": "Empieza una nueva sesión",
       "providerIncompatiblePrefix": "Esta sesión se inició con un modelo diferente y no se puede continuar con el actual.",
       "recovery": {
-        "capacityDescription": "Este modelo está temporalmente al límite de capacidad. Inténtalo de nuevo en unos minutos o cambia de modelo ahora.",
-        "capacityTitle": "El modelo de {{framework}} está ocupado",
+        "capacityDescription": "Inténtalo de nuevo en unos minutos o cambia de modelo.",
+        "capacityTitle": "Este modelo está ocupado ahora mismo",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Continuar",
@@ -2060,7 +2058,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Revisa tu vídeo de introducción",
-        "help": "Confirma las opciones que recibirá Zero en el nuevo hilo de chat",
+        "help": "Confirma las opciones que recibirá {{assistantName}} en el nuevo hilo de chat",
         "instructions": "Instrucciones de edición",
         "source": "Fuente",
         "voice": "Voz"
@@ -4843,24 +4841,13 @@
       "title": "Datos de exportación"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Restablecer todo",
-        "resetting": "Restableciendo..."
-      },
-      "description": "Activa o desactiva funciones experimentales.",
+      "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
-      "empty": {
-        "description": "No hay funciones experimentales para este responsable.",
-        "title": "Sin funciones experimentales"
-      },
-      "filters": {
-        "all": "Todos"
-      },
       "groups": {
-        "connectors": "Conectores",
-        "other": "Otro"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "released": "Lanzadas"
       },
-      "maintainer": "Responsable: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {

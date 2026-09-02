@@ -83,4 +83,26 @@ describe("preview bypass cookie", () => {
     ).toBeFalsy();
     expect(wwwUrl.searchParams.has("x-vercel-protection-bypass")).toBeFalsy();
   });
+
+  it("forwards a Worker preview cookie only to its matching vm6 API", () => {
+    const location = {
+      hostname: "pr-22085-app-okou-app-preview.vm0.workers.dev",
+      protocol: "https:",
+      search: "?x-vercel-protection-bypass=preview-secret",
+    };
+    const matchingApiUrl = new URL(
+      "https://pr-22085-api.vm6.ai/api/okou/status",
+    );
+    const otherApiUrl = new URL("https://pr-22086-api.vm6.ai/api/okou/status");
+
+    appendPreviewBypassToUrl(matchingApiUrl, location, "");
+    appendPreviewBypassToUrl(otherApiUrl, location, "");
+
+    expect(matchingApiUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
+      "preview-secret",
+    );
+    expect(
+      otherApiUrl.searchParams.has("x-vercel-protection-bypass"),
+    ).toBeFalsy();
+  });
 });

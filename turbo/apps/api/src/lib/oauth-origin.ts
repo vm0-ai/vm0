@@ -53,6 +53,13 @@ function isTrustedWebOrigin(origin: string): boolean {
   return isTrustedOrigin(origin, "www");
 }
 
+export function getTrustedOAuthWebOrigin(request: Request): string | null {
+  const webOrigin = request.headers.get(WEB_ORIGIN_HEADER);
+  return webOrigin && isTrustedWebOrigin(webOrigin)
+    ? new URL(webOrigin).origin
+    : null;
+}
+
 function isTrustedApiOrigin(origin: string): boolean {
   return isTrustedOrigin(origin, "api");
 }
@@ -125,8 +132,7 @@ export function getOAuthApiOrigin(_request: Request): string {
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
-  const webOrigin = request.headers.get(WEB_ORIGIN_HEADER);
-  if (webOrigin && isTrustedWebOrigin(webOrigin)) {
+  if (getTrustedOAuthWebOrigin(request)) {
     return null;
   }
 

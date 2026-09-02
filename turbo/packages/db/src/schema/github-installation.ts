@@ -33,6 +33,10 @@ export const githubInstallations = pgTable(
       .$type<PublicBrand>()
       .default("okou")
       .notNull(),
+    setupPublicBrand: text("setup_public_brand")
+      .$type<PublicBrand>()
+      .default("vm0")
+      .notNull(),
     targetType: varchar("target_type", { length: 20 }),
     targetId: varchar("target_id", { length: 255 }),
     targetName: varchar("target_name", { length: 255 }),

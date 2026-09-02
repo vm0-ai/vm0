@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-script="${repo_root}/.github/scripts/resolve-okou-pages-branch.sh"
+script="${repo_root}/.github/scripts/resolve-app-preview-alias.sh"
 
 test "$(bash "$script" pull_request 22085 '')" = "pr-22085-app"
 test "$(bash "$script" merge_group '' 'gh-readonly-queue/main/pr-22085-deadbeef')" = "pr-22085-app"
@@ -18,4 +18,4 @@ if bash "$script" workflow_dispatch '' '' >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "resolve-okou-pages-branch tests passed"
+echo "resolve-app-preview-alias tests passed"

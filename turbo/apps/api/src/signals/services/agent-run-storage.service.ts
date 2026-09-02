@@ -56,6 +56,7 @@ import {
   type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
+import { enqueueMemorySummaryProjection } from "./memory-summary-projection.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 type StorageManifestEntryKind = "compose" | "additional" | "artifact";
@@ -1368,7 +1369,9 @@ async function recordInitializedArtifactFastPath(
 
 async function insertInitialArtifactVersion(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly userId: string;
+  readonly name: string;
   readonly storage: ArtifactStorageRow;
   readonly versionId: string;
   readonly s3Key: string;
@@ -1407,6 +1410,18 @@ async function insertInitialArtifactVersion(args: {
             ),
           )
           .returning({ id: storages.id });
+        if (updated) {
+          await enqueueMemorySummaryProjection({
+            db: tx,
+            storage: {
+              id: args.storage.id,
+              orgId: args.orgId,
+              userId: args.userId,
+              name: args.name,
+            },
+            storageVersionId: args.versionId,
+          });
+        }
         return updated !== undefined;
       });
     },
@@ -1422,7 +1437,9 @@ async function initializeEmptyArtifactStorage(
   const s3Key = `${storage.s3Prefix}/${versionId}`;
   const initializedHead = await insertInitialArtifactVersion({
     db: args.db,
+    orgId: args.orgId,
     userId: args.userId,
+    name: args.name,
     storage,
     versionId,
     s3Key,

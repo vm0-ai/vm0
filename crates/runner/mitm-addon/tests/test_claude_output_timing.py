@@ -276,7 +276,6 @@ def test_irrelevant_flows_and_events_do_not_report_timings(
         for flow in (
             _claude_sse_flow(real_flow, tmp_path, cli_agent_type="codex"),
             _claude_sse_flow(real_flow, tmp_path, cli_agent_type=None),
-            _claude_sse_flow(real_flow, tmp_path, model_usage_provider=None),
         ):
             mitm_addon.responseheaders(flow)
             _feed(flow, _message_start(), _content_block_start("text"))

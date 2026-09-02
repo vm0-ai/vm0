@@ -2,8 +2,10 @@ const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
-const PREVIEW_APP_HOSTNAME_PATTERN =
-  /^(staging|pr-[0-9]+)-app\.omby\.ai$/u;
+const PREVIEW_APP_HOSTNAME_PATTERNS = [
+  /^(staging|pr-[0-9]+)-app\.omby\.ai$/u,
+  /^(staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u,
+];
 const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
 const APP_ASSET_REQUEST_HEADER_NAMES = [
   "Accept",
@@ -14,9 +16,28 @@ const APP_ASSET_REQUEST_HEADER_NAMES = [
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
 const PRODUCTION_API_ORIGINS = new Map([
   ["app.okou.ai", "https://api.okou.ai"],
+  ["app-worker.okou.ai", "https://api.okou.ai"],
   ["app.vm0.ai", "https://api.vm0.ai"],
+  ["app-worker.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
+const SECURITY_HEADERS = {
+  "Permissions-Policy":
+    "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(self), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+};
+const EMBEDDED_SHELL_CONTENT_TYPES = new Map([
+  ["/index.html", "text/html; charset=UTF-8"],
+  ["/sw.js", "application/javascript; charset=UTF-8"],
+  ["/manifest.webmanifest", "application/manifest+json; charset=UTF-8"],
+  ["/robots.txt", "text/plain; charset=UTF-8"],
+  ["/icons/icon-192.png", "image/png"],
+  ["/icons/icon-512.png", "image/png"],
+  ["/icons/icon-512-maskable.png", "image/png"],
+]);
 
 const VM0_APP_METADATA = {
   brandName: "VM0",
@@ -43,7 +64,13 @@ const OKOU_APP_METADATA = {
     "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
 };
 
-function appMetadata(hostname) {
+function appMetadata(hostname, configuredPublicBrand) {
+  if (configuredPublicBrand === "okou") {
+    return OKOU_APP_METADATA;
+  }
+  if (configuredPublicBrand === "vm0") {
+    return VM0_APP_METADATA;
+  }
   const normalizedHostname = hostname.toLowerCase();
   const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
     return (
@@ -59,9 +86,11 @@ function apiOrigin(requestUrl) {
     return productionApiOrigin;
   }
 
-  const previewApp = PREVIEW_APP_HOSTNAME_PATTERN.exec(requestUrl.hostname);
-  if (previewApp) {
-    return `https://${previewApp[1]}-api.vm6.ai`;
+  for (const pattern of PREVIEW_APP_HOSTNAME_PATTERNS) {
+    const previewApp = pattern.exec(requestUrl.hostname);
+    if (previewApp) {
+      return `https://${previewApp[1]}-api.vm6.ai`;
+    }
   }
   throw new Error("Shared-thread API origin is unavailable");
 }
@@ -92,6 +121,23 @@ function removeElement() {
 
 function staticAssetUrl(metadata, path) {
   return `${metadata.staticAssetsOrigin}/${path.replace(/^\/+/u, "")}`;
+}
+
+function previewAppAssetHtml(indexHtml, requestUrl) {
+  if (!requestUrl.hostname.toLowerCase().endsWith(".workers.dev")) {
+    return indexHtml;
+  }
+
+  const previewAssetBase = `${requestUrl.origin}${APP_ASSET_PATH_PREFIX}`;
+  return indexHtml
+    .replaceAll(
+      `${VM0_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
+      previewAssetBase,
+    )
+    .replaceAll(
+      `${OKOU_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
+      previewAssetBase,
+    );
 }
 
 function rewriteStaticAssetAttribute(attributeName, staticAssetsOrigin) {
@@ -145,6 +191,7 @@ function noIndexResponse(response) {
   headers.delete("Content-Encoding");
   headers.delete("Content-Length");
   headers.delete("ETag");
+  headers.set("Cache-Control", "public, max-age=0, must-revalidate");
   headers.set("X-Robots-Tag", "noindex, nofollow");
   return new Response(response.body, {
     status: response.status,
@@ -221,6 +268,7 @@ async function rewriteManifest(response, metadata) {
   headers.delete("Content-Encoding");
   headers.delete("Content-Length");
   headers.delete("ETag");
+  headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
   headers.set("Content-Type", "application/manifest+json; charset=UTF-8");
   return new Response(JSON.stringify(manifest), {
     status: response.status,
@@ -312,6 +360,81 @@ function gatewayResponse(status) {
   });
 }
 
+function embeddedShellAsset(pathname, embeddedShell) {
+  switch (pathname) {
+    case "/index.html":
+      return embeddedShell.indexHtml;
+    case "/sw.js":
+      return embeddedShell.serviceWorker;
+    case "/manifest.webmanifest":
+      return embeddedShell.manifest;
+    case "/robots.txt":
+      return embeddedShell.robots;
+    case "/icons/icon-192.png":
+      return embeddedShell.icon192;
+    case "/icons/icon-512.png":
+      return embeddedShell.icon512;
+    case "/icons/icon-512-maskable.png":
+      return embeddedShell.icon512Maskable;
+    default:
+      return embeddedShell.indexHtml;
+  }
+}
+
+function embeddedShellResponse(request, embeddedShell) {
+  if (!embeddedShell) {
+    return null;
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { Allow: "GET, HEAD" },
+    });
+  }
+
+  const requestUrl = new URL(request.url);
+  const exactContentType = EMBEDDED_SHELL_CONTENT_TYPES.get(
+    requestUrl.pathname,
+  );
+  const pathname = exactContentType ? requestUrl.pathname : "/index.html";
+  const sourceBody = embeddedShellAsset(pathname, embeddedShell);
+  const body =
+    pathname === "/index.html" && typeof sourceBody === "string"
+      ? previewAppAssetHtml(sourceBody, requestUrl)
+      : sourceBody;
+  if (
+    (pathname.startsWith("/icons/") && !(body instanceof ArrayBuffer)) ||
+    (!pathname.startsWith("/icons/") && typeof body !== "string")
+  ) {
+    return gatewayResponse(503);
+  }
+  return new Response(request.method === "HEAD" ? null : body, {
+    headers: {
+      "Content-Type":
+        exactContentType ?? EMBEDDED_SHELL_CONTENT_TYPES.get("/index.html"),
+    },
+  });
+}
+
+function fetchShellAsset(request, env, embeddedShell) {
+  const embeddedResponse = embeddedShellResponse(request, embeddedShell);
+  if (embeddedResponse) {
+    return Promise.resolve(embeddedResponse);
+  }
+
+  // Frontend provider migration: Pages still supplies the shell through
+  // env.ASSETS while standalone Worker deployments embed it. Remove this
+  // compatibility branch in vm0-ai/vm0#31133 after both Worker canaries pass
+  // browser verification, the App hostnames move to the Worker, and Pages is
+  // no longer retained as a rollback target. Already-open App clients (up to
+  // about two days) keep using the Worker/R2 asset path and do not extend this
+  // gate.
+  if (!env.ASSETS) {
+    return Promise.resolve(gatewayResponse(503));
+  }
+  return env.ASSETS.fetch(request);
+}
+
 function metaRequestHeaders(requestUrl, origin) {
   const headers = new Headers({ Accept: "application/json" });
   if (PREVIEW_API_ORIGIN_PATTERN.test(origin)) {
@@ -323,11 +446,7 @@ function metaRequestHeaders(requestUrl, origin) {
   return headers;
 }
 
-function proxyAppAsset(request, requestUrl) {
-  const staticUrl = new URL(
-    `${requestUrl.pathname}${requestUrl.search}`,
-    OKOU_APP_METADATA.staticAssetsOrigin,
-  );
+function appAssetRequestHeaders(request) {
   const headers = new Headers();
   for (const name of APP_ASSET_REQUEST_HEADER_NAMES) {
     const value = request.headers.get(name);
@@ -335,114 +454,202 @@ function proxyAppAsset(request, requestUrl) {
       headers.set(name, value);
     }
   }
-  return fetch(
-    new Request(staticUrl, {
-      headers,
-      method: request.method,
-    }),
-  );
+  return headers;
 }
 
-export default {
-  async fetch(request, env) {
-    const requestUrl = new URL(request.url);
-    if (
-      (request.method === "GET" || request.method === "HEAD") &&
-      requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
-    ) {
-      return proxyAppAsset(request, requestUrl);
-    }
-    const match = SHARED_THREAD_PATH.exec(requestUrl.pathname);
-    if (match && request.method === "GET") {
-      let assetResponse;
-      let indexHtml;
-      let origin;
-      try {
-        const indexRequestUrl = new URL("/index.html", requestUrl);
-        assetResponse = await env.ASSETS.fetch(indexRequestUrl);
-        if (!assetResponse.ok) {
-          return gatewayResponse(503);
-        }
-        indexHtml = await assetResponse.text();
-        origin = apiOrigin(requestUrl);
-      } catch {
-        return gatewayResponse(503);
-      }
-      const metaUrl = `${origin}/api/shared-threads/${match[1]}/meta`;
-      let metaResponse;
-      try {
-        metaResponse = await fetch(metaUrl, {
-          headers: metaRequestHeaders(requestUrl, origin),
-          cf: { cacheEverything: true },
-        });
-      } catch {
-        return gatewayResponse(503);
-      }
+async function proxyAppAsset(request, requestUrl, env) {
+  if (!env.STATIC_ASSETS_BUCKET) {
+    const staticUrl = new URL(
+      `${requestUrl.pathname}${requestUrl.search}`,
+      OKOU_APP_METADATA.staticAssetsOrigin,
+    );
+    return fetch(
+      new Request(staticUrl, {
+        headers: appAssetRequestHeaders(request),
+        method: request.method,
+      }),
+    );
+  }
 
-      if (metaResponse.status === 404) {
-        return rewriteNotFound(
-          htmlResponse(
-            indexHtml,
-            assetResponse,
-            404,
-            "public, max-age=60, s-maxage=60",
-          ),
-          appMetadata(requestUrl.hostname),
-        );
+  const key = requestUrl.pathname.replace(/^\//u, "");
+  const requestHeaders = appAssetRequestHeaders(request);
+  const object = await env.STATIC_ASSETS_BUCKET.get(key, {
+    onlyIf: requestHeaders,
+    range: requestHeaders,
+  });
+  if (!object) {
+    return new Response("Not found", {
+      status: 404,
+      headers: { "Cache-Control": "public, max-age=60" },
+    });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("ETag", object.httpEtag);
+  if (!object.body) {
+    return new Response(null, { headers, status: 304 });
+  }
+
+  let status = 200;
+  if (object.range && "offset" in object.range) {
+    const offset = object.range.offset;
+    const length = object.range.length;
+    headers.set(
+      "Content-Range",
+      `bytes ${offset}-${offset + length - 1}/${object.size}`,
+    );
+    headers.set("Content-Length", String(length));
+    status = 206;
+  } else {
+    headers.set("Content-Length", String(object.size));
+  }
+  return new Response(request.method === "HEAD" ? null : object.body, {
+    headers,
+    status,
+  });
+}
+
+function withAppHeaders(response, requestUrl) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    headers.set(name, value);
+  }
+  if (requestUrl.pathname === "/sw.js") {
+    headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+    headers.set("Service-Worker-Allowed", "/");
+  } else if (requestUrl.pathname === "/robots.txt") {
+    headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
+  } else if (requestUrl.pathname.startsWith("/icons/")) {
+    headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
+  }
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+async function handleRequest(request, env, requestUrl, embeddedShell) {
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
+  ) {
+    return proxyAppAsset(request, requestUrl, env);
+  }
+  const match = SHARED_THREAD_PATH.exec(requestUrl.pathname);
+  if (match && request.method === "GET") {
+    let assetResponse;
+    let indexHtml;
+    let origin;
+    try {
+      const indexRequestUrl = new URL("/index.html", requestUrl);
+      assetResponse = await fetchShellAsset(
+        new Request(indexRequestUrl),
+        env,
+        embeddedShell,
+      );
+      if (!assetResponse.ok) {
+        return gatewayResponse(503);
       }
-      if (!metaResponse.ok) {
-        return gatewayResponse(metaResponse.status === 503 ? 503 : 502);
-      }
-      let metadata;
-      try {
-        metadata = await metaResponse.json();
-      } catch {
-        return gatewayResponse(502);
-      }
-      if (
-        typeof metadata.title !== "string" ||
-        metadata.title.length === 0 ||
-        (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
-      ) {
-        return gatewayResponse(502);
-      }
-      const publicBrand = metadata.publicBrand;
-      const sharedAppMetadata =
-        publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
-      const canonicalUrl = new URL(
-        requestUrl.pathname,
-        sharedAppMetadata.canonicalUrl,
-      ).toString();
-      return rewriteFound(
+      indexHtml = await assetResponse.text();
+      origin = apiOrigin(requestUrl, indexHtml);
+    } catch {
+      return gatewayResponse(503);
+    }
+    const metaUrl = `${origin}/api/shared-threads/${match[1]}/meta`;
+    let metaResponse;
+    try {
+      metaResponse = await fetch(metaUrl, {
+        headers: metaRequestHeaders(requestUrl, origin),
+        cf: { cacheEverything: true },
+      });
+    } catch {
+      return gatewayResponse(503);
+    }
+
+    if (metaResponse.status === 404) {
+      return rewriteNotFound(
         htmlResponse(
           indexHtml,
           assetResponse,
-          200,
-          "public, max-age=0, must-revalidate",
+          404,
+          "public, max-age=60, s-maxage=60",
         ),
-        metadata.title,
-        canonicalUrl,
-        sharedAppMetadata,
+        appMetadata(requestUrl.hostname, env.PUBLIC_BRAND),
       );
     }
-
-    const assetResponse = await env.ASSETS.fetch(request);
-    if (request.method !== "GET") {
-      return assetResponse;
+    if (!metaResponse.ok) {
+      return gatewayResponse(metaResponse.status === 503 ? 503 : 502);
     }
-
-    const metadata = appMetadata(requestUrl.hostname);
-    if (requestUrl.pathname === "/manifest.webmanifest") {
-      return rewriteManifest(assetResponse, metadata);
+    let metadata;
+    try {
+      metadata = await metaResponse.json();
+    } catch {
+      return gatewayResponse(502);
     }
     if (
-      !assetResponse.headers
-        .get("Content-Type")
-        ?.toLowerCase()
-        .startsWith("text/html")
+      typeof metadata.title !== "string" ||
+      metadata.title.length === 0 ||
+      (metadata.publicBrand !== "vm0" && metadata.publicBrand !== "okou")
     ) {
-      return assetResponse;
+      return gatewayResponse(502);
     }
-    return rewriteAppPage(assetResponse, metadata);
-  },
-};
+    const publicBrand = metadata.publicBrand;
+    const sharedAppMetadata =
+      publicBrand === "okou" ? OKOU_APP_METADATA : VM0_APP_METADATA;
+    const canonicalUrl = new URL(
+      requestUrl.pathname,
+      sharedAppMetadata.canonicalUrl,
+    ).toString();
+    return rewriteFound(
+      htmlResponse(
+        indexHtml,
+        assetResponse,
+        200,
+        "public, max-age=0, must-revalidate",
+      ),
+      metadata.title,
+      canonicalUrl,
+      sharedAppMetadata,
+    );
+  }
+
+  const assetResponse = await fetchShellAsset(request, env, embeddedShell);
+  if (request.method !== "GET") {
+    return assetResponse;
+  }
+
+  const metadata = appMetadata(requestUrl.hostname, env.PUBLIC_BRAND);
+  if (requestUrl.pathname === "/manifest.webmanifest") {
+    return rewriteManifest(assetResponse, metadata);
+  }
+  if (
+    !assetResponse.headers
+      .get("Content-Type")
+      ?.toLowerCase()
+      .startsWith("text/html")
+  ) {
+    return assetResponse;
+  }
+  return rewriteAppPage(assetResponse, metadata);
+}
+
+export function createWorker(embeddedShell) {
+  return {
+    async fetch(request, env) {
+      const requestUrl = new URL(request.url);
+      const response = await handleRequest(
+        request,
+        env,
+        requestUrl,
+        embeddedShell,
+      );
+      return withAppHeaders(response, requestUrl);
+    },
+  };
+}
+
+export default createWorker();

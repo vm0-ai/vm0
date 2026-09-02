@@ -34,8 +34,6 @@ const ffprobeSchema = z.object({
       z.object({
         width: z.number().int().positive(),
         height: z.number().int().positive(),
-        avg_frame_rate: z.string(),
-        r_frame_rate: z.string(),
       }),
     )
     .min(1),
@@ -55,28 +53,20 @@ function parseJsonFile(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8")) as unknown;
 }
 
-function frameRate(value: string): number | null {
-  const [numeratorText, denominatorText] = value.split("/");
-  const numerator = Number(numeratorText);
-  const denominator = Number(denominatorText);
-  if (
-    !Number.isFinite(numerator) ||
-    !Number.isFinite(denominator) ||
-    denominator === 0
-  ) {
-    return null;
-  }
-  const result = numerator / denominator;
-  return result > 0 ? result : null;
-}
-
 /**
- * `ffprobe` genuinely omits `format.duration` for some containers and reports
- * an unusable frame rate for variable-rate captures, so those two fields fall
- * back to the values the recording sidecar or plan declares. Width and height
- * always come from the probe, because a mismatch there means the wrong file.
+ * `ffprobe` genuinely omits `format.duration` for some containers, so the
+ * duration falls back to the value the recording sidecar or plan declares.
+ * Width and height always come from the probe, because a mismatch there means
+ * the wrong file.
+ *
+ * The frame rate is never probed. A screen capture only stores a frame when
+ * the picture changes, so for a recording with long still stretches `ffprobe`
+ * reports an average of well under one frame per second. That number looks
+ * valid, and rendering at it turned the cut into a slideshow and left the
+ * camera motion with almost no frames to move on. The recording declares the
+ * rate it was captured at, and that is the rate the cut plays back at.
  */
-function probeVideo(path: string, fallback: VideoSource): VideoSource {
+function probeVideo(path: string, declared: VideoSource): VideoSource {
   const raw = execFileSync(
     "ffprobe",
     [
@@ -85,7 +75,7 @@ function probeVideo(path: string, fallback: VideoSource): VideoSource {
       "-select_streams",
       "v:0",
       "-show_entries",
-      "stream=width,height,avg_frame_rate,r_frame_rate:format=duration",
+      "stream=width,height:format=duration",
       "-of",
       "json",
       path,
@@ -98,19 +88,14 @@ function probeVideo(path: string, fallback: VideoSource): VideoSource {
     throw new Error("Source file has no video stream");
   }
   const durationSeconds = Number(result.format.duration);
-  const detectedFrameRate =
-    frameRate(video.avg_frame_rate) ?? frameRate(video.r_frame_rate);
   return {
     durationMs:
       Number.isFinite(durationSeconds) && durationSeconds > 0
         ? Math.round(durationSeconds * 1_000)
-        : fallback.durationMs,
+        : declared.durationMs,
     width: video.width,
     height: video.height,
-    frameRate:
-      detectedFrameRate && detectedFrameRate <= 240
-        ? detectedFrameRate
-        : fallback.frameRate,
+    frameRate: declared.frameRate,
   };
 }
 
@@ -138,9 +123,6 @@ function assertPlanMatchesVideo(plan: CameraPlan, source: VideoSource): void {
   }
   if (Math.abs(plan.source.durationMs - source.durationMs) > 1_000) {
     throw new Error("Camera plan does not match the source video duration");
-  }
-  if (Math.abs(plan.source.frameRate - source.frameRate) > 0.01) {
-    throw new Error("Camera plan does not match the source video frame rate");
   }
 }
 

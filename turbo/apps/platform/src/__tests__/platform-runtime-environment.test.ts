@@ -422,6 +422,42 @@ describe("portable platform runtime environment", () => {
     });
   });
 
+  it("uses the configured API and preview siblings for an app Worker version", async () => {
+    setBrowserUrl(
+      "https://pr-23364-app-okou-app-preview.vm0.workers.dev/agents",
+    );
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-23364-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-23364-api.vm6.ai",
+    );
+    expect(runtime.auth.resolveWebOrigin()).toBe(
+      "https://pr-23364-www.omby.ai",
+    );
+    expect(runtime.apiBase.resolvePlatformOriginForTarget("app")).toBe(
+      "https://pr-23364-app-okou-app-preview.vm0.workers.dev",
+    );
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "preview",
+      publicBrand: "okou",
+      publicStaticAssetsBaseUrl: "https://static.okou.io",
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
+    });
+    expect(
+      runtime.platformHost.isOkouHostname(
+        "pr-23364-app-okou-app-preview.vm0.workers.dev.evil.example",
+      ),
+    ).toBeFalsy();
+    expect(
+      runtime.platformHost.isOkouHostname(
+        "pr-23364-app-okou-app-preview.attacker.workers.dev",
+      ),
+    ).toBeFalsy();
+  });
+
   it("keeps unrecognized provider hosts on the same origin", async () => {
     setBrowserUrl("https://deployment.pages.dev/agents");
     const runtime = await loadRuntimeSurfaces();

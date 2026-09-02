@@ -25,7 +25,10 @@ export interface FeatureSwitch {
 export interface FeatureSwitchMetadata {
   readonly maintainer: string;
   readonly description?: string;
+  readonly rolloutStage: FeatureSwitchRolloutStage;
 }
+
+export type FeatureSwitchRolloutStage = "released" | "beta" | "alpha";
 
 export interface FeatureSwitchContext {
   readonly userId?: string;
@@ -194,7 +197,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
-    description: "Show the Lab page for toggling experimental features",
+    description: "Show the Lab page for viewing feature rollout stages",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -318,6 +321,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Generate iOS PWA startup images from the inline bootstrap skeleton.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.SocialDownloadDetectedMediaType]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "File a social download by the container detected from its leading bytes instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
+    enabled: false,
+    // Staff first: this decides the stored filename and content type, and the
+    // extension is baked into the public artifact URL, so widen only after real
+    // downloads confirm the detection agrees with the requested format.
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatTranslation]: {
@@ -508,6 +521,22 @@ export function getFeatureSwitchDescriptions(): Record<
   return result;
 }
 
+function getFeatureSwitchRolloutStage(
+  featureSwitch: FeatureSwitch,
+): FeatureSwitchRolloutStage {
+  if (featureSwitch.enabled) {
+    return "released";
+  }
+  if (
+    featureSwitch.enabledOrgIdHashes?.some((hash) => {
+      return STAFF_ORG_ID_HASHES.includes(hash);
+    })
+  ) {
+    return "beta";
+  }
+  return "alpha";
+}
+
 /**
  * Return display metadata for every feature switch.
  */
@@ -521,6 +550,7 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
+      rolloutStage: getFeatureSwitchRolloutStage(featureSwitch),
     };
   }
   return result;
