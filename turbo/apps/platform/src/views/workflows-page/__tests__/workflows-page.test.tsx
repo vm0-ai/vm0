@@ -59,7 +59,6 @@ const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const MORNING_BRIEF_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000206";
-const CONNECTOR_DOCTOR_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000207";
 const GMAIL_AUTOMATION_ID = "workflow-automation-gmail-new-message";
 const GMAIL_LABEL_AUTOMATION_ID = "workflow-automation-gmail-label-applied";
 const GITHUB_PULL_REQUEST_AUTOMATION_ID =
@@ -723,32 +722,28 @@ function officialSalesResearch(
   };
 }
 
-function namedOfficialWorkflow(
-  definitionName: "morning-brief" | "connector-doctor",
-): WorkflowDetailResponse {
+function morningBriefWorkflow(): WorkflowDetailResponse {
   const base = officialSalesResearch();
   if (!base.official) {
     throw new Error("Expected an Official Workflow fixture");
   }
-  const morningBrief = definitionName === "morning-brief";
-  const displayName = morningBrief ? "Morning Brief" : "Connector Doctor";
   return {
     ...base,
-    id: morningBrief ? MORNING_BRIEF_WORKFLOW_ID : CONNECTOR_DOCTOR_WORKFLOW_ID,
-    name: definitionName,
-    displayName,
+    id: MORNING_BRIEF_WORKFLOW_ID,
+    name: "morning-brief",
+    displayName: "Morning Brief",
     official: {
       ...base.official,
-      definitionName,
+      definitionName: "morning-brief",
     },
     automations: base.automations.map((automation) => {
       return {
         ...automation,
-        id: `workflow-automation-${definitionName}`,
+        id: "workflow-automation-morning-brief",
         official: automation.official
           ? {
               ...automation.official,
-              blueprintKey: morningBrief ? "daily-delivery" : "weekly-check",
+              blueprintKey: "daily-delivery",
             }
           : null,
       };
@@ -1562,17 +1557,12 @@ describe("workflows routes", () => {
   });
 
   it("hides Morning Brief from App workflow lists and counts without hiding other Official Workflows", async () => {
-    mockWorkflowApis([
-      salesResearch(),
-      namedOfficialWorkflow("morning-brief"),
-      namedOfficialWorkflow("connector-doctor"),
-    ]);
+    mockWorkflowApis([officialSalesResearch(), morningBriefWorkflow()]);
 
     detachedSetupPage({ context, path: "/workflows" });
 
     await screen.findByRole("heading", { name: "Workflows" });
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
-    expect(screen.getByText("Connector Doctor")).toBeInTheDocument();
     expect(screen.queryByText("Morning Brief")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Open Morning Brief"),
@@ -1580,7 +1570,7 @@ describe("workflows routes", () => {
   });
 
   it("redirects a cold Morning Brief workflow detail URL to the stable Preferences deep link", async () => {
-    mockWorkflowApis([namedOfficialWorkflow("morning-brief")]);
+    mockWorkflowApis([morningBriefWorkflow()]);
 
     detachedSetupWorkflowDetailPage(
       `/workflows/${MORNING_BRIEF_WORKFLOW_ID}/automations`,
