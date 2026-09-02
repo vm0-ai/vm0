@@ -656,6 +656,16 @@ def _assert_source_entries(
         assert isinstance(response_id, str), context
         entries_by_response_id.setdefault(response_id, []).append(entry)
     assert set(entries_by_response_id) == set(expected.report_attempts), context
+    for response_id, attempt_count in expected.report_attempts.items():
+        attempts = entries_by_response_id[response_id]
+        assert len(attempts) == attempt_count, context
+        assert [_entry_input_quantity(entry) for entry in attempts] == [
+            expected.accepted_input[response_id]
+        ] * attempt_count, context
+        assert [_accepted_flags(entry, "usage_events") for entry in attempts] == [
+            [True],
+            *([[False]] * (attempt_count - 1)),
+        ], context
 
 
 def _assert_diagnostics(
