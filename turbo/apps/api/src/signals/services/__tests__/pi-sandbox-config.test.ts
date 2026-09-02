@@ -86,7 +86,7 @@ describe("Pi sandbox model configuration", () => {
         api: "openai-responses",
         ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
         apiKeyEnv: "OPENAI_API_KEY",
-        credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+        credentialSecretName: "OKOU_MODEL_PROVIDER_API_KEY",
         credentialHeader: {
           name: "x-api-key",
           valueTemplate: "Key {{secret}}",
