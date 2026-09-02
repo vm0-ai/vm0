@@ -54,6 +54,7 @@ let launchPayloadFile = "";
 
 interface ProviderRequest {
   readonly body: unknown;
+  failRetryable(): void;
   respond(text: string): void;
 }
 
@@ -191,6 +192,15 @@ class ProviderHarness {
         const sequence = harness.requests.length + 1;
         const providerRequest: ProviderRequest = {
           body,
+          failRetryable() {
+            response.writeHead(429, {
+              "content-type": "application/json",
+              "retry-after-ms": "1",
+            });
+            response.end(
+              JSON.stringify({ error: { message: "retry this request" } }),
+            );
+          },
           respond(text) {
             writeSseResponse(response, responsesTextSse(text, sequence));
           },
@@ -394,13 +404,17 @@ function prepareDeepSeekModel(session: MemoryPiSession, baseUrl: string): void {
   });
 }
 
-function prepareTerraModel(session: MemoryPiSession, baseUrl: string): void {
+function prepareTerraModel(
+  session: MemoryPiSession,
+  baseUrl: string,
+  provider: "openai" | "openrouter" = "openai",
+): void {
   session.prepareModelTurn(
     {
-      id: "gpt-5.6-terra",
+      id: provider === "openrouter" ? "openai/gpt-5.6-terra" : "gpt-5.6-terra",
       name: "GPT 5.6 Terra",
       api: "openai-responses",
-      provider: "openai",
+      provider,
       baseUrl,
       reasoning: true,
       input: ["text", "image"],
@@ -426,7 +440,7 @@ async function startOwnershipTransferHost(args: {
     | "settled-session-continuation";
   readonly baseSessionSha256: string | null;
   readonly providerBaseUrl: string;
-  readonly model?: "deepseek" | "terra";
+  readonly model?: "deepseek" | "openrouter-terra" | "terra";
   readonly serviceTier?: "priority";
 }): Promise<{
   readonly host: RpcHost;
@@ -504,22 +518,31 @@ async function startOwnershipTransferHost(args: {
     }),
     { mode: 0o600 },
   );
-  const terra = args.model === "terra";
+  const terra = args.model === "terra" || args.model === "openrouter-terra";
+  const openrouter = args.model === "openrouter-terra";
   const env = {
     ...process.env,
     OKOU_RUN_ID: RUN_ID,
     OKOU_PI_SESSION_ID: SESSION_ID,
     OKOU_PI_LAUNCH_PAYLOAD_FILE: payloadFile,
     OKOU_PI_MODEL_CONFIG: JSON.stringify({
-      provider: terra ? "openai" : "deepseek",
+      provider: openrouter ? "openrouter" : terra ? "openai" : "deepseek",
       baseUrl: args.providerBaseUrl,
-      model: terra ? "gpt-5.6-terra" : "deepseek-v4-flash",
+      model: openrouter
+        ? "openai/gpt-5.6-terra"
+        : terra
+          ? "gpt-5.6-terra"
+          : "deepseek-v4-flash",
       ...(terra
         ? { api: "openai-responses" as const, thinkingLevel: "low" as const }
         : {}),
       ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
       apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: terra ? "OPENAI_API_KEY" : "DEEPSEEK_API_KEY",
+      credentialSecretName: openrouter
+        ? "OPENROUTER_API_KEY"
+        : terra
+          ? "OPENAI_API_KEY"
+          : "DEEPSEEK_API_KEY",
     }),
     OPENAI_API_KEY: "pi-ownership-transfer-test-key",
   };
@@ -624,7 +647,7 @@ describe("sandbox Pi agent loop", () => {
     const prompt = "read the Terra handoff source exactly once";
     const provider = await ProviderHarness.start();
     const memory = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
-    prepareTerraModel(memory, provider.baseUrl);
+    prepareTerraModel(memory, provider.baseUrl, "openrouter");
     memory.appendMessage({ role: "user", content: prompt, timestamp: 1 });
     memory.appendMessage({
       role: "assistant",
@@ -652,8 +675,8 @@ describe("sandbox Pi agent loop", () => {
         },
       ],
       api: "openai-responses",
-      provider: "openai",
-      model: "gpt-5.6-terra",
+      provider: "openrouter",
+      model: "openai/gpt-5.6-terra",
       usage: {
         input: 5,
         output: 3,
@@ -680,7 +703,7 @@ describe("sandbox Pi agent loop", () => {
         mode: "pending-tool-continuation",
         baseSessionSha256: null,
         providerBaseUrl: provider.baseUrl,
-        model: "terra",
+        model: "openrouter-terra",
         serviceTier: "priority",
       });
       host = started.host;
@@ -752,7 +775,7 @@ describe("sandbox Pi agent loop", () => {
         mode: "sandbox-first",
         baseSessionSha256: null,
         providerBaseUrl: provider.baseUrl,
-        model: "terra",
+        model: "openrouter-terra",
       });
       host = started.host;
       handoffServer = started.handoffServer;
@@ -781,6 +804,60 @@ describe("sandbox Pi agent loop", () => {
       const persisted = await readFile(String(state.sessionFile), "utf8");
       expect(occurrences(persisted, prompt)).toBe(1);
       expect(persisted).toContain("sandbox-first complete");
+    } finally {
+      await host?.terminate();
+      if (handoffServer) {
+        await closeServer(handoffServer);
+      }
+      await provider.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("keeps OpenRouter priority on an official AgentSession retry", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-retry-rpc-"));
+    const prompt = "retry this sandbox-owned prompt exactly once";
+    const provider = await ProviderHarness.start();
+    const session = MemoryPiSession.create({ cwd: root, id: SESSION_ID });
+    let host: RpcHost | undefined;
+    let handoffServer: Server | undefined;
+
+    try {
+      const started = await startOwnershipTransferHost({
+        root,
+        jsonl: session.toJsonl(),
+        mode: "sandbox-first",
+        baseSessionSha256: null,
+        providerBaseUrl: provider.baseUrl,
+        model: "openrouter-terra",
+        serviceTier: "priority",
+      });
+      host = started.host;
+      handoffServer = started.handoffServer;
+
+      const state = await host.state("retry-state");
+      host.send({ id: "retry", type: "prompt", message: prompt });
+      const firstRequest = await provider.nextRequest();
+      expect(firstRequest.body).toMatchObject({ service_tier: "priority" });
+      expect(occurrences(JSON.stringify(firstRequest.body), prompt)).toBe(1);
+      firstRequest.failRetryable();
+
+      const retryRequest = await provider.nextRequest();
+      expect(retryRequest.body).toMatchObject({ service_tier: "priority" });
+      expect(occurrences(JSON.stringify(retryRequest.body), prompt)).toBe(1);
+      retryRequest.respond("OpenRouter retry complete");
+      await host.waitFor((record) => {
+        return record.type === "agent_settled";
+      });
+      await host.close();
+      host = undefined;
+
+      expect(provider.requests).toHaveLength(2);
+      const persisted = await readFile(String(state.sessionFile), "utf8");
+      expect(occurrences(persisted, prompt)).toBe(1);
+      expect(persisted).toContain("OpenRouter retry complete");
+      expect(persisted).not.toContain("serviceTier");
+      expect(persisted).not.toContain("service_tier");
     } finally {
       await host?.terminate();
       if (handoffServer) {
@@ -838,11 +915,11 @@ describe("sandbox Pi agent loop", () => {
       provider: "deepseek",
       model: "deepseek-v4-flash",
       usage: {
-        input: 983_617,
+        input: 1_033_617,
         output: 0,
         cacheRead: 0,
         cacheWrite: 0,
-        totalTokens: 983_617,
+        totalTokens: 1_033_617,
         cost: {
           input: 0,
           output: 0,
@@ -865,7 +942,7 @@ describe("sandbox Pi agent loop", () => {
         mode: "sandbox-first",
         baseSessionSha256: createHash("sha256").update(h0).digest("hex"),
         providerBaseUrl: provider.baseUrl,
-        model: "terra",
+        model: "openrouter-terra",
         serviceTier: "priority",
       });
       host = started.host;

@@ -857,7 +857,10 @@ async function observeDiscardedProviderResult(
       orgId: args.activation.orgId,
       userId: args.activation.userId,
       modelUsageProvider: args.activation.executionContext.modelUsageProvider,
-      serviceTier: args.activation.executionContext.piModelConfig.serviceTier,
+      piApi: args.activation.executionContext.piModelConfig.api,
+      piProvider: args.activation.executionContext.piModelConfig.provider,
+      requestedServiceTier:
+        args.activation.executionContext.piModelConfig.serviceTier,
       turn: late.value,
     });
     L.warn("Pi API first-turn outcome", {
@@ -981,7 +984,9 @@ async function executeApiModelTurn(
     orgId: args.activation.orgId,
     userId: args.activation.userId,
     modelUsageProvider: args.executionContext.modelUsageProvider,
-    serviceTier: args.executionContext.piModelConfig.serviceTier,
+    piApi: args.executionContext.piModelConfig.api,
+    piProvider: args.executionContext.piModelConfig.provider,
+    requestedServiceTier: args.executionContext.piModelConfig.serviceTier,
     turn,
   });
   if (

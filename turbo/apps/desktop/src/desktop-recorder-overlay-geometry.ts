@@ -1,6 +1,6 @@
 import type { DesktopRecorderArea } from "./desktop-recorder-types";
 
-export interface OverlayDisplayBounds {
+interface OverlayDisplayBounds {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -8,32 +8,14 @@ export interface OverlayDisplayBounds {
 }
 
 /**
- * Height of the bar's own surface, in points. Mirrors `.recorder-bar` in
- * `renderer/recorder/recorder.css`.
- */
-const RECORDER_BAR_PILL_HEIGHT = 116;
-
-/**
- * Room kept below every overlay surface for the message it shows when
- * something fails, in points. Mirrors `.recorder-bar__error` and
- * `.recording-controller__error`, which sit just under their surface.
- *
- * The window is what the system clips to, so a message drawn outside these
- * bounds is not dimmed or cut off — it is never on screen at all, and the
- * failure looks like a button that did nothing.
- */
-const RECORDER_MESSAGE_BAND_HEIGHT = 34;
-
-/**
  * Size of the floating recorder bar window, in points.
  *
- * The width matches what the controls actually occupy. A wider window would
- * leave the row padded out with dead space, since nothing in the bar stretches.
+ * The window is exactly the surface it draws. Anything larger shows through as
+ * the window's own backing colour, which is what a reserved strip under the bar
+ * looked like: a grey band nobody asked for. Failure messages are drawn inside
+ * the surface instead.
  */
-export const RECORDER_BAR_SIZE = Object.freeze({
-  width: 866,
-  height: RECORDER_BAR_PILL_HEIGHT + RECORDER_MESSAGE_BAND_HEIGHT,
-});
+export const RECORDER_BAR_SIZE = Object.freeze({ width: 866, height: 92 });
 
 /** Gap between the bar and the bottom edge of the screen, in points. */
 const RECORDER_BAR_BOTTOM_MARGIN = 72;
@@ -98,20 +80,43 @@ export function areaToGlobal(
   };
 }
 
-/**
- * Height of the controller's own surface, in points. Mirrors
- * `.recording-controller` in `renderer/recorder/recorder.css`.
- */
-const RECORDER_CONTROLLER_SURFACE_HEIGHT = 60;
-
-/**
- * Size of the controller window shown while a recording is running, in points,
- * including the room its failure message needs.
- */
+/** Size of the controller window shown while a recording is running. */
 export const RECORDER_CONTROLLER_SIZE = Object.freeze({
   width: 268,
-  height: RECORDER_CONTROLLER_SURFACE_HEIGHT + RECORDER_MESSAGE_BAND_HEIGHT,
+  height: 60,
 });
+
+/** Size of the window picker, in points. Fits a three-column grid. */
+export const RECORDER_WINDOW_PICKER_SIZE = Object.freeze({
+  width: 900,
+  height: 620,
+});
+
+/** Centres a window inside a display's work area, in global coordinates. */
+export function centredBounds(
+  display: OverlayDisplayBounds,
+  size: { readonly width: number; readonly height: number },
+): { readonly x: number; readonly y: number } {
+  return {
+    x: Math.round(display.x + (display.width - size.width) / 2),
+    y: Math.round(display.y + (display.height - size.height) / 2),
+  };
+}
+
+/**
+ * Places an overlay along the bottom of a display, horizontally centred, which
+ * is where controls belong when there is no region to sit beside.
+ */
+export function bottomCentredBounds(
+  display: OverlayDisplayBounds,
+  size: { readonly width: number; readonly height: number },
+  margin: number,
+): { readonly x: number; readonly y: number } {
+  return {
+    x: Math.round(display.x + (display.width - size.width) / 2),
+    y: Math.round(display.y + display.height - size.height - margin),
+  };
+}
 
 /** Clearance kept between the controller and the region being recorded. */
 const CONTROLLER_CLEARANCE = 16;

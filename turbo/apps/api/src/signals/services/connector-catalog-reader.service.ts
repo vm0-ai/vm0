@@ -19,7 +19,6 @@ import {
   listExternalPublicConnectorCatalog,
   listExternalPublicConnectorCatalogStatus,
   searchExternalConnectorCatalog,
-  type ConnectorCatalogStatusRead,
 } from "./connector-catalog-external-reader.service";
 
 export function isConnectorCatalogUnavailableError(error: unknown): boolean {
@@ -55,21 +54,12 @@ export async function listPublicConnectorCatalog(
   return await listExternalPublicConnectorCatalog(args);
 }
 
-export async function readPublicConnectorCatalogStatus(
-  args: BrandedConnectorCatalogReadArgs & {
-    readonly connections: readonly ConnectorCatalogConnection[];
-    readonly referenceConnectorSlugs: readonly string[];
-  },
-): Promise<ConnectorCatalogStatusRead> {
-  return await listExternalPublicConnectorCatalogStatus(args);
-}
-
 export async function listPublicConnectorCatalogStatus(
   args: BrandedConnectorCatalogReadArgs & {
     readonly connections: readonly ConnectorCatalogConnection[];
   },
 ): Promise<PublicConnectorCatalogStatusResponse> {
-  const read = await readPublicConnectorCatalogStatus({
+  const read = await listExternalPublicConnectorCatalogStatus({
     ...args,
     referenceConnectorSlugs: [],
   });

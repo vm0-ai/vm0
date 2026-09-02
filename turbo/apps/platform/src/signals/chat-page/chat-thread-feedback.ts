@@ -325,7 +325,7 @@ function shouldDismissSelectionForInteractionTarget(
 
 function isSelectionInteractionTarget(target: EventTarget | null): boolean {
   return (
-    target instanceof HTMLElement &&
+    target instanceof Element &&
     target.closest(SELECTION_INTERACTION_SELECTOR) !== null
   );
 }
@@ -755,7 +755,10 @@ function createListenersRef({
       );
       doc.addEventListener(
         "scroll",
-        () => {
+        (event) => {
+          if (isSelectionInteractionTarget(event.target)) {
+            return;
+          }
           set(dismissOnScroll$);
         },
         { capture: true, passive: true, signal },

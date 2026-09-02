@@ -35,7 +35,6 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { blobs } from "@okouai/db/schema/blob";
 import { runnerJobQueue } from "@okouai/db/schema/runner-job-queue";
-import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import {
   runnerState,
   type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
@@ -56,10 +55,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { z } from "zod";
-import {
-  isSupportedRunModel,
-  normalizeRunModelId,
-} from "@okouai/api-contracts/contracts/model-providers";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -2684,34 +2679,10 @@ const modelUsageObservationsInner$ = command(
       return body.response;
     }
 
-    const observedAt = nowDate();
-    const observationValues = body.data.events.flatMap((event) => {
-      const canonicalModel = normalizeRunModelId(event.model);
-      if (!isSupportedRunModel(canonicalModel)) {
-        return [];
-      }
-      return [
-        {
-          model: canonicalModel,
-          inputTokens: event.inputTokens,
-          outputTokens: event.outputTokens,
-          cacheReadInputTokens: event.cacheReadInputTokens,
-          cacheCreationInputTokens: event.cacheCreationInputTokens,
-          observedAt,
-          idempotencyKey: event.idempotencyKey,
-        },
-      ];
-    });
-
-    if (observationValues.length > 0) {
-      await set(writeDb$)
-        .insert(modelUsageObservation)
-        .values(observationValues)
-        .onConflictDoNothing({
-          target: [modelUsageObservation.idempotencyKey],
-        });
-    }
-    signal.throwIfAborted();
+    // Old runner -> new backend compatibility: retained batches can arrive for
+    // the two-hour run lifetime plus the five-minute flush interval, including
+    // old-image resumption. Remove this sink with #30974 only after #30973 is
+    // deployed everywhere and live traffic stays at zero for that window.
 
     return {
       status: 200 as const,

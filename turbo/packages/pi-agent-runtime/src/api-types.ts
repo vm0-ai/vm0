@@ -60,6 +60,9 @@ export interface PiApiAssistantMessage {
   };
 }
 
+/** Terminal Responses payload service tier, kept outside persisted Pi state. */
+export type PiObservedServiceTier = string | null | undefined;
+
 export interface PiApiFirstTurnArgs {
   readonly cwd: string;
   readonly agentDir: string;
@@ -82,6 +85,7 @@ export interface PiApiFirstTurnArgs {
 export interface PiApiFirstTurnResult {
   readonly assistantMessage: PiApiAssistantMessage;
   readonly handoffRequired: boolean;
+  readonly observedServiceTier: PiObservedServiceTier;
   readonly sessionJsonl: string;
 }
 

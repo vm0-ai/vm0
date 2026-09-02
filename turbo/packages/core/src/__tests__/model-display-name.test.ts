@@ -22,6 +22,13 @@ describe("getModelDisplayName", () => {
     );
   });
 
+  it("uses friendly labels for Claude Fable 5.1 model IDs", () => {
+    expect(getModelDisplayName("claude-fable-5-1")).toBe("Claude Fable 5.1");
+    expect(getModelDisplayName("anthropic/claude-fable-5.1")).toBe(
+      "Claude Fable 5.1",
+    );
+  });
+
   it("uses friendly labels for DeepSeek V4 models", () => {
     expect(getModelDisplayName("deepseek-v4-flash")).toBe("DeepSeek V4 Flash");
     expect(getModelDisplayName("deepseek-v4-pro")).toBe("DeepSeek V4 Pro");
