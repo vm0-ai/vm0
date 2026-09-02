@@ -265,6 +265,14 @@ const reloadWorkerComputed$ = command(
   },
 );
 
+/** Recompute one Worker computed and tell every tab to re-read it. */
+export const refreshWorkerComputed$ = command(
+  ({ set }, computedKey: ComputedKey): void => {
+    set(reloadWorkerComputed$, computedKey);
+    set(reloadComputedForConnections$, computedKey);
+  },
+);
+
 const refreshWorkerChatIndicators$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
@@ -451,10 +459,6 @@ type GetComputedMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "get-computed" }
 >;
-type ReloadComputedMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "reload-computed" }
->;
 
 export const queryStoreMessage$ = command(
   async (
@@ -469,17 +473,6 @@ export const queryStoreMessage$ = command(
       message.query,
       signal,
     );
-  },
-);
-
-export const reloadComputedStoreMessage$ = command(
-  (
-    { set },
-    _connectionId: ConnectionId,
-    message: ReloadComputedMessage,
-  ): void => {
-    set(reloadWorkerComputed$, message.computedKey);
-    set(reloadComputedForConnections$, message.computedKey);
   },
 );
 
