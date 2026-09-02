@@ -4846,6 +4846,7 @@
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
+        "internal": "Internos",
         "released": "Lançados"
       },
       "title": "Laboratório"

@@ -306,15 +306,31 @@ describe("getFeatureSwitchMetadata", () => {
     for (const key of Object.values(FeatureSwitchKey)) {
       expect(metadata[key]?.maintainer).toEqual(expect.any(String));
       expect(metadata[key]?.description).toEqual(expect.any(String));
-      expect(metadata[key]?.rolloutStage).toMatch(/^(released|beta|alpha)$/u);
+      expect(metadata[key]?.rolloutStage).toMatch(
+        /^(released|beta|alpha|internal)$/u,
+      );
     }
   });
 
-  it("should classify switches by rollout audience", () => {
+  it("should classify only underscore-prefixed switches as internal", () => {
     const metadata = getFeatureSwitchMetadata();
 
-    expect(metadata[FeatureSwitchKey.Dummy].rolloutStage).toBe("released");
-    expect(metadata[FeatureSwitchKey.Lab].rolloutStage).toBe("beta");
+    for (const key of Object.values(FeatureSwitchKey)) {
+      if (key.startsWith("_")) {
+        expect(metadata[key].rolloutStage).toBe("internal");
+      } else {
+        expect(metadata[key].rolloutStage).not.toBe("internal");
+      }
+    }
+  });
+
+  it("should classify non-internal switches by rollout audience", () => {
+    const metadata = getFeatureSwitchMetadata();
+
+    expect(
+      metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
+    ).toBe("released");
+    expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",

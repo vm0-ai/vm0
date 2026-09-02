@@ -4783,6 +4783,7 @@
       "groups": {
         "alpha": "알파",
         "beta": "베타",
+        "internal": "내부",
         "released": "출시됨"
       },
       "title": "랩"
