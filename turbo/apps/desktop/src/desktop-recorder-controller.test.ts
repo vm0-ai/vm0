@@ -326,15 +326,19 @@ describe("DesktopRecorderController", () => {
     await controller.start();
 
     await expect(controller.stop()).rejects.toThrow("helper timed out");
+    // The reason is recorded for the tray as well as thrown: the window that
+    // asked is often gone by the time the answer arrives.
     expect(controller.getState()).toMatchObject({
       status: "recording",
       sessionId: "session-1",
+      error: { code: "capture_failed", message: "helper timed out" },
     });
 
     await expect(controller.stop()).resolves.toEqual(RECORDING);
     expect(controller.getState()).toMatchObject({
       status: "idle",
       lastRecording: RECORDING,
+      error: null,
     });
   });
 

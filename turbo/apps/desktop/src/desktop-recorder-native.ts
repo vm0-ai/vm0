@@ -144,9 +144,13 @@ interface PendingRequest {
  * process owns an in-flight `SCStream` and `AVAssetWriter`, so killing it would
  * destroy the recording the user is making. A slow command fails on its own.
  */
+/** How much of the helper's stderr is kept for the message of an abrupt exit. */
+const STDERR_TAIL_LIMIT = 2_000;
+
 class RecorderHelperClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutBuffer = "";
+  private stderrTail = "";
   private requestCounter = 0;
   private closed = false;
   private readonly pending = new Map<string, PendingRequest>();
@@ -236,6 +240,14 @@ class RecorderHelperClient {
       this.stdoutBuffer += chunk;
       this.drainStdout();
     });
+    // The helper's own diagnostics — and the crash report when it dies — come
+    // out here. Left unread they went nowhere, so a helper that exited
+    // mid-capture was indistinguishable from one that was closed on purpose.
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      console.warn("[screen-recorder-helper]", chunk.trimEnd());
+      this.stderrTail = (this.stderrTail + chunk).slice(-STDERR_TAIL_LIMIT);
+    });
     child.on("error", (error) => {
       if (this.child === child) {
         this.child = null;
@@ -247,15 +259,20 @@ class RecorderHelperClient {
         ),
       );
     });
-    child.on("close", () => {
+    child.on("close", (code, signal) => {
       if (this.child !== child) {
         return;
       }
       this.child = null;
+      const how =
+        signal !== null
+          ? `with signal ${signal}`
+          : `with code ${String(code ?? "unknown")}`;
+      const tail = this.stderrTail.trim();
       this.rejectAll(
         new DesktopRecorderHelperError(
           "helper_unavailable",
-          "Screen recorder helper exited",
+          `Screen recorder helper exited ${how}${tail ? `: ${tail}` : ""}`,
         ),
       );
     });

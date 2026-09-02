@@ -380,6 +380,25 @@ private func handleWindowPreviews() throws -> [String: Any] {
 /// cannot drift.
 private let captureFrameRate: CMTimeScale = 30
 
+/// The writer's failure as a message worth reading.
+///
+/// AVFoundation wraps most writer failures as `-11800`, "The operation could
+/// not be completed", and keeps the status that actually says what happened
+/// one level down as the underlying error. Both are spelled out so the tray
+/// shows something that can be looked up rather than only the wrapper.
+private func writerFailureMessage(_ assetWriter: AVAssetWriter) -> String {
+    guard let error = assetWriter.error as NSError? else {
+        return "The screen recording could not be written"
+    }
+    var parts = ["\(error.domain) \(error.code)"]
+    var underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError
+    while let next = underlying {
+        parts.append("\(next.domain) \(next.code)")
+        underlying = next.userInfo[NSUnderlyingErrorKey] as? NSError
+    }
+    return "\(error.localizedDescription) (\(parts.joined(separator: " / ")))"
+}
+
 // MARK: - Capture session
 
 private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked Sendable {
@@ -680,9 +699,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             }
             _ = semaphore.wait(timeout: .now() + 30)
             if assetWriter.status == .failed {
-                writerFailure =
-                    assetWriter.error?.localizedDescription
-                    ?? "The screen recording could not be written"
+                writerFailure = writerFailureMessage(assetWriter)
             }
         }
 
@@ -861,6 +878,38 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return max(0, captureSeconds - pauseTimeline.pausedSecondsBefore(captureSeconds))
     }
 
+    /// Why the first frame cannot go on the video track, or `nil` when it can.
+    private func frameSizeMismatch(_ sampleBuffer: CMSampleBuffer) -> String? {
+        guard let image = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return "The screen capture delivered a frame with no image"
+        }
+        let width = CVPixelBufferGetWidth(image)
+        let height = CVPixelBufferGetHeight(image)
+        guard width == outputSize.width, height == outputSize.height else {
+            return
+                "The screen capture delivered \(width)×\(height) frames "
+                + "but the recording was prepared for \(outputSize.width)×\(outputSize.height)"
+        }
+        return nil
+    }
+
+    /// Whether a screen sample is a finished picture rather than a status
+    /// marker. A sample without the attachment at all is treated as complete:
+    /// that is how a frame arrives from a filter the system does not annotate.
+    private func isCompleteFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                sampleBuffer,
+                createIfNecessary: false
+            ) as? [[SCStreamFrameInfo: Any]],
+            let rawStatus = attachments.first?[.status] as? Int,
+            let status = SCFrameStatus(rawValue: rawStatus)
+        else {
+            return true
+        }
+        return status == .complete
+    }
+
     /// Records that the stream ended on its own.
     ///
     /// Deliberately does not move to a terminal state: the writer still holds
@@ -913,6 +962,13 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         else {
             return
         }
+        // ScreenCaptureKit also delivers frames that carry no new picture —
+        // idle, blank, and the bookkeeping frames around start and stop. They
+        // are not images the encoder can take, and handing one to the writer
+        // is a way to fail it. Only a complete frame goes on.
+        if type == .screen, !isCompleteFrame(sampleBuffer) {
+            return
+        }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
         lock.lock()
@@ -925,6 +981,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 // Anchor the timeline on the first video frame so audio that
                 // arrives first cannot start the session before the picture.
                 lock.unlock()
+                return
+            }
+            // A frame of the wrong size fails the writer with nothing but
+            // "the operation could not be completed". Refusing it here names
+            // both sizes instead, before the session is anchored on it.
+            if let mismatch = frameSizeMismatch(sampleBuffer) {
+                lock.unlock()
+                noteExternalStop(reason: .failed, code: "capture_failed", message: mismatch)
                 return
             }
             assetWriter.startSession(atSourceTime: timestamp)
@@ -1005,8 +1069,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         noteExternalStop(
             reason: .failed,
             code: "capture_failed",
-            message: assetWriter.error?.localizedDescription
-                ?? "The screen recording could not be written"
+            message: writerFailureMessage(assetWriter)
         )
     }
 }
@@ -1138,6 +1201,12 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let configuration = SCStreamConfiguration()
     configuration.width = outputSize.width
     configuration.height = outputSize.height
+    // The video track is built for exactly `outputSize`, and the writer fails
+    // on the first frame of any other size. A whole display is always scaled
+    // into the configured size, but a window or a cropped region is delivered
+    // at its own pixel size unless the stream is told to scale it, which is
+    // why display captures worked while window and area captures did not.
+    configuration.scalesToFit = sourceKind != "display"
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: captureFrameRate)
     configuration.showsCursor = true
     configuration.queueDepth = 6

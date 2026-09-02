@@ -855,7 +855,14 @@ function installDesktopRecorder(): void {
       resume: () => screenRecorder.resume(),
       discard: () => screenRecorder.discard(),
       stop: async () => {
-        await screenRecorder.stop();
+        try {
+          await screenRecorder.stop();
+        } catch (error) {
+          // The window that asked may already be gone; the terminal running
+          // the app is the one place this is guaranteed to be seen.
+          console.error("Desktop screen recording stop failed", error);
+          throw error;
+        }
       },
       cancel: () => {
         getRecorderWindows().hideBar();

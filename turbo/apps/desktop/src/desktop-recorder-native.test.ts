@@ -17,6 +17,8 @@ interface HelperBehavior {
   readonly prelude?: string;
   readonly silent?: boolean;
   readonly exit?: boolean;
+  /** Written to stderr first, the way a crashing helper leaves its report. */
+  readonly stderr?: string;
   /** Answers only after this long, the way a finalize of a long movie does. */
   readonly delayMs?: number;
 }
@@ -109,6 +111,7 @@ function handleLine(line) {
     return;
   }
   if (behavior.prelude) process.stdout.write(behavior.prelude);
+  if (behavior.stderr) process.stderr.write(behavior.stderr);
   if (behavior.exit) process.exit(1);
   if (behavior.silent) return;
   if (behavior.delayMs) {
@@ -525,7 +528,25 @@ describe("createRecorderNativeBackend", () => {
       await rejection(backend.start("session-1", "/tmp/screen-recording.mp4")),
     ).toMatchObject({
       code: "helper_unavailable",
-      message: "Screen recorder helper exited",
+      message: "Screen recorder helper exited with code 1",
+    });
+  });
+
+  it("carries what the helper wrote to stderr when it dies mid-request", async () => {
+    // A helper that crashes leaves its report on stderr. Unread, an exit
+    // during a stop was indistinguishable from one that was closed on purpose.
+    const { helperPath } = await createHelper({
+      "recorder.stop": {
+        stderr: "Fatal error: Index out of range\n",
+        exit: true,
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    expect(await rejection(backend.stop("session-1"))).toMatchObject({
+      code: "helper_unavailable",
+      message:
+        "Screen recorder helper exited with code 1: Fatal error: Index out of range",
     });
   });
 
