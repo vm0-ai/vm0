@@ -411,6 +411,38 @@ async function selectAvatarRecommendationFilters(
   await user.keyboard("{Escape}");
 }
 
+// Serves the deck the detail preview renders into its slide shadow roots. The
+// inline stylesheet gives every slide a fixed size so the preview scales it the
+// same way it scales a real deck.
+function mockStyledPresentationDeck(
+  template: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
+): void {
+  context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+    return new Response(
+      `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+        .map((_, index) => {
+          return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
+        })
+        .join("")}</body></html>`,
+      { headers: { "Content-Type": "text/html" } },
+    );
+  });
+}
+
+// Opens the picker and the template's detail preview from its card. Returns the
+// dialog, which stays mounted across the picker/detail transition.
+async function openPresentationDetailPreview(
+  template: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
+): Promise<HTMLElement> {
+  click(
+    await waitFor(() => {
+      return screen.getByLabelText("Template");
+    }),
+  );
+  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+  return screen.getByRole("dialog");
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
@@ -2423,38 +2455,6 @@ describe("chat composer templates", () => {
     click(reopenedTemplateButton);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:template-detail-1");
   });
-
-  // Serves the deck the detail preview renders into its slide shadow roots. The
-  // inline stylesheet gives every slide a fixed size so the preview scales it
-  // the same way it scales a real deck.
-  function mockStyledPresentationDeck(
-    template: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
-  ): void {
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(
-        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
-          .map((_, index) => {
-            return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
-          })
-          .join("")}</body></html>`,
-        { headers: { "Content-Type": "text/html" } },
-      );
-    });
-  }
-
-  // Opens the picker and the template's detail preview from its card. Returns
-  // the dialog, which stays mounted across the picker/detail transition.
-  async function openPresentationDetailPreview(
-    template: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
-  ): Promise<HTMLElement> {
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
-    return screen.getByRole("dialog");
-  }
 
   // This test used to also cover the theme lifecycle, which put two independent
   // contracts plus page bootstrap into one 5000ms budget and left ~1.1s of
