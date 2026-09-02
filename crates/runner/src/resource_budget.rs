@@ -35,6 +35,19 @@ struct CpuAdmissionCapacity {
 impl CpuAdmissionCapacity {
     fn new(host_cpus: u32, concurrency_factor: f64) -> Self {
         let host_cpus = f64::from(host_cpus);
+
+        // R(P) follows GKE's node CPU reservation curve:
+        // https://cloud.google.com/kubernetes-engine/docs/concepts/plan-node-sizes#cpu_reservations
+        //
+        // R(P) = 0.06 * min(P, 1)
+        //      + 0.01 * clamp(P - 1, 0, 1)
+        //      + 0.005 * clamp(P - 2, 0, 2)
+        //      + 0.0025 * max(P - 4, 0)
+        // C(P) = P - R(P)
+        // B(P, F) = C(P) * F
+        //
+        // vm0 uses B(P, F) as the fractional declared-vCPU admission limit;
+        // the GKE source defines R(P), not vm0's overcommit factor F.
         let host_reservation = 0.06 * host_cpus.min(1.0)
             + 0.01 * (host_cpus - 1.0).clamp(0.0, 1.0)
             + 0.005 * (host_cpus - 2.0).clamp(0.0, 2.0)
