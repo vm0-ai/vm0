@@ -1326,7 +1326,7 @@ async function stopPendingGoogleCalendarAutomationCleanup(
     return null;
   }
   const stopped = await settleIncludingAbort(
-    bestEffort(stopPreparedGoogleCalendarWatches(pending, signal), signal),
+    bestEffort(stopPreparedGoogleCalendarWatches(pending), signal),
   );
   if (signal.aborted) {
     return signal.reason;

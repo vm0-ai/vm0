@@ -2409,7 +2409,6 @@ export async function prepareGoogleCalendarWatchStopForConnector(
 
 export async function stopPreparedGoogleCalendarWatches(
   pending: PendingGoogleCalendarWatchStop,
-  signal: AbortSignal,
 ): Promise<void> {
   let failed = false;
   for (const channel of pending.channels) {
@@ -2417,7 +2416,6 @@ export async function stopPreparedGoogleCalendarWatches(
       accessToken: pending.accessToken,
       channel,
     });
-    signal.throwIfAborted();
     failed ||= !stopped;
   }
   if (failed) {

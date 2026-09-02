@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -26,6 +27,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { clearWorkflowAutomationEventConnectorAsPreviousApi } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import {
   clearGoogleCalendarBeforeRunStartHookForTest,
@@ -1028,6 +1030,105 @@ describe("POST /api/webhooks/google-calendar", () => {
     await expect(
       postGoogleCalendarWebhook(webhookHeaders(oldChannel)),
     ).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("finishes captured Calendar channel cleanup after request cancellation", async () => {
+    const accessToken = "calendar-cleanup-abort-token";
+    const calendar = configureAccountAwareGoogleCalendarApiMock({
+      resourcePrefix: "calendar-cleanup-abort",
+    });
+    const scenario = await setupFixture();
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+
+    mockGoogleCalendarConnectorOAuth({
+      accessToken,
+      email: "calendar-cleanup-abort@example.com",
+      subject: "calendar-cleanup-abort-subject",
+    });
+    await wf.connectConnector(scenario.actor, "google-calendar");
+    const connection = await connectorsApi.readConnectorBySlug(
+      scenario.actor,
+      "google-calendar",
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-updated",
+          eventConfig: {
+            provider: "google-calendar",
+            event: "event_updated",
+            calendarId: "team-calendar@example.com",
+          },
+        },
+      }),
+      [201],
+    );
+    expect(calendar.channels).toHaveLength(2);
+
+    const requestController = new AbortController();
+    const stoppedChannelIds: string[] = [];
+    server.use(
+      http.post(
+        "https://www.googleapis.com/calendar/v3/channels/stop",
+        async ({ request }) => {
+          const body = (await request.json()) as { readonly id?: string };
+          if (!body.id) {
+            throw new Error("Expected a Calendar channel id");
+          }
+          stoppedChannelIds.push(body.id);
+          if (stoppedChannelIds.length === 1) {
+            const error = new Error("request cancelled during channel cleanup");
+            error.name = "AbortError";
+            requestController.abort(error);
+          }
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+    const accountClient = setupApp({
+      context,
+      routes: connectorAccountRoutes,
+      signal: requestController.signal,
+    })(connectorAccountsContract);
+
+    await expect(
+      accountClient.delete({
+        headers: authHeaders(),
+        params: { connectionId: connection.id },
+        body: {
+          target: { kind: "builtin", connectorSlug: "google-calendar" },
+        },
+      }),
+    ).rejects.toThrow("Unknown response status 500");
+    expect(new Set(stoppedChannelIds)).toStrictEqual(
+      new Set(
+        calendar.channels.map((channel) => {
+          return channel.channelId;
+        }),
+      ),
+    );
+    await expect(
+      connectorsApi.listBuiltinConnectorAccounts(
+        scenario.actor,
+        "google-calendar",
+      ),
+    ).resolves.toStrictEqual([]);
   });
 
   it("ignores updated and cancelled calendar events", async () => {
