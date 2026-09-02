@@ -238,6 +238,7 @@ function weekdayWorkflowAutomation(): WorkflowScheduleAutomationSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
+    official: null,
   };
 }
 
@@ -261,6 +262,7 @@ function gmailWorkflowAutomation(): WorkflowGmailNewMessageAutomationSummary {
     chatThreadId: "thread_gmail_new_message",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -282,6 +284,7 @@ function gmailLabelWorkflowAutomation(): WorkflowGmailLabelAppliedAutomationSumm
     chatThreadId: "thread_gmail_label_applied",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -305,6 +308,7 @@ function githubPullRequestWorkflowAutomation(): WorkflowGithubPullRequestAutomat
     chatThreadId: "thread_github_pull_request",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -325,6 +329,7 @@ function googleCalendarWorkflowAutomation(): WorkflowGoogleCalendarEventCreatedA
     chatThreadId: "thread_google_calendar_event_created",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -345,6 +350,7 @@ function googleCalendarUpdatedWorkflowAutomation(): WorkflowGoogleCalendarEventU
     chatThreadId: "thread_google_calendar_event_updated",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -365,6 +371,7 @@ function googleCalendarCancelledWorkflowAutomation(): WorkflowGoogleCalendarEven
     chatThreadId: "thread_google_calendar_event_cancelled",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -385,6 +392,7 @@ function googleMeetTranscriptGeneratedWorkflowAutomation(): WorkflowGoogleMeetTr
     chatThreadId: "thread_google_meet_transcript_generated",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -412,6 +420,7 @@ function googleFormsResponseSubmittedWorkflowAutomation(
     chatThreadId: "thread_google_forms_response_submitted",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
     ...(warning ? { warning } : {}),
   };
 }
@@ -438,6 +447,7 @@ function notionChildPageWorkflowAutomation(): WorkflowNotionChildPageCreatedAuto
     chatThreadId: "thread_notion_child_page",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -463,6 +473,7 @@ function notionDatabaseItemWorkflowAutomation(): WorkflowNotionDatabaseItemCreat
     chatThreadId: "thread_notion_database_item",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -491,6 +502,7 @@ function notionPageContentUpdatedWorkflowAutomation(): WorkflowNotionPageContent
     chatThreadId: "thread_notion_page_content_updated",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
   };
 }
 
@@ -511,6 +523,7 @@ function webhookWorkflowAutomation(): WorkflowWebhookAutomationSummary {
     chatThreadId: "thread_webhook",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
     webhookUrl:
       "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
     secretLastFour: "abcd",
@@ -539,6 +552,7 @@ function stripeInvoicePaidWorkflowAutomation(
     chatThreadId: "thread_stripe_invoice_paid",
     nextRunAt: null,
     lastRunAt: null,
+    official: null,
     health: {
       lastMatchingEventReceivedAt: null,
       lastDeliveryStatus: null,
@@ -588,6 +602,7 @@ function salesResearch(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: false,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: UPDATED_USER_ID,
     createdAt: "2026-06-17T13:52:00.000Z",
@@ -736,7 +751,7 @@ function namedOfficialWorkflow(
               ...automation.official,
               blueprintKey: morningBrief ? "daily-delivery" : "weekly-check",
             }
-          : undefined,
+          : null,
       };
     }),
   };
@@ -755,6 +770,7 @@ function opsPlaybook(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: true,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-15T12:00:00.000Z",
@@ -779,6 +795,7 @@ function launchChecklistWorkflow(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: true,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-18T12:00:00.000Z",
@@ -803,6 +820,7 @@ function otherAgentWorkflow(): WorkflowDetailResponse {
     ownerUserId: CURRENT_USER_ID,
     canManage: true,
     canPublish: false,
+    official: null,
     createdByUserId: CURRENT_USER_ID,
     updatedByUserId: CURRENT_USER_ID,
     createdAt: "2026-06-16T12:00:00.000Z",
@@ -845,7 +863,7 @@ function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
     createdAt: workflow.createdAt,
     canManage: workflow.canManage,
     canPublish: workflow.canPublish,
-    ...(workflow.official === undefined ? {} : { official: workflow.official }),
+    official: workflow.official,
   };
 }
 
