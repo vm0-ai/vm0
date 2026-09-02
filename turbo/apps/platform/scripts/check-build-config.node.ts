@@ -350,6 +350,17 @@ await test("rejects worker chunks with imports or forbidden packages", () => {
       "assets/shared-database-worker.js: forbidden packages reached the bundle: katex",
     ],
   );
+  assert.deepEqual(
+    singleWorkerBundleViolations([
+      {
+        code: "worker",
+        fileName: "assets/shared-database-worker.js",
+        moduleIds: ["/repo/node_modules/@clerk/clerk-js/dist/clerk.no-rhc.mjs"],
+        type: "chunk",
+      },
+    ]),
+    [],
+  );
 });
 
 function clerkDiscoveryFixture(): string {

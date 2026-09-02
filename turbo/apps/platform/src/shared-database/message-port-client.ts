@@ -12,15 +12,11 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
-  SharedDatabaseHeartbeat,
   SharedDatabasePortLike,
 } from "./bridge.ts";
 import {
-  redactSharedDatabaseClientMessageForLog,
-  sharedDatabaseHeartbeatResultSchema,
   sharedDatabaseWorkerMessageSchema,
   type SharedDatabaseClientMessage,
-  type SharedDatabaseHeartbeatResult,
 } from "./protocol.ts";
 import { logger } from "../signals/log.ts";
 import { createDeferredPromise, onDomEventFn } from "../signals/utils.ts";
@@ -41,7 +37,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   constructor(
     private readonly port: SharedDatabasePortLike,
-    private readonly apiBaseUrl: string,
     private readonly events: SharedDatabaseBridgeEvents,
   ) {
     this.handleMessage = onDomEventFn(async (event) => {
@@ -57,10 +52,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       }
       if (message.type === "reload-required") {
         this.events.reloadRequired();
-        return;
-      }
-      if (message.type === "authentication-required") {
-        await this.events.authenticationRequired(message.recoveryId);
         return;
       }
       if (message.type === "reload-computed") {
@@ -92,24 +83,10 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     this.port.start();
   }
 
-  async heartbeat(
-    heartbeat: SharedDatabaseHeartbeat,
-    signal: AbortSignal,
-  ): Promise<SharedDatabaseHeartbeatResult> {
+  registerTab(signal: AbortSignal): Promise<void> {
     this.bindOwner(signal);
-    const value = await this.request(
-      {
-        type: "heartbeat",
-        requestId: crypto.randomUUID(),
-        token: heartbeat.token,
-        apiBaseUrl: this.apiBaseUrl,
-        ...(heartbeat.vercelProtectionBypass
-          ? { vercelProtectionBypass: heartbeat.vercelProtectionBypass }
-          : {}),
-      },
-      signal,
-    );
-    return sharedDatabaseHeartbeatResultSchema.parse(value);
+    this.emit({ type: "register-tab" });
+    return Promise.resolve();
   }
 
   fail(reason: unknown): void {
@@ -135,22 +112,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
       throw this.closeReason;
     }
     this.emit({ type: "reload-computed", computedKey });
-  }
-
-  async setToken(
-    recoveryId: string,
-    token: string | null,
-    signal: AbortSignal,
-  ): Promise<void> {
-    await this.request(
-      {
-        type: "set-token",
-        requestId: crypto.randomUUID(),
-        recoveryId,
-        token,
-      },
-      signal,
-    );
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -190,7 +151,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     message: Extract<
       SharedDatabaseClientMessage,
       {
-        readonly type: "heartbeat" | "query" | "get-computed" | "set-token";
+        readonly type: "query" | "get-computed";
       }
     >,
     signal: AbortSignal,
@@ -223,16 +184,13 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   private requireOwnerSignal(): AbortSignal {
     if (!this.ownerSignal) {
-      throw new Error("Shared database heartbeat is required first");
+      throw new Error("Shared database tab registration is required first");
     }
     return this.ownerSignal;
   }
 
   private emit(message: SharedDatabaseClientMessage): void {
-    L.debug(
-      "send message to worker",
-      redactSharedDatabaseClientMessageForLog(message),
-    );
+    L.debug("send message to worker", message);
     this.port.postMessage(message);
   }
 
@@ -240,9 +198,11 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     if (this.closed) {
       return;
     }
+    this.port.postMessage({
+      type: "disconnect",
+    } satisfies SharedDatabaseClientMessage);
     this.closed = true;
     this.closeReason = reason;
-    this.emit({ type: "disconnect" });
     this.port.removeEventListener("message", this.handleMessage);
     this.port.close();
     for (const pending of this.pendingRequests.values()) {

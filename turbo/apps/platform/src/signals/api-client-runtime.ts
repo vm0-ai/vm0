@@ -8,18 +8,12 @@ interface ApiClientRuntimeBase {
   readonly onForceUpgrade?: () => void;
 }
 
-interface AppApiClientRuntime extends ApiClientRuntimeBase {
+interface ApiClientRuntimeWithClerk extends ApiClientRuntimeBase {
   readonly clerk: Promise<ClerkTokenSource>;
-  readonly environment: "app";
+  readonly environment: "app" | "worker";
 }
 
-interface WorkerApiClientRuntime extends ApiClientRuntimeBase {
-  readonly environment: "worker";
-  readonly getToken: (signal: AbortSignal) => Promise<string | null>;
-  readonly reloadToken: (signal: AbortSignal) => Promise<string | null>;
-}
-
-export type ApiClientRuntime = AppApiClientRuntime | WorkerApiClientRuntime;
+export type ApiClientRuntime = ApiClientRuntimeWithClerk;
 
 const internalApiClientRuntime$ = state<ApiClientRuntime | undefined>(
   undefined,

@@ -258,8 +258,8 @@ describe("shared database direct Platform bridge", () => {
     expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("disconnected");
   });
 
-  it("starts app realtime in parallel with the initial worker heartbeat handshake", async () => {
-    const heartbeatGates: {
+  it("starts app realtime in parallel with the initial worker tab registration", async () => {
+    const registrationGates: {
       readonly promise: Promise<void>;
       readonly resolve: (value: void) => void;
     }[] = [];
@@ -273,28 +273,28 @@ describe("shared database direct Platform bridge", () => {
         activeOrg: { id: orgId(), name: "Direct Bridge Org" },
         memberships: [{ id: orgId() }],
       },
-      afterSharedDatabaseWorkerHeartbeat: async () => {
-        if (heartbeatGates.length > 0) {
+      afterSharedDatabaseWorkerRegistration: async () => {
+        if (registrationGates.length > 0) {
           return;
         }
         const gate = context.mocks.deferred<void>();
-        heartbeatGates.push(gate);
+        registrationGates.push(gate);
         await gate.promise;
       },
     });
     context.track(bootstrap);
 
     await vi.waitFor(() => {
-      expect(heartbeatGates).toHaveLength(1);
+      expect(registrationGates).toHaveLength(1);
       expect(
         context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
       ).toBeTruthy();
       expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
     });
-    heartbeatGates[0]?.resolve(undefined);
+    registrationGates[0]?.resolve(undefined);
     await bootstrap;
 
-    expect(heartbeatGates).toHaveLength(1);
+    expect(registrationGates).toHaveLength(1);
     expect(context.mocks.ably.getAuthTokenHistory()).toHaveLength(2);
     expect(context.store).not.toBe(context.workerStore);
   });

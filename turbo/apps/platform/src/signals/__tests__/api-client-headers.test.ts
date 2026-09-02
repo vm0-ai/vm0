@@ -198,43 +198,32 @@ describe("api client headers", () => {
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it("reloads and retries a 401 only in the worker runtime", async () => {
+  it("uses Clerk directly in the worker runtime", async () => {
     const authorizationHeaders: (string | null)[] = [];
     const agentId = "c0000000-0000-4000-a000-000000000001";
     let requests = 0;
-    let reloads = 0;
+    mockedClerk.sessionGetToken.mockResolvedValue("worker-token");
     context.store.set(setApiClientRuntime$, {
+      clerk: Promise.resolve(mockedClerk),
       environment: "worker",
       apiBaseUrl: resolveApiBaseForTarget("api"),
-      getToken: () => {
-        return Promise.resolve("worker-token");
-      },
       oauthApiBaseUrl: resolveOAuthApiBase(),
-      reloadToken: () => {
-        reloads += 1;
-        return Promise.resolve("reloaded-worker-token");
-      },
     });
     context.mocks.api(userConnectorsContract.get, ({ request, respond }) => {
       requests += 1;
       authorizationHeaders.push(request.headers.get("authorization"));
-      if (requests === 1) {
-        return respond(401, {
-          error: { code: "UNAUTHORIZED", message: "Unauthorized" },
-        });
-      }
-      return respond(200, { enabledConnectorSlugs: [] });
+      return respond(401, {
+        error: { code: "UNAUTHORIZED", message: "Unauthorized" },
+      });
     });
 
     const client = context.store.get(apiClient$)(userConnectorsContract);
     const response = await client.get({ params: { id: agentId } });
 
-    expect(response.status).toBe(200);
-    expect(authorizationHeaders).toStrictEqual([
-      "Bearer worker-token",
-      "Bearer reloaded-worker-token",
-    ]);
-    expect(reloads).toBe(1);
+    expect(response.status).toBe(401);
+    expect(authorizationHeaders).toStrictEqual(["Bearer worker-token"]);
+    expect(requests).toBe(1);
+    expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith(undefined);
   });
 
   it("waits for Clerk to settle before the initial request", async () => {

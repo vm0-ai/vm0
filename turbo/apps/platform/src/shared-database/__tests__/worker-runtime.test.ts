@@ -9,11 +9,15 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { createStore, type Store } from "ccstate";
 import { openDB } from "idb";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
 import { CHAT_IDB_VERSION } from "../../signals/external/chat-idb-schema.ts";
+import { createAuthedContractClient } from "../../signals/api-client-base.ts";
+import type { ApiClientFactory } from "../../signals/api-client.ts";
+import type { ClerkTokenSource } from "../../signals/clerk-token.ts";
 import {
   chatEventRowsResponse,
   testContext,
@@ -28,25 +32,18 @@ import type {
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
 import type { SharedDatabasePortLike } from "../bridge.ts";
-import { SharedDatabaseWorkerContext } from "../worker-host-context.ts";
 import {
   registerConnection$,
   connectionControllers$,
   connectionPorts$,
+  reloadConnections$,
   type WorkerBroadcastMessage,
-  setWorkerToken$,
 } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
 import {
-  createSharedDatabaseContractClientFactory,
-  type SharedDatabaseAuthRecovery,
-} from "../worker-client.ts";
-import {
-  createSharedDatabaseCredentialStore,
-  disposeSharedDatabaseCredentialStore$,
-  heartbeatSharedDatabaseWorker$,
+  initializeSharedDatabaseWorker$,
   querySharedDatabaseWorker$,
-  startCredentialStoreDaemons$,
+  startSharedDatabaseWorkerDaemons$,
 } from "../worker-signals.ts";
 
 vi.mock("idb", async () => {
@@ -59,6 +56,7 @@ const CREATED_AT = "2026-08-14T08:00:00.000Z";
 const WORKER_APP_VERSION = "shared-worker-store-version";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000920";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000920";
+const WORKER_TOKEN = "initial-token";
 
 class CollectingPort implements SharedDatabasePortLike {
   readonly messages: WorkerBroadcastMessage[] = [];
@@ -88,7 +86,6 @@ function identity(
   return {
     userId: `shared-worker-user-${context.resourceId}`,
     orgId: `shared-worker-org-${context.resourceId}`,
-    token: "initial-token",
     ...overrides,
   };
 }
@@ -169,17 +166,60 @@ interface RuntimeFixture {
   readonly runtime: SharedDatabaseWorkerRuntime;
 }
 
-function fixedAuthRecovery(token: string): SharedDatabaseAuthRecovery {
+function clerkTokenSource(token = WORKER_TOKEN): ClerkTokenSource {
   return {
-    getToken: (signal) => {
-      signal.throwIfAborted();
-      return Promise.resolve(token);
+    addListener: () => {
+      return () => {};
     },
-    forceRefreshToken: (signal) => {
-      signal.throwIfAborted();
-      return Promise.resolve(null);
+    session: {
+      getToken: () => {
+        return Promise.resolve(token);
+      },
     },
   };
+}
+
+function createRuntimeClientFactory(
+  token = WORKER_TOKEN,
+  vercelProtectionBypass?: string,
+): ApiClientFactory {
+  return (contract) => {
+    return createAuthedContractClient(contract, {
+      baseUrl: location.origin,
+      clientVersion: WORKER_APP_VERSION,
+      getRootSignal: () => {
+        return context.signal;
+      },
+      getToken: () => {
+        return Promise.resolve(token);
+      },
+      getVercelProtectionBypass: () => {
+        return vercelProtectionBypass;
+      },
+      validateResponse: true,
+    });
+  };
+}
+
+function createWorkerStore(
+  currentIdentity: SharedDatabaseIdentity = identity(),
+): Store {
+  const store = createStore();
+  store.set(
+    initializeSharedDatabaseWorker$,
+    {
+      appVersion: WORKER_APP_VERSION,
+      identity: currentIdentity,
+      apiBaseUrl: location.origin,
+      clerk: Promise.resolve(clerkTokenSource()),
+      oauthApiBaseUrl: location.origin,
+      onForceUpgrade: () => {
+        store.set(reloadConnections$);
+      },
+    },
+    context.signal,
+  );
+  return store;
 }
 
 function startRuntime(
@@ -190,14 +230,13 @@ function startRuntime(
   const runtime = new SharedDatabaseWorkerRuntime(
     {
       identity: currentIdentity,
-      apiBaseUrl: location.origin,
-      vercelProtectionBypass,
-      authRecovery: fixedAuthRecovery(currentIdentity.token),
       emit: (event) => {
         events.push(event);
       },
-      createContractClient:
-        createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
+      createContractClient: createRuntimeClientFactory(
+        WORKER_TOKEN,
+        vercelProtectionBypass,
+      ),
     },
     context.signal,
   );
@@ -213,16 +252,8 @@ async function queryRuntime<TKey extends SharedDatabaseDataKey>(
 }
 
 describe("shared database worker runtime", () => {
-  it("owns independent connection controllers, signals, and ports inside one credential Store", () => {
-    const store = createSharedDatabaseCredentialStore(
-      {
-        appVersion: WORKER_APP_VERSION,
-        identity: identity(),
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      context.signal,
-    );
+  it("owns independent tab connections inside one Worker Store", () => {
+    const store = createWorkerStore();
     const firstController = createChildAbortController(context.signal);
     const secondController = createChildAbortController(context.signal);
     const firstPort = new CollectingPort();
@@ -270,48 +301,12 @@ describe("shared database worker runtime", () => {
     ).toBeFalsy();
     expect(store.get(connectionPorts$).has("first-connection")).toBeFalsy();
 
-    store.set(disposeSharedDatabaseCredentialStore$);
+    secondController.abort(
+      new DOMException("second connection closed", "AbortError"),
+    );
     expect(secondSignal.aborted).toBeTruthy();
     expect(store.get(connectionControllers$).size).toBe(0);
     expect(store.get(connectionPorts$).size).toBe(0);
-  });
-
-  it("keeps credential Stores isolated in the SharedWorker context", () => {
-    const workerContext = new SharedDatabaseWorkerContext(
-      context.signal,
-      WORKER_APP_VERSION,
-    );
-    const firstIdentity = identity();
-    const secondIdentity = identity({
-      orgId: `${identity().orgId}-second`,
-      token: "second-token",
-    });
-    const firstController = createChildAbortController(context.signal);
-    const secondController = createChildAbortController(context.signal);
-    const { binding: firstBinding } = workerContext.bindConnection({
-      connectionId: "first-connection",
-      connectionController: firstController,
-      port: new CollectingPort(),
-      identity: firstIdentity,
-      apiBaseUrl: location.origin,
-      vercelProtectionBypass: undefined,
-    });
-    const { binding: secondBinding } = workerContext.bindConnection({
-      connectionId: "second-connection",
-      connectionController: secondController,
-      port: new CollectingPort(),
-      identity: secondIdentity,
-      apiBaseUrl: location.origin,
-      vercelProtectionBypass: undefined,
-    });
-
-    expect(firstBinding.store).not.toBe(secondBinding.store);
-    expect(workerContext.credentialStoreCount()).toBe(2);
-
-    firstController.abort();
-    expect(workerContext.credentialStoreCount()).toBe(1);
-    secondController.abort();
-    expect(workerContext.credentialStoreCount()).toBe(0);
   });
 
   it("forwards the Preview bypass to every API contract request", async () => {
@@ -613,15 +608,7 @@ describe("shared database worker runtime", () => {
   });
 
   it("runs concurrent connection requests independently and aborts only one connection", async () => {
-    const store = createSharedDatabaseCredentialStore(
-      {
-        appVersion: WORKER_APP_VERSION,
-        identity: identity(),
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      context.signal,
-    );
+    const store = createWorkerStore();
     const firstController = createChildAbortController(context.signal);
     const secondController = createChildAbortController(context.signal);
     const firstSignal = store.set(
@@ -638,7 +625,6 @@ describe("shared database worker runtime", () => {
       new CollectingPort(),
       secondController.signal,
     );
-    store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
     const dataKey = chatEventKey(crypto.randomUUID());
     const remoteRow = chatEventRow(dataKey.threadId, 1);
     const firstPage = context.mocks.deferred<void>();
@@ -695,20 +681,12 @@ describe("shared database worker runtime", () => {
   });
 
   it("broadcasts semantic realtime invalidations without fetching data", async () => {
-    const store = createSharedDatabaseCredentialStore(
-      {
-        appVersion: WORKER_APP_VERSION,
-        identity: identity(),
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      context.signal,
-    );
+    const store = createWorkerStore();
     const firstController = createChildAbortController(context.signal);
     const secondController = createChildAbortController(context.signal);
     const firstPort = new CollectingPort();
     const secondPort = new CollectingPort();
-    const firstSignal = store.set(
+    store.set(
       registerConnection$,
       "first-connection",
       firstController,
@@ -737,8 +715,7 @@ describe("shared database worker runtime", () => {
       return respond(200, chatEventRowsResponse([], query));
     });
     const initialAttachment = context.mocks.ably.deferNextSubscribe();
-    store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
-    const daemon = store.set(startCredentialStoreDaemons$);
+    const daemon = store.set(startSharedDatabaseWorkerDaemons$);
     if (daemon) {
       context.track(daemon);
     }
@@ -1096,221 +1073,5 @@ describe("shared database worker runtime", () => {
         consistency: "cache-only",
       }),
     ).resolves.toStrictEqual([]);
-  });
-
-  it("shares one credential-scoped recovery and accepts a same-token result", async () => {
-    const store = createSharedDatabaseCredentialStore(
-      {
-        appVersion: WORKER_APP_VERSION,
-        identity: identity(),
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      context.signal,
-    );
-    const firstPort = new CollectingPort();
-    const secondPort = new CollectingPort();
-    const firstController = createChildAbortController(context.signal);
-    const secondController = createChildAbortController(context.signal);
-    const firstSignal = store.set(
-      registerConnection$,
-      "first-connection",
-      firstController,
-      firstPort,
-      firstController.signal,
-    );
-    const secondSignal = store.set(
-      registerConnection$,
-      "second-connection",
-      secondController,
-      secondPort,
-      secondController.signal,
-    );
-    store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
-    const firstDataKey = chatEventKey(crypto.randomUUID());
-    const secondDataKey = chatEventKey(crypto.randomUUID());
-    const recoveredRows = new Map([
-      [firstDataKey.threadId, chatEventRow(firstDataKey.threadId, 1)],
-      [secondDataKey.threadId, chatEventRow(secondDataKey.threadId, 1)],
-    ]);
-    let authorized = false;
-    const authorizationHeaders: (string | null)[] = [];
-    context.mocks.api(
-      chatThreadEventsContract.snapshot,
-      ({ request, respond }) => {
-        authorizationHeaders.push(request.headers.get("authorization"));
-        if (!authorized) {
-          return respond(401, {
-            error: { code: "UNAUTHORIZED", message: "token expired" },
-          });
-        }
-        return respond(404, {
-          error: {
-            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-            message: "Chat event snapshot not found",
-          },
-        });
-      },
-    );
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      ({ params, query, request, respond }) => {
-        authorizationHeaders.push(request.headers.get("authorization"));
-        const recoveredRow = recoveredRows.get(params.threadId);
-        if (!recoveredRow) {
-          throw new Error("Unexpected chat event thread");
-        }
-        return respond(
-          200,
-          chatEventRowsResponse(
-            query.sinceSeqId === 0 ? [recoveredRow] : [],
-            query,
-          ),
-        );
-      },
-    );
-    const firstQuery = store.set(
-      querySharedDatabaseWorker$,
-      "first-connection",
-      {
-        dataKey: firstDataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      },
-      firstSignal,
-    );
-    await vi.waitFor(() => {
-      expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
-      for (const port of [firstPort, secondPort]) {
-        expect(
-          port.messages.filter((event) => {
-            return event.type === "authentication-required";
-          }),
-        ).toHaveLength(1);
-      }
-    });
-    const authenticationRequired = firstPort.messages.find((event) => {
-      return event.type === "authentication-required";
-    });
-    if (authenticationRequired?.type !== "authentication-required") {
-      throw new Error("Expected a Worker authentication request");
-    }
-    expect(secondPort.messages).toContainEqual(authenticationRequired);
-
-    const secondQuery = store.set(
-      querySharedDatabaseWorker$,
-      "second-connection",
-      {
-        dataKey: secondDataKey,
-        afterSeqId: null,
-        consistency: "catch-up",
-      },
-      secondSignal,
-    );
-    store.set(
-      setWorkerToken$,
-      "first-connection",
-      authenticationRequired.recoveryId,
-      null,
-    );
-    authorized = true;
-    store.set(
-      setWorkerToken$,
-      "second-connection",
-      authenticationRequired.recoveryId,
-      identity().token,
-    );
-
-    await expect(firstQuery).resolves.toStrictEqual([
-      recoveredRows.get(firstDataKey.threadId),
-    ]);
-    await expect(secondQuery).resolves.toStrictEqual([
-      recoveredRows.get(secondDataKey.threadId),
-    ]);
-    for (const port of [firstPort, secondPort]) {
-      expect(
-        port.messages.filter((event) => {
-          return event.type === "authentication-required";
-        }),
-      ).toHaveLength(1);
-    }
-    expect(new Set(authorizationHeaders)).toStrictEqual(
-      new Set(["Bearer initial-token"]),
-    );
-  });
-
-  it("ends an unsuccessful recovery without caching the rejected token", async () => {
-    const store = createSharedDatabaseCredentialStore(
-      {
-        appVersion: WORKER_APP_VERSION,
-        identity: identity(),
-        apiBaseUrl: location.origin,
-        vercelProtectionBypass: undefined,
-      },
-      context.signal,
-    );
-    const port = new CollectingPort();
-    const controller = createChildAbortController(context.signal);
-    const connectionSignal = store.set(
-      registerConnection$,
-      "connection",
-      controller,
-      port,
-      controller.signal,
-    );
-    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
-      return respond(401, {
-        error: { code: "UNAUTHORIZED", message: "token expired" },
-      });
-    });
-    const request = {
-      dataKey: chatEventKey(crypto.randomUUID()),
-      afterSeqId: null,
-      consistency: "catch-up" as const,
-    };
-
-    const firstQuery = store.set(
-      querySharedDatabaseWorker$,
-      "connection",
-      request,
-      connectionSignal,
-    );
-    await vi.waitFor(() => {
-      expect(
-        port.messages.filter((event) => {
-          return event.type === "authentication-required";
-        }),
-      ).toHaveLength(1);
-    });
-    const firstRecovery = port.messages.at(-1);
-    if (firstRecovery?.type !== "authentication-required") {
-      throw new Error("Expected the first Worker authentication request");
-    }
-    store.set(setWorkerToken$, "connection", firstRecovery.recoveryId, null);
-    await expect(firstQuery).rejects.toMatchObject({
-      name: "SharedDatabaseHttpError",
-    });
-
-    const secondQuery = store.set(
-      querySharedDatabaseWorker$,
-      "connection",
-      request,
-      connectionSignal,
-    );
-    await vi.waitFor(() => {
-      expect(
-        port.messages.filter((event) => {
-          return event.type === "authentication-required";
-        }),
-      ).toHaveLength(2);
-    });
-    const secondRecovery = port.messages.at(-1);
-    if (secondRecovery?.type !== "authentication-required") {
-      throw new Error("Expected the second Worker authentication request");
-    }
-    store.set(setWorkerToken$, "connection", secondRecovery.recoveryId, null);
-    await expect(secondQuery).rejects.toMatchObject({
-      name: "SharedDatabaseHttpError",
-    });
   });
 });

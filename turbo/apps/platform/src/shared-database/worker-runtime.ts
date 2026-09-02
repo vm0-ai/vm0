@@ -8,6 +8,11 @@ import {
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
 import type { ChatEventCursor } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type {
+  AppRouter,
+  InitClientArgs,
+  InitClientReturn,
+} from "@okouai/api-contracts/contracts/trpc-contract";
 import type { IDBPDatabase } from "idb";
 
 import {
@@ -18,6 +23,7 @@ import { now } from "../lib/time.ts";
 import { createChatIdbOpener } from "../signals/external/chat-idb-opener.ts";
 import { createIdbEventRowStores } from "../signals/external/idb-event-row-store.ts";
 import { createStrictIdbChatThreadEventStores } from "../signals/external/idb-chat-thread-event-store.ts";
+import type { ApiClientFactory } from "../signals/api-client.ts";
 import { logger } from "../signals/log.ts";
 import { isAbortError, settle } from "../signals/utils.ts";
 import {
@@ -39,11 +45,8 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADERS,
 } from "./chat-event-schema-version.ts";
 import type { SharedDatabaseWorkerMessage } from "./protocol.ts";
-import type {
-  SharedDatabaseAuthRecovery,
-  SharedDatabaseContractClient,
-  SharedDatabaseContractClientFactory,
-} from "./worker-client.ts";
+type SharedDatabaseContractClient<TContract extends AppRouter> =
+  InitClientReturn<TContract, InitClientArgs>;
 
 const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 const THREAD_START_SEQ_ID = 0;
@@ -66,13 +69,6 @@ type WorkerRuntimeEvent = Extract<
   SharedDatabaseWorkerMessage,
   { readonly type: "reload-required" }
 >;
-
-interface CredentialState {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly apiBaseUrl: string;
-  readonly vercelProtectionBypass: string | undefined;
-}
 
 type ChatEventContractClient = SharedDatabaseContractClient<
   typeof chatThreadEventsContract
@@ -116,11 +112,8 @@ interface ChatThreadEventCache {
 
 interface SharedDatabaseWorkerRuntimeOptions {
   readonly identity: SharedDatabaseIdentity;
-  readonly apiBaseUrl: string;
-  readonly vercelProtectionBypass: string | undefined;
-  readonly authRecovery: SharedDatabaseAuthRecovery;
   readonly emit: (message: WorkerRuntimeEvent) => void;
-  readonly createContractClient: SharedDatabaseContractClientFactory;
+  readonly createContractClient: ApiClientFactory;
 }
 
 class SharedDatabaseHttpError extends Error {
@@ -219,41 +212,28 @@ function chatThreadEventCursor(
 }
 
 export class SharedDatabaseWorkerRuntime {
-  private readonly credential: CredentialState;
+  private readonly identity: SharedDatabaseIdentity;
   private databaseEntry: ChatDatabaseEntry | null = null;
-  private readonly rootSignal: AbortSignal;
-  private readonly authRecovery: SharedDatabaseAuthRecovery;
   private readonly emit: (message: WorkerRuntimeEvent) => void;
-  private readonly createContractClient: SharedDatabaseContractClientFactory;
+  private readonly createContractClient: ApiClientFactory;
 
   constructor(
     options: SharedDatabaseWorkerRuntimeOptions,
     rootSignal: AbortSignal,
   ) {
-    const {
-      identity,
-      apiBaseUrl,
-      vercelProtectionBypass,
-      authRecovery,
-      emit,
-      createContractClient,
-    } = options;
-    this.rootSignal = rootSignal;
-    this.authRecovery = authRecovery;
+    const { identity, emit, createContractClient } = options;
     this.emit = emit;
     this.createContractClient = createContractClient;
-    this.credential = {
+    this.identity = {
       userId: identity.userId,
       orgId: identity.orgId,
-      apiBaseUrl,
-      vercelProtectionBypass,
     };
     rootSignal.addEventListener(
       "abort",
       () => {
         L.debug("runtime.abort", {
-          orgId: this.credential.orgId,
-          userId: this.credential.userId,
+          orgId: this.identity.orgId,
+          userId: this.identity.userId,
         });
         this.databaseEntry?.database?.close();
         this.databaseEntry = null;
@@ -267,7 +247,7 @@ export class SharedDatabaseWorkerRuntime {
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
     signal.throwIfAborted();
-    const dataKey = scopeSharedDatabaseDataKey(query.dataKey, this.credential);
+    const dataKey = scopeSharedDatabaseDataKey(query.dataKey, this.identity);
     const startedAt = now();
     const result = await settle(this.queryData(query, dataKey, signal), signal);
     if (!result.ok) {
@@ -360,15 +340,7 @@ export class SharedDatabaseWorkerRuntime {
       );
     }
 
-    const client = this.createContractClient(
-      chatThreadEventsContract,
-      this.credential.apiBaseUrl,
-      this.authRecovery,
-      this.rootSignal,
-      () => {
-        return this.credential.vercelProtectionBypass;
-      },
-    );
+    const client = this.createContractClient(chatThreadEventsContract);
 
     let state: ChatEventRemoteState = {
       remoteRows: [],
@@ -563,15 +535,7 @@ export class SharedDatabaseWorkerRuntime {
     signal: AbortSignal,
   ): Promise<ChatThreadEventQueryResult> {
     const cached = await this.readChatThreadEventCache(dataKey, signal);
-    const client = this.createContractClient(
-      chatThreadsContract,
-      this.credential.apiBaseUrl,
-      this.authRecovery,
-      this.rootSignal,
-      () => {
-        return this.credential.vercelProtectionBypass;
-      },
-    );
+    const client = this.createContractClient(chatThreadsContract);
     const cachedCursor = chatThreadEventCursor(cached.result);
     let state: ChatThreadEventRemoteState = {
       result: cached.result,
@@ -889,8 +853,8 @@ export class SharedDatabaseWorkerRuntime {
       });
       const nextEntry: ChatDatabaseEntry = {
         promise: opener.openChatIdb(
-          this.credential.userId,
-          this.credential.orgId,
+          this.identity.userId,
+          this.identity.orgId,
         ),
         database: null,
         invalidated: false,
