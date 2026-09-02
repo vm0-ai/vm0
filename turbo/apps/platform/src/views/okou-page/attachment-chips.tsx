@@ -57,6 +57,7 @@ import {
   navigateImageLightbox$,
   openAudioLightbox$,
   openDocumentLightbox$,
+  openFileLightbox$,
   openImageLightbox$,
   toggleLightboxDialogFullscreen$,
   type AttachmentArtifactMetadata,
@@ -75,7 +76,10 @@ import {
   DEFAULT_ANNOTATION_INK,
   type ImageAnnotationSignals,
 } from "../../signals/okou-page/image-annotation.ts";
-import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  composerImageAnnotationEnabled$,
+  officeDocumentPreviewEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   ArtifactActionSeparator,
@@ -100,6 +104,10 @@ import {
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import {
+  isOfficeDocumentPreview,
+  OfficeDocumentPreview,
+} from "./office-document-preview.tsx";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -974,6 +982,28 @@ function ArtifactDialogGenericFileBody({ filename }: { filename: string }) {
   );
 }
 
+function ArtifactDialogOfficeDocumentBody({
+  filename,
+  preview,
+}: {
+  filename: string;
+  preview: Extract<AttachmentLightboxState, { kind: "file" }>;
+}) {
+  return (
+    <ArtifactDialogStage scrollable={false}>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <OfficeDocumentPreview
+          filename={filename}
+          focusKey={`${preview.url}:dialog`}
+          focusOnMount={false}
+          testId="artifact-dialog-body-office"
+          url={preview.url}
+        />
+      </div>
+    </ArtifactDialogStage>
+  );
+}
+
 function ArtifactDialogBody({
   artifact,
   imageNavigation,
@@ -984,6 +1014,7 @@ function ArtifactDialogBody({
   preview: AttachmentLightboxState;
 }) {
   const filename = artifactDialogFilename(preview);
+  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
 
   if (preview.kind === "image") {
     return (
@@ -1004,6 +1035,14 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "file") {
+    if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
+      return (
+        <ArtifactDialogOfficeDocumentBody
+          filename={filename}
+          preview={preview}
+        />
+      );
+    }
     return <ArtifactDialogGenericFileBody filename={filename} />;
   }
 
@@ -1503,11 +1542,19 @@ export function FileAttachmentChip({
 }) {
   const { t } = useTranslation();
   const downloadAttachment = useSet(downloadAttachment$);
+  const openFileLightbox = useSet(openFileLightbox$);
   const pageSignal = useGet(pageSignal$);
+  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
+  const previewOfficeDocument =
+    officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename);
   return (
     <button
       type="button"
       onClick={() => {
+        if (previewOfficeDocument) {
+          openFileLightbox({ filename, url });
+          return;
+        }
         detach(
           downloadAttachment({ filename, url }, pageSignal),
           Reason.DomCallback,
@@ -1515,12 +1562,21 @@ export function FileAttachmentChip({
         );
       }}
       title={filename}
-      aria-label={t(
-        ($) => {
-          return $.artifacts.attachments.download;
-        },
-        { filename },
-      )}
+      aria-label={
+        previewOfficeDocument
+          ? t(
+              ($) => {
+                return $.chat.attachments.previewFile;
+              },
+              { filename },
+            )
+          : t(
+              ($) => {
+                return $.artifacts.attachments.download;
+              },
+              { filename },
+            )
+      }
       className={`${FILE_CHIP_CLASSES} hover:bg-state-hover`}
     >
       <FileChipBody
