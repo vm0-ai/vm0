@@ -85,6 +85,7 @@ import {
   readmitPiMemoryStage1CandidateFixture,
   readPiConversationIdentityFixture,
   readPiMemoryStage1CandidateFixture,
+  setSyntheticPiMemoryStage1SelectionFixture,
 } from "../../../test-fixtures/pi-memory-stage1-candidates";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
@@ -5783,6 +5784,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const answers = [
       "first memory admission answer",
       "replacement memory admission answer",
+      "selection watermark replacement answer",
       "generation-disabled answer",
     ] as const;
     let modelCalls = 0;
@@ -6023,6 +6025,101 @@ describe("CHAT-02: model-first provider policies", () => {
         sourceHistoryHash: replacedCandidate.sourceHistoryHash,
         leaseToken: currentLeaseToken,
         committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeTruthy();
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      status: "succeeded_no_output",
+      rawMemory: null,
+      rolloutSummary: null,
+      lastSelectedSourceHistoryHash: null,
+    });
+
+    await setSyntheticPiMemoryStage1SelectionFixture({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceHistoryHash: replacedCandidate.sourceHistoryHash,
+    });
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      lastSelectedSourceHistoryHash: replacedCandidate.sourceHistoryHash,
+    });
+
+    const third = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "replace the synthetic Phase 2 selection watermark",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, third.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    const thirdConversation = await readPiConversationIdentityFixture(
+      third.runId,
+    );
+    const thirdCandidate = await readPiMemoryStage1CandidateFixture({
+      orgId,
+      userId: actor.userId,
+    });
+    if (!thirdCandidate) {
+      throw new Error("Expected third Pi memory candidate generation");
+    }
+    expect(thirdCandidate).toMatchObject({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceRunId: third.runId,
+      sourceHistoryHash: thirdConversation.sourceHistoryHash,
+      status: "pending",
+      rawMemory: null,
+      rolloutSummary: null,
+      generatedAt: null,
+      lastSelectedSourceHistoryHash: null,
+    });
+    expect(thirdCandidate.sourceHistoryHash).not.toBe(
+      replacedCandidate.sourceHistoryHash,
+    );
+    await expect(
+      readSessionHistoryBlobRefCountFixture(
+        replacedCandidate.sourceHistoryHash,
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      readSessionHistoryBlobRefCountFixture(thirdCandidate.sourceHistoryHash),
+    ).resolves.toBe(2);
+
+    const thirdLeaseToken = randomUUID();
+    await leasePiMemoryStage1CandidateFixture({
+      memoryStorageId: thirdCandidate.memoryStorageId,
+      piSessionId: thirdCandidate.piSessionId,
+      sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+      leaseToken: thirdLeaseToken,
+      leaseExpiresAt: new Date(now() + 60_000),
+    });
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: thirdCandidate.memoryStorageId,
+        piSessionId: thirdCandidate.piSessionId,
+        sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+        leaseToken: currentLeaseToken,
+        committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeFalsy();
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: thirdCandidate.memoryStorageId,
+        piSessionId: thirdCandidate.piSessionId,
+        sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+        leaseToken: thirdLeaseToken,
+        committedAt: nowDate(),
         result: {
           kind: "succeeded",
           rawMemory: "bounded raw memory",
@@ -6036,7 +6133,7 @@ describe("CHAT-02: model-first provider policies", () => {
       status: "succeeded",
       rawMemory: "bounded raw memory",
       rolloutSummary: "bounded rollout summary",
-      lastSelectedSourceHistoryHash: replacedCandidate.sourceHistoryHash,
+      lastSelectedSourceHistoryHash: null,
     });
 
     await updateFeatureSwitchesForUser(
@@ -6067,14 +6164,12 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     );
 
-    await deletePiMemoryStorageFixture(replacedCandidate.memoryStorageId);
+    await deletePiMemoryStorageFixture(thirdCandidate.memoryStorageId);
     await expect(
       readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
     ).resolves.toBeNull();
     await expect(
-      readSessionHistoryBlobRefCountFixture(
-        replacedCandidate.sourceHistoryHash,
-      ),
+      readSessionHistoryBlobRefCountFixture(thirdCandidate.sourceHistoryHash),
     ).resolves.toBe(1);
   }, 90_000);
 

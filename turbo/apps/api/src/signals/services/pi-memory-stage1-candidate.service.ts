@@ -290,7 +290,7 @@ export async function commitPiMemoryStage1Candidate(
           rolloutSummary: args.result.rolloutSummary,
           rolloutSlug: args.result.rolloutSlug ?? null,
           generatedAt: args.committedAt,
-          lastSelectedSourceHistoryHash: args.sourceHistoryHash,
+          lastSelectedSourceHistoryHash: null,
           retryAt: null,
           lastErrorClass: null,
         }
@@ -301,7 +301,7 @@ export async function commitPiMemoryStage1Candidate(
             rolloutSummary: null,
             rolloutSlug: null,
             generatedAt: args.committedAt,
-            lastSelectedSourceHistoryHash: args.sourceHistoryHash,
+            lastSelectedSourceHistoryHash: null,
             retryAt: null,
             lastErrorClass: null,
           }
