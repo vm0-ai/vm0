@@ -31,7 +31,6 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { apiClient$ } from "../api-client.ts";
 import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
-import { reloadQueueData$ } from "../queue-page/queue-signals.ts";
 import { setAblyLoop$, subscribeRealtimeReadyCatchUp$ } from "../realtime.ts";
 import { foregroundReady$ } from "../foreground-catch-up.ts";
 import { isOrgAdmin$ } from "../org.ts";
@@ -718,7 +717,6 @@ export const handleBillingRedirect$ = command(
 const reloadBillingStatusFromRemoteChange$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(reloadBillingStatus$);
-    set(reloadQueueData$);
     set(reloadUsagePackManagement$);
     set(reloadUsageRecords$);
     set(refreshOrgMembers$);

@@ -225,7 +225,10 @@ function getButtonByLabel(label: string): HTMLElement {
   return button;
 }
 
-async function openDrawer(memberUsageEnabled = false): Promise<void> {
+async function openDrawer(
+  memberUsageEnabled = false,
+  sharedWorkerTestTransport: "direct" | "message-port" = "direct",
+): Promise<void> {
   mockQueuedThread();
   detachedSetupPage({
     context,
@@ -233,6 +236,7 @@ async function openDrawer(memberUsageEnabled = false): Promise<void> {
     featureSwitches: {
       [FeatureSwitchKey.ConcurrencyMemberUsage]: memberUsageEnabled,
     },
+    sharedWorkerTestTransport,
   });
   const queueButton = await waitFor(() => {
     return getButtonByText("queue...");
@@ -364,7 +368,7 @@ describe("queue drawer", () => {
     expect(screen.getByText("Buy $42/month")).toBeInTheDocument();
   });
 
-  it("refreshes the concurrency limit when billing changes in realtime", async () => {
+  it("refreshes the concurrency limit through the shared worker when billing changes in realtime", async () => {
     let concurrencyLimit = 5;
     mockConcurrencyCapability(true);
     context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
@@ -382,7 +386,7 @@ describe("queue drawer", () => {
       );
     });
 
-    await openDrawer();
+    await openDrawer(false, "message-port");
 
     await waitFor(() => {
       expect(screen.getByText(/3 of 5 slots/)).toBeInTheDocument();
