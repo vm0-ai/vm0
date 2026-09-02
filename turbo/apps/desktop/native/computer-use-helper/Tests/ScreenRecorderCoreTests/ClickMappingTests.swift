@@ -363,3 +363,41 @@ struct PointerSampleProjectionTests {
         #expect(trail.first?.point.normalizedY == 0.5)
     }
 }
+
+struct TypingBurstTests {
+    @Test
+    func groupsKeyDownsCloserThanTheGapIntoOneBurst() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_000, 1_150, 1_400, 1_900])
+
+        #expect(bursts == [TypingBurst(startMs: 1_000, endMs: 1_900)])
+    }
+
+    @Test
+    func splitsAtAGapLongerThanTheLimit() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_000, 1_200, 2_100, 2_300])
+
+        #expect(bursts == [
+            TypingBurst(startMs: 1_000, endMs: 1_200),
+            TypingBurst(startMs: 2_100, endMs: 2_300),
+        ])
+    }
+
+    /// A shortcut is one key-down: a burst of length zero, which a camera can
+    /// tell apart from typing without knowing which key it was.
+    @Test
+    func reportsALoneKeyDownAsAZeroLengthBurst() {
+        #expect(typingBursts(fromKeyDownOffsetsMs: [5_000]) == [TypingBurst(startMs: 5_000, endMs: 5_000)])
+    }
+
+    @Test
+    func ordersKeyDownsBeforeGrouping() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_400, 1_000, 1_150])
+
+        #expect(bursts == [TypingBurst(startMs: 1_000, endMs: 1_400)])
+    }
+
+    @Test
+    func reportsNothingWithoutKeyDowns() {
+        #expect(typingBursts(fromKeyDownOffsetsMs: []).isEmpty)
+    }
+}

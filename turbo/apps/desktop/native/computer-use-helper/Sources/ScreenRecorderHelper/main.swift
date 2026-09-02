@@ -857,7 +857,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                     geometry: geometry,
                     outputSize: outputSize
                 )
-            } ?? (clicks: [], pointerEvents: [], droppedOutOfFrame: 0, warnings: [])
+            } ?? (clicks: [], pointerEvents: [], typingBursts: [], droppedOutOfFrame: 0, warnings: [])
 
         let payload: [String: Any] = [
             "version": 1,
@@ -873,6 +873,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             ],
             "clicks": projected.clicks,
             "pointerEvents": projected.pointerEvents,
+            "typingBursts": projected.typingBursts,
             "droppedOutOfFrameClicks": projected.droppedOutOfFrame,
             "warnings": projected.warnings,
         ]
