@@ -156,12 +156,19 @@ function eventWatchFailureMessage(result: {
 
 function accountConnectorSlug(
   eventType: string | null,
-): "gmail" | "google-forms" | "notion" | "stripe" | null {
+): "gmail" | "google-calendar" | "google-forms" | "notion" | "stripe" | null {
   if (
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied"
   ) {
     return "gmail";
+  }
+  if (
+    eventType === "google-calendar-event-created" ||
+    eventType === "google-calendar-event-updated" ||
+    eventType === "google-calendar-event-cancelled"
+  ) {
+    return "google-calendar";
   }
   if (
     eventType === "notion-child-page-created" ||
@@ -192,6 +199,7 @@ async function lockOfficialAutomationAccountProjection(
       readonly kind: "locked";
       readonly connectorSlug:
         | "gmail"
+        | "google-calendar"
         | "google-forms"
         | "notion"
         | "stripe"
@@ -203,9 +211,18 @@ async function lockOfficialAutomationAccountProjection(
   const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
   const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
   const connectorSlugs = [currentConnectorSlug, nextConnectorSlug]
-    .filter((slug): slug is "gmail" | "google-forms" | "notion" | "stripe" => {
-      return slug !== null;
-    })
+    .filter(
+      (
+        slug,
+      ): slug is
+        | "gmail"
+        | "google-calendar"
+        | "google-forms"
+        | "notion"
+        | "stripe" => {
+        return slug !== null;
+      },
+    )
     .filter((slug, index, values) => {
       return values.indexOf(slug) === index;
     })

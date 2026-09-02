@@ -46,6 +46,7 @@ import {
   mockGoogleFormsConnectorOAuth,
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
@@ -419,6 +420,49 @@ async function connectGmailAccount(
   });
   if (!account) {
     throw new Error(`Expected Gmail account ${args.email}`);
+  }
+  return account;
+}
+
+async function connectGoogleCalendarAccount(
+  actor: ApiTestUser,
+  agentId: string,
+  args: {
+    readonly accessToken: string;
+    readonly email: string;
+    readonly subject: string;
+    readonly account?: { readonly intent: "add"; readonly displayName: string };
+  },
+) {
+  mockGoogleCalendarConnectorOAuth({
+    accessToken: args.accessToken,
+    email: args.email,
+    subject: args.subject,
+  });
+  const start = await connectorApi.startOauth(
+    actor,
+    "google-calendar",
+    "oauth",
+    agentId,
+    args.account,
+  );
+  const state = new URL(start.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Google Calendar OAuth state");
+  }
+  await connectorApi.completeOauthCallback("google-calendar", {
+    code: `google-calendar-copy-${randomUUID()}`,
+    state,
+  });
+  const accounts = await connectorApi.listBuiltinConnectorAccounts(
+    actor,
+    "google-calendar",
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.externalEmail === args.email;
+  });
+  if (!account) {
+    throw new Error(`Expected Google Calendar account ${args.email}`);
   }
   return account;
 }
@@ -2052,6 +2096,130 @@ describe("workflows", () => {
       "Bearer gmail-copy-first-token",
       "Bearer gmail-copy-second-token",
       "Bearer gmail-copy-first-token",
+    ]);
+  });
+
+  it("rebinds copied Calendar automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Calendar workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Calendar Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Calendar Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `calendar-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Calendar copy source",
+    });
+
+    const watchedTokens: string[] = [];
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        () => {
+          return HttpResponse.json({
+            items: [],
+            nextSyncToken: `calendar-copy-sync-${watchedTokens.length}`,
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request }) => {
+          const authorization = request.headers.get("authorization");
+          if (!authorization) {
+            throw new Error("Expected Calendar watch authorization");
+          }
+          watchedTokens.push(authorization);
+          const body = (await request.json()) as { readonly id?: string };
+          if (!body.id) {
+            throw new Error("Expected Calendar watch channel id");
+          }
+          return HttpResponse.json({
+            id: body.id,
+            resourceId: `calendar-copy-resource-${watchedTokens.length}`,
+            resourceUri:
+              "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            expiration: "4102444800000",
+          });
+        },
+      ),
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await connectGoogleCalendarAccount(actor, sourceAgent.agentId, {
+      accessToken: "calendar-copy-first-token",
+      email: `calendar-copy-first-${randomUUID()}@example.test`,
+      subject: `calendar-copy-first-${randomUUID()}`,
+    });
+    const secondAccount = await connectGoogleCalendarAccount(
+      actor,
+      sourceAgent.agentId,
+      {
+        accessToken: "calendar-copy-second-token",
+        email: `calendar-copy-second-${randomUUID()}@example.test`,
+        subject: `calendar-copy-second-${randomUUID()}`,
+        account: { intent: "add", displayName: "Calendar Copy Second" },
+      },
+    );
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    if (automation.body.kind !== "event" || !automation.body.chatThreadId) {
+      throw new Error("Expected Calendar automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: automation.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "google-calendar" },
+        },
+      }),
+      [200],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer calendar-copy-first-token",
+      "Bearer calendar-copy-second-token",
+    ]);
+
+    await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer calendar-copy-first-token",
+      "Bearer calendar-copy-second-token",
+      "Bearer calendar-copy-first-token",
     ]);
   });
 
