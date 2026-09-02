@@ -2303,7 +2303,7 @@ describe("managed SocialKit route", () => {
           status: "ready",
           platform: "youtube",
           downloadUrl: "https://media.socialkit.test/audio-only-download",
-          durationSeconds: 26,
+          durationSeconds: 61,
           fileSizeMB: 1,
           creditsCost: 2,
           quality: "720p",
