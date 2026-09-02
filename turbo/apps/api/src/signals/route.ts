@@ -23,6 +23,7 @@ import { cronReconcileSocialKitDownloadRoutes } from "./routes/cron-reconcile-so
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronMaterializeMemorySummariesRoutes } from "./routes/cron-materialize-memory-summaries";
+import { cronExtractPiMemoryStage1Routes } from "./routes/cron-extract-pi-memory-stage1";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronBrowserReconcileRoutes } from "./routes/cron-browser-reconcile";
 import { cronSteerRunTimeBudgetRoutes } from "./routes/cron-steer-run-time-budget";
@@ -240,6 +241,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronMaterializeMemorySummariesRoutes,
+  ...cronExtractPiMemoryStage1Routes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronBrowserReconcileRoutes,
   ...cronSteerRunTimeBudgetRoutes,
