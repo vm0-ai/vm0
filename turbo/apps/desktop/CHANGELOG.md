@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.44.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.43.0...desktop-v0.44.0) (2026-09-02)
+
+
+### Features
+
+* **desktop:** map clicks through each frame's content rect and record the element they hit ([#31199](https://github.com/vm0-ai/vm0/issues/31199)) ([914c1da](https://github.com/vm0-ai/vm0/commit/914c1dad0f02d86e1a13f70b0ce59daab5276c1e))
+* **desktop:** record when the user types, as bursts, in the recording sidecar ([#31186](https://github.com/vm0-ai/vm0/issues/31186)) ([4aa851e](https://github.com/vm0-ai/vm0/commit/4aa851e6707e65fad72c919cb0fc887dc5ef8a0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+
 ## [0.43.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.11...desktop-v0.43.0) (2026-09-02)
 
 
