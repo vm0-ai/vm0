@@ -12,12 +12,27 @@ class ConnectorResponseParser(NamedTuple):
     connector usage extraction. The response streaming layer wires ``feed`` into
     the stream callback for that flow.
 
-    ``feed`` receives each streamed response-body chunk. For ``gzip`` and
-    ``deflate``, the stream wrapper passes decompressed bytes to ``feed``. With
-    no encoding or ``identity``, the original chunk bytes are passed through
-    unchanged. Encodings that cannot be safely decoded with a bounded
-    incremental output, including ``br``, ``zstd``, and unsupported values, skip
-    response-body parsing for that flow. Implementations must treat ``b""`` as a
+    ### Incremental parser delivery
+
+    ``feed`` receives each streamed response-body parser chunk. The stream
+    wrapper passes decoded bytes to ``feed`` for ``gzip``, ``deflate``, and
+    ``br``. With no ``Content-Encoding`` or ``identity``, it passes the raw
+    response chunk bytes through unchanged. For compressed encodings, decoded
+    parser chunks are bounded independently by the configured streaming decode
+    chunk limit, while the cumulative decoded-output budget remains scoped to
+    the response. Brotli 1.2's ``output_buffer_limit`` is a soft allocation
+    threshold, so temporary output allocation may transiently exceed that limit
+    even though delivered output is split and charged against the response
+    budget.
+
+    ### Terminal fallback for non-incremental encodings
+
+    Encodings that cannot be safely decoded under the bounded incremental
+    contract (currently ``zstd`` and unsupported values) do not receive
+    incremental parser input. A connector flow using one of those encodings may
+    still use a separate bounded terminal JSON fallback when response streaming
+    and the connector's inspection policy allow it; this fallback is not part of
+    the ``feed`` delivery contract. Implementations must treat ``b""`` as a
     no-op: incremental decompressors may produce no output for a source chunk,
     and decompression failures intentionally suppress later parser input.
 

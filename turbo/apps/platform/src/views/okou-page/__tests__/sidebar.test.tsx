@@ -3663,6 +3663,7 @@ describe("zero sidebar", () => {
       createdAt: "2026-03-10T00:05:00.000Z",
       canManage: true,
       canPublish: true,
+      official: null,
       createdByUserId: "test-user-123",
       updatedByUserId: "test-user-123",
       updatedAt: "2026-03-10T00:05:00.000Z",

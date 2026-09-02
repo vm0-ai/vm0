@@ -1,6 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   click,
   fill,
@@ -15,15 +14,12 @@ import {
   mockResizeObserver,
 } from "./chat-lifecycle-test-helpers.ts";
 
-function setupChatWithRail(railEnabled: boolean): void {
+function setupChatWithRail(): void {
   mockResizeObserver();
   mockKeyboardNavigationThreads({ currentDetailTitle: null });
   detachedSetupPage({
     context,
     path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.EmojiPickerCategoryRail]: railEnabled,
-    },
   });
 }
 
@@ -91,7 +87,7 @@ async function waitForCategories(): Promise<void> {
 
 describe("chat thread emoji category rail", () => {
   it("moves the highlight to the category the user picks from the rail", async () => {
-    setupChatWithRail(true);
+    setupChatWithRail();
     await openEmojiPicker();
     await waitForCategories();
 
@@ -105,7 +101,7 @@ describe("chat thread emoji category rail", () => {
   });
 
   it("keeps following the feed after a pick that scrolls nowhere", async () => {
-    setupChatWithRail(true);
+    setupChatWithRail();
     await openEmojiPicker();
     await waitForCategories();
 
@@ -124,7 +120,7 @@ describe("chat thread emoji category rail", () => {
   });
 
   it("moves between categories with the arrow keys", async () => {
-    setupChatWithRail(true);
+    setupChatWithRail();
     await openEmojiPicker();
     await waitForCategories();
 
@@ -143,7 +139,7 @@ describe("chat thread emoji category rail", () => {
   });
 
   it("names the emoji the pointer is on", async () => {
-    setupChatWithRail(true);
+    setupChatWithRail();
     await openEmojiPicker();
     await waitForCategories();
 
@@ -165,7 +161,7 @@ describe("chat thread emoji category rail", () => {
   });
 
   it("names a frequently used emoji by its product label, not as a shortcode", async () => {
-    setupChatWithRail(true);
+    setupChatWithRail();
     await openEmojiPicker();
     await waitForCategories();
 
@@ -181,7 +177,7 @@ describe("chat thread emoji category rail", () => {
   });
 
   it("leaves the search results when a category is picked", async () => {
-    setupChatWithRail(true);
+    setupChatWithRail();
     await openEmojiPicker();
     await waitForCategories();
 
@@ -196,14 +192,5 @@ describe("chat thread emoji category rail", () => {
       expect(screen.getByLabelText("Search emoji")).toHaveValue("");
       expect(screen.getByText("Food & Drink")).toBeInTheDocument();
     });
-  });
-
-  it("keeps the picker railless while the feature switch is off", async () => {
-    setupChatWithRail(false);
-    await openEmojiPicker();
-    await screen.findByText("Frequently used");
-
-    expect(categoryTabs()).toHaveLength(0);
-    expect(screen.queryByText("Pick an emoji")).toBeNull();
   });
 });

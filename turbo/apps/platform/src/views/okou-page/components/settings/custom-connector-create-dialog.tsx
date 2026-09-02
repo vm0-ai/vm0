@@ -45,7 +45,6 @@ import {
   customConnectorEditConfirmation$,
   openCustomConnectorEditConfirmationDialog$,
   removeCustomConnectorAuthMethod$,
-  resetCustomConnectorCreateForm$,
   setCustomConnectorCreateField$,
   setCustomConnectorCreateKind$,
   type CustomConnectorAuthMethodType,
@@ -1310,7 +1309,6 @@ export function CustomConnectorCreateDialog({
     closeCustomConnectorEditConfirmationDialog$,
   );
   const closeDialog = useSet(closeCustomConnectorDialog$);
-  const resetForm = useSet(resetCustomConnectorCreateForm$);
   const [createLoadable, createConnector] = useLoadableSet(
     createCustomConnector$,
   );
@@ -1329,7 +1327,6 @@ export function CustomConnectorCreateDialog({
   const advancedApiDefinition = connectorHasAdvancedApiDefinition(connector);
 
   const close = () => {
-    resetForm();
     closeDialog();
   };
 

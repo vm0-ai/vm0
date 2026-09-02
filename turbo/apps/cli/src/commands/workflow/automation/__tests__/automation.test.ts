@@ -25,7 +25,6 @@ const WORKFLOW_ID = "22222222-2222-4222-8222-222222222222";
 const AUTOMATION_ID = "33333333-3333-4333-8333-333333333333";
 const THREAD_ID = "44444444-4444-4444-8444-444444444444";
 const MODEL_ID = "gpt-5.6-sol";
-const STRAPI_INTEGRATION_ID = "55555555-5555-4555-8555-555555555556";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const THREAD_METADATA_URL = `http://localhost:3000/api/chat-threads/${THREAD_ID}/metadata`;
 const MODEL_POLICIES_URL = "http://localhost:3000/api/model-policies";
@@ -302,22 +301,6 @@ const webhookAutomation = {
   secretLastFour: "abcd",
   lastReceivedAt: null,
   webhookSecret: "webhook-secret-abcd",
-};
-
-const strapiAutomation = {
-  ...automationBase,
-  kind: "event",
-  eventType: "strapi-entry-published",
-  eventConfig: {
-    provider: "strapi",
-    event: "entry_published",
-    integrationId: STRAPI_INTEGRATION_ID,
-    contentTypeUid: "api::article.article",
-    locale: "en",
-  },
-  schedule: null,
-  scheduleSummary: null,
-  nextRunAt: null,
 };
 
 const stripeInvoicePaidAutomation = {
@@ -925,60 +908,6 @@ describe("okou workflow automation commands", () => {
       });
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         "GitHub issue comment created",
-      );
-    });
-
-    it("should reject Strapi automations outside enabled workspaces", async () => {
-      await expect(async () => {
-        await automationCommand.parseAsync([
-          "node",
-          "cli",
-          "add",
-          WORKFLOW_ID,
-          "strapi-entry-published",
-          "--integration-id",
-          STRAPI_INTEGRATION_ID,
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Strapi workflow automations are not enabled for this workspace",
-        ),
-      );
-    });
-
-    it("should add a Strapi entry-published automation for the staff workspace", async () => {
-      vi.stubEnv("OKOU_TOKEN", okouToken(STAFF_ORG_ID));
-      const captured = captureCreateAutomation(strapiAutomation);
-
-      await automationCommand.parseAsync([
-        "node",
-        "cli",
-        "add",
-        WORKFLOW_ID,
-        "strapi-entry-published",
-        "--integration-id",
-        STRAPI_INTEGRATION_ID,
-        "--content-type-uid",
-        "api::article.article",
-        "--locale",
-        "en",
-      ]);
-
-      expect(captured.body).toEqual({
-        kind: "event",
-        eventType: "strapi-entry-published",
-        eventConfig: {
-          provider: "strapi",
-          event: "entry_published",
-          integrationId: STRAPI_INTEGRATION_ID,
-          contentTypeUid: "api::article.article",
-          locale: "en",
-        },
-      });
-      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        "Strapi entry published: api::article.article, en",
       );
     });
 
@@ -2277,7 +2206,6 @@ describe("okou workflow automation commands", () => {
               notionAutomation,
               notionDatabaseAutomation,
               notionContentUpdatedAutomation,
-              strapiAutomation,
               stripeInvoicePaidAutomation,
             ]);
           },
@@ -2300,9 +2228,6 @@ describe("okou workflow automation commands", () => {
       expect(logCalls).toContain("Product notes");
       expect(logCalls).toContain("New Notion database item");
       expect(logCalls).toContain("Bug Bash");
-      expect(logCalls).toContain(
-        "Strapi entry published: api::article.article, en",
-      );
       expect(logCalls).toContain("Stripe invoice paid");
       expect(logCalls).toContain("acct_cli_stripe_invoice_paid (live)");
       expect(logCalls).toContain("billing reasons: subscription_cycle");

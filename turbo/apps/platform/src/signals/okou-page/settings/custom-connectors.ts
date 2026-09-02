@@ -886,6 +886,7 @@ export const customConnectorEditConfirmation$ = computed((get) => {
   return get(internalEditConfirmation$);
 });
 export const openCustomConnectorCreateDialog$ = command(({ set }) => {
+  set(internalCreateForm$, CREATE_FORM_DEFAULTS);
   set(internalEditConfirmation$, null);
   set(internalDialog$, { kind: "create" });
 });
@@ -1092,10 +1093,6 @@ export const removeCustomConnectorAuthMethod$ = command(
     });
   },
 );
-export const resetCustomConnectorCreateForm$ = command(({ set }) => {
-  set(internalCreateForm$, CREATE_FORM_DEFAULTS);
-});
-
 // ---------------------------------------------------------------------------
 // Connect form state
 // ---------------------------------------------------------------------------

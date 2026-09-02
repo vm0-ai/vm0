@@ -47,6 +47,7 @@ type MockWorkflowAutomationBase = {
   readonly nextRunAt: string | null;
   readonly lastRunAt: string | null;
   readonly ownerUserId: string;
+  readonly official: null;
   readonly workflow: ChatThreadWorkflowAutomation["workflow"];
 };
 
@@ -240,6 +241,7 @@ export function createMockWorkflowAutomation(
     nextRunAt: null,
     lastRunAt: null,
     ownerUserId: "test-user-123",
+    official: null,
     workflow,
   };
   if (overrides?.kind === "event") {
