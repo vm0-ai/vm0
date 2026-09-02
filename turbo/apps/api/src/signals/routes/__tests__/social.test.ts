@@ -21,6 +21,7 @@ import {
   type SocialKitRequest,
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -50,6 +51,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { reconcileSocialKitDownloadsForTest } from "./helpers/runtime-state";
 
@@ -2278,17 +2280,17 @@ describe("managed SocialKit route", () => {
     ).toHaveLength(1);
   });
 
-  it("files an audio-only artifact by its actual container when mp4 was requested", async () => {
-    const actor = createBddApi(context).user();
-    configureProvider();
-    const pricing = await setupConfiguredPricing();
-    await fundActor(actor);
-    // An ID3v2 header followed by an MPEG audio frame, which is what an
-    // upstream audio-only fallback returns for a `format=mp4` request.
-    const payload = new Uint8Array([
-      0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0xff, 0xfb,
-      0x90, 0x00,
-    ]);
+  // An ID3v2 header followed by an MPEG audio frame, which is what an upstream
+  // audio-only fallback returns for a `format=mp4` request.
+  const AUDIO_ONLY_PAYLOAD = new Uint8Array([
+    0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0xff, 0xfb,
+    0x90, 0x00,
+  ]);
+
+  async function completeAudioOnlyDownload(
+    actor: ApiTestUser,
+    pricing: UsagePricingFixture,
+  ) {
     const providerJobId = `provider-audio-only-${randomUUID()}`;
     context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
       { address: "8.8.8.8", family: 4 },
@@ -2312,8 +2314,8 @@ describe("managed SocialKit route", () => {
         });
       }),
       http.get("https://media.socialkit.test/audio-only-download", () => {
-        return new HttpResponse(payload, {
-          headers: { "content-length": String(payload.byteLength) },
+        return new HttpResponse(AUDIO_ONLY_PAYLOAD, {
+          headers: { "content-length": String(AUDIO_ONLY_PAYLOAD.byteLength) },
         });
       }),
     );
@@ -2352,13 +2354,49 @@ describe("managed SocialKit route", () => {
       }),
       [200],
     );
+    return completed.body;
+  }
 
-    expect(completed.body).toMatchObject({
+  it("files an audio-only artifact by its detected container once the switch is on", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Expected the download actor to have an organization");
+    }
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.SocialDownloadDetectedMediaType]: true },
+    );
+
+    const body = await completeAudioOnlyDownload(actor, pricing);
+
+    expect(body).toMatchObject({
       status: "completed",
       artifact: {
         filename: "Public clip.mp3",
         contentType: "audio/mpeg",
-        sizeBytes: payload.byteLength,
+        sizeBytes: AUDIO_ONLY_PAYLOAD.byteLength,
+      },
+    });
+  });
+
+  it("keeps the requested format for the same artifact while the switch is off", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+
+    const body = await completeAudioOnlyDownload(actor, pricing);
+
+    expect(body).toMatchObject({
+      status: "completed",
+      artifact: {
+        filename: "Public clip.mp4",
+        contentType: "video/mp4",
+        sizeBytes: AUDIO_ONLY_PAYLOAD.byteLength,
       },
     });
   });

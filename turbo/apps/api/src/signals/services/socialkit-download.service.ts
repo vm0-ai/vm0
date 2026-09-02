@@ -9,6 +9,8 @@ import {
   type SocialKitDownloadRequest,
   type SocialKitDownloadResponse,
 } from "@okouai/api-contracts/contracts/social";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { socialKitDownloadJobs } from "@okouai/db/schema/socialkit-download-job";
 import { command } from "ccstate";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
@@ -38,6 +40,7 @@ import {
   allocateArtifactObject$,
   resolveArtifactObject$,
 } from "./artifact-storage.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
   checkManagedCredits$,
   recordManagedUsage$,
@@ -1062,14 +1065,29 @@ const materializeSocialKitArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<NonNullable<DownloadJob["artifact"]>> => {
+    const featureContext = await loadUserFeatureSwitchContext(
+      set(writeDb$),
+      args.job.orgId,
+      args.job.userId,
+    );
+    signal.throwIfAborted();
     const download = await openArtifactDownload(args.ready.downloadUrl, signal);
+    // The switch gates the outcome, not the transfer: the container is always
+    // read off the stream, but until it graduates the artifact keeps being
+    // filed under the requested format.
+    const media = isFeatureEnabled(
+      FeatureSwitchKey.SocialDownloadDetectedMediaType,
+      featureContext,
+    )
+      ? download.media
+      : null;
     const filename = artifactFilename(
       args.providerResult.title,
       args.job.id,
-      download.media?.extension ?? args.job.request.format,
+      media?.extension ?? args.job.request.format,
     );
     const contentType =
-      download.media?.contentType ??
+      media?.contentType ??
       (args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4");
     const existing = await set(
       resolveArtifactObject$,

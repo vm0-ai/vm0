@@ -68,4 +68,5 @@ export enum FeatureSwitchKey {
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
   DesktopScreenRecording = "desktopScreenRecording",
+  SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
 }
