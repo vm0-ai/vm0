@@ -11,16 +11,26 @@ import Foundation
 /// anchor as duplicates, and any sample whose adjusted time fails to advance.
 /// Both are dropped here rather than handed to the writer.
 public enum SampleTimingPolicy {
+    /// Slack allowed when comparing against the previous sample's end, so
+    /// floating-point drift between neighbouring buffers is not read as overlap.
+    public static let overlapTolerance = 0.000_001
+
     /// The media time to write `captureSeconds` at, or `nil` to drop it.
     ///
     /// - `captureSeconds`: the sample's time relative to the anchor frame.
     /// - `pauses`: the recording's pause spans.
     /// - `lastWrittenSeconds`: the media time of the last sample written to
     ///   the same track, or `nil` when the track has none yet.
+    /// - `lastWrittenEndSeconds`: where that sample ended, for tracks whose
+    ///   samples have extent. Audio buffers carry 20 ms of sound each, and the
+    ///   writer refuses one that starts before the previous one has finished:
+    ///   a window capture's audio jumps like that when the window's app starts
+    ///   making sound. Video frames pass their own start here.
     public static func mediaTime(
         captureSeconds: Double,
         pauses: PauseTimeline,
-        lastWrittenSeconds: Double?
+        lastWrittenSeconds: Double?,
+        lastWrittenEndSeconds: Double? = nil
     ) -> Double? {
         guard captureSeconds >= 0 else {
             return nil
@@ -29,6 +39,9 @@ public enum SampleTimingPolicy {
             return nil
         }
         if let lastWrittenSeconds, mediaSeconds <= lastWrittenSeconds {
+            return nil
+        }
+        if let lastWrittenEndSeconds, mediaSeconds + overlapTolerance < lastWrittenEndSeconds {
             return nil
         }
         return mediaSeconds

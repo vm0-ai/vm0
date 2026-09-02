@@ -59,6 +59,49 @@ struct SampleTimingPolicyTests {
     }
 
     @Test
+    func refusesAnAudioBufferThatOverlapsThePreviousOne() {
+        // The previous buffer ran from 6.04s to 6.06s. A buffer that starts at
+        // 6.05s overlaps it, which the writer refuses; one that starts exactly
+        // where it ended, or later, is fine.
+        #expect(
+            SampleTimingPolicy.mediaTime(
+                captureSeconds: 6.05,
+                pauses: PauseTimeline(),
+                lastWrittenSeconds: 6.04,
+                lastWrittenEndSeconds: 6.06
+            ) == nil
+        )
+        #expect(
+            SampleTimingPolicy.mediaTime(
+                captureSeconds: 6.06,
+                pauses: PauseTimeline(),
+                lastWrittenSeconds: 6.04,
+                lastWrittenEndSeconds: 6.06
+            ) == 6.06
+        )
+        #expect(
+            SampleTimingPolicy.mediaTime(
+                captureSeconds: 6.5,
+                pauses: PauseTimeline(),
+                lastWrittenSeconds: 6.04,
+                lastWrittenEndSeconds: 6.06
+            ) == 6.5
+        )
+    }
+
+    @Test
+    func toleratesFloatingPointDriftAtTheBoundary() {
+        #expect(
+            SampleTimingPolicy.mediaTime(
+                captureSeconds: 6.06 - 0.000_000_1,
+                pauses: PauseTimeline(),
+                lastWrittenSeconds: 6.04,
+                lastWrittenEndSeconds: 6.06
+            ) != nil
+        )
+    }
+
+    @Test
     func stillTakesThePausedStretchBackOut() {
         var pauses = PauseTimeline()
         pauses.pause(at: 2)

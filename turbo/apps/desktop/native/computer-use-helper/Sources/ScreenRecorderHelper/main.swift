@@ -431,6 +431,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     /// writer input, so a sample that would not advance its track is refused
     /// before the writer refuses it and fails.
     private var lastWrittenSeconds: [ObjectIdentifier: Double] = [:]
+    /// Where the last sample written to each track ended: its start plus its
+    /// duration for audio, its start for video, which has no extent the
+    /// writer enforces.
+    private var lastWrittenEndSeconds: [ObjectIdentifier: Double] = [:]
     /// The format description each track was started with, keyed by writer
     /// input. A sample whose format differs from it is the leading way a
     /// window capture can turn into a sample the writer refuses.
@@ -1011,6 +1015,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let start = sessionStartedAt
         let timeline = pauseTimeline
         let lastWritten = input.map { lastWrittenSeconds[ObjectIdentifier($0)] } ?? nil
+        let lastWrittenEnd = input.map { lastWrittenEndSeconds[ObjectIdentifier($0)] } ?? nil
         lock.unlock()
 
         // A writer that has failed answers `isReadyForMoreMediaData` with false
@@ -1034,7 +1039,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             let mediaSeconds = SampleTimingPolicy.mediaTime(
                 captureSeconds: captureSeconds,
                 pauses: timeline,
-                lastWrittenSeconds: lastWritten
+                lastWrittenSeconds: lastWritten,
+                lastWrittenEndSeconds: lastWrittenEnd
             )
         else {
             return
@@ -1054,9 +1060,12 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             return
         }
         if input.append(retimed) {
+            let duration = CMSampleBufferGetDuration(sampleBuffer)
+            let extent = type == .screen || !duration.isValid ? 0 : max(0, duration.seconds)
             lock.lock()
             latestSampleAt = timestamp
             lastWrittenSeconds[ObjectIdentifier(input)] = mediaSeconds
+            lastWrittenEndSeconds[ObjectIdentifier(input)] = mediaSeconds + extent
             if firstFormat[ObjectIdentifier(input)] == nil,
                 let format = CMSampleBufferGetFormatDescription(sampleBuffer)
             {
@@ -1094,7 +1103,15 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 : "no duration"
         )
         if let mediaSeconds {
-            parts.append(String(format: "at %.2fs", mediaSeconds))
+            parts.append(String(format: "at %.3fs", mediaSeconds))
+        }
+        lock.lock()
+        let previousEnd = writerInputLocked(for: type).flatMap {
+            lastWrittenEndSeconds[ObjectIdentifier($0)]
+        }
+        lock.unlock()
+        if let previousEnd {
+            parts.append(String(format: "previous sample ended at %.3fs", previousEnd))
         }
         return parts.joined(separator: ", ")
     }
