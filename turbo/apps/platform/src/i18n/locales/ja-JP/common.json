@@ -416,13 +416,11 @@
         "agents": "エージェント",
         "artifacts": "アーティファクト",
         "connectors": "コネクター",
-        "newChat": "新しいチャット",
         "settings": "設定",
         "workflows": "ワークフロー",
         "works": "{{agentName}}の連携先"
       },
       "rail": {
-        "new": "新しい",
         "workflows": "ワークフロー",
         "works": "連携先"
       },
@@ -1819,7 +1817,7 @@
       "noAccounts": "利用可能な正常な口座がありません。まず金融機関を再接続または修復してください。",
       "oneDay": "24時間",
       "oneHour": "1時間",
-      "popupBlocked": "Zeroのポップアップを許可してから、もう一度お試しください。",
+      "popupBlocked": "{{assistantName}}のポップアップを許可してから、もう一度お試しください。",
       "readOnly": "口座、残高、取引 · 読み取り専用",
       "repair": "修復",
       "repairRequired": "{{institution}}は修復が必要です",
@@ -2024,7 +2022,7 @@
       "review": {
         "avatar": "アバター",
         "heading": "イントロビデオを確認",
-        "help": "新しいチャットスレッドに送る設定を確認してください",
+        "help": "{{assistantName}} が新しいチャットスレッドで受け取る設定を確認してください",
         "instructions": "編集指示",
         "source": "素材",
         "voice": "音声"

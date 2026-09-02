@@ -416,13 +416,11 @@
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
-        "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
         "works": "Tempat {{agentName}} bekerja"
       },
       "rail": {
-        "new": "Baru",
         "workflows": "Alur kerja",
         "works": "Bekerja"
       },
@@ -1819,7 +1817,7 @@
       "noAccounts": "Tidak ada rekening aktif yang tersedia. Hubungkan kembali atau perbaiki institusi terlebih dahulu.",
       "oneDay": "24 jam",
       "oneHour": "1 jam",
-      "popupBlocked": "Izinkan pop-up untuk Zero, lalu coba lagi.",
+      "popupBlocked": "Izinkan pop-up untuk {{assistantName}}, lalu coba lagi.",
       "readOnly": "Rekening, saldo, dan transaksi · hanya baca",
       "repair": "Perbaiki",
       "repairRequired": "{{institution}} perlu diperbaiki",
@@ -2024,7 +2022,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Tinjau video intro Anda",
-        "help": "Konfirmasikan pilihan yang akan diterima Zero di utas chat baru",
+        "help": "Konfirmasikan pilihan yang akan diterima {{assistantName}} di utas chat baru",
         "instructions": "Petunjuk pengeditan",
         "source": "Sumber",
         "voice": "Suara"

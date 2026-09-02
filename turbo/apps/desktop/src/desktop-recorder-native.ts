@@ -16,6 +16,14 @@ import type {
 
 const HELPER_NAME = "screen-recorder-helper";
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * `recorder.stop` waits on the helper draining the capture stream and then
+ * finalizing the movie, which for a long recording takes well past the
+ * ordinary request budget. Timing it out at the ordinary budget abandoned the
+ * finalize while it was still running, and left the controller believing the
+ * capture was still open.
+ */
+const DEFAULT_STOP_TIMEOUT_MS = 60_000;
 
 class DesktopRecorderHelperError extends Error {
   constructor(
@@ -136,9 +144,13 @@ interface PendingRequest {
  * process owns an in-flight `SCStream` and `AVAssetWriter`, so killing it would
  * destroy the recording the user is making. A slow command fails on its own.
  */
+/** How much of the helper's stderr is kept for the message of an abrupt exit. */
+const STDERR_TAIL_LIMIT = 2_000;
+
 class RecorderHelperClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutBuffer = "";
+  private stderrTail = "";
   private requestCounter = 0;
   private closed = false;
   private readonly pending = new Map<string, PendingRequest>();
@@ -151,6 +163,7 @@ class RecorderHelperClient {
   request(
     kind: string,
     payload: Record<string, unknown> = {},
+    timeoutMs: number = this.requestTimeoutMs,
   ): Promise<Record<string, unknown>> {
     if (this.closed) {
       return Promise.reject(
@@ -172,7 +185,7 @@ class RecorderHelperClient {
             ),
           );
         }
-      }, this.requestTimeoutMs);
+      }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => {
           clearTimeout(timer);
@@ -227,6 +240,14 @@ class RecorderHelperClient {
       this.stdoutBuffer += chunk;
       this.drainStdout();
     });
+    // The helper's own diagnostics — and the crash report when it dies — come
+    // out here. Left unread they went nowhere, so a helper that exited
+    // mid-capture was indistinguishable from one that was closed on purpose.
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      console.warn("[screen-recorder-helper]", chunk.trimEnd());
+      this.stderrTail = (this.stderrTail + chunk).slice(-STDERR_TAIL_LIMIT);
+    });
     child.on("error", (error) => {
       if (this.child === child) {
         this.child = null;
@@ -238,15 +259,20 @@ class RecorderHelperClient {
         ),
       );
     });
-    child.on("close", () => {
+    child.on("close", (code, signal) => {
       if (this.child !== child) {
         return;
       }
       this.child = null;
+      const how =
+        signal !== null
+          ? `with signal ${signal}`
+          : `with code ${String(code ?? "unknown")}`;
+      const tail = this.stderrTail.trim();
       this.rejectAll(
         new DesktopRecorderHelperError(
           "helper_unavailable",
-          "Screen recorder helper exited",
+          `Screen recorder helper exited ${how}${tail ? `: ${tail}` : ""}`,
         ),
       );
     });
@@ -331,6 +357,7 @@ function toSources(
 function toRecording(
   result: Record<string, unknown>,
 ): DesktopRecorderRecording {
+  const failure = isRecord(result.failure) ? result.failure : null;
   return {
     videoPath: requiredString(result, "videoPath"),
     clickTrackPath: requiredString(result, "clickTrackPath"),
@@ -338,6 +365,17 @@ function toRecording(
     sizeBytes: requiredNumber(result, "sizeBytes"),
     width: requiredNumber(result, "width"),
     height: requiredNumber(result, "height"),
+    ...(failure
+      ? {
+          failure: {
+            code: errorCode(failure.code),
+            message:
+              typeof failure.message === "string"
+                ? failure.message
+                : "Screen recording failed",
+          },
+        }
+      : {}),
   };
 }
 
@@ -379,12 +417,14 @@ export function createRecorderNativeBackend(
   options: {
     readonly helperPath?: string;
     readonly requestTimeoutMs?: number;
+    readonly stopTimeoutMs?: number;
   } = {},
 ): RecorderNativeBackend {
   const client = new RecorderHelperClient(
     options.helperPath ?? resolveNativeHelperPath(HELPER_NAME),
     options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   );
+  const stopTimeoutMs = options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
 
   return {
     dispose: () => {
@@ -461,7 +501,9 @@ export function createRecorderNativeBackend(
       await client.request("recorder.discard", { sessionId });
     },
     stop: async (sessionId: string) =>
-      toRecording(await client.request("recorder.stop", { sessionId })),
+      toRecording(
+        await client.request("recorder.stop", { sessionId }, stopTimeoutMs),
+      ),
     getStatus: async (sessionId: string) =>
       toNativeStatus(await client.request("recorder.state", { sessionId })),
   };

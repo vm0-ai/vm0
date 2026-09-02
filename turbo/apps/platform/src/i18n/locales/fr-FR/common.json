@@ -430,13 +430,11 @@
         "agents": "Agents",
         "artifacts": "Artéfacts",
         "connectors": "Connecteurs",
-        "newChat": "Nouveau chat",
         "settings": "Paramètres",
         "workflows": "Workflows",
         "works": "Où {{agentName}} travaille"
       },
       "rail": {
-        "new": "Nouveau",
         "workflows": "Workflows",
         "works": "Travail"
       },
@@ -1852,7 +1850,7 @@
       "noAccounts": "Aucun compte actif n'est disponible. Reconnectez ou réparez d'abord l'établissement.",
       "oneDay": "24 heures",
       "oneHour": "1 heure",
-      "popupBlocked": "Autorisez les fenêtres contextuelles pour Zero, puis réessayez.",
+      "popupBlocked": "Autorisez les fenêtres contextuelles pour {{assistantName}}, puis réessayez.",
       "readOnly": "Comptes, soldes et transactions · lecture seule",
       "repair": "Réparer",
       "repairRequired": "{{institution}} doit être réparé",
@@ -2060,7 +2058,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Vérifier votre vidéo d'introduction",
-        "help": "Confirmez les choix que Zero recevra dans le nouveau fil de discussion",
+        "help": "Confirmez les choix que {{assistantName}} recevra dans le nouveau fil de discussion",
         "instructions": "Instructions de montage",
         "source": "Source",
         "voice": "Voix"
