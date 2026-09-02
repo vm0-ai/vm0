@@ -58,6 +58,9 @@ const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ARTIFACT_FILENAME_STEM_CHARS = 120;
+// Enough for the ISO base media `ftyp` brand, which sits at offset 8 and is the
+// longest signature this service inspects.
+const MEDIA_SNIFF_BYTES = 12;
 const MAX_PROVIDER_FAILURE_CODE_CHARS = 128;
 const MAX_PROVIDER_FAILURE_MESSAGE_CHARS = 500;
 const INVALID_ARTIFACT_FILENAME_CHARS = String.raw`<>:"/\|?*`;
@@ -395,6 +398,57 @@ async function pollProviderJob(
     : { status: "invalid" };
 }
 
+interface SniffedMedia {
+  readonly contentType: string;
+  readonly extension: string;
+}
+
+function leadingBytesAre(
+  head: Uint8Array,
+  offset: number,
+  signature: string,
+): boolean {
+  if (head.byteLength < offset + signature.length) {
+    return false;
+  }
+  for (let index = 0; index < signature.length; index += 1) {
+    if (head[offset + index] !== signature.charCodeAt(index)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * SocialKit echoes back only the format that was requested, and the artifact CDN
+ * carries no trustworthy media type, so the container is read from the leading
+ * bytes instead. A `format=mp4` request can still resolve to an audio-only file
+ * upstream, and filing those bytes as `video/mp4` leaves an artifact that no
+ * video consumer can decode. Returns null when the container is unrecognized,
+ * which keeps the requested format as the recorded media type.
+ */
+function sniffMedia(head: Uint8Array): SniffedMedia | null {
+  if (leadingBytesAre(head, 0, "ID3")) {
+    return { contentType: "audio/mpeg", extension: "mp3" };
+  }
+  if (leadingBytesAre(head, 4, "ftyp")) {
+    return leadingBytesAre(head, 8, "M4A") || leadingBytesAre(head, 8, "M4B")
+      ? { contentType: "audio/mp4", extension: "m4a" }
+      : { contentType: "video/mp4", extension: "mp4" };
+  }
+  // MPEG audio frame sync: eleven set bits followed by a non-reserved layer.
+  const sync = head[1];
+  if (
+    head[0] === 0xff &&
+    sync !== undefined &&
+    (sync & 0xe0) === 0xe0 &&
+    (sync & 0x06) !== 0x00
+  ) {
+    return { contentType: "audio/mpeg", extension: "mp3" };
+  }
+  return null;
+}
+
 function concatChunks(chunks: readonly Uint8Array[], size: number): Uint8Array {
   const result = new Uint8Array(size);
   let offset = 0;
@@ -440,6 +494,34 @@ async function fetchSafeSocialKitArtifact(
     currentUrl = new URL(location, target.url).toString();
   }
   throw new Error("SocialKit artifact redirected too many times");
+}
+
+async function probeArtifactMedia(
+  downloadUrl: string,
+  signal: AbortSignal,
+): Promise<SniffedMedia | null> {
+  const response = await fetchSafeSocialKitArtifact(downloadUrl, signal);
+  signal.throwIfAborted();
+  if (!response.ok || !response.body) {
+    if (response.body) {
+      startUntrackedBestEffortCleanup(response.body.cancel());
+    }
+    throw new Error("SocialKit artifact download failed");
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  while (bufferedBytes < MEDIA_SNIFF_BYTES) {
+    const next = await reader.read();
+    signal.throwIfAborted();
+    if (next.done) {
+      break;
+    }
+    chunks.push(next.value);
+    bufferedBytes += next.value.byteLength;
+  }
+  startUntrackedBestEffortCleanup(reader.cancel());
+  return sniffMedia(concatChunks(chunks, bufferedBytes));
 }
 
 const streamDownloadToArtifact$ = command(
@@ -842,9 +924,9 @@ function safeProviderResult(ready: ProviderReady) {
 function artifactFilename(
   title: string | undefined,
   id: string,
-  format: SocialKitDownloadRequest["format"],
+  fileExtension: string,
 ): string {
-  const extension = `.${format}`;
+  const extension = `.${fileExtension}`;
   const sanitizedTitle = [...(title?.trim() ?? "")]
     .map((character) => {
       const codePoint = character.codePointAt(0);
@@ -964,13 +1046,15 @@ const materializeSocialKitArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<NonNullable<DownloadJob["artifact"]>> => {
+    const media = await probeArtifactMedia(args.ready.downloadUrl, signal);
     const filename = artifactFilename(
       args.providerResult.title,
       args.job.id,
-      args.job.request.format,
+      media?.extension ?? args.job.request.format,
     );
     const contentType =
-      args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4";
+      media?.contentType ??
+      (args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4");
     const existing = await set(
       resolveArtifactObject$,
       {

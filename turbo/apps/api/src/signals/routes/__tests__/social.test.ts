@@ -2278,6 +2278,91 @@ describe("managed SocialKit route", () => {
     ).toHaveLength(1);
   });
 
+  it("files an audio-only artifact by its actual container when mp4 was requested", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    // An ID3v2 header followed by an MPEG audio frame, which is what an
+    // upstream audio-only fallback returns for a `format=mp4` request.
+    const payload = new Uint8Array([
+      0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0xff, 0xfb,
+      0x90, 0x00,
+    ]);
+    const providerJobId = `provider-audio-only-${randomUUID()}`;
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: "https://media.socialkit.test/audio-only-download",
+          durationSeconds: 26,
+          fileSizeMB: 1,
+          creditsCost: 2,
+          quality: "720p",
+          format: "mp4",
+          title: "Public clip",
+        });
+      }),
+      http.get("https://media.socialkit.test/audio-only-download", () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-audio-only" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-audio-only-etag"' });
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+
+    expect(completed.body).toMatchObject({
+      status: "completed",
+      artifact: {
+        filename: "Public clip.mp3",
+        contentType: "audio/mpeg",
+        sizeBytes: payload.byteLength,
+      },
+    });
+  });
+
   it.each([
     {
       caseName: "declared oversized",
