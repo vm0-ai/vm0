@@ -2441,6 +2441,31 @@ mod tests {
         assert!(task.deadline > tokio::time::Instant::now());
     }
 
+    async fn assert_retry_scheduled_and_abort(
+        core: &ConnectorRuntimeSyncCore,
+        run_id: RunId,
+        connector_slug: &str,
+        expected_attempt: u32,
+    ) {
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = active_runs
+            .get(&run_id)
+            .expect("run should remain active while refresh retries");
+        let target = builtin_target(connector_slug);
+        let connector = active
+            .connectors
+            .get(&target)
+            .expect("connector should remain active while refresh retries");
+        assert_eq!(connector.consecutive_failures, expected_attempt);
+        let task = active
+            .sync_tasks
+            .get(&target)
+            .expect("connector should retain a scheduled sync retry");
+        assert_eq!(task.generation, connector.generation);
+        assert!(task.deadline > tokio::time::Instant::now());
+        task.handle.abort();
+    }
+
     fn connector_runtime_sync_response(target: serde_json::Value) -> serde_json::Value {
         json!({
             "results": [{
@@ -5614,10 +5639,10 @@ mod tests {
             Duration::from_secs(2),
             capture_sync_events(async {
                 harness.sync_slack().await;
-                assert_retry_scheduled(&harness.handle.core, run_id, "slack", 1).await;
+                assert_retry_scheduled_and_abort(&harness.handle.core, run_id, "slack", 1).await;
 
                 harness.sync_slack().await;
-                assert_retry_scheduled(&harness.handle.core, run_id, "slack", 2).await;
+                assert_retry_scheduled_and_abort(&harness.handle.core, run_id, "slack", 2).await;
 
                 harness.sync_slack().await;
                 let active_runs = harness.handle.core.inner.active_runs.lock().await;
@@ -5635,7 +5660,7 @@ mod tests {
                 drop(active_runs);
 
                 harness.sync_slack().await;
-                assert_retry_scheduled(&harness.handle.core, run_id, "slack", 1).await;
+                assert_retry_scheduled_and_abort(&harness.handle.core, run_id, "slack", 1).await;
             }),
         )
         .await
