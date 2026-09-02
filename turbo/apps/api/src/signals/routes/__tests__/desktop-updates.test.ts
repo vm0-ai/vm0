@@ -141,12 +141,12 @@ describe("desktop update routes", () => {
   // forms answering, so the neutral path is the only one either route serves.
   //
   // The update line is asserted alongside the path, because the move alone
-  // would have changed it: the line is derived from the request namespace, and
-  // the neutral path has to inherit the Okou line the `okou` form served rather
-  // than fall through to Zero. Both manifests are mocked, so a fall-through
-  // would resolve to a Zero artifact and fail here rather than 404. Every
-  // expectation is written out rather than taken from `apiNamespaceAliasPaths`,
-  // which returns a neutral path unchanged and so would assert nothing.
+  // would have changed it: the neutral path has to serve the Okou line the
+  // `okou` form served rather than the Zero line. Both manifests are mocked, so
+  // reading the wrong one resolves to a Zero artifact and fails here rather
+  // than 404ing. Every expectation is written out rather than taken from
+  // `apiNamespaceAliasPaths`, which returns a neutral path unchanged and so
+  // would assert nothing.
   //
   // Two plainer redirect cases and an `/api/okou` cutover case used to sit
   // beside this one. #31088 left them without a path of their own to drive, and

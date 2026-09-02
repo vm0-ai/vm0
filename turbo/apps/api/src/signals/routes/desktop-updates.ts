@@ -1,4 +1,3 @@
-import { brandedApiNamespace } from "@okouai/api-contracts/contracts/api-namespaces";
 import {
   DESKTOP_UPDATE_LINE_LEGACY_OKOU,
   DESKTOP_UPDATE_LINE_OKOU,
@@ -10,7 +9,7 @@ import {
 import { command } from "ccstate";
 
 import { notFound } from "../../lib/error";
-import { request$, setResHeader$ } from "../context/hono";
+import { setResHeader$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -57,36 +56,29 @@ const getDesktopMigrationPolicy$ = command(({ set }) => {
 });
 
 /**
- * The update line the release-page and DMG routes serve, taken from the
- * namespace the request arrived on.
+ * The update line the unqualified release-page and DMG routes serve.
  *
  * #28465 moved the contract from `/api/okou/desktop/updates/**` to the neutral
  * path, which makes the neutral path the successor of the `okou` form rather
  * than a new one: the platform download button and the Zero migration bridge
- * both point at it and both expect an Okou artifact. So neutral resolves to the
- * Okou line, and the `/api/zero/**` compatibility alias resolved to the Zero
- * line, which is what its callers reached before the move. Keying the default
- * on `zero` rather than on `okou` is what kept every caller on the product it
- * had.
+ * both point at it and both expect an Okou artifact.
  *
- * #31088 removed the `MIGRATED_BRANDED_PATHS` rows that registered that alias,
- * and nothing else registers a branded path, so no request can arrive on one
- * and every caller resolves to the Okou line. The `zero` branch has no
- * reachable input left and is kept here only so that #31088 stays a change to
- * what is registered; retiring it is a separate change.
+ * These two routes used to read the line off the request namespace, so the
+ * `/api/zero/**` compatibility alias kept resolving to the Zero line its
+ * callers reached before the move. #31088 removed the
+ * `MIGRATED_BRANDED_PATHS` rows that registered that alias and nothing else
+ * registers a branded path, so no request can arrive on one and the Zero
+ * branch had no reachable input left. The Zero line is still reachable through
+ * `productFeed`, `productReleasePage` and `productDmgDownload`, which name it
+ * in the path.
  */
-function desktopUpdateLineFromRequestUrl(
-  requestUrl: string,
-): DesktopUpdateLine {
-  return brandedApiNamespace(new URL(requestUrl).pathname) === "zero"
-    ? DESKTOP_UPDATE_LINE_ZERO
-    : DESKTOP_UPDATE_LINE_OKOU;
-}
+const UNQUALIFIED_DESKTOP_UPDATE_LINE: DesktopUpdateLine =
+  DESKTOP_UPDATE_LINE_OKOU;
 
 const getDesktopReleasePage$ = command(async ({ get }, signal: AbortSignal) => {
   const url = await loadDesktopReleasePageUrl(
     {
-      line: desktopUpdateLineFromRequestUrl(get(request$).url),
+      line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
       ...get(releasePageParams$),
     },
     signal,
@@ -126,7 +118,7 @@ const getDesktopUpdateFeed$ = command(async ({ get }, signal: AbortSignal) => {
 const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
   const url = await loadDesktopDmgDownloadUrl(
     {
-      line: desktopUpdateLineFromRequestUrl(get(request$).url),
+      line: UNQUALIFIED_DESKTOP_UPDATE_LINE,
       ...get(dmgDownloadParams$),
     },
     signal,
