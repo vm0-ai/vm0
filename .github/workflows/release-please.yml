@@ -1356,8 +1356,7 @@ jobs:
         run: |
           set -euo pipefail
           bash .github/scripts/verify-okou-production-domains.sh \
-            "https://${CF_PAGES_PROJECT_NAME}.pages.dev" \
-            api-promotion
+            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard

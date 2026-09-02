@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
+bash -n "${repo_root}/.github/scripts/verify-okou-production-domains.sh"
+
 python3 - \
   "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/release-please.yml" \
@@ -452,7 +454,6 @@ require_fragments(
     [
         "verify-okou-production-domains.sh",
         '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
-        "api-promotion",
     ],
 )
 if release_api_verification_step.get("shell") != "bash":
@@ -479,7 +480,6 @@ for fragment in (
     "%header{access-control-allow-origin}",
     "%header{access-control-allow-credentials}",
     "/api/__brand-smoke__",
-    "api-promotion",
 ):
     if fragment not in production_verifier_source:
         raise RuntimeError(f"production verifier is missing: {fragment}")

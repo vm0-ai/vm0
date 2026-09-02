@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# < 1 || $# > 2 )); then
-  echo "usage: $0 <cloudflare-pages-url> [api-promotion]" >&2
+if (( $# != 1 )); then
+  echo "usage: $0 <cloudflare-pages-url>" >&2
   exit 1
 fi
 
 pages_url="$1"
-verification_scope="${2:-full}"
-if [[ "$verification_scope" != "full" && "$verification_scope" != "api-promotion" ]]; then
-  echo "invalid verification scope: $verification_scope" >&2
-  exit 1
-fi
 curl_retry=(
   --retry 12
   --retry-delay 5
@@ -72,7 +67,5 @@ verify_api_cors() {
 
 verify_auth_redirect "https://api.vm0.ai" "https://app.vm0.ai"
 verify_auth_redirect "https://api.okou.ai" "https://app.okou.ai"
-if [[ "$verification_scope" == "full" ]]; then
-fi
 verify_api_cors "https://api.vm0.ai" "https://app.vm0.ai"
 verify_api_cors "https://api.okou.ai" "https://app.okou.ai"
