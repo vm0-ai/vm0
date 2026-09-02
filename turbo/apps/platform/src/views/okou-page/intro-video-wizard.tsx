@@ -116,6 +116,25 @@ function sourceFormat(source: IntroVideoSource): string {
   return extension || source.contentType;
 }
 
+function sourceSavedLabel(
+  t: TFunction<"common">,
+  source: IntroVideoSource,
+  persisted: boolean,
+): string {
+  if (source.origin === "uploaded") {
+    return t(($) => {
+      return $.chat.introVideo.sourceReview.inAccount;
+    });
+  }
+  return persisted
+    ? t(($) => {
+        return $.chat.introVideo.sourceReview.inBrowser;
+      })
+    : t(($) => {
+        return $.chat.introVideo.sourceReview.inTab;
+      });
+}
+
 function sourceKindLabel(
   t: TFunction<"common">,
   source: IntroVideoSource,
@@ -702,13 +721,7 @@ function SourceReviewPage({
               })}
             </dt>
             <dd className="text-right font-medium text-foreground">
-              {persisted
-                ? t(($) => {
-                    return $.chat.introVideo.sourceReview.inBrowser;
-                  })
-                : t(($) => {
-                    return $.chat.introVideo.sourceReview.inTab;
-                  })}
+              {sourceSavedLabel(t, source, persisted)}
             </dd>
           </div>
         </dl>
@@ -1189,8 +1202,11 @@ function WizardErrorBanner({
   readonly onDownload: () => void;
 }) {
   const { t } = useTranslation();
+  // An uploaded source is already stored server-side, so there is no local copy
+  // to rescue when the send fails.
   const canDownload =
-    source && (error === "upload-failed" || error === "send-failed");
+    source?.origin === "local" &&
+    (error === "upload-failed" || error === "send-failed");
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
       <span>{errorCopy(t, error)}</span>
