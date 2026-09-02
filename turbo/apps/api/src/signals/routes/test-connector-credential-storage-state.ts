@@ -277,14 +277,9 @@ async function seedAutomaticOAuthBinding(
       slug: `_${body.custom_connector_id.replaceAll("-", "").slice(0, 24)}`,
       displayName: "Automatic OAuth test connector",
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
+      authMode: "automatic",
       oauthSetup: "automatic",
       mcpEndpoint: "https://mcp.example.test",
       mcpTransport: "streamable-http",

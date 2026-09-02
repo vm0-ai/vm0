@@ -1744,6 +1744,13 @@
       "when": 1788354222793,
       "tag": "1056_little_johnny_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 1057,
+      "version": "7",
+      "when": 1788356460321,
+      "tag": "1057_goofy_thor_girl",
+      "breakpoints": true
     }
   ]
 }
