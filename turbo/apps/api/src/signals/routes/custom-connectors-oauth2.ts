@@ -136,9 +136,10 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!agentTarget.ok) {
     return badRequestMessage(agentTarget.message);
   }
+  const publicBrand = get(publicBrand$);
   const redirectUri = new URL(
     CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH,
-    env("APP_URL"),
+    appOriginForPublicBrand(publicBrand),
   ).toString();
   const okouClientMetadata = okouMcpOAuthClientMetadata(get(request$).raw);
   const result = await set(
@@ -148,7 +149,7 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       connectorId: params.id,
       redirectUri,
-      publicBrand: get(publicBrand$),
+      publicBrand,
       automaticOAuthClient: {
         redirectUri: okouOAuthRedirectUri(get(request$).raw),
         cimdClientId: okouClientMetadata.client_id,

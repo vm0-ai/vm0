@@ -2719,7 +2719,7 @@
         "prefixes": "접두사",
         "prefixesHint": "(한 줄에 하나씩, https만)",
         "redirectCopy": "리디렉트 URL 복사",
-        "redirectHint": "(이 URL을 제공자의 OAuth 애플리케이션에 등록하세요.)",
+        "redirectHint": "(이 URL을 제공자의 OAuth 애플리케이션에 등록하세요. 기존 VM0 또는 Okou 리디렉션 URL도 계속 등록해 두세요.)",
         "redirectUrl": "리디렉트 URL",
         "removeApiAuthentication": "API 인증 제거",
         "removeNoAuthentication": "인증 없음 제거",

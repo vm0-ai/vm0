@@ -2719,7 +2719,7 @@
         "prefixes": "Prefixes",
         "prefixesHint": "(one per line, https only)",
         "redirectCopy": "Copy Redirect URL",
-        "redirectHint": "(Register this URL in the provider's OAuth application.)",
+        "redirectHint": "(Register this URL in the provider's OAuth application. Keep any existing VM0 or Okou redirect URL registered too.)",
         "redirectUrl": "Redirect URL",
         "removeApiAuthentication": "Remove API authentication",
         "removeNoAuthentication": "Remove no authentication",

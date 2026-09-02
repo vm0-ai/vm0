@@ -2719,7 +2719,7 @@
         "prefixes": "プレフィックス",
         "prefixesHint": "(1 行に 1 つ、https のみ)",
         "redirectCopy": "リダイレクト URL をコピーする",
-        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録します。)",
+        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録してください。既存の VM0 または Okou のリダイレクト URL も登録したままにしてください。)",
         "redirectUrl": "リダイレクトURL",
         "removeApiAuthentication": "API認証を削除する",
         "removeNoAuthentication": "「認証なし」を削除",
