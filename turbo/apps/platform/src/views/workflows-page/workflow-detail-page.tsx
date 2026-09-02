@@ -5,7 +5,6 @@ import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { OfficialWorkflowInstallationDefinition } from "@okouai/api-contracts/contracts/official-workflows";
-import type { StrapiIntegration } from "@okouai/api-contracts/contracts/strapi-integrations";
 import type {
   ChatRunFinishedEventConfig,
   ChatRunFinishedRunStatus,
@@ -60,7 +59,6 @@ import {
   EllipsisVertical,
   Eye,
   Video,
-  Webhook,
   X,
 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -120,7 +118,6 @@ import {
   createWorkflowNotionChildPageAutomation$,
   createWorkflowNotionDatabaseItemAutomation$,
   createWorkflowNotionPageContentUpdatedAutomation$,
-  createWorkflowStrapiEntryPublishedAutomation$,
   createWorkflowWebhookAutomation$,
   createGithubPullRequestAction$,
   createScheduleCronFields$,
@@ -148,8 +145,6 @@ import {
   setCreateGithubPullRequestAction$,
   setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
-  createStrapiIntegrationId$,
-  setCreateStrapiIntegrationId$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
   setEditingGithubPullRequestAction$,
@@ -213,7 +208,6 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason, settle } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
-import { strapiIntegrations$ } from "../../signals/okou-page/strapi.ts";
 import {
   githubIntegrationData$,
   type GithubIntegrationData,
@@ -1264,8 +1258,6 @@ function AutomationCreateAction() {
     features[FeatureSwitchKey.GoogleFormsWorkflowAutomations] ?? false;
   const stripeInvoicePaidAutomationsEnabled =
     features[FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations] ?? false;
-  const strapiIntegrationEnabled =
-    features[FeatureSwitchKey.StrapiIntegration] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -1283,7 +1275,6 @@ function AutomationCreateAction() {
       googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       stripeInvoicePaidAutomationsEnabled={stripeInvoicePaidAutomationsEnabled}
-      strapiIntegrationEnabled={strapiIntegrationEnabled}
       webhookTierEligible={webhookTierEligible}
     />
   );
@@ -4071,11 +4062,6 @@ function workflowAutomationTitle(
       return $.workflows.automations.stripe.invoicePaidTitle;
     });
   }
-  if (automation.eventType === "strapi-entry-published") {
-    return i18n.t(($) => {
-      return $.workflows.automations.strapi.entryPublishedTitle;
-    });
-  }
   return i18n.t(($) => {
     return $.workflows.automations.webhook.createTitle;
   });
@@ -4467,24 +4453,6 @@ function workflowAutomationSummary(
           return $.workflows.automations.notion.configuredDatabase;
         });
   }
-  if (automation.eventType === "strapi-entry-published") {
-    return [
-      automation.eventConfig.contentTypeUid ??
-        i18n.t(($) => {
-          return $.workflows.automations.strapi.contentTypeAny;
-        }),
-      automation.eventConfig.locale
-        ? i18n.t(
-            ($) => {
-              return $.workflows.automations.strapi.localeSummary;
-            },
-            { locale: automation.eventConfig.locale },
-          )
-        : i18n.t(($) => {
-            return $.workflows.automations.strapi.localeAny;
-          }),
-    ].join(" · ");
-  }
   return null;
 }
 
@@ -4510,7 +4478,6 @@ type AutomationCreateDialogKind =
   | "notion-database-item"
   | "notion-page-content-updated"
   | "stripe-invoice-paid"
-  | "strapi-entry-published"
   | "webhook";
 
 type AutomationCategoryKey =
@@ -4557,11 +4524,9 @@ function buildStripeInvoicePaidAutomationOptions(
 
 function buildIntegrationAutomationOptions({
   stripeInvoicePaidAutomationsEnabled,
-  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
-  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [
@@ -4643,18 +4608,6 @@ function buildIntegrationAutomationOptions({
       stripeInvoicePaidAutomationsEnabled,
     ),
   );
-  if (strapiIntegrationEnabled) {
-    integrationOptions.push({
-      kind: "strapi-entry-published",
-      title: i18n.t(($) => {
-        return $.workflows.automations.strapi.entryPublishedTitle;
-      }),
-      description: i18n.t(($) => {
-        return $.workflows.automations.strapi.entryPublishedDescription;
-      }),
-      icon: Webhook,
-    });
-  }
   integrationOptions.push({
     kind: "webhook",
     title: i18n.t(($) => {
@@ -4868,7 +4821,6 @@ function buildAutomationCreateCategories({
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
-  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly googleCalendarAutomationsEnabled: boolean;
@@ -4876,7 +4828,6 @@ function buildAutomationCreateCategories({
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
-  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly AutomationCreateCategory[] {
   const calendarOptions = buildCalendarAutomationOptions(
@@ -4888,7 +4839,6 @@ function buildAutomationCreateCategories({
   );
   const integrationOptions = buildIntegrationAutomationOptions({
     stripeInvoicePaidAutomationsEnabled,
-    strapiIntegrationEnabled,
     webhookTierEligible,
   });
   const notionOptions = buildNotionAutomationOptions(
@@ -5027,7 +4977,6 @@ function AutomationCreateMenu({
   googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
-  strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
@@ -5036,7 +4985,6 @@ function AutomationCreateMenu({
   readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
-  readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
   const open = useGet(workflowAutomationPickerOpen$);
@@ -5049,7 +4997,6 @@ function AutomationCreateMenu({
     googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
-    strapiIntegrationEnabled,
     webhookTierEligible,
   });
   const activeCategory =
@@ -5631,226 +5578,6 @@ function AutomationsSection({
   );
 }
 
-function CreateStrapiEntryPublishedAutomationDialog({
-  workflowId,
-  open,
-  onOpenChange,
-}: {
-  readonly workflowId: string;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const integrations = useLastResolved(strapiIntegrations$) ?? [];
-  const selectedIntegrationId = useGet(createStrapiIntegrationId$);
-  const setSelectedIntegrationId = useSet(setCreateStrapiIntegrationId$);
-  const effectiveIntegrationId = integrations.some((integration) => {
-    return integration.id === selectedIntegrationId;
-  })
-    ? (selectedIntegrationId ?? "")
-    : (integrations[0]?.id ?? "");
-  const [createLoadable, createAutomation] = useLoadableSet(
-    createWorkflowStrapiEntryPublishedAutomation$,
-  );
-  const creating = createLoadable.state === "loading";
-  const submitAutomation = (contentTypeUid: string, locale: string) => {
-    if (!effectiveIntegrationId) {
-      return;
-    }
-    detach(
-      (async () => {
-        await createAutomation(
-          {
-            workflowId,
-            eventConfig: {
-              provider: "strapi",
-              event: "entry_published",
-              integrationId: effectiveIntegrationId,
-              ...(contentTypeUid ? { contentTypeUid } : {}),
-              ...(locale ? { locale } : {}),
-            },
-          },
-          pageSignal,
-        );
-        onOpenChange(false);
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {i18n.t(($) => {
-              return $.workflows.automations.strapi.addTitle;
-            })}
-          </DialogTitle>
-          <DialogDescription>
-            {i18n.t(($) => {
-              return $.workflows.automations.strapi.addDescription;
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        {integrations.length === 0 ? (
-          <div className="flex flex-col gap-4">
-            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              {i18n.t(($) => {
-                return $.workflows.automations.strapi.connectFirst;
-              })}
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  onOpenChange(false);
-                }}
-              >
-                {i18n.t(($) => {
-                  return $.workflows.automations.common.cancel;
-                })}
-              </Button>
-              <Link
-                pathname={ROUTES.settingsStrapi}
-                className="zero-btn-morandi inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium"
-              >
-                {i18n.t(($) => {
-                  return $.workflows.automations.strapi.configure;
-                })}
-              </Link>
-            </DialogFooter>
-          </div>
-        ) : (
-          <StrapiAutomationForm
-            integrations={integrations}
-            effectiveIntegrationId={effectiveIntegrationId}
-            creating={creating}
-            onSelectIntegration={setSelectedIntegrationId}
-            onCancel={() => {
-              onOpenChange(false);
-            }}
-            onSubmit={submitAutomation}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function StrapiAutomationForm({
-  integrations,
-  effectiveIntegrationId,
-  creating,
-  onSelectIntegration,
-  onCancel,
-  onSubmit,
-}: {
-  readonly integrations: readonly StrapiIntegration[];
-  readonly effectiveIntegrationId: string;
-  readonly creating: boolean;
-  readonly onSelectIntegration: (integrationId: string) => void;
-  readonly onCancel: () => void;
-  readonly onSubmit: (contentTypeUid: string, locale: string) => void;
-}) {
-  return (
-    <form
-      aria-label={i18n.t(($) => {
-        return $.workflows.automations.strapi.addAria;
-      })}
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const contentTypeUid = String(form.get("contentTypeUid") ?? "").trim();
-        const locale = String(form.get("locale") ?? "").trim();
-        onSubmit(contentTypeUid, locale);
-      }}
-    >
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.strapi.instance;
-        })}
-        <Select
-          value={effectiveIntegrationId}
-          disabled={creating}
-          onValueChange={onSelectIntegration}
-        >
-          <SelectTrigger
-            className="h-9 w-full"
-            aria-label={i18n.t(($) => {
-              return $.workflows.automations.strapi.instance;
-            })}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {integrations.map((integration) => {
-              return (
-                <SelectItem key={integration.id} value={integration.id}>
-                  {integration.name}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.strapi.contentType;
-        })}
-        <Input
-          name="contentTypeUid"
-          disabled={creating}
-          placeholder={i18n.t(($) => {
-            return $.workflows.automations.strapi.contentTypePlaceholder;
-          })}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.strapi.locale;
-        })}
-        <Input
-          name="locale"
-          disabled={creating}
-          placeholder={i18n.t(($) => {
-            return $.workflows.automations.strapi.localePlaceholder;
-          })}
-        />
-      </label>
-      <p className="text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.strapi.localeHint;
-        })}
-      </p>
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={creating}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={creating}>
-          {creating ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Webhook size={14} />
-          )}
-          {i18n.t(($) => {
-            return $.workflows.automations.strapi.addAction;
-          })}
-        </Button>
-      </DialogFooter>
-    </form>
-  );
-}
-
 function selectedStripeBillingReasons(
   form: FormData,
 ): StripeInvoiceBillingReason[] {
@@ -6029,10 +5756,6 @@ function IntegrationAutomationCreateDialogs({
   readonly createDialog: WorkflowAutomationCreateDialog;
   readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
 }) {
-  const features = useGet(featureSwitch$);
-  const strapiIntegrationEnabled =
-    features[FeatureSwitchKey.StrapiIntegration] ?? false;
-
   return (
     <>
       {createDialog === "stripe-invoice-paid" ? (
@@ -6041,15 +5764,6 @@ function IntegrationAutomationCreateDialogs({
           open
           onOpenChange={(open) => {
             setCreateDialog(open ? "stripe-invoice-paid" : null);
-          }}
-        />
-      ) : null}
-      {strapiIntegrationEnabled ? (
-        <CreateStrapiEntryPublishedAutomationDialog
-          workflowId={workflowId}
-          open={createDialog === "strapi-entry-published"}
-          onOpenChange={(open) => {
-            setCreateDialog(open ? "strapi-entry-published" : null);
           }}
         />
       ) : null}

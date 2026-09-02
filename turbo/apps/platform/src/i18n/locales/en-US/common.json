@@ -3139,45 +3139,6 @@
         "uninstallTargetFallback": "this bot",
         "uninstallTitle": "Uninstall Feishu bot?"
       },
-      "strapi": {
-        "actions": {
-          "cancel": "Cancel",
-          "checkTest": "Check test",
-          "copy": "Copy",
-          "create": "Create integration",
-          "remove": "Remove",
-          "revealAuthorization": "Reveal authorization header"
-        },
-        "addDescription": "One integration can serve multiple workflow automations.",
-        "addTitle": "Add Strapi instance",
-        "adminRequired": "Ask an organization admin to add or update Strapi integrations.",
-        "authorizationHeader": "Authorization header",
-        "copied": "{{label}} copied",
-        "description": "Let {{assistantName}} react to published Strapi entries and automate downstream work.",
-        "documentTitle": "Strapi",
-        "empty": "No Strapi instances connected yet.",
-        "form": {
-          "name": "Name",
-          "namePlaceholder": "Company CMS",
-          "url": "Strapi URL"
-        },
-        "instructions": "In Strapi, open Settings → Webhooks, add this URL and Authorization header, select entry.publish, then click Trigger to send a Strapi test webhook.",
-        "lastPublish": "Last publish: {{date}}",
-        "lastTest": "Last test: {{date}}",
-        "notReceived": "Not received",
-        "removeDescription": "Remove its workflow automations first. Strapi webhook requests to this URL will stop working.",
-        "removeTitle": "Remove Strapi integration?",
-        "tested": "Webhook tested",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi integration created",
-          "noTestReceived": "No Strapi test webhook received yet",
-          "removed": "Strapi integration removed",
-          "testReceived": "Strapi test webhook received"
-        },
-        "webhookUrl": "Webhook URL",
-        "whereAssistantWorks": "Where {{assistantName}} works"
-      },
       "telegram": {
         "addBot": "Add bot",
         "addDescription": "Complete each BotFather step, then create the workspace bot.",
@@ -5862,26 +5823,6 @@
         "time": "Time ({{timezone}})",
         "updateScheduleAria": "Update schedule automation"
       },
-      "strapi": {
-        "addAction": "Add Strapi automation",
-        "addAria": "Add Strapi entry published automation",
-        "addDescription": "Run this workflow after matching localized publish events settle.",
-        "addTitle": "Add Strapi automation",
-        "configure": "Configure Strapi",
-        "connectFirst": "Connect a Strapi instance before creating this automation.",
-        "contentType": "Content type UID (optional)",
-        "contentTypeAny": "Any content type",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Run after a matching Strapi entry is published.",
-        "entryPublishedTitle": "Strapi entry published",
-        "instance": "Strapi instance",
-        "locale": "Locale (optional)",
-        "localeAny": "Any locale",
-        "localeHint": "Leave locale blank to combine all localized publish events for the same document into one workflow run.",
-        "localePlaceholder": "en",
-        "localeSummary": "Locale {{locale}}",
-        "rule": "When a matching Strapi entry is published"
-      },
       "stripe": {
         "addAction": "Add Stripe automation",
         "addAria": "Add Stripe invoice paid automation",
@@ -5927,7 +5868,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6219,10 +6159,6 @@
       "title": "Slack",
       "uninstallDescription": "This will remove the Slack integration for your entire workspace. All connected users will be disconnected and {{displayName}} will no longer respond to messages or mentions in Slack. This action cannot be undone.",
       "uninstallTitle": "Uninstall Slack integration?"
-    },
-    "strapi": {
-      "description": "Automate work when entries are published",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Ask your admin to install the Microsoft Teams integration",

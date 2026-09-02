@@ -3147,45 +3147,6 @@
         "uninstallTargetFallback": "dieser Bot",
         "uninstallTitle": "Feishu-Bot deinstallieren?"
       },
-      "strapi": {
-        "actions": {
-          "cancel": "Abbrechen",
-          "checkTest": "Prüftest",
-          "copy": "Kopieren",
-          "create": "Schaffen Sie Integration",
-          "remove": "Entfernen",
-          "revealAuthorization": "Autorisierungsheader anzeigen"
-        },
-        "addDescription": "Eine Integration kann mehrere Workflow-Automatisierungen bedienen.",
-        "addTitle": "Strapi-Instanz hinzufügen",
-        "adminRequired": "Bitten Sie einen Organisationsadministrator, Strapi-Integrationen hinzuzufügen oder zu aktualisieren.",
-        "authorizationHeader": "Autorisierungsheader",
-        "copied": "{{label}} kopiert",
-        "description": "Lassen Sie {{assistantName}} auf veröffentlichte Strapi-Einträge reagieren und nachgelagerte Arbeiten automatisieren.",
-        "documentTitle": "Strapi",
-        "empty": "Es sind noch keine Strapi-Instanzen verbunden.",
-        "form": {
-          "name": "Name",
-          "namePlaceholder": "Unternehmens-CMS",
-          "url": "Strapi-URL"
-        },
-        "instructions": "Öffnen Sie in Strapi Einstellungen → Webhooks, fügen Sie diese URL und den Autorisierungsheader hinzu, wählen Sie „entry.publish“ aus und klicken Sie dann auf „Trigger“, um einen Strapi-Test-Webhook zu senden.",
-        "lastPublish": "Letzte Veröffentlichung: {{date}}",
-        "lastTest": "Letzter Test: {{date}}",
-        "notReceived": "Nicht erhalten",
-        "removeDescription": "Entfernen Sie zunächst die Workflow-Automatisierungen. Strapi-Webhook-Anfragen an diese URL funktionieren nicht mehr.",
-        "removeTitle": "Strapi-Integration entfernen?",
-        "tested": "Webhook getestet",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi-Integration erstellt",
-          "noTestReceived": "Noch kein Strapi-Test-Webhook erhalten",
-          "removed": "Strapi-Integration entfernt",
-          "testReceived": "Strapi-Test-Webhook empfangen"
-        },
-        "webhookUrl": "Webhook-URL",
-        "whereAssistantWorks": "Wo {{assistantName}} arbeitet"
-      },
       "telegram": {
         "addBot": "Bot hinzufügen",
         "addDescription": "Führen Sie jeden BotFather-Schritt aus und erstellen Sie dann den Arbeitsbereichs-Bot.",
@@ -5870,26 +5831,6 @@
         "time": "Zeit ({{timezone}})",
         "updateScheduleAria": "Automatisierung des Aktualisierungsplans"
       },
-      "strapi": {
-        "addAction": "Fügen Sie die Strapi-Automatisierung hinzu",
-        "addAria": "Fügen Sie die veröffentlichte Automatisierung des Strapi-Eintrags hinzu",
-        "addDescription": "Führen Sie diesen Workflow aus, nachdem übereinstimmende lokalisierte Veröffentlichungsereignisse festgelegt wurden.",
-        "addTitle": "Fügen Sie die Strapi-Automatisierung hinzu",
-        "configure": "Konfigurieren Sie Strapi",
-        "connectFirst": "Verbinden Sie eine Strapi-Instanz, bevor Sie diese Automatisierung erstellen.",
-        "contentType": "Inhaltstyp-UID (optional)",
-        "contentTypeAny": "Jeder Inhaltstyp",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Wird ausgeführt, nachdem ein passender Strapi-Eintrag veröffentlicht wurde.",
-        "entryPublishedTitle": "Strapi-Eintrag veröffentlicht",
-        "instance": "Strapi-Instanz",
-        "locale": "Gebietsschema (optional)",
-        "localeAny": "Beliebiges Gebietsschema",
-        "localeHint": "Lassen Sie das Feld „Gebietsschema“ leer, um alle lokalisierten Veröffentlichungsereignisse für dasselbe Dokument in einer Workflow-Ausführung zu kombinieren.",
-        "localePlaceholder": "en",
-        "localeSummary": "Gebietsschema {{locale}}",
-        "rule": "Wenn ein passender Strapi-Eintrag veröffentlicht wird"
-      },
       "stripe": {
         "addAction": "Stripe-Automatisierung hinzufügen",
         "addAria": "Automatisierung für bezahlte Stripe-Rechnungen hinzufügen",
@@ -5935,7 +5876,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6227,10 +6167,6 @@
       "title": "Slack",
       "uninstallDescription": "Dadurch wird die Slack-Integration für Ihren gesamten Arbeitsbereich entfernt. Alle verbundenen Benutzer werden getrennt und {{displayName}} antwortet nicht mehr auf Nachrichten oder Erwähnungen in Slack. Diese Aktion kann nicht rückgängig gemacht werden.",
       "uninstallTitle": "Slack-Integration deinstallieren?"
-    },
-    "strapi": {
-      "description": "Automatisieren Sie die Arbeit bei der Veröffentlichung von Einträgen",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Bitten Sie Ihren Administrator, die Microsoft Teams-Integration zu installieren",

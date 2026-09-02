@@ -795,9 +795,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}#event-deep-link-2`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatConversationLocator]: true,
-      },
     });
 
     await waitFor(() => {
@@ -852,9 +849,6 @@ describe("chat scroll position", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}${hash}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatConversationLocator]: true,
-        },
       });
 
       await waitFor(() => {
@@ -901,9 +895,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}#event-${encodeURIComponent(targetEventId)}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatConversationLocator]: true,
-      },
     });
 
     await waitFor(() => {

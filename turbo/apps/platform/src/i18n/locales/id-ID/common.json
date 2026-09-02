@@ -3139,45 +3139,6 @@
         "uninstallTargetFallback": "bot ini",
         "uninstallTitle": "Uninstall bot Feishu?"
       },
-      "strapi": {
-        "actions": {
-          "cancel": "Batal",
-          "checkTest": "Cek tes",
-          "copy": "Salin",
-          "create": "Buat integrasi",
-          "remove": "Hapus",
-          "revealAuthorization": "Tampilkan authorization header"
-        },
-        "addDescription": "Satu integrasi dapat digunakan untuk beberapa otomatisasi alur kerja.",
-        "addTitle": "Tambahkan instance Strapi",
-        "adminRequired": "Minta admin organisasi untuk menambahkan atau memperbarui integrasi Strapi.",
-        "authorizationHeader": "Header otorisasi",
-        "copied": "{{label}} disalin",
-        "description": "Biarkan {{assistantName}} bereaksi terhadap entri Strapi yang dipublikasikan dan mengotomatiskan pekerjaan lanjutan.",
-        "documentTitle": "Strapi",
-        "empty": "Belum ada instance Strapi yang terhubung.",
-        "form": {
-          "name": "Nama",
-          "namePlaceholder": "CMS perusahaan",
-          "url": "URL Strapi"
-        },
-        "instructions": "Di Strapi, buka Settings → Webhooks, tambahkan URL dan Authorization header ini, pilih entry.publish, lalu klik Trigger untuk mengirim webhook tes Strapi.",
-        "lastPublish": "Publikasi terakhir: {{date}}",
-        "lastTest": "Tes terakhir: {{date}}",
-        "notReceived": "Belum diterima",
-        "removeDescription": "Hapus dulu otomatisasi alur kerjanya. Permintaan webhook Strapi ke URL ini akan berhenti berfungsi.",
-        "removeTitle": "Hapus integrasi Strapi?",
-        "tested": "Webhook dites",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Integrasi Strapi dibuat",
-          "noTestReceived": "Belum menerima webhook tes Strapi",
-          "removed": "Integrasi Strapi dihapus",
-          "testReceived": "Webhook tes Strapi diterima"
-        },
-        "webhookUrl": "Webhook URL",
-        "whereAssistantWorks": "Tempat {{assistantName}} bekerja"
-      },
       "telegram": {
         "addBot": "Tambahkan bot",
         "addDescription": "Selesaikan setiap langkah BotFather, lalu buat bot ruang kerja.",
@@ -5862,26 +5823,6 @@
         "time": "Waktu ({{timezone}})",
         "updateScheduleAria": "Perbarui otomatisasi jadwal"
       },
-      "strapi": {
-        "addAction": "Tambahkan otomatisasi Strapi",
-        "addAria": "Tambahkan otomatisasi saat entri Strapi dipublikasikan",
-        "addDescription": "Jalankan alur kerja ini setelah peristiwa publikasi lokal yang cocok selesai.",
-        "addTitle": "Tambahkan otomatisasi Strapi",
-        "configure": "Konfigurasikan Strapi",
-        "connectFirst": "Hubungkan instance Strapi sebelum membuat otomatisasi ini.",
-        "contentType": "UID tipe konten (opsional)",
-        "contentTypeAny": "Semua tipe konten",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Jalankan setelah entri Strapi yang cocok dipublikasikan.",
-        "entryPublishedTitle": "Entri Strapi dipublikasikan",
-        "instance": "Instance Strapi",
-        "locale": "Locale (opsional)",
-        "localeAny": "Semua locale",
-        "localeHint": "Biarkan locale kosong untuk menggabungkan semua peristiwa publikasi lokal untuk dokumen yang sama menjadi satu eksekusi alur kerja.",
-        "localePlaceholder": "en",
-        "localeSummary": "Locale {{locale}}",
-        "rule": "Saat entri Strapi yang cocok dipublikasikan"
-      },
       "stripe": {
         "addAction": "Tambahkan otomatisasi Stripe",
         "addAria": "Tambahkan otomatisasi faktur Stripe dibayar",
@@ -5927,7 +5868,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6219,10 +6159,6 @@
       "title": "Slack",
       "uninstallDescription": "Ini akan menghapus integrasi Slack untuk seluruh ruang kerja Anda. Semua pengguna yang terhubung akan diputus dan {{displayName}} tidak akan lagi merespons pesan atau mention di Slack. Tindakan ini tidak dapat dibatalkan.",
       "uninstallTitle": "Copot pemasangan integrasi Slack?"
-    },
-    "strapi": {
-      "description": "Otomatiskan pekerjaan saat entri dipublikasikan",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Minta admin Anda untuk memasang integrasi Microsoft Teams",

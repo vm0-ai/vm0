@@ -76,6 +76,7 @@ mod guest_storage_manifest;
 mod operation_tracker;
 #[cfg(test)]
 mod tests;
+mod workspace_drive_mount;
 
 use std::fmt;
 use std::io;
@@ -105,6 +106,7 @@ pub use file::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult, Writ
 pub use guest_dns_readiness::GuestDnsReadinessResult;
 pub use guest_state_restore::GuestStateRestoreResult;
 pub use guest_storage_manifest::GuestStorageManifestResult;
+pub use workspace_drive_mount::WorkspaceDriveMountResult;
 
 /// Host-observed stage at which a request deadline expired.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -215,10 +215,6 @@ function getConnectorAllowedLiterals() {
       "src/views/okou-page/feishu-card.tsx\u0000im.message.receive_v1",
       "Feishu event identifier",
     ],
-    [
-      "src/views/okou-page/strapi-settings-page.tsx\u0000https://cms.example.com",
-      "example Strapi URL",
-    ],
   ];
 }
 

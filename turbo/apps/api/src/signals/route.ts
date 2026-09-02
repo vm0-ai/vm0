@@ -135,8 +135,6 @@ import { workflowsRoutes } from "./routes/workflows";
 import { officialWorkflowRoutes } from "./routes/official-workflows";
 import { morningBriefPreferenceRoutes } from "./routes/morning-brief-preference";
 import { workflowAutomationsRoutes } from "./routes/workflow-automations";
-import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
-import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { integrationsAgentPhoneRoutes } from "./routes/integrations-agentphone";
 import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone-download-file";
@@ -211,7 +209,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksNotionRoutes,
   ...webhooksWorkflowAutomationsRoutes,
-  ...strapiEventsRoutes,
   ...webhooksStripeRoutes,
   ...webhooksStripeAutomationEventsRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
@@ -338,7 +335,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...workflowsRoutes,
   ...officialWorkflowRoutes,
   ...workflowAutomationsRoutes,
-  ...strapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...slackConnectRoutes,
   ...slackOauthRoutes,

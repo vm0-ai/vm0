@@ -385,6 +385,7 @@ describe("Stripe invoice-paid workflow automation contract", () => {
       chatThreadId: null,
       nextRunAt: null,
       lastRunAt: null,
+      official: null,
       kind: "event",
       eventType: "stripe-invoice-paid",
       eventConfig,

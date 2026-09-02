@@ -3198,45 +3198,6 @@
         "uninstallTargetFallback": "este bot",
         "uninstallTitle": "Desinstalar o bot do Feishu?"
       },
-      "strapi": {
-        "actions": {
-          "cancel": "Cancelar",
-          "checkTest": "Verificar teste",
-          "copy": "Copiar",
-          "create": "Criar integração",
-          "remove": "Remover",
-          "revealAuthorization": "Revelar header de autorização"
-        },
-        "addDescription": "Uma integração pode atender a várias automações de fluxos de trabalho.",
-        "addTitle": "Adicionar instância do Strapi",
-        "adminRequired": "Peça a um administrador da organização para adicionar ou atualizar integrações do Strapi.",
-        "authorizationHeader": "Header de autorização",
-        "copied": "{{label}} copiado",
-        "description": "Permita que o {{assistantName}} reaja a entradas publicadas no Strapi e automatize o trabalho subsequente.",
-        "documentTitle": "Strapi",
-        "empty": "Ainda não há instâncias do Strapi conectadas.",
-        "form": {
-          "name": "Nome",
-          "namePlaceholder": "CMS da empresa",
-          "url": "URL do Strapi"
-        },
-        "instructions": "No Strapi, abra Settings → Webhooks, adicione esta URL e o header Authorization, selecione entry.publish e clique em Trigger para enviar um webhook de teste do Strapi.",
-        "lastPublish": "Última publicação: {{date}}",
-        "lastTest": "Último teste: {{date}}",
-        "notReceived": "Não recebido",
-        "removeDescription": "Remova primeiro as automações de fluxos de trabalho. As solicitações de webhook do Strapi para esta URL deixarão de funcionar.",
-        "removeTitle": "Remover a integração do Strapi?",
-        "tested": "Webhook testado",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Integração do Strapi criada",
-          "noTestReceived": "Nenhum webhook de teste do Strapi foi recebido ainda",
-          "removed": "Integração do Strapi removida",
-          "testReceived": "Webhook de teste do Strapi recebido"
-        },
-        "webhookUrl": "URL do webhook",
-        "whereAssistantWorks": "Onde o {{assistantName}} funciona"
-      },
       "telegram": {
         "addBot": "Adicionar bot",
         "addDescription": "Conclua cada etapa no BotFather e crie o bot do workspace.",
@@ -5934,26 +5895,6 @@
         "time": "Horário ({{timezone}})",
         "updateScheduleAria": "Atualizar automação agendada"
       },
-      "strapi": {
-        "addAction": "Adicionar automação do Strapi",
-        "addAria": "Adicionar automação de entrada publicada no Strapi",
-        "addDescription": "Execute este fluxo de trabalho depois que os eventos de publicação localizados correspondentes forem concluídos.",
-        "addTitle": "Adicionar automação do Strapi",
-        "configure": "Configurar Strapi",
-        "connectFirst": "Conecte uma instância do Strapi antes de criar esta automação.",
-        "contentType": "UID do tipo de conteúdo (opcional)",
-        "contentTypeAny": "Qualquer tipo de conteúdo",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Execute depois que uma entrada correspondente do Strapi for publicada.",
-        "entryPublishedTitle": "Entrada do Strapi publicada",
-        "instance": "Instância do Strapi",
-        "locale": "Localidade (opcional)",
-        "localeAny": "Qualquer localidade",
-        "localeHint": "Deixe a localidade em branco para combinar todos os eventos de publicação localizados do mesmo documento em uma única execução do fluxo de trabalho.",
-        "localePlaceholder": "en",
-        "localeSummary": "Localidade {{locale}}",
-        "rule": "Quando uma entrada correspondente for publicada no Strapi"
-      },
       "stripe": {
         "addAction": "Adicionar automação do Stripe",
         "addAria": "Adicionar automação de fatura paga do Stripe",
@@ -5999,7 +5940,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6294,10 +6234,6 @@
       "title": "Slack",
       "uninstallDescription": "Isso removerá a integração com o Slack de todo o espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens ou menções no Slack. Essa ação não pode ser desfeita.",
       "uninstallTitle": "Desinstalar a integração com o Slack?"
-    },
-    "strapi": {
-      "description": "Automatize o trabalho quando entradas forem publicadas",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Peça ao administrador para instalar a integração com o Microsoft Teams",

@@ -9,6 +9,7 @@ import {
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
+import { resetManualGrantForm$ } from "../okou-page/settings/connectors.ts";
 
 /**
  * Connector slug extracted from `/connectors/:connectorSlug/connect` route params.
@@ -90,11 +91,17 @@ export const directedConnectCustomDialogKey$ = computed((get) => {
 });
 export const setManualGrantDialogKey$ = command(
   ({ set }, key: DirectedConnectManualGrantDialogKey | null) => {
+    if (key) {
+      set(resetManualGrantForm$, key.connectorSlug);
+    }
     set(internalManualGrantDialogKey$, key);
   },
 );
 export const setDirectedConnectModalKey$ = command(
   ({ set }, key: DirectedConnectModalKey | null) => {
+    if (key) {
+      set(resetManualGrantForm$, key.connectorSlug);
+    }
     set(internalDirectedConnectModalKey$, key);
   },
 );
