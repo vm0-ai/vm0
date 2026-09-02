@@ -29,7 +29,6 @@ import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
 } from "../user-permission-grants";
-import { workflowConnectorReadinessResponseSchema } from "../workflows";
 import { initClient } from "../trpc-contract";
 
 const AGENT_ID = "00000000-0000-4000-a000-000000000001";
@@ -218,19 +217,6 @@ describe("connector client response contracts", () => {
         updatedAt: "2026-07-29T00:00:00.000Z",
       }),
     ).toMatchObject({ connectorSlug: "github" });
-    expect(
-      workflowConnectorReadinessResponseSchema.parse({
-        connectors: [
-          {
-            connectorSlug: "github",
-            label: "GitHub",
-            icon: catalogItem.icon,
-            reason: "Connect GitHub",
-            status: "not-connected",
-          },
-        ],
-      }),
-    ).toMatchObject({ connectors: [{ connectorSlug: "github" }] });
     expect(
       connectorChangedPayloadSchema.parse({ connectorSlug: "github" }),
     ).toStrictEqual({ connectorSlug: "github" });

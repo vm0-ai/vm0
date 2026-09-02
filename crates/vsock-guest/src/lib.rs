@@ -30,6 +30,7 @@ mod threading;
 mod user;
 mod wait;
 mod worker_ownership;
+mod workspace_drive_mount;
 mod writer;
 
 pub use connection::handle_connection_with_test_dns_readiness_program;
@@ -37,6 +38,7 @@ pub use connection::handle_connection_with_test_guest_agent_program;
 pub use connection::handle_connection_with_test_guest_state_restore_program;
 pub use connection::handle_connection_with_test_memory_snapshot_path;
 pub use connection::handle_connection_with_test_storage_manifest_program;
+pub use connection::handle_connection_with_test_workspace_drive_mount_program;
 pub use connection::{
     connect_unix, connect_vsock, handle_connection,
     handle_connection_with_test_process_containment,

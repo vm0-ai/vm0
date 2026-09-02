@@ -11,12 +11,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
   connectTelegramAccount$,
-  telegramConnectLinkStatus$,
-} from "../../signals/okou-page/telegram-connect-signals.ts";
-import {
   telegramAutoOpenRef$,
+  telegramConnectLinkStatus$,
   telegramDomainStatusPollerRef$,
-} from "../../signals/view-component-state.ts";
+} from "../../signals/okou-page/telegram-connect-signals.ts";
 import {
   parseTelegramConnectParams,
   type TelegramConnectParams,

@@ -38,6 +38,8 @@ pub struct MockSandbox {
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    workspace_drive_mount_results: Mutex<VecDeque<Result<ExecResult>>>,
+    workspace_drive_mount_calls: Mutex<u32>,
     session_history_identity_verify_calls: Mutex<Vec<SessionHistoryIdentityVerifyCall>>,
     codex_session_cleanup_calls: Mutex<Vec<CodexSessionCleanupCall>>,
     guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
@@ -85,6 +87,8 @@ impl MockSandbox {
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
             storage_manifest_calls: Mutex::new(Vec::new()),
+            workspace_drive_mount_results: Mutex::new(VecDeque::new()),
+            workspace_drive_mount_calls: Mutex::new(0),
             session_history_identity_verify_calls: Mutex::new(Vec::new()),
             codex_session_cleanup_calls: Mutex::new(Vec::new()),
             guest_state_restore_calls: Mutex::new(Vec::new()),
@@ -241,6 +245,18 @@ impl MockSandbox {
     /// Return this sandbox's recorded fixed storage-manifest calls.
     pub fn storage_manifest_calls(&self) -> Vec<StorageManifestCall> {
         self.storage_manifest_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a fixed workspace-drive mount result. Results are consumed in FIFO order.
+    pub fn push_workspace_drive_mount_result(&self, result: Result<ExecResult>) {
+        self.workspace_drive_mount_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Return the total fixed workspace-drive mount calls.
+    pub fn workspace_drive_mount_calls(&self) -> u32 {
+        *self.workspace_drive_mount_calls.lock_ignoring_poison()
     }
 
     /// Return this sandbox's recorded fixed live identity verifier calls.
@@ -826,6 +842,36 @@ impl Sandbox for MockSandbox {
             .pop_front()
             .unwrap_or_else(|| Ok(default_exec_result()))?;
         Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
+    }
+
+    async fn mount_workspace_drive(&self) -> Result<ExecResult> {
+        *self.workspace_drive_mount_calls.lock_ignoring_poison() += 1;
+        if let Some(overrides) = &self.overrides {
+            *overrides
+                .exec
+                .workspace_drive_mount_calls
+                .lock_ignoring_poison() += 1;
+            overrides
+                .exec
+                .workspace_drive_mount_call_notify
+                .notify_waiters();
+            wait_lifecycle_gate(&overrides.exec.workspace_drive_mount_lifecycle_gate).await;
+        }
+        let local_result = self
+            .workspace_drive_mount_results
+            .lock_ignoring_poison()
+            .pop_front();
+        let shared_result = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .exec
+                .workspace_drive_mount_results
+                .lock_ignoring_poison()
+                .pop_front()
+        });
+        let result = local_result
+            .or(shared_result)
+            .unwrap_or_else(|| Ok(default_exec_result()))?;
+        Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_64_KIB))
     }
 
     async fn verify_session_history_identity(

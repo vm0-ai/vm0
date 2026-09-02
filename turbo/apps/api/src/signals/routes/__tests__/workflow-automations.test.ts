@@ -3401,6 +3401,59 @@ describe("okou workflow automations", () => {
     });
   });
 
+  it("repairs a missing exact Calendar watch in the renewal pass", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const initialWatch = configureGoogleCalendarWatchMock();
+    configureGoogleCalendarStopMock();
+    await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    await connectorsApi.disconnectSingleBuiltinConnectorAccount(
+      scenario.actor,
+      "google-calendar",
+    );
+
+    server.use(
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        () => {
+          return HttpResponse.json(
+            { error: "registration unavailable" },
+            { status: 500 },
+          );
+        },
+      ),
+    );
+    await connectGoogleCalendar(scenario);
+    expect(initialWatch.watchCalls).toBe(1);
+
+    const repairedWatch = configureGoogleCalendarWatchMock();
+    const reconciled = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+
+    expect(reconciled.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 0,
+    });
+    expect(repairedWatch.watchCalls).toBe(1);
+    expect(repairedWatch.baselineCalls).toBe(1);
+  });
+
   it("retains a replaced Calendar channel until its stop succeeds", async () => {
     mockEnv("CRON_SECRET", CRON_SECRET);
     const startedAt = Date.parse("2026-08-05T08:00:00.000Z");

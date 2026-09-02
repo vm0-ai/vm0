@@ -11,7 +11,7 @@ use vsock_proto::{
     MSG_GUEST_DNS_READINESS, MSG_GUEST_STATE_RESTORE, MSG_GUEST_STORAGE_MANIFEST,
     MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES,
+    MSG_WORKSPACE_DRIVE_MOUNT, MSG_WRITE_FILE, MSG_WRITE_FILES, MSG_WRITE_PRIVATE_FILES,
 };
 
 use crate::agent_command::GuestAgentProgram;
@@ -38,6 +38,9 @@ use crate::log::log;
 use crate::memory_snapshot::MeminfoSource;
 use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
+use crate::workspace_drive_mount::{
+    WorkspaceDriveMountProgram, WorkspaceDriveMountSubmitError, WorkspaceDriveMountWorker,
+};
 use crate::writer::GuestWriter;
 
 // Vsock constants (only used on Linux)
@@ -143,6 +146,7 @@ fn is_real_host_work_message(msg_type: u8) -> bool {
             | MSG_GUEST_DNS_READINESS
             | MSG_GUEST_STATE_RESTORE
             | MSG_GUEST_STORAGE_MANIFEST
+            | MSG_WORKSPACE_DRIVE_MOUNT
             | MSG_QUIESCE_OPERATIONS
             | MSG_RESUME_OPERATIONS
             | MSG_MEMORY_SNAPSHOT
@@ -309,6 +313,7 @@ struct ConnectionDispatcher {
     guest_dns_readiness_worker: GuestDnsReadinessWorker,
     guest_state_restore_worker: GuestStateRestoreWorker,
     guest_storage_manifest_worker: GuestStorageManifestWorker,
+    workspace_drive_mount_worker: WorkspaceDriveMountWorker,
     exec_operation_registry: ExecOperationRegistry,
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
@@ -323,6 +328,7 @@ struct ConnectionPrograms {
     guest_dns_readiness: GuestDnsReadinessProgram,
     guest_state_restore: GuestStateRestoreProgram,
     guest_storage_manifest: GuestStorageManifestProgram,
+    workspace_drive_mount: WorkspaceDriveMountProgram,
 }
 
 impl ConnectionPrograms {
@@ -332,6 +338,7 @@ impl ConnectionPrograms {
             guest_dns_readiness: GuestDnsReadinessProgram::production(),
             guest_state_restore: GuestStateRestoreProgram::production(),
             guest_storage_manifest: GuestStorageManifestProgram::production(),
+            workspace_drive_mount: WorkspaceDriveMountProgram::production(),
         }
     }
 }
@@ -365,6 +372,12 @@ impl ConnectionDispatcher {
             programs.guest_state_restore,
             exec_drain_deadline,
         );
+        let workspace_drive_mount_worker = WorkspaceDriveMountWorker::start(
+            writer.clone(),
+            Arc::clone(&connection_cancel),
+            programs.workspace_drive_mount,
+            exec_drain_deadline,
+        );
         Ok(Self {
             writer,
             connection_cancel,
@@ -372,6 +385,7 @@ impl ConnectionDispatcher {
             guest_dns_readiness_worker,
             guest_state_restore_worker,
             guest_storage_manifest_worker,
+            workspace_drive_mount_worker,
             exec_operation_registry: ExecOperationRegistry::default(),
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
@@ -393,6 +407,7 @@ impl ConnectionDispatcher {
             MSG_GUEST_DNS_READINESS => self.handle_guest_dns_readiness(msg)?,
             MSG_GUEST_STATE_RESTORE => self.handle_guest_state_restore(msg)?,
             MSG_GUEST_STORAGE_MANIFEST => self.handle_guest_storage_manifest(msg)?,
+            MSG_WORKSPACE_DRIVE_MOUNT => self.handle_workspace_drive_mount(msg)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
             MSG_MEMORY_SNAPSHOT => self.handle_memory_snapshot(msg)?,
@@ -711,6 +726,52 @@ impl ConnectionDispatcher {
         }
     }
 
+    fn handle_workspace_drive_mount(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "workspace drive mount", &self.writer)? {
+            return Ok(());
+        }
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        if let Err(error) = vsock_proto::decode_workspace_drive_mount_request(msg.payload) {
+            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+            return Ok(());
+        }
+        let Some(admission) = self.workspace_drive_mount_worker.try_admit() else {
+            send_error_response(
+                msg.seq,
+                "workspace drive mount operation already active",
+                &self.writer,
+            )?;
+            return Ok(());
+        };
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        match self
+            .workspace_drive_mount_worker
+            .submit(msg.seq, operation_guard, admission)
+        {
+            Ok(()) => Ok(()),
+            Err(WorkspaceDriveMountSubmitError::Busy) => send_error_response(
+                msg.seq,
+                "workspace drive mount operation already active",
+                &self.writer,
+            ),
+            Err(WorkspaceDriveMountSubmitError::Disconnected) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "workspace drive mount worker stopped",
+            )),
+            Err(WorkspaceDriveMountSubmitError::Start(error)) => send_error_response(
+                msg.seq,
+                &format!("failed to start workspace drive mount worker: {error}"),
+                &self.writer,
+            ),
+        }
+    }
+
     fn handle_quiesce_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         handle_quiesce_operations(
             msg.seq,
@@ -885,6 +946,26 @@ pub fn handle_connection_with_test_storage_manifest_program(
         EXEC_OUTPUT_DRAIN_DEADLINE,
         ConnectionPrograms {
             guest_storage_manifest: GuestStorageManifestProgram::for_test(program),
+            ..ConnectionPrograms::production()
+        },
+        MeminfoSource::production(),
+    )
+}
+
+/// Handles a host-side test connection with a test workspace mount executable
+/// and child timeout.
+#[doc(hidden)]
+pub fn handle_connection_with_test_workspace_drive_mount_program(
+    stream: UnixStream,
+    program: std::path::PathBuf,
+    timeout_ms: u32,
+) -> io::Result<()> {
+    handle_connection_with_mode_and_program(
+        stream,
+        ProcessContainmentMode::TestNoop,
+        EXEC_OUTPUT_DRAIN_DEADLINE,
+        ConnectionPrograms {
+            workspace_drive_mount: WorkspaceDriveMountProgram::for_test(program, timeout_ms),
             ..ConnectionPrograms::production()
         },
         MeminfoSource::production(),

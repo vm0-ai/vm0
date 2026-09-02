@@ -45,11 +45,45 @@ export type IntroVideoWizardError =
   | "send-failed"
   | "upload-failed";
 
-export interface IntroVideoSource {
-  readonly blob: Blob;
+interface IntroVideoSourceFacts {
   readonly contentType: string;
   readonly durationSeconds: number | null;
   readonly kind: IntroVideoSourceKind;
+  readonly name: string;
+  readonly previewUrl: string | null;
+  readonly size: number;
+}
+
+/**
+ * A source this browser still holds the bytes for. It is kept in the local
+ * draft store so a reload can restore it, and uploaded when the wizard submits.
+ */
+interface LocalIntroVideoSource extends IntroVideoSourceFacts {
+  readonly blob: Blob;
+  readonly origin: "local";
+}
+
+/**
+ * A source that was already stored before the wizard saw it. The desktop
+ * recorder uploads the recording and its click track and only then hands the
+ * browser a link, so there are no local bytes to persist, to upload again at
+ * submit, or to hand back when sending fails.
+ */
+interface UploadedIntroVideoSource extends IntroVideoSourceFacts {
+  readonly origin: "uploaded";
+}
+
+export type IntroVideoSource = LocalIntroVideoSource | UploadedIntroVideoSource;
+
+/**
+ * Metadata for an already-uploaded recording the wizard adopts as its source.
+ *
+ * `previewUrl` is resolved by the caller against the owning file API, so it is
+ * null when that account cannot read the artifact.
+ */
+interface AdoptedIntroVideoRecording {
+  readonly attachmentIds: readonly string[];
+  readonly contentType: string;
   readonly name: string;
   readonly previewUrl: string | null;
   readonly size: number;
@@ -60,7 +94,7 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
-export type IntroVideoVisualBalance = "avatar-led" | "b-roll-led" | "balanced";
+export type IntroVideoPlacement = "left" | "overlay" | "right";
 
 interface RecordingRuntime {
   audioContext: AudioContext | null;
@@ -138,19 +172,20 @@ function previewUrlForDraft(draft: IntroVideoDraftRecord): string | null {
   return draft.kind === "document" ? null : URL.createObjectURL(draft.blob);
 }
 
-function sourceFromDraft(draft: IntroVideoDraftRecord): IntroVideoSource {
+function sourceFromDraft(draft: IntroVideoDraftRecord): LocalIntroVideoSource {
   return {
     blob: draft.blob,
     contentType: draft.contentType,
     durationSeconds: draft.durationSeconds,
     kind: draft.kind,
     name: draft.name,
+    origin: "local",
     previewUrl: previewUrlForDraft(draft),
     size: draft.blob.size,
   };
 }
 
-function draftFromSource(source: IntroVideoSource): IntroVideoDraftRecord {
+function draftFromSource(source: LocalIntroVideoSource): IntroVideoDraftRecord {
   return {
     blob: source.blob,
     contentType: source.contentType,
@@ -162,7 +197,9 @@ function draftFromSource(source: IntroVideoSource): IntroVideoDraftRecord {
 }
 
 function releasePreviewUrl(source: IntroVideoSource | null): void {
-  if (source?.previewUrl) {
+  // Only a local source owns its preview URL. An uploaded source previews from
+  // a signed address the file API handed out, which is not ours to revoke.
+  if (source?.origin === "local" && source.previewUrl) {
     URL.revokeObjectURL(source.previewUrl);
   }
 }
@@ -269,7 +306,7 @@ async function recordingDisplayStream(
   return displayStream;
 }
 
-function sourceFile(source: IntroVideoSource): File {
+function sourceFile(source: LocalIntroVideoSource): File {
   return new File([source.blob], source.name, {
     type: source.contentType,
     lastModified: now(),
@@ -302,17 +339,17 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
 function buildIntroVideoPrompt(args: {
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
+  readonly placement: IntroVideoPlacement;
   readonly source: IntroVideoSource;
-  readonly visualBalance: IntroVideoVisualBalance;
   readonly voice: IntroVideoVoiceSelection | null;
 }): string {
   const avatar = args.avatar
     ? `${args.avatar.name} (${args.avatar.id})`
     : "No avatar";
-  const visualBalanceDescription: Record<IntroVideoVisualBalance, string> = {
-    "avatar-led": "Avatar-led (presenter on screen most of the time)",
-    "b-roll-led": "B-roll-led (focus on slides and source visuals)",
-    balanced: "Balanced mix (roughly equal time for presenter and visuals)",
+  const placementDescription: Record<IntroVideoPlacement, string> = {
+    left: "Presenter on the left, slide on the right",
+    overlay: "Presenter over the slide, anchored to the bottom right",
+    right: "Presenter on the right, slide on the left",
   };
   const direction = args.instructions.trim() || DEFAULT_INSTRUCTIONS;
   return [
@@ -330,7 +367,12 @@ function buildIntroVideoPrompt(args: {
     ...(args.avatar
       ? [
           "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
-          `- Visual balance: ${visualBalanceDescription[args.visualBalance]}`,
+          ...(args.source.kind === "document"
+            ? [
+                `- Presenter placement: ${placementDescription[args.placement]}`,
+                "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
+              ]
+            : []),
         ]
       : []),
     "",
@@ -340,39 +382,48 @@ function buildIntroVideoPrompt(args: {
 }
 
 interface IntroVideoInternalState {
+  /**
+   * Uploads the wizard adopted from a desktop handoff, which are already
+   * attached to the composer. Remembered so replacing the source can take them
+   * back off the draft instead of sending a stale recording beside the new one.
+   */
+  readonly adoptedAttachmentIds$: State<readonly string[]>;
   readonly avatar$: State<AvatarVideoAvatar | null>;
   readonly busy$: State<boolean>;
   readonly countdown$: State<number>;
+  readonly draftDiscarded$: State<boolean>;
   readonly error$: State<IntroVideoWizardError | null>;
   readonly instructions$: State<string>;
   readonly microphone$: State<boolean>;
   readonly open$: State<boolean>;
+  readonly placement$: State<IntroVideoPlacement>;
   readonly recordingSeconds$: State<number>;
   readonly source$: State<IntroVideoSource | null>;
   readonly sourcePersisted$: State<boolean>;
   readonly sourceUploaded$: State<boolean>;
   readonly step$: State<IntroVideoWizardStep>;
   readonly systemAudio$: State<boolean>;
-  readonly visualBalance$: State<IntroVideoVisualBalance>;
   readonly voice$: State<IntroVideoVoiceSelection | null>;
 }
 
 function createIntroVideoInternalState(): IntroVideoInternalState {
   return {
+    adoptedAttachmentIds$: state<readonly string[]>([]),
     avatar$: state<AvatarVideoAvatar | null>(null),
     busy$: state(false),
     countdown$: state(3),
+    draftDiscarded$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
     instructions$: state(DEFAULT_INSTRUCTIONS),
     microphone$: state(false),
     open$: state(false),
+    placement$: state<IntroVideoPlacement>("left"),
     recordingSeconds$: state(0),
     source$: state<IntroVideoSource | null>(null),
     sourcePersisted$: state(false),
     sourceUploaded$: state(false),
     step$: state<IntroVideoWizardStep>("source"),
     systemAudio$: state(true),
-    visualBalance$: state<IntroVideoVisualBalance>("balanced"),
     voice$: state<IntroVideoVoiceSelection | null>(null),
   };
 }
@@ -392,12 +443,12 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
     instructions$: exposeState(internal.instructions$),
     microphone$: exposeState(internal.microphone$),
     open$: exposeState(internal.open$),
+    placement$: exposeState(internal.placement$),
     recordingSeconds$: exposeState(internal.recordingSeconds$),
     source$: exposeState(internal.source$),
     sourcePersisted$: exposeState(internal.sourcePersisted$),
     step$: exposeState(internal.step$),
     systemAudio$: exposeState(internal.systemAudio$),
-    visualBalance$: exposeState(internal.visualBalance$),
     voice$: exposeState(internal.voice$),
   };
 }
@@ -405,51 +456,163 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
 function sourceFromFile(
   file: File,
   kind: Exclude<IntroVideoSourceKind, "recording">,
-): IntroVideoSource {
+): LocalIntroVideoSource {
   return {
     blob: file,
     contentType: file.type || "application/octet-stream",
     durationSeconds: null,
     kind,
     name: file.name,
+    origin: "local",
     previewUrl: kind === "video" ? URL.createObjectURL(file) : null,
     size: file.size,
   };
+}
+
+/**
+ * Return the wizard to a closed, empty source step.
+ *
+ * Closing the dialog and finishing a submission both discard the whole draft,
+ * so the field list lives here rather than being repeated by each caller and
+ * drifting apart as the wizard gains state.
+ */
+function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
+  return command(({ set }): void => {
+    set(internal.source$, null);
+    set(internal.sourcePersisted$, false);
+    set(internal.sourceUploaded$, false);
+    set(internal.avatar$, null);
+    set(internal.voice$, null);
+    set(internal.placement$, "left");
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.step$, "source");
+    set(internal.busy$, false);
+    set(internal.open$, false);
+  });
+}
+
+/**
+ * Takes the adopted uploads back off the composer draft.
+ *
+ * The handoff attaches the recording and its click track so the wizard has
+ * nothing left to upload. Once the user picks a different source those files
+ * are no longer part of the request, and leaving them attached would send the
+ * agent two competing recordings.
+ */
+function createDiscardAdoptedAttachmentsCommand(
+  internal: IntroVideoInternalState,
+) {
+  return command(
+    async (
+      { get, set },
+      composer: ComposerSignals,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const adopted = get(internal.adoptedAttachmentIds$);
+      if (adopted.length === 0) {
+        return;
+      }
+      set(internal.adoptedAttachmentIds$, []);
+      const resolved = await Promise.all(
+        get(composer.draft.attachments$).map(async (attachment) => {
+          return { attachment, info: await get(attachment.fileInfo$) };
+        }),
+      );
+      signal.throwIfAborted();
+      for (const { attachment, info } of resolved) {
+        if (info && adopted.includes(info.id)) {
+          set(composer.draft.removeAttachment$, attachment);
+        }
+      }
+    },
+  );
+}
+
+/**
+ * Open the wizard on a clean step.
+ *
+ * Extracted so createSourceCommands stays inside oxlint's function-length
+ * limit as the wizard gains sources; the body is unchanged.
+ */
+function createOpenWizardCommand(
+  internal: IntroVideoInternalState,
+  runtime: RecordingRuntime,
+  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    runtime.generation += 1;
+    set(resetRecordingAttempt$);
+    releaseRecordingRuntime(runtime, true);
+    set(internal.avatar$, null);
+    set(internal.busy$, false);
+    set(internal.countdown$, 3);
+    set(internal.error$, null);
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.microphone$, false);
+    set(internal.recordingSeconds$, 0);
+    set(internal.sourceUploaded$, false);
+    set(internal.systemAudio$, true);
+    set(internal.placement$, "left");
+    set(internal.voice$, null);
+    const source = get(internal.source$);
+    set(internal.step$, source ? "source-review" : "source");
+    // Navigating away only hides the wizard; it deliberately does not run
+    // closeWizard$. Dismissing the dialog is "discard this", while leaving the
+    // page is "come back to it", so the source survives a route change and the
+    // user keeps an upload they never asked to throw away.
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(internal.open$, false);
+      },
+      { once: true },
+    );
+    set(internal.open$, true);
+    if (source) {
+      return;
+    }
+    if (get(internal.draftDiscarded$)) {
+      // The user closed the wizard, so the stored draft is dead. Clearing it
+      // here keeps closeWizard$ synchronous for the dialog callback.
+      set(internal.draftDiscarded$, false);
+      await settle(deleteIntroVideoDraft(), signal);
+      return;
+    }
+    const restored = await settle(readIntroVideoDraft(), signal);
+    if (!restored.ok || !restored.value) {
+      return;
+    }
+    set(internal.source$, sourceFromDraft(restored.value));
+    set(internal.sourcePersisted$, true);
+    set(internal.step$, "source-review");
+  });
 }
 
 function createSourceCommands(
   internal: IntroVideoInternalState,
   runtime: RecordingRuntime,
   resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+  resetWizardDraft$: Command<void, []>,
 ) {
-  const openWizard$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      set(internal.open$, true);
-      set(internal.error$, null);
-      if (get(internal.source$)) {
-        return;
-      }
-      const restored = await settle(readIntroVideoDraft(), signal);
-      if (!restored.ok || !restored.value) {
-        return;
-      }
-      set(internal.source$, sourceFromDraft(restored.value));
-      set(internal.sourcePersisted$, true);
-      set(internal.step$, "source-review");
-    },
+  const openWizard$ = createOpenWizardCommand(
+    internal,
+    runtime,
+    resetRecordingAttempt$,
   );
+  // Closing discards the wizard: the next open starts from an empty source
+  // step. openWizard$ drops the stored draft rather than resuming it, so this
+  // stays synchronous and the dialog callback needs no signal.
   const closeWizard$ = command(({ get, set }) => {
     runtime.generation += 1;
     set(resetRecordingAttempt$);
     releaseRecordingRuntime(runtime, true);
-    set(internal.busy$, false);
+    releasePreviewUrl(get(internal.source$));
+    set(resetWizardDraft$);
     set(internal.countdown$, 3);
     set(internal.recordingSeconds$, 0);
-    const step = get(internal.step$);
-    if (step === "countdown" || step === "recording") {
-      set(internal.step$, "record-setup");
-    }
-    set(internal.open$, false);
+    set(internal.error$, null);
+    set(internal.draftDiscarded$, true);
   });
   const setStep$ = command(
     ({ get, set }, nextStep: IntroVideoWizardStep): void => {
@@ -460,6 +623,28 @@ function createSourceCommands(
       }
       set(internal.error$, null);
       set(internal.step$, nextStep);
+    },
+  );
+  const adoptUploadedRecording$ = command(
+    ({ get, set }, recording: AdoptedIntroVideoRecording): void => {
+      releasePreviewUrl(get(internal.source$));
+      set(internal.source$, {
+        contentType: recording.contentType,
+        durationSeconds: null,
+        kind: "recording",
+        name: recording.name,
+        origin: "uploaded",
+        previewUrl: recording.previewUrl,
+        size: recording.size,
+      });
+      set(internal.adoptedAttachmentIds$, recording.attachmentIds);
+      // The bytes are already stored under this account, so submit has nothing
+      // to upload and the local draft store has nothing worth holding.
+      set(internal.sourceUploaded$, true);
+      set(internal.sourcePersisted$, false);
+      set(internal.error$, null);
+      set(internal.step$, "source-review");
+      set(internal.open$, true);
     },
   );
   const setSourceFile$ = command(
@@ -486,7 +671,13 @@ function createSourceCommands(
       set(internal.sourcePersisted$, persisted.ok);
     },
   );
-  return { closeWizard$, openWizard$, setSourceFile$, setStep$ };
+  return {
+    adoptUploadedRecording$,
+    closeWizard$,
+    openWizard$,
+    setSourceFile$,
+    setStep$,
+  };
 }
 
 function createSelectionCommands(internal: IntroVideoInternalState) {
@@ -509,17 +700,17 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
   const setInstructions$ = command(({ set }, instructions: string): void => {
     set(internal.instructions$, instructions);
   });
-  const setVisualBalance$ = command(
-    ({ set }, visualBalance: IntroVideoVisualBalance): void => {
-      set(internal.visualBalance$, visualBalance);
+  const setPlacement$ = command(
+    ({ set }, placement: IntroVideoPlacement): void => {
+      set(internal.placement$, placement);
     },
   );
   return {
     setAvatar$,
     setInstructions$,
     setMicrophone$,
+    setPlacement$,
     setSystemAudio$,
-    setVisualBalance$,
     setVoice$,
   };
 }
@@ -909,7 +1100,9 @@ function createRecordingCommands(
 function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   return command(({ get }): void => {
     const source = get(internal.source$);
-    if (!source) {
+    // An uploaded source is already safe on the server, so there is nothing
+    // local to hand back when a send fails.
+    if (source?.origin !== "local") {
       return;
     }
     const url = URL.createObjectURL(source.blob);
@@ -921,7 +1114,10 @@ function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   });
 }
 
-function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
+function createClearCompletedDraftCommand(
+  internal: IntroVideoInternalState,
+  resetWizardDraft$: Command<void, []>,
+) {
   return command(
     async (
       { set },
@@ -931,16 +1127,11 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
       // A stale local draft is harmless if cleanup fails after the server send.
       await settle(deleteIntroVideoDraft(), signal);
       releasePreviewUrl(source);
-      set(internal.source$, null);
-      set(internal.sourcePersisted$, false);
-      set(internal.sourceUploaded$, false);
-      set(internal.avatar$, null);
-      set(internal.voice$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.visualBalance$, "balanced");
-      set(internal.step$, "source");
-      set(internal.busy$, false);
-      set(internal.open$, false);
+      set(resetWizardDraft$);
+      // The send consumed the adopted handoff uploads, so the wizard stops
+      // tracking them. Closing deliberately does not: those files stay on the
+      // composer draft and only discardAdoptedAttachments$ can take them off.
+      set(internal.adoptedAttachmentIds$, []);
     },
   );
 }
@@ -948,6 +1139,10 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
 function createSubmissionCommands(
   internal: IntroVideoInternalState,
   downloadSource$: Command<void, []>,
+  resetWizardDraft$: Command<void, []>,
+  discardAdoptedAttachments$: ReturnType<
+    typeof createDiscardAdoptedAttachmentsCommand
+  >,
 ) {
   const uploadSourceIfNeeded$ = command(
     async (
@@ -956,7 +1151,7 @@ function createSubmissionCommands(
       source: IntroVideoSource,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      if (get(internal.sourceUploaded$)) {
+      if (source.origin === "uploaded" || get(internal.sourceUploaded$)) {
         return true;
       }
       const before = new Set(get(composer.draft.attachments$));
@@ -975,7 +1170,10 @@ function createSubmissionCommands(
       return true;
     },
   );
-  const clearCompletedDraft$ = createClearCompletedDraftCommand(internal);
+  const clearCompletedDraft$ = createClearCompletedDraftCommand(
+    internal,
+    resetWizardDraft$,
+  );
   const submitComposer$ = command(
     async (
       { get, set },
@@ -1026,6 +1224,11 @@ function createSubmissionCommands(
       }
       set(internal.busy$, true);
       set(internal.error$, null);
+      if (source.origin === "local") {
+        // The user replaced an adopted handoff source. Its uploads are still on
+        // the draft and are no longer part of this request.
+        await set(discardAdoptedAttachments$, composer, signal);
+      }
       if (!(await set(uploadSourceIfNeeded$, composer, source, signal))) {
         return false;
       }
@@ -1035,8 +1238,8 @@ function createSubmissionCommands(
         buildIntroVideoPrompt({
           avatar: get(internal.avatar$),
           instructions: get(internal.instructions$),
+          placement: get(internal.placement$),
           source,
-          visualBalance: get(internal.visualBalance$),
           voice: get(internal.voice$),
         }),
       );
@@ -1063,10 +1266,12 @@ function createIntroVideoWizardSignals() {
   const runtime = createRecordingRuntime();
   const resetRecordingAttempt$ = resetSignal();
   const selectors = createIntroVideoSelectors(internal);
+  const resetWizardDraft$ = createResetWizardDraftCommand(internal);
   const sourceCommands = createSourceCommands(
     internal,
     runtime,
     resetRecordingAttempt$,
+    resetWizardDraft$,
   );
   const selectionCommands = createSelectionCommands(internal);
   const recordingCommands = createRecordingCommands(
@@ -1075,9 +1280,13 @@ function createIntroVideoWizardSignals() {
     resetRecordingAttempt$,
   );
   const downloadSource$ = createDownloadSourceCommand(internal);
+  const discardAdoptedAttachments$ =
+    createDiscardAdoptedAttachmentsCommand(internal);
   const submissionCommands = createSubmissionCommands(
     internal,
     downloadSource$,
+    resetWizardDraft$,
+    discardAdoptedAttachments$,
   );
   return {
     ...selectors,

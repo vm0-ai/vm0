@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.608.3](https://github.com/vm0-ai/vm0/compare/core-v8.608.2...core-v8.608.3) (2026-09-02)
+
+
+### Refactoring
+
+* remove concurrency member usage feature switch ([#30934](https://github.com/vm0-ai/vm0/issues/30934)) ([e211986](https://github.com/vm0-ai/vm0/commit/e2119869809f7b50614d1367d2fbdc7c1517e4f6))
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.3
+
+## [8.608.2](https://github.com/vm0-ai/vm0/compare/core-v8.608.1...core-v8.608.2) (2026-09-02)
+
+
+### Refactoring
+
+* remove emoji rail and conversation locator feature switches ([#30981](https://github.com/vm0-ai/vm0/issues/30981)) ([fc04a10](https://github.com/vm0-ai/vm0/commit/fc04a10dd9147a16cc883414704bc3e11458627d))
+* remove Strapi integration feature switch ([#30965](https://github.com/vm0-ai/vm0/issues/30965)) ([603bbb7](https://github.com/vm0-ai/vm0/commit/603bbb7dafa7caa3619261d9b81047f96c763e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.2
+
 ## [8.608.1](https://github.com/vm0-ai/vm0/compare/core-v8.608.0...core-v8.608.1) (2026-09-02)
 
 

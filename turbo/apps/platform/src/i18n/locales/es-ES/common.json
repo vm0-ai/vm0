@@ -1983,6 +1983,8 @@
         "resetAndTryAgain": "Restablecer e intentar de nuevo",
         "resetsAt": "Se restablece {{time}}",
         "selectModel": "Cambiar de modelo",
+        "timeoutDescription": "Esta ejecución alcanzó su límite de tiempo. Continúa para seguir trabajando.",
+        "timeoutTitle": "Se alcanzó el límite de tiempo",
         "tryAgain": "Intentar de nuevo",
         "unavailableDescription": "Este modelo no es compatible con la cuenta de ChatGPT conectada. Cambia a otro modelo para continuar.",
         "unavailableTitle": "El modelo seleccionado no está disponible",
@@ -2024,10 +2026,10 @@
         "heading": "Elige un avatar",
         "help": "Elige un presentador o continúa sin avatar",
         "none": "Sin avatar",
-        "visualBalanceAvatarLed": "Centrado en el avatar — el narrador aparece en pantalla la mayor parte del tiempo",
-        "visualBalanceBalanced": "Mezcla equilibrada — el mismo tiempo para ambos",
-        "visualBalanceBRollLed": "Centrado en recursos visuales — prioridad para diapositivas e imágenes",
-        "visualBalanceHeading": "¿Qué equilibrio visual prefieres?"
+        "placementHeading": "¿Dónde debe situarse el presentador?",
+        "placementLeft": "A la izquierda — la diapositiva queda a la derecha",
+        "placementOverlay": "Sobre la diapositiva — la diapositiva ocupa el encuadre",
+        "placementRight": "A la derecha — la diapositiva queda a la izquierda"
       },
       "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
       "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
@@ -2090,6 +2092,7 @@
         "format": "Formato",
         "heading": "Tu fuente está lista",
         "help": "Comprueba el archivo antes de continuar",
+        "inAccount": "En tu cuenta",
         "inBrowser": "En este navegador",
         "inTab": "Hasta que cierres esta pestaña",
         "replace": "Sustituir fuente",
@@ -4697,12 +4700,6 @@
     },
     "redirecting": "Redirigiendo...",
     "status": {
-      "atLimit_one": "Solo puedes ejecutar {{limit}} tarea a la vez. Las nuevas ejecuciones esperarán en la cola hasta que termine una.",
-      "atLimit_many": "Solo puedes ejecutar {{limit}} tareas a la vez. Las nuevas ejecuciones esperarán en la cola hasta que termine una.",
-      "atLimit_other": "Solo puedes ejecutar {{limit}} tareas a la vez. Las nuevas ejecuciones esperarán en la cola hasta que termine una.",
-      "available_one": "{{count}} cupo disponible",
-      "available_many": "{{count}} cupos disponibles",
-      "available_other": "{{count}} cupos disponibles",
       "availableNow": "Disponible ahora",
       "inUse_one": "{{active}} de {{limit}} cupo en uso",
       "inUse_many": "{{active}} de {{limit}} cupos en uso",
@@ -5154,7 +5151,6 @@
           "upstreamModel": "Modelo de origen"
         },
         "capture": {
-          "description": "Captura los nombres de cabeceras HTTP, los valores de cabecera seguros seleccionados y los cuerpos en los registros de red para la depuración.",
           "disabled": "Desactivado",
           "enabled_one": "Activado para la próxima {{count}} ejecución",
           "enabled_many": "Activado para las próximas {{count}} ejecuciones",
@@ -5178,10 +5174,8 @@
           "recovery": "recuperación",
           "title": "Diagnóstico de conexión en tiempo real",
           "unavailable": "no disponible"
-        },
-        "tab": "Depuración"
+        }
       },
-      "documentTitle": "Preferencias",
       "language": {
         "description": "Elige tu idioma preferido para la interfaz de {{brandName}}",
         "label": "Idioma",
@@ -5211,8 +5205,6 @@
         "retryMessage": "No se pudo cargar o actualizar la configuración de Morning Brief. Vuelve a intentarlo para continuar.",
         "title": "Resumen matutino"
       },
-      "pageDescription": "Gestiona la apariencia y las preferencias de ejecución de tus agentes",
-      "pageTitle": "Preferencias",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Pulsa ⌘/Ctrl+Enter para enviar, Enter para nueva línea",
@@ -5221,11 +5213,6 @@
         "enterDescription": "Pulsa Enter para enviar, Shift+Enter para nueva línea",
         "sectionTitle": "Tecla Enter",
         "title": "Enviar mensaje con"
-      },
-      "tabs": {
-        "appearance": "Apariencia",
-        "models": "Modelos personales",
-        "timezone": "Zona horaria"
       },
       "timezone": {
         "description": "Las horas que se muestran y se usan en las ejecuciones de automatización.",
@@ -6006,35 +5993,6 @@
       "noWorkflows": "Todavía no hay flujos de trabajo. Crea uno en el chat para continuar."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Conectar",
-          "enable": "Habilitar para el agente",
-          "reconnect": "Volver a conectar",
-          "reviewPermissions": "Revisar permisos"
-        },
-        "aria": "Preparación de los conectores",
-        "check": "Revisar conectores",
-        "checkAgain": "Revisar de nuevo",
-        "checking": "Comprobando...",
-        "description": "Consulta qué conectores integrados puede necesitar este flujo de trabajo y si están listos.",
-        "empty": "No se detectaron conectores necesarios",
-        "error": {
-          "inputTooLong": "Este flujo de trabajo es demasiado largo para comprobarlo. Mantén el nombre, la descripción y las instrucciones dentro de 100.000 caracteres.",
-          "retry": "No pudimos comprobar los conectores. Inténtalo de nuevo.",
-          "timeout": "La comprobación del conector se agotó. Inténtalo de nuevo."
-        },
-        "saveFirst": "Guarda tus cambios antes de revisar los conectores.",
-        "status": {
-          "connected": "Conectado",
-          "notConnected": "No conectado",
-          "notEnabled": "No activado para este agente",
-          "reconnect": "Se requiere reconexión",
-          "scopeMismatch": "Actualizar permisos",
-          "unavailable": "Actualmente no disponible"
-        },
-        "title": "Preparación de los conectores"
-      },
       "copy": {
         "agentFallback": "El agente",
         "copied": "Copiado a {{agent}}",

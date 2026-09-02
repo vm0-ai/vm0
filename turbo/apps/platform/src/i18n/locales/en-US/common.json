@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
+        "timeoutDescription": "This run reached its time limit. Continue to keep working.",
+        "timeoutTitle": "Time limit reached",
         "tryAgain": "Try again",
         "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
         "unavailableTitle": "Selected model isn't available",
@@ -1991,10 +1993,10 @@
         "heading": "Choose an avatar",
         "help": "Choose a presenter or continue without one",
         "none": "No avatar",
-        "visualBalanceAvatarLed": "Avatar-led — narrator on screen most of the time",
-        "visualBalanceBalanced": "Balanced mix — equal time for both",
-        "visualBalanceBRollLed": "B-roll-led — focus on slides and visuals",
-        "visualBalanceHeading": "How would you like the visual balance?"
+        "placementHeading": "Where should the presenter stand?",
+        "placementLeft": "Left — the slide sits to the right",
+        "placementOverlay": "Over the slide — the slide fills the frame",
+        "placementRight": "Right — the slide sits to the left"
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
@@ -2057,6 +2059,7 @@
         "format": "Format",
         "heading": "Your source is ready",
         "help": "Check the file before you continue",
+        "inAccount": "In your account",
         "inBrowser": "In this browser",
         "inTab": "Until this tab closes",
         "replace": "Replace source",
@@ -4636,10 +4639,6 @@
     },
     "redirecting": "Redirecting...",
     "status": {
-      "atLimit_one": "You can only run {{limit}} task at a time. New runs will wait in a queue until one finishes.",
-      "atLimit_other": "You can only run {{limit}} tasks at a time. New runs will wait in a queue until one finishes.",
-      "available_one": "{{count}} slot available",
-      "available_other": "{{count}} slots available",
       "availableNow": "Available now",
       "inUse_one": "{{active}} of {{limit}} slot in use",
       "inUse_other": "{{active}} of {{limit}} slots in use"
@@ -5088,7 +5087,6 @@
           "upstreamModel": "Upstream model"
         },
         "capture": {
-          "description": "Capture HTTP header names, selected safe header values, and bodies in network logs for debugging.",
           "disabled": "Disabled",
           "enabled_one": "Enabled for the next {{count}} run",
           "enabled_other": "Enabled for the next {{count}} runs",
@@ -5111,10 +5109,8 @@
           "recovery": "recovery",
           "title": "Realtime connection diagnostics",
           "unavailable": "unavailable"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferences",
       "language": {
         "description": "Choose your preferred language for the {{brandName}} interface",
         "label": "Language",
@@ -5144,8 +5140,6 @@
         "retryMessage": "Morning Brief settings could not be loaded or updated. Retry to continue.",
         "title": "Morning Brief"
       },
-      "pageDescription": "Manage your appearance and agent runtime preferences",
-      "pageTitle": "Preferences",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Press ⌘/Ctrl+Enter to send, Enter for new line",
@@ -5154,11 +5148,6 @@
         "enterDescription": "Press Enter to send, Shift+Enter for new line",
         "sectionTitle": "Enter",
         "title": "Send message with"
-      },
-      "tabs": {
-        "appearance": "Appearance",
-        "models": "Personal Models",
-        "timezone": "Time Zone"
       },
       "timezone": {
         "description": "Times shown to you and used for automation runs.",
@@ -5934,35 +5923,6 @@
       "noWorkflows": "No workflows yet. Create one in chat to continue."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connect",
-          "enable": "Enable for agent",
-          "reconnect": "Reconnect",
-          "reviewPermissions": "Review permissions"
-        },
-        "aria": "Connector readiness",
-        "check": "Check connectors",
-        "checkAgain": "Check again",
-        "checking": "Checking...",
-        "description": "See which built-in connectors this workflow may need and whether they're ready.",
-        "empty": "No required connectors detected",
-        "error": {
-          "inputTooLong": "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.",
-          "retry": "We couldn't check connectors. Try again.",
-          "timeout": "The connector check timed out. Try again."
-        },
-        "saveFirst": "Save your changes before checking connectors.",
-        "status": {
-          "connected": "Connected",
-          "notConnected": "Not connected",
-          "notEnabled": "Not enabled for this agent",
-          "reconnect": "Reconnect required",
-          "scopeMismatch": "Update permissions",
-          "unavailable": "Currently unavailable"
-        },
-        "title": "Connector readiness"
-      },
       "copy": {
         "agentFallback": "the agent",
         "copied": "Copied to {{agent}}",
