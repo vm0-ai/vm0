@@ -144,10 +144,21 @@ function renderVideo(
   try {
     const commandsPath = join(temporaryDirectory, "camera.commands");
     writeFileSync(commandsPath, createFfmpegCameraCommands(plan));
+    // The `null` stage between the crop and the scaler is load-bearing. When
+    // a command changes the crop's w or h, `crop` rewrites the size of its
+    // own output link, and `scale` decides whether to reconfigure by comparing
+    // each frame with the link it reads from. Wired directly, that link is the
+    // one `crop` just rewrote, so `scale` never sees a change; and because the
+    // first frames are full size it never built a scaler at all, so it hands
+    // the shrunken frames straight to the encoder, which was opened for the
+    // full size, reads past the end of their buffer and dies with SIGSEGV.
+    // `null` keeps its own link size, so `scale` sees every size change and
+    // rescales the frame. Reproduced on ffmpeg 6.1 and 7.0 (#31169).
     const filter = [
       `fps=${plan.source.frameRate.toString()}`,
       `sendcmd=f='${commandsPath}'`,
       `crop@camera=w=${plan.source.width.toString()}:h=${plan.source.height.toString()}:x=0:y=0:exact=1`,
+      "null",
       `scale=${plan.source.width.toString()}:${plan.source.height.toString()}:flags=lanczos`,
       "setsar=1",
     ].join(",");
