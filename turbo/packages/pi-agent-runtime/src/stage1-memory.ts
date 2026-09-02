@@ -6,7 +6,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { decode, encode } from "gpt-tokenizer/encoding/o200k_base";
 
-import { piAgentStream, resolvePiAgentModel } from "./model";
+import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 import { MemoryPiSession } from "./session-memory";
 import {
   PI_MEMORY_STAGE1_SYSTEM_PROMPT,
@@ -353,7 +353,7 @@ export function resolvePiMemoryStage1ContextWindow(
 }
 
 async function consumeAssistantMessage(
-  stream: ReturnType<typeof piAgentStream>,
+  stream: ReturnType<ReturnType<typeof piAgentStreamForConfig>>,
 ): Promise<AssistantMessage> {
   for await (const _event of stream) {
     // Stage 1 owns only the terminal structured response.
@@ -385,7 +385,7 @@ export async function runPiMemoryStage1Extraction(
     tools: [],
   };
   const message = await consumeAssistantMessage(
-    piAgentStream(model, context, {
+    piAgentStreamForConfig(args.model)(model, context, {
       apiKey: args.model.apiKey,
       reasoning: "low",
       samplingParams: {
