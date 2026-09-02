@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT } from "../runners";
+import { runFailureReasonSchema } from "../run-failure-reasons";
 import {
   STORAGE_MANIFEST_MAX_FILES,
   STORAGE_MANIFEST_MAX_PATH_BYTES,
@@ -262,6 +263,60 @@ describe("agent completion active input receipts", () => {
         webhookCompleteContract.complete.body.safeParse({
           ...baseBody,
           activeInputDeliveryIds,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe("agent completion failure reasons", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    exitCode: 1,
+  };
+
+  it("accepts exactly the public values and omission", () => {
+    expect(runFailureReasonSchema.options).toStrictEqual([
+      "session_history_limit",
+      "insufficient_credits",
+      "invalid_api_key",
+      "invalid_credentials",
+      "terms_acceptance_required",
+      "context_window_exceeded",
+      "output_token_limit",
+      "provider_rate_limited",
+      "provider_overloaded",
+      "provider_stream_timeout",
+      "provider_server_error",
+      "response_connection_lost",
+      "safety_policy_refusal",
+      "reconnect_required",
+      "unsupported_model",
+      "usage_limit",
+    ]);
+    for (const failureReason of runFailureReasonSchema.options) {
+      expect(
+        webhookCompleteContract.complete.body.parse({
+          ...baseBody,
+          failureReason,
+        }),
+      ).toMatchObject({ failureReason });
+    }
+    expect(
+      webhookCompleteContract.complete.body.safeParse(baseBody).success,
+    ).toBe(true);
+  });
+
+  it("rejects values outside the public enum", () => {
+    for (const failureReason of [
+      "ProviderOverloaded",
+      "provider-overloaded",
+      "unknown",
+    ]) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          failureReason,
         }).success,
       ).toBe(false);
     }

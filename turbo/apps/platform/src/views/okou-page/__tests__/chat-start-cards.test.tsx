@@ -87,140 +87,6 @@ function setupChatStartCards(introVideo = true): void {
   });
 }
 
-function restoreProperty(
-  target: object,
-  key: PropertyKey,
-  descriptor: PropertyDescriptor | undefined,
-): void {
-  if (descriptor) {
-    Object.defineProperty(target, key, descriptor);
-  } else {
-    Reflect.deleteProperty(target, key);
-  }
-}
-
-function installRecordingMocks(options?: {
-  readonly getUserMedia?: () => Promise<MediaStream>;
-}) {
-  const displayTrackStop = vi.fn<() => void>();
-  const displayTrack = Object.assign(new EventTarget(), {
-    stop: displayTrackStop,
-  }) as unknown as MediaStreamTrack;
-  const displayStream = {
-    getAudioTracks: () => {
-      return [];
-    },
-    getTracks: () => {
-      return [displayTrack];
-    },
-    getVideoTracks: () => {
-      return [displayTrack];
-    },
-  } as unknown as MediaStream;
-  const recorderStarted = context.mocks.deferred<void>();
-  const getUserMediaCalled = context.mocks.deferred<void>();
-  let displayRequestedAt = 0;
-  const getDisplayMedia = vi.fn<() => Promise<MediaStream>>(() => {
-    displayRequestedAt = performance.now();
-    return Promise.resolve(displayStream);
-  });
-  const openUserMedia =
-    options?.getUserMedia ??
-    (() => {
-      return Promise.resolve(displayStream);
-    });
-  const getUserMedia = vi.fn<() => Promise<MediaStream>>(async () => {
-    if (!getUserMediaCalled.settled()) {
-      getUserMediaCalled.resolve(undefined);
-    }
-    return await openUserMedia();
-  });
-  const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(
-    navigator,
-    "mediaDevices",
-  );
-  Object.defineProperty(navigator, "mediaDevices", {
-    configurable: true,
-    value: { getDisplayMedia, getUserMedia },
-  });
-
-  let startCount = 0;
-  let startElapsedMs = 0;
-  class TestMediaRecorder extends EventTarget {
-    static isTypeSupported(): boolean {
-      return true;
-    }
-
-    readonly mimeType = "video/webm";
-    state: RecordingState = "inactive";
-
-    start(): void {
-      this.state = "recording";
-      startCount += 1;
-      startElapsedMs = performance.now() - displayRequestedAt;
-      if (!recorderStarted.settled()) {
-        recorderStarted.resolve(undefined);
-      }
-    }
-
-    stop(): void {
-      this.state = "inactive";
-      this.dispatchEvent(new Event("stop"));
-    }
-  }
-
-  const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(
-    globalThis,
-    "MediaRecorder",
-  );
-  Object.defineProperty(globalThis, "MediaRecorder", {
-    configurable: true,
-    value: TestMediaRecorder,
-  });
-  const playSpy = vi
-    .spyOn(HTMLMediaElement.prototype, "play")
-    .mockResolvedValue();
-  const srcObjectDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLMediaElement.prototype,
-    "srcObject",
-  );
-  Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
-    configurable: true,
-    writable: true,
-    value: null,
-  });
-
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      playSpy.mockRestore();
-      restoreProperty(
-        HTMLMediaElement.prototype,
-        "srcObject",
-        srcObjectDescriptor,
-      );
-      restoreProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
-      restoreProperty(globalThis, "MediaRecorder", mediaRecorderDescriptor);
-    },
-    { once: true },
-  );
-
-  return {
-    displayTrack,
-    displayTrackStop,
-    getDisplayMedia,
-    getUserMedia,
-    getUserMediaCalled: getUserMediaCalled.promise,
-    recorderStarted: recorderStarted.promise,
-    startElapsedMs: () => {
-      return startElapsedMs;
-    },
-    startCount: () => {
-      return startCount;
-    },
-  };
-}
-
 describe("chat start cards", () => {
   it("draws three catalog entries and the intro video flow", async () => {
     setupChatStartCards();
@@ -356,13 +222,12 @@ describe("chat start cards", () => {
       new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
 
-    await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
+    // A deck the user just picked needs no second confirmation, so the wizard
+    // moves straight to the presenter instead of a source review page.
     await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Your source is ready")).toBeNull();
     expect(screen.queryByText("Skip avatar")).toBeNull();
     // The wizard offers a curated cutout set instead of the paged JoggAI
     // catalog, so it has no aspect-ratio or catalog filter toolbar.
@@ -500,10 +365,6 @@ describe("chat start cards", () => {
     );
 
     await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
-    await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
     // Without a presenter the deck fills the frame on its own, so the
@@ -566,10 +427,6 @@ describe("chat start cards", () => {
       fileInput,
       new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
-    await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
@@ -635,10 +492,6 @@ describe("chat start cards", () => {
       new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
     await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
-    await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
     click(await screen.findByLabelText("Select template Amara"));
@@ -681,10 +534,6 @@ describe("chat start cards", () => {
       new File(["deck"], "second.pdf", { type: "application/pdf" }),
     );
     await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", reopened));
-    await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
     // And the presenter came back cleared, not still set to Amara.
@@ -694,7 +543,7 @@ describe("chat start cards", () => {
     expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
   });
 
-  it("omits the presenter placement question for a video source", async () => {
+  it("drops the deck when the presenter step is left behind", async () => {
     const user = userEvent.setup({ delay: null });
     setupChatStartCards();
 
@@ -707,28 +556,75 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-recording-input=""]',
+      '[data-intro-video-document-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video recording input");
+      throw new Error("Expected intro video document input");
     }
     await user.upload(
       fileInput,
-      new File(["clip"], "demo.mp4", { type: "video/mp4" }),
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
-
-    await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
-    click(await screen.findByLabelText("Select template Amara"));
 
-    // Placement positions the presenter against a rendered deck page, so a
-    // video source asks nothing beyond the presenter itself.
-    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
+    click(buttonWithText("Back", dialog, false));
+
+    // A deck has no review page to step back to, so leaving the presenter is
+    // the user saying they picked the wrong file: it is thrown away and the
+    // later steps lock again.
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buttonWithText("Avatar", dialog, false)).toBeDisabled();
+    });
+    expect(buttonWithText("Voice", dialog, false)).toBeDisabled();
+    expect(screen.queryByText("launch.pdf")).toBeNull();
+  });
+
+  it("sends screen recording to the desktop app", async () => {
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    click(buttonWithText("Record your screen", dialog, false));
+
+    // The browser no longer records: the card explains the desktop handoff and
+    // hands out the installer instead of asking Chrome to share a surface.
+    await expect(
+      screen.findByText("Start a recording from the menu bar"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("Come back to this wizard automatically"),
+    ).toBeInTheDocument();
+    // The installer link only replaces the compatibility placeholder once the
+    // architecture check settles.
+    const download = await waitFor(() => {
+      const link = queryAllByRoleFast("link", dialog).find((element) => {
+        return element.textContent?.trim() === "Download for macOS";
+      });
+      if (!link) {
+        throw new Error("Expected the desktop download link");
+      }
+      return link;
+    });
+    expect(download).toHaveAttribute(
+      "href",
+      expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
+    );
+
+    click(buttonWithText("Back", dialog, false));
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("restores the source in a fresh wizard when chat creation is retried", async () => {
@@ -785,8 +681,6 @@ describe("chat start cards", () => {
       fileInput,
       new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
-    await screen.findByText("Your source is ready");
-    click(buttonWithText("Next", dialog));
     await screen.findByText("Choose an avatar");
     click(buttonWithText("Next", dialog));
     await screen.findByText("Choose a voice");
@@ -825,11 +719,11 @@ describe("chat start cards", () => {
         "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
       ),
     ).not.toBeInTheDocument();
+    // The stored draft comes back as the wizard's source, which lands on the
+    // presenter just like a fresh pick does.
     await expect(
-      screen.findByText("Your source is ready"),
+      screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", retryDialog));
-    await screen.findByText("Choose an avatar");
     click(buttonWithText("Next", retryDialog));
     await screen.findByText("Choose a voice");
     const noVoiceover = buttonWithText("No voiceover", retryDialog, false);
@@ -854,207 +748,6 @@ describe("chat start cards", () => {
         contentType: "application/pdf",
       });
     });
-  });
-
-  it("starts the intro video workflow directly in chat", async () => {
-    let sentPrompt: string | undefined;
-    let sentUserMessage: UserMessageDocument | undefined;
-    mockChatLifecycle(context, {
-      onSendRequest: ({ prompt, userMessage }) => {
-        sentPrompt = prompt;
-        sentUserMessage = userMessage;
-      },
-      onRunCreate: ({ prompt, userMessage }) => {
-        sentPrompt = prompt;
-        sentUserMessage = userMessage;
-      },
-    });
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Start in chat", dialog, false));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Create an intro video" }),
-      ).not.toBeInTheDocument();
-    });
-    await expect(screen.findByLabelText("Stop")).resolves.toBeInTheDocument();
-    expect(sentPrompt).toContain("<intro_video_workflow>");
-    expect(sentPrompt).toContain("okou video camera");
-    expect(JSON.stringify(sentUserMessage)).not.toContain(
-      "<intro_video_workflow>",
-    );
-  });
-
-  it("starts screen recording only after the three-second countdown", async () => {
-    mockChatLifecycle(context);
-    const recording = installRecordingMocks();
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-    const recordingDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Record your screen", recordingDialog, false));
-    click(buttonWithText("Choose screen and start", recordingDialog));
-
-    await waitFor(() => {
-      expect(recording.getDisplayMedia).toHaveBeenCalledTimes(1);
-    });
-    const countdownCopy = await screen.findByText(
-      "Recording starts after the countdown",
-    );
-    expect(countdownCopy.parentElement).toHaveTextContent("3");
-    expect(recording.startCount()).toBe(0);
-
-    await recording.recorderStarted;
-    expect(recording.startElapsedMs()).toBeGreaterThanOrEqual(2900);
-    expect(recording.startCount()).toBe(1);
-
-    click(screen.getByLabelText("Close"));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Create an intro video" }),
-      ).not.toBeInTheDocument();
-    });
-    click(screen.getByTestId("intro-video-start-card"));
-    await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    // Closing discards the wizard, so reopening lands on the source step
-    // rather than resuming the recording setup.
-    await expect(
-      screen.findByText("How do you want to start?"),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
-  });
-
-  it("resets screen recording after navigating away during countdown", async () => {
-    mockChatLifecycle(context);
-    const recording = installRecordingMocks();
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-    const recordingDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Record your screen", recordingDialog, false));
-    click(buttonWithText("Choose screen and start", recordingDialog));
-
-    await expect(
-      screen.findByText("Recording starts after the countdown"),
-    ).resolves.toBeInTheDocument();
-    const agentsLink = await waitFor(() => {
-      const link = document.querySelector('a[href="/agents"]');
-      expect(link).not.toBeNull();
-      return link as HTMLElement;
-    });
-    click(agentsLink);
-
-    await expect(
-      screen.findByRole("heading", { name: "Agents" }),
-    ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(recording.displayTrackStop).toHaveBeenCalledWith();
-    });
-
-    act(() => {
-      window.history.back();
-    });
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByTestId("intro-video-start-card"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("dialog", { name: "Create an intro video" }),
-    ).not.toBeInTheDocument();
-
-    click(screen.getByTestId("intro-video-start-card"));
-    const reopenedDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    expect(
-      buttonWithText("Record your screen", reopenedDialog, false),
-    ).toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
-  });
-
-  it("releases late microphone access after the recording dialog closes", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context);
-    const microphonePermission = context.mocks.deferred<MediaStream>();
-    const microphoneTrackStop = vi.fn<() => void>();
-    const microphoneTrack = Object.assign(new EventTarget(), {
-      stop: microphoneTrackStop,
-    }) as unknown as MediaStreamTrack;
-    const microphoneStream = {
-      getAudioTracks: () => {
-        return [microphoneTrack];
-      },
-      getTracks: () => {
-        return [microphoneTrack];
-      },
-      getVideoTracks: () => {
-        return [];
-      },
-    } as unknown as MediaStream;
-    const recording = installRecordingMocks({
-      getUserMedia: () => {
-        return microphonePermission.promise;
-      },
-    });
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-    const recordingDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Record your screen", recordingDialog, false));
-    const microphoneSwitch = screen.getByRole("switch", {
-      name: /Microphone/,
-    });
-    await user.click(microphoneSwitch);
-    expect(microphoneSwitch).toHaveAttribute("aria-checked", "true");
-    click(buttonWithText("Choose screen and start", recordingDialog));
-
-    await recording.getUserMediaCalled;
-    expect(recording.getUserMedia).toHaveBeenCalledTimes(1);
-    click(screen.getByLabelText("Close"));
-    microphonePermission.resolve(microphoneStream);
-
-    await waitFor(() => {
-      expect(recording.displayTrackStop).toHaveBeenCalledWith();
-      expect(microphoneTrackStop).toHaveBeenCalledWith();
-    });
-    click(screen.getByTestId("intro-video-start-card"));
-    await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    // Closing discards the wizard, so reopening lands on the source step
-    // rather than resuming the recording setup.
-    await expect(
-      screen.findByText("How do you want to start?"),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
   });
 
   it("writes the card prompt into the composer", async () => {
