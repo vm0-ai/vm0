@@ -588,6 +588,42 @@ describe("composer image annotation", () => {
   });
 
   /**
+   * Escape backs out one layer at a time. With a note open the shortcut read
+   * the MARK selection, which is null in that state, so Escape took the
+   * "nothing is selected" branch and closed the whole editor — discarding every
+   * mark drawn so far, from the path this feature makes the primary one.
+   */
+  it("keeps the editor open when Escape leaves a note being edited", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockDraftWithImage([boxMark()]);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+
+    await user.click(await screen.findByTestId("annotation-note-label-mark-1"));
+    const field = await screen.findByPlaceholderText(
+      "Say what should change here",
+    );
+    expect(field).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    // The note closes and the session survives with its marks.
+    await waitFor(() => {
+      expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+    });
+    expect(screen.getByTestId("image-annotation-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("annotation-mark-1")).toBeInTheDocument();
+  });
+
+  /**
    * A note printed past the bottom edge is cropped out of the flattened image
    * and nobody finds out, because the text still travels in the prompt. A mark
    * with no room under it has to put its note above itself instead.

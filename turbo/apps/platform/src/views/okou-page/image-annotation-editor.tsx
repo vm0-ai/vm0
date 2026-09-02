@@ -565,7 +565,12 @@ function KeyboardShortcuts({
   const redo = useSet(signals.redoAnnotation$);
   const close = useSet(signals.closeAnnotationEditor$);
   const commit = useSet(signals.commitAnnotation$);
-  const selectedId = useGet(signals.annotationSelectedMarkId$);
+  // The mark the editor has OPEN, not the one selected for reshaping. Escape
+  // backs out one layer, and with a note open `annotationSelectedMarkId$` is
+  // null — so Escape took the `else` and closed the whole session, discarding
+  // every mark drawn so far. Clicking a note to edit it and pressing Escape to
+  // dismiss the caret is now the primary path, which made that the likely one.
+  const selectedId = useGet(signals.annotationOpenMarkId$);
   const pageSignal = useGet(pageSignal$);
   let cleanup: (() => void) | null = null;
 
