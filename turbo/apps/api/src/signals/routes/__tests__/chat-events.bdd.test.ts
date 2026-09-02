@@ -5981,6 +5981,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: firstCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: firstCandidate.piSessionId,
         sourceHistoryHash: firstCandidate.sourceHistoryHash,
         leaseToken: staleLeaseToken,
@@ -6011,6 +6013,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: replacedCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: replacedCandidate.piSessionId,
         sourceHistoryHash: replacedCandidate.sourceHistoryHash,
         leaseToken: currentLeaseToken,
@@ -6021,6 +6025,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: replacedCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: replacedCandidate.piSessionId,
         sourceHistoryHash: replacedCandidate.sourceHistoryHash,
         leaseToken: currentLeaseToken,
@@ -6106,6 +6112,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: thirdCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: thirdCandidate.piSessionId,
         sourceHistoryHash: thirdCandidate.sourceHistoryHash,
         leaseToken: currentLeaseToken,
@@ -6116,6 +6124,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: thirdCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: thirdCandidate.piSessionId,
         sourceHistoryHash: thirdCandidate.sourceHistoryHash,
         leaseToken: thirdLeaseToken,
