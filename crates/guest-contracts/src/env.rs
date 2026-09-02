@@ -43,12 +43,12 @@ pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT"
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
-pub const PROMPT_ENV: &str = "VM0_PROMPT";
+pub const PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_PROMPT";
 
 /// Logical run-payload field name for optional extra system prompt text.
 ///
 /// Unset or empty means there is no extra system prompt.
-pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
+pub const APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_APPEND_SYSTEM_PROMPT";
 
 /// Sensitive Vercel protection bypass secret for guest API calls.
 ///
@@ -84,26 +84,26 @@ pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTI
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
-pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
+pub const SECRET_VALUES_RUN_PAYLOAD_FIELD: &str = "VM0_SECRET_VALUES";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
-pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
+pub const DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_DISALLOWED_TOOLS";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
-pub const TOOLS_ENV: &str = "VM0_TOOLS";
+pub const TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_TOOLS";
 
 /// Logical run-payload field name for the raw Claude Code settings payload
 /// passed to the guest-agent.
 ///
 /// The runner treats this as an opaque string. Unset or empty means there is no
 /// settings override.
-pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
+pub const SETTINGS_RUN_PAYLOAD_FIELD: &str = "VM0_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
 ///
@@ -158,7 +158,7 @@ pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
-pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
+pub const ARTIFACTS_RUN_PAYLOAD_FIELD: &str = "VM0_ARTIFACTS";
 
 /// One artifact mount in the runner-to-guest run payload.
 ///
@@ -194,10 +194,10 @@ pub enum RunArtifactMissingRootPolicy {
 /// enabled states.
 ///
 /// Unset or empty means there are no feature flags.
-pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+pub const FEATURE_FLAGS_RUN_PAYLOAD_FIELD: &str = "VM0_FEATURE_FLAGS";
 
 /// Logical run-payload field name for API-owned Codex runtime metadata.
-pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
+pub const CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Logical run-payload field name for the schema-v2 Pi launch config marker.
 ///
@@ -303,39 +303,39 @@ impl RunPayload {
 
         [
             RunPayloadField {
-                name: PROMPT_ENV,
+                name: PROMPT_RUN_PAYLOAD_FIELD,
                 value: prompt,
             },
             RunPayloadField {
-                name: APPEND_SYSTEM_PROMPT_ENV,
+                name: APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
                 value: append_system_prompt,
             },
             RunPayloadField {
-                name: SECRET_VALUES_ENV,
+                name: SECRET_VALUES_RUN_PAYLOAD_FIELD,
                 value: secret_values,
             },
             RunPayloadField {
-                name: DISALLOWED_TOOLS_ENV,
+                name: DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
                 value: disallowed_tools,
             },
             RunPayloadField {
-                name: TOOLS_ENV,
+                name: TOOLS_RUN_PAYLOAD_FIELD,
                 value: tools,
             },
             RunPayloadField {
-                name: SETTINGS_ENV,
+                name: SETTINGS_RUN_PAYLOAD_FIELD,
                 value: settings,
             },
             RunPayloadField {
-                name: ARTIFACTS_ENV,
+                name: ARTIFACTS_RUN_PAYLOAD_FIELD,
                 value: artifacts,
             },
             RunPayloadField {
-                name: FEATURE_FLAGS_ENV,
+                name: FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
                 value: feature_flags,
             },
             RunPayloadField {
-                name: CODEX_RUNTIME_CONFIG_ENV,
+                name: CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
                 value: codex_runtime_config,
             },
             RunPayloadField {
@@ -744,39 +744,39 @@ mod tests {
             fields,
             [
                 RunPayloadField {
-                    name: PROMPT_ENV,
+                    name: PROMPT_RUN_PAYLOAD_FIELD,
                     value: "prompt"
                 },
                 RunPayloadField {
-                    name: APPEND_SYSTEM_PROMPT_ENV,
+                    name: APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
                     value: "system"
                 },
                 RunPayloadField {
-                    name: SECRET_VALUES_ENV,
+                    name: SECRET_VALUES_RUN_PAYLOAD_FIELD,
                     value: "secret"
                 },
                 RunPayloadField {
-                    name: DISALLOWED_TOOLS_ENV,
+                    name: DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
                     value: "WebFetch"
                 },
                 RunPayloadField {
-                    name: TOOLS_ENV,
+                    name: TOOLS_RUN_PAYLOAD_FIELD,
                     value: "Bash"
                 },
                 RunPayloadField {
-                    name: SETTINGS_ENV,
+                    name: SETTINGS_RUN_PAYLOAD_FIELD,
                     value: "{}"
                 },
                 RunPayloadField {
-                    name: ARTIFACTS_ENV,
+                    name: ARTIFACTS_RUN_PAYLOAD_FIELD,
                     value: "[]"
                 },
                 RunPayloadField {
-                    name: FEATURE_FLAGS_ENV,
+                    name: FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
                     value: r#"{"flag":true}"#
                 },
                 RunPayloadField {
-                    name: CODEX_RUNTIME_CONFIG_ENV,
+                    name: CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
                     value: r#"{"providerId":"deepseek"}"#
                 },
                 RunPayloadField {
@@ -802,7 +802,7 @@ mod tests {
             ..RunPayload::default()
         };
 
-        assert_eq!(payload.first_nul_field(), Some(SETTINGS_ENV));
+        assert_eq!(payload.first_nul_field(), Some(SETTINGS_RUN_PAYLOAD_FIELD));
     }
 
     #[test]
@@ -1024,8 +1024,8 @@ mod tests {
         }
 
         assert!(
-            total >= 37,
-            "expected at least 37 declared *_ENV keys across the contract sources, found {total}; \
+            total >= 28,
+            "expected at least 28 declared *_ENV keys across the contract sources, found {total}; \
              lower this bound only when a key is deliberately removed"
         );
         assert!(
