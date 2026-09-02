@@ -1817,7 +1817,7 @@
       "noAccounts": "사용 가능한 정상 계좌가 없습니다. 먼저 금융 기관을 다시 연결하거나 복구하세요.",
       "oneDay": "24시간",
       "oneHour": "1시간",
-      "popupBlocked": "Zero의 팝업을 허용한 후 다시 시도해 주세요.",
+      "popupBlocked": "{{assistantName}}의 팝업을 허용한 후 다시 시도해 주세요.",
       "readOnly": "계좌, 잔액 및 거래 · 읽기 전용",
       "repair": "복구",
       "repairRequired": "{{institution}}에 복구가 필요합니다",
@@ -2022,7 +2022,7 @@
       "review": {
         "avatar": "아바타",
         "heading": "인트로 영상 검토",
-        "help": "새 채팅 스레드로 전달할 선택 사항을 확인하세요",
+        "help": "{{assistantName}}가 새 채팅 스레드에서 받을 선택 사항을 확인하세요",
         "instructions": "편집 지침",
         "source": "소스",
         "voice": "음성"

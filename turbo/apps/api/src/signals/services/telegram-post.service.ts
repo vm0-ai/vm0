@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { command, computed } from "ccstate";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
+  agentDisplayNameForPublicBrand,
   apiUrlForPublicBrand,
   appUrlForPublicBrand,
   publicBrandPresentation,
@@ -388,6 +389,31 @@ async function getWorkspaceAgentDisplayLabel(
   return agent ? displayLabel(agent) : "Zero";
 }
 
+async function getTelegramCommandAgentName(args: {
+  readonly db: Db;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly publicBrand: PublicBrand;
+}): Promise<string> {
+  const displayName = await getWorkspaceAgentDisplayLabel(
+    args.db,
+    args.agentId,
+  );
+  const [metadata] = await args.db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, args.orgId))
+    .limit(1);
+  return (
+    agentDisplayNameForPublicBrand({
+      agentId: args.agentId,
+      defaultAgentId: metadata?.defaultAgentId ?? null,
+      displayName,
+      publicBrand: args.publicBrand,
+    }) ?? displayName
+  );
+}
+
 async function resolveDefaultAgentId(args: {
   readonly db: Db;
   readonly requestedAgentId: string | undefined;
@@ -433,13 +459,25 @@ async function resolveDefaultAgentId(args: {
   return { ok: true, agentId: agent.id };
 }
 
-async function configureTelegramBot(args: {
-  readonly botToken: string;
-  readonly telegramBotId: string;
-  readonly webhookSecret: string;
-  readonly agentName: string;
-  readonly publicBrand: PublicBrand;
-}): Promise<ReturnType<typeof badGateway> | undefined> {
+async function configureTelegramBot(
+  args: {
+    readonly db: Db;
+    readonly botToken: string;
+    readonly telegramBotId: string;
+    readonly webhookSecret: string;
+    readonly agentId: string;
+    readonly orgId: string;
+    readonly publicBrand: PublicBrand;
+  },
+  signal: AbortSignal,
+): Promise<ReturnType<typeof badGateway> | undefined> {
+  const agentName = await getTelegramCommandAgentName({
+    db: args.db,
+    agentId: args.agentId,
+    orgId: args.orgId,
+    publicBrand: args.publicBrand,
+  });
+  signal.throwIfAborted();
   const webhookConfigured = await tapError(
     (async () => {
       await setWebhook(
@@ -460,11 +498,11 @@ async function configureTelegramBot(args: {
   await tapError(
     setMyCommands(args.botToken, [
       { command: "new_session", description: "Start a new conversation" },
-      { command: "connect", description: `Connect to ${args.agentName}` },
+      { command: "connect", description: `Connect to ${agentName}` },
       { command: "model", description: "Choose your model" },
       {
         command: "disconnect",
-        description: `Disconnect from ${args.agentName}`,
+        description: `Disconnect from ${agentName}`,
       },
       { command: "help", description: "Show available commands" },
     ]),
@@ -555,18 +593,18 @@ const handleExistingInstallation$ = command(
     }
 
     const webhookSecret = generateCallbackSecret();
-    const agentName = await getWorkspaceAgentDisplayLabel(
-      args.db,
-      resolvedAgent.agentId,
+    const configureError = await configureTelegramBot(
+      {
+        db: args.db,
+        botToken: args.body.botToken,
+        telegramBotId: args.existing.telegramBotId,
+        webhookSecret,
+        agentId: resolvedAgent.agentId,
+        orgId: args.auth.orgId,
+        publicBrand: args.publicBrand,
+      },
+      signal,
     );
-    signal.throwIfAborted();
-    const configureError = await configureTelegramBot({
-      botToken: args.body.botToken,
-      telegramBotId: args.existing.telegramBotId,
-      webhookSecret,
-      agentName,
-      publicBrand: args.publicBrand,
-    });
     signal.throwIfAborted();
     if (configureError) {
       return configureError;
@@ -717,18 +755,18 @@ export const registerTelegramBot$ = command(
       return internalError("Failed to create installation");
     }
 
-    const agentName = await getWorkspaceAgentDisplayLabel(
-      db,
-      resolvedAgent.agentId,
+    const configureError = await configureTelegramBot(
+      {
+        db,
+        botToken: bodyResult.data.botToken,
+        telegramBotId: installation.telegramBotId,
+        webhookSecret,
+        agentId: resolvedAgent.agentId,
+        orgId: auth.orgId,
+        publicBrand: args.publicBrand,
+      },
+      signal,
     );
-    signal.throwIfAborted();
-    const configureError = await configureTelegramBot({
-      botToken: bodyResult.data.botToken,
-      telegramBotId: installation.telegramBotId,
-      webhookSecret,
-      agentName,
-      publicBrand: args.publicBrand,
-    });
     signal.throwIfAborted();
     if (configureError) {
       await db
