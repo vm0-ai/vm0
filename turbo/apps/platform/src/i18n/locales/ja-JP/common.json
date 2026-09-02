@@ -4783,6 +4783,7 @@
       "groups": {
         "alpha": "アルファ",
         "beta": "ベータ",
+        "internal": "内部",
         "released": "リリース済み"
       },
       "title": "研究室"

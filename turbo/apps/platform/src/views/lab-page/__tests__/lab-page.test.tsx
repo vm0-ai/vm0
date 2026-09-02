@@ -70,15 +70,22 @@ describe("lab page", () => {
     const released = within(featureSwitchGroup("Released"));
     const beta = within(featureSwitchGroup("Beta"));
     const alpha = within(featureSwitchGroup("Alpha"));
+    const internal = within(featureSwitchGroup("Internal"));
 
     expect(
       released.getAllByRole("listitem").length +
         beta.getAllByRole("listitem").length +
-        alpha.getAllByRole("listitem").length,
+        alpha.getAllByRole("listitem").length +
+        internal.getAllByRole("listitem").length,
     ).toBe(Object.values(FeatureSwitchKey).length);
-    expect(released.getByText(FeatureSwitchKey.Dummy)).toBeInTheDocument();
-    expect(released.queryByText(FeatureSwitchKey.Lab)).not.toBeInTheDocument();
-    expect(beta.getByText(FeatureSwitchKey.Lab)).toBeInTheDocument();
+    for (const key of Object.values(FeatureSwitchKey).filter((feature) => {
+      return feature.startsWith("_");
+    })) {
+      expect(internal.getByText(key)).toBeInTheDocument();
+      expect(released.queryByText(key)).not.toBeInTheDocument();
+      expect(beta.queryByText(key)).not.toBeInTheDocument();
+      expect(alpha.queryByText(key)).not.toBeInTheDocument();
+    }
     expect(
       beta.queryByText(FeatureSwitchKey.IntroVideo),
     ).not.toBeInTheDocument();
@@ -89,6 +96,7 @@ describe("lab page", () => {
     expect(released.queryByRole("switch")).not.toBeInTheDocument();
     expect(beta.queryByRole("switch")).not.toBeInTheDocument();
     expect(alpha.queryByRole("switch")).not.toBeInTheDocument();
+    expect(internal.queryByRole("switch")).not.toBeInTheDocument();
     expect(screen.queryByText("Reset all")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Maintainer:/u)).not.toBeInTheDocument();
   });
@@ -106,7 +114,7 @@ describe("lab page", () => {
 
     expectBefore(
       featureSwitchRow(FeatureSwitchKey.CodexFastMode),
-      featureSwitchRow(FeatureSwitchKey.Banking),
+      featureSwitchRow(FeatureSwitchKey.Lab),
     );
   });
 
@@ -133,5 +141,8 @@ describe("lab page", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Beta" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Alfa" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Internos" }),
+    ).toBeInTheDocument();
   });
 });

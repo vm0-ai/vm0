@@ -28,7 +28,11 @@ export interface FeatureSwitchMetadata {
   readonly rolloutStage: FeatureSwitchRolloutStage;
 }
 
-export type FeatureSwitchRolloutStage = "released" | "beta" | "alpha";
+export type FeatureSwitchRolloutStage =
+  | "released"
+  | "beta"
+  | "alpha"
+  | "internal";
 
 export interface FeatureSwitchContext {
   readonly userId?: string;
@@ -522,8 +526,12 @@ export function getFeatureSwitchDescriptions(): Record<
 }
 
 function getFeatureSwitchRolloutStage(
+  key: FeatureSwitchKey,
   featureSwitch: FeatureSwitch,
 ): FeatureSwitchRolloutStage {
+  if (key.startsWith("_")) {
+    return "internal";
+  }
   if (featureSwitch.enabled) {
     return "released";
   }
@@ -550,7 +558,7 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
-      rolloutStage: getFeatureSwitchRolloutStage(featureSwitch),
+      rolloutStage: getFeatureSwitchRolloutStage(key, featureSwitch),
     };
   }
   return result;

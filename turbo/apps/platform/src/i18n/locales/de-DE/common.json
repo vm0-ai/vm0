@@ -4791,6 +4791,7 @@
       "groups": {
         "alpha": "Alpha",
         "beta": "Beta",
+        "internal": "Intern",
         "released": "Veröffentlicht"
       },
       "title": "Labor"
