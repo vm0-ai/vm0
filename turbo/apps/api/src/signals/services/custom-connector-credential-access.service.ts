@@ -309,33 +309,59 @@ function customConnectorStoredConnectionIsCurrent(
   );
 }
 
-function customConnectorStoredConnectionHasRequiredMaterial(
-  connection: CustomConnectorStoredConnection,
-): boolean {
-  if (connection.definitionAuthMethod === "automatic") {
-    return connection.storedAuthMethod === "oauth"
-      ? connection.oauthAccessTokenId !== null &&
-          connection.automaticOAuthBindingId !== null
-      : connection.oauthAccessTokenId === null &&
-          connection.oauthRefreshTokenId === null &&
-          connection.oauthIdTokenId === null &&
-          connection.automaticOAuthBindingId === null &&
-          connection.tokenExpiresAt === null;
+export function customConnectorAccountHasRequiredCredentialMaterial(args: {
+  readonly definitionAuthMode: OrgCustomConnectorAuthMode;
+  readonly storedAuthMethod: string;
+  readonly hasAccessToken: boolean;
+  readonly hasRefreshToken: boolean;
+  readonly hasIdToken: boolean;
+  readonly hasAutomaticOAuthBinding: boolean;
+  readonly hasTokenExpiry: boolean;
+}): boolean {
+  if (
+    !customConnectorAccountAuthMethodIsCompatible(
+      args.definitionAuthMode,
+      args.storedAuthMethod,
+    )
+  ) {
+    return false;
   }
-  if (connection.definitionAuthMethod === "none") {
+  if (args.definitionAuthMode === "automatic") {
+    return args.storedAuthMethod === "oauth"
+      ? args.hasAccessToken && args.hasAutomaticOAuthBinding
+      : !args.hasAccessToken &&
+          !args.hasRefreshToken &&
+          !args.hasIdToken &&
+          !args.hasAutomaticOAuthBinding &&
+          !args.hasTokenExpiry;
+  }
+  if (args.definitionAuthMode === "none") {
     return (
-      connection.oauthAccessTokenId === null &&
-      connection.oauthRefreshTokenId === null &&
-      connection.oauthIdTokenId === null &&
-      connection.automaticOAuthBindingId === null &&
-      connection.tokenExpiresAt === null
+      !args.hasAccessToken &&
+      !args.hasRefreshToken &&
+      !args.hasIdToken &&
+      !args.hasAutomaticOAuthBinding &&
+      !args.hasTokenExpiry
     );
   }
   return (
-    connection.definitionAuthMethod === "manual" ||
-    (connection.oauthAccessTokenId !== null &&
-      connection.automaticOAuthBindingId === null)
+    args.definitionAuthMode === "manual" ||
+    (args.hasAccessToken && !args.hasAutomaticOAuthBinding)
   );
+}
+
+function customConnectorStoredConnectionHasRequiredMaterial(
+  connection: CustomConnectorStoredConnection,
+): boolean {
+  return customConnectorAccountHasRequiredCredentialMaterial({
+    definitionAuthMode: connection.definitionAuthMethod,
+    storedAuthMethod: connection.storedAuthMethod,
+    hasAccessToken: connection.oauthAccessTokenId !== null,
+    hasRefreshToken: connection.oauthRefreshTokenId !== null,
+    hasIdToken: connection.oauthIdTokenId !== null,
+    hasAutomaticOAuthBinding: connection.automaticOAuthBindingId !== null,
+    hasTokenExpiry: connection.tokenExpiresAt !== null,
+  });
 }
 
 function customConnectorStoredConnectionIsConnected(

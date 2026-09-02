@@ -11,10 +11,7 @@ import {
   connectorReconnectReasonSchema,
   type ConnectorReconnectReason,
 } from "@okouai/api-contracts/contracts/connector-schemas";
-import {
-  isIntegrationManagedCustomConnectorProviderAdapter,
-  type CustomConnectorAuthMode,
-} from "@okouai/api-contracts/contracts/custom-connectors";
+import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
 import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
@@ -54,7 +51,10 @@ import {
   connectorCredentialStorageIsCompatible,
   resolveStoredConnectorRuntimeMethod,
 } from "./connector-credential-access.service";
-import { customConnectorAccountAuthMethodIsCompatible } from "./custom-connector-credential-access.service";
+import {
+  customConnectorAccountAuthMethodIsCompatible,
+  customConnectorAccountHasRequiredCredentialMaterial,
+} from "./custom-connector-credential-access.service";
 import {
   connectorCredentialReconnectReasonWithMethod,
   connectorCredentialStatusForAccess,
@@ -151,43 +151,6 @@ function parseReconnectReason(
 
 function parseOauthScopes(value: string | null): string[] | null {
   return value === null ? null : oauthScopesSchema.parse(JSON.parse(value));
-}
-
-function customConnectorHasRequiredCredentialMaterial(args: {
-  readonly definitionAuthMode: CustomConnectorAuthMode;
-  readonly storedAuthMethod: string;
-  readonly hasAccessToken: boolean;
-  readonly hasRefreshToken: boolean;
-  readonly hasIdToken: boolean;
-  readonly hasAutomaticOAuthBinding: boolean;
-  readonly hasTokenExpiry: boolean;
-}): boolean {
-  if (args.definitionAuthMode === "automatic") {
-    return args.storedAuthMethod === "oauth"
-      ? args.hasAccessToken && args.hasAutomaticOAuthBinding
-      : !args.hasAccessToken &&
-          !args.hasRefreshToken &&
-          !args.hasIdToken &&
-          !args.hasAutomaticOAuthBinding &&
-          !args.hasTokenExpiry;
-  }
-  switch (args.definitionAuthMode) {
-    case "none": {
-      return (
-        !args.hasAccessToken &&
-        !args.hasRefreshToken &&
-        !args.hasIdToken &&
-        !args.hasAutomaticOAuthBinding &&
-        !args.hasTokenExpiry
-      );
-    }
-    case "manual": {
-      return true;
-    }
-    case "oauth": {
-      return args.hasAccessToken && !args.hasAutomaticOAuthBinding;
-    }
-  }
 }
 
 function encodeCursor(row: ConnectorAccountRow): string {
@@ -549,7 +512,7 @@ function customConnection(
     isRefreshable: row.refreshTokenId !== null,
   });
   const hasRequiredCredentialMaterial =
-    customConnectorHasRequiredCredentialMaterial({
+    customConnectorAccountHasRequiredCredentialMaterial({
       definitionAuthMode: row.definitionAuthMode,
       storedAuthMethod: row.authMethod,
       hasAccessToken: row.accessTokenId !== null,
@@ -669,7 +632,7 @@ function projectSummaryGroup(
     isRefreshable: row.hasRefreshToken,
   });
   const hasRequiredCredentialMaterial =
-    customConnectorHasRequiredCredentialMaterial({
+    customConnectorAccountHasRequiredCredentialMaterial({
       definitionAuthMode: row.definitionAuthMode,
       storedAuthMethod: row.authMethod,
       hasAccessToken: row.hasAccessToken,
