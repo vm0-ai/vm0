@@ -422,8 +422,8 @@ assert.ok(
   ),
 );
 assert.equal(
-  tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io",
+  tagAttributeValues(okouPage.html, "link", "href").some(
+    (href) => href === "https://static.okou.io",
   ),
   false,
 );
