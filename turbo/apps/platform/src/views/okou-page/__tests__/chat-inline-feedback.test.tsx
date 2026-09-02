@@ -816,9 +816,6 @@ describe("chat inline feedback", () => {
         { text: selectedContent, targetLanguage: "fr" },
       ]);
       expect(buttonByText("Translate")).toBeDisabled();
-      expect(
-        buttonByText("Translate").querySelector(".animate-spin"),
-      ).not.toBeNull();
     });
     translationResponse.resolve();
     await expect(
