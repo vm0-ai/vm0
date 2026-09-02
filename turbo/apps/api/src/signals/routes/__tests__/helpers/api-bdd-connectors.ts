@@ -221,6 +221,7 @@ interface CustomConnectorOAuth2ProviderRecorder {
 
 interface CustomConnectorOAuth2ProviderOptions {
   readonly initialExpiresIn?: number;
+  readonly authorizationCodeScopes?: readonly string[];
   readonly initialRefreshToken?: string | null;
   readonly initialScope?: string;
   readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
@@ -292,6 +293,7 @@ interface AutomaticMcpOAuthProviderOptions {
   readonly resourceMetadataStatus?: number;
   readonly challengeScope?: string | null;
   readonly metadataScopes?: readonly string[];
+  readonly authorizationCodeScopes?: readonly string[];
   readonly refreshError?:
     | "invalid_client"
     | "invalid_grant"
@@ -311,6 +313,7 @@ interface AutomaticMcpOAuthProviderRecorder {
   readonly endpoint: string;
   readonly issuer: string;
   readonly registrationBodies: readonly Record<string, unknown>[];
+  advertiseAuthorizationServers(issuers: readonly string[]): void;
   authorizationServerDiscoveryCalls(): number;
   readonly tokenBodies: readonly URLSearchParams[];
   readonly tokenAuthorizationHeaders: readonly (string | null)[];
@@ -334,7 +337,6 @@ export function mockAutomaticMcpOAuthProvider(
   const registrationUrl = `${issuer}/register`;
   const resourceMetadata = {
     resource: options.resource ?? endpoint,
-    authorization_servers: [issuer],
     scopes_supported: [...(options.metadataScopes ?? ["metadata-fallback"])],
   };
   const tokenEndpointAuthMethod =
@@ -367,7 +369,9 @@ export function mockAutomaticMcpOAuthProvider(
   const tokenBodies: URLSearchParams[] = [];
   const tokenAuthorizationHeaders: (string | null)[] = [];
   let authorizationServerDiscoveryCallCount = 0;
+  let advertisedAuthorizationServers: readonly string[] = [issuer];
   let refreshAttempts = 0;
+  let authorizationCodeAttempts = 0;
   const authorizationServerDiscoveryBarrier =
     options.synchronizeAuthorizationServerDiscovery
       ? createDeferredPromise<void>(AbortSignal.any([]))
@@ -393,6 +397,12 @@ export function mockAutomaticMcpOAuthProvider(
     }
   };
   server.use(
+    http.get(endpoint, () => {
+      return new HttpResponse(null, {
+        status: 405,
+        headers: { allow: "POST" },
+      });
+    }),
     http.post(endpoint, async ({ request }) => {
       if (options.authentication === "none") {
         const body = z
@@ -439,7 +449,10 @@ export function mockAutomaticMcpOAuthProvider(
             { error: "resource_metadata_unavailable" },
             { status: options.resourceMetadataStatus },
           )
-        : HttpResponse.json(resourceMetadata);
+        : HttpResponse.json({
+            ...resourceMetadata,
+            authorization_servers: [...advertisedAuthorizationServers],
+          });
     }),
     http.get(
       "https://automatic-mcp.example.test/.well-known/oauth-protected-resource/server",
@@ -455,7 +468,10 @@ export function mockAutomaticMcpOAuthProvider(
               { error: "resource_metadata_unavailable" },
               { status: options.resourceMetadataStatus },
             )
-          : HttpResponse.json(resourceMetadata);
+          : HttpResponse.json({
+              ...resourceMetadata,
+              authorization_servers: [...advertisedAuthorizationServers],
+            });
       },
     ),
     http.get(`${issuer}/.well-known/oauth-authorization-server`, async () => {
@@ -504,6 +520,8 @@ export function mockAutomaticMcpOAuthProvider(
       const refresh = body.get("grant_type") === "refresh_token";
       if (refresh) {
         refreshAttempts += 1;
+      } else {
+        authorizationCodeAttempts += 1;
       }
       const refreshError = refresh
         ? (options.refreshErrors?.[refreshAttempts - 1] ?? options.refreshError)
@@ -523,7 +541,9 @@ export function mockAutomaticMcpOAuthProvider(
         ...(!refresh ? { refresh_token: "automatic-refresh-token" } : {}),
         token_type: "Bearer",
         expires_in: refresh ? 3600 : (options.initialExpiresIn ?? 0),
-        scope: "read write",
+        scope:
+          options.authorizationCodeScopes?.[authorizationCodeAttempts - 1] ??
+          "read write",
       });
     }),
   );
@@ -531,6 +551,9 @@ export function mockAutomaticMcpOAuthProvider(
     endpoint,
     issuer,
     registrationBodies,
+    advertiseAuthorizationServers(issuers: readonly string[]): void {
+      advertisedAuthorizationServers = [...issuers];
+    },
     authorizationServerDiscoveryCalls: () => {
       return authorizationServerDiscoveryCallCount;
     },

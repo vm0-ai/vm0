@@ -39,6 +39,8 @@ import {
   type UpdateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import {
+  mcpConnectorOAuthReauthorizationResponseSchema,
+  type McpConnectorOAuthReauthorizationResponse,
   mcpConnectorListResponseSchema,
   mcpConnectorsContract,
   type McpConnector,
@@ -300,6 +302,26 @@ export async function listRunMcpConnectors(): Promise<McpConnector[]> {
   }
 
   handleError(result, "Failed to list MCP connectors for this run");
+}
+
+export async function reauthorizeRunMcpConnectorOAuth(
+  connectorId: string,
+  scopes: readonly string[],
+): Promise<McpConnectorOAuthReauthorizationResponse | null> {
+  const config = await getClientConfig();
+  const client = initClient(mcpConnectorsContract, config);
+  const result = await client.reauthorizeOAuth({
+    headers: {},
+    params: { id: connectorId },
+    body: { scopes: [...scopes] },
+  });
+  if (result.status === 200) {
+    return mcpConnectorOAuthReauthorizationResponseSchema.parse(result.body);
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  handleError(result, "Failed to reauthorize MCP OAuth scopes");
 }
 
 export async function createCustomConnector(

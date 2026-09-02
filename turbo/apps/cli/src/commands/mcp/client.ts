@@ -1,12 +1,19 @@
 import {
   Client,
+  InsufficientScopeError,
   StreamableHTTPClientTransport,
   type CallToolResult,
   type FetchLike,
   type JSONObject,
   type Tool,
 } from "@modelcontextprotocol/client";
-import type { McpConnector } from "@okouai/api-contracts/contracts/mcp-connectors";
+import {
+  mcpOAuthScopeListSchema,
+  type McpConnector,
+} from "@okouai/api-contracts/contracts/mcp-connectors";
+
+import { reauthorizeRunMcpConnectorOAuth } from "../../lib/api/domains/connectors";
+import { ApiRequestError } from "../../lib/api/core/client-factory";
 
 declare const __CLI_VERSION__: string;
 
@@ -159,18 +166,69 @@ async function closeMcpClient(
   return cleanupWarning;
 }
 
-function safeMcpError(
+function parseRequiredScopes(error: InsufficientScopeError): string[] | null {
+  if (!error.requiredScope) {
+    return null;
+  }
+  const scopes = [
+    ...new Set(error.requiredScope.split(/\s+/u).filter(Boolean)),
+  ];
+  const parsed = mcpOAuthScopeListSchema.safeParse(scopes);
+  return parsed.success ? parsed.data : null;
+}
+
+async function insufficientScopeError(
+  connector: McpConnector,
+  error: InsufficientScopeError,
+): Promise<Error> {
+  const scopes = parseRequiredScopes(error);
+  if (!scopes) {
+    return new Error("MCP server request failed");
+  }
+  try {
+    const authorization = await reauthorizeRunMcpConnectorOAuth(
+      connector.id,
+      scopes,
+    );
+    if (!authorization) {
+      return new Error(
+        "MCP scope reauthorization is unavailable on the current API. The failed MCP request was not retried; start a new run after the API is updated.",
+      );
+    }
+    return new Error(
+      [
+        "This MCP connector needs additional authorization for future runs:",
+        `[Authorize MCP connector](${authorization.authorizationUrl})`,
+        `This link expires at ${authorization.expiresAt}.`,
+        "The failed MCP request was not retried. Start a new run after authorization.",
+      ].join("\n"),
+    );
+  } catch (reauthorizationError) {
+    if (reauthorizationError instanceof ApiRequestError) {
+      return new Error(
+        `MCP scope reauthorization failed: ${reauthorizationError.message}. The failed MCP request was not retried.`,
+      );
+    }
+    return new Error("MCP server request failed");
+  }
+}
+
+async function safeMcpError(
+  connector: McpConnector,
   error: unknown,
   deadlineSignal: AbortSignal,
   deadlineAt: number,
   timeoutSeconds: number,
-): Error {
+): Promise<Error> {
   if (
     deadlineSignal.aborted ||
     Date.now() >= deadlineAt ||
     error instanceof McpDeadlineError
   ) {
     return new Error(`MCP command timed out after ${timeoutSeconds}s`);
+  }
+  if (error instanceof InsufficientScopeError) {
+    return await insufficientScopeError(connector, error);
   }
   if (error instanceof McpCommandError) {
     return new Error(error.message);
@@ -240,7 +298,8 @@ async function runMcpOperation<T>(
   } catch (error) {
     outcome = {
       ok: false,
-      error: safeMcpError(
+      error: await safeMcpError(
+        connector,
         error,
         deadlineController.signal,
         deadlineAt,

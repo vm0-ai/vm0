@@ -450,6 +450,7 @@ async function discoverAutomaticOAuthAuthority(
     readonly endpoint: string;
     readonly resourceMetadataUrl: URL | null;
     readonly challengeScope?: string;
+    readonly expectedIssuer?: string;
   },
   signal: AbortSignal,
 ): Promise<DiscoveredAutomaticOAuthAuthority> {
@@ -477,11 +478,18 @@ async function discoverAutomaticOAuthAuthority(
       "MCP OAuth protected resource metadata does not match the connector endpoint",
     );
   }
-  const advertisedIssuer = protectedResourceMetadata.authorization_servers?.[0];
+  const advertisedIssuers = protectedResourceMetadata.authorization_servers;
+  const advertisedIssuer = args.expectedIssuer
+    ? advertisedIssuers?.find((candidate) => {
+        return candidate === args.expectedIssuer;
+      })
+    : advertisedIssuers?.[0];
   if (!advertisedIssuer) {
     throw new CustomConnectorAutomaticOAuthError(
       "incompatible",
-      "MCP OAuth protected resource metadata does not advertise an authorization server",
+      args.expectedIssuer
+        ? "MCP OAuth protected resource metadata no longer advertises the bound authorization server"
+        : "MCP OAuth protected resource metadata does not advertise an authorization server",
     );
   }
   const issuer = requiredHttpsUrl(advertisedIssuer, "issuer");
@@ -948,6 +956,133 @@ interface CustomConnectorAutomaticOAuthAuthorization {
   readonly context: CustomConnectorAutomaticOAuthStateContext;
 }
 
+async function discoverBoundAutomaticOAuthAuthority(
+  args: {
+    readonly binding: CustomConnectorAutomaticOAuthBinding;
+    readonly endpoint: string;
+  },
+  signal: AbortSignal,
+): Promise<DiscoveredAutomaticOAuthAuthority> {
+  const discovered = await settle(
+    discoverAutomaticOAuthAuthority(
+      {
+        endpoint: args.endpoint,
+        resourceMetadataUrl: args.binding.resourceMetadataUrl
+          ? new URL(args.binding.resourceMetadataUrl)
+          : null,
+        expectedIssuer: args.binding.issuer,
+      },
+      signal,
+    ),
+    signal,
+  );
+  if (!discovered.ok) {
+    const error = discovered.error;
+    if (
+      error instanceof CustomConnectorAutomaticOAuthError &&
+      error.kind === "temporary"
+    ) {
+      throw error;
+    }
+    if (error instanceof CustomConnectorAutomaticOAuthError) {
+      throw new CustomConnectorAutomaticOAuthError(
+        "binding-drift",
+        "MCP OAuth authority changed",
+        error,
+      );
+    }
+    throw error;
+  }
+  const authority = discovered.value;
+  if (
+    authority.issuer !== args.binding.issuer ||
+    authority.resource !== args.binding.resource ||
+    authority.tokenEndpoint !== args.binding.tokenEndpoint ||
+    (args.binding.registrationMethod === "cimd" &&
+      authority.authorizationServerMetadata
+        .client_id_metadata_document_supported !== true) ||
+    !(
+      supportedTokenAuthMethods(authority.authorizationServerMetadata)
+        .length === 0 ||
+      supportedTokenAuthMethods(authority.authorizationServerMetadata).includes(
+        args.binding.tokenEndpointAuthMethod,
+      )
+    )
+  ) {
+    throw new CustomConnectorAutomaticOAuthError(
+      "binding-drift",
+      "MCP OAuth authority changed",
+    );
+  }
+  return authority;
+}
+
+export async function prepareCustomConnectorAutomaticOAuthReauthorization(
+  args: {
+    readonly db: Db;
+    readonly binding: CustomConnectorAutomaticOAuthBinding;
+    readonly storageVersion: number;
+    readonly endpoint: string;
+    readonly redirectUri: string;
+    readonly cimdClientId: string;
+    readonly requestedScope: string;
+    readonly state: string;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<CustomConnectorAutomaticOAuthAuthorization> {
+  const authority = await discoverBoundAutomaticOAuthAuthority(args, signal);
+  const clientInformation = await boundClientInformation({
+    ...args,
+    context: boundClientContext(args.binding),
+  });
+  signal.throwIfAborted();
+  const authorization = await automaticOAuthRemote(
+    "authorization request",
+    signal,
+    async () => {
+      return await startAuthorization(args.binding.issuer, {
+        metadata: authority.authorizationServerMetadata,
+        clientInformation,
+        redirectUrl: args.redirectUri,
+        scope: args.requestedScope,
+        state: args.state,
+        resource: new URL(args.binding.resource),
+      });
+    },
+  );
+  const contextBase = {
+    version: 1,
+    oauthSetup: "automatic",
+    connectorId: args.binding.customConnectorId,
+    storageVersion: args.storageVersion,
+    issuer: args.binding.issuer,
+    resource: args.binding.resource,
+    resourceMetadataUrl: args.binding.resourceMetadataUrl,
+    authorizationEndpoint: authority.authorizationEndpoint,
+    tokenEndpoint: args.binding.tokenEndpoint,
+    authorizationResponseIssParameterSupported:
+      authority.authorizationResponseIssParameterSupported,
+    clientId: args.binding.clientId,
+    tokenEndpointAuthMethod: args.binding.tokenEndpointAuthMethod,
+  } as const;
+  const context: CustomConnectorAutomaticOAuthStateContext =
+    args.binding.registrationMethod === "dcr"
+      ? {
+          ...contextBase,
+          registrationMethod: "dcr",
+          dcrRegistrationId: args.binding.dcrRegistration.id,
+        }
+      : { ...contextBase, registrationMethod: "cimd" };
+  return {
+    kind: "oauth",
+    authorizationUrl: authorization.authorizationUrl.toString(),
+    codeVerifier: authorization.codeVerifier,
+    requestedScope: args.requestedScope,
+    context,
+  };
+}
+
 interface CustomConnectorAutomaticNoAuth {
   readonly kind: "none";
 }
@@ -1249,56 +1384,7 @@ export async function refreshCustomConnectorAutomaticOAuthToken(
   },
   signal: AbortSignal,
 ): Promise<CustomConnectorAutomaticOAuthTokenResult> {
-  const discovered = await settle(
-    discoverAutomaticOAuthAuthority(
-      {
-        endpoint: args.endpoint,
-        resourceMetadataUrl: args.binding.resourceMetadataUrl
-          ? new URL(args.binding.resourceMetadataUrl)
-          : null,
-      },
-      signal,
-    ),
-    signal,
-  );
-  if (!discovered.ok) {
-    const error = discovered.error;
-    if (
-      error instanceof CustomConnectorAutomaticOAuthError &&
-      error.kind === "temporary"
-    ) {
-      throw error;
-    }
-    if (error instanceof CustomConnectorAutomaticOAuthError) {
-      throw new CustomConnectorAutomaticOAuthError(
-        "binding-drift",
-        "MCP OAuth authority changed",
-        error,
-      );
-    }
-    throw error;
-  }
-  const authority = discovered.value;
-  if (
-    authority.issuer !== args.binding.issuer ||
-    authority.resource !== args.binding.resource ||
-    authority.tokenEndpoint !== args.binding.tokenEndpoint ||
-    (args.binding.registrationMethod === "cimd" &&
-      authority.authorizationServerMetadata
-        .client_id_metadata_document_supported !== true) ||
-    !(
-      supportedTokenAuthMethods(authority.authorizationServerMetadata)
-        .length === 0 ||
-      supportedTokenAuthMethods(authority.authorizationServerMetadata).includes(
-        args.binding.tokenEndpointAuthMethod,
-      )
-    )
-  ) {
-    throw new CustomConnectorAutomaticOAuthError(
-      "binding-drift",
-      "MCP OAuth authority changed",
-    );
-  }
+  const authority = await discoverBoundAutomaticOAuthAuthority(args, signal);
   const clientInformation = await boundClientInformation({
     ...args,
     context: boundClientContext(args.binding),

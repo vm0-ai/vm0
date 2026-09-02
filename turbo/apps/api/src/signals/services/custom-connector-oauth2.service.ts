@@ -5,6 +5,10 @@ import { command } from "ccstate";
 import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import {
+  mcpOAuthScopeListSchema,
+  mcpOAuthScopeTokenSchema,
+} from "@okouai/api-contracts/contracts/mcp-connectors";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { OAuthClientMetadata } from "@modelcontextprotocol/client";
 import {
@@ -84,6 +88,7 @@ import {
   isAutomaticOAuthInvalidClient,
   isAutomaticOAuthInvalidGrant,
   prepareCustomConnectorAutomaticOAuthAuthorization,
+  prepareCustomConnectorAutomaticOAuthReauthorization,
   readCustomConnectorAutomaticOAuthBinding,
   refreshCustomConnectorAutomaticOAuthToken,
   retireCustomConnectorDcrRegistration,
@@ -744,6 +749,7 @@ async function persistCustomConnectorOAuthStart(
   signal: AbortSignal,
 ) {
   const { db, connector, args, featureContext, prepared } = context;
+  const expiresAt = connectorOAuthStateExpiresAt();
   const result = await db.transaction(async (tx) => {
     await lockCustomConnectorOAuth2CredentialContract({
       db: tx,
@@ -762,7 +768,7 @@ async function persistCustomConnectorOAuthStart(
         connectorAccountSiblingWritesEnabled(featureContext),
     });
     if (resolution.kind !== "ready") {
-      return { resolution, connectionId: null };
+      return { resolution, connectionId: null, expiresAt };
     }
     const oauthStateId = await insertConnectorOAuthState(tx, {
       state: prepared.state,
@@ -779,11 +785,12 @@ async function persistCustomConnectorOAuthStart(
       codeVerifier: prepared.codeVerifier,
       oauthContext: JSON.stringify(prepared.context),
       accountMutation: args.account,
-      expiresAt: connectorOAuthStateExpiresAt(),
+      expiresAt,
     });
     return {
       resolution,
       connectionId: args.account.intent === "add" ? oauthStateId : null,
+      expiresAt,
     };
   });
   signal.throwIfAborted();
@@ -1029,6 +1036,166 @@ export const startCustomConnectorOAuth2$ = command(
       result: "authorization" as const,
       authorizationUrl: prepared.authorizationUrl,
       connectionId: mutationStart.connectionId ?? undefined,
+    };
+  },
+);
+
+function automaticOAuthReauthorizationScopes(
+  connection: Pick<StoredConnection, "oauthScopes">,
+  challengedScopes: readonly string[],
+): readonly string[] | null {
+  const storedScopes = connection.oauthScopes
+    ? z
+        .array(mcpOAuthScopeTokenSchema)
+        .max(100)
+        .parse(safeJsonParse(connection.oauthScopes))
+    : [];
+  const parsed = mcpOAuthScopeListSchema.safeParse([
+    ...new Set([...storedScopes, ...challengedScopes]),
+  ]);
+  return parsed.success ? parsed.data : null;
+}
+
+function automaticOAuthReauthorizationFailure(error: unknown) {
+  if (!(error instanceof CustomConnectorAutomaticOAuthError)) {
+    throw error;
+  }
+  return error.kind === "temporary"
+    ? badGateway(
+        "MCP OAuth provider is temporarily unavailable. Please try again.",
+      )
+    : conflict("MCP OAuth authority or client binding changed");
+}
+
+function automaticOAuthReauthorizationUnavailable(
+  target: "account" | "connector",
+) {
+  return conflict(
+    `MCP OAuth reauthorization is unavailable for this ${target}`,
+  );
+}
+
+export const startCustomConnectorAutomaticOAuthReauthorization$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly connectorId: string;
+      readonly connectionId: string;
+      readonly scopes: readonly string[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const connector = await get(
+      getCustomConnectorById({
+        orgId: args.orgId,
+        connectorId: args.connectorId,
+      }),
+    );
+    signal.throwIfAborted();
+    if (!connector || !isAutomaticOAuthConnector(connector)) {
+      return automaticOAuthReauthorizationUnavailable("connector");
+    }
+    const featureContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    if (customConnectorOAuthMcpIsDisabled(connector, featureContext)) {
+      return customConnectorMcpDisabledResponse();
+    }
+    const db = set(writeDb$);
+    const connection = await loadConnection({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      customConnectorId: connector.id,
+      memberConnectorId: args.connectionId,
+      storageVersion: connector.storageVersion,
+      definitionAuthMode: "automatic",
+    });
+    signal.throwIfAborted();
+    if (
+      !connection ||
+      connection.needsReconnect ||
+      !connection.encryptedAccessToken ||
+      !connectionAccessTokenIsCurrent(connection)
+    ) {
+      return automaticOAuthReauthorizationUnavailable("account");
+    }
+    const binding = await readCustomConnectorAutomaticOAuthBinding(
+      db,
+      connection.id,
+    );
+    signal.throwIfAborted();
+    if (!binding || binding.customConnectorId !== connector.id) {
+      return automaticOAuthReauthorizationUnavailable("account");
+    }
+    const scopes = automaticOAuthReauthorizationScopes(connection, args.scopes);
+    if (!scopes) {
+      return badRequestMessage("MCP OAuth scope request is too large");
+    }
+    const clientMetadata = configuredOkouMcpOAuthClientMetadata();
+    const [redirectUri] = clientMetadata.redirect_uris;
+    if (!redirectUri) {
+      throw new Error("Okou MCP OAuth callback is unavailable");
+    }
+    const state = generateConnectorOAuthState("okou");
+    const preparedResult = await settle(
+      prepareCustomConnectorAutomaticOAuthReauthorization(
+        {
+          db,
+          binding,
+          storageVersion: connector.storageVersion,
+          endpoint: connector.endpoint,
+          redirectUri,
+          cimdClientId: clientMetadata.client_id,
+          requestedScope: scopes.join(" "),
+          state,
+          featureContext,
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!preparedResult.ok) {
+      return automaticOAuthReauthorizationFailure(preparedResult.error);
+    }
+    const prepared = preparedResult.value;
+    const persisted = await persistCustomConnectorOAuthStart(
+      {
+        db,
+        connector,
+        args: {
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: args.connectorId,
+          redirectUri,
+          publicBrand: "okou",
+          account: {
+            intent: "reconnect",
+            connectionId: args.connectionId,
+          },
+        },
+        featureContext,
+        prepared: {
+          oauthSetup: "automatic",
+          redirectUri,
+          state,
+          authorizationUrl: prepared.authorizationUrl,
+          codeVerifier: prepared.codeVerifier,
+          oauthRequestedScopes: prepared.requestedScope,
+          context: prepared.context,
+        },
+      },
+      signal,
+    );
+    if (persisted.resolution.kind !== "ready") {
+      return automaticOAuthReauthorizationUnavailable("account");
+    }
+    return {
+      authorizationUrl: prepared.authorizationUrl,
+      expiresAt: persisted.expiresAt.toISOString(),
     };
   },
 );
@@ -1346,6 +1513,7 @@ interface StoredConnection {
   readonly id: string;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
+  readonly oauthScopes: string | null;
   readonly encryptedAccessToken: string | null;
   readonly encryptedRefreshToken: string | null;
   readonly encryptedIdToken: string | null;
@@ -1366,6 +1534,7 @@ async function loadConnection(args: {
       id: connectors.id,
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
+      oauthScopes: connectors.oauthScopes,
     })
     .from(connectors)
     .where(
@@ -1430,6 +1599,7 @@ async function loadConnection(args: {
     id: connection.id,
     tokenExpiresAt: connection.tokenExpiresAt,
     needsReconnect: connection.needsReconnect,
+    oauthScopes: connection.oauthScopes,
     encryptedAccessToken:
       tokenRows.find((row) => {
         return (
