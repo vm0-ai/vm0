@@ -42,15 +42,10 @@ type Register = (properties: Record<string, unknown>) => void;
 type Reset = () => void;
 type Unregister = (property: string) => void;
 
-const { apiOriginMarker, posthog } = vi.hoisted(() => {
+const { posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_bootstrap_phase_telemetry_test");
   window.location.href = "https://app.vm0.ai/";
-  const apiOriginMarker = document.createElement("meta");
-  apiOriginMarker.name = "vm0-api-origin";
-  apiOriginMarker.content = "https://api.vm0.ai";
-  document.head.append(apiOriginMarker);
   return {
-    apiOriginMarker,
     posthog: {
       capture: vi.fn<Capture>(),
       identify: vi.fn<Identify>(),
@@ -92,9 +87,7 @@ beforeEach(() => {
   );
 });
 
-afterAll(() => {
-  apiOriginMarker.remove();
-});
+afterAll(() => {});
 
 function timingEvents(): Record<string, unknown>[] {
   return posthog.capture.mock.calls.flatMap(([eventName, properties]) => {

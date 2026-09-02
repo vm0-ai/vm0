@@ -1439,13 +1439,10 @@ jobs:
 
           : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
           pages_dist="$(mktemp -d)"
-          job_ref="${PAGES_BRANCH%-app}"
-          api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
 
           if [[ "$ARTIFACT_EXISTS" == "true" ]]; then
             canonical_dist="$(mktemp -d)"
@@ -1462,8 +1459,7 @@ jobs:
 
           bash .github/scripts/prepare-okou-pages-dist.sh \
             "$canonical_dist" \
-            "$pages_dist" \
-            "$api_origin"
+            "$pages_dist"
 
           {
             echo "canonical-dist=$canonical_dist"

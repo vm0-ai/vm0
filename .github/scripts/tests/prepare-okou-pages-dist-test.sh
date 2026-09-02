@@ -13,7 +13,6 @@ mkdir -p "${canonical_dist}/assets" "${canonical_dist}/icons" "$pages_dist"
 printf '%s\n' \
   '<!doctype html>' \
   '<head>' \
-  '  <meta name="vm0-api-origin" content="" />' \
   '  <meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
   '  <meta name="okou-app-version" content="0.812.5">' \
   '</head>' \
@@ -51,8 +50,6 @@ grep -Fq 'Cache-Control: public, max-age=31536000, immutable' \
 grep -Fq 'display-capture=(self)' "${pages_dist}/_headers"
 ! grep -Fq 'display-capture=()' "${pages_dist}/_headers"
 grep -Fq '<title>Not Found</title>' "${pages_dist}/assets/404.html"
-grep -Fq '<meta name="vm0-api-origin" content="" />' \
-  "${pages_dist}/index.html"
 grep -Fq \
   '<meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
   "${pages_dist}/index.html"
@@ -67,28 +64,12 @@ legacy_pages_dist="${tmp_dir}/legacy-pages"
 mkdir -p "${legacy_canonical_dist}/assets" "$legacy_pages_dist"
 printf '%s\n' \
   '<!doctype html>' \
-  '<meta name="vm0-api-origin" content="" />' \
   '<script type="module" src="/assets/legacy-123.js"></script>' \
   > "${legacy_canonical_dist}/index.html"
 printf 'console.log("legacy");\n' \
   > "${legacy_canonical_dist}/assets/legacy-123.js"
 bash "$script" "$legacy_canonical_dist" "$legacy_pages_dist"
 test -f "${legacy_pages_dist}/assets/legacy-123.js"
-
-preview_pages_dist="${tmp_dir}/preview-pages"
-mkdir -p "$preview_pages_dist"
-bash "$script" \
-  "$canonical_dist" \
-  "$preview_pages_dist" \
-  "https://pr-23364-api.vm6.ai"
-grep -Fq \
-  '<meta name="vm0-api-origin" content="https://pr-23364-api.vm6.ai" />' \
-  "${preview_pages_dist}/index.html"
-grep -Fq \
-  '<meta name="okou-app-git-commit-sha" content="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">' \
-  "${preview_pages_dist}/index.html"
-grep -Fq '<meta name="okou-app-version" content="0.812.5">' \
-  "${preview_pages_dist}/index.html"
 
 cutover_pages_dist="${tmp_dir}/cutover-pages"
 mkdir -p "$cutover_pages_dist"
