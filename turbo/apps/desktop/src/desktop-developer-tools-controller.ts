@@ -1,7 +1,8 @@
 import type { DesktopDeveloperToolsState } from "./desktop-bridge";
 import { latestWinsSingleFlight } from "./desktop-async-control";
 
-const OKOU_DEBUG_FEATURE_SWITCH_KEY = "okouDebug";
+const OKOU_DEBUG_FEATURE_SWITCH_KEY = "_debug";
+const LEGACY_OKOU_DEBUG_FEATURE_SWITCH_KEY = "okouDebug";
 const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
   "computerUseDesktopPlugins";
 const INTRO_VIDEO_FEATURE_SWITCH_KEY = "introVideo";
@@ -11,17 +12,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function featureSwitchEnabledFromBody(value: unknown, key: string): boolean {
+function featureSwitchValueFromBody(
+  value: unknown,
+  key: string,
+): boolean | undefined {
   if (!isRecord(value)) {
-    return false;
+    return undefined;
   }
   if (isRecord(value.effectiveSwitches)) {
-    return value.effectiveSwitches[key] === true;
+    const switchValue = value.effectiveSwitches[key];
+    return typeof switchValue === "boolean" ? switchValue : undefined;
   }
   if (isRecord(value.switches)) {
-    return value.switches[key] === true;
+    const switchValue = value.switches[key];
+    return typeof switchValue === "boolean" ? switchValue : undefined;
   }
-  return false;
+  return undefined;
+}
+
+function featureSwitchEnabledFromBody(value: unknown, key: string): boolean {
+  return featureSwitchValueFromBody(value, key) === true;
+}
+
+function debugFeatureSwitchEnabledFromBody(value: unknown): boolean {
+  return Boolean(
+    featureSwitchValueFromBody(value, OKOU_DEBUG_FEATURE_SWITCH_KEY) ??
+    featureSwitchValueFromBody(value, LEGACY_OKOU_DEBUG_FEATURE_SWITCH_KEY),
+  );
 }
 
 interface DeveloperToolsControllerOptions {
@@ -132,9 +149,7 @@ export class DeveloperToolsController {
       );
     }
     const body: unknown = await response.json();
-    this.setAvailability(
-      featureSwitchEnabledFromBody(body, OKOU_DEBUG_FEATURE_SWITCH_KEY),
-    );
+    this.setAvailability(debugFeatureSwitchEnabledFromBody(body));
     this.setFilesystemPluginFeatureEnabled(
       featureSwitchEnabledFromBody(
         body,

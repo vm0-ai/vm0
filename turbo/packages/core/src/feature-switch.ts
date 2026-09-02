@@ -13,6 +13,21 @@
 import { FeatureSwitchKey } from "./feature-switch-key";
 import { STAFF_ORG_ID_HASHES, fnv1a } from "./identity-hash";
 
+// Rollout aliases for app/API versions that predate the internal-key rename.
+// Remove after those versions have drained and the rollback floor includes the
+// renamed keys.
+const LEGACY_FEATURE_SWITCH_KEY_ALIASES = {
+  dummy: FeatureSwitchKey.Dummy,
+  lab: FeatureSwitchKey.Lab,
+  sidebarSubscriptionUsage: FeatureSwitchKey.SidebarSubscriptionUsage,
+  personalModelProviderAccounts: FeatureSwitchKey.PersonalModelProviderAccounts,
+  feishuIntegration: FeatureSwitchKey.FeishuIntegration,
+  codexFastMode: FeatureSwitchKey.CodexFastMode,
+  okouDebug: FeatureSwitchKey.OkouDebug,
+  realAgentInPreview: FeatureSwitchKey.RealAgentInPreview,
+  testOauthConnector: FeatureSwitchKey.TestOauthConnector,
+} as const satisfies Readonly<Record<string, FeatureSwitchKey>>;
+
 export interface FeatureSwitch {
   readonly maintainer: string;
   readonly description?: string;
@@ -489,10 +504,10 @@ export function getAllFeatureStates(
   }
 
   if (ctx?.overrides) {
-    for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (key in FEATURE_SWITCHES && value !== undefined) {
-        result[key as FeatureSwitchKey] = value;
-      }
+    for (const [key, value] of Object.entries(
+      filterFeatureSwitchOverrides(ctx.overrides),
+    )) {
+      result[key as FeatureSwitchKey] = value;
     }
   }
 
@@ -531,17 +546,48 @@ export function getFeatureSwitchMetadata(): Record<
   return result;
 }
 
-/** Keep overrides for currently registered feature switches. */
+/** Keep registered overrides and normalize rollout aliases. */
 export function filterFeatureSwitchOverrides(
-  switches: Record<string, boolean>,
+  switches: Readonly<Record<string, boolean | undefined>>,
 ): Record<string, boolean> {
   const filtered: Record<string, boolean> = {};
   for (const [key, value] of Object.entries(switches)) {
-    if (key in FEATURE_SWITCHES) {
+    if (Object.hasOwn(FEATURE_SWITCHES, key) && value !== undefined) {
       filtered[key] = value;
     }
   }
+  for (const [legacyKey, canonicalKey] of Object.entries(
+    LEGACY_FEATURE_SWITCH_KEY_ALIASES,
+  )) {
+    const legacyValue = switches[legacyKey];
+    if (filtered[canonicalKey] === undefined && legacyValue !== undefined) {
+      filtered[canonicalKey] = legacyValue;
+    }
+  }
   return filtered;
+}
+
+/**
+ * Mirror renamed switches under their legacy keys during the rollout window.
+ */
+export function withLegacyFeatureSwitchAliases(
+  switches: Readonly<Record<string, boolean | undefined>>,
+): Record<string, boolean> {
+  const expanded: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(switches)) {
+    if (value !== undefined) {
+      expanded[key] = value;
+    }
+  }
+  for (const [legacyKey, canonicalKey] of Object.entries(
+    LEGACY_FEATURE_SWITCH_KEY_ALIASES,
+  )) {
+    const value = switches[canonicalKey];
+    if (value !== undefined) {
+      expanded[legacyKey] = value;
+    }
+  }
+  return expanded;
 }
 
 /**

@@ -10,7 +10,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 
 function createController(
   fetchFeatureSwitches: () => Promise<Response> = async () =>
-    jsonResponse({ effectiveSwitches: { okouDebug: true } }),
+    jsonResponse({ effectiveSwitches: { _debug: true } }),
 ) {
   const onChange = vi.fn();
   const setFilesystemPluginFeatureEnabled = vi.fn();
@@ -51,7 +51,7 @@ describe("DeveloperToolsController", () => {
       createController(async () =>
         jsonResponse({
           effectiveSwitches: {
-            okouDebug: true,
+            _debug: true,
             computerUseDesktopPlugins: true,
           },
         }),
@@ -71,7 +71,8 @@ describe("DeveloperToolsController", () => {
       async () =>
         jsonResponse({
           effectiveSwitches: {
-            okouDebug: false,
+            _debug: false,
+            okouDebug: true,
             introVideo: true,
             desktopScreenRecording: true,
           },
@@ -107,7 +108,7 @@ describe("DeveloperToolsController", () => {
     const responses = [
       jsonResponse({
         effectiveSwitches: {
-          okouDebug: true,
+          _debug: true,
           introVideo: true,
           desktopScreenRecording: true,
         },
@@ -142,7 +143,7 @@ describe("DeveloperToolsController", () => {
 
   it("toggles enabled once available and drops enabled when availability is lost", async () => {
     const responses = [
-      jsonResponse({ effectiveSwitches: { okouDebug: true } }),
+      jsonResponse({ effectiveSwitches: { _debug: true } }),
       new Response(null, { status: 401 }),
     ];
     const { controller, setFilesystemPluginFeatureEnabled } = createController(
@@ -172,7 +173,7 @@ describe("DeveloperToolsController", () => {
     const responses = [
       jsonResponse({
         effectiveSwitches: {
-          okouDebug: true,
+          _debug: true,
           computerUseDesktopPlugins: true,
           introVideo: true,
           desktopScreenRecording: true,
@@ -209,7 +210,7 @@ describe("DeveloperToolsController", () => {
           release = resolve;
         });
       }
-      return jsonResponse({ effectiveSwitches: { okouDebug: true } });
+      return jsonResponse({ effectiveSwitches: { _debug: true } });
     });
 
     controller.requestRefresh();

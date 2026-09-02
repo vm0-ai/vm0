@@ -2617,9 +2617,9 @@ jobs:
 
           curl -fsS "${headers[@]}" \
             -X POST \
-            -d '{"switches":{"realAgentInPreview":true}}' \
+            -d '{"switches":{"_realAgentInPreview":true}}' \
             "${api_url}/api/feature-switches" \
-            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            | jq -e '.effectiveSwitches._realAgentInPreview == true' \
             >/dev/null
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -2671,10 +2671,10 @@ jobs:
 
           curl -fsS "${headers[@]}" \
             -X POST \
-            -d '{"switches":{"realAgentInPreview":true}}' \
+            -d '{"switches":{"_realAgentInPreview":true}}' \
             "${api_url}/api/feature-switches" \
             | jq -e '
-                .effectiveSwitches.realAgentInPreview == true
+                .effectiveSwitches._realAgentInPreview == true
               ' \
             >/dev/null
         env:

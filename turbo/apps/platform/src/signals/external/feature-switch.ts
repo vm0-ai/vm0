@@ -1,6 +1,10 @@
 import { command, computed } from "ccstate";
 import type { BrowserClerk as Clerk } from "@clerk/shared/types";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import {
+  filterFeatureSwitchOverrides,
+  getAllFeatureStates,
+  withLegacyFeatureSwitchAliases,
+} from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { clerk$ } from "../auth";
@@ -94,8 +98,9 @@ function applySwitches(
 ) {
   const resolvedSwitches = effectiveSwitches ?? overrides;
   if (resolvedSwitches) {
+    const canonicalSwitches = filterFeatureSwitchOverrides(resolvedSwitches);
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = resolvedSwitches[key];
+      const value = canonicalSwitches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
@@ -215,7 +220,7 @@ export const setFeatureSwitch$ = command(
     signal.throwIfAborted();
     await accept(
       client.update({
-        body: { switches: overrides },
+        body: { switches: withLegacyFeatureSwitchAliases(overrides) },
         fetchOptions: { signal },
       }),
       [200],

@@ -37,6 +37,25 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeTruthy();
   });
 
+  it("hydrates pre-rename feature switch responses", async () => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { realAgentInPreview: true },
+        effectiveSwitches: { realAgentInPreview: true },
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(
+      context.store.get(featureSwitch$)[FeatureSwitchKey.RealAgentInPreview],
+    ).toBeTruthy();
+  });
+
   it("keeps image recognition available without capability negotiation", async () => {
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, {

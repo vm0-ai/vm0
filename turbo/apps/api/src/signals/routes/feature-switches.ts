@@ -1,6 +1,9 @@
 import { command, computed } from "ccstate";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import {
+  getAllFeatureStates,
+  withLegacyFeatureSwitchAliases,
+} from "@okouai/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -28,8 +31,10 @@ function featureSwitchResponseBody(params: {
     overrides: params.switches,
   });
   return {
-    switches: params.switches,
-    effectiveSwitches: registeredEffectiveSwitches,
+    switches: withLegacyFeatureSwitchAliases(params.switches),
+    effectiveSwitches: withLegacyFeatureSwitchAliases(
+      registeredEffectiveSwitches,
+    ),
   };
 }
 
