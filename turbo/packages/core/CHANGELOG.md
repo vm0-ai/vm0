@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.611.0](https://github.com/vm0-ai/vm0/compare/core-v8.610.0...core-v8.611.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** add internal Lab switch category ([#31177](https://github.com/vm0-ai/vm0/issues/31177)) ([996361b](https://github.com/vm0-ai/vm0/commit/996361bb352b5b94ec0852dbaa7ddc7086d7116e))
+* **platform:** group lab switches by rollout stage ([#31121](https://github.com/vm0-ai/vm0/issues/31121)) ([f23ecec](https://github.com/vm0-ai/vm0/commit/f23ecec9f8582cdd9a90281af7833266d7fb84ca))
+
+
+### Bug Fixes
+
+* **social:** file downloaded media by its actual container ([#30998](https://github.com/vm0-ai/vm0/issues/30998)) ([3752d3f](https://github.com/vm0-ai/vm0/commit/3752d3fea2e6f5dbd535693ad4346f58e943485a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+
 ## [8.610.0](https://github.com/vm0-ai/vm0/compare/core-v8.609.0...core-v8.610.0) (2026-09-02)
 
 
