@@ -424,9 +424,24 @@ export function createCameraPlan(
     throw new Error("Pointer events do not match the source video duration");
   }
 
-  const samples = samplesFromTrack(track).filter((sample) => {
+  const allSamples = samplesFromTrack(track);
+  const samples = allSamples.filter((sample) => {
     return sample.tMs <= source.durationMs;
   });
+  // A recording with no pointer events legitimately produces no camera moves.
+  // Events that all sit outside the recording mean the sidecar's tMs values are
+  // not relative to the recording start, which previously produced an empty
+  // plan and a silent plain transcode that looked like a successful render.
+  if (allSamples.length > 0 && samples.length === 0) {
+    const first = allSamples[0];
+    const last = allSamples.at(-1);
+    throw new Error(
+      `Pointer event timestamps are not relative to the recording start: ` +
+        `events span ${String(first?.tMs)}ms-${String(last?.tMs)}ms but the ` +
+        `recording is ${String(source.durationMs)}ms long. No camera moves ` +
+        `can be derived from this sidecar`,
+    );
+  }
   const ranges = cameraWindows(samples, source.durationMs).map(
     (window, rangeIndex) => {
       return {
@@ -601,13 +616,145 @@ export function createCameraFrameStates(
   return frames;
 }
 
-export function createFfmpegCameraCommands(plan: CameraPlan): string {
-  const commands = createCameraFrameStates(plan).map((frame) => {
-    return `${commandNumber(frame.timeMs / 1_000)} crop@camera w ${commandNumber(
-      frame.cropWidth,
-    )}, crop@camera h ${commandNumber(frame.cropHeight)}, crop@camera x ${commandNumber(
-      frame.cropX,
-    )}, crop@camera y ${commandNumber(frame.cropY)};`;
-  });
-  return `${commands.join("\n")}\n`;
+interface CameraSegment {
+  readonly startMs: number;
+  readonly from: CameraTransform;
+  readonly to: CameraTransform;
+}
+
+/**
+ * The camera is a chain of spring settles: it only changes course when the
+ * active focus changes, and coasts on a closed-form spring in between. Walking
+ * frames the same way `createCameraFrameStates` does keeps the two in step,
+ * but recording just the course changes turns the whole animation into a short
+ * piecewise expression instead of one command per frame.
+ */
+function cameraSegments(plan: CameraPlan): readonly CameraSegment[] {
+  const frameCount = Math.max(
+    1,
+    Math.ceil((plan.source.durationMs / 1_000) * plan.source.frameRate),
+  );
+  const initial: CameraTransform = {
+    scale: 1,
+    translationX: 0,
+    translationY: 0,
+  };
+  let activeTarget = targetAt(plan, 0);
+  let transitionStartMs = 0;
+  let transitionFrom = initial;
+  const segments: CameraSegment[] = [
+    { startMs: 0, from: initial, to: activeTarget },
+  ];
+
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    const timeMs = (frameIndex * 1_000) / plan.source.frameRate;
+    const target = targetAt(plan, timeMs);
+    if (target.key !== activeTarget.key) {
+      const current = interpolate(
+        transitionFrom,
+        activeTarget,
+        springProgress(timeMs - transitionStartMs),
+      );
+      transitionFrom = current;
+      transitionStartMs = timeMs;
+      activeTarget = target;
+      segments.push({ startMs: timeMs, from: current, to: target });
+    }
+  }
+  return segments;
+}
+
+const SPRING_DECAY = SPRING_DAMPING / (2 * SPRING_MASS);
+const SPRING_FREQUENCY = Math.sqrt(
+  Math.max(0, SPRING_STIFFNESS / SPRING_MASS - SPRING_DECAY * SPRING_DECAY),
+);
+
+/** `springProgress` written in ffmpeg expression syntax, over `timeExpression` seconds. */
+function springExpression(
+  startSeconds: number,
+  timeExpression: string,
+): string {
+  const elapsed = `(${timeExpression}-${commandNumber(startSeconds)})`;
+  const response =
+    `(1-exp(${commandNumber(-SPRING_DECAY)}*${elapsed})*` +
+    `(cos(${commandNumber(SPRING_FREQUENCY)}*${elapsed})+` +
+    `${commandNumber(SPRING_DECAY / SPRING_FREQUENCY)}*` +
+    `sin(${commandNumber(SPRING_FREQUENCY)}*${elapsed})))`;
+  return `if(gt(${response},${commandNumber(1 - SPRING_PRECISION)}),1,max(0,${response}))`;
+}
+
+/**
+ * Sum of one term per segment. The windows are half-open so exactly one term is
+ * ever non-zero, which keeps the expression flat instead of deeply nested.
+ */
+function piecewiseExpression(
+  segments: readonly CameraSegment[],
+  select: (transform: CameraTransform) => number,
+  timeExpression: string,
+  endSeconds: number,
+): string {
+  return segments
+    .map((segment, index) => {
+      const startSeconds = segment.startMs / 1_000;
+      const next = segments[index + 1];
+      const stopSeconds = next ? next.startMs / 1_000 : endSeconds;
+      const from = select(segment.from);
+      const to = select(segment.to);
+      const value =
+        from === to
+          ? commandNumber(from)
+          : `(${commandNumber(from)}+${commandNumber(to - from)}*` +
+            `(${springExpression(startSeconds, timeExpression)}))`;
+      return (
+        `(gte(${timeExpression},${commandNumber(startSeconds)})*` +
+        `lt(${timeExpression},${commandNumber(stopSeconds)}))*${value}`
+      );
+    })
+    .join("+");
+}
+
+/**
+ * Renders the camera move as a single `zoompan` filter.
+ *
+ * The previous renderer drove `crop` through `sendcmd`, changing the crop
+ * width and height every frame. libavfilter cannot resize a filter's output
+ * link at runtime, so ffmpeg segfaults as soon as a plan contains an actual
+ * zoom; only a pure pan survived. `zoompan` samples a moving window into a
+ * fixed output size, so the link geometry never changes.
+ */
+export function createFfmpegCameraFilter(plan: CameraPlan): string {
+  const segments = cameraSegments(plan);
+  const endSeconds = plan.source.durationMs / 1_000 + 1;
+  const time = `(on/${plan.source.frameRate.toString()})`;
+  const zoom = piecewiseExpression(
+    segments,
+    (transform) => {
+      return transform.scale;
+    },
+    time,
+    endSeconds,
+  );
+  const translationX = piecewiseExpression(
+    segments,
+    (transform) => {
+      return transform.translationX;
+    },
+    time,
+    endSeconds,
+  );
+  const translationY = piecewiseExpression(
+    segments,
+    (transform) => {
+      return transform.translationY;
+    },
+    time,
+    endSeconds,
+  );
+  return (
+    `zoompan=z='max(1,${zoom})'` +
+    `:x='max(0,min(iw-iw/zoom,(0-(${translationX}))/zoom))'` +
+    `:y='max(0,min(ih-ih/zoom,(0-(${translationY}))/zoom))'` +
+    `:d=1:s=${plan.source.width.toString()}x${plan.source.height.toString()}` +
+    `:fps=${plan.source.frameRate.toString()}`
+  );
 }

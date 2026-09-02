@@ -2,13 +2,10 @@ import { execFileSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, parse, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Command } from "commander";
@@ -17,7 +14,7 @@ import { withErrorHandler } from "../../lib/command/with-error-handler";
 import {
   cameraPlanSchema,
   createCameraPlan,
-  createFfmpegCameraCommands,
+  createFfmpegCameraFilter,
   inputTrackClickTimes,
   inputTrackSchema,
   inputTrackVideoSource,
@@ -158,52 +155,43 @@ function renderVideo(
   plan: CameraPlan,
   force: boolean,
 ): void {
-  const temporaryDirectory = mkdtempSync(join(tmpdir(), "okou-camera-"));
-  try {
-    const commandsPath = join(temporaryDirectory, "camera.commands");
-    writeFileSync(commandsPath, createFfmpegCameraCommands(plan));
-    const filter = [
-      `fps=${plan.source.frameRate.toString()}`,
-      `sendcmd=f='${commandsPath}'`,
-      `crop@camera=w=${plan.source.width.toString()}:h=${plan.source.height.toString()}:x=0:y=0:exact=1`,
-      `scale=${plan.source.width.toString()}:${plan.source.height.toString()}:flags=lanczos`,
-      "setsar=1",
-    ].join(",");
-    execFileSync(
-      "ffmpeg",
-      [
-        force ? "-y" : "-n",
-        "-v",
-        "error",
-        "-i",
-        inputPath,
-        "-vf",
-        filter,
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "18",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-movflags",
-        "+faststart",
-        outputPath,
-      ],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
-  } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true });
-  }
+  const filter = [
+    `fps=${plan.source.frameRate.toString()}`,
+    createFfmpegCameraFilter(plan),
+    "setsar=1",
+  ].join(",");
+  execFileSync(
+    "ffmpeg",
+    [
+      force ? "-y" : "-n",
+      "-v",
+      "error",
+      "-i",
+      inputPath,
+      "-vf",
+      filter,
+      "-map",
+      "0:v:0",
+      "-map",
+      "0:a?",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "fast",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-movflags",
+      "+faststart",
+      outputPath,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
 }
 
 function extractReviewFrame(
