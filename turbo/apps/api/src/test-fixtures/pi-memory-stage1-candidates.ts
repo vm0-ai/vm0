@@ -142,6 +142,29 @@ export async function commitPiMemoryStage1CandidateFixture(args: {
   });
 }
 
+export async function setSyntheticPiMemoryStage1SelectionFixture(args: {
+  readonly memoryStorageId: string;
+  readonly piSessionId: string;
+  readonly sourceHistoryHash: string;
+}): Promise<void> {
+  const [selected] = await db()
+    .update(piMemoryStage1Candidates)
+    .set({
+      lastSelectedSourceHistoryHash: args.sourceHistoryHash,
+    })
+    .where(
+      and(
+        eq(piMemoryStage1Candidates.memoryStorageId, args.memoryStorageId),
+        eq(piMemoryStage1Candidates.piSessionId, args.piSessionId),
+        eq(piMemoryStage1Candidates.sourceHistoryHash, args.sourceHistoryHash),
+      ),
+    )
+    .returning({ memoryStorageId: piMemoryStage1Candidates.memoryStorageId });
+  if (!selected) {
+    throw new Error("Expected a synthetic Pi memory selection to be recorded");
+  }
+}
+
 export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
   const [run] = await db()
     .select({

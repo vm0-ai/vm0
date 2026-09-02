@@ -1758,6 +1758,13 @@
       "when": 1788360292386,
       "tag": "1058_wide_tyger_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 1059,
+      "version": "7",
+      "when": 1788370196726,
+      "tag": "1059_restore_pi_memory_selection_watermark",
+      "breakpoints": true
     }
   ]
 }
