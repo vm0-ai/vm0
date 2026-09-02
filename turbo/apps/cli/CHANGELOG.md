@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.307.0](https://github.com/vm0-ai/vm0/compare/cli-v9.306.0...cli-v9.307.0) (2026-09-02)
+
+
+### Features
+
+* **pi-memory:** add bounded first-party read tools ([#31234](https://github.com/vm0-ai/vm0/issues/31234)) ([b2d01e7](https://github.com/vm0-ai/vm0/commit/b2d01e7bd61753a6499d644d4e328b40ea9def0e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.396.0
+    * @okouai/core bumped to 8.611.3
+    * @okouai/pi-agent-runtime bumped to 1.13.0
+
 ## [9.306.0](https://github.com/vm0-ai/vm0/compare/cli-v9.305.5...cli-v9.306.0) (2026-09-02)
 
 

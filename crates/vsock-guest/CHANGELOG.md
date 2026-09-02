@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.142](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.141...vsock-guest-v0.19.142) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
 ## [0.19.141](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.140...vsock-guest-v0.19.141) (2026-09-02)
 
 ## [0.19.140](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.139...vsock-guest-v0.19.140) (2026-09-02)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.23](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.22...guest-contracts-v0.12.23) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
 ## [0.12.22](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.21...guest-contracts-v0.12.22) (2026-09-02)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.184.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.3...runner-rs-v0.184.4) (2026-09-02)
+
+
+### Refactoring
+
+* **pi:** remove ownership transfer capability marker ([#31216](https://github.com/vm0-ai/vm0/issues/31216)) ([fb22db1](https://github.com/vm0-ai/vm0/commit/fb22db17eca15ebfcd5479388ff9a163be0ef500))
+
 ## [0.184.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.2...runner-rs-v0.184.3) (2026-09-02)
 
 
