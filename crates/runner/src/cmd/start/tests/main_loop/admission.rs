@@ -1636,7 +1636,7 @@ async fn ordinary_and_finalizing_pressure_admission_do_not_double_spend_idle_cap
     let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     fresh_overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) =
-        mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, fresh_overrides);
+        mock_run_config_with_overrides(test_profiles(), 5, 8192, 2, fresh_overrides);
     let budget = Arc::clone(&config.capacity.budget);
     for reuse_key in ["thread:pressure-idle-first", "thread:pressure-idle-second"] {
         seed_idle_pool_with_overrides(
@@ -1730,7 +1730,7 @@ async fn cancelled_finalizing_capacity_wait_releases_retiring_leases_but_keeps_c
     let idle_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     idle_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
     let fresh_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    let (config, env) = mock_run_config_with_overrides(two_profiles(), 4, 8192, 2, fresh_overrides);
+    let (config, env) = mock_run_config_with_overrides(two_profiles(), 5, 8192, 2, fresh_overrides);
     let budget = Arc::clone(&config.capacity.budget);
     let occupied = ResourceBudget::try_reserve_lease(&budget, 2, 4096)
         .expect("active work should reserve half the budget");
@@ -1866,7 +1866,7 @@ async fn finalizing_handoff_starts_before_existing_idle_cleanup() {
     overrides.set_wait_process_lifecycle_gate(predecessor_gate.clone());
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
     let (config, env) =
-        mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, Arc::clone(&overrides));
+        mock_run_config_with_overrides(test_profiles(), 5, 8192, 2, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let reuse_key = "thread:pending-exact-resource";
     let history_generation_run_id = RunId::new_v4();
