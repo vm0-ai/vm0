@@ -75,6 +75,7 @@ import {
   isOfficeDocumentPreview,
   OfficeDocumentPreview,
 } from "./office-document-preview.tsx";
+import { officeDocumentPreviewEnabled$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -850,6 +851,7 @@ function ArtifactBody({
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
+  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   if (kind === "markdown") {
     return markdownTree$ ? (
       <ArtifactMarkdownBody tree$={markdownTree$} />
@@ -910,7 +912,7 @@ function ArtifactBody({
       />
     );
   }
-  if (isOfficeDocumentPreview(filename)) {
+  if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
     return (
       <ArtifactOfficeDocumentBody
         filename={filename}
