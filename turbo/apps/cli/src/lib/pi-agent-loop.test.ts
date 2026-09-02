@@ -498,7 +498,6 @@ async function startOwnershipTransferHost(args: {
             sha256: args.baseSessionSha256,
           },
           sandboxEventSequenceStart: 1,
-          ownershipTransfer: { schemaVersion: 1 },
         },
       },
     }),

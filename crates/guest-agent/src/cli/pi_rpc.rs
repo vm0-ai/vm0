@@ -29,20 +29,19 @@
 //!
 //! ## API-first startup boundary
 //!
-//! Legacy manifest V1/V2 handoffs emit this private control before official RPC
-//! output:
+//! Manifest V3 handoffs emit this private control before official RPC output:
 //!
 //! ```json
 //! {
 //!   "type": "vm0_pi_api_first_turn_boundary",
-//!   "schemaVersion": 1,
-//!   "sandboxEventSequenceStart": 4
+//!   "schemaVersion": 2,
+//!   "sandboxEventSequenceStart": 4,
+//!   "ownershipTransferMode": "pending-tool-continuation"
 //! }
 //! ```
 //!
-//! The host maps both legacy manifest versions to implicit
-//! `pending-tool-continuation`. Manifest V3 instead emits boundary schema V2
-//! with one explicit `ownershipTransferMode`: `sandbox-first`,
+//! Boundary schema V2 carries one explicit `ownershipTransferMode`:
+//! `sandbox-first`,
 //! `pending-tool-continuation`, or `settled-session-continuation`. The private
 //! boundary schema is independent of the public manifest schema. Rust accepts a
 //! boundary only when its type and schema version are exact, all fields are
@@ -251,15 +250,6 @@ pub(super) enum PiRpcOwnershipTransferMode {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PiApiFirstTurnBoundaryControlV1 {
-    #[serde(rename = "type")]
-    record_type: String,
-    schema_version: u32,
-    sandbox_event_sequence_start: u64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PiApiFirstTurnBoundaryControlV2 {
     #[serde(rename = "type")]
     record_type: String,
@@ -371,22 +361,6 @@ fn validated_boundary_sequence(sequence: u64) -> Result<u32, AgentError> {
 
 fn parse_boundary_control(record: &Value) -> Result<PiRpcStartup, AgentError> {
     match record.get("schemaVersion").and_then(Value::as_u64) {
-        Some(1) => {
-            let control: PiApiFirstTurnBoundaryControlV1 =
-                serde_json::from_value(record.clone())
-                    .map_err(|_| PiRpcStartupBoundary::malformed_record_error())?;
-            if control.record_type != PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE
-                || control.schema_version != 1
-            {
-                return Err(PiRpcStartupBoundary::malformed_record_error());
-            }
-            Ok(PiRpcStartup {
-                sandbox_event_sequence_start: validated_boundary_sequence(
-                    control.sandbox_event_sequence_start,
-                )?,
-                ownership_transfer_mode: PiRpcOwnershipTransferMode::PendingToolContinuation,
-            })
-        }
         Some(2) => {
             let control: PiApiFirstTurnBoundaryControlV2 =
                 serde_json::from_value(record.clone())
@@ -1003,19 +977,15 @@ mod tests {
     }
 
     #[test]
-    fn boundary_v1_maps_to_pending_tool_continuation() {
-        let startup = parse_boundary_control(&json!({
+    fn boundary_v1_is_rejected() {
+        let error = parse_boundary_control(&json!({
             "type": PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE,
             "schemaVersion": 1,
             "sandboxEventSequenceStart": 4,
         }))
-        .expect("legacy boundary should remain readable");
+        .expect_err("legacy boundary should fail closed");
 
-        assert_eq!(startup.sandbox_event_sequence_start, 4);
-        assert_eq!(
-            startup.ownership_transfer_mode,
-            PiRpcOwnershipTransferMode::PendingToolContinuation
-        );
+        assert!(error.to_string().contains("PI_HANDOFF_BOUNDARY_INVALID"));
     }
 
     #[test]

@@ -7011,7 +7011,6 @@ function preparePiLaunchResources(args: {
             schemaVersion: 2,
             apiFirstTurn: {
               schemaVersion: 1,
-              ownershipTransfer: { schemaVersion: 1 },
               resourceSnapshotDigest: piResourceSnapshotDigest(
                 piResourceDiscoveryMounts(args.storageMounts),
               ),

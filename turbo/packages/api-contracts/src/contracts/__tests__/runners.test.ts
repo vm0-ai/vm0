@@ -412,43 +412,24 @@ describe("Pi sandbox execution contract", () => {
     ).toBe(false);
   });
 
-  it("accepts manifest v1 as the implicit start-at-1 contract", () => {
-    const manifest = piApiFirstTurnManifestSchema.parse({
+  it.each([
+    {
       schemaVersion: 1,
       outcome: "handoff",
       baseSession: { sessionId: piSessionId, sha256: null },
       session: handoffSession,
-    });
-
-    expect(manifest.schemaVersion).toBe(1);
-    expect(manifest).not.toHaveProperty("sandboxEventSequenceStart");
-    expect(
-      piApiFirstTurnManifestSchema.safeParse({
-        ...manifest,
-        sandboxEventSequenceStart: 1,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("accepts an authoritative future manifest boundary after launch", () => {
-    const sandboxEventSequenceStart = 4;
-    const manifest = piApiFirstTurnManifestSchema.parse({
+    },
+    {
       schemaVersion: 2,
       outcome: "handoff",
       baseSession: { sessionId: piSessionId, sha256: null },
       session: handoffSession,
-      sandboxEventSequenceStart,
-    });
-    const config = piApiFirstTurnConfigSchema.parse(
-      piStoredContext.piLaunchConfig.apiFirstTurn,
+      sandboxEventSequenceStart: 4,
+    },
+  ])("rejects retired manifest schema $schemaVersion", (manifest) => {
+    expect(piApiFirstTurnManifestSchema.safeParse(manifest).success).toBe(
+      false,
     );
-
-    expect(manifest).toMatchObject({
-      schemaVersion: 2,
-      sandboxEventSequenceStart,
-    });
-    expect(config.sandboxEventSequenceStart).toBe(1);
-    expect(config).not.toHaveProperty("ownershipTransfer");
   });
 
   it.each([
@@ -473,12 +454,16 @@ describe("Pi sandbox execution contract", () => {
     });
   });
 
-  it("keeps V3 capability additive and fail-closed", () => {
+  it("keeps the ignored stored-context marker exact and optional", () => {
+    const canonical = piApiFirstTurnConfigSchema.parse(
+      piStoredContext.piLaunchConfig.apiFirstTurn,
+    );
     const configured = piApiFirstTurnConfigSchema.parse({
       ...piStoredContext.piLaunchConfig.apiFirstTurn,
       ownershipTransfer: { schemaVersion: 1 },
     });
 
+    expect(canonical).not.toHaveProperty("ownershipTransfer");
     expect(configured.ownershipTransfer).toStrictEqual({ schemaVersion: 1 });
     expect(
       piApiFirstTurnConfigSchema.safeParse({
@@ -530,15 +515,6 @@ describe("Pi sandbox execution contract", () => {
     (sandboxEventSequenceStart) => {
       expect(
         piApiFirstTurnManifestSchema.safeParse({
-          schemaVersion: 2,
-          outcome: "handoff",
-          baseSession: { sessionId: piSessionId, sha256: null },
-          session: handoffSession,
-          sandboxEventSequenceStart,
-        }).success,
-      ).toBe(false);
-      expect(
-        piApiFirstTurnManifestSchema.safeParse({
           schemaVersion: 3,
           outcome: "ownership-transfer",
           mode: "settled-session-continuation",
@@ -556,11 +532,12 @@ describe("Pi sandbox execution contract", () => {
     },
   );
 
-  it("rejects a future manifest without its dynamic boundary", () => {
+  it("rejects a V3 manifest without its dynamic boundary", () => {
     expect(
       piApiFirstTurnManifestSchema.safeParse({
-        schemaVersion: 2,
-        outcome: "handoff",
+        schemaVersion: 3,
+        outcome: "ownership-transfer",
+        mode: "pending-tool-continuation",
         baseSession: { sessionId: piSessionId, sha256: null },
         session: handoffSession,
       }).success,

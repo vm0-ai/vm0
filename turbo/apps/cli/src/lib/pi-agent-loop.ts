@@ -109,10 +109,9 @@ export async function piSandboxAgentConfigFromEnv(
  * Resolve the API-first handoff and run the official sandbox-owned Pi RPC host.
  *
  * The handoff resolver validates the immutable manifest, authoritative session,
- * and ownership mode. Manifest V1/V2 handoffs retain their schema V1
- * private control and pending-tool startup. Manifest V3 emits a schema V2
- * control carrying the explicit ownership mode. This host writes that control
- * before entering `runPiOfficialRpcMode`.
+ * and ownership mode. The V3 manifest emits a schema V2 private control
+ * carrying the explicit ownership mode. This host writes that control before
+ * entering `runPiOfficialRpcMode`.
  *
  * The guest-agent consumes that control record before admitting any official
  * Pi RPC record, so the control is not an agent event, Chat event, transcript
