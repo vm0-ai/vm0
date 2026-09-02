@@ -311,16 +311,18 @@ describe("platform Clerk entrypoint", () => {
     expect(clerkCore.nextElementSibling).toBe(bootstrap);
     expect(clerkCore.parentElement).toBe(parsedDocument.head);
     expect(bootstrap.parentElement).toBe(parsedDocument.head);
+    expect(fontStylesheet.parentElement).toBe(parsedDocument.head);
+    expect(mainScript.parentElement).toBe(parsedDocument.head);
     expect(clerkCore.compareDocumentPosition(bootstrap)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(bootstrap.compareDocumentPosition(mainScript)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(skeleton.compareDocumentPosition(fontStylesheet)).toBe(
+    expect(bootstrap.compareDocumentPosition(fontStylesheet)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(fontStylesheet.compareDocumentPosition(mainScript)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(mainScript.compareDocumentPosition(skeleton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(html).not.toContain("__VM0_");
@@ -345,11 +347,17 @@ describe("platform Clerk entrypoint", () => {
     expect(fontStylesheet.rel).toBe("stylesheet");
     expect(fontStylesheet.hasAttribute("as")).toBeFalsy();
     expect(fontStylesheet.media).toBe("print");
-    expect(fontStylesheet.getAttribute("fetchpriority")).toBe("low");
+    expect(fontStylesheet.hasAttribute("fetchpriority")).toBeFalsy();
     expect(fontStylesheet.getAttribute("onload")).toBe("this.media = 'all'");
+    expect(mainScript.hasAttribute("fetchpriority")).toBeFalsy();
     expect(
       parsedDocument.querySelector(
         'link[rel="preconnect"][href*="fonts.googleapis.com"], link[rel="preconnect"][href*="fonts.gstatic.com"]',
+      ),
+    ).toBeNull();
+    expect(
+      parsedDocument.querySelector(
+        'link[rel="preconnect"][href="https://cdn.vm0.io"], link[rel="preconnect"][href="https://static.vm0.io"]',
       ),
     ).toBeNull();
     expect(html.indexOf("data-vm0-clerk-bootstrap")).toBeLessThan(
