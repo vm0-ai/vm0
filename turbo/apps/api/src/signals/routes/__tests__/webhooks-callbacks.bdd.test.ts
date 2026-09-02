@@ -682,6 +682,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       data: {
         id: orgOf(admin),
         created_by: admin.userId,
+        created_at: now(),
       },
     });
     const created = await api.requestClerkWebhook("{}", {}, [200]);

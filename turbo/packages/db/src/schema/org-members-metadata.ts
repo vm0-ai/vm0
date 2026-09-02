@@ -46,6 +46,9 @@ export const orgMembersMetadata = pgTable(
     /** Member default for built-in image generation. Seeds new chat threads. */
     selectedImageModel: varchar("selected_image_model", { length: 255 }),
     onboardingDone: boolean("onboarding_done").notNull().default(false),
+    morningBriefDefaultEligibleAt: timestamp(
+      "morning_brief_default_eligible_at",
+    ),
     captureNetworkBodiesRemaining: integer(
       "capture_network_bodies_remaining",
     ).default(0),

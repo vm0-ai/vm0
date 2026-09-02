@@ -8,7 +8,7 @@ import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-c
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
@@ -38,6 +38,7 @@ import {
 } from "./org-plan-entitlements.service";
 import type { Tx } from "../../lib/db-types";
 import { onRejection } from "../utils";
+import { morningBriefDefaultEligibleAt } from "./morning-brief-default-eligibility.service";
 
 const L = logger("org-limited-free-bootstrap.service");
 
@@ -46,6 +47,11 @@ type DbTransaction = Tx;
 interface EnsureOrgLimitedFreeBootstrapArgs {
   readonly orgId: string;
   readonly ownerUserId: string;
+  readonly morningBriefEligibilitySourceCreatedAt?: Date;
+}
+
+interface BootstrapOwnerMembershipArgs extends EnsureOrgLimitedFreeBootstrapArgs {
+  readonly morningBriefDefaultEligibleAt: Date | null;
 }
 
 type BootstrapReservation =
@@ -97,7 +103,7 @@ async function existingDefaultAgentId(
 
 async function upsertBootstrapOwnerMembership(
   tx: DbTransaction,
-  args: EnsureOrgLimitedFreeBootstrapArgs,
+  args: BootstrapOwnerMembershipArgs,
 ): Promise<void> {
   const cachedAt = nowDate();
   await tx
@@ -113,15 +119,25 @@ async function upsertBootstrapOwnerMembership(
       set: { role: "admin", cachedAt },
     });
 
-  await tx
-    .insert(orgMembersMetadata)
-    .values({
-      orgId: args.orgId,
-      userId: args.ownerUserId,
-      createdAt: cachedAt,
+  const metadataInsert = tx.insert(orgMembersMetadata).values({
+    orgId: args.orgId,
+    userId: args.ownerUserId,
+    morningBriefDefaultEligibleAt: args.morningBriefDefaultEligibleAt,
+    createdAt: cachedAt,
+    updatedAt: cachedAt,
+  });
+  if (args.morningBriefDefaultEligibleAt === null) {
+    await metadataInsert.onConflictDoNothing();
+    return;
+  }
+  await metadataInsert.onConflictDoUpdate({
+    target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+    set: {
+      morningBriefDefaultEligibleAt: args.morningBriefDefaultEligibleAt,
       updatedAt: cachedAt,
-    })
-    .onConflictDoNothing();
+    },
+    setWhere: isNull(orgMembersMetadata.morningBriefDefaultEligibleAt),
+  });
 }
 
 function isPaidTier(tier: string): boolean {
@@ -130,7 +146,7 @@ function isPaidTier(tier: string): boolean {
 
 async function reserveBootstrapAgent(
   tx: DbTransaction,
-  args: EnsureOrgLimitedFreeBootstrapArgs & { readonly agentId: string },
+  args: BootstrapOwnerMembershipArgs & { readonly agentId: string },
 ): Promise<BootstrapReservation> {
   await lockOrgBootstrap(tx, args.orgId);
   await upsertBootstrapOwnerMembership(tx, args);
@@ -258,8 +274,17 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
   ): Promise<EnsureOrgLimitedFreeBootstrapResult> => {
     const writeDb = set(writeDb$);
     const agentId = randomUUID();
+    const eligibleAt = args.morningBriefEligibilitySourceCreatedAt
+      ? morningBriefDefaultEligibleAt(
+          args.morningBriefEligibilitySourceCreatedAt,
+        )
+      : null;
     const reservation = await writeDb.transaction(async (tx) => {
-      return await reserveBootstrapAgent(tx, { ...args, agentId });
+      return await reserveBootstrapAgent(tx, {
+        ...args,
+        agentId,
+        morningBriefDefaultEligibleAt: eligibleAt,
+      });
     });
     signal.throwIfAborted();
 
