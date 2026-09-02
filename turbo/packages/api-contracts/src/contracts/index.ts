@@ -51,15 +51,21 @@ export {
   ACTIONABLE_RUN_ERROR_SNIPPETS,
   apiErrorSchema,
   ApiError,
+  CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   createErrorResponse,
   formatRunErrorForExternalSurface,
   isActionableRunError,
+  isAgentExecutionTimeoutRunError,
   isGenericRunErrorForDisplay,
   RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,
 } from "./errors";
+export {
+  runFailureReasonSchema,
+  type RunFailureReason,
+} from "./run-failure-reasons";
 export {
   desktopAuthConsumeContract,
   desktopAuthHandoffContract,

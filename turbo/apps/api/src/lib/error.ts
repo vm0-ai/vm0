@@ -53,16 +53,8 @@ export function notConfigured(message: string) {
   return httpError(503, "NOT_CONFIGURED", message);
 }
 
-export function connectorReadinessTimeout(message: string) {
-  return httpError(503, "CONNECTOR_READINESS_TIMEOUT", message);
-}
-
 export function eventDeliveryUnavailable(message: string) {
   return httpError(503, "EVENT_DELIVERY_UNAVAILABLE", message);
-}
-
-export function payloadTooLarge(message: string) {
-  return httpError(413, "PAYLOAD_TOO_LARGE", message);
 }
 
 export function insufficientCredits() {

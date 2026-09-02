@@ -9,7 +9,10 @@ import {
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { safeJsonParse } from "../utils";
-import { feishuOAuthConnectUrl } from "./feishu-config";
+import {
+  feishuOAuthAppCallbackUrl,
+  feishuOAuthConnectUrl,
+} from "./feishu-config";
 
 const FEISHU_OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
 
@@ -19,6 +22,7 @@ const feishuOAuthStateSchema = z.object({
   userId: z.string().min(1),
   callbackTarget: z.literal("app").optional(),
   oauthRedirectTarget: z.literal("app").optional(),
+  redirectUri: z.url().optional(),
   publicBrand: publicBrandSchema,
   timestamp: z.number().int(),
 });
@@ -37,6 +41,7 @@ function createFeishuOAuthState(args: {
   readonly userId: string;
   readonly callbackTarget?: "app";
   readonly oauthRedirectTarget?: "app";
+  readonly redirectUri?: string;
   readonly publicBrand: PublicBrand;
   readonly timestamp?: number;
 }): string {
@@ -83,5 +88,11 @@ export function buildFeishuOAuthConnectUrl(args: {
   readonly userId: string;
   readonly publicBrand: PublicBrand;
 }): string {
-  return feishuOAuthConnectUrl(createFeishuOAuthState(args));
+  return feishuOAuthConnectUrl(
+    createFeishuOAuthState({
+      ...args,
+      redirectUri: feishuOAuthAppCallbackUrl(args.publicBrand),
+    }),
+    args.publicBrand,
+  );
 }

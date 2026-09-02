@@ -12,10 +12,60 @@ use api_contracts::generated::types::{
     },
     webhooks::agent::{
         checkpoints::{self, prepare_history},
+        complete,
         storages::{FileEntryWithHash, commit, prepare},
     },
 };
 use serde_json::json;
+
+#[test]
+fn generated_completion_failure_reasons_preserve_the_wire_contract() {
+    let failure_reasons = [
+        "session_history_limit",
+        "insufficient_credits",
+        "invalid_api_key",
+        "invalid_credentials",
+        "terms_acceptance_required",
+        "context_window_exceeded",
+        "output_token_limit",
+        "provider_rate_limited",
+        "provider_overloaded",
+        "provider_stream_timeout",
+        "provider_server_error",
+        "response_connection_lost",
+        "safety_policy_refusal",
+        "reconnect_required",
+        "unsupported_model",
+        "usage_limit",
+    ];
+
+    for failure_reason in failure_reasons {
+        let value = json!({
+            "runId": "run-1",
+            "exitCode": 1,
+            "failureReason": failure_reason,
+        });
+        let request: complete::Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(request).unwrap(), value);
+    }
+
+    let omitted = json!({
+        "runId": "run-1",
+        "exitCode": 1,
+    });
+    let legacy_request: complete::Request = serde_json::from_value(omitted.clone()).unwrap();
+    assert_eq!(legacy_request.failure_reason, None);
+    assert_eq!(serde_json::to_value(legacy_request).unwrap(), omitted);
+
+    assert!(
+        serde_json::from_value::<complete::Request>(json!({
+            "runId": "run-1",
+            "exitCode": 1,
+            "failureReason": "future_reason",
+        }))
+        .is_err()
+    );
+}
 
 #[test]
 fn generated_model_provider_failure_request_requires_connection_source() {

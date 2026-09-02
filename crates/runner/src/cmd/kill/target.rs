@@ -4,9 +4,7 @@ use sandbox::SandboxControlTarget;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
-use crate::process::{
-    self, DiscoveredProcesses, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-};
+use crate::process::{self, DiscoveredProcesses, FirecrackerProcessInfo, ProcfsProcessGeneration};
 use crate::run_resolution;
 
 use super::KillArgs;
@@ -42,7 +40,7 @@ pub(super) struct KillTarget {
     pub(super) run_id: Option<String>,
     pub(super) sandbox_id: String,
     pub(super) base_dir: Option<PathBuf>,
-    pub(super) identity: Option<FirecrackerProcessIdentity>,
+    pub(super) generation: Option<ProcfsProcessGeneration>,
 }
 
 impl From<&FirecrackerProcessInfo> for KillTarget {
@@ -53,7 +51,7 @@ impl From<&FirecrackerProcessInfo> for KillTarget {
             run_id: None,
             sandbox_id: process.sandbox_id.clone(),
             base_dir: process.base_dir.clone(),
-            identity: process.identity.clone(),
+            generation: process.generation,
         }
     }
 }
@@ -258,10 +256,13 @@ fn ensure_same_target_after_confirmation(
 }
 
 fn same_firecracker_identity(initial: &KillTarget, current: &KillTarget) -> bool {
-    match (&initial.identity, &current.identity) {
-        (Some(initial), Some(current)) => initial == current,
-        _ => false,
-    }
+    initial.pid == current.pid
+        && initial.sandbox_id == current.sandbox_id
+        && initial.base_dir == current.base_dir
+        && matches!(
+            (initial.generation, current.generation),
+            (Some(initial), Some(current)) if initial == current
+        )
 }
 
 /// Resolve a `--run` prefix to a single Firecracker process.
@@ -505,11 +506,35 @@ mod tests {
         };
         let initial = make_target(200, "sbox-123");
         let mut current = make_target(200, "sbox-123");
-        current.identity.as_mut().unwrap().starttime += 1;
+        current.generation.as_mut().unwrap().starttime += 1;
 
         let error = ensure_same_target_after_confirmation(&args, &initial, &current).unwrap_err();
 
         assert!(error.contains("changed identity"), "{error}");
+    }
+
+    #[test]
+    fn sandbox_reresolution_requires_same_canonical_process_facts() {
+        let args = KillArgs {
+            run: None,
+            sandbox: Some("sbox".into()),
+            force: true,
+        };
+        let initial = make_target(200, "sbox-123");
+
+        let mut changed_pid = initial.clone();
+        changed_pid.pid += 1;
+        assert!(
+            ensure_same_target_after_confirmation(&args, &initial, &changed_pid).is_err(),
+            "changed PID must not retain sandbox process identity"
+        );
+
+        let mut changed_base_dir = initial.clone();
+        changed_base_dir.base_dir = Some(PathBuf::from("/data/r2"));
+        assert!(
+            ensure_same_target_after_confirmation(&args, &initial, &changed_base_dir).is_err(),
+            "changed workspace base must not retain sandbox process identity"
+        );
     }
 
     #[test]
@@ -575,7 +600,7 @@ mod tests {
     fn same_sandbox_fallback_rejects_changed_process_identity() {
         let expected = make_target(200, "sbox-123");
         let mut changed = make_target(200, "sbox-123");
-        changed.identity.as_mut().unwrap().starttime += 1;
+        changed.generation.as_mut().unwrap().starttime += 1;
         let discovered = discovered_with_firecrackers(vec![make_fc_from_target(&changed)]);
 
         let error = resolve_same_sandbox_process(&expected, &discovered).unwrap_err();

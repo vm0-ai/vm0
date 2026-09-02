@@ -5511,7 +5511,7 @@ describe("connectors page", () => {
     },
   );
 
-  it("hides no authentication while its feature switch is disabled", async () => {
+  it("shows no authentication without a feature switch", async () => {
     mockCustomConnectorStory();
 
     detachedSetupPage({ context, path: "/connectors?tab=custom" });
@@ -5521,7 +5521,7 @@ describe("connectors page", () => {
       name: "New custom connector",
     });
     click(buttonByText("Add authentication", createDialog));
-    expect(queryMenuItemByText("No authentication")).not.toBeInTheDocument();
+    expect(queryMenuItemByText("No authentication")).toBeInTheDocument();
   });
 
   it("initializes the custom connector create form on every open", async () => {
@@ -5647,7 +5647,6 @@ describe("connectors page", () => {
         path: "/connectors?tab=custom",
         featureSwitches: {
           [FeatureSwitchKey.CustomConnectorMcp]: true,
-          [FeatureSwitchKey.CustomConnectorNoAuth]: true,
         },
       });
 
@@ -5774,13 +5773,7 @@ describe("connectors page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: "/connectors?tab=custom",
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorNoAuth]: true,
-      },
-    });
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
 
     await screen.findByText(connector.displayName);
     click(screen.getByLabelText("More options"));

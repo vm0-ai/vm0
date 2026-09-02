@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.823.0](https://github.com/vm0-ai/vm0/compare/app-v0.822.4...app-v0.823.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+* replace visual balance with presenter placement ([#30892](https://github.com/vm0-ai/vm0/issues/30892)) ([52277bb](https://github.com/vm0-ai/vm0/commit/52277bbc0fff5f1b9e07822a2b536a064ac1ed99))
+
+
+### Bug Fixes
+
+* **chat:** surface execution timeouts as recoverable ([#31014](https://github.com/vm0-ai/vm0/issues/31014)) ([97a794d](https://github.com/vm0-ai/vm0/commit/97a794d0dedcac24c2a7d3911a6cb85207964d16))
+
+
+### Refactoring
+
+* **platform:** scope image canvas state to owners ([#31010](https://github.com/vm0-ai/vm0/issues/31010)) ([01095bd](https://github.com/vm0-ai/vm0/commit/01095bd3b06ba6f85921057638669efa1dfb6d7b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.391.0
+    * @okouai/core bumped to 8.609.0
+
+## [0.822.4](https://github.com/vm0-ai/vm0/compare/app-v0.822.3...app-v0.822.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **platform:** make settings the only preferences surface ([#31039](https://github.com/vm0-ai/vm0/issues/31039)) ([1e2692c](https://github.com/vm0-ai/vm0/commit/1e2692cd5fd7173f3b691a180d4430bceab4ea6c))
+
+
+### Refactoring
+
+* remove concurrency member usage feature switch ([#30934](https://github.com/vm0-ai/vm0/issues/30934)) ([e211986](https://github.com/vm0-ai/vm0/commit/e2119869809f7b50614d1367d2fbdc7c1517e4f6))
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.3
+    * @okouai/core bumped to 8.608.3
+
+## [0.822.3](https://github.com/vm0-ai/vm0/compare/app-v0.822.2...app-v0.822.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **platform:** update app icons ([#31026](https://github.com/vm0-ai/vm0/issues/31026)) ([a5c3746](https://github.com/vm0-ai/vm0/commit/a5c374658d889ec6af7a13f3f888d280b55259d0))
+
 ## [0.822.2](https://github.com/vm0-ai/vm0/compare/app-v0.822.1...app-v0.822.2) (2026-09-02)
 
 

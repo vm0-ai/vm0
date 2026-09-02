@@ -521,7 +521,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("zooms an uploaded image preview with controls and double-click", async () => {
+  it("zooms an uploaded image preview and resets its canvas when reopened", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -594,6 +594,18 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("100%")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveStyle({
+      width: "100%",
     });
   });
 

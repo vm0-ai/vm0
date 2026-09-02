@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use super::procfs::{read_cmdline, read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
 use super::types::{
-    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-    MitmproxyProcessInfo, ProcessDiscovery, ProcessStat, process_stat_is_live,
+    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessInfo, MitmproxyProcessInfo,
+    ProcessDiscovery, ProcessStat, process_stat_is_live,
 };
 
 /// Check if an argv belongs to a firecracker process.
@@ -91,41 +91,25 @@ impl FirecrackerCandidateResolution {
                 process_stat,
                 sandbox_id,
                 base_dir,
-            } => {
-                let identity = Some(FirecrackerProcessIdentity {
-                    pid,
-                    pgid: process_stat.pgid,
-                    starttime: process_stat.starttime,
-                    sandbox_id: sandbox_id.clone(),
-                    base_dir: Some(base_dir.clone()),
-                });
-                Some(FirecrackerProcessInfo {
-                    pid,
-                    ppid,
-                    sandbox_id,
-                    base_dir: Some(base_dir),
-                    identity,
-                })
-            }
+            } => Some(FirecrackerProcessInfo {
+                pid,
+                ppid,
+                sandbox_id,
+                base_dir: Some(base_dir),
+                generation: Some(process_stat.procfs_generation()),
+            }),
             Self::StableUnknownWorkspace {
                 pid,
                 ppid,
                 process_stat,
             } => {
                 let sandbox_id = fallback_sandbox_id(pid);
-                let identity = Some(FirecrackerProcessIdentity {
-                    pid,
-                    pgid: process_stat.pgid,
-                    starttime: process_stat.starttime,
-                    sandbox_id: sandbox_id.clone(),
-                    base_dir: None,
-                });
                 Some(FirecrackerProcessInfo {
                     pid,
                     ppid,
                     sandbox_id,
                     base_dir: None,
-                    identity,
+                    generation: Some(process_stat.procfs_generation()),
                 })
             }
             Self::UnidentifiedLive { pid, ppid } => {
@@ -182,7 +166,7 @@ fn unidentified_firecracker_process(pid: u32, ppid: Option<u32>) -> FirecrackerP
         ppid,
         sandbox_id: fallback_sandbox_id(pid),
         base_dir: None,
-        identity: None,
+        generation: None,
     }
 }
 
@@ -375,7 +359,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: "sandbox-a".to_string(),
             base_dir: None,
-            identity: None,
+            generation: None,
         }];
 
         assert!(firecracker_process_exists_for_sandbox_id(
@@ -553,16 +537,7 @@ mod tests {
         assert_eq!(info.ppid, Some(7));
         assert_eq!(info.sandbox_id, "sandbox-a");
         assert_eq!(info.base_dir, Some(base_dir.clone()));
-        assert_eq!(
-            info.identity,
-            Some(FirecrackerProcessIdentity {
-                pid: 42,
-                pgid: process_stat.pgid,
-                starttime: process_stat.starttime,
-                sandbox_id: "sandbox-a".to_string(),
-                base_dir: Some(base_dir),
-            })
-        );
+        assert_eq!(info.generation, Some(process_stat.procfs_generation()));
     }
 
     #[test]
@@ -585,16 +560,7 @@ mod tests {
         assert_eq!(info.ppid, Some(7));
         assert_eq!(info.sandbox_id, "pid-42");
         assert_eq!(info.base_dir, None);
-        assert_eq!(
-            info.identity,
-            Some(FirecrackerProcessIdentity {
-                pid: 42,
-                pgid: process_stat.pgid,
-                starttime: process_stat.starttime,
-                sandbox_id: "pid-42".to_string(),
-                base_dir: None,
-            })
-        );
+        assert_eq!(info.generation, Some(process_stat.procfs_generation()));
         assert!(info.workspace_identity_incomplete());
     }
 
@@ -620,7 +586,7 @@ mod tests {
         assert_eq!(info.ppid, Some(7));
         assert_eq!(info.sandbox_id, "pid-42");
         assert_eq!(info.base_dir, None);
-        assert_eq!(info.identity, None);
+        assert_eq!(info.generation, None);
         assert!(info.workspace_identity_incomplete());
     }
 

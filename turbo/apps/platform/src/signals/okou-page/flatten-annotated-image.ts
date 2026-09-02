@@ -1,6 +1,7 @@
-import type {
-  ImageAnnotation,
-  ImageAnnotationMark,
+import {
+  annotatedImageFilename,
+  type ImageAnnotation,
+  type ImageAnnotationMark,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   HIGHLIGHT_FILL,
@@ -29,6 +30,18 @@ const NOTE_LINE_UNITS = 20;
 const NOTE_PADDING_UNITS = 6;
 const ARROW_HEAD_UNITS = 18;
 const CORNER_RADIUS_UNITS = 4;
+
+/**
+ * Resolved to a concrete stack rather than passed as `var(...)`: canvas takes a
+ * plain CSS font shorthand and does not resolve custom properties. Reading the
+ * token keeps flattened annotations on whatever typeface the app is currently
+ * rendering.
+ */
+function annotationFontFamily(): string {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue("--font-family-sans")
+    .trim();
+}
 
 interface Scale {
   readonly width: number;
@@ -175,7 +188,7 @@ function drawPin(
   context.stroke();
 
   context.fillStyle = "#FFFFFF";
-  context.font = `700 ${px(scale, PIN_FONT_UNITS)}px "Noto Sans", system-ui, sans-serif`;
+  context.font = `700 ${px(scale, PIN_FONT_UNITS)}px ${annotationFontFamily()}`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(String(ordinal), x, y);
@@ -228,7 +241,7 @@ function drawNote(
   const fontSize = px(scale, NOTE_FONT_UNITS);
   const lineHeight = px(scale, NOTE_LINE_UNITS);
   const padding = px(scale, NOTE_PADDING_UNITS);
-  context.font = `600 ${fontSize}px "Noto Sans", system-ui, sans-serif`;
+  context.font = `600 ${fontSize}px ${annotationFontFamily()}`;
   context.textAlign = "left";
   context.textBaseline = "top";
 
@@ -356,7 +369,7 @@ function drawMark(
   const x = toX(mark.at.x);
   const y = toY(mark.at.y);
   const fontSize = px(scale, TEXT_FONT_UNITS);
-  context.font = `700 ${fontSize}px "Noto Sans", system-ui, sans-serif`;
+  context.font = `700 ${fontSize}px ${annotationFontFamily()}`;
   context.textAlign = "left";
   context.textBaseline = "top";
   context.lineJoin = "round";
@@ -441,18 +454,10 @@ export async function flattenAnnotatedImage(
   }
 
   return {
-    file: new File([blob], annotatedFilename(filename), { type: "image/png" }),
+    file: new File([blob], annotatedImageFilename(filename), {
+      type: "image/png",
+    }),
     width,
     height,
   };
-}
-
-/**
- * The flattened copy keeps the original stem so the two files still read as a
- * pair in any list that shows them side by side.
- */
-export function annotatedFilename(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  const stem = dot > 0 ? filename.slice(0, dot) : filename;
-  return `${stem}.annotated.png`;
 }

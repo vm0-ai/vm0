@@ -1,5 +1,44 @@
 # Changelog
 
+## [9.305.2](https://github.com/vm0-ai/vm0/compare/cli-v9.305.1...cli-v9.305.2) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.391.0
+    * @okouai/core bumped to 8.609.0
+
+## [9.305.1](https://github.com/vm0-ai/vm0/compare/cli-v9.305.0...cli-v9.305.1) (2026-09-02)
+
+
+### Refactoring
+
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.390.3
+    * @okouai/core bumped to 8.608.3
+
+## [9.305.0](https://github.com/vm0-ai/vm0/compare/cli-v9.304.5...cli-v9.305.0) (2026-09-02)
+
+
+### Features
+
+* **pi:** align openrouter codex routes on responses api ([#31032](https://github.com/vm0-ai/vm0/issues/31032)) ([eff60e8](https://github.com/vm0-ai/vm0/commit/eff60e8be002ff2150fdd7da4281e5f5b10abe66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.11.0
+
 ## [9.304.5](https://github.com/vm0-ai/vm0/compare/cli-v9.304.4...cli-v9.304.5) (2026-09-02)
 
 

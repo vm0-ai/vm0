@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "Zurücksetzen und erneut versuchen",
         "resetsAt": "Wird um {{time}} zurückgesetzt",
         "selectModel": "Modell wechseln",
+        "timeoutDescription": "Dieser Lauf hat sein Zeitlimit erreicht. Fahren Sie fort, um weiterzuarbeiten.",
+        "timeoutTitle": "Zeitlimit erreicht",
         "tryAgain": "Erneut versuchen",
         "unavailableDescription": "Dieses Modell wird vom verbundenen ChatGPT-Konto nicht unterstützt. Wechseln Sie zu einem anderen Modell, um fortzufahren.",
         "unavailableTitle": "Ausgewähltes Modell ist nicht verfügbar",
@@ -1991,19 +1993,28 @@
         "heading": "Avatar auswählen",
         "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
         "none": "Kein Avatar",
-        "visualBalanceAvatarLed": "Avatar-fokussiert — der Sprecher ist die meiste Zeit im Bild",
-        "visualBalanceBalanced": "Ausgewogene Mischung — gleiche Zeit für beides",
-        "visualBalanceBRollLed": "B-Roll-fokussiert — Schwerpunkt auf Folien und visuellen Inhalten",
-        "visualBalanceHeading": "Wie soll die visuelle Balance aussehen?"
+        "placementHeading": "Wo soll der Präsentator stehen?",
+        "placementLeft": "Links — die Folie steht rechts",
+        "placementOverlay": "Über der Folie — die Folie füllt das Bild",
+        "placementRight": "Rechts — die Folie steht links"
       },
       "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
       "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",
+      "desktop": {
+        "checkingCompatibility": "Kompatibilität prüfen",
+        "description": "Die Bildschirmaufnahme läuft in der {{desktopProductName}}-Desktop-App, die jedes Fenster aufnimmt und deine Klicks mitschneidet.",
+        "download": "Für macOS herunterladen",
+        "handoffDetail": "Deine Aufnahme öffnet sich hier, bereit für Avatar und Stimme.",
+        "handoffTitle": "Automatisch zu diesem Assistenten zurückkehren",
+        "heading": "Mit {{desktopProductName}} Desktop aufnehmen",
+        "illustration": "Die Aufnahme läuft in {{desktopProductName}} Desktop",
+        "installDetail": "Erfordert einen Apple Silicon Mac mit macOS 14 oder neuer. Intel-Macs werden nicht unterstützt.",
+        "installTitle": "{{desktopProductName}} Desktop herunterladen und installieren",
+        "recordDetail": "Beende sie über dasselbe Menü, wenn du fertig bist.",
+        "recordTitle": "Aufnahme über die Menüleiste starten",
+        "unsupportedIntelMac": "Erfordert einen Apple Silicon Mac"
+      },
       "errors": {
-        "recordingEmpty": "Die Aufnahme ist leer. Bitte versuche es erneut.",
-        "recordingFailed": "Die Bildschirmaufnahme konnte nicht gestartet werden. Versuche es erneut in einer aktuellen Chrome-Version.",
-        "recordingPermission": "Es wurde nichts geteilt. Wähle einen Tab, ein Fenster oder einen Bildschirm, wenn du bereit bist.",
-        "recordingShareEnded": "Die Bildschirmfreigabe wurde beendet, bevor die Aufnahme begann.",
-        "recordingUnsupported": "Dieser Browser unterstützt keine Bildschirmaufnahme.",
         "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Quelle ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen.",
         "uploadFailed": "Die Quelle konnte nicht hochgeladen werden. Sie ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen."
       },
@@ -2011,21 +2022,7 @@
         "back": "Zurück",
         "createInChat": "Im Chat erstellen",
         "download": "Quelle herunterladen",
-        "next": "Weiter",
-        "startRecording": "Bildschirm wählen und starten",
-        "stopRecording": "Aufnahme stoppen"
-      },
-      "recording": {
-        "chooseSurface": "Tab, Fenster oder Bildschirm auswählen",
-        "countdown": "Die Aufnahme startet nach dem Countdown",
-        "description": "Chrome fragt, was du teilen möchtest. Die Aufnahme beginnt erst nach dem dreisekündigen Countdown.",
-        "heading": "Bildschirm aufnehmen",
-        "localNote": "Du kannst über die Freigabeleiste von Chrome oder hier stoppen. Die Aufnahme bleibt lokal, bis der Chat-Thread erstellt wird.",
-        "microphone": "Mikrofon",
-        "microphoneHelp": "Füge während der Demonstration einen Kommentar hinzu",
-        "recordingLocally": "Lokale Aufnahme läuft",
-        "systemAudio": "Systemaudio",
-        "systemAudioHelp": "Verfügbare Quellen hängen von Chrome und deinem System ab"
+        "next": "Weiter"
       },
       "review": {
         "avatar": "Avatar",
@@ -2036,30 +2033,22 @@
         "voice": "Stimme"
       },
       "source": {
-        "chatDescription": "Öffne jetzt einen Thread und entwickle das Video mit Zero",
-        "chatDetail": "Quelle, Avatar oder Stimme später im Chat hinzufügen",
-        "chatTitle": "Im Chat beginnen",
-        "documentDescription": "Verwandle deine Inhalte in ein vertontes Intro-Video",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Folien oder Dokument hochladen",
-        "dropDescription": "Folien, Dokumente oder Aufnahmen",
-        "dropTitle": "Quelle hier ablegen",
+        "documentDescription": "Verwandle deine Folien in ein vertontes Intro-Video",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Folien hochladen",
         "heading": "Wie möchtest du beginnen?",
-        "help": "Füge vorhandenes Material hinzu, nimm deinen Bildschirm auf oder beschreibe das Video mit eigenen Worten",
-        "recordDescription": "Wähle einen Tab, ein Fenster oder den gesamten Bildschirm",
-        "recordDetail": "Startet nach einem dreisekündigen Countdown",
+        "help": "Lade vorhandene Folien hoch oder nimm deinen Bildschirm mit {{desktopProductName}} Desktop auf",
+        "recordDescription": "Nimm eine Demo mit der Desktop-App auf",
+        "recordDetail": "Benötigt {{desktopProductName}} Desktop für macOS",
         "recordTitle": "Bildschirm aufnehmen",
-        "videoDescription": "Lass die KI Tempo, Bildausschnitt und Vertonung verbessern",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Aufnahme hochladen"
+        "uploadDescription": "Wähle eine Datei von deinem Computer",
+        "uploadTitle": "Quelle hochladen"
       },
       "sourceReview": {
         "format": "Format",
         "heading": "Deine Quelle ist bereit",
         "help": "Prüfe die Datei, bevor du fortfährst",
         "inAccount": "In deinem Konto",
-        "inBrowser": "In diesem Browser",
-        "inTab": "Bis dieser Tab geschlossen wird",
         "replace": "Quelle ersetzen",
         "saved": "Gespeichert",
         "source": "Quelle"
@@ -2728,7 +2717,7 @@
         "prefixes": "Präfixe",
         "prefixesHint": "(eine pro Zeile, nur https)",
         "redirectCopy": "Kopieren Sie die Weiterleitungs-URL",
-        "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters.)",
+        "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters. Lassen Sie vorhandene VM0- oder Okou-Weiterleitungs-URLs ebenfalls registriert.)",
         "redirectUrl": "Weiterleitungs-URL",
         "removeApiAuthentication": "Entfernen Sie die API-Authentifizierung",
         "removeNoAuthentication": "„Keine Authentifizierung“ entfernen",
@@ -4645,10 +4634,6 @@
     },
     "redirecting": "Weiterleitung...",
     "status": {
-      "atLimit_one": "Sie können jeweils nur {{limit}} Aufgabe gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
-      "atLimit_other": "Sie können jeweils nur {{limit}} Aufgaben gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
-      "available_one": "{{count}} Slot verfügbar",
-      "available_other": "{{count}} Slots verfügbar",
       "availableNow": "Jetzt verfügbar",
       "inUse_one": "{{active}} von {{limit}} Slot belegt",
       "inUse_other": "{{active}} von {{limit}} Slots belegt"
@@ -5097,7 +5082,6 @@
           "upstreamModel": "Upstream-Modell"
         },
         "capture": {
-          "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textinhalte in Netzwerkprotokollen zum Debuggen.",
           "disabled": "Deaktiviert",
           "enabled_one": "Für {{count}} kommende Ausführung aktiviert",
           "enabled_other": "Für {{count}} kommende Ausführungen aktiviert",
@@ -5120,10 +5104,8 @@
           "recovery": "Wiederherstellung",
           "title": "Echtzeit-Verbindungsdiagnose",
           "unavailable": "nicht verfügbar"
-        },
-        "tab": "Debuggen"
+        }
       },
-      "documentTitle": "Präferenzen",
       "language": {
         "description": "Wählen Sie Ihre bevorzugte Sprache für die Benutzeroberfläche von {{brandName}}",
         "label": "Sprache",
@@ -5153,8 +5135,6 @@
         "retryMessage": "Die Morning-Brief-Einstellungen konnten nicht geladen oder aktualisiert werden. Versuchen Sie es erneut.",
         "title": "Morgenbrief"
       },
-      "pageDescription": "Verwalten Sie Ihr Erscheinungsbild und die Laufzeiteinstellungen Ihres Agenten",
-      "pageTitle": "Präferenzen",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Drücken Sie zum Senden ⌘/Strg+Eingabetaste und für eine neue Zeile die Eingabetaste",
@@ -5163,11 +5143,6 @@
         "enterDescription": "Drücken Sie die Eingabetaste zum Senden, Umschalt+Eingabetaste für eine neue Zeile",
         "sectionTitle": "Enter",
         "title": "Nachricht senden mit"
-      },
-      "tabs": {
-        "appearance": "Aussehen",
-        "models": "Persönliche Modelle",
-        "timezone": "Zeitzone"
       },
       "timezone": {
         "description": "Zeiten, die Ihnen angezeigt und für Automatisierungsausführungen verwendet werden.",
@@ -5943,35 +5918,6 @@
       "noWorkflows": "Noch keine Workflows. Erstellen Sie eine im Chat, um fortzufahren."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Verbinden",
-          "enable": "Für Agent aktivieren",
-          "reconnect": "Wieder verbinden",
-          "reviewPermissions": "Überprüfen Sie die Berechtigungen"
-        },
-        "aria": "Integration-Bereitschaft",
-        "check": "Integrationen prüfen",
-        "checkAgain": "Überprüfen Sie es noch einmal",
-        "checking": "Überprüfung...",
-        "description": "Sehen Sie, welche integrierten Integrationen dieser Workflow möglicherweise benötigt und ob sie bereit sind.",
-        "empty": "Es wurden keine erforderlichen Integrationen erkannt",
-        "error": {
-          "inputTooLong": "Dieser Workflow ist zu lang, um ihn zu überprüfen. Halten Sie den Namen, die Beschreibung und die Anweisungen auf maximal 100.000 Zeichen beschränkt.",
-          "retry": "Wir konnten die Integrationen nicht überprüfen. Versuchen Sie es erneut.",
-          "timeout": "Zeitüberschreitung bei der Integrationsprüfung. Versuchen Sie es erneut."
-        },
-        "saveFirst": "Speichern Sie Ihre Änderungen, bevor Sie die Integrationen überprüfen.",
-        "status": {
-          "connected": "Verbunden",
-          "notConnected": "Nicht verbunden",
-          "notEnabled": "Für diesen Agenten nicht aktiviert",
-          "reconnect": "Erneute Verbindung erforderlich",
-          "scopeMismatch": "Berechtigungen aktualisieren",
-          "unavailable": "Derzeit nicht verfügbar"
-        },
-        "title": "Integration-Bereitschaft"
-      },
       "copy": {
         "agentFallback": "der Agent",
         "copied": "Kopiert nach {{agent}}",

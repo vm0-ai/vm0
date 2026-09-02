@@ -44,11 +44,10 @@ import { jsonParseOr } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
 import { retryRichMarkdown$ } from "../../signals/rich-markdown-retry.ts";
-import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
+import type { ZoomableImageCanvasSignals } from "../../signals/zoomable-image-canvas.ts";
 import {
   ZoomableArtifactImageCanvas,
   type ZoomableImageControls,
-  zoomableArtifactImageKey,
 } from "./zoomable-image-canvas.tsx";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
@@ -71,6 +70,11 @@ import {
 } from "./artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import {
+  isOfficeDocumentPreview,
+  OfficeDocumentPreview,
+} from "./office-document-preview.tsx";
+import { officeDocumentPreviewEnabled$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -136,6 +140,7 @@ type ArtifactSidebarContentProps = {
   agentId?: string | null;
   artifactRef: ArtifactRef;
   fullscreenState: ArtifactSidebarFullscreenState;
+  imageCanvasSignals: ZoomableImageCanvasSignals;
   imageNavigation?: ArtifactImageNavigationActions;
   item?: ArtifactSidebarItem;
   markdownTree$?: MarkdownPreviewTreeComputed;
@@ -192,6 +197,7 @@ function ArtifactSidebarWithThreadContext({
       agentId={agentId}
       artifactRef={artifactRef}
       fullscreenState={fullscreenState}
+      imageCanvasSignals={thread.sidebar.imageCanvas}
       imageNavigation={{
         onNext: imageNavigationAction(imageNavigation.next),
         onPrevious: imageNavigationAction(imageNavigation.previous),
@@ -238,6 +244,7 @@ function ArtifactSidebarContent({
   agentId,
   artifactRef,
   fullscreenState,
+  imageCanvasSignals,
   imageNavigation,
   item,
   markdownTree$,
@@ -250,7 +257,6 @@ function ArtifactSidebarContent({
   useTranslation();
   const fullscreen = fullscreenState.active;
   const toggleFullscreen = fullscreenState.toggle;
-  const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget = artifactSidebarSyncTargetForItem({
     agentId,
@@ -264,10 +270,10 @@ function ArtifactSidebarContent({
       closePreview={onClose}
       display={display}
       fullscreen={fullscreen}
+      imageCanvasSignals={imageCanvasSignals}
       imageNavigation={imageNavigation}
       markdownTree$={markdownTree$}
       onBack={onBack}
-      resetZoomableImageCanvasZoom={resetZoomableImageCanvasZoom}
       syncTarget={syncTarget}
       text$={text$}
       toggleFullscreen={toggleFullscreen}
@@ -279,10 +285,10 @@ type ArtifactSidebarResolvedContentProps = {
   readonly closePreview: () => void;
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
+  readonly imageCanvasSignals: ZoomableImageCanvasSignals;
   readonly imageNavigation?: ArtifactImageNavigationActions;
   readonly markdownTree$?: MarkdownPreviewTreeComputed;
   readonly onBack?: () => void;
-  readonly resetZoomableImageCanvasZoom: (key: string) => void;
   readonly syncTarget?: ArtifactDownloadSyncTarget;
   readonly text$?: TextPreviewComputed;
   readonly toggleFullscreen: () => void;
@@ -292,10 +298,10 @@ function ArtifactSidebarResolvedContent({
   closePreview,
   display,
   fullscreen,
+  imageCanvasSignals,
   imageNavigation,
   markdownTree$,
   onBack,
-  resetZoomableImageCanvasZoom,
   syncTarget,
   text$,
   toggleFullscreen,
@@ -312,12 +318,7 @@ function ArtifactSidebarResolvedContent({
         url={display.url}
         fullscreen={fullscreen}
         onBack={onBack}
-        onToggleFullscreen={artifactSidebarFullscreenToggleAction({
-          display,
-          fullscreen,
-          resetZoomableImageCanvasZoom,
-          toggleFullscreen,
-        })}
+        onToggleFullscreen={toggleFullscreen}
         onClose={closePreview}
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
@@ -327,6 +328,7 @@ function ArtifactSidebarResolvedContent({
           filename={display.filename}
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
+          imageCanvasSignals={imageCanvasSignals}
           fullscreen={fullscreen}
           markdownTree$={markdownTree$}
           text$={text$}
@@ -390,55 +392,6 @@ function ArtifactSidebarImageNavigationKeydown({
       hidden
     />
   );
-}
-
-function resetArtifactSidebarImageZoom({
-  display,
-  fullscreen,
-  resetZoomableImageCanvasZoom,
-}: {
-  display: ArtifactDisplay;
-  fullscreen: boolean;
-  resetZoomableImageCanvasZoom: (key: string) => void;
-}) {
-  if (display.kind !== "image") {
-    return;
-  }
-  resetZoomableImageCanvasZoom(
-    zoomableArtifactImageKey(
-      "artifact-sidebar",
-      display.url,
-      fullscreen ? "fullscreen" : "sidebar",
-    ),
-  );
-  resetZoomableImageCanvasZoom(
-    zoomableArtifactImageKey(
-      "artifact-sidebar",
-      display.url,
-      fullscreen ? "sidebar" : "fullscreen",
-    ),
-  );
-}
-
-function artifactSidebarFullscreenToggleAction({
-  display,
-  fullscreen,
-  resetZoomableImageCanvasZoom,
-  toggleFullscreen,
-}: {
-  display: ArtifactDisplay;
-  fullscreen: boolean;
-  resetZoomableImageCanvasZoom: (key: string) => void;
-  toggleFullscreen: () => void;
-}) {
-  return () => {
-    resetArtifactSidebarImageZoom({
-      display,
-      fullscreen,
-      resetZoomableImageCanvasZoom,
-    });
-    toggleFullscreen();
-  };
 }
 
 function ArtifactSidebarSurface({
@@ -831,6 +784,7 @@ function ArtifactBody({
   kind,
   filename,
   artifactKind,
+  imageCanvasSignals,
   imageNavigation,
   fullscreen,
   markdownTree$,
@@ -840,12 +794,14 @@ function ArtifactBody({
   kind: ArtifactKindForBody;
   filename: string;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  imageCanvasSignals: ZoomableImageCanvasSignals;
   imageNavigation?: ArtifactImageNavigationActions;
   fullscreen: boolean;
   markdownTree$?: MarkdownPreviewTreeComputed;
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
+  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   if (kind === "markdown") {
     return markdownTree$ ? (
       <ArtifactMarkdownBody tree$={markdownTree$} />
@@ -883,6 +839,7 @@ function ArtifactBody({
     return (
       <ArtifactImageBody
         fullscreen={fullscreen}
+        imageCanvasSignals={imageCanvasSignals}
         imageNavigation={imageNavigation}
         url={url}
         filename={filename}
@@ -903,6 +860,15 @@ function ArtifactBody({
         filename={filename}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
+      />
+    );
+  }
+  if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
+    return (
+      <ArtifactOfficeDocumentBody
+        filename={filename}
+        fullscreen={fullscreen}
+        url={url}
       />
     );
   }
@@ -1189,11 +1155,13 @@ function ArtifactCsvBody({ text$ }: { text$: TextPreviewComputed }) {
 
 function ArtifactImageBody({
   fullscreen,
+  imageCanvasSignals,
   imageNavigation,
   url,
   filename,
 }: {
   fullscreen: boolean;
+  imageCanvasSignals: ZoomableImageCanvasSignals;
   imageNavigation?: ArtifactImageNavigationActions;
   url: string;
   filename: string;
@@ -1215,13 +1183,10 @@ function ArtifactImageBody({
             navigation={imageNavigation}
           />
           <ZoomableArtifactImageCanvas
+            key={`${fullscreen ? "fullscreen" : "sidebar"}:${url}`}
             src={resourceUrl}
             alt={filename}
-            zoomKey={zoomableArtifactImageKey(
-              "artifact-sidebar",
-              url,
-              fullscreen ? "fullscreen" : "sidebar",
-            )}
+            signals={imageCanvasSignals}
             imageTestId="artifact-sidebar-body-image"
             contentClassName="p-6"
           >
@@ -1487,6 +1452,30 @@ function ArtifactIframeBody({
           )}
           className="h-full min-h-0 w-full border-0 bg-background"
           data-testid={`artifact-sidebar-body-${kind}`}
+        />
+      </div>
+    </ArtifactStageShell>
+  );
+}
+
+function ArtifactOfficeDocumentBody({
+  filename,
+  fullscreen,
+  url,
+}: {
+  filename: string;
+  fullscreen: boolean;
+  url: string;
+}) {
+  return (
+    <ArtifactStageShell scrollable={false}>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <OfficeDocumentPreview
+          filename={filename}
+          focusKey={`${url}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusOnMount={fullscreen}
+          testId="artifact-sidebar-body-office"
+          url={url}
         />
       </div>
     </ArtifactStageShell>

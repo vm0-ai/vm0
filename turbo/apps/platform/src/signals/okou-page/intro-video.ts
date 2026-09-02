@@ -3,7 +3,6 @@ import type {
   AvatarVideoVoice,
 } from "@okouai/api-contracts/contracts/avatar-video";
 import { command, computed, state, type Command, type State } from "ccstate";
-import { delay } from "signal-timers";
 
 import { i18n } from "../../i18n/index.ts";
 import { now } from "../../lib/time.ts";
@@ -16,34 +15,17 @@ import {
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
 import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
-import {
-  createDeferredPromise,
-  onRef,
-  onRejection,
-  resetSignal,
-  setLoop,
-  settle,
-  withCleanup,
-} from "../utils.ts";
+import { settle } from "../utils.ts";
 
 export type IntroVideoWizardStep =
   | "avatar"
-  | "countdown"
-  | "record-setup"
-  | "recording"
+  | "desktop-record"
   | "review"
   | "source"
   | "source-review"
   | "voice";
 
-export type IntroVideoWizardError =
-  | "recording-empty"
-  | "recording-failed"
-  | "recording-permission"
-  | "recording-share-ended"
-  | "recording-unsupported"
-  | "send-failed"
-  | "upload-failed";
+export type IntroVideoWizardError = "send-failed" | "upload-failed";
 
 interface IntroVideoSourceFacts {
   readonly contentType: string;
@@ -94,28 +76,11 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
-export type IntroVideoVisualBalance = "avatar-led" | "b-roll-led" | "balanced";
+export type IntroVideoPlacement = "left" | "overlay" | "right";
 
-interface RecordingRuntime {
-  audioContext: AudioContext | null;
-  audioContextClose: Promise<void> | null;
-  chunks: Blob[];
-  displayStream: MediaStream | null;
-  generation: number;
-  microphoneStream: MediaStream | null;
-  recorder: MediaRecorder | null;
-  recordingStartedAt: number;
-  recordingStream: MediaStream | null;
-  stopCompletion: Promise<void> | null;
-  stopCompletionResolve: (() => void) | null;
-  stopCompletionSettled: (() => boolean) | null;
-}
-
-const DOCUMENT_EXTENSIONS = ["doc", "docx", "pdf", "ppt", "pptx"] as const;
-const VIDEO_EXTENSIONS = ["mov", "mp4", "webm"] as const;
+const DOCUMENT_EXTENSIONS = ["html", "pdf", "ppt", "pptx"] as const;
 const DEFAULT_INSTRUCTIONS =
   "Create a concise 30 second product intro. Zoom in on important actions, remove pauses, and keep the pacing energetic.";
-const RECORDING_FILE_NAME = "Screen recording.webm";
 /**
  * Aspect ratio reported to the agent for the raw avatar take.
  *
@@ -125,51 +90,15 @@ const RECORDING_FILE_NAME = "Screen recording.webm";
  */
 export const INTRO_VIDEO_ASPECT_RATIO_LABEL = "16:9";
 
-function createRecordingRuntime(): RecordingRuntime {
-  return {
-    audioContext: null,
-    audioContextClose: null,
-    chunks: [],
-    displayStream: null,
-    generation: 0,
-    microphoneStream: null,
-    recorder: null,
-    recordingStartedAt: 0,
-    recordingStream: null,
-    stopCompletion: null,
-    stopCompletionResolve: null,
-    stopCompletionSettled: null,
-  };
-}
-
 function extensionForFilename(filename: string): string {
   return filename.split(".").pop()?.toLocaleLowerCase() ?? "";
 }
 
-export function classifyIntroVideoSource(
-  file: Pick<File, "name" | "type">,
-): IntroVideoSourceKind | null {
+export function isIntroVideoDocument(file: Pick<File, "name">): boolean {
   const extension = extensionForFilename(file.name);
-  if (
-    DOCUMENT_EXTENSIONS.some((candidate) => {
-      return candidate === extension;
-    })
-  ) {
-    return "document";
-  }
-  if (
-    VIDEO_EXTENSIONS.some((candidate) => {
-      return candidate === extension;
-    }) ||
-    file.type.startsWith("video/")
-  ) {
-    return "video";
-  }
-  return null;
-}
-
-function previewUrlForDraft(draft: IntroVideoDraftRecord): string | null {
-  return draft.kind === "document" ? null : URL.createObjectURL(draft.blob);
+  return DOCUMENT_EXTENSIONS.some((candidate) => {
+    return candidate === extension;
+  });
 }
 
 function sourceFromDraft(draft: IntroVideoDraftRecord): LocalIntroVideoSource {
@@ -180,7 +109,8 @@ function sourceFromDraft(draft: IntroVideoDraftRecord): LocalIntroVideoSource {
     kind: draft.kind,
     name: draft.name,
     origin: "local",
-    previewUrl: previewUrlForDraft(draft),
+    previewUrl:
+      draft.kind === "document" ? null : URL.createObjectURL(draft.blob),
     size: draft.blob.size,
   };
 }
@@ -202,108 +132,6 @@ function releasePreviewUrl(source: IntroVideoSource | null): void {
   if (source?.origin === "local" && source.previewUrl) {
     URL.revokeObjectURL(source.previewUrl);
   }
-}
-
-function recorderMimeType(): string | undefined {
-  const supported = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-  ].find((contentType) => {
-    return MediaRecorder.isTypeSupported(contentType);
-  });
-  return supported;
-}
-
-function stopTracks(stream: MediaStream | null): void {
-  for (const track of stream?.getTracks() ?? []) {
-    track.stop();
-  }
-}
-
-function releaseRecordingRuntime(
-  runtime: RecordingRuntime,
-  stopRecorder: boolean,
-): void {
-  const recorder = runtime.recorder;
-  runtime.recorder = null;
-  if (stopRecorder && recorder?.state !== "inactive") {
-    recorder?.stop();
-  }
-  stopTracks(runtime.recordingStream);
-  stopTracks(runtime.microphoneStream);
-  stopTracks(runtime.displayStream);
-  runtime.recordingStream = null;
-  runtime.microphoneStream = null;
-  runtime.displayStream = null;
-  if (runtime.audioContext) {
-    runtime.audioContextClose = runtime.audioContext.close();
-    runtime.audioContext = null;
-  }
-  if (!runtime.stopCompletionSettled?.()) {
-    runtime.stopCompletionResolve?.();
-  }
-  runtime.stopCompletionResolve = null;
-  runtime.stopCompletionSettled = null;
-  runtime.stopCompletion = null;
-  runtime.chunks = [];
-}
-
-async function recordingStreamWithMicrophone(
-  runtime: RecordingRuntime,
-  displayStream: MediaStream,
-  includeMicrophone: boolean,
-  signal: AbortSignal,
-): Promise<MediaStream> {
-  if (!includeMicrophone) {
-    return displayStream;
-  }
-
-  const microphoneStream = await navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: false,
-  });
-  if (signal.aborted) {
-    stopTracks(microphoneStream);
-    signal.throwIfAborted();
-  }
-  runtime.microphoneStream = microphoneStream;
-  const videoTracks = displayStream.getVideoTracks();
-  const audioTracks = [
-    ...displayStream.getAudioTracks(),
-    ...microphoneStream.getAudioTracks(),
-  ];
-  if (audioTracks.length === 0 || typeof AudioContext === "undefined") {
-    return new MediaStream([...videoTracks, ...audioTracks]);
-  }
-
-  const audioContext = new AudioContext();
-  runtime.audioContext = audioContext;
-  const destination = audioContext.createMediaStreamDestination();
-  for (const audioTrack of audioTracks) {
-    audioContext
-      .createMediaStreamSource(new MediaStream([audioTrack]))
-      .connect(destination);
-  }
-  return new MediaStream([
-    ...videoTracks,
-    ...destination.stream.getAudioTracks(),
-  ]);
-}
-
-async function recordingDisplayStream(
-  includeSystemAudio: boolean,
-  signal: AbortSignal,
-): Promise<MediaStream> {
-  const displayStream = await navigator.mediaDevices.getDisplayMedia({
-    audio: includeSystemAudio,
-    video: { frameRate: { ideal: 30, max: 30 } },
-  });
-  if (signal.aborted) {
-    stopTracks(displayStream);
-    signal.throwIfAborted();
-  }
-  return displayStream;
 }
 
 function sourceFile(source: LocalIntroVideoSource): File {
@@ -339,17 +167,17 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
 function buildIntroVideoPrompt(args: {
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
+  readonly placement: IntroVideoPlacement;
   readonly source: IntroVideoSource;
-  readonly visualBalance: IntroVideoVisualBalance;
   readonly voice: IntroVideoVoiceSelection | null;
 }): string {
   const avatar = args.avatar
     ? `${args.avatar.name} (${args.avatar.id})`
     : "No avatar";
-  const visualBalanceDescription: Record<IntroVideoVisualBalance, string> = {
-    "avatar-led": "Avatar-led (presenter on screen most of the time)",
-    "b-roll-led": "B-roll-led (focus on slides and source visuals)",
-    balanced: "Balanced mix (roughly equal time for presenter and visuals)",
+  const placementDescription: Record<IntroVideoPlacement, string> = {
+    left: "Presenter on the left, slide on the right",
+    overlay: "Presenter over the slide, anchored to the bottom right",
+    right: "Presenter on the right, slide on the left",
   };
   const direction = args.instructions.trim() || DEFAULT_INSTRUCTIONS;
   return [
@@ -367,7 +195,12 @@ function buildIntroVideoPrompt(args: {
     ...(args.avatar
       ? [
           "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
-          `- Visual balance: ${visualBalanceDescription[args.visualBalance]}`,
+          ...(args.source.kind === "document"
+            ? [
+                `- Presenter placement: ${placementDescription[args.placement]}`,
+                "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
+              ]
+            : []),
         ]
       : []),
     "",
@@ -385,18 +218,14 @@ interface IntroVideoInternalState {
   readonly adoptedAttachmentIds$: State<readonly string[]>;
   readonly avatar$: State<AvatarVideoAvatar | null>;
   readonly busy$: State<boolean>;
-  readonly countdown$: State<number>;
+  readonly draftDiscarded$: State<boolean>;
   readonly error$: State<IntroVideoWizardError | null>;
   readonly instructions$: State<string>;
-  readonly microphone$: State<boolean>;
   readonly open$: State<boolean>;
-  readonly recordingSeconds$: State<number>;
+  readonly placement$: State<IntroVideoPlacement>;
   readonly source$: State<IntroVideoSource | null>;
-  readonly sourcePersisted$: State<boolean>;
   readonly sourceUploaded$: State<boolean>;
   readonly step$: State<IntroVideoWizardStep>;
-  readonly systemAudio$: State<boolean>;
-  readonly visualBalance$: State<IntroVideoVisualBalance>;
   readonly voice$: State<IntroVideoVoiceSelection | null>;
 }
 
@@ -405,18 +234,14 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     adoptedAttachmentIds$: state<readonly string[]>([]),
     avatar$: state<AvatarVideoAvatar | null>(null),
     busy$: state(false),
-    countdown$: state(3),
+    draftDiscarded$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
     instructions$: state(DEFAULT_INSTRUCTIONS),
-    microphone$: state(false),
     open$: state(false),
-    recordingSeconds$: state(0),
+    placement$: state<IntroVideoPlacement>("left"),
     source$: state<IntroVideoSource | null>(null),
-    sourcePersisted$: state(false),
     sourceUploaded$: state(false),
     step$: state<IntroVideoWizardStep>("source"),
-    systemAudio$: state(true),
-    visualBalance$: state<IntroVideoVisualBalance>("balanced"),
     voice$: state<IntroVideoVoiceSelection | null>(null),
   };
 }
@@ -431,35 +256,73 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
   return {
     avatar$: exposeState(internal.avatar$),
     busy$: exposeState(internal.busy$),
-    countdown$: exposeState(internal.countdown$),
     error$: exposeState(internal.error$),
     instructions$: exposeState(internal.instructions$),
-    microphone$: exposeState(internal.microphone$),
     open$: exposeState(internal.open$),
-    recordingSeconds$: exposeState(internal.recordingSeconds$),
+    placement$: exposeState(internal.placement$),
     source$: exposeState(internal.source$),
-    sourcePersisted$: exposeState(internal.sourcePersisted$),
     step$: exposeState(internal.step$),
-    systemAudio$: exposeState(internal.systemAudio$),
-    visualBalance$: exposeState(internal.visualBalance$),
     voice$: exposeState(internal.voice$),
   };
 }
 
-function sourceFromFile(
-  file: File,
-  kind: Exclude<IntroVideoSourceKind, "recording">,
-): LocalIntroVideoSource {
+function sourceFromFile(file: File): LocalIntroVideoSource {
   return {
     blob: file,
     contentType: file.type || "application/octet-stream",
     durationSeconds: null,
-    kind,
+    kind: "document",
     name: file.name,
     origin: "local",
-    previewUrl: kind === "video" ? URL.createObjectURL(file) : null,
+    previewUrl: null,
     size: file.size,
   };
+}
+
+/**
+ * Where the wizard lands once it holds a source.
+ *
+ * A deck the user just picked in the file dialog is already what they chose, so
+ * it goes straight to the presenter. A desktop take is the one source the
+ * browser never saw being made, so it still gets a look before continuing.
+ */
+function stepAfterSource(source: IntroVideoSource): IntroVideoWizardStep {
+  return source.origin === "uploaded" ? "source-review" : "avatar";
+}
+
+/**
+ * The first-stage step for a given source, which is where "Back" from the
+ * presenter and the header's Source tab both lead.
+ *
+ * A deck has no review page of its own, so its first stage is the empty source
+ * step — reaching it therefore discards the deck, which is what
+ * `returnToSourceStep$` exists for.
+ */
+export function introVideoSourceStep(
+  source: IntroVideoSource | null,
+): IntroVideoWizardStep {
+  return source?.origin === "uploaded" ? "source-review" : "source";
+}
+
+/**
+ * Return the wizard to a closed, empty source step.
+ *
+ * Closing the dialog and finishing a submission both discard the whole draft,
+ * so the field list lives here rather than being repeated by each caller and
+ * drifting apart as the wizard gains state.
+ */
+function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
+  return command(({ set }): void => {
+    set(internal.source$, null);
+    set(internal.sourceUploaded$, false);
+    set(internal.avatar$, null);
+    set(internal.voice$, null);
+    set(internal.placement$, "left");
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.step$, "source");
+    set(internal.busy$, false);
+    set(internal.open$, false);
+  });
 }
 
 /**
@@ -499,72 +362,106 @@ function createDiscardAdoptedAttachmentsCommand(
   );
 }
 
+/**
+ * Open the wizard on a clean step.
+ */
+function createOpenWizardCommand(internal: IntroVideoInternalState) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    set(internal.avatar$, null);
+    set(internal.busy$, false);
+    set(internal.error$, null);
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.sourceUploaded$, false);
+    set(internal.placement$, "left");
+    set(internal.voice$, null);
+    const source = get(internal.source$);
+    set(internal.step$, source ? stepAfterSource(source) : "source");
+    // Navigating away only hides the wizard; it deliberately does not run
+    // closeWizard$. Dismissing the dialog is "discard this", while leaving the
+    // page is "come back to it", so the source survives a route change and the
+    // user keeps an upload they never asked to throw away.
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(internal.open$, false);
+      },
+      { once: true },
+    );
+    set(internal.open$, true);
+    if (source) {
+      return;
+    }
+    if (get(internal.draftDiscarded$)) {
+      // The user closed the wizard, so the stored draft is dead. Clearing it
+      // here keeps closeWizard$ synchronous for the dialog callback.
+      set(internal.draftDiscarded$, false);
+      await settle(deleteIntroVideoDraft(), signal);
+      return;
+    }
+    const restored = await settle(readIntroVideoDraft(), signal);
+    if (!restored.ok || !restored.value) {
+      return;
+    }
+    const restoredSource = sourceFromDraft(restored.value);
+    set(internal.source$, restoredSource);
+    set(internal.step$, stepAfterSource(restoredSource));
+  });
+}
+
 function createSourceCommands(
   internal: IntroVideoInternalState,
-  runtime: RecordingRuntime,
-  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+  resetWizardDraft$: Command<void, []>,
 ) {
-  const openWizard$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      signal.throwIfAborted();
-      runtime.generation += 1;
-      set(resetRecordingAttempt$);
-      releaseRecordingRuntime(runtime, true);
-      set(internal.avatar$, null);
-      set(internal.busy$, false);
-      set(internal.countdown$, 3);
-      set(internal.error$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.microphone$, false);
-      set(internal.recordingSeconds$, 0);
-      set(internal.sourceUploaded$, false);
-      set(internal.systemAudio$, true);
-      set(internal.visualBalance$, "balanced");
-      set(internal.voice$, null);
-      const source = get(internal.source$);
-      set(internal.step$, source ? "source-review" : "source");
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(internal.open$, false);
-        },
-        { once: true },
-      );
-      set(internal.open$, true);
-      if (source) {
-        return;
-      }
-      const restored = await settle(readIntroVideoDraft(), signal);
-      if (!restored.ok || !restored.value) {
-        return;
-      }
-      set(internal.source$, sourceFromDraft(restored.value));
-      set(internal.sourcePersisted$, true);
-      set(internal.step$, "source-review");
-    },
-  );
+  const openWizard$ = createOpenWizardCommand(internal);
+  // Closing discards the wizard: the next open starts from an empty source
+  // step. openWizard$ drops the stored draft rather than resuming it, so this
+  // stays synchronous and the dialog callback needs no signal.
   const closeWizard$ = command(({ get, set }) => {
-    runtime.generation += 1;
-    set(resetRecordingAttempt$);
-    releaseRecordingRuntime(runtime, true);
-    set(internal.busy$, false);
-    set(internal.countdown$, 3);
-    set(internal.recordingSeconds$, 0);
-    const step = get(internal.step$);
-    if (step === "countdown" || step === "recording") {
-      set(internal.step$, "record-setup");
-    }
-    set(internal.open$, false);
+    releasePreviewUrl(get(internal.source$));
+    set(resetWizardDraft$);
+    set(internal.error$, null);
+    set(internal.draftDiscarded$, true);
   });
   const setStep$ = command(
     ({ get, set }, nextStep: IntroVideoWizardStep): void => {
       const sourceRequired =
-        nextStep !== "source" && nextStep !== "record-setup";
+        nextStep !== "source" && nextStep !== "desktop-record";
       if (sourceRequired && !get(internal.source$)) {
         return;
       }
       set(internal.error$, null);
       set(internal.step$, nextStep);
+    },
+  );
+  /**
+   * Go back to the first step, dropping a deck on the way.
+   *
+   * A deck has no review page to step back to, so leaving the presenter is the
+   * user saying they picked the wrong file. Keeping it would silently reuse a
+   * source they already walked away from.
+   *
+   * A desktop take survives instead. The browser never held its bytes, the
+   * handoff params are already stripped from the URL, and the draft store has
+   * nothing to restore, so dropping it here would cost a recording that only
+   * another desktop session can replace. Its review page stays reachable from
+   * the Source tab.
+   */
+  const returnToSourceStep$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      set(internal.error$, null);
+      set(internal.step$, "source");
+      const source = get(internal.source$);
+      if (source?.origin === "uploaded") {
+        return;
+      }
+      releasePreviewUrl(source);
+      set(internal.source$, null);
+      set(internal.sourceUploaded$, false);
+      set(internal.avatar$, null);
+      set(internal.voice$, null);
+      set(internal.placement$, "left");
+      await settle(deleteIntroVideoDraft(), signal);
     },
   );
   const adoptUploadedRecording$ = command(
@@ -583,52 +480,38 @@ function createSourceCommands(
       // The bytes are already stored under this account, so submit has nothing
       // to upload and the local draft store has nothing worth holding.
       set(internal.sourceUploaded$, true);
-      set(internal.sourcePersisted$, false);
       set(internal.error$, null);
       set(internal.step$, "source-review");
       set(internal.open$, true);
     },
   );
   const setSourceFile$ = command(
-    async (
-      { get, set },
-      file: File,
-      kind: Exclude<IntroVideoSourceKind, "recording">,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      const source = sourceFromFile(file, kind);
+    async ({ get, set }, file: File, signal: AbortSignal): Promise<void> => {
+      const source = sourceFromFile(file);
       releasePreviewUrl(get(internal.source$));
       set(internal.source$, source);
       set(internal.sourceUploaded$, false);
-      set(internal.sourcePersisted$, false);
       set(internal.error$, null);
-      if (get(internal.voice$)?.kind === "original" && kind !== "video") {
+      if (get(internal.voice$)?.kind === "original") {
         set(internal.voice$, null);
       }
-      set(internal.step$, "source-review");
-      const persisted = await settle(
-        saveIntroVideoDraft(draftFromSource(source)),
-        signal,
-      );
-      set(internal.sourcePersisted$, persisted.ok);
+      set(internal.step$, stepAfterSource(source));
+      // A failed save only costs the reload-restore convenience, so the wizard
+      // carries on with the source it already holds in memory.
+      await settle(saveIntroVideoDraft(draftFromSource(source)), signal);
     },
   );
   return {
     adoptUploadedRecording$,
     closeWizard$,
     openWizard$,
+    returnToSourceStep$,
     setSourceFile$,
     setStep$,
   };
 }
 
 function createSelectionCommands(internal: IntroVideoInternalState) {
-  const setSystemAudio$ = command(({ set }, enabled: boolean) => {
-    set(internal.systemAudio$, enabled);
-  });
-  const setMicrophone$ = command(({ set }, enabled: boolean) => {
-    set(internal.microphone$, enabled);
-  });
   const setAvatar$ = command(
     ({ set }, avatar: AvatarVideoAvatar | null): void => {
       set(internal.avatar$, avatar);
@@ -642,401 +525,17 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
   const setInstructions$ = command(({ set }, instructions: string): void => {
     set(internal.instructions$, instructions);
   });
-  const setVisualBalance$ = command(
-    ({ set }, visualBalance: IntroVideoVisualBalance): void => {
-      set(internal.visualBalance$, visualBalance);
+  const setPlacement$ = command(
+    ({ set }, placement: IntroVideoPlacement): void => {
+      set(internal.placement$, placement);
     },
   );
   return {
     setAvatar$,
     setInstructions$,
-    setMicrophone$,
-    setSystemAudio$,
-    setVisualBalance$,
+    setPlacement$,
     setVoice$,
   };
-}
-
-function watchSharedSurface(
-  runtime: RecordingRuntime,
-  generation: number,
-  displayStream: MediaStream,
-  signal: AbortSignal,
-): { ended: boolean } {
-  const status = { ended: false };
-  displayStream.getVideoTracks()[0]?.addEventListener(
-    "ended",
-    () => {
-      if (generation !== runtime.generation) {
-        return;
-      }
-      status.ended = true;
-      const recorder = runtime.recorder;
-      if (recorder && recorder.state !== "inactive") {
-        recorder.stop();
-      }
-    },
-    { signal },
-  );
-  return status;
-}
-
-function recordingError(error: unknown): IntroVideoWizardError {
-  const name =
-    error instanceof Error || error instanceof DOMException ? error.name : "";
-  return name === "NotAllowedError"
-    ? "recording-permission"
-    : "recording-failed";
-}
-
-function createRecordingProgressCommands(
-  internal: IntroVideoInternalState,
-  runtime: RecordingRuntime,
-) {
-  const runRecordingCountdown$ = command(
-    async (
-      { set },
-      generation: number,
-      status: { readonly ended: boolean },
-      signal: AbortSignal,
-    ): Promise<boolean> => {
-      set(internal.step$, "countdown");
-      for (let count = 3; count >= 1; count -= 1) {
-        set(internal.countdown$, count);
-        await delay(1000, { signal });
-        if (status.ended || generation !== runtime.generation) {
-          return false;
-        }
-      }
-      return true;
-    },
-  );
-  const updateRecordingSeconds$ = command(
-    async ({ set }, generation: number, signal: AbortSignal): Promise<void> => {
-      const recordingIsActive = () => {
-        return (
-          generation === runtime.generation &&
-          runtime.recorder?.state === "recording"
-        );
-      };
-      let isFirstIteration = true;
-      await setLoop(
-        () => {
-          if (!recordingIsActive()) {
-            return true;
-          }
-          if (isFirstIteration) {
-            isFirstIteration = false;
-            return false;
-          }
-          set(
-            internal.recordingSeconds$,
-            Math.max(
-              0,
-              Math.floor((now() - runtime.recordingStartedAt) / 1000),
-            ),
-          );
-          return false;
-        },
-        250,
-        signal,
-      );
-    },
-  );
-  return { runRecordingCountdown$, updateRecordingSeconds$ };
-}
-
-function createRecordingCompletionCommands(
-  internal: IntroVideoInternalState,
-  runtime: RecordingRuntime,
-) {
-  const finalizeRecording$ = command(
-    async (
-      { get, set },
-      generation: number,
-      recorder: MediaRecorder,
-      signal: AbortSignal,
-    ): Promise<void> => {
-      if (generation !== runtime.generation) {
-        return;
-      }
-      const durationSeconds = Math.max(
-        0,
-        (now() - runtime.recordingStartedAt) / 1000,
-      );
-      const blob = new Blob(runtime.chunks, {
-        type: recorder.mimeType || "video/webm",
-      });
-      runtime.generation += 1;
-      releaseRecordingRuntime(runtime, false);
-      set(internal.busy$, false);
-      if (blob.size === 0) {
-        set(internal.error$, "recording-empty");
-        set(internal.step$, "record-setup");
-        return;
-      }
-      const source = sourceFromDraft({
-        blob,
-        contentType: blob.type || "video/webm",
-        createdAt: now(),
-        durationSeconds,
-        kind: "recording",
-        name: RECORDING_FILE_NAME,
-      });
-      releasePreviewUrl(get(internal.source$));
-      set(internal.source$, source);
-      set(internal.sourceUploaded$, false);
-      set(internal.sourcePersisted$, false);
-      set(internal.step$, "source-review");
-      const persisted = await settle(
-        saveIntroVideoDraft(draftFromSource(source)),
-        signal,
-      );
-      set(internal.sourcePersisted$, persisted.ok);
-    },
-  );
-  const startMediaRecorder$ = command(
-    (
-      { set },
-      recordingStream: MediaStream,
-      signal: AbortSignal,
-    ): {
-      readonly completion: Promise<void>;
-      readonly recorder: MediaRecorder;
-    } => {
-      runtime.recordingStream = recordingStream;
-      runtime.chunks = [];
-      const contentType = recorderMimeType();
-      const recorder = contentType
-        ? new MediaRecorder(recordingStream, { mimeType: contentType })
-        : new MediaRecorder(recordingStream);
-      runtime.recorder = recorder;
-      const completion = createDeferredPromise<void>(signal);
-      runtime.stopCompletion = completion.promise;
-      runtime.stopCompletionResolve = () => {
-        completion.resolve(undefined);
-      };
-      runtime.stopCompletionSettled = completion.settled;
-      recorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) {
-          runtime.chunks.push(event.data);
-        }
-      });
-      recorder.addEventListener(
-        "stop",
-        () => {
-          if (!completion.settled()) {
-            completion.resolve(undefined);
-          }
-        },
-        { once: true, signal },
-      );
-      recorder.start(1000);
-      runtime.recordingStartedAt = now();
-      set(internal.step$, "recording");
-      set(internal.busy$, false);
-      return { completion: completion.promise, recorder };
-    },
-  );
-  return { finalizeRecording$, startMediaRecorder$ };
-}
-
-function createRecordingAttemptCommand(
-  internal: IntroVideoInternalState,
-  runtime: RecordingRuntime,
-  progress: ReturnType<typeof createRecordingProgressCommands>,
-  completion: ReturnType<typeof createRecordingCompletionCommands>,
-) {
-  const { runRecordingCountdown$, updateRecordingSeconds$ } = progress;
-  const { finalizeRecording$, startMediaRecorder$ } = completion;
-  const performRecordingAttempt$ = command(
-    async (
-      { get, set },
-      generation: number,
-      signal: AbortSignal,
-    ): Promise<boolean> => {
-      const displayStream = await recordingDisplayStream(
-        get(internal.systemAudio$),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (generation !== runtime.generation) {
-        stopTracks(displayStream);
-        return false;
-      }
-      runtime.displayStream = displayStream;
-      const status = watchSharedSurface(
-        runtime,
-        generation,
-        displayStream,
-        signal,
-      );
-      if (
-        !(await set(runRecordingCountdown$, generation, status, signal)) ||
-        status.ended
-      ) {
-        return false;
-      }
-      const recordingStream = await recordingStreamWithMicrophone(
-        runtime,
-        displayStream,
-        get(internal.microphone$),
-        signal,
-      );
-      if (signal.aborted || status.ended || generation !== runtime.generation) {
-        stopTracks(recordingStream);
-        signal.throwIfAborted();
-        return false;
-      }
-      const recording = set(startMediaRecorder$, recordingStream, signal);
-      await Promise.all([
-        recording.completion,
-        set(updateRecordingSeconds$, generation, signal),
-      ]);
-      signal.throwIfAborted();
-      if (generation !== runtime.generation) {
-        return true;
-      }
-      set(internal.busy$, true);
-      await set(finalizeRecording$, generation, recording.recorder, signal);
-      return true;
-    },
-  );
-  return performRecordingAttempt$;
-}
-
-function createStartRecordingCommand(
-  internal: IntroVideoInternalState,
-  runtime: RecordingRuntime,
-  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
-  performRecordingAttempt$: ReturnType<typeof createRecordingAttemptCommand>,
-) {
-  const abortRecording$ = command(({ set }, generation: number): void => {
-    if (generation !== runtime.generation) {
-      return;
-    }
-    runtime.generation += 1;
-    releaseRecordingRuntime(runtime, true);
-    set(internal.busy$, false);
-    set(internal.countdown$, 3);
-    set(internal.recordingSeconds$, 0);
-    set(internal.error$, null);
-    set(internal.step$, "record-setup");
-    set(internal.open$, false);
-  });
-  return command(async ({ set }, parentSignal: AbortSignal): Promise<void> => {
-    if (
-      !navigator.mediaDevices?.getDisplayMedia ||
-      typeof MediaRecorder === "undefined"
-    ) {
-      set(internal.error$, "recording-unsupported");
-      return;
-    }
-    const signal = set(resetRecordingAttempt$, parentSignal);
-    runtime.generation += 1;
-    const generation = runtime.generation;
-    releaseRecordingRuntime(runtime, true);
-    if (runtime.audioContextClose) {
-      await settle(runtime.audioContextClose, signal);
-      runtime.audioContextClose = null;
-    }
-    set(internal.busy$, true);
-    set(internal.error$, null);
-    set(internal.recordingSeconds$, 0);
-    const aborted = createDeferredPromise<never>(signal);
-    const attempt = await onRejection(
-      settle(
-        withCleanup(
-          Promise.race([
-            set(performRecordingAttempt$, generation, signal),
-            aborted.promise,
-          ]),
-          () => {
-            if (!aborted.settled()) {
-              aborted.reject(
-                new DOMException("Recording attempt settled", "AbortError"),
-              );
-            }
-          },
-        ),
-        signal,
-      ),
-      () => {
-        set(abortRecording$, generation);
-      },
-    );
-    if (generation !== runtime.generation) {
-      return;
-    }
-    if (!attempt.ok) {
-      runtime.generation += 1;
-      releaseRecordingRuntime(runtime, true);
-      set(internal.busy$, false);
-      set(internal.error$, recordingError(attempt.error));
-      set(internal.step$, "record-setup");
-      return;
-    }
-    if (!attempt.value) {
-      runtime.generation += 1;
-      releaseRecordingRuntime(runtime, true);
-      set(internal.busy$, false);
-      set(internal.error$, "recording-share-ended");
-      set(internal.step$, "record-setup");
-    }
-  });
-}
-
-function createRecordingCommands(
-  internal: IntroVideoInternalState,
-  runtime: RecordingRuntime,
-  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
-) {
-  const progress = createRecordingProgressCommands(internal, runtime);
-  const completion = createRecordingCompletionCommands(internal, runtime);
-  const performRecordingAttempt$ = createRecordingAttemptCommand(
-    internal,
-    runtime,
-    progress,
-    completion,
-  );
-  const startRecording$ = createStartRecordingCommand(
-    internal,
-    runtime,
-    resetRecordingAttempt$,
-    performRecordingAttempt$,
-  );
-  const stopRecording$ = command(({ set }, signal: AbortSignal): void => {
-    signal.throwIfAborted();
-    const recorder = runtime.recorder;
-    if (!recorder || recorder.state === "inactive") {
-      return;
-    }
-    set(internal.busy$, true);
-    recorder.stop();
-  });
-  const setRecordingPreviewRef$ = onRef(
-    command(
-      async (
-        _context,
-        video: HTMLVideoElement,
-        signal: AbortSignal,
-      ): Promise<void> => {
-        video.srcObject = runtime.displayStream;
-        video.muted = true;
-        video.playsInline = true;
-        signal.addEventListener(
-          "abort",
-          () => {
-            video.srcObject = null;
-          },
-          { once: true },
-        );
-        await video.play();
-        signal.throwIfAborted();
-      },
-    ),
-  );
-  return { setRecordingPreviewRef$, startRecording$, stopRecording$ };
 }
 
 function createDownloadSourceCommand(internal: IntroVideoInternalState) {
@@ -1056,7 +555,10 @@ function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   });
 }
 
-function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
+function createClearCompletedDraftCommand(
+  internal: IntroVideoInternalState,
+  resetWizardDraft$: Command<void, []>,
+) {
   return command(
     async (
       { set },
@@ -1066,17 +568,11 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
       // A stale local draft is harmless if cleanup fails after the server send.
       await settle(deleteIntroVideoDraft(), signal);
       releasePreviewUrl(source);
-      set(internal.source$, null);
+      set(resetWizardDraft$);
+      // The send consumed the adopted handoff uploads, so the wizard stops
+      // tracking them. Closing deliberately does not: those files stay on the
+      // composer draft and only discardAdoptedAttachments$ can take them off.
       set(internal.adoptedAttachmentIds$, []);
-      set(internal.sourcePersisted$, false);
-      set(internal.sourceUploaded$, false);
-      set(internal.avatar$, null);
-      set(internal.voice$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.visualBalance$, "balanced");
-      set(internal.step$, "source");
-      set(internal.busy$, false);
-      set(internal.open$, false);
     },
   );
 }
@@ -1084,6 +580,7 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
 function createSubmissionCommands(
   internal: IntroVideoInternalState,
   downloadSource$: Command<void, []>,
+  resetWizardDraft$: Command<void, []>,
   discardAdoptedAttachments$: ReturnType<
     typeof createDiscardAdoptedAttachmentsCommand
   >,
@@ -1114,7 +611,10 @@ function createSubmissionCommands(
       return true;
     },
   );
-  const clearCompletedDraft$ = createClearCompletedDraftCommand(internal);
+  const clearCompletedDraft$ = createClearCompletedDraftCommand(
+    internal,
+    resetWizardDraft$,
+  );
   const submitComposer$ = command(
     async (
       { get, set },
@@ -1124,32 +624,6 @@ function createSubmissionCommands(
       const action = await get(composer.submission.primaryAction$);
       signal.throwIfAborted();
       return await set(composer.submission.submitCurrentInput$, action, signal);
-    },
-  );
-  const submitDirectChat$ = command(
-    async (
-      { set },
-      composer: ComposerSignals,
-      signal: AbortSignal,
-    ): Promise<boolean> => {
-      set(internal.busy$, true);
-      set(internal.error$, null);
-      set(composer.draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
-      set(
-        composer.draft.setDraftInput$,
-        "Help me create an intro video. Ask me for the source, audience, avatar, voice, and editing direction before generating it.",
-      );
-      const submission = await settle(
-        set(submitComposer$, composer, signal),
-        signal,
-      );
-      set(internal.busy$, false);
-      if (!submission.ok || !submission.value) {
-        set(internal.error$, "send-failed");
-        return false;
-      }
-      set(internal.open$, false);
-      return true;
     },
   );
   const submit$ = command(
@@ -1179,8 +653,8 @@ function createSubmissionCommands(
         buildIntroVideoPrompt({
           avatar: get(internal.avatar$),
           instructions: get(internal.instructions$),
+          placement: get(internal.placement$),
           source,
-          visualBalance: get(internal.visualBalance$),
           voice: get(internal.voice$),
         }),
       );
@@ -1199,38 +673,28 @@ function createSubmissionCommands(
       return true;
     },
   );
-  return { submit$, submitDirectChat$ };
+  return { submit$ };
 }
 
 function createIntroVideoWizardSignals() {
   const internal = createIntroVideoInternalState();
-  const runtime = createRecordingRuntime();
-  const resetRecordingAttempt$ = resetSignal();
   const selectors = createIntroVideoSelectors(internal);
-  const sourceCommands = createSourceCommands(
-    internal,
-    runtime,
-    resetRecordingAttempt$,
-  );
+  const resetWizardDraft$ = createResetWizardDraftCommand(internal);
+  const sourceCommands = createSourceCommands(internal, resetWizardDraft$);
   const selectionCommands = createSelectionCommands(internal);
-  const recordingCommands = createRecordingCommands(
-    internal,
-    runtime,
-    resetRecordingAttempt$,
-  );
   const downloadSource$ = createDownloadSourceCommand(internal);
   const discardAdoptedAttachments$ =
     createDiscardAdoptedAttachmentsCommand(internal);
   const submissionCommands = createSubmissionCommands(
     internal,
     downloadSource$,
+    resetWizardDraft$,
     discardAdoptedAttachments$,
   );
   return {
     ...selectors,
     ...sourceCommands,
     ...selectionCommands,
-    ...recordingCommands,
     ...submissionCommands,
     downloadSource$,
   };

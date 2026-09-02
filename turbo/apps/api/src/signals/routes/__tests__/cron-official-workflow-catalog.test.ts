@@ -413,8 +413,42 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     });
   });
 
-  it("releases the deployed catalog with stable unique executable identities", async () => {
+  it("retires Connector Doctor while retaining its released identity and Morning Brief behavior", async () => {
     const s3 = installVolumeS3Fixture();
+    const historicalBlueprint: OfficialWorkflowBlueprint = {
+      key: "weekly-check",
+      parameters: [],
+      desiredState: {
+        kind: "schedule",
+        schedule: {
+          type: "cron",
+          cronExpression: "0 9 * * 1",
+        },
+      },
+      runtime: { resultEmail: false },
+    };
+    const released = await syncCatalog(
+      catalog([
+        activeDefinition("connector-doctor", {
+          blueprints: [historicalBlueprint],
+        }),
+      ]),
+    );
+    expect(released.body).toMatchObject({
+      outcome: "accepted",
+      diagnostics: [],
+    });
+    const releasedConnectorDoctor = requireValue(
+      (await readState("connector-doctor")).body.definition,
+      "Expected the released Connector Doctor Definition",
+    );
+    expect(releasedConnectorDoctor).toMatchObject({
+      name: "connector-doctor",
+      lifecycle: "active",
+      blueprints: [{ key: "weekly-check" }],
+      releasedBlueprintKeys: ["weekly-check"],
+    });
+
     const first = await syncDeployedCatalog();
     expect(first.body).toMatchObject({
       outcome: "accepted",
@@ -433,14 +467,14 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     );
     const connectorDoctorDefinition = requireValue(
       connectorDoctorState.body.definition,
-      "Expected the Connector Doctor Definition",
+      "Expected the retired Connector Doctor Definition",
     );
     expect(
       deployedCatalog.payload.definitions.map(({ name, lifecycle }) => {
         return { name, lifecycle };
       }),
     ).toStrictEqual([
-      { name: "connector-doctor", lifecycle: "active" },
+      { name: "connector-doctor", lifecycle: "retired" },
       { name: "morning-brief", lifecycle: "active" },
     ]);
     expect(morningBriefDefinition).toMatchObject({
@@ -463,22 +497,23 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     });
     expect(connectorDoctorDefinition).toMatchObject({
       name: "connector-doctor",
-      lifecycle: "active",
-      blueprints: [
-        {
-          key: "weekly-check",
-          parameters: [],
-          desiredState: {
-            kind: "schedule",
-            schedule: {
-              type: "cron",
-              cronExpression: "0 9 * * 1",
-            },
-          },
-          runtime: { resultEmail: false },
-        },
-      ],
+      lifecycle: "retired",
+      blueprints: [{ key: "weekly-check" }],
+      releasedBlueprintKeys: ["weekly-check"],
+      presentation: { category: "productivity" },
     });
+    expect(connectorDoctorDefinition.revision).toBe(
+      releasedConnectorDoctor.revision,
+    );
+    expect(connectorDoctorDefinition.artifact).toStrictEqual(
+      releasedConnectorDoctor.artifact,
+    );
+    expect(connectorDoctorDefinition.blueprints).toStrictEqual(
+      releasedConnectorDoctor.blueprints,
+    );
+    expect(connectorDoctorDefinition.releasedBlueprintKeys).toStrictEqual(
+      releasedConnectorDoctor.releasedBlueprintKeys,
+    );
     expect(morningBriefState.body.storage).toMatchObject({
       storageName: "official-workflow@morning-brief",
       orgId: SYSTEM_ORG_ID,
@@ -490,11 +525,11 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       storageName: "official-workflow@connector-doctor",
       orgId: SYSTEM_ORG_ID,
       userId: VOLUME_ORG_USER_ID,
-      headVersionId: connectorDoctorDefinition.artifact.storageVersion,
+      headVersionId: releasedConnectorDoctor.artifact.storageVersion,
       versionCount: 1,
     });
     expect(morningBriefState.body.counts).toStrictEqual({
-      releases: 1,
+      releases: 2,
       revisions: 2,
       storages: 2,
       storageVersions: 2,
@@ -502,7 +537,6 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     expect(s3.objects.size).toBe(4);
 
     const morningBriefRevision = morningBriefDefinition.revision;
-    const connectorDoctorRevision = connectorDoctorDefinition.revision;
     const exactMorningBrief = await readState(
       "morning-brief",
       morningBriefRevision,
@@ -537,172 +571,23 @@ describe.sequential("Official Workflow catalog release boundary", () => {
 
     const exactConnectorDoctor = await readState(
       "connector-doctor",
-      connectorDoctorRevision,
+      releasedConnectorDoctor.revision,
     );
     const exactConnectorDoctorRevision = requireValue(
       exactConnectorDoctor.body.revision,
-      "Expected the exact Connector Doctor revision",
+      "Expected the exact historical Connector Doctor revision",
     );
-    const connectorDoctorInstruction =
-      exactConnectorDoctorRevision.definition.workflow.instruction;
-    expect(exactConnectorDoctorRevision.definition.workflow).toMatchObject({
-      displayName: "Connector Doctor",
-      description:
-        "Diagnose connector readiness across your workflows and group exact repair actions.",
-      files: [],
-    });
-    expect(
-      connectorDoctorInstruction.match(
-        /okou doctor connectors --agent "\$OKOU_AGENT_ID" --json/gu,
-      ),
-    ).toHaveLength(1);
-    expect(connectorDoctorInstruction).not.toMatch(
-      /okou doctor connectors --json/gu,
+    expect(exactConnectorDoctorRevision.definition.revision).toBe(
+      releasedConnectorDoctor.revision,
     );
-    expect(connectorDoctorInstruction).toContain(
-      "unique sandbox-local report file with `mktemp`",
+    expect(exactConnectorDoctorRevision.definition.blueprints).toStrictEqual(
+      releasedConnectorDoctor.blueprints,
     );
-    expect(connectorDoctorInstruction).toContain(
-      "redirect its complete standard output directly into that file",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      `report_file="$(mktemp "\${TMPDIR:-/tmp}/connector-doctor.XXXXXX.json")"`,
-    );
-    expect(connectorDoctorInstruction).toContain(
-      `if [ -z "\${OKOU_AGENT_ID:-}" ]; then`,
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "status=failed reason=missing-agent-id",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      'okou doctor connectors --agent "$OKOU_AGENT_ID" --json >"$report_file"',
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Require a non-empty `OKOU_AGENT_ID` before running the Doctor command",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "do not rerun it, split it into per-workflow diagnoses, or call connector-readiness APIs separately",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "All later commands must be local parsers against that same sandbox file",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Keep the file sandbox-local; do not upload, attach, or send it",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "use a non-emitting local `jq` check or equivalent local parser",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "all five non-negative integer summary counts",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "every returned workflow's `agent.id` exactly matches the runtime `OKOU_AGENT_ID`",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "A missing runtime Agent identity or any cross-Agent workflow entry makes the diagnosis unavailable",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "A truncated or empty file, invalid JSON, an unsupported schema version, a missing required field",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "any local parsing or projection failure makes the diagnosis unavailable",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "the first data-returning projection must contain only `schemaVersion` and `summary`",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Never make a tool call that prints, reads, or returns the whole raw file",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "return at most 20 records per tool result",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Use a count-only projection to determine whether paging is needed",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "advance explicit offsets until every projected record for that branch has been consumed",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "If the Doctor command or local capture fails",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "sole source of diagnostic facts",
-    );
-    expect(connectorDoctorInstruction).toContain("schemaVersion === 1");
-    expect(connectorDoctorInstruction).toContain(
-      "identical `action.kind` and exact `action.url`",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "list every affected workflow with the connector's returned readiness status and reason",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Never merge entries whose exact URLs differ",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "every connector whose status is `unavailable` and every workflow with a non-null `error`",
-    );
-    expect(connectorDoctorInstruction).toContain("Unknown is never healthy");
-    expect(connectorDoctorInstruction).toContain("summary.checked === 0");
-    expect(connectorDoctorInstruction).toContain(
-      "Describe every valid report as covering effective workflows on the current Agent, including both public and private workflows hosted there",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Never describe this Agent-scoped result as coverage across visible Agents",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "no effective workflows on the current Agent were available to check",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "not an all-clear over diagnosed workflows",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "summary.attention === 0`, and `summary.unknown === 0",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "aggregate covered effective workflows on the current Agent, including its public and private workflows",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "compact inventory of every checked entry in `workflows`",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Do not apply a visibility filter to any valid report branch",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "page through a projection of every connector entry with a non-null action",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "separately page through a projection of every connector whose status is `unavailable` and every workflow with a non-null `error`",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Do not use `tee`, echo the raw output, switch to the human-readable CLI output, or depend on compact JSON whitespace or a higher tool-output limit",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Do not invoke connector or provider skills, third-party provider APIs",
-    );
-    expect(connectorDoctorInstruction).toContain("okou connector list");
-    expect(connectorDoctorInstruction).toContain("okou connector status");
-    expect(connectorDoctorInstruction).toContain("okou connector check");
-    expect(connectorDoctorInstruction).toContain(
-      "Do not write to or mutate application or provider state",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "application-internal APIs, or application database tables",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Do not connect, reconnect, authorize, start OAuth flows, request permissions, create callbacks, mutate connectors",
-    );
-    expect(connectorDoctorInstruction).toContain("or follow repair links");
-    expect(connectorDoctorInstruction).toContain(
-      "Do not select or recommend models, and do not recommend workflow or Automation cleanup",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Return only the Markdown report. The platform delivers it to the shared automation thread",
-    );
-    expect(connectorDoctorInstruction).toContain(
-      "Do not send email or directly send any chat or other message",
+    expect(exactConnectorDoctorRevision.artifact).toStrictEqual(
+      releasedConnectorDoctor.artifact,
     );
 
-    expect(morningBriefRevision).not.toBe(connectorDoctorRevision);
+    expect(morningBriefRevision).not.toBe(releasedConnectorDoctor.revision);
     expect(morningBriefDefinition.blueprints[0]?.fingerprint).not.toBe(
       connectorDoctorDefinition.blueprints[0]?.fingerprint,
     );
@@ -735,7 +620,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     );
     const secondConnectorDoctor = requireValue(
       (await readState("connector-doctor")).body.definition,
-      "Expected the unchanged Connector Doctor Definition",
+      "Expected the unchanged retired Connector Doctor Definition",
     );
     expect({
       morningBrief: {

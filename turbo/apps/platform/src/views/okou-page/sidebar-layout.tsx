@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { Menu, Package, Share2, UserPlus } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { Button, cn } from "@okouai/ui";
+import { Button, cn, useMediaQuery } from "@okouai/ui";
 import { Sidebar } from "./sidebar.tsx";
 import { AutomationMenuButton } from "./chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -51,8 +51,12 @@ import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
 import {
   applyColorThemeDocumentAttributes,
+  applyTypefaceDocumentAttribute,
   colorTheme$,
 } from "../../signals/theme.ts";
+
+// Keep this aligned with the Tailwind `md` breakpoint used by the layout.
+const SIDEBAR_DESKTOP_MEDIA_QUERY = "(min-width: 48rem)";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -343,13 +347,36 @@ function AttachmentLightboxMount() {
   return lightboxUrl ? <AttachmentLightbox /> : null;
 }
 
-function SidebarLayoutInner({ children }: { children: ReactNode }) {
+function MobileSidebarMount() {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const colorTheme = useGet(colorTheme$);
-  const gradientColorThemesEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
   const { t } = useTranslation();
+
+  return (
+    <>
+      <Sidebar isDesktop={false} />
+      <div
+        data-sidebar-expanded={expanded || undefined}
+        className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
+        aria-label={t(($) => {
+          return $.appShell.sidebar.mobile.overlay;
+        })}
+        onClick={() => {
+          return setExpanded(false);
+        }}
+      />
+    </>
+  );
+}
+
+function SidebarLayoutInner({ children }: { children: ReactNode }) {
+  const colorTheme = useGet(colorTheme$);
+  const features = useGet(featureSwitch$);
+  const gradientColorThemesEnabled =
+    features[FeatureSwitchKey.GradientColorThemes] ?? false;
+  const geistTypefaceEnabled =
+    features[FeatureSwitchKey.GeistTypeface] ?? false;
+  const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
 
   return (
     <div
@@ -357,6 +384,9 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         applyColorThemeDocumentAttributes(
           element !== null && gradientColorThemesEnabled,
           colorTheme,
+        );
+        applyTypefaceDocumentAttribute(
+          element !== null && geistTypefaceEnabled,
         );
       }}
       className="zero-app zero-viewport-shell flex w-full bg-background"
@@ -370,21 +400,11 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <SubscriptionPurchaseConfirmDialog />
       <AttachmentLightboxMount />
       <QueueDrawer />
-      <Sidebar />
-      <div
-        data-sidebar-expanded={expanded || undefined}
-        className="zero-pwa-fixed-cover fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
-        aria-label={t(($) => {
-          return $.appShell.sidebar.mobile.overlay;
-        })}
-        onClick={() => {
-          return setExpanded(false);
-        }}
-      />
+      {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
         <InstallBanner />
         <IosInstallModal />
-        <MobileTopBar />
+        {!isDesktop && <MobileTopBar />}
         {children}
       </div>
     </div>

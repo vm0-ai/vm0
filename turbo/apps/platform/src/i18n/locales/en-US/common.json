@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
+        "timeoutDescription": "This run reached its time limit. Continue to keep working.",
+        "timeoutTitle": "Time limit reached",
         "tryAgain": "Try again",
         "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
         "unavailableTitle": "Selected model isn't available",
@@ -1991,19 +1993,28 @@
         "heading": "Choose an avatar",
         "help": "Choose a presenter or continue without one",
         "none": "No avatar",
-        "visualBalanceAvatarLed": "Avatar-led — narrator on screen most of the time",
-        "visualBalanceBalanced": "Balanced mix — equal time for both",
-        "visualBalanceBRollLed": "B-roll-led — focus on slides and visuals",
-        "visualBalanceHeading": "How would you like the visual balance?"
+        "placementHeading": "Where should the presenter stand?",
+        "placementLeft": "Left — the slide sits to the right",
+        "placementOverlay": "Over the slide — the slide fills the frame",
+        "placementRight": "Right — the slide sits to the left"
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
+      "desktop": {
+        "checkingCompatibility": "Checking compatibility",
+        "description": "Screen recording lives in the {{desktopProductName}} desktop app, which captures any window and records where you click.",
+        "download": "Download for macOS",
+        "handoffDetail": "Your take opens here, ready for a presenter and a voice.",
+        "handoffTitle": "Come back to this wizard automatically",
+        "heading": "Record with {{desktopProductName}} Desktop",
+        "illustration": "Recording happens in {{desktopProductName}} Desktop",
+        "installDetail": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+        "installTitle": "Download and install {{desktopProductName}} Desktop",
+        "recordDetail": "Stop it from the same menu when you are done.",
+        "recordTitle": "Start a recording from the menu bar",
+        "unsupportedIntelMac": "Requires an Apple silicon Mac"
+      },
       "errors": {
-        "recordingEmpty": "The recording was empty. Please try again.",
-        "recordingFailed": "Screen recording could not start. Try again in a recent Chrome browser.",
-        "recordingPermission": "Nothing was shared. Choose a tab, window, or screen when you are ready.",
-        "recordingShareEnded": "Screen sharing ended before recording started.",
-        "recordingUnsupported": "Screen recording is not supported in this browser.",
         "sendFailed": "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
         "uploadFailed": "The source could not be uploaded. It is still saved locally and has been downloaded as a backup."
       },
@@ -2011,21 +2022,7 @@
         "back": "Back",
         "createInChat": "Create in chat",
         "download": "Download source",
-        "next": "Next",
-        "startRecording": "Choose screen and start",
-        "stopRecording": "Stop recording"
-      },
-      "recording": {
-        "chooseSurface": "Choose a tab, window, or screen",
-        "countdown": "Recording starts after the countdown",
-        "description": "Chrome will ask what to share. Recording begins only after the three-second countdown finishes.",
-        "heading": "Record your screen",
-        "localNote": "You can stop from Chrome's sharing bar or return here. The recording stays local until the chat thread is created.",
-        "microphone": "Microphone",
-        "microphoneHelp": "Add narration while you demonstrate",
-        "recordingLocally": "Recording locally",
-        "systemAudio": "System audio",
-        "systemAudioHelp": "Available sources depend on Chrome and your system"
+        "next": "Next"
       },
       "review": {
         "avatar": "Avatar",
@@ -2036,30 +2033,22 @@
         "voice": "Voice"
       },
       "source": {
-        "chatDescription": "Open a thread now and shape the video with Zero",
-        "chatDetail": "Add a source, avatar, or voice later in chat",
-        "chatTitle": "Start in chat",
-        "documentDescription": "Turn your content into a narrated intro video",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Upload slides or a document",
-        "dropDescription": "Slides, documents, or recordings",
-        "dropTitle": "Drop a source here",
+        "documentDescription": "Turn your slides into a narrated intro video",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Upload slides",
         "heading": "How do you want to start?",
-        "help": "Add something you already have, record your screen, or describe the video in your own words",
-        "recordDescription": "Choose a tab, window, or your entire screen",
-        "recordDetail": "Starts after a three-second countdown",
+        "help": "Upload the slides you already have, or record your screen with {{desktopProductName}} Desktop",
+        "recordDescription": "Capture a demo with the desktop app",
+        "recordDetail": "Needs {{desktopProductName}} Desktop on macOS",
         "recordTitle": "Record your screen",
-        "videoDescription": "Let AI tighten the pacing, framing, and narration",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Upload a recording"
+        "uploadDescription": "Choose a file from your computer",
+        "uploadTitle": "Upload source"
       },
       "sourceReview": {
         "format": "Format",
         "heading": "Your source is ready",
         "help": "Check the file before you continue",
         "inAccount": "In your account",
-        "inBrowser": "In this browser",
-        "inTab": "Until this tab closes",
         "replace": "Replace source",
         "saved": "Saved",
         "source": "Source"
@@ -2720,7 +2709,7 @@
         "prefixes": "Prefixes",
         "prefixesHint": "(one per line, https only)",
         "redirectCopy": "Copy Redirect URL",
-        "redirectHint": "(Register this URL in the provider's OAuth application.)",
+        "redirectHint": "(Register this URL in the provider's OAuth application. Keep any existing VM0 or Okou redirect URL registered too.)",
         "redirectUrl": "Redirect URL",
         "removeApiAuthentication": "Remove API authentication",
         "removeNoAuthentication": "Remove no authentication",
@@ -4637,10 +4626,6 @@
     },
     "redirecting": "Redirecting...",
     "status": {
-      "atLimit_one": "You can only run {{limit}} task at a time. New runs will wait in a queue until one finishes.",
-      "atLimit_other": "You can only run {{limit}} tasks at a time. New runs will wait in a queue until one finishes.",
-      "available_one": "{{count}} slot available",
-      "available_other": "{{count}} slots available",
       "availableNow": "Available now",
       "inUse_one": "{{active}} of {{limit}} slot in use",
       "inUse_other": "{{active}} of {{limit}} slots in use"
@@ -5089,7 +5074,6 @@
           "upstreamModel": "Upstream model"
         },
         "capture": {
-          "description": "Capture HTTP header names, selected safe header values, and bodies in network logs for debugging.",
           "disabled": "Disabled",
           "enabled_one": "Enabled for the next {{count}} run",
           "enabled_other": "Enabled for the next {{count}} runs",
@@ -5112,10 +5096,8 @@
           "recovery": "recovery",
           "title": "Realtime connection diagnostics",
           "unavailable": "unavailable"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferences",
       "language": {
         "description": "Choose your preferred language for the {{brandName}} interface",
         "label": "Language",
@@ -5145,8 +5127,6 @@
         "retryMessage": "Morning Brief settings could not be loaded or updated. Retry to continue.",
         "title": "Morning Brief"
       },
-      "pageDescription": "Manage your appearance and agent runtime preferences",
-      "pageTitle": "Preferences",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Press ⌘/Ctrl+Enter to send, Enter for new line",
@@ -5155,11 +5135,6 @@
         "enterDescription": "Press Enter to send, Shift+Enter for new line",
         "sectionTitle": "Enter",
         "title": "Send message with"
-      },
-      "tabs": {
-        "appearance": "Appearance",
-        "models": "Personal Models",
-        "timezone": "Time Zone"
       },
       "timezone": {
         "description": "Times shown to you and used for automation runs.",
@@ -5935,35 +5910,6 @@
       "noWorkflows": "No workflows yet. Create one in chat to continue."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connect",
-          "enable": "Enable for agent",
-          "reconnect": "Reconnect",
-          "reviewPermissions": "Review permissions"
-        },
-        "aria": "Connector readiness",
-        "check": "Check connectors",
-        "checkAgain": "Check again",
-        "checking": "Checking...",
-        "description": "See which built-in connectors this workflow may need and whether they're ready.",
-        "empty": "No required connectors detected",
-        "error": {
-          "inputTooLong": "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.",
-          "retry": "We couldn't check connectors. Try again.",
-          "timeout": "The connector check timed out. Try again."
-        },
-        "saveFirst": "Save your changes before checking connectors.",
-        "status": {
-          "connected": "Connected",
-          "notConnected": "Not connected",
-          "notEnabled": "Not enabled for this agent",
-          "reconnect": "Reconnect required",
-          "scopeMismatch": "Update permissions",
-          "unavailable": "Currently unavailable"
-        },
-        "title": "Connector readiness"
-      },
       "copy": {
         "agentFallback": "the agent",
         "copied": "Copied to {{agent}}",

@@ -47,7 +47,6 @@ import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
 import { setupOfficialWorkflowsPage$ } from "./workflows-page/official-workflows-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
-import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupAgentChatPage$ } from "./okou-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./okou-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
@@ -87,6 +86,7 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { hideAppSkeleton$, initBootstrapSkeleton$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
+import { setupLegacySettingsRedirect$ } from "./okou-page/settings/legacy-settings-redirect.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
@@ -338,7 +338,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.settings,
-    setup: setupAuthSidebarPageWrapper(setupPreferencesPage$),
+    setup: setupAuthPageWrapper(setupLegacySettingsRedirect$),
   },
   {
     path: ROUTES.lab,
@@ -432,7 +432,10 @@ const ROUTE_CONFIG = [
     setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
-  { path: "/preferences", setup: redirectTo(ROUTES.settings) },
+  {
+    path: "/preferences",
+    setup: setupAuthPageWrapper(setupLegacySettingsRedirect$),
+  },
 
   {
     // Catch-all: keep unknown paths in place and show the not-found surface.

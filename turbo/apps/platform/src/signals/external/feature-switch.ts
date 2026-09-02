@@ -115,16 +115,16 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
+export const officeDocumentPreviewEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.OfficeDocumentPreview] ?? false;
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
-});
-
-export const customConnectorNoAuthEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorNoAuth] ?? false;
 });
 
 const hydrateFeatureSwitch$ = command(

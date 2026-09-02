@@ -11,6 +11,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { setupAgentChatPage$ } from "../../../signals/okou-page/agent-chat-page-setup.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -86,140 +87,6 @@ function setupChatStartCards(introVideo = true): void {
   });
 }
 
-function restoreProperty(
-  target: object,
-  key: PropertyKey,
-  descriptor: PropertyDescriptor | undefined,
-): void {
-  if (descriptor) {
-    Object.defineProperty(target, key, descriptor);
-  } else {
-    Reflect.deleteProperty(target, key);
-  }
-}
-
-function installRecordingMocks(options?: {
-  readonly getUserMedia?: () => Promise<MediaStream>;
-}) {
-  const displayTrackStop = vi.fn<() => void>();
-  const displayTrack = Object.assign(new EventTarget(), {
-    stop: displayTrackStop,
-  }) as unknown as MediaStreamTrack;
-  const displayStream = {
-    getAudioTracks: () => {
-      return [];
-    },
-    getTracks: () => {
-      return [displayTrack];
-    },
-    getVideoTracks: () => {
-      return [displayTrack];
-    },
-  } as unknown as MediaStream;
-  const recorderStarted = context.mocks.deferred<void>();
-  const getUserMediaCalled = context.mocks.deferred<void>();
-  let displayRequestedAt = 0;
-  const getDisplayMedia = vi.fn<() => Promise<MediaStream>>(() => {
-    displayRequestedAt = performance.now();
-    return Promise.resolve(displayStream);
-  });
-  const openUserMedia =
-    options?.getUserMedia ??
-    (() => {
-      return Promise.resolve(displayStream);
-    });
-  const getUserMedia = vi.fn<() => Promise<MediaStream>>(async () => {
-    if (!getUserMediaCalled.settled()) {
-      getUserMediaCalled.resolve(undefined);
-    }
-    return await openUserMedia();
-  });
-  const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(
-    navigator,
-    "mediaDevices",
-  );
-  Object.defineProperty(navigator, "mediaDevices", {
-    configurable: true,
-    value: { getDisplayMedia, getUserMedia },
-  });
-
-  let startCount = 0;
-  let startElapsedMs = 0;
-  class TestMediaRecorder extends EventTarget {
-    static isTypeSupported(): boolean {
-      return true;
-    }
-
-    readonly mimeType = "video/webm";
-    state: RecordingState = "inactive";
-
-    start(): void {
-      this.state = "recording";
-      startCount += 1;
-      startElapsedMs = performance.now() - displayRequestedAt;
-      if (!recorderStarted.settled()) {
-        recorderStarted.resolve(undefined);
-      }
-    }
-
-    stop(): void {
-      this.state = "inactive";
-      this.dispatchEvent(new Event("stop"));
-    }
-  }
-
-  const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(
-    globalThis,
-    "MediaRecorder",
-  );
-  Object.defineProperty(globalThis, "MediaRecorder", {
-    configurable: true,
-    value: TestMediaRecorder,
-  });
-  const playSpy = vi
-    .spyOn(HTMLMediaElement.prototype, "play")
-    .mockResolvedValue();
-  const srcObjectDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLMediaElement.prototype,
-    "srcObject",
-  );
-  Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
-    configurable: true,
-    writable: true,
-    value: null,
-  });
-
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      playSpy.mockRestore();
-      restoreProperty(
-        HTMLMediaElement.prototype,
-        "srcObject",
-        srcObjectDescriptor,
-      );
-      restoreProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
-      restoreProperty(globalThis, "MediaRecorder", mediaRecorderDescriptor);
-    },
-    { once: true },
-  );
-
-  return {
-    displayTrack,
-    displayTrackStop,
-    getDisplayMedia,
-    getUserMedia,
-    getUserMediaCalled: getUserMediaCalled.promise,
-    recorderStarted: recorderStarted.promise,
-    startElapsedMs: () => {
-      return startElapsedMs;
-    },
-    startCount: () => {
-      return startCount;
-    },
-  };
-}
-
 describe("chat start cards", () => {
   it("draws three catalog entries and the intro video flow", async () => {
     setupChatStartCards();
@@ -256,6 +123,33 @@ describe("chat start cards", () => {
       "lg:grid-cols-3",
     );
     expect(screen.getByTestId("start-cards")).not.toHaveClass("sm:grid-cols-3");
+  });
+
+  it("keeps a completed tagline visible when the same chat route is set up again", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        random.mockRestore();
+      },
+      { once: true },
+    );
+    setupChatStartCards();
+
+    const tagline = await screen.findByTestId("chat-tagline");
+    const expected = tagline.getAttribute("aria-label");
+    if (!expected) {
+      throw new Error("Expected an accessible chat tagline");
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-tagline").textContent).toBe(expected);
+    });
+
+    await act(async () => {
+      await context.store.set(setupAgentChatPage$, context.signal);
+    });
+
+    expect(screen.getByTestId("chat-tagline").textContent).toBe(expected);
   });
 
   it("uploads an intro video source and creates its chat thread", async () => {
@@ -328,13 +222,12 @@ describe("chat start cards", () => {
       new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
 
-    await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
+    // A deck the user just picked needs no second confirmation, so the wizard
+    // moves straight to the presenter instead of a source review page.
     await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Your source is ready")).toBeNull();
     expect(screen.queryByText("Skip avatar")).toBeNull();
     // The wizard offers a curated cutout set instead of the paged JoggAI
     // catalog, so it has no aspect-ratio or catalog filter toolbar.
@@ -344,28 +237,24 @@ describe("chat start cards", () => {
     ).not.toBeNull();
     click(await screen.findByLabelText("Select template Amara"));
     expect(
-      screen.getByText("How would you like the visual balance?"),
+      screen.getByText("Where should the presenter stand?"),
     ).toBeInTheDocument();
-    const avatarLed = buttonWithText(
-      "Avatar-led — narrator on screen most of the time",
+    const placementLeft = buttonWithText(
+      "Left — the slide sits to the right",
+      dialog,
+    );
+    const placementRight = buttonWithText(
+      "Right — the slide sits to the left",
       dialog,
       false,
     );
-    const bRollLed = buttonWithText(
-      "B-roll-led — focus on slides and visuals",
-      dialog,
-      false,
-    );
-    const balanced = buttonWithText(
-      "Balanced mix — equal time for both",
-      dialog,
-    );
-    expect(avatarLed).toHaveAttribute("aria-pressed", "false");
-    expect(bRollLed).toHaveAttribute("aria-pressed", "false");
-    expect(balanced).toHaveAttribute("aria-pressed", "true");
-    click(avatarLed);
-    expect(avatarLed).toHaveAttribute("aria-pressed", "true");
-    expect(balanced).toHaveAttribute("aria-pressed", "false");
+    // The default is the left margin, so the deck never has to move for a
+    // presenter the user has not positioned yet.
+    expect(placementLeft).toHaveAttribute("aria-pressed", "true");
+    expect(placementRight).toHaveAttribute("aria-pressed", "false");
+    click(placementRight);
+    expect(placementRight).toHaveAttribute("aria-pressed", "true");
+    expect(placementLeft).toHaveAttribute("aria-pressed", "false");
     click(buttonWithText("Next", dialog));
     await expect(
       screen.findByText("Choose a voice"),
@@ -386,9 +275,7 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Review your intro video"),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("How would you like the visual balance?"),
-    ).toBeNull();
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
     const createButton = buttonWithText("Create in chat", dialog);
     expect(createButton).toBeInTheDocument();
     expect(createButton).toBeEnabled();
@@ -415,7 +302,10 @@ describe("chat start cards", () => {
       );
       expect(sentPrompt).toContain("- Voice: No voiceover");
       expect(sentPrompt).toContain(
-        "- Visual balance: Avatar-led (presenter on screen most of the time)",
+        "- Presenter placement: Presenter on the right, slide on the left",
+      );
+      expect(sentPrompt).toContain(
+        "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
       );
       expect(sentPrompt).toContain("<intro_video_workflow>");
       expect(sentPrompt).toContain("okou video camera");
@@ -434,7 +324,7 @@ describe("chat start cards", () => {
     });
   });
 
-  it("keeps visual balance out of the no-avatar intro video prompt", async () => {
+  it("keeps placement out of the no-avatar intro video prompt", async () => {
     const user = userEvent.setup({ delay: null });
     let sentPrompt: string | undefined;
     mockChatLifecycle(context, {
@@ -475,15 +365,11 @@ describe("chat start cards", () => {
     );
 
     await expect(
-      screen.findByText("Your source is ready"),
-    ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", dialog));
-    await expect(
       screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("How would you like the visual balance?"),
-    ).toBeNull();
+    // Without a presenter the deck fills the frame on its own, so the
+    // placement question is never asked.
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
 
     click(buttonWithText("Next", dialog));
     await expect(
@@ -498,8 +384,247 @@ describe("chat start cards", () => {
 
     await waitFor(() => {
       expect(sentPrompt).toContain("- Avatar: No avatar");
-      expect(sentPrompt).not.toContain("- Visual balance:");
+      expect(sentPrompt).not.toContain("- Presenter placement:");
     });
+  });
+
+  it("can return to no presenter after picking one", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+
+    const noAvatar = dialog.querySelector<HTMLButtonElement>(
+      '[data-intro-video-no-avatar=""]',
+    );
+    if (!noAvatar) {
+      throw new Error("Expected a no-avatar card");
+    }
+    expect(noAvatar).toHaveAttribute("aria-pressed", "true");
+
+    click(await screen.findByLabelText("Select template Amara"));
+    expect(noAvatar).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByText("Where should the presenter stand?"),
+    ).toBeInTheDocument();
+
+    // The wizard keeps its draft across close and reopen and the presenter
+    // cards do not toggle off, so without this card a picked presenter could
+    // never be undone.
+    click(noAvatar);
+    expect(noAvatar).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
+
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose a voice"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Avatar: No avatar");
+      expect(sentPrompt).not.toContain("- Presenter placement:");
+    });
+  });
+
+  it("forgets everything when the wizard is closed", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    click(await screen.findByLabelText("Select template Amara"));
+    expect(
+      screen.getByText("Where should the presenter stand?"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Create an intro video" }),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("intro-video-start-card"));
+    const reopened = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    // Closing discards the draft, so the wizard reopens on an empty source
+    // step rather than resuming the deck and presenter from before.
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Your source is ready")).toBeNull();
+    expect(screen.queryByText("launch.pdf")).toBeNull();
+    // The later steps only unlock once a source exists, so a disabled Avatar
+    // step is direct evidence the previous deck was dropped rather than the
+    // wizard merely rewinding to step one.
+    expect(buttonWithText("Avatar", reopened, false)).toBeDisabled();
+    expect(buttonWithText("Voice", reopened, false)).toBeDisabled();
+
+    const reopenedInput = reopened.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!reopenedInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      reopenedInput,
+      new File(["deck"], "second.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    // And the presenter came back cleared, not still set to Amara.
+    expect(
+      reopened.querySelector('[data-intro-video-no-avatar=""]'),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
+  });
+
+  it("drops the deck when the presenter step is left behind", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-document-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video document input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+
+    click(buttonWithText("Back", dialog, false));
+
+    // A deck has no review page to step back to, so leaving the presenter is
+    // the user saying they picked the wrong file: it is thrown away and the
+    // later steps lock again.
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buttonWithText("Avatar", dialog, false)).toBeDisabled();
+    });
+    expect(buttonWithText("Voice", dialog, false)).toBeDisabled();
+    expect(screen.queryByText("launch.pdf")).toBeNull();
+  });
+
+  it("sends screen recording to the desktop app", async () => {
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    click(buttonWithText("Record your screen", dialog, false));
+
+    // The browser no longer records: the card explains the desktop handoff and
+    // hands out the installer instead of asking Chrome to share a surface.
+    await expect(
+      screen.findByText("Start a recording from the menu bar"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText("Come back to this wizard automatically"),
+    ).toBeInTheDocument();
+    // The installer link only replaces the compatibility placeholder once the
+    // architecture check settles.
+    const download = await waitFor(() => {
+      const link = queryAllByRoleFast("link", dialog).find((element) => {
+        return element.textContent?.trim() === "Download for macOS";
+      });
+      if (!link) {
+        throw new Error("Expected the desktop download link");
+      }
+      return link;
+    });
+    expect(download).toHaveAttribute(
+      "href",
+      expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
+    );
+
+    click(buttonWithText("Back", dialog, false));
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("restores the source in a fresh wizard when chat creation is retried", async () => {
@@ -556,8 +681,6 @@ describe("chat start cards", () => {
       fileInput,
       new File(["deck"], "launch.pdf", { type: "application/pdf" }),
     );
-    await screen.findByText("Your source is ready");
-    click(buttonWithText("Next", dialog));
     await screen.findByText("Choose an avatar");
     click(buttonWithText("Next", dialog));
     await screen.findByText("Choose a voice");
@@ -596,11 +719,11 @@ describe("chat start cards", () => {
         "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
       ),
     ).not.toBeInTheDocument();
+    // The stored draft comes back as the wizard's source, which lands on the
+    // presenter just like a fresh pick does.
     await expect(
-      screen.findByText("Your source is ready"),
+      screen.findByText("Choose an avatar"),
     ).resolves.toBeInTheDocument();
-    click(buttonWithText("Next", retryDialog));
-    await screen.findByText("Choose an avatar");
     click(buttonWithText("Next", retryDialog));
     await screen.findByText("Choose a voice");
     const noVoiceover = buttonWithText("No voiceover", retryDialog, false);
@@ -625,203 +748,6 @@ describe("chat start cards", () => {
         contentType: "application/pdf",
       });
     });
-  });
-
-  it("starts the intro video workflow directly in chat", async () => {
-    let sentPrompt: string | undefined;
-    let sentUserMessage: UserMessageDocument | undefined;
-    mockChatLifecycle(context, {
-      onSendRequest: ({ prompt, userMessage }) => {
-        sentPrompt = prompt;
-        sentUserMessage = userMessage;
-      },
-      onRunCreate: ({ prompt, userMessage }) => {
-        sentPrompt = prompt;
-        sentUserMessage = userMessage;
-      },
-    });
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Start in chat", dialog, false));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Create an intro video" }),
-      ).not.toBeInTheDocument();
-    });
-    await expect(screen.findByLabelText("Stop")).resolves.toBeInTheDocument();
-    expect(sentPrompt).toContain("<intro_video_workflow>");
-    expect(sentPrompt).toContain("okou video camera");
-    expect(JSON.stringify(sentUserMessage)).not.toContain(
-      "<intro_video_workflow>",
-    );
-  });
-
-  it("starts screen recording only after the three-second countdown", async () => {
-    mockChatLifecycle(context);
-    const recording = installRecordingMocks();
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-    const recordingDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Record your screen", recordingDialog, false));
-    click(buttonWithText("Choose screen and start", recordingDialog));
-
-    await waitFor(() => {
-      expect(recording.getDisplayMedia).toHaveBeenCalledTimes(1);
-    });
-    const countdownCopy = await screen.findByText(
-      "Recording starts after the countdown",
-    );
-    expect(countdownCopy.parentElement).toHaveTextContent("3");
-    expect(recording.startCount()).toBe(0);
-
-    await recording.recorderStarted;
-    expect(recording.startElapsedMs()).toBeGreaterThanOrEqual(2900);
-    expect(recording.startCount()).toBe(1);
-
-    click(screen.getByLabelText("Close"));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Create an intro video" }),
-      ).not.toBeInTheDocument();
-    });
-    click(screen.getByTestId("intro-video-start-card"));
-    const reopenedDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    expect(
-      buttonWithText("Record your screen", reopenedDialog, false),
-    ).toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
-  });
-
-  it("resets screen recording after navigating away during countdown", async () => {
-    mockChatLifecycle(context);
-    const recording = installRecordingMocks();
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-    const recordingDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Record your screen", recordingDialog, false));
-    click(buttonWithText("Choose screen and start", recordingDialog));
-
-    await expect(
-      screen.findByText("Recording starts after the countdown"),
-    ).resolves.toBeInTheDocument();
-    const agentsLink = await waitFor(() => {
-      const link = document.querySelector('a[href="/agents"]');
-      expect(link).not.toBeNull();
-      return link as HTMLElement;
-    });
-    click(agentsLink);
-
-    await expect(
-      screen.findByRole("heading", { name: "Agents" }),
-    ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(recording.displayTrackStop).toHaveBeenCalledWith();
-    });
-
-    act(() => {
-      window.history.back();
-    });
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByTestId("intro-video-start-card"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("dialog", { name: "Create an intro video" }),
-    ).not.toBeInTheDocument();
-
-    click(screen.getByTestId("intro-video-start-card"));
-    const reopenedDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    expect(
-      buttonWithText("Record your screen", reopenedDialog, false),
-    ).toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
-  });
-
-  it("releases late microphone access after the recording dialog closes", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockChatLifecycle(context);
-    const microphonePermission = context.mocks.deferred<MediaStream>();
-    const microphoneTrackStop = vi.fn<() => void>();
-    const microphoneTrack = Object.assign(new EventTarget(), {
-      stop: microphoneTrackStop,
-    }) as unknown as MediaStreamTrack;
-    const microphoneStream = {
-      getAudioTracks: () => {
-        return [microphoneTrack];
-      },
-      getTracks: () => {
-        return [microphoneTrack];
-      },
-      getVideoTracks: () => {
-        return [];
-      },
-    } as unknown as MediaStream;
-    const recording = installRecordingMocks({
-      getUserMedia: () => {
-        return microphonePermission.promise;
-      },
-    });
-    setupChatStartCards();
-
-    await expect(
-      screen.findByPlaceholderText(PLACEHOLDER),
-    ).resolves.toBeInTheDocument();
-    click(screen.getByTestId("intro-video-start-card"));
-    const recordingDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    click(buttonWithText("Record your screen", recordingDialog, false));
-    const microphoneSwitch = screen.getByRole("switch", {
-      name: /Microphone/,
-    });
-    await user.click(microphoneSwitch);
-    expect(microphoneSwitch).toHaveAttribute("aria-checked", "true");
-    click(buttonWithText("Choose screen and start", recordingDialog));
-
-    await recording.getUserMediaCalled;
-    expect(recording.getUserMedia).toHaveBeenCalledTimes(1);
-    click(screen.getByLabelText("Close"));
-    microphonePermission.resolve(microphoneStream);
-
-    await waitFor(() => {
-      expect(recording.displayTrackStop).toHaveBeenCalledWith();
-      expect(microphoneTrackStop).toHaveBeenCalledWith();
-    });
-    click(screen.getByTestId("intro-video-start-card"));
-    const reopenedDialog = await screen.findByRole("dialog", {
-      name: "Create an intro video",
-    });
-    expect(
-      buttonWithText("Record your screen", reopenedDialog, false),
-    ).toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
   });
 
   it("writes the card prompt into the composer", async () => {

@@ -1983,6 +1983,8 @@
         "resetAndTryAgain": "Réinitialiser et réessayer",
         "resetsAt": "Réinitialisation à {{time}}",
         "selectModel": "Changer de modèle",
+        "timeoutDescription": "Cette exécution a atteint sa limite de temps. Continuez pour poursuivre le travail.",
+        "timeoutTitle": "Limite de temps atteinte",
         "tryAgain": "Réessayer",
         "unavailableDescription": "Ce modèle n’est pas pris en charge par le compte ChatGPT connecté. Choisissez un autre modèle pour continuer.",
         "unavailableTitle": "Le modèle sélectionné n’est pas disponible",
@@ -2024,19 +2026,28 @@
         "heading": "Choisir un avatar",
         "help": "Choisissez un présentateur ou continuez sans avatar",
         "none": "Aucun avatar",
-        "visualBalanceAvatarLed": "Centré sur l'avatar — le narrateur reste à l'écran la plupart du temps",
-        "visualBalanceBalanced": "Mélange équilibré — autant de temps pour les deux",
-        "visualBalanceBRollLed": "Centré sur les visuels — priorité aux diapositives et aux images",
-        "visualBalanceHeading": "Quel équilibre visuel souhaitez-vous ?"
+        "placementHeading": "Où placer le présentateur ?",
+        "placementLeft": "À gauche — la diapositive est à droite",
+        "placementOverlay": "Sur la diapositive — la diapositive remplit le cadre",
+        "placementRight": "À droite — la diapositive est à gauche"
       },
       "cardDescription": "Transformez un fichier ou un enregistrement d'écran en vidéo finalisée",
       "description": "Ajoutez une source, choisissez éventuellement un avatar et une voix, puis créez la vidéo dans un fil de discussion.",
+      "desktop": {
+        "checkingCompatibility": "Vérification de la compatibilité",
+        "description": "L'enregistrement d'écran se fait dans l'application de bureau {{desktopProductName}}, qui capture n'importe quelle fenêtre et note vos clics.",
+        "download": "Télécharger pour macOS",
+        "handoffDetail": "Votre prise s'ouvre ici, prête pour un présentateur et une voix.",
+        "handoffTitle": "Revenez automatiquement à cet assistant",
+        "heading": "Enregistrer avec {{desktopProductName}} Desktop",
+        "illustration": "L'enregistrement a lieu dans {{desktopProductName}} Desktop",
+        "installDetail": "Nécessite un Mac avec puce Apple et macOS 14 ou version ultérieure. Les Mac Intel ne sont pas pris en charge.",
+        "installTitle": "Téléchargez et installez {{desktopProductName}} Desktop",
+        "recordDetail": "Arrêtez-le depuis le même menu une fois terminé.",
+        "recordTitle": "Lancez un enregistrement depuis la barre de menus",
+        "unsupportedIntelMac": "Nécessite un Mac avec puce Apple"
+      },
       "errors": {
-        "recordingEmpty": "L'enregistrement est vide. Veuillez réessayer.",
-        "recordingFailed": "Impossible de démarrer l'enregistrement d'écran. Réessayez dans une version récente de Chrome.",
-        "recordingPermission": "Aucun élément n'a été partagé. Choisissez un onglet, une fenêtre ou un écran lorsque vous êtes prêt.",
-        "recordingShareEnded": "Le partage d'écran s'est arrêté avant le début de l'enregistrement.",
-        "recordingUnsupported": "Ce navigateur ne prend pas en charge l'enregistrement d'écran.",
         "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre source reste enregistrée localement et a été téléchargée comme sauvegarde.",
         "uploadFailed": "La source n'a pas pu être importée. Elle reste enregistrée localement et a été téléchargée comme sauvegarde."
       },
@@ -2044,21 +2055,7 @@
         "back": "Retour",
         "createInChat": "Créer dans le chat",
         "download": "Télécharger la source",
-        "next": "Suivant",
-        "startRecording": "Choisir l'écran et démarrer",
-        "stopRecording": "Arrêter l'enregistrement"
-      },
-      "recording": {
-        "chooseSurface": "Choisissez un onglet, une fenêtre ou un écran",
-        "countdown": "L'enregistrement commence après le compte à rebours",
-        "description": "Chrome vous demandera quoi partager. L'enregistrement ne commence qu'après le compte à rebours de trois secondes.",
-        "heading": "Enregistrer votre écran",
-        "localNote": "Vous pouvez arrêter depuis la barre de partage de Chrome ou revenir ici. L'enregistrement reste local jusqu'à la création du fil de discussion.",
-        "microphone": "Microphone",
-        "microphoneHelp": "Ajoutez une narration pendant votre démonstration",
-        "recordingLocally": "Enregistrement local",
-        "systemAudio": "Audio système",
-        "systemAudioHelp": "Les sources disponibles dépendent de Chrome et de votre système"
+        "next": "Suivant"
       },
       "review": {
         "avatar": "Avatar",
@@ -2069,30 +2066,22 @@
         "voice": "Voix"
       },
       "source": {
-        "chatDescription": "Ouvrez un fil maintenant et façonnez la vidéo avec Zero",
-        "chatDetail": "Ajoutez une source, un avatar ou une voix plus tard dans le chat",
-        "chatTitle": "Commencer dans le chat",
-        "documentDescription": "Transformez votre contenu en vidéo d'introduction commentée",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Importer des diapositives ou un document",
-        "dropDescription": "Diapositives, documents ou enregistrements",
-        "dropTitle": "Déposez une source ici",
+        "documentDescription": "Transformez vos diapositives en vidéo d'introduction commentée",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Importer des diapositives",
         "heading": "Comment souhaitez-vous commencer ?",
-        "help": "Ajoutez un contenu existant, enregistrez votre écran ou décrivez la vidéo avec vos propres mots",
-        "recordDescription": "Choisissez un onglet, une fenêtre ou tout l'écran",
-        "recordDetail": "Démarre après un compte à rebours de trois secondes",
+        "help": "Importez les diapositives dont vous disposez ou enregistrez votre écran avec {{desktopProductName}} Desktop",
+        "recordDescription": "Capturez une démo avec l'application de bureau",
+        "recordDetail": "Nécessite {{desktopProductName}} Desktop sur macOS",
         "recordTitle": "Enregistrer votre écran",
-        "videoDescription": "Laissez l'IA améliorer le rythme, le cadrage et la narration",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Importer un enregistrement"
+        "uploadDescription": "Choisissez un fichier sur votre ordinateur",
+        "uploadTitle": "Importer une source"
       },
       "sourceReview": {
         "format": "Format",
         "heading": "Votre source est prête",
         "help": "Vérifiez le fichier avant de continuer",
         "inAccount": "Dans votre compte",
-        "inBrowser": "Dans ce navigateur",
-        "inTab": "Jusqu'à la fermeture de cet onglet",
         "replace": "Remplacer la source",
         "saved": "Enregistrée",
         "source": "Source"
@@ -2776,7 +2765,7 @@
         "prefixes": "Préfixes",
         "prefixesHint": "(un par ligne, uniquement https)",
         "redirectCopy": "Copier l'URL de redirection",
-        "redirectHint": "(Enregistrez cette URL dans l'application OAuth du fournisseur.)",
+        "redirectHint": "(Enregistrez cette URL dans l'application OAuth du fournisseur. Conservez également toute URL de redirection VM0 ou Okou existante.)",
         "redirectUrl": "URL de redirection",
         "removeApiAuthentication": "Supprimer l'authentification API",
         "removeNoAuthentication": "Supprimer « Aucune authentification »",
@@ -4698,12 +4687,6 @@
     },
     "redirecting": "Redirection en cours...",
     "status": {
-      "atLimit_one": "Vous pouvez exécuter seulement {{limit}} tâche à la fois. Les nouvelles exécutions attendront en file d'attente jusqu'à ce qu'une se termine.",
-      "atLimit_many": "Vous pouvez exécuter seulement {{limit}} tâches à la fois. Les nouvelles exécutions attendront en file d'attente jusqu'à ce qu'une se termine.",
-      "atLimit_other": "Vous pouvez exécuter seulement {{limit}} tâches à la fois. Les nouvelles exécutions attendront en file d'attente jusqu'à ce qu'une se termine.",
-      "available_one": "{{count}} créneau disponible",
-      "available_many": "{{count}} créneaux disponibles",
-      "available_other": "{{count}} créneaux disponibles",
       "availableNow": "Disponible maintenant",
       "inUse_one": "{{active}} sur {{limit}} emplacement utilisé",
       "inUse_many": "{{active}} sur {{limit}} emplacements utilisés",
@@ -5155,7 +5138,6 @@
           "upstreamModel": "Modèle en amont"
         },
         "capture": {
-          "description": "Capturer les noms d'en-têtes HTTP, les valeurs d'en-têtes sûres sélectionnées et les corps dans les journaux réseau pour le débogage.",
           "disabled": "Désactivé",
           "enabled_one": "Activé pour la prochaine exécution de {{count}}",
           "enabled_many": "Activé pour les prochaines exécutions de {{count}}",
@@ -5179,10 +5161,8 @@
           "recovery": "récupération",
           "title": "Diagnostic de connexion en temps réel",
           "unavailable": "indisponible"
-        },
-        "tab": "Débogage"
+        }
       },
-      "documentTitle": "Préférences",
       "language": {
         "description": "Choisissez votre langue préférée pour l'interface {{brandName}}",
         "label": "Langue",
@@ -5212,8 +5192,6 @@
         "retryMessage": "Les paramètres de Morning Brief n'ont pas pu être chargés ou mis à jour. Réessayez pour continuer.",
         "title": "Résumé du matin"
       },
-      "pageDescription": "Gérez vos préférences d'apparence et d'exécution de l'agent",
-      "pageTitle": "Préférences",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Appuyez sur ⌘/Ctrl+Entrée pour envoyer, Entrée pour une nouvelle ligne",
@@ -5222,11 +5200,6 @@
         "enterDescription": "Appuyez sur Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne",
         "sectionTitle": "Enter",
         "title": "Envoyer un message avec"
-      },
-      "tabs": {
-        "appearance": "Apparence",
-        "models": "Modèles personnels",
-        "timezone": "Fuseau horaire"
       },
       "timezone": {
         "description": "Heures affichées pour vous et utilisées pour les exécutions automatisées.",
@@ -6007,35 +5980,6 @@
       "noWorkflows": "Pas encore de workflow. Créez-en un en chat pour continuer."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connecter",
-          "enable": "Activer pour l'agent",
-          "reconnect": "Reconnecter",
-          "reviewPermissions": "Vérifier les autorisations"
-        },
-        "aria": "Prêt du connecteur",
-        "check": "Vérifier les connecteurs",
-        "checkAgain": "Vérifier à nouveau",
-        "checking": "Vérification...",
-        "description": "Voir quels connecteurs intégrés ce workflow peut nécessiter et s'ils sont prêts.",
-        "empty": "Aucun connecteur requis détecté",
-        "error": {
-          "inputTooLong": "Ce workflow est trop long pour être vérifié. Gardez le nom, la description et les instructions dans une limite de 100 000 caractères.",
-          "retry": "Nous n'avons pas pu vérifier les connecteurs. Réessayez.",
-          "timeout": "La vérification du connecteur a expiré. Réessayez."
-        },
-        "saveFirst": "Enregistrez vos modifications avant de vérifier les connecteurs.",
-        "status": {
-          "connected": "Connecté",
-          "notConnected": "Non connecté",
-          "notEnabled": "Non activé pour cet agent",
-          "reconnect": "Reconnecter requis",
-          "scopeMismatch": "Mettre à jour les autorisations",
-          "unavailable": "Actuellement indisponible"
-        },
-        "title": "Disponibilité du connecteur"
-      },
       "copy": {
         "agentFallback": "l'agent",
         "copied": "Copié vers {{agent}}",

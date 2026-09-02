@@ -1,6 +1,14 @@
 import { useGet, useLastResolved } from "ccstate-react";
-import { pageAttachmentResourceUrlResolver$ } from "../../signals/attachment-resource-url.ts";
+import {
+  pageAttachmentResourceUrlResolver$,
+  type AttachmentUrls,
+} from "../../signals/attachment-resource-url.ts";
 import { publicAttachmentUrl } from "./attachment-url";
+
+export function useAttachmentUrls(url: string): AttachmentUrls | undefined {
+  const resolveResourceUrl = useGet(pageAttachmentResourceUrlResolver$);
+  return useLastResolved(resolveResourceUrl(publicAttachmentUrl(url)));
+}
 
 /**
  * Resolves the URL a browser element can actually load, or null while that is
@@ -11,11 +19,7 @@ import { publicAttachmentUrl } from "./attachment-url";
  * not need to know which form it holds.
  */
 export function useResolvedAttachmentUrl(url: string): string | null {
-  const resolveResourceUrl = useGet(pageAttachmentResourceUrlResolver$);
-  return (
-    useLastResolved(resolveResourceUrl(publicAttachmentUrl(url)))
-      ?.resourceUrl ?? null
-  );
+  return useAttachmentUrls(url)?.resourceUrl ?? null;
 }
 
 /**
@@ -25,9 +29,5 @@ export function useResolvedAttachmentUrl(url: string): string | null {
  * the object it just authorized.
  */
 export function useAttachmentShareUrl(url: string): string | null {
-  const resolveResourceUrl = useGet(pageAttachmentResourceUrlResolver$);
-  return (
-    useLastResolved(resolveResourceUrl(publicAttachmentUrl(url)))?.shareUrl ??
-    null
-  );
+  return useAttachmentUrls(url)?.shareUrl ?? null;
 }

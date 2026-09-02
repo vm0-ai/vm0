@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
+        "timeoutDescription": "この実行は時間制限に達しました。続行して作業を続けてください。",
+        "timeoutTitle": "時間制限に達しました",
         "tryAgain": "もう一度試す",
         "unavailableDescription": "このモデルは接続中の ChatGPT アカウントではサポートされていません。続行するには別のモデルに切り替えてください。",
         "unavailableTitle": "選択したモデルは利用できません",
@@ -1988,19 +1990,28 @@
         "heading": "アバターを選択",
         "help": "プレゼンターを選ぶか、アバターなしで続行します",
         "none": "アバターなし",
-        "visualBalanceAvatarLed": "アバター中心 — ナレーターをほとんどの時間画面に表示",
-        "visualBalanceBalanced": "バランス型 — 両方を同じくらい表示",
-        "visualBalanceBRollLed": "映像素材中心 — スライドやビジュアルを重視",
-        "visualBalanceHeading": "映像のバランスをどうしますか？"
+        "placementHeading": "発表者をどこに配置しますか？",
+        "placementLeft": "左 — スライドは右側に配置",
+        "placementOverlay": "スライドの上 — スライドが画面全体に広がる",
+        "placementRight": "右 — スライドは左側に配置"
       },
       "cardDescription": "ファイルや画面録画を完成した動画に変換",
       "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
+      "desktop": {
+        "checkingCompatibility": "互換性の確認",
+        "description": "画面録画は {{desktopProductName}} デスクトップアプリで行います。任意のウィンドウをキャプチャし、クリックした位置も記録します。",
+        "download": "macOS をダウンロード",
+        "handoffDetail": "録画はここで開き、アバターと音声を選べる状態になります。",
+        "handoffTitle": "自動的にこのウィザードに戻ります",
+        "heading": "{{desktopProductName}} Desktop で録画",
+        "illustration": "録画は {{desktopProductName}} Desktop で行います",
+        "installDetail": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
+        "installTitle": "{{desktopProductName}} Desktop をダウンロードしてインストール",
+        "recordDetail": "終わったら同じメニューから停止します。",
+        "recordTitle": "メニューバーから録画を開始",
+        "unsupportedIntelMac": "AppleシリコンMacが必要です"
+      },
       "errors": {
-        "recordingEmpty": "録画が空でした。もう一度お試しください。",
-        "recordingFailed": "画面録画を開始できませんでした。最新の Chrome でもう一度お試しください。",
-        "recordingPermission": "共有対象が選択されませんでした。準備ができたらタブ、ウィンドウ、または画面を選択してください。",
-        "recordingShareEnded": "録画開始前に画面共有が終了しました。",
-        "recordingUnsupported": "このブラウザは画面録画に対応していません。",
         "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
         "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
       },
@@ -2008,21 +2019,7 @@
         "back": "戻る",
         "createInChat": "チャットで作成",
         "download": "素材をダウンロード",
-        "next": "次へ",
-        "startRecording": "画面を選んで開始",
-        "stopRecording": "録画を停止"
-      },
-      "recording": {
-        "chooseSurface": "タブ、ウィンドウ、または画面を選択",
-        "countdown": "カウントダウン終了後に録画を開始します",
-        "description": "Chrome が共有対象を確認します。3 秒のカウントダウンが終わるまで録画は始まりません。",
-        "heading": "画面を録画",
-        "localNote": "Chrome の共有バーまたはこの画面から停止できます。チャットスレッドが作成されるまで録画はローカルに保持されます。",
-        "microphone": "マイク",
-        "microphoneHelp": "操作を見せながらナレーションを追加",
-        "recordingLocally": "ローカルで録画中",
-        "systemAudio": "システム音声",
-        "systemAudioHelp": "利用できる音声は Chrome とシステムによって異なります"
+        "next": "次へ"
       },
       "review": {
         "avatar": "アバター",
@@ -2033,30 +2030,22 @@
         "voice": "音声"
       },
       "source": {
-        "chatDescription": "今すぐスレッドを開き、Zero と動画を作り上げます",
-        "chatDetail": "素材、アバター、音声は後からチャットで追加できます",
-        "chatTitle": "チャットから開始",
-        "documentDescription": "コンテンツをナレーション付きイントロビデオに変換",
-        "documentFormats": "PPTX、PPT、PDF、DOC、DOCX",
-        "documentTitle": "スライドまたは文書をアップロード",
-        "dropDescription": "スライド、文書、または録画",
-        "dropTitle": "素材をここにドロップ",
+        "documentDescription": "スライドをナレーション付きイントロビデオに変換",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "スライドをアップロード",
         "heading": "どのように始めますか？",
-        "help": "手元の素材を追加するか、画面を録画するか、作りたい動画を言葉で説明してください",
-        "recordDescription": "タブ、ウィンドウ、または画面全体を選択",
-        "recordDetail": "3 秒のカウントダウン後に開始",
+        "help": "手元のスライドをアップロードするか、{{desktopProductName}} Desktop で画面を録画してください",
+        "recordDescription": "デスクトップアプリでデモを録画",
+        "recordDetail": "macOS 版 {{desktopProductName}} Desktop が必要です",
         "recordTitle": "画面を録画",
-        "videoDescription": "AI がテンポ、フレーミング、ナレーションを整えます",
-        "videoFormats": "MP4、MOV、WEBM",
-        "videoTitle": "録画をアップロード"
+        "uploadDescription": "コンピュータからファイルを選択",
+        "uploadTitle": "ソースをアップロード"
       },
       "sourceReview": {
         "format": "形式",
         "heading": "素材の準備ができました",
         "help": "続行する前にファイルを確認してください",
         "inAccount": "アカウント内",
-        "inBrowser": "このブラウザ内",
-        "inTab": "このタブを閉じるまで",
         "replace": "素材を置き換える",
         "saved": "保存先",
         "source": "素材"
@@ -2720,7 +2709,7 @@
         "prefixes": "プレフィックス",
         "prefixesHint": "(1 行に 1 つ、https のみ)",
         "redirectCopy": "リダイレクト URL をコピーする",
-        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録します。)",
+        "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録してください。既存の VM0 または Okou のリダイレクト URL も登録したままにしてください。)",
         "redirectUrl": "リダイレクトURL",
         "removeApiAuthentication": "API認証を削除する",
         "removeNoAuthentication": "「認証なし」を削除",
@@ -4637,10 +4626,6 @@
     },
     "redirecting": "リダイレクト中...",
     "status": {
-      "atLimit_one": "一度に実行できるのは {{limit}} タスクのみです。新しい実行は、終了するまでキューで待機します。",
-      "atLimit_other": "一度に実行できるタスクは {{limit}} のみです。新しい実行は、終了するまでキューで待機します。",
-      "available_one": "{{count}} スロットが使用可能です",
-      "available_other": "{{count}} スロットが利用可能",
       "availableNow": "現在利用可能",
       "inUse_one": "{{limit}} スロットの {{active}} が使用中です",
       "inUse_other": "{{limit}} スロット中 {{active}} が使用中です"
@@ -5089,7 +5074,6 @@
           "upstreamModel": "アップストリームモデル"
         },
         "capture": {
-          "description": "デバッグのために、HTTP ヘッダー名、選択された安全なヘッダー値、および本文をネットワーク ログにキャプチャします。",
           "disabled": "障害者",
           "enabled_one": "次回の {{count}} の実行で有効になります",
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
@@ -5112,10 +5096,8 @@
           "recovery": "復旧",
           "title": "リアルタイム接続診断",
           "unavailable": "利用不可"
-        },
-        "tab": "デバッグ"
+        }
       },
-      "documentTitle": "設定",
       "language": {
         "description": "{{brandName}}のインターフェースで使用する言語を選択します",
         "label": "言語",
@@ -5145,8 +5127,6 @@
         "retryMessage": "Morning Brief の設定を読み込むか更新できませんでした。再試行してください。",
         "title": "モーニングブリーフ"
       },
-      "pageDescription": "外観とエージェントの実行時の設定を管理する",
-      "pageTitle": "設定",
       "send": {
         "cmdEnter": "⌘ 入力してください",
         "cmdEnterDescription": "⌘/Ctrl+Enter を押して送信し、Enter を押して改行します",
@@ -5155,11 +5135,6 @@
         "enterDescription": "Enter を押して送信し、Shift+Enter を押して改行します",
         "sectionTitle": "入力してください",
         "title": "メッセージを送信する"
-      },
-      "tabs": {
-        "appearance": "外観",
-        "models": "パーソナルモデル",
-        "timezone": "タイムゾーン"
       },
       "timezone": {
         "description": "表示され、オートメーションの実行に使用される時間。",
@@ -5935,35 +5910,6 @@
       "noWorkflows": "ワークフローはまだありません。続行するには、チャットで作成してください。"
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "接続する",
-          "enable": "エージェントに対して有効にする",
-          "reconnect": "再接続",
-          "reviewPermissions": "権限の確認"
-        },
-        "aria": "コネクタの準備状況",
-        "check": "コネクタを確認してください",
-        "checkAgain": "もう一度確認してください",
-        "checking": "確認中...",
-        "description": "このワークフローに必要な組み込みコネクタとその準備が整っているかどうかを確認します。",
-        "empty": "必要なコネクタが検出されませんでした",
-        "error": {
-          "inputTooLong": "このワークフローは長すぎるため確認できません。名前、説明、指示を100,000文字以内にしてください。",
-          "retry": "コネクターを確認できませんでした。もう一度やり直してください。",
-          "timeout": "コネクタのチェックがタイムアウトしました。もう一度やり直してください。"
-        },
-        "saveFirst": "コネクタをチェックする前に変更を保存してください。",
-        "status": {
-          "connected": "接続済み",
-          "notConnected": "接続されていません",
-          "notEnabled": "このエージェントに対して有効ではありません",
-          "reconnect": "再接続が必要です",
-          "scopeMismatch": "権限の更新",
-          "unavailable": "現在利用不可"
-        },
-        "title": "コネクタの準備状況"
-      },
       "copy": {
         "agentFallback": "エージェント",
         "copied": "{{agent}} にコピーされました",
