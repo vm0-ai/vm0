@@ -71,7 +71,7 @@ export function createTextPreviewComputed(
     // does not carry, so read the presigned object URL instead.
     const resourceUrl = resourceUrl$
       ? await get(resourceUrl$)
-      : await get(get(pageAttachmentResourceUrlResolver$)(url));
+      : (await get(get(pageAttachmentResourceUrlResolver$)(url))).resourceUrl;
     return fetchPreviewText(resourceUrl);
   });
 }
