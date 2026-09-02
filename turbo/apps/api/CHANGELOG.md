@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.534.0](https://github.com/vm0-ai/vm0/compare/api-v1.533.0...api-v1.534.0) (2026-09-02)
+
+
+### Features
+
+* **pi-memory:** add per-storage phase 2 control plane ([#31241](https://github.com/vm0-ai/vm0/issues/31241)) ([cca1c16](https://github.com/vm0-ai/vm0/commit/cca1c1660226fca72ed71bd2b02965f5aacd0167))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.1
+    * @okouai/connectors bumped to 3.3.1
+    * @okouai/core bumped to 8.611.4
+    * @okouai/db bumped to 1.237.0
+
 ## [1.533.0](https://github.com/vm0-ai/vm0/compare/api-v1.532.0...api-v1.533.0) (2026-09-02)
 
 

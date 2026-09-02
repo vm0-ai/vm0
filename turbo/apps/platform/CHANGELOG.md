@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.829.0](https://github.com/vm0-ai/vm0/compare/app-v0.828.0...app-v0.829.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** give each intro video source entry its own hidden workflow ([#31139](https://github.com/vm0-ai/vm0/issues/31139)) ([d9e28d8](https://github.com/vm0-ai/vm0/commit/d9e28d847648795fb9af5c3e777cee679ae77fe0))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31245](https://github.com/vm0-ai/vm0/issues/31245)) ([fd5bddf](https://github.com/vm0-ai/vm0/commit/fd5bddff5b967a67e226076dea2d391467b12a8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.1
+    * @okouai/connectors bumped to 3.3.1
+    * @okouai/core bumped to 8.611.4
+
 ## [0.828.0](https://github.com/vm0-ai/vm0/compare/app-v0.827.0...app-v0.828.0) (2026-09-02)
 
 
