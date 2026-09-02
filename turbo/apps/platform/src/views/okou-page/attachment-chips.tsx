@@ -34,7 +34,12 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
-import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
+import {
+  detach,
+  jsonParseOr,
+  Reason,
+  withCleanup,
+} from "../../signals/utils.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
@@ -68,7 +73,7 @@ import { AnnotationMarkLayer } from "./image-annotation-marks.tsx";
 import {
   annotationMarkCount,
   DEFAULT_ANNOTATION_INK,
-  openAnnotationEditor$,
+  type ImageAnnotationSignals,
 } from "../../signals/okou-page/image-annotation.ts";
 import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
@@ -778,7 +783,7 @@ function ArtifactDialogImageStage({
   const fullscreen = useGet(lightboxDialogFullscreen$);
   // Marks live on the draft rather than in the file, so the viewer has to draw
   // them too — otherwise reopening an annotated image shows a clean picture.
-  const annotation = preview.annotationTarget?.annotation ?? null;
+  const annotation = preview.annotationTarget?.annotations ?? null;
 
   return (
     <ArtifactDialogStage flush scrollable={false}>
@@ -1275,7 +1280,6 @@ function ArtifactPreviewDialogActions({
   );
   const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
-  const openAnnotationEditor = useSet(openAnnotationEditor$);
   const closeLightboxImmediately = useSet(closeLightboxImmediately$);
   const annotationTarget =
     preview.kind === "image" ? preview.annotationTarget : undefined;
@@ -1302,7 +1306,7 @@ function ArtifactPreviewDialogActions({
             // The editor owns the whole surface while it is open, so the
             // read-only viewer steps aside — instantly, or the two dialogs
             // cross-fade and the modal appears to jump.
-            openAnnotationEditor(annotationTarget);
+            annotationTarget.open();
             closeLightboxImmediately();
           }}
         >
@@ -1785,23 +1789,62 @@ function ComposerImagePreviewButton({
   );
 }
 
+function AnnotationUploadRetry({
+  attachment,
+  onAnnotationChange,
+}: {
+  readonly attachment: ChatAttachment;
+  readonly onAnnotationChange: () => void;
+}) {
+  const { t } = useTranslation();
+  const status = useGet(attachment.annotationUploadStatus$);
+  const retry = useSet(attachment.retryAnnotationUpload$);
+  const pageSignal = useGet(pageSignal$);
+  if (status !== "failed") {
+    return null;
+  }
+  return (
+    <IconTooltipButton
+      type="button"
+      className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+      aria-label={t(
+        ($) => {
+          return $.chat.attachments.uploadFailedRetry;
+        },
+        { filename: attachment.filename },
+      )}
+      onClick={() => {
+        detach(
+          withCleanup(retry(pageSignal), onAnnotationChange),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <RotateCcw size={9} />
+    </IconTooltipButton>
+  );
+}
+
 function AttachmentChip({
   attachment,
+  annotationSignals,
   onAnnotationChange,
   onRemove,
 }: {
   attachment: ChatAttachment;
+  annotationSignals: ImageAnnotationSignals;
   onAnnotationChange: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
   const infoLoadable = useLoadable(attachment.fileInfo$);
-  const uploading = infoLoadable.state === "loading";
+  const uploading = useGet(attachment.uploadPending$);
   const url =
     infoLoadable.state === "hasData" ? infoLoadable.data?.url : undefined;
   const openImageLightbox = useSet(openImageLightbox$);
-  const setAnnotation = useSet(attachment.setAnnotation$);
-  const annotation = useGet(attachment.annotation$);
+  const openAnnotationEditor = useSet(annotationSignals.openAnnotationEditor$);
+  const confirmAnnotations = useSet(attachment.confirmAnnotations$);
+  const annotations = useGet(attachment.annotations$);
   const annotationEnabled = useGet(composerImageAnnotationEnabled$);
   const isImage = attachment.contentType.startsWith("image/");
   return (
@@ -1813,27 +1856,32 @@ function AttachmentChip({
         <ComposerImagePreviewButton
           filename={attachment.filename}
           load={attachment.imageLoad}
-          markCount={annotationMarkCount(annotation)}
+          markCount={annotationMarkCount(annotations)}
           openImageLightbox={(previewUrl) => {
             // A pending upload is not an artifact yet, so checking it must not
             // take over an open artifact sidebar.
             openImageLightbox({
               url: previewUrl,
               splitViewAvailable: false,
-              ...(annotationEnabled
+              ...(annotationEnabled && !uploading
                 ? {
                     annotationTarget: {
-                      key: previewUrl,
-                      filename: attachment.filename,
-                      url: previewUrl,
-                      annotation,
-                      commit: (next) => {
-                        // Writing the signal alone leaves the marks on this
-                        // one in-memory object: nothing saves the draft, so a
-                        // reload — or a draft sync that swaps the attachment
-                        // out — loses every mark the user just drew.
-                        setAnnotation(next);
-                        onAnnotationChange();
+                      annotations,
+                      open: () => {
+                        openAnnotationEditor({
+                          key: attachment.key,
+                          filename: attachment.filename,
+                          url: previewUrl,
+                          annotations,
+                          commit: async (next, signal) => {
+                            const confirmation = confirmAnnotations(
+                              next,
+                              signal,
+                            );
+                            onAnnotationChange();
+                            await withCleanup(confirmation, onAnnotationChange);
+                          },
+                        });
                       },
                     },
                   }
@@ -1856,6 +1904,10 @@ function AttachmentChip({
           <Loader2 size={10} className="animate-spin text-muted-foreground" />
         </span>
       )}
+      <AnnotationUploadRetry
+        attachment={attachment}
+        onAnnotationChange={onAnnotationChange}
+      />
       <IconTooltipButton
         type="button"
         onClick={onRemove}
@@ -1892,10 +1944,12 @@ function AttachmentChip({
 
 export function AttachmentChips({
   attachments,
+  annotationSignals,
   onAnnotationChange,
   onRemove,
 }: {
   attachments: ChatAttachment[];
+  annotationSignals: ImageAnnotationSignals;
   onAnnotationChange: () => void;
   onRemove: (attachment: ChatAttachment) => void;
 }) {
@@ -1905,8 +1959,9 @@ export function AttachmentChips({
         return (
           <AttachmentChip
             onAnnotationChange={onAnnotationChange}
-            key={String(a.fileInfo$)}
+            key={a.key}
             attachment={a}
+            annotationSignals={annotationSignals}
             onRemove={() => {
               return onRemove(a);
             }}
