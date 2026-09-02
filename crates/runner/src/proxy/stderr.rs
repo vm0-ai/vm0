@@ -59,9 +59,11 @@ fn log_addon_process_event(event: AddonProcessEvent) {
 }
 
 fn is_non_positive_peer_certificate_serial_deprecation(line: &str) -> bool {
-    line.strip_suffix(NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION)
-        .and_then(|source| source.strip_suffix(": "))
-        .is_some_and(|source| !source.is_empty())
+    !line.starts_with(ADDON_PROCESS_EVENT_PREFIX)
+        && line
+            .strip_suffix(NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION)
+            .and_then(|source| source.strip_suffix(": "))
+            .is_some_and(|source| !source.is_empty())
 }
 
 pub(super) fn log_mitmdump_stderr_line(line: &str) {
@@ -221,6 +223,19 @@ mod tests {
         assert_eq!(event.level, Level::WARN);
         assert_event_field(&event, "message", &format!("stderr: {line}"));
         assert!(!event.fields.contains_key("type"));
+    }
+
+    #[test]
+    fn malformed_envelope_with_certificate_deprecation_remains_warning() {
+        let line = format!(
+            "{ADDON_PROCESS_EVENT_PREFIX}OpenSSL/crypto.py:984: \
+             {NON_POSITIVE_PEER_CERTIFICATE_SERIAL_DEPRECATION}"
+        );
+
+        let event = capture_mitmdump_stderr_log(&line);
+
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(&event, "message", &format!("stderr: {line}"));
     }
 
     #[test]
