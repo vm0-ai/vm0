@@ -17,6 +17,7 @@ fn binary_empty_artifact_preparation_failure_preserves_prior_work() {
     let blocker = fixture.dir.path().join("artifact-blocker");
     let blocked_empty_artifact = blocker.join("blocked-empty-artifact");
     std::fs::write(&blocker, "not a directory").unwrap();
+    assert!(!staged_archive.exists());
 
     let staged_archive_url = format!("file://{}", staged_archive.display());
     let earlier_archive_url = "https://storage.invalid/empty?token=earlier-secret-token";
@@ -57,7 +58,6 @@ fn binary_empty_artifact_preparation_failure_preserves_prior_work() {
     assert!(!staged_parent.exists());
     assert!(prepared_empty_artifact.is_dir());
     assert!(!blocked_empty_artifact.exists());
-    assert!(!staged_archive.exists());
 
     let system_log = fixture.read_system_log().unwrap();
     let ops_log = fixture.read_ops_log().unwrap();
@@ -75,10 +75,20 @@ fn binary_empty_artifact_preparation_failure_preserves_prior_work() {
     assert_does_not_contain_any("sandbox ops log", &ops_log, &forbidden);
 
     let ops = fixture.ops_entries().unwrap();
-    assert!(
-        ops.iter().any(|entry| {
+    let target_prepare_index = ops
+        .iter()
+        .position(|entry| {
             entry["action_type"] == "guest_download_target_prepare" && entry["success"] == true
-        }),
+        })
+        .expect("missing successful guest_download_target_prepare operation");
+    let failed_artifact_index = ops
+        .iter()
+        .position(|entry| {
+            entry["action_type"] == "artifact_empty_prepare" && entry["success"] == false
+        })
+        .expect("missing failed artifact_empty_prepare operation");
+    assert!(
+        target_prepare_index < failed_artifact_index,
         "staged instruction target should be prepared before the artifact failure: {ops:?}"
     );
     let mut empty_artifact_ops = ops
