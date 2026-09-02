@@ -16,21 +16,8 @@
 //! selected runner-owned keys may cross the local user-env boundary as
 //! guest-agent timing overrides.
 
-/// Legacy backend API URL spelling retained outside Guest root capture.
-///
-/// Guest root capture reads only [`CANONICAL_API_URL_ENV`]. This spelling
-/// remains an independent compatibility input for the Runner operator and the
-/// managed CLI reader, and remains named by user-environment filtering and
-/// negative coverage. The production Runner and the guest-agent's curated
-/// managed CLI-child environment do not emit this alias.
-pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
-
 /// Canonical backend API URL spelling written by the production Runner, read at
 /// Guest root bootstrap, and exposed to managed CLI children.
-///
-/// The production Runner emits only this spelling and Guest root capture reads
-/// it without consulting [`API_URL_ENV`]. The Runner operator and downstream
-/// managed CLI reader retain independent compatibility contracts.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
@@ -648,7 +635,6 @@ mod tests {
 
     #[test]
     fn contract_names_match_wire_values() {
-        assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
@@ -882,7 +868,6 @@ mod tests {
     #[test]
     fn runner_owned_key_detection_covers_bootstrap_namespaces() {
         for key in [
-            API_URL_ENV,
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
             "VM0_API_TOKEN",
@@ -962,12 +947,10 @@ mod tests {
                 "canonical bootstrap output {key} must not become a local tuning input"
             );
         }
-        for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {
-            assert!(
-                !is_guest_agent_tuning_env_key(key),
-                "API URL bootstrap key {key} must not become a local tuning input"
-            );
-        }
+        assert!(
+            !is_guest_agent_tuning_env_key(CANONICAL_API_URL_ENV),
+            "API URL bootstrap key must not become a local tuning input"
+        );
     }
 
     /// Contract sources scanned for declared environment key constants.

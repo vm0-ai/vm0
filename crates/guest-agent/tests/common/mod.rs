@@ -1041,7 +1041,6 @@ pub struct CodexAppServerEnvConfig<'a> {
 /// Call before any other test thread reads process environment.
 pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
     for key in [
-        guest_contracts::env::API_URL_ENV,
         guest_contracts::env::CANONICAL_API_URL_ENV,
         guest_contracts::env::RUN_ID_ENV,
         "VM0_API_TOKEN",
