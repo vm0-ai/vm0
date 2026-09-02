@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.1...guest-agent-v0.84.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** preserve checkpoint upload failure details ([#31113](https://github.com/vm0-ai/vm0/issues/31113)) ([6afd0e9](https://github.com/vm0-ai/vm0/commit/6afd0e9ba8bc4c9308b1523370f155a70a3720f6))
+
 ## [0.84.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.0...guest-agent-v0.84.1) (2026-09-02)
 
 
