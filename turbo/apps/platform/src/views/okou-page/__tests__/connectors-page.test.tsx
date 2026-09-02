@@ -2443,7 +2443,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage Stripe accounts"));
     const manager = await screen.findByRole("dialog", {
-      name: "Stripe",
+      name: "Manage Stripe accounts",
     });
     const actions = await waitFor(() => {
       expect(accountListRequestCount).toBeGreaterThan(0);
@@ -3818,7 +3818,7 @@ describe("connectors page", () => {
     });
     expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
       "placeholder",
-      "Unnamed account",
+      "API key",
     );
     click(buttonByText("Skip", nameDialog));
     expect(submittedAccount).toStrictEqual({ intent: "add" });

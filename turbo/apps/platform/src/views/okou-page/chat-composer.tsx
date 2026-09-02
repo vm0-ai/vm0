@@ -142,10 +142,10 @@ import {
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import {
-  type ConnectorAccountConnection,
-  type ConnectorAccountSelection,
-  type ConnectorAccountTarget,
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountSelection,
+  ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
@@ -7982,9 +7982,8 @@ function ComposerConnectorAccountMenu({
   const closeMenu = useSet(signals.connector.accounts.closeMenu$);
   const open = Boolean(
     menuOpen &&
-      menuTarget &&
-      connectorAccountTargetKey(menuTarget) ===
-        connectorAccountTargetKey(target),
+    menuTarget &&
+    connectorAccountTargetKey(menuTarget) === connectorAccountTargetKey(target),
   );
   const effectiveConnection = explicit ? selectedConnection : defaultConnection;
   const resolveAccountLabel = useConnectorAccountLabel();
@@ -9637,8 +9636,9 @@ interface ComposerMediaModelPickerState<Model extends string> {
   readonly onChange: (next: Model | null) => void;
 }
 
-interface ComposerResolvedMediaModelPickerState<Model extends string>
-  extends ComposerMediaModelPickerState<Model> {
+interface ComposerResolvedMediaModelPickerState<
+  Model extends string,
+> extends ComposerMediaModelPickerState<Model> {
   readonly selectedModel: Model;
 }
 

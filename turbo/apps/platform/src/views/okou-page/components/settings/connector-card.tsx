@@ -3,7 +3,7 @@ import type { LoadableState } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import { type ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   Button,

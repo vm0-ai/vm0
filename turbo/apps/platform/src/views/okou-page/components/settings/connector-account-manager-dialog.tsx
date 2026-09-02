@@ -28,6 +28,8 @@ import {
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
+  connectorAccountSummaryByTarget$,
+  connectorAccountTargetKey,
   CONNECTOR_ACCOUNT_SEARCH_THRESHOLD,
   type ConnectorAccountList,
 } from "../../../../signals/okou-page/connector-accounts.ts";
@@ -279,11 +281,13 @@ function AccountRow({
 
 function AccountsCard({
   loadable,
+  defaultConnection,
   target,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
+  readonly defaultConnection: ConnectorAccountConnection | null;
   readonly target: ConnectorAccountTarget;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
@@ -297,12 +301,19 @@ function AccountsCard({
   if (!loadable.data.available) {
     return <AccountsMessage messageKey="accountsUnavailable" />;
   }
-  if (loadable.data.connections.length === 0) {
+  if (loadable.data.connections.length === 0 && !defaultConnection) {
     return <AccountsMessage messageKey="noAccountsFound" />;
   }
-  const defaultConnection = loadable.data.connections.find((account) => {
-    return account.isDefault;
-  });
+  // The default account stays pinned at the top even while a search filters
+  // the rest, so the dialog always shows which account new runs will use.
+  const rows = defaultConnection
+    ? [
+        defaultConnection,
+        ...loadable.data.connections.filter((account) => {
+          return account.id !== defaultConnection.id;
+        }),
+      ]
+    : loadable.data.connections;
   return (
     <RadioGroup
       value={defaultConnection?.id ?? null}
@@ -310,7 +321,7 @@ function AccountsCard({
       className="overflow-hidden rounded-xl bg-card"
       style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
-      {loadable.data.connections.map((account, index) => {
+      {rows.map((account, index) => {
         return (
           <div key={account.id}>
             {index > 0 ? <div className="mx-5 h-0 zero-border-t" /> : null}
@@ -526,6 +537,7 @@ export function ConnectorAccountManagerDialog({
 }: ConnectorAccountManagerDialogProps) {
   const { t } = useTranslation();
   const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
+  const summariesLoadable = useLoadable(connectorAccountSummaryByTarget$);
   const search = useGet(settingsConnectorAccounts.search$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
     settingsConnectorAccounts.loadMore$,
@@ -535,6 +547,13 @@ export function ConnectorAccountManagerDialog({
   const nextCursor =
     accountsLoadable.state === "hasData"
       ? accountsLoadable.data.nextCursor
+      : null;
+  const defaultConnection =
+    summariesLoadable.state === "hasData" &&
+    accountsLoadable.state === "hasData" &&
+    accountsLoadable.data.available
+      ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
+          ?.defaultConnection ?? null)
       : null;
   const showSearch = connectorAccountSearchIsVisible(search, accountsLoadable);
   const leave = (next: () => void) => {
@@ -584,6 +603,7 @@ export function ConnectorAccountManagerDialog({
         <div className="min-h-0 overflow-y-auto">
           <AccountsCard
             loadable={accountsLoadable}
+            defaultConnection={defaultConnection}
             target={target}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={reconnect}
