@@ -421,10 +421,11 @@ assert.ok(
     "https://static.okou.io/public/okou-transparent.svg",
   ),
 );
-assert.ok(
-  tagAttributeValues(okouPage.html, "link", "href").some(
-    (href) => href === "https://static.okou.io",
+assert.equal(
+  tagAttributeValues(okouPage.html, "link", "href").includes(
+    "https://static.okou.io",
   ),
+  false,
 );
 assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
