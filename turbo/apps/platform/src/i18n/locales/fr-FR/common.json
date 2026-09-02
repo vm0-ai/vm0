@@ -4698,12 +4698,6 @@
     },
     "redirecting": "Redirection en cours...",
     "status": {
-      "atLimit_one": "Vous pouvez exécuter seulement {{limit}} tâche à la fois. Les nouvelles exécutions attendront en file d'attente jusqu'à ce qu'une se termine.",
-      "atLimit_many": "Vous pouvez exécuter seulement {{limit}} tâches à la fois. Les nouvelles exécutions attendront en file d'attente jusqu'à ce qu'une se termine.",
-      "atLimit_other": "Vous pouvez exécuter seulement {{limit}} tâches à la fois. Les nouvelles exécutions attendront en file d'attente jusqu'à ce qu'une se termine.",
-      "available_one": "{{count}} créneau disponible",
-      "available_many": "{{count}} créneaux disponibles",
-      "available_other": "{{count}} créneaux disponibles",
       "availableNow": "Disponible maintenant",
       "inUse_one": "{{active}} sur {{limit}} emplacement utilisé",
       "inUse_many": "{{active}} sur {{limit}} emplacements utilisés",

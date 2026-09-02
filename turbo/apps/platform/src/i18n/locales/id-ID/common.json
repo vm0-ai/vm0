@@ -4637,10 +4637,6 @@
     },
     "redirecting": "Mengalihkan...",
     "status": {
-      "atLimit_one": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "atLimit_other": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "available_one": "{{count}} slot tersedia",
-      "available_other": "{{count}} slot tersedia",
       "availableNow": "Tersedia sekarang",
       "inUse_one": "{{active}} dari {{limit}} slot digunakan",
       "inUse_other": "{{active}} dari {{limit}} slot digunakan"
