@@ -66,7 +66,7 @@ function cardElements(): Elements {
       border: "0.7px solid hsl(var(--border))",
       borderRadius: "1rem",
       boxShadow:
-        "0 2px 12px hsl(30 6% 45% / 0.09), 0 0 0 0.5px hsl(30 6% 45% / 0.05)",
+        "0 2px 12px hsl(0 0% 45% / 0.09), 0 0 0 0.5px hsl(0 0% 45% / 0.05)",
     },
     card: {
       backgroundColor: "hsl(var(--card))",
@@ -222,7 +222,7 @@ function chromeElements(): Elements {
       backgroundColor: "hsl(var(--popover))",
       border: "0.7px solid hsl(var(--border))",
       borderRadius: "0.5rem",
-      boxShadow: "0 8px 24px hsl(30 5% 18% / 0.12)",
+      boxShadow: "0 8px 24px hsl(0 0% 18% / 0.12)",
     },
     menuItem: {
       color: "hsl(var(--foreground))",
@@ -231,7 +231,7 @@ function chromeElements(): Elements {
     },
     avatarBox: { borderRadius: "0.5rem" },
     modalBackdrop: {
-      backgroundColor: "hsl(30 4.3% 13.5% / 0.55)",
+      backgroundColor: "hsl(0 0% 13.5% / 0.55)",
       backdropFilter: "blur(2px)",
     },
     modalContent: { backgroundColor: "transparent" },
@@ -288,7 +288,7 @@ function userButtonElements(): Elements {
       backgroundColor: "hsl(var(--popover))",
       border: "0.7px solid hsl(var(--border))",
       borderRadius: "0.75rem",
-      boxShadow: "0 8px 24px hsl(30 5% 18% / 0.12)",
+      boxShadow: "0 8px 24px hsl(0 0% 18% / 0.12)",
     },
     userButtonPopoverActionButton: {
       color: "hsl(var(--foreground))",
