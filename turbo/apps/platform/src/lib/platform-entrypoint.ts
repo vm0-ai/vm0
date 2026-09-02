@@ -79,7 +79,6 @@ function startApplication(): void {
 
 export function startPlatformEntrypoint(): void {
   window.__appBootstrapModuleReady = performance.now();
-  initGoogleAds();
   const browserUpgrade = browserUpgradeForUserAgent(navigator.userAgent);
   if (browserUpgrade) {
     const rootElement = document.getElementById("root");
@@ -94,4 +93,5 @@ export function startPlatformEntrypoint(): void {
   } else {
     startApplication();
   }
+  initGoogleAds();
 }
