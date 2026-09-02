@@ -193,17 +193,20 @@ if len(parser.main_stylesheets) != 1:
 main_stylesheet = parser.main_stylesheets[0]
 expected_stylesheet_attributes = {
     "as": "style",
-    "fetchpriority": "high",
     "href": expected_stylesheet,
     "rel": "preload",
 }
 observed_stylesheet_attributes = {
     name: main_stylesheet.get(name) for name in expected_stylesheet_attributes
 }
-if observed_stylesheet_attributes != expected_stylesheet_attributes:
+if (
+    observed_stylesheet_attributes != expected_stylesheet_attributes
+    or "fetchpriority" in main_stylesheet
+):
     raise RuntimeError(
-        f"Expected main stylesheet preload {expected_stylesheet_attributes}, "
-        f"got {observed_stylesheet_attributes}"
+        "Expected main stylesheet preload without fetchpriority "
+        f"{expected_stylesheet_attributes}, "
+        f"got {main_stylesheet}"
     )
 if parser.main_stylesheet_loader_count != 1:
     raise RuntimeError(
