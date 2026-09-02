@@ -4,6 +4,9 @@
 //! decodes NBD requests, applies them through [`crate::cow_io::CowIo`], and writes
 //! NBD replies back to the kernel.
 
+use std::io::IoSlice;
+#[cfg(test)]
+use std::num::NonZeroUsize;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -114,19 +117,64 @@ impl DispatchReadObserver {
     }
 }
 
+#[derive(Clone, Copy)]
+struct DispatchWriteLimit {
+    #[cfg(test)]
+    max_bytes: Option<NonZeroUsize>,
+}
+
+impl DispatchWriteLimit {
+    fn none() -> Self {
+        Self {
+            #[cfg(test)]
+            max_bytes: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn new(max_bytes: NonZeroUsize) -> Self {
+        Self {
+            max_bytes: Some(max_bytes),
+        }
+    }
+
+    #[cfg(test)]
+    fn apply<'a>(&self, buffers: &'a [IoSlice<'_>]) -> Vec<IoSlice<'a>> {
+        let mut remaining = self.max_bytes.map_or(usize::MAX, NonZeroUsize::get);
+        let mut limited = Vec::with_capacity(buffers.len());
+        for buffer in buffers {
+            if remaining == 0 {
+                break;
+            }
+            let len = buffer.len().min(remaining);
+            limited.push(IoSlice::new(&buffer[..len]));
+            remaining -= len;
+        }
+        limited
+    }
+}
+
 /// Run the NBD dispatch loop on a Unix stream.
 ///
 /// Reads NBD requests from the socket, dispatches to the COW layer,
 /// and sends replies back. Handles graceful shutdown via the cancellation token.
 pub async fn dispatch(socket_fd: OwnedFd, cow: CowIo, shutdown: CancellationToken) -> Result<()> {
-    dispatch_with_read_observer(socket_fd, cow, shutdown, DispatchReadObserver::none()).await
+    dispatch_with_observers(
+        socket_fd,
+        cow,
+        shutdown,
+        DispatchReadObserver::none(),
+        DispatchWriteLimit::none(),
+    )
+    .await
 }
 
-async fn dispatch_with_read_observer(
+async fn dispatch_with_observers(
     socket_fd: OwnedFd,
     cow: CowIo,
     shutdown: CancellationToken,
     read_observer: DispatchReadObserver,
+    write_limit: DispatchWriteLimit,
 ) -> Result<()> {
     let raw_fd = socket_fd.into_raw_fd();
     let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(raw_fd) };
@@ -163,7 +211,15 @@ async fn dispatch_with_read_observer(
 
         let outcome = match request.command {
             Command::Read => {
-                handle_read(&request, &cow, &mut writer, &mut payload_buf, &shutdown).await?
+                handle_read(
+                    &request,
+                    &cow,
+                    &mut writer,
+                    &mut payload_buf,
+                    &shutdown,
+                    write_limit,
+                )
+                .await?
             }
             Command::Write => {
                 handle_write(
@@ -266,12 +322,50 @@ async fn write_all_or_shutdown(
     Ok(IoOutcome::Complete)
 }
 
+async fn write_all_vectored_or_shutdown(
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    header: &[u8],
+    payload: &[u8],
+    shutdown: &CancellationToken,
+    write_limit: DispatchWriteLimit,
+) -> Result<IoOutcome> {
+    let mut write_slices = [IoSlice::new(header), IoSlice::new(payload)];
+    let mut remaining = write_slices.as_mut_slice();
+    #[cfg(not(test))]
+    let _ = write_limit;
+    while !remaining.is_empty() {
+        #[cfg(test)]
+        let limited = write_limit.apply(remaining);
+        #[cfg(test)]
+        let buffers = limited.as_slice();
+        #[cfg(not(test))]
+        let buffers: &[IoSlice<'_>] = remaining;
+        let count = tokio::select! {
+            biased;
+            () = shutdown.cancelled() => {
+                return Ok(IoOutcome::Shutdown);
+            }
+            result = writer.write_vectored(buffers) => result?,
+        };
+        if count == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "failed to write whole buffer",
+            )
+            .into());
+        }
+        IoSlice::advance_slices(&mut remaining, count);
+    }
+    Ok(IoOutcome::Complete)
+}
+
 async fn handle_read(
     request: &NbdRequest,
     cow: &CowIo,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     payload_buf: &mut Vec<u8>,
     shutdown: &CancellationToken,
+    write_limit: DispatchWriteLimit,
 ) -> Result<HandlerOutcome> {
     if request.length > MAX_REQUEST_LENGTH {
         return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
@@ -281,12 +375,12 @@ async fn handle_read(
     let len = request.length as usize;
     if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
         resize_reusable_payload(payload_buf, len);
-        let result = read_and_reply(request, cow, writer, payload_buf, shutdown).await;
+        let result = read_and_reply(request, cow, writer, payload_buf, shutdown, write_limit).await;
         reset_reusable_payload_if_oversized(payload_buf);
         result
     } else {
         let mut data = vec![0u8; len];
-        read_and_reply(request, cow, writer, &mut data, shutdown).await
+        read_and_reply(request, cow, writer, &mut data, shutdown, write_limit).await
     }
 }
 
@@ -311,6 +405,7 @@ async fn read_and_reply(
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     data: &mut Vec<u8>,
     shutdown: &CancellationToken,
+    write_limit: DispatchWriteLimit,
 ) -> Result<HandlerOutcome> {
     let read_buffer = std::mem::take(data);
     match cow.read(request.offset, read_buffer).await {
@@ -331,12 +426,15 @@ async fn read_and_reply(
 
     let reply = success_reply(request.handle);
     let reply_buf = protocol::serialize_reply(&reply);
-    if let IoOutcome::Shutdown = write_all_or_shutdown(writer, &reply_buf, shutdown).await? {
-        return Ok(HandlerOutcome::Shutdown);
+    if data.is_empty() {
+        write_all_or_shutdown(writer, &reply_buf, shutdown)
+            .await
+            .map(handler_outcome)
+    } else {
+        write_all_vectored_or_shutdown(writer, &reply_buf, data.as_slice(), shutdown, write_limit)
+            .await
+            .map(handler_outcome)
     }
-    write_all_or_shutdown(writer, data.as_slice(), shutdown)
-        .await
-        .map(handler_outcome)
 }
 
 async fn handle_write(
