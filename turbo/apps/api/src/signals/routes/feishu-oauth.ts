@@ -171,6 +171,8 @@ function isFeishuAppCallbackRedirectUri(
 ): boolean {
   return (
     redirectUri === feishuOAuthAppCallbackUrl(publicBrand) ||
+    // A pre-#31030 API persisted the VM0 URI for Okou connector state. Remove
+    // under #31061 after its old-API rollback gate and 15-minute TTL close.
     redirectUri === legacyFeishuOAuthAppCallbackUrl()
   );
 }
@@ -684,6 +686,8 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: state.orgId,
       userId: state.userId,
       connectorId,
+      // A pre-#31030 API signed this state without redirectUri. Remove under
+      // #31061 after its old-API rollback gate and 15-minute TTL close.
       redirectUri:
         state.redirectUri ?? legacyOAuthRedirectUri(query.callbackTarget),
       publicBrand: state.publicBrand,

@@ -112,8 +112,12 @@ export function feishuOAuthAppCallbackUrl(publicBrand: PublicBrand): string {
 
 /**
  * Redirect URI emitted before Feishu OAuth became brand-aware. Keep this only
- * for in-flight signed state and persisted connector state created by an older
- * release, which must replay the byte-for-byte URI that the provider received.
+ * for the old-API-to-new-API rollout surface: in-flight signed state and
+ * persisted connector state created by a pre-#31030 API must replay the
+ * byte-for-byte URI that the provider received. Remove the compatibility
+ * readers tracked by #31061 after that API is no longer serving or retained as
+ * a rollback target and the longest state TTL (15 minutes) has elapsed. Keep
+ * the current VM0 callback URI and its historical routes.
  */
 export function legacyFeishuOAuthAppCallbackUrl(): string {
   return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
