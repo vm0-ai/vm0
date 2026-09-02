@@ -537,6 +537,9 @@ function parseGithubOauthCallbackRedirectUriState(args: {
   readonly signature: unknown;
 }): ParsedGithubOauthCallbackRedirectUriState {
   if (args.redirectUri === undefined && args.signature === undefined) {
+    // An old API can emit this state immediately before #31109 deploys, then
+    // its browser-held callback can reach the new API. Remove under #31123
+    // after the old API leaves rollback and the two-day client window closes.
     return { ok: true, redirectUri: null, signature: null };
   }
   if (
