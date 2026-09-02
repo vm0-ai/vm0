@@ -1081,7 +1081,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             lock.lock()
             let first = writerInputLocked(for: type).flatMap { firstFormat[ObjectIdentifier($0)] }
             lock.unlock()
-            if let first, !CMFormatDescriptionEqual(first, format) {
+            if let first, !CMFormatDescriptionEqual(first, otherFormatDescription: format) {
                 parts.append("format changed from \(describeFormat(first))")
             }
         } else {
