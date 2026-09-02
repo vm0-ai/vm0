@@ -22,7 +22,12 @@ import {
   inputTrackSchema,
   inputTrackVideoSource,
 } from "./camera-plan";
-import type { CameraPlan, VideoSource } from "./camera-plan";
+import type {
+  CameraPlan,
+  PixelRect,
+  SourceAnalysis,
+  VideoSource,
+} from "./camera-plan";
 import {
   createCameraReviewCheckpoints,
   type CameraReviewCheckpoint,
@@ -96,6 +101,127 @@ function probeVideo(path: string, declared: VideoSource): VideoSource {
     width: video.width,
     height: video.height,
     frameRate: declared.frameRate,
+  };
+}
+
+const REACTION_DELAY_MS = 400;
+const REACTION_PROBE_WIDTH = 160;
+const REACTION_PIXEL_DELTA = 40;
+
+/**
+ * Where the content sits in the frame. A window that was narrowed while it was
+ * recorded leaves a black band the camera must never zoom into; ffmpeg's crop
+ * detector finds the band from the first seconds of the video.
+ */
+function detectContentRect(
+  inputPath: string,
+  source: VideoSource,
+): PixelRect | null {
+  const raw = execFileSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-t",
+      "5",
+      "-i",
+      inputPath,
+      "-vf",
+      "cropdetect=limit=24:round=2:reset=0,metadata=print:file=-",
+      "-f",
+      "null",
+      "-",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const values = new Map<string, number>();
+  for (const line of raw.toString("utf8").split("\n")) {
+    const match = /lavfi\.cropdetect\.(w|h|x|y)=(-?\d+)/u.exec(line);
+    if (match?.[1] && match[2]) {
+      values.set(match[1], Number(match[2]));
+    }
+  }
+  const width = values.get("w");
+  const height = values.get("h");
+  const x = values.get("x");
+  const y = values.get("y");
+  if (
+    width === undefined ||
+    height === undefined ||
+    x === undefined ||
+    y === undefined ||
+    width < source.width * 0.8 ||
+    height < source.height * 0.8
+  ) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
+function probeFrame(inputPath: string, timeMs: number): Buffer {
+  return execFileSync(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-ss",
+      (timeMs / 1_000).toFixed(3),
+      "-i",
+      inputPath,
+      "-frames:v",
+      "1",
+      "-vf",
+      `scale=${String(REACTION_PROBE_WIDTH)}:-2,format=gray`,
+      "-f",
+      "rawvideo",
+      "-",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+/**
+ * How much of the picture changed right after each click. A click that
+ * closed a menu or navigated away leaves nothing to look at where it landed,
+ * so the camera pulls back early instead of dwelling on the spot.
+ */
+function measureClickReactions(
+  inputPath: string,
+  clickTimes: readonly number[],
+  source: VideoSource,
+): ReadonlyMap<number, number> {
+  const reactions = new Map<number, number>();
+  for (const clickMs of clickTimes) {
+    if (clickMs + REACTION_DELAY_MS > source.durationMs) {
+      continue;
+    }
+    const before = probeFrame(inputPath, clickMs);
+    const after = probeFrame(inputPath, clickMs + REACTION_DELAY_MS);
+    const length = Math.min(before.length, after.length);
+    if (length === 0) {
+      continue;
+    }
+    let changed = 0;
+    for (let index = 0; index < length; index += 1) {
+      const left = before[index] ?? 0;
+      const right = after[index] ?? 0;
+      if (Math.abs(left - right) > REACTION_PIXEL_DELTA) {
+        changed += 1;
+      }
+    }
+    reactions.set(clickMs, changed / length);
+  }
+  return reactions;
+}
+
+function analyzeSource(
+  inputPath: string,
+  clickTimes: readonly number[],
+  source: VideoSource,
+): SourceAnalysis {
+  return {
+    contentRect: detectContentRect(inputPath, source),
+    reactions: measureClickReactions(inputPath, clickTimes, source),
   };
 }
 
@@ -292,7 +418,7 @@ Output:
 
 Notes:
   - Exactly one of --events or --plan is required
-  - The generated camera plan is editable JSON; change ranges, scale, or focus points and render again
+  - The generated camera plan is editable JSON: each shot lists timed moves (keys) with the viewport they land on; edit and render again
   - Requires ffmpeg and ffprobe on PATH`,
   )
   .action(
@@ -335,7 +461,11 @@ Notes:
         const track = inputTrackSchema.parse(parseJsonFile(eventsPath));
         clickTimes = inputTrackClickTimes(track);
         const source = probeVideo(inputPath, inputTrackVideoSource(track));
-        plan = createCameraPlan(track, source);
+        plan = createCameraPlan(
+          track,
+          source,
+          analyzeSource(inputPath, clickTimes, source),
+        );
         planPath = resolve(options.planOutput ?? defaultPlanPath(outputPath));
         if (
           planPath === eventsPath ||
@@ -407,7 +537,10 @@ Notes:
           width: plan.source.width,
           height: plan.source.height,
           frameRate: plan.source.frameRate,
-          cameraRanges: plan.ranges.length,
+          cameraShots: plan.shots.length,
+          cameraMoves: plan.shots.reduce((count, shot) => {
+            return count + shot.keys.length;
+          }, 0),
           sizeBytes: statSync(outputPath).size,
           renderMs,
         })}\n`,

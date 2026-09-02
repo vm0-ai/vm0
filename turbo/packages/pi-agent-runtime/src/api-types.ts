@@ -15,10 +15,73 @@ export interface PiPreheatedSkill {
   readonly disableModelInvocation: boolean;
 }
 
-export interface PiPreheatedResourceSnapshot {
+export type PiMemoryRecallSelection =
+  | {
+      readonly status: "no-content";
+      readonly memoryStorageId: string;
+      readonly storageVersionId: string;
+    }
+  | {
+      readonly status: "ready";
+      readonly memoryStorageId: string;
+      readonly storageVersionId: string;
+      readonly content: string;
+      readonly sourceHash: string;
+      readonly sourceSize: number;
+      readonly tokenCount: number;
+    };
+
+export interface PiPreheatedResourceSnapshotV1 {
   readonly schemaVersion: 1;
   readonly agentsFiles: readonly PiPreheatedAgentsFile[];
   readonly skills: readonly PiPreheatedSkill[];
+}
+
+export interface PiPreheatedResourceSnapshotV2 {
+  readonly schemaVersion: 2;
+  readonly agentsFiles: readonly PiPreheatedAgentsFile[];
+  readonly skills: readonly PiPreheatedSkill[];
+  readonly memoryRecall: PiMemoryRecallSelection;
+}
+
+export type PiPreheatedResourceSnapshot =
+  | PiPreheatedResourceSnapshotV1
+  | PiPreheatedResourceSnapshotV2;
+
+export type PiMemoryRecallOutcomeStatus = "hit" | "miss" | "invalid" | "stale";
+
+export type PiMemoryRecallParity =
+  | "frozen-match"
+  | "frozen-no-content"
+  | "mismatch"
+  | "not-applicable";
+
+export interface PiMemoryRecallOutcome {
+  readonly mode: "api-first" | "sandbox";
+  readonly status: PiMemoryRecallOutcomeStatus;
+  readonly parity: PiMemoryRecallParity;
+  readonly reason:
+    | "empty"
+    | "filesystem"
+    | "frozen-no-content"
+    | "hash-mismatch"
+    | "invalid-utf8"
+    | "matched"
+    | "missing"
+    | "non-regular"
+    | "oversized"
+    | "path-escape"
+    | "selection-invalid"
+    | "size-mismatch"
+    | "symlink"
+    | "token-mismatch"
+    | "token-overflow"
+    | "v1";
+  readonly memoryStorageId?: string;
+  readonly storageVersionId?: string;
+  readonly sourceHash?: string;
+  readonly sourceSize?: number;
+  readonly injectedTokenCount: number;
 }
 
 export interface PiApiAssistantTextContent {
@@ -73,6 +136,7 @@ export interface PiApiFirstTurnArgs {
   readonly model: PiAgentModelConfig;
   readonly resourceSnapshot: PiPreheatedResourceSnapshot;
   readonly ownership: PiApiFirstTurnOwnership;
+  readonly onMemoryRecallOutcome?: (outcome: PiMemoryRecallOutcome) => void;
   /**
    * Optional durable gate run immediately before the provider transport.
    * The gate must invoke the marker while it owns its commit boundary.

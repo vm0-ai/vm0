@@ -1,6 +1,97 @@
+import ApplicationServices
 import CoreGraphics
 import Foundation
 import ScreenRecorderCore
+
+/// Roles worth walking up to from whatever leaf a click landed on. A click on
+/// the placeholder text of a field belongs to the field; a click on a button's
+/// icon belongs to the button.
+private let targetRoles: Set<String> = [
+    "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField",
+    "AXButton", "AXPopUpButton", "AXMenuButton", "AXMenuItem", "AXMenuBarItem",
+    "AXCheckBox", "AXRadioButton", "AXLink", "AXTab", "AXSlider",
+    "AXDisclosureTriangle", "AXCell", "AXRow", "AXIncrementor", "AXColorWell",
+]
+
+private func attributeValue(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+        return nil
+    }
+    return value
+}
+
+private func rect(of element: AXUIElement) -> CGRect? {
+    guard
+        let positionValue = attributeValue(element, kAXPositionAttribute),
+        let sizeValue = attributeValue(element, kAXSizeAttribute),
+        CFGetTypeID(positionValue) == AXValueGetTypeID(),
+        CFGetTypeID(sizeValue) == AXValueGetTypeID()
+    else {
+        return nil
+    }
+    var position = CGPoint.zero
+    var size = CGSize.zero
+    guard
+        AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+    else {
+        return nil
+    }
+    return CGRect(origin: position, size: size)
+}
+
+/// The UI element under a screen point, described by role and frame only.
+///
+/// Walks up from the leaf that was hit to the nearest control-like ancestor,
+/// so a click on a field's placeholder reports the field. Reads nothing else:
+/// no titles, no values, no descriptions, so a text field's contents never
+/// reach the track.
+private func elementAt(_ point: CGPoint) -> CapturedElement? {
+    let system = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(system, 0.3)
+    var hit: AXUIElement?
+    guard
+        AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &hit) == .success,
+        let hit
+    else {
+        return nil
+    }
+    var element = hit
+    var role = attributeValue(element, kAXRoleAttribute) as? String ?? ""
+    var depth = 0
+    while !targetRoles.contains(role), depth < 8 {
+        guard
+            let parent = attributeValue(element, kAXParentAttribute),
+            CFGetTypeID(parent) == AXUIElementGetTypeID()
+        else {
+            break
+        }
+        let parentElement = parent as! AXUIElement
+        let parentRole = attributeValue(parentElement, kAXRoleAttribute) as? String ?? ""
+        if parentRole == "AXWindow" || parentRole == "AXApplication" || parentRole == "AXWebArea" {
+            break
+        }
+        element = parentElement
+        role = parentRole
+        depth += 1
+    }
+    if !targetRoles.contains(role) {
+        element = hit
+        role = attributeValue(hit, kAXRoleAttribute) as? String ?? ""
+    }
+    guard !role.isEmpty, let frame = rect(of: element) else {
+        return nil
+    }
+    return CapturedElement(
+        role: role,
+        subrole: attributeValue(element, kAXSubroleAttribute) as? String,
+        screenX: Double(frame.origin.x),
+        screenY: Double(frame.origin.y),
+        screenWidth: Double(frame.width),
+        screenHeight: Double(frame.height)
+    )
+}
 
 private func buttonName(for type: CGEventType) -> String? {
     switch type {
@@ -34,6 +125,16 @@ private let clickTapCallback: CGEventTapCallBack = { _, type, event, refcon in
     return Unmanaged.passUnretained(event)
 }
 
+private let keyTapCallback: CGEventTapCallBack = { _, type, event, refcon in
+    guard let refcon else {
+        return Unmanaged.passUnretained(event)
+    }
+    let recorder = Unmanaged<ClickTrackRecorder>.fromOpaque(refcon)
+        .takeUnretainedValue()
+    recorder.handleKey(type: type, event: event)
+    return Unmanaged.passUnretained(event)
+}
+
 /// Records where and when the user clicked, and where the pointer went, for
 /// the whole session's duration.
 ///
@@ -42,9 +143,12 @@ private let clickTapCallback: CGEventTapCallBack = { _, type, event, refcon in
 /// separate Input Monitoring grant, whereas the session level rides the
 /// Accessibility grant the app already holds.
 ///
-/// Only mouse-down events are observed by the tap. Keystrokes are deliberately
-/// not captured: recording characters the user types would make this a
-/// keylogger, and nothing downstream needs them.
+/// The click tap observes mouse-down events only. A second, separate tap
+/// observes key-down events and keeps nothing but their timestamps: a camera
+/// needs to know *when* the user was typing so it can stay on the field, and
+/// nothing downstream needs to know *what* was typed. Key codes, characters and
+/// modifier flags are never read, so the track cannot become a keylogger. The
+/// two taps are separate so a refused keyboard tap cannot cost the click track.
 ///
 /// The pointer trail is sampled on a timer rather than through the tap.
 /// Reading the pointer position needs no permission, so the trail survives a
@@ -57,8 +161,11 @@ final class ClickTrackRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var clicks: [CapturedClick] = []
     private var samples: [CapturedPointerSample] = []
+    private var keyDowns: [UInt64] = []
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var keyTap: CFMachPort?
+    private var keyRunLoopSource: CFRunLoopSource?
     private var warnings: [String] = []
     private let trailQueue = DispatchQueue(label: "ai.okou.recorder.pointer-trail")
     private let trailPolicy = PointerTrailPolicy()
@@ -67,6 +174,10 @@ final class ClickTrackRecorder: @unchecked Sendable {
     /// Asked at each click, so the click is projected through the geometry of
     /// its own moment rather than the recording's first. Set before `start`.
     var geometryProvider: (() -> CaptureGeometry?)?
+    /// Where the content sits in the frame right now; see `ContentMapping`.
+    var mappingProvider: (() -> ContentMapping?)?
+    private let elementQueue = DispatchQueue(label: "ai.okou.recorder.click-elements")
+    private var elements: [Int: CapturedElement] = [:]
 
     /// Starts observing clicks and sampling the pointer. Never throws: losing
     /// the click track must not cost the user their video, so a refused tap is
@@ -106,24 +217,59 @@ final class ClickTrackRecorder: @unchecked Sendable {
         tap = eventTap
         runLoopSource = source
         lock.unlock()
+
+        startKeyTiming()
+    }
+
+    /// Observes when keys go down, and nothing else about them.
+    private func startKeyTiming() {
+        guard
+            let eventTap = CGEvent.tapCreate(
+                tap: .cgAnnotatedSessionEventTap,
+                place: .tailAppendEventTap,
+                options: .listenOnly,
+                eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+                callback: keyTapCallback,
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
+            )
+        else {
+            lock.lock()
+            warnings.append(
+                "Typing timing is unavailable; grant Accessibility access to Okou to record when you type."
+            )
+            lock.unlock()
+            return
+        }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+
+        lock.lock()
+        keyTap = eventTap
+        keyRunLoopSource = source
+        lock.unlock()
     }
 
     func stop() {
         lock.lock()
         let eventTap = tap
         let source = runLoopSource
+        let keyEventTap = keyTap
+        let keySource = keyRunLoopSource
         let timer = trailTimer
         tap = nil
         runLoopSource = nil
+        keyTap = nil
+        keyRunLoopSource = nil
         trailTimer = nil
         lock.unlock()
 
         timer?.cancel()
 
-        if let eventTap {
+        for eventTap in [eventTap, keyEventTap].compactMap({ $0 }) {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
-        if let source {
+        for source in [source, keySource].compactMap({ $0 }) {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
     }
@@ -164,10 +310,32 @@ final class ClickTrackRecorder: @unchecked Sendable {
             nanoseconds: nanoseconds,
             screenX: Double(location.x),
             screenY: Double(location.y),
-            geometry: geometryProvider?()
+            geometry: geometryProvider?(),
+            mapping: mappingProvider?()
         )
         lock.lock()
         samples.append(sample)
+        lock.unlock()
+    }
+
+    /// Called on the run loop that owns the keyboard tap. Reads the timestamp
+    /// and nothing else from the event.
+    fileprivate func handleKey(type: CGEventType, event: CGEvent) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
+            let eventTap = keyTap
+            lock.unlock()
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return
+        }
+        guard type == .keyDown else {
+            return
+        }
+        let nanoseconds = event.timestamp
+        lock.lock()
+        keyDowns.append(nanoseconds)
         lock.unlock()
     }
 
@@ -195,11 +363,23 @@ final class ClickTrackRecorder: @unchecked Sendable {
             button: button,
             clickCount: Int(event.getIntegerValueField(.mouseEventClickState)),
             modifiers: modifierNames(for: event.flags),
-            geometry: geometryProvider?()
+            geometry: geometryProvider?(),
+            mapping: mappingProvider?()
         )
         lock.lock()
         clicks.append(click)
+        let index = clicks.count - 1
         lock.unlock()
+        // The element lookup talks to the clicked application and can take a
+        // while; the tap callback must stay instant, so it happens elsewhere.
+        elementQueue.async { [weak self] in
+            guard let self, let element = elementAt(location) else {
+                return
+            }
+            self.lock.lock()
+            self.elements[index] = element
+            self.lock.unlock()
+        }
     }
 
     /// Projects the captured clicks and pointer samples onto the recording's
@@ -216,12 +396,19 @@ final class ClickTrackRecorder: @unchecked Sendable {
     ) -> (
         clicks: [[String: Any]],
         pointerEvents: [[String: Any]],
+        typingBursts: [[String: Any]],
         droppedOutOfFrame: Int,
         warnings: [String]
     ) {
+        // Let element lookups still in flight finish; each is bounded by the
+        // accessibility messaging timeout, so this cannot hang the recording.
+        elementQueue.sync {}
         lock.lock()
-        let captured = clicks
+        let captured = clicks.enumerated().map { index, click in
+            click.withElement(elements[index])
+        }
         let capturedSamples = samples
+        let capturedKeyDowns = keyDowns
         let capturedWarnings = warnings
         lock.unlock()
 
@@ -254,7 +441,7 @@ final class ClickTrackRecorder: @unchecked Sendable {
             guard let tMs = mediaMs(click.offsetMs) else {
                 continue
             }
-            described.append([
+            var entry: [String: Any] = [
                 "tMs": tMs,
                 "button": click.button,
                 "clickCount": click.clickCount,
@@ -264,8 +451,14 @@ final class ClickTrackRecorder: @unchecked Sendable {
                 "normalized": [
                     "x": click.point.normalizedX, "y": click.point.normalizedY,
                 ],
-            ])
-            events.append((tMs, 0, pointerEvent(tMs: tMs, kind: "click", point: click.point)))
+            ]
+            var event = pointerEvent(tMs: tMs, kind: "click", point: click.point)
+            if let element = click.element.map({ describe($0, outputSize: outputSize) }) {
+                entry["element"] = element
+                event["element"] = element
+            }
+            described.append(entry)
+            events.append((tMs, 0, event))
         }
         for sample in trail {
             guard let tMs = mediaMs(sample.offsetMs) else {
@@ -279,12 +472,45 @@ final class ClickTrackRecorder: @unchecked Sendable {
         events.sort { left, right in
             left.tMs == right.tMs ? left.order < right.order : left.tMs < right.tMs
         }
+        // Key-downs before the first frame or inside a pause are moments the
+        // video does not contain, exactly like clicks there.
+        let keyOffsets = capturedKeyDowns.compactMap { nanoseconds -> Int? in
+            guard let offsetMs = timeline.offsetMilliseconds(atNanoseconds: nanoseconds) else {
+                return nil
+            }
+            return mediaMs(offsetMs)
+        }
+        let bursts: [[String: Any]] = typingBursts(fromKeyDownOffsetsMs: keyOffsets).map { burst in
+            ["startMs": burst.startMs, "endMs": burst.endMs]
+        }
         return (
             described,
             events.map { $0.json },
+            bursts,
             projection.droppedOutOfFrame,
             capturedWarnings
         )
+    }
+
+    /// The element a click landed on, in frame pixels and frame fractions.
+    private func describe(_ element: ProjectedElement, outputSize: OutputSize) -> [String: Any] {
+        var described: [String: Any] = [
+            "role": element.role,
+            "frame": [
+                "x": element.frameX, "y": element.frameY,
+                "width": element.frameWidth, "height": element.frameHeight,
+            ],
+            "normalized": [
+                "x": Double(element.frameX) / Double(outputSize.width),
+                "y": Double(element.frameY) / Double(outputSize.height),
+                "width": Double(element.frameWidth) / Double(outputSize.width),
+                "height": Double(element.frameHeight) / Double(outputSize.height),
+            ],
+        ]
+        if let subrole = element.subrole {
+            described["subrole"] = subrole
+        }
+        return described
     }
 
     /// One entry of the pointer stream. Positions are rounded to a ten

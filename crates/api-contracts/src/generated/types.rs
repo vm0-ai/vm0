@@ -78,6 +78,36 @@ pub mod runners {
             pub ownership_transfer: Option<PiLaunchConfigApiFirstTurnOwnershipTransfer>,
         }
 
+        /// Frozen exact-version Pi memory recall selection.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "status", rename_all_fields = "camelCase")]
+        pub enum PiLaunchConfigMemoryRecall {
+            /// The launch epoch intentionally contains no memory.
+            #[serde(rename = "no-content")]
+            NoContent {
+                /// Canonical memory Storage identity.
+                memory_storage_id: String,
+                /// Exact pinned Storage version identity.
+                storage_version_id: String,
+            },
+            /// The launch epoch contains an authenticated summary.
+            #[serde(rename = "ready")]
+            Ready {
+                /// Canonical memory Storage identity.
+                memory_storage_id: String,
+                /// Exact pinned Storage version identity.
+                storage_version_id: String,
+                /// Authenticated frozen root summary content.
+                content: String,
+                /// Lowercase SHA-256 of the frozen summary bytes.
+                source_hash: String,
+                /// Exact frozen summary byte size.
+                source_size: i64,
+                /// Exact o200k token count of the frozen summary.
+                token_count: i64,
+            },
+        }
+
         /// API-owned launch configuration forwarded to Pi in the sandbox.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -86,6 +116,9 @@ pub mod runners {
             pub schema_version: i64,
             /// Configuration for the API-mediated first turn.
             pub api_first_turn: PiLaunchConfigApiFirstTurn,
+            /// Optional frozen memory-summary selection for API and Sandbox parity.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub memory_recall: Option<PiLaunchConfigMemoryRecall>,
         }
 
         /// Model providers supported by the Pi runtime contract.

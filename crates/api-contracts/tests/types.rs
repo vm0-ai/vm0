@@ -5,8 +5,8 @@ use api_contracts::generated::types::{
         runs::{
             CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
             PiLaunchConfigApiFirstTurnBaseSession, PiLaunchConfigApiFirstTurnOwnershipTransfer,
-            PiModelConfig, PiModelConfigApiKeyEnv, PiModelConfigProvider, PiModelConfigServiceTier,
-            model_provider_failures,
+            PiLaunchConfigMemoryRecall, PiModelConfig, PiModelConfigApiKeyEnv,
+            PiModelConfigProvider, PiModelConfigServiceTier, model_provider_failures,
         },
         storage as runner_storage,
     },
@@ -196,6 +196,7 @@ fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
                 schema_version: 1,
             }),
         },
+        memory_recall: None,
     };
     let model = PiModelConfig {
         provider: PiModelConfigProvider::Deepseek,
@@ -292,6 +293,48 @@ fn generated_pi_launch_config_round_trips_null_base_hash() {
     let launch: PiLaunchConfig = serde_json::from_value(value.clone()).unwrap();
 
     assert_eq!(launch.api_first_turn.base_session.sha256, None);
+    assert_eq!(serde_json::to_value(launch).unwrap(), value);
+}
+
+#[test]
+fn generated_pi_launch_config_round_trips_frozen_memory() {
+    let value = json!({
+        "schemaVersion": 2,
+        "apiFirstTurn": {
+            "schemaVersion": 1,
+            "resourceSnapshotDigest": "a".repeat(64),
+            "manifestUrl": "https://storage.example/manifest.json",
+            "sessionUrl": "https://storage.example/session.jsonl",
+            "deadlineAt": 2_000_000_000_000_i64,
+            "baseSession": {
+                "sessionId": "22222222-2222-4222-8222-222222222222",
+                "sha256": null,
+            },
+            "sandboxEventSequenceStart": 1,
+        },
+        "memoryRecall": {
+            "status": "ready",
+            "memoryStorageId": "memory-storage",
+            "storageVersionId": "memory-version-a",
+            "content": "bounded memory",
+            "sourceHash": "b".repeat(64),
+            "sourceSize": 14,
+            "tokenCount": 2,
+        },
+    });
+
+    let launch: PiLaunchConfig = serde_json::from_value(value.clone()).unwrap();
+    assert!(matches!(
+        launch.memory_recall.as_ref(),
+        Some(PiLaunchConfigMemoryRecall::Ready {
+            memory_storage_id,
+            storage_version_id,
+            content,
+            ..
+        }) if memory_storage_id == "memory-storage"
+            && storage_version_id == "memory-version-a"
+            && content == "bounded memory"
+    ));
     assert_eq!(serde_json::to_value(launch).unwrap(), value);
 }
 

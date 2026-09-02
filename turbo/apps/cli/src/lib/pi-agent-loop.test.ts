@@ -571,6 +571,27 @@ describe("sandbox Pi agent loop", () => {
     ).resolves.toEqual(CONFIG);
   });
 
+  it("carries the frozen memory epoch through the private launch file", async () => {
+    const memoryRecall = {
+      status: "no-content" as const,
+      memoryStorageId: "memory-storage",
+      storageVersionId: "memory-version-a",
+    };
+    await writeFile(
+      launchPayloadFile,
+      JSON.stringify({
+        ...CONFIG.launchPayload,
+        launchConfig: { ...CONFIG.launchPayload.launchConfig, memoryRecall },
+      }),
+    );
+
+    await expect(
+      piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
+    ).resolves.toMatchObject({
+      launchPayload: { launchConfig: { memoryRecall } },
+    });
+  });
+
   it.each([
     "openai-completions",
     "openai-responses",
