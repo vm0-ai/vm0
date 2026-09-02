@@ -477,6 +477,10 @@ describe("Rust type bindings", () => {
         thinkingLevel: {
           enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
         },
+        catalogModel: { type: "string", minLength: 1 },
+        credentialHeader: {
+          required: ["name", "valueTemplate"],
+        },
         serviceTier: {
           enum: ["priority"],
         },

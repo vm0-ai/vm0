@@ -571,6 +571,27 @@ describe("sandbox Pi agent loop", () => {
     ).resolves.toEqual(CONFIG);
   });
 
+  it("carries the frozen memory epoch through the private launch file", async () => {
+    const memoryRecall = {
+      status: "no-content" as const,
+      memoryStorageId: "memory-storage",
+      storageVersionId: "memory-version-a",
+    };
+    await writeFile(
+      launchPayloadFile,
+      JSON.stringify({
+        ...CONFIG.launchPayload,
+        launchConfig: { ...CONFIG.launchPayload.launchConfig, memoryRecall },
+      }),
+    );
+
+    await expect(
+      piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),
+    ).resolves.toMatchObject({
+      launchPayload: { launchConfig: { memoryRecall } },
+    });
+  });
+
   it.each([
     "openai-completions",
     "openai-responses",
@@ -603,6 +624,39 @@ describe("sandbox Pi agent loop", () => {
       });
     },
   );
+
+  it("resolves a custom gateway model without exposing its header template to Pi", async () => {
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+      provider: "deepseek",
+      baseUrl: "https://gateway.example.com/v1",
+      model: "company-deepseek-production",
+      catalogModel: "deepseek-v4-flash",
+      api: "openai-responses",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+      credentialHeader: {
+        name: "x-api-key",
+        valueTemplate: "Key {{secret}}",
+      },
+    });
+    env.OPENAI_API_KEY = "safe-gateway-placeholder";
+
+    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+      model: {
+        provider: "deepseek",
+        baseUrl: "https://gateway.example.com/v1",
+        model: "company-deepseek-production",
+        catalogModel: "deepseek-v4-flash",
+        api: "openai-responses",
+        apiKey: "unused",
+        requestHeaders: {
+          authorization: null,
+          "x-api-key": "safe-gateway-placeholder",
+        },
+      },
+    });
+  });
 
   it("requires the run id", async () => {
     await expect(piSandboxAgentConfigFromEnv(piEnv({}))).rejects.toThrowError(

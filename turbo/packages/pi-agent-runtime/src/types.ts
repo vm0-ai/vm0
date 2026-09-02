@@ -12,13 +12,27 @@ export type PiAgentThinkingLevel = (typeof PI_AGENT_THINKING_LEVELS)[number];
 
 export type PiAgentServiceTier = "priority";
 
-/** Model endpoint and credential resolved inside the Pi sandbox process. */
+export type PiAgentCredentialTarget = "direct" | "sandbox-firewall";
+
+export type PiAgentRequestHeaders = Readonly<Record<string, string | null>>;
+
+export interface PiAgentCredentialHeaderTemplate {
+  readonly name: string;
+  readonly valueTemplate: string;
+}
+
+/** Model endpoint and credential resolved at a Pi execution edge. */
 export interface PiAgentModelConfig {
-  /** Concrete provider identity used only for catalog metadata and requests. */
+  /** Native provider identity used for trusted catalog metadata. */
   readonly provider: string;
   readonly baseUrl: string;
   readonly apiKey: string;
+  /** Provider model identifier sent with requests. */
   readonly model: string;
+  /** Native catalog entry when the request model uses a gateway alias. */
+  readonly catalogModel?: string;
+  /** Execution-edge headers that override provider defaults case-insensitively. */
+  readonly requestHeaders?: PiAgentRequestHeaders;
   /**
    * Cross-version input only. New writers emit `openai-responses`; the runtime
    * ignores absent or legacy values. Remove with #31085 after the previous API

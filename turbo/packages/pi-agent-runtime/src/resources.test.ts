@@ -37,7 +37,7 @@ describe("preheated Pi resources", () => {
       cwd,
       agentDir,
       ...piPreheatedResourceLoaderOptions({
-        appendSystemPrompt: "Appended by the run",
+        appendSystemPrompt: ["Appended by the run"],
         snapshot: {
           schemaVersion: 1,
           agentsFiles: [

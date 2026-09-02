@@ -14,6 +14,10 @@ export {
 export type {
   PiApiFirstTurnResult,
   PiObservedServiceTier,
+  PiMemoryRecallOutcome,
+  PiMemoryRecallOutcomeStatus,
+  PiMemoryRecallParity,
+  PiMemoryRecallSelection,
   PiPreheatedAgentsFile,
   PiPreheatedResourceSnapshot,
   PiPreheatedSkill,

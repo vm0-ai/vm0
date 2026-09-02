@@ -1,4 +1,4 @@
-//! Guest root captures only the canonical API URL in this process-isolated test binary.
+//! Canonical Guest root API URL coverage in a process-isolated test binary.
 
 #![cfg(unix)]
 
@@ -13,14 +13,8 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CANONICAL_URL: &str =
     "https://canonical-api-url-must-not-leak.example.test/%2F?raw=%20#fragment";
-const RETIRED_URL: &str = "https://retired-api-url-must-not-leak.example.test/private-path";
 const API_TOKEN: &str = "api-url-test-token-must-not-leak";
-const VALUE_MARKERS: [&str; 3] = [
-    "canonical-api-url-must-not-leak",
-    "retired-api-url-must-not-leak",
-    API_TOKEN,
-];
-const CONFLICT_DIAGNOSTIC: &str = "conflicting API backend URL environment aliases";
+const VALUE_MARKERS: [&str; 2] = ["canonical-api-url-must-not-leak", API_TOKEN];
 
 #[derive(Clone, Copy)]
 enum EnvInput {
@@ -33,63 +27,28 @@ enum EnvInput {
 struct CaptureCase {
     name: &'static str,
     canonical: EnvInput,
-    retired: EnvInput,
     expected_value: &'static str,
 }
 
-const CAPTURE_CASES: [CaptureCase; 9] = [
+const CAPTURE_CASES: [CaptureCase; 4] = [
     CaptureCase {
-        name: "both-absent",
+        name: "absent",
         canonical: EnvInput::Absent,
-        retired: EnvInput::Absent,
         expected_value: "",
     },
     CaptureCase {
         name: "canonical-readable",
         canonical: EnvInput::Readable(CANONICAL_URL),
-        retired: EnvInput::Absent,
         expected_value: CANONICAL_URL,
     },
     CaptureCase {
         name: "canonical-present-empty",
         canonical: EnvInput::Readable(""),
-        retired: EnvInput::Absent,
         expected_value: "",
     },
     CaptureCase {
         name: "canonical-non-unicode",
         canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Absent,
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "retired-readable-only",
-        canonical: EnvInput::Absent,
-        retired: EnvInput::Readable(RETIRED_URL),
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "canonical-readable-with-different-retired",
-        canonical: EnvInput::Readable(CANONICAL_URL),
-        retired: EnvInput::Readable(RETIRED_URL),
-        expected_value: CANONICAL_URL,
-    },
-    CaptureCase {
-        name: "canonical-readable-with-non-unicode-retired",
-        canonical: EnvInput::Readable(CANONICAL_URL),
-        retired: EnvInput::NonUnicode,
-        expected_value: CANONICAL_URL,
-    },
-    CaptureCase {
-        name: "canonical-empty-with-readable-retired",
-        canonical: EnvInput::Readable(""),
-        retired: EnvInput::Readable(RETIRED_URL),
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "canonical-non-unicode-with-readable-retired",
-        canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Readable(RETIRED_URL),
         expected_value: "",
     },
 ];
@@ -121,7 +80,6 @@ fn apply_input(key: &str, input: EnvInput) {
 
 fn clear_api_url_env() {
     remove_test_env(guest_contracts::env::CANONICAL_API_URL_ENV);
-    remove_test_env(guest_contracts::env::API_URL_ENV);
 }
 
 fn clear_api_token_env() {
@@ -213,11 +171,6 @@ fn assert_http_semantics(tmp: &Path, case: CaptureCase, raw: GuestConfigRaw) -> 
             "{} changed the canonical missing API URL diagnostic: {error}",
             case.name
         );
-        assert!(
-            !error.contains(CONFLICT_DIAGNOSTIC),
-            "{} emitted the retired conflict diagnostic: {error}",
-            case.name
-        );
     } else {
         let enabled = HttpClient::for_config(&enabled_config)?;
         assert!(enabled.has_api(), "{} disabled valid API HTTP", case.name);
@@ -226,23 +179,17 @@ fn assert_http_semantics(tmp: &Path, case: CaptureCase, raw: GuestConfigRaw) -> 
 }
 
 #[test]
-fn process_env_captures_only_canonical_api_url_without_value_leaks() -> TestResult {
+fn process_env_preserves_canonical_api_url_without_value_leaks() -> TestResult {
     let tmp = tempfile::tempdir()?;
     clear_api_token_env();
 
     for case in CAPTURE_CASES {
         apply_input(guest_contracts::env::CANONICAL_API_URL_ENV, case.canonical);
-        apply_input(guest_contracts::env::API_URL_ENV, case.retired);
         let raw = capture_raw(&tmp.path().join(format!("{}.log", case.name)));
         let raw = match raw {
             Ok(raw) => raw,
             Err(error) => {
                 assert_value_free(&error, case.name);
-                assert!(
-                    !error.contains(CONFLICT_DIAGNOSTIC),
-                    "{} retained the API URL conflict reader: {error}",
-                    case.name
-                );
                 return Err(std::io::Error::other(format!(
                     "{} unexpectedly rejected root API URL input: {error}",
                     case.name

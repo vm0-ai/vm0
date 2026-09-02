@@ -167,6 +167,25 @@ export const rustTypeBindings = [
         fields: {
           schemaVersion: ["Pi launch contract version."],
           apiFirstTurn: ["Configuration for the API-mediated first turn."],
+          memoryRecall: [
+            "Optional frozen memory-summary selection for API and Sandbox parity.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMemoryRecall",
+        rustDoc: ["Frozen exact-version Pi memory recall selection."],
+        fields: {
+          memoryStorageId: ["Canonical memory Storage identity."],
+          storageVersionId: ["Exact pinned Storage version identity."],
+          content: ["Authenticated frozen root summary content."],
+          sourceHash: ["Lowercase SHA-256 of the frozen summary bytes."],
+          sourceSize: ["Exact frozen summary byte size."],
+          tokenCount: ["Exact o200k token count of the frozen summary."],
+        },
+        variants: {
+          "no-content": ["The launch epoch intentionally contains no memory."],
+          ready: ["The launch epoch contains an authenticated summary."],
         },
       },
       {
@@ -220,7 +239,10 @@ export const rustTypeBindings = [
         fields: {
           provider: ["Model provider selected for the Pi runtime."],
           baseUrl: ["Base URL used for model requests."],
-          model: ["Provider model identifier."],
+          model: ["Provider model identifier sent with requests."],
+          catalogModel: [
+            "Optional native Pi catalog model used only for trusted capabilities and limits.",
+          ],
           api: [
             "Cross-version transport input. Current writers emit OpenAI Responses; readers normalize absent or legacy values until the previous API rollback, runner/Sandbox drain, and pre-cutover context gates in #31085 pass.",
           ],
@@ -233,6 +255,19 @@ export const rustTypeBindings = [
           apiKeyEnv: ["Environment variable containing the provider key."],
           credentialSecretName: [
             "API-owned credential secret backing the environment entry.",
+          ],
+          credentialHeader: [
+            "Optional non-secret custom gateway credential header policy.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigCredentialHeader",
+        rustDoc: ["Non-secret custom gateway credential header policy."],
+        fields: {
+          name: ["Request header name."],
+          valueTemplate: [
+            "Header value template containing the credential placeholder exactly once.",
           ],
         },
       },

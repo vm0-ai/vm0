@@ -447,7 +447,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "https://api.example.com"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_URL_ENV));
     assert_eq!(
         env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &RunId::nil().to_string()
@@ -506,22 +505,6 @@ fn build_env_json_required_keys() {
             "canonical writer emitted legacy key {legacy_key}"
         );
     }
-}
-
-#[test]
-fn build_env_json_keeps_api_url_writer_canonical_only() {
-    let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "https://api.example.com");
-
-    assert_eq!(
-        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
-            .map(String::as_str),
-        Some("https://api.example.com")
-    );
-    assert!(
-        !env.contains_key(guest_contracts::env::API_URL_ENV),
-        "canonical Runner bootstrap writer emitted the legacy API URL alias"
-    );
 }
 
 #[test]

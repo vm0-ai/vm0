@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.827.0](https://github.com/vm0-ai/vm0/compare/app-v0.826.0...app-v0.827.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** expose shared worker connection diagnostics to the app ([#31194](https://github.com/vm0-ai/vm0/issues/31194)) ([79b72bd](https://github.com/vm0-ai/vm0/commit/79b72bd4fcc9bc7a3294397f3d2298380641cce0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+    * @okouai/core bumped to 8.611.2
+
 ## [0.826.0](https://github.com/vm0-ai/vm0/compare/app-v0.825.0...app-v0.826.0) (2026-09-02)
 
 

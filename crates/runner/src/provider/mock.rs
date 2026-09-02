@@ -707,6 +707,7 @@ mod tests {
         CompleteRequest {
             run_id,
             exit_code: 0,
+            failure_reason: None,
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
