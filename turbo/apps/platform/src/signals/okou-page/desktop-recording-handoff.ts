@@ -2,6 +2,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { command } from "ccstate";
 import { updateSearchParams$ } from "../route.ts";
 import type { DraftSignals, RestorableAttachment } from "./chat-draft.ts";
+import { introVideoWizardSignals } from "./intro-video.ts";
 import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
 
 const RECORDING_ID_PARAM = "intro-video-recording";
@@ -102,6 +103,34 @@ function withoutHandoffParams(params: URLSearchParams): URLSearchParams {
   return next;
 }
 
+/**
+ * Address the browser can play the restored recording from.
+ *
+ * `restoreAttachments$` has already resolved every attachment against the file
+ * API, and `fileInfo$` caches that resolution, so reading it back here costs no
+ * extra request.
+ */
+const restoredRecordingPreviewUrl$ = command(
+  async (
+    { get },
+    draft: DraftSignals,
+    recordingId: string,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const infos = await Promise.all(
+      get(draft.attachments$).map((attachment) => {
+        return get(attachment.fileInfo$);
+      }),
+    );
+    signal.throwIfAborted();
+    return (
+      infos.find((info) => {
+        return info?.id === recordingId;
+      })?.url ?? null
+    );
+  },
+);
+
 export const applyDesktopRecordingHandoff$ = command(
   async (
     { set },
@@ -126,10 +155,28 @@ export const applyDesktopRecordingHandoff$ = command(
     );
     if (!removedUnavailable) {
       set(draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
+      // Prefilled for whoever dismisses the wizard: the attachments stay on the
+      // draft, so the chat composer alone is still a complete request.
       set(
         draft.setInput$,
         "Create a polished intro video from this desktop screen recording.",
       );
+      // The desktop already collected the source, so the wizard opens where an
+      // in-browser recording lands: reviewing the take, one step from the
+      // avatar. It adopts the upload rather than the bytes, which the browser
+      // never had.
+      set(introVideoWizardSignals.adoptUploadedRecording$, {
+        attachmentIds: [handoff.recording.id, handoff.clicks.id],
+        contentType: handoff.recording.contentType,
+        name: handoff.recording.filename,
+        previewUrl: await set(
+          restoredRecordingPreviewUrl$,
+          draft,
+          handoff.recording.id,
+          signal,
+        ),
+        size: handoff.recording.size,
+      });
     }
     set(updateSearchParams$, withoutHandoffParams(params));
     return true;

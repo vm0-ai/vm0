@@ -2090,6 +2090,7 @@
         "format": "Formato",
         "heading": "Tu fuente está lista",
         "help": "Comprueba el archivo antes de continuar",
+        "inAccount": "En tu cuenta",
         "inBrowser": "En este navegador",
         "inTab": "Hasta que cierres esta pestaña",
         "replace": "Sustituir fuente",
