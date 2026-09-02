@@ -13,6 +13,10 @@ import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import {
+  resolvePiAgentCredential,
+  type PiAgentModelConfig,
+} from "@okouai/pi-agent-runtime";
+import {
   createPiApiFirstTurnOwnership,
   createPiSessionJsonl,
   inspectPiSessionJsonl,
@@ -781,7 +785,7 @@ const loadApiFirstTurnResource$ = command(
   },
 );
 
-async function resolveApiFirstTurnKey(
+async function resolveApiFirstTurnCredential(
   args: ApiFirstTurnContext,
   executionContext: ApiFirstTurnExecutionContext,
 ): Promise<string> {
@@ -840,6 +844,43 @@ async function resolveApiFirstTurnKey(
   return apiKey;
 }
 
+function apiFirstTurnModelConfig(
+  config: ApiFirstTurnExecutionContext["piModelConfig"],
+  credential: string,
+): PiAgentModelConfig {
+  const {
+    apiKeyEnv: _apiKeyEnv,
+    credentialHeader,
+    credentialSecretName: _credentialSecretName,
+    ...model
+  } = config;
+  return {
+    ...model,
+    ...resolvePiAgentCredential({
+      credential,
+      header: credentialHeader,
+      target: "direct",
+    }),
+  };
+}
+
+async function recordApiFirstTurnUsage(
+  context: ApiFirstTurnContext,
+  turn: PiApiFirstTurnResult,
+): Promise<void> {
+  const { activation } = context;
+  await recordPiApiFirstTurnUsage(context.db, {
+    runId: activation.runId,
+    orgId: activation.orgId,
+    userId: activation.userId,
+    billableFirewalls: activation.executionContext.billableFirewalls,
+    modelUsageProvider: activation.executionContext.modelUsageProvider,
+    piProvider: activation.executionContext.piModelConfig.provider,
+    requestedServiceTier: activation.executionContext.piModelConfig.serviceTier,
+    turn,
+  });
+}
+
 async function observeDiscardedProviderResult(
   operation: Promise<PiApiFirstTurnResult>,
   args: ApiFirstTurnContext,
@@ -847,16 +888,7 @@ async function observeDiscardedProviderResult(
 ): Promise<void> {
   const late = await settleIncludingAbort(operation);
   if (late.ok) {
-    await recordPiApiFirstTurnUsage(args.db, {
-      runId: args.activation.runId,
-      orgId: args.activation.orgId,
-      userId: args.activation.userId,
-      modelUsageProvider: args.activation.executionContext.modelUsageProvider,
-      piProvider: args.activation.executionContext.piModelConfig.provider,
-      requestedServiceTier:
-        args.activation.executionContext.piModelConfig.serviceTier,
-      turn: late.value,
-    });
+    await recordApiFirstTurnUsage(args, late.value);
     L.warn("Pi API first-turn outcome", {
       runId: args.activation.runId,
       outcome: "discarded_late_provider_result",
@@ -869,7 +901,7 @@ async function observeDiscardedProviderResult(
 async function executeApiModelTurn(
   args: {
     readonly activation: PiApiFirstTurnActivation;
-    readonly apiKey: string;
+    readonly credential: string;
     readonly context: ApiFirstTurnContext;
     readonly commitIdentity: ApiFirstTurnCommitIdentity;
     readonly executionContext: ApiFirstTurnExecutionContext;
@@ -904,7 +936,10 @@ async function executeApiModelTurn(
       sessionJsonl: args.sessionJsonl,
       prompt: args.activation.prompt,
       appendSystemPrompt: args.activation.appendSystemPrompt,
-      model: { ...args.executionContext.piModelConfig, apiKey: args.apiKey },
+      model: apiFirstTurnModelConfig(
+        args.executionContext.piModelConfig,
+        args.credential,
+      ),
       resourceSnapshot: args.resourceSnapshot,
       ownership: args.ownership,
       onMemoryRecallOutcome(outcome) {
@@ -973,15 +1008,7 @@ async function executeApiModelTurn(
     );
   }
   const turn = executed.value;
-  await recordPiApiFirstTurnUsage(args.context.db, {
-    runId: args.activation.runId,
-    orgId: args.activation.orgId,
-    userId: args.activation.userId,
-    modelUsageProvider: args.executionContext.modelUsageProvider,
-    piProvider: args.executionContext.piModelConfig.provider,
-    requestedServiceTier: args.executionContext.piModelConfig.serviceTier,
-    turn,
-  });
+  await recordApiFirstTurnUsage(args.context, turn);
   if (
     turn.assistantMessage.stopReason === "error" ||
     turn.assistantMessage.stopReason === "aborted"
@@ -1251,7 +1278,10 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     signal,
   );
   signal.throwIfAborted();
-  const apiKey = await resolveApiFirstTurnKey(args, executionContext);
+  const credential = await resolveApiFirstTurnCredential(
+    args,
+    executionContext,
+  );
   signal.throwIfAborted();
   const loadedSession = await set(
     loadResumeSessionJsonl$,
@@ -1274,7 +1304,7 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
   const { startedAt, turn } = await executeApiModelTurn(
     {
       activation: args.activation,
-      apiKey,
+      credential,
       context: args,
       commitIdentity,
       executionContext,

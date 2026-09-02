@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.532.0](https://github.com/vm0-ai/vm0/compare/api-v1.531.0...api-v1.532.0) (2026-09-02)
+
+
+### Features
+
+* **pi:** inject bounded memory summary recall ([#31203](https://github.com/vm0-ai/vm0/issues/31203)) ([e44155e](https://github.com/vm0-ai/vm0/commit/e44155e6786b92ca0ae13852cdab1d5817656ecd))
+* **pi:** support custom responses gateways ([#31157](https://github.com/vm0-ai/vm0/issues/31157)) ([e8cd4db](https://github.com/vm0-ai/vm0/commit/e8cd4dba2e57c0258491859f2aedd66a7f5855e4))
+
+
+### Bug Fixes
+
+* **api:** preserve connector account on auth replay ([#31155](https://github.com/vm0-ai/vm0/issues/31155)) ([d645212](https://github.com/vm0-ai/vm0/commit/d6452122da2c1c3f45f5877e6de0df76d9c87f54)), closes [#31141](https://github.com/vm0-ai/vm0/issues/31141)
+* **runner:** report authoritative provider failure reasons ([#31163](https://github.com/vm0-ai/vm0/issues/31163)) ([b84e233](https://github.com/vm0-ai/vm0/commit/b84e2334f9e370b59a299b00250fc037d90538dd))
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+    * @okouai/core bumped to 8.611.2
+    * @okouai/db bumped to 1.236.0
+    * @okouai/pi-agent-runtime bumped to 1.12.0
+
 ## [1.531.0](https://github.com/vm0-ai/vm0/compare/api-v1.530.0...api-v1.531.0) (2026-09-02)
 
 

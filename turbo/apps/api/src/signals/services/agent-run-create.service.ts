@@ -876,6 +876,7 @@ interface ResolvedModelProviderEnvironment {
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
+  readonly credentialHeader?: NonNullable<PiModelConfig["credentialHeader"]>;
 }
 
 type BuiltinRuntimeTargetRegistration = Extract<
@@ -2576,6 +2577,10 @@ async function customGatewayModelProviderEnvironment(
     selectedModel: args.selectedModelOverride,
     firewall: runtime.firewall,
     inlineFirewall: true,
+    credentialHeader: {
+      name: row.authHeaderName,
+      valueTemplate: row.authHeaderTemplate,
+    },
     ...(runtime.codexRuntimeConfig
       ? { codexRuntimeConfig: runtime.codexRuntimeConfig }
       : {}),
