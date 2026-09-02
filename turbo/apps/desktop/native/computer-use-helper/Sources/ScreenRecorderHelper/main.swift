@@ -435,6 +435,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     /// duration for audio, its start for video, which has no extent the
     /// writer enforces.
     private var lastWrittenEndSeconds: [ObjectIdentifier: Double] = [:]
+    /// The duration the last sample on each track was written with.
+    private var lastWrittenDurationSeconds: [ObjectIdentifier: Double] = [:]
     /// The format description each track was started with, keyed by writer
     /// input. A sample whose format differs from it is the leading way a
     /// window capture can turn into a sample the writer refuses.
@@ -855,13 +857,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         return systemAudioInput
     }
 
-    /// Rewrites a sample's presentation time without touching its payload.
+    /// Rewrites a sample's timing without touching its payload.
     private func retimedSampleBuffer(
         _ sampleBuffer: CMSampleBuffer,
-        to presentationTime: CMTime
+        to presentationTime: CMTime,
+        duration: CMTime
     ) -> CMSampleBuffer? {
         var timing = CMSampleTimingInfo(
-            duration: CMSampleBufferGetDuration(sampleBuffer),
+            duration: duration,
             presentationTimeStamp: presentationTime,
             decodeTimeStamp: .invalid
         )
@@ -1045,6 +1048,18 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         else {
             return
         }
+        // A screen frame arrives without a duration; the writer infers one from
+        // the frame that follows. A whole-display capture always has a next
+        // frame within a frame interval, but a window capture only produces a
+        // frame when the window changes, so the last frame before a fragment
+        // boundary can have no successor by the time the fragment must be
+        // closed — and the fragment cannot be written. The frame is given the
+        // capture interval as its duration instead.
+        let sourceDuration = CMSampleBufferGetDuration(sampleBuffer)
+        let duration =
+            type == .screen && !(sourceDuration.isValid && sourceDuration.seconds > 0)
+            ? CMTime(value: 1, timescale: captureFrameRate)
+            : sourceDuration
         // Retimed in the sample's own timebase, not a coarser one: rounding
         // 48 kHz audio onto a 600 Hz grid could move neighbouring buffers onto
         // each other.
@@ -1054,18 +1069,20 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 to: CMTimeAdd(
                     start,
                     CMTime(seconds: mediaSeconds, preferredTimescale: timestamp.timescale)
-                )
+                ),
+                duration: duration
             )
         else {
             return
         }
         if input.append(retimed) {
-            let duration = CMSampleBufferGetDuration(sampleBuffer)
             let extent = type == .screen || !duration.isValid ? 0 : max(0, duration.seconds)
             lock.lock()
             latestSampleAt = timestamp
             lastWrittenSeconds[ObjectIdentifier(input)] = mediaSeconds
             lastWrittenEndSeconds[ObjectIdentifier(input)] = mediaSeconds + extent
+            lastWrittenDurationSeconds[ObjectIdentifier(input)] =
+                duration.isValid ? duration.seconds : 0
             if firstFormat[ObjectIdentifier(input)] == nil,
                 let format = CMSampleBufferGetFormatDescription(sampleBuffer)
             {
@@ -1112,6 +1129,27 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.unlock()
         if let previousEnd {
             parts.append(String(format: "previous sample ended at %.3fs", previousEnd))
+        }
+        // An append that fails right after a fragment boundary is usually the
+        // first to notice a fragment that could not be closed, and what closes
+        // a fragment is the other track's last sample.
+        if type != .screen {
+            lock.lock()
+            let video = videoInput.map { ObjectIdentifier($0) }
+            let lastFrame = video.flatMap { lastWrittenSeconds[$0] }
+            let lastFrameDuration = video.flatMap { lastWrittenDurationSeconds[$0] }
+            lock.unlock()
+            if let lastFrame {
+                parts.append(
+                    String(
+                        format: "video track last frame at %.3fs lasting %.1fms",
+                        lastFrame,
+                        (lastFrameDuration ?? 0) * 1000
+                    )
+                )
+            } else {
+                parts.append("video track has no frames yet")
+            }
         }
         return parts.joined(separator: ", ")
     }
