@@ -1806,7 +1806,7 @@ async fn decode_api_json<T: ApiDecodePath>(resp: Response, label: &str) -> Runne
     let body = resp
         .bytes()
         .await
-        .map_err(|e| RunnerError::Api(format!("{label} decode read body: {e}")))?;
+        .map_err(|e| RunnerError::Api(format!("{label} decode read body: {}", e.without_url())))?;
     decode_api_json_bytes(&body).map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
 }
 
@@ -4923,6 +4923,42 @@ mod tests {
             "unexpected poll decode error: {error}"
         );
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_body_read_error_excludes_full_url() {
+        let response =
+            b"HTTP/1.1 200 OK\r\nContent-Length: 128\r\nConnection: close\r\n\r\n{\"job\":null}"
+                .to_vec();
+        let mut server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(response)]).await;
+        let server_url = server.url();
+        let api = api_client_for_url(server_url.clone());
+
+        let error = api
+            .poll(
+                TEST_RUNNER_ID.parse().unwrap(),
+                "default",
+                &[crate::profile::DEFAULT_PROFILE.to_string()],
+                &[],
+                PollReason::Immediate,
+            )
+            .await
+            .unwrap_err();
+        let RunnerError::Api(message) = error else {
+            panic!("expected RunnerError::Api");
+        };
+
+        assert!(
+            message.contains("poll decode read body"),
+            "unexpected body read error: {message}"
+        );
+        assert!(
+            !message.contains(&server_url),
+            "body read error must not include the full URL: {message}"
+        );
+        let request = server.next_request("truncated poll response request").await;
+        assert!(request.contains(routes::runners::poll::POLL.path));
+        server.assert_finished().await;
     }
 
     #[tokio::test]
