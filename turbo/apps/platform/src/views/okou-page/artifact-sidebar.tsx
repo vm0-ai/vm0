@@ -71,6 +71,10 @@ import {
 } from "./artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import {
+  isOfficeDocumentPreview,
+  OfficeDocumentPreview,
+} from "./office-document-preview.tsx";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -906,6 +910,15 @@ function ArtifactBody({
       />
     );
   }
+  if (isOfficeDocumentPreview(filename)) {
+    return (
+      <ArtifactOfficeDocumentBody
+        filename={filename}
+        fullscreen={fullscreen}
+        url={url}
+      />
+    );
+  }
   return <ArtifactGenericBody filename={filename} />;
 }
 
@@ -1487,6 +1500,30 @@ function ArtifactIframeBody({
           )}
           className="h-full min-h-0 w-full border-0 bg-background"
           data-testid={`artifact-sidebar-body-${kind}`}
+        />
+      </div>
+    </ArtifactStageShell>
+  );
+}
+
+function ArtifactOfficeDocumentBody({
+  filename,
+  fullscreen,
+  url,
+}: {
+  filename: string;
+  fullscreen: boolean;
+  url: string;
+}) {
+  return (
+    <ArtifactStageShell scrollable={false}>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <OfficeDocumentPreview
+          filename={filename}
+          focusKey={`${url}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusOnMount={fullscreen}
+          testId="artifact-sidebar-body-office"
+          url={url}
         />
       </div>
     </ArtifactStageShell>

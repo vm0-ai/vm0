@@ -96,6 +96,10 @@ import {
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import {
+  isOfficeDocumentPreview,
+  OfficeDocumentPreview,
+} from "./office-document-preview.tsx";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -969,6 +973,28 @@ function ArtifactDialogGenericFileBody({ filename }: { filename: string }) {
   );
 }
 
+function ArtifactDialogOfficeDocumentBody({
+  filename,
+  preview,
+}: {
+  filename: string;
+  preview: Extract<AttachmentLightboxState, { kind: "file" }>;
+}) {
+  return (
+    <ArtifactDialogStage scrollable={false}>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <OfficeDocumentPreview
+          filename={filename}
+          focusKey={`${preview.url}:dialog`}
+          focusOnMount={false}
+          testId="artifact-dialog-body-office"
+          url={preview.url}
+        />
+      </div>
+    </ArtifactDialogStage>
+  );
+}
+
 function ArtifactDialogBody({
   artifact,
   imageNavigation,
@@ -999,6 +1025,14 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "file") {
+    if (isOfficeDocumentPreview(filename)) {
+      return (
+        <ArtifactDialogOfficeDocumentBody
+          filename={filename}
+          preview={preview}
+        />
+      );
+    }
     return <ArtifactDialogGenericFileBody filename={filename} />;
   }
 

@@ -452,21 +452,31 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
-  it("opens an assistant generic file card in the preview dialog", async () => {
-    const filename = "revised-manuscript.docx";
+  it.each([
+    {
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      filename: "revised-manuscript.docx",
+    },
+    {
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      filename: "quarterly-review.pptx",
+    },
+  ])("previews $filename in the dialog and split view", async (fixture) => {
+    const { contentType, filename } = fixture;
     const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
     setupChatThread({
       artifactFiles: [
         threadArtifactFile(url, {
-          id: "artifact-revised-manuscript",
+          id: `artifact-${filename}`,
           filename,
-          contentType:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          contentType,
         }),
       ],
       messages: [
         {
-          id: "msg-revised-manuscript",
+          id: `msg-${filename}`,
           role: "assistant",
           content: `[${filename}](${url})`,
           runId: "run-sidebar",
@@ -474,7 +484,7 @@ describe("thread-owned utility sidebar", () => {
           createdAt: "2026-03-10T00:00:01Z",
         },
         {
-          id: "msg-revised-manuscript-completed",
+          id: `msg-${filename}-completed`,
           role: "assistant",
           content: null,
           runId: "run-sidebar",
@@ -492,10 +502,18 @@ describe("thread-owned utility sidebar", () => {
     click(card);
 
     const dialog = await screen.findByTestId("attachment-lightbox");
-    expect(
-      within(dialog).getByText("No inline preview available for this file."),
-    ).toBeInTheDocument();
-    expect(within(dialog).getAllByText(filename).length).toBeGreaterThan(0);
+    const dialogFrame = await within(dialog).findByTitle(`${filename} preview`);
+    const dialogFrameUrl = dialogFrame.getAttribute("src");
+    expect(dialogFrameUrl).not.toBeNull();
+    if (dialogFrameUrl === null) {
+      throw new Error("Office preview iframe is missing its source URL");
+    }
+    const parsedDialogFrameUrl = new URL(dialogFrameUrl);
+    expect(parsedDialogFrameUrl.origin).toBe(
+      "https://view.officeapps.live.com",
+    );
+    expect(parsedDialogFrameUrl.pathname).toBe("/op/embed.aspx");
+    expect(parsedDialogFrameUrl.searchParams.get("src")).toBe(url);
 
     click(within(dialog).getByLabelText("Open in split view"));
 
@@ -505,7 +523,15 @@ describe("thread-owned utility sidebar", () => {
       ).not.toBeInTheDocument();
     });
     const sidebar = await screen.findByTestId("artifact-sidebar");
-    expect(within(sidebar).getAllByText(filename).length).toBeGreaterThan(0);
+    const sidebarFrame = await within(sidebar).findByTitle(
+      `${filename} preview`,
+    );
+    const sidebarFrameUrl = sidebarFrame.getAttribute("src");
+    expect(sidebarFrameUrl).not.toBeNull();
+    if (sidebarFrameUrl === null) {
+      throw new Error("Office split-view iframe is missing its source URL");
+    }
+    expect(new URL(sidebarFrameUrl).searchParams.get("src")).toBe(url);
   });
 
   it("previews a public catalog document through the resolved resource url", async () => {
