@@ -77,13 +77,6 @@ function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
-function connectorIcon(connectorSlug: string) {
-  return {
-    url: `https://icons.example.test/${connectorSlug}.svg`,
-    invertInDarkMode: false,
-  };
-}
-
 function detachedSetupWorkflowDetailPage(
   path: string,
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
@@ -1577,8 +1570,8 @@ describe("workflows routes", () => {
     );
 
     await waitFor(() => {
-      expect(pathname()).toBe("/settings");
-      expect(search()).toBe("?tab=timezone&focus=morning-brief");
+      expect(pathname()).toBe("/agents");
+      expect(search()).toBe("?settings=preference&focus=morning-brief");
     });
     const preference = await screen.findByTestId("morning-brief-preference");
     expect(preference).toHaveFocus();
@@ -2099,9 +2092,6 @@ describe("workflow detail page", () => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
     expect(
-      screen.queryByRole("region", { name: "Connector readiness" }),
-    ).not.toBeInTheDocument();
-    expect(
       screen.getByText("This workflow belongs to this agent."),
     ).toBeInTheDocument();
     expect(screen.getByTitle("Research Bot")).toHaveTextContent("Research Bot");
@@ -2202,262 +2192,6 @@ describe("workflow detail page", () => {
     expect(search()).toBe(`?automationId=${GMAIL_AUTOMATION_ID}`);
     expect(document.querySelector('[aria-current="true"]')).toBeNull();
     expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it("checks connector readiness only on request and shows every status", async () => {
-    const workflow = {
-      ...salesResearch(),
-      canManage: false,
-      canPublish: false,
-    };
-    const requestStarted = context.mocks.deferred<void>();
-    const releaseResponse = context.mocks.deferred<void>();
-    let requestCount = 0;
-    mockWorkflowApis([workflow]);
-    context.mocks.api(
-      workflowsDetailContract.connectorReadiness,
-      async ({ params, respond }) => {
-        expect(params.workflowId).toBe(SALES_WORKFLOW_ID);
-        requestCount += 1;
-        requestStarted.resolve();
-        await releaseResponse.promise;
-        return respond(200, {
-          connectors: [
-            {
-              connectorSlug: "google-drive",
-              label: "Google Drive",
-              icon: connectorIcon("google-drive"),
-              reason: "The workflow reads account documents.",
-              status: "connected",
-            },
-            {
-              connectorSlug: "github",
-              label: "GitHub",
-              icon: connectorIcon("github"),
-              reason: "A GitHub automation requires this connector.",
-              status: "unavailable",
-            },
-            {
-              connectorSlug: "slack",
-              label: "Slack",
-              icon: connectorIcon("slack"),
-              reason: "The workflow posts a summary to Slack.",
-              status: "not-enabled-for-agent",
-            },
-            {
-              connectorSlug: "notion",
-              label: "Notion",
-              icon: connectorIcon("notion"),
-              reason: "The workflow updates a Notion page.",
-              status: "scope-mismatch",
-            },
-            {
-              connectorSlug: "gmail",
-              label: "Gmail",
-              reason: "The workflow reads outreach replies.",
-              status: "reconnect-required",
-              icon: {
-                url: "https://icons.example.test/gmail.svg",
-                invertInDarkMode: true,
-                scale: 1.25,
-              },
-            },
-            {
-              connectorSlug: "linear",
-              label: "Linear",
-              icon: connectorIcon("linear"),
-              reason: "The workflow creates follow-up issues.",
-              status: "not-connected",
-            },
-          ],
-        });
-      },
-    );
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("info"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
-
-    const readiness = await screen.findByRole("region", {
-      name: "Connector readiness",
-    });
-    expect(requestCount).toBe(0);
-    expect(within(readiness).queryByText("Gmail")).not.toBeInTheDocument();
-
-    click(buttonByText("Check connectors", readiness));
-    await requestStarted.promise;
-    expect(requestCount).toBe(1);
-    expect(buttonByText("Checking...", readiness)).toBeDisabled();
-
-    releaseResponse.resolve();
-    await waitFor(() => {
-      expect(within(readiness).getByText("Gmail")).toBeInTheDocument();
-    });
-    const rows = within(readiness).getAllByRole("listitem");
-    expect(
-      rows.map((row) => {
-        return row.querySelector("p")?.textContent;
-      }),
-    ).toStrictEqual([
-      "Gmail",
-      "Linear",
-      "Notion",
-      "Slack",
-      "GitHub",
-      "Google Drive",
-    ]);
-    expect(
-      within(readiness).getByText("Reconnect required"),
-    ).toBeInTheDocument();
-    expect(
-      within(readiness).getByText("Update permissions"),
-    ).toBeInTheDocument();
-    expect(within(readiness).getByText("Not connected")).toBeInTheDocument();
-    expect(
-      within(readiness).getByText("Not enabled for this agent"),
-    ).toBeInTheDocument();
-    expect(
-      within(readiness).getByText("Currently unavailable"),
-    ).toBeInTheDocument();
-    expect(within(readiness).getByText("Connected")).toBeInTheDocument();
-
-    const gmailRow = within(readiness).getByText("Gmail").closest("li");
-    if (!(gmailRow instanceof HTMLElement)) {
-      throw new Error("Gmail readiness row not found");
-    }
-    expect(gmailRow.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://icons.example.test/gmail.svg",
-    );
-    expect(gmailRow.querySelector("img")).toHaveClass("zero-icon-mono");
-    expect(gmailRow.querySelector("img")).toHaveStyle({
-      transform: "scale(1.25)",
-    });
-
-    const unavailableRow = within(readiness).getByText("GitHub").closest("li");
-    if (!(unavailableRow instanceof HTMLElement)) {
-      throw new Error("Unavailable readiness row not found");
-    }
-    expect(unavailableRow.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://icons.example.test/github.svg",
-    );
-
-    expect(linkByText("Reconnect Gmail", readiness)).toHaveAttribute(
-      "href",
-      `/connectors/gmail/connect?agentId=${encodeURIComponent(AGENT_ID)}`,
-    );
-    expect(linkByText("Enable for agent Slack", readiness)).toHaveAttribute(
-      "href",
-      `/connectors/slack/authorize?agentId=${encodeURIComponent(AGENT_ID)}`,
-    );
-    for (const link of queryAllByRoleFast("link", readiness)) {
-      expect(link).toHaveAttribute("target", "_blank");
-      expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    }
-  });
-
-  it("shows actionable connector check errors and supports retry", async () => {
-    let requestCount = 0;
-    mockWorkflowApis([salesResearch()]);
-    context.mocks.api(
-      workflowsDetailContract.connectorReadiness,
-      ({ respond }) => {
-        requestCount += 1;
-        if (requestCount === 1) {
-          return respond(413, {
-            error: {
-              code: "PAYLOAD_TOO_LARGE",
-              message: "Workflow content is too long",
-            },
-          });
-        }
-        if (requestCount === 2) {
-          return respond(503, {
-            error: {
-              code: "CONNECTOR_READINESS_TIMEOUT",
-              message: "Connector check timed out",
-            },
-          });
-        }
-        return respond(200, { connectors: [] });
-      },
-    );
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("info"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
-
-    const readiness = await screen.findByRole("region", {
-      name: "Connector readiness",
-    });
-    click(buttonByText("Check connectors", readiness));
-    await expect(
-      within(readiness).findByText(
-        "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.",
-      ),
-    ).resolves.toBeInTheDocument();
-
-    click(buttonByText("Check again", readiness));
-    await expect(
-      within(readiness).findByText("The connector check timed out. Try again."),
-    ).resolves.toBeInTheDocument();
-
-    click(buttonByText("Check again", readiness));
-    await expect(
-      within(readiness).findByText("No required connectors detected"),
-    ).resolves.toBeInTheDocument();
-    expect(requestCount).toBe(3);
-  });
-
-  it("blocks checks for unsaved inputs and clears results after saving", async () => {
-    const workflow = salesResearch();
-    mockWorkflowApis([workflow]);
-    context.mocks.api(
-      workflowsDetailContract.connectorReadiness,
-      ({ respond }) => {
-        return respond(200, {
-          connectors: [
-            {
-              connectorSlug: "gmail",
-              label: "Gmail",
-              icon: connectorIcon("gmail"),
-              reason: "The workflow reads outreach replies.",
-              status: "connected",
-            },
-          ],
-        });
-      },
-    );
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("info"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
-
-    const readiness = await screen.findByRole("region", {
-      name: "Connector readiness",
-    });
-    click(buttonByText("Check connectors", readiness));
-    await expect(
-      within(readiness).findByText("Gmail"),
-    ).resolves.toBeInTheDocument();
-
-    await fill(screen.getByLabelText("Name"), "Updated display name");
-    expect(buttonByText("Check again", readiness)).toBeEnabled();
-
-    await fill(screen.getByLabelText("Description"), "Updated description");
-    expect(buttonByText("Check again", readiness)).toBeDisabled();
-    expect(
-      within(readiness).getByText(
-        "Save your changes before checking connectors.",
-      ),
-    ).toBeInTheDocument();
-
-    click(buttonByText("Save"));
-    await waitFor(() => {
-      expect(within(readiness).queryByText("Gmail")).not.toBeInTheDocument();
-    });
-    expect(buttonByText("Check connectors", readiness)).toBeEnabled();
   });
 
   it("ignores stale workflow instruction drafts without edit permission", async () => {
@@ -2638,9 +2372,7 @@ describe("workflow detail page", () => {
       },
     );
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
     await expect(
       screen.findByText("Official Workflow retired"),
     ).resolves.toBeInTheDocument();
@@ -2660,9 +2392,6 @@ describe("workflow detail page", () => {
     });
     expect(screen.getByLabelText("Slug")).toBeDisabled();
     expect(screen.getByLabelText("Description")).toBeDisabled();
-    expect(
-      screen.queryByRole("region", { name: "Connector readiness" }),
-    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: "Make workflow public" }),
     ).toHaveAttribute("aria-disabled", "true");

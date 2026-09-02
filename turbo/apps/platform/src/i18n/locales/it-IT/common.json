@@ -5155,7 +5155,6 @@
           "upstreamModel": "Modello upstream"
         },
         "capture": {
-          "description": "Cattura i nomi delle intestazioni HTTP, i valori delle intestazioni sicure selezionate e i corpi nei log di rete per il debug.",
           "disabled": "Disabilitato",
           "enabled_one": "Abilitato per la prossima esecuzione {{count}}",
           "enabled_many": "Abilitato per le prossime {{count}} esecuzioni",
@@ -5179,10 +5178,8 @@
           "recovery": "recupero",
           "title": "Diagnostica della connessione in tempo reale",
           "unavailable": "non disponibile"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferenze",
       "language": {
         "description": "Scegli la tua lingua preferita per l'interfaccia {{brandName}}",
         "label": "Lingua",
@@ -5212,8 +5209,6 @@
         "retryMessage": "Non è stato possibile caricare o aggiornare le impostazioni di Morning Brief. Riprova per continuare.",
         "title": "Riepilogo mattutino"
       },
-      "pageDescription": "Gestisci l'aspetto e le preferenze di esecuzione degli agenti",
-      "pageTitle": "Preferenze",
       "send": {
         "cmdEnter": "⌘ Invio",
         "cmdEnterDescription": "Premi ⌘/Ctrl+Invio per inviare, Invio per una nuova riga",
@@ -5222,11 +5217,6 @@
         "enterDescription": "Premi Invio per inviare, Maiusc+Invio per una nuova riga",
         "sectionTitle": "Invio",
         "title": "Invia messaggio con"
-      },
-      "tabs": {
-        "appearance": "Aspetto",
-        "models": "Modelli personali",
-        "timezone": "Fuso orario"
       },
       "timezone": {
         "description": "Orari mostrati e usati per le esecuzioni delle automazioni.",
@@ -6007,35 +5997,6 @@
       "noWorkflows": "Nessun flusso di lavoro ancora. Creane uno in chat per continuare."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connettiti",
-          "enable": "Abilita per l'agente",
-          "reconnect": "Riconnettiti",
-          "reviewPermissions": "Esaminare le autorizzazioni"
-        },
-        "aria": "Disponibilità del connettore",
-        "check": "Controllare i connettori",
-        "checkAgain": "Controlla di nuovo",
-        "checking": "Controllo...",
-        "description": "Scopri di quali connettori integrati potrebbe aver bisogno questo flusso di lavoro e se sono pronti.",
-        "empty": "Nessun connettore richiesto rilevato",
-        "error": {
-          "inputTooLong": "Questo flusso di lavoro è troppo lungo per essere controllato. Mantieni il nome, la descrizione e le istruzioni entro 100.000 caratteri.",
-          "retry": "Non è stato possibile controllare i connettori. Riprova.",
-          "timeout": "Il controllo del connettore è scaduto. Riprova."
-        },
-        "saveFirst": "Salva le modifiche prima di controllare i connettori.",
-        "status": {
-          "connected": "Connesso",
-          "notConnected": "Non connesso",
-          "notEnabled": "Non abilitato per questo agente",
-          "reconnect": "Riconnessione necessaria",
-          "scopeMismatch": "Aggiorna autorizzazioni",
-          "unavailable": "Attualmente non disponibile"
-        },
-        "title": "Disponibilità del connettore"
-      },
       "copy": {
         "agentFallback": "l'agente",
         "copied": "Copiato in {{agent}}",

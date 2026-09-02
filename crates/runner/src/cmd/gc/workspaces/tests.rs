@@ -43,7 +43,7 @@ fn firecracker_with_base_dir(
         ppid: Some(1),
         sandbox_id: sandbox_id.to_string(),
         base_dir: Some(base_dir.to_path_buf()),
-        identity: None,
+        generation: None,
     }
 }
 
@@ -53,7 +53,7 @@ fn incomplete_firecracker(pid: u32) -> crate::process::FirecrackerProcessInfo {
         ppid: Some(1),
         sandbox_id: format!("pid-{pid}"),
         base_dir: None,
-        identity: None,
+        generation: None,
     }
 }
 

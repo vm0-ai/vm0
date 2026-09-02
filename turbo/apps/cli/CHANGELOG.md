@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.305.0](https://github.com/vm0-ai/vm0/compare/cli-v9.304.5...cli-v9.305.0) (2026-09-02)
+
+
+### Features
+
+* **pi:** align openrouter codex routes on responses api ([#31032](https://github.com/vm0-ai/vm0/issues/31032)) ([eff60e8](https://github.com/vm0-ai/vm0/commit/eff60e8be002ff2150fdd7da4281e5f5b10abe66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.11.0
+
 ## [9.304.5](https://github.com/vm0-ai/vm0/compare/cli-v9.304.4...cli-v9.304.5) (2026-09-02)
 
 

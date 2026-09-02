@@ -5097,7 +5097,6 @@
           "upstreamModel": "Upstream-Modell"
         },
         "capture": {
-          "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textinhalte in Netzwerkprotokollen zum Debuggen.",
           "disabled": "Deaktiviert",
           "enabled_one": "Für {{count}} kommende Ausführung aktiviert",
           "enabled_other": "Für {{count}} kommende Ausführungen aktiviert",
@@ -5120,10 +5119,8 @@
           "recovery": "Wiederherstellung",
           "title": "Echtzeit-Verbindungsdiagnose",
           "unavailable": "nicht verfügbar"
-        },
-        "tab": "Debuggen"
+        }
       },
-      "documentTitle": "Präferenzen",
       "language": {
         "description": "Wählen Sie Ihre bevorzugte Sprache für die Benutzeroberfläche von {{brandName}}",
         "label": "Sprache",
@@ -5153,8 +5150,6 @@
         "retryMessage": "Die Morning-Brief-Einstellungen konnten nicht geladen oder aktualisiert werden. Versuchen Sie es erneut.",
         "title": "Morgenbrief"
       },
-      "pageDescription": "Verwalten Sie Ihr Erscheinungsbild und die Laufzeiteinstellungen Ihres Agenten",
-      "pageTitle": "Präferenzen",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Drücken Sie zum Senden ⌘/Strg+Eingabetaste und für eine neue Zeile die Eingabetaste",
@@ -5163,11 +5158,6 @@
         "enterDescription": "Drücken Sie die Eingabetaste zum Senden, Umschalt+Eingabetaste für eine neue Zeile",
         "sectionTitle": "Enter",
         "title": "Nachricht senden mit"
-      },
-      "tabs": {
-        "appearance": "Aussehen",
-        "models": "Persönliche Modelle",
-        "timezone": "Zeitzone"
       },
       "timezone": {
         "description": "Zeiten, die Ihnen angezeigt und für Automatisierungsausführungen verwendet werden.",
@@ -5943,35 +5933,6 @@
       "noWorkflows": "Noch keine Workflows. Erstellen Sie eine im Chat, um fortzufahren."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Verbinden",
-          "enable": "Für Agent aktivieren",
-          "reconnect": "Wieder verbinden",
-          "reviewPermissions": "Überprüfen Sie die Berechtigungen"
-        },
-        "aria": "Integration-Bereitschaft",
-        "check": "Integrationen prüfen",
-        "checkAgain": "Überprüfen Sie es noch einmal",
-        "checking": "Überprüfung...",
-        "description": "Sehen Sie, welche integrierten Integrationen dieser Workflow möglicherweise benötigt und ob sie bereit sind.",
-        "empty": "Es wurden keine erforderlichen Integrationen erkannt",
-        "error": {
-          "inputTooLong": "Dieser Workflow ist zu lang, um ihn zu überprüfen. Halten Sie den Namen, die Beschreibung und die Anweisungen auf maximal 100.000 Zeichen beschränkt.",
-          "retry": "Wir konnten die Integrationen nicht überprüfen. Versuchen Sie es erneut.",
-          "timeout": "Zeitüberschreitung bei der Integrationsprüfung. Versuchen Sie es erneut."
-        },
-        "saveFirst": "Speichern Sie Ihre Änderungen, bevor Sie die Integrationen überprüfen.",
-        "status": {
-          "connected": "Verbunden",
-          "notConnected": "Nicht verbunden",
-          "notEnabled": "Für diesen Agenten nicht aktiviert",
-          "reconnect": "Erneute Verbindung erforderlich",
-          "scopeMismatch": "Berechtigungen aktualisieren",
-          "unavailable": "Derzeit nicht verfügbar"
-        },
-        "title": "Integration-Bereitschaft"
-      },
       "copy": {
         "agentFallback": "der Agent",
         "copied": "Kopiert nach {{agent}}",
