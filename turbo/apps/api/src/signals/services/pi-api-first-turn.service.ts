@@ -162,6 +162,7 @@ function providerRejectionDiagnostic(error: unknown): {
   readonly errorMessageSha256?: string;
   readonly errorName?: string;
   readonly missingApiKey?: boolean;
+  readonly piModelTurnStage?: string;
   readonly providerStatus?: number;
 } {
   const message = error instanceof Error ? error.message : undefined;
@@ -170,6 +171,7 @@ function providerRejectionDiagnostic(error: unknown): {
       ? (error as Record<string, unknown>)
       : undefined;
   const candidateStatus = record?.status ?? record?.statusCode;
+  const piModelTurnStage = record?.piModelTurnStage;
   const providerStatus =
     typeof candidateStatus === "number" &&
     candidateStatus >= 400 &&
@@ -186,6 +188,7 @@ function providerRejectionDiagnostic(error: unknown): {
           missingApiKey: message.startsWith("No API key for provider:"),
         }),
     ...(providerStatus === undefined ? {} : { providerStatus }),
+    ...(typeof piModelTurnStage === "string" ? { piModelTurnStage } : {}),
   };
 }
 
