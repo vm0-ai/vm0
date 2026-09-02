@@ -113,15 +113,15 @@ import {
 import { agents$ } from "../../signals/agent.ts";
 import type {
   GenerationTemplateRequest,
-  PersistedAttachment,
-  ImageAnnotation,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import type { RestorableAttachment } from "../../signals/okou-page/chat-draft.ts";
 import type {
   AvatarVideoAvatar,
   AvatarVideoVoice,
 } from "@okouai/api-contracts/contracts/avatar-video";
 import { AttachmentChips } from "./attachment-chips.tsx";
+import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
@@ -9186,30 +9186,41 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-function toPersistedAttachments(
+function toRestorableAttachments(
   attachments: readonly {
     id: string | null;
     url: string;
     filename: string;
     contentType: string;
     size: number;
-    annotation?: ImageAnnotation;
   }[],
-): PersistedAttachment[] {
+  userMessage: UserMessageDocument | undefined,
+): RestorableAttachment[] {
+  const filePartById = new Map(
+    (userMessage?.parts ?? []).flatMap((part) => {
+      return part.type === "file" ? [[part.fileId, part] as const] : [];
+    }),
+  );
   return attachments
-    .filter((attachment): attachment is PersistedAttachment => {
-      return attachment.id !== null;
-    })
+    .filter(
+      (
+        attachment,
+      ): attachment is typeof attachment & { readonly id: string } => {
+        return attachment.id !== null;
+      },
+    )
     .map((attachment) => {
+      const part = filePartById.get(attachment.id);
       return {
         id: attachment.id,
         url: attachment.url,
         filename: attachment.filename,
         contentType: attachment.contentType,
         size: attachment.size,
-        // Copying a message and pasting it elsewhere should carry the marks
-        // with it; this mapper rebuilds the object, so it has to say so.
-        ...(attachment.annotation ? { annotation: attachment.annotation } : {}),
+        ...(part?.annotatedFileId
+          ? { annotatedFileId: part.annotatedFileId }
+          : {}),
+        ...(part?.annotations ? { annotations: part.annotations } : {}),
       };
     });
 }
@@ -9226,7 +9237,7 @@ function restoreChatClipboardPayload({
   visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null;
   insertPromptMarkdown: (value: string) => void;
   insertUserMessage: (value: UserMessageDocument) => void;
-  restoreAttachments: (attachments: PersistedAttachment[]) => void;
+  restoreAttachments: (attachments: RestorableAttachment[]) => void;
   onDraftChange: (() => void) | undefined;
 }): boolean {
   if (!event.clipboardData) {
@@ -9239,7 +9250,10 @@ function restoreChatClipboardPayload({
   const userMessage = shouldUseUserMessage(payload.userMessage)
     ? payload.userMessage
     : undefined;
-  const persistedAttachments = toPersistedAttachments(payload.attachments);
+  const persistedAttachments = toRestorableAttachments(
+    payload.attachments,
+    userMessage,
+  );
   if (!userMessage && persistedAttachments.length === 0) {
     return false;
   }
@@ -10530,6 +10544,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
   return (
     <AttachmentChips
       attachments={visibleAttachments}
+      annotationSignals={signals.imageAnnotation}
       onAnnotationChange={notifyDraftChanged}
       onRemove={(attachment) => {
         removeAttachment(attachment);
@@ -11075,15 +11090,22 @@ function ComposerSurface({
   signals: ComposerSignals;
   showPendingItems: boolean;
 }) {
+  const setImageAnnotationLifecycleRef = useSet(
+    signals.setImageAnnotationLifecycleRef$,
+  );
   return (
     <>
       <ComposerFileInput signals={signals} />
-      <div className="relative flex w-full min-w-0 flex-col">
+      <div
+        ref={setImageAnnotationLifecycleRef}
+        className="relative flex w-full min-w-0 flex-col"
+      >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
         <WebsiteTemplatePreviewDialogSlot signals={signals} />
+        <ImageAnnotationEditor signals={signals.imageAnnotation} />
       </div>
     </>
   );

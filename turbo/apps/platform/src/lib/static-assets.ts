@@ -20,6 +20,9 @@ export const platformVm0LogoImg = platformStaticAssetUrl(
 export const platformVm0LogoDarkImg = platformStaticAssetUrl(
   "assets/vm0-logo-dark-f3de8c7713f8.svg",
 );
+export const platformFeishuAppIconImg = platformStaticAssetUrl(
+  "views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
+);
 export const platformFeishuCreateEnterpriseCustomAppImg =
   platformStaticAssetUrl(
     "views/zero-page/assets/feishu/create-enterprise-custom-app-bfcbb0ba2ffb.png",

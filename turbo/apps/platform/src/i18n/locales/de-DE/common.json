@@ -2730,7 +2730,7 @@
         "prefixes": "Präfixe",
         "prefixesHint": "(eine pro Zeile, nur https)",
         "redirectCopy": "Kopieren Sie die Weiterleitungs-URL",
-        "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters.)",
+        "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters. Lassen Sie vorhandene VM0- oder Okou-Weiterleitungs-URLs ebenfalls registriert.)",
         "redirectUrl": "Weiterleitungs-URL",
         "removeApiAuthentication": "Entfernen Sie die API-Authentifizierung",
         "removeNoAuthentication": "„Keine Authentifizierung“ entfernen",

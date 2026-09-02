@@ -168,6 +168,21 @@ export function applyColorThemeDocumentAttributes(
 }
 
 /**
+ * Keep the Geist typeface attribute on the document while a themed app shell is
+ * mounted. Document scope matches the color themes above: portaled dialogs,
+ * popovers, and toasts read the same font tokens as the app shell.
+ */
+export function applyTypefaceDocumentAttribute(enabled: boolean) {
+  const root = document.documentElement;
+
+  if (enabled) {
+    root.dataset.typeface = "geist";
+  } else {
+    delete root.dataset.typeface;
+  }
+}
+
+/**
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ get, set }) => {

@@ -18,10 +18,8 @@ import {
   loadEffectiveCustomConnectorPermissionBundle,
   type CustomConnectorRuntimeDataRows,
 } from "./agent-run-create.service";
-import {
-  loadConnectorRuntimeSelection,
-  loadConnectorRuntimeSnapshot,
-} from "./connector-catalog-runtime.service";
+import { loadConnectorRuntimeSelection } from "./connector-catalog-runtime.service";
+import { loadCustomConnectorPermissionBundleDependencySlugs } from "./custom-connector-permission-bundle.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveActiveNetworkPolicyRefreshes } from "./user-permission-grants.service";
 import { loadCustomConnectorRuntimeData } from "./custom-connector.service";
@@ -90,6 +88,18 @@ async function loadCustomSnapshot(args: {
       const customConnectorIds = args.registrations.map((registration) => {
         return registration.customConnectorId;
       });
+      const metadataConnectorSlugs =
+        await loadCustomConnectorPermissionBundleDependencySlugs(tx, {
+          orgId: args.scope.orgId,
+          customConnectorIds,
+        });
+      const connectorCatalogSelection = await loadConnectorRuntimeSelection(
+        tx,
+        {
+          requestedConnectorSlugs: [],
+          metadataConnectorSlugs,
+        },
+      );
       const accountResolutions = await resolveConnectorAccounts(tx, {
         orgId: args.scope.orgId,
         userId: args.scope.userId,
@@ -124,7 +134,6 @@ async function loadCustomSnapshot(args: {
           );
         }
       }
-      const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(tx);
       const featureSwitchContext = await loadUserFeatureSwitchContext(
         tx,
         args.scope.orgId,
@@ -169,7 +178,7 @@ async function loadCustomSnapshot(args: {
         });
       }
       return {
-        connectorCatalogSnapshot,
+        connectorCatalogSelection,
         featureSwitchContext,
         customTargets,
         accountResolutions,
@@ -221,7 +230,7 @@ async function resolveCustomTarget(args: {
   const row = custom.row;
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row,
-    snapshot: args.snapshot.connectorCatalogSnapshot,
+    snapshot: args.snapshot.connectorCatalogSelection,
   });
   if (permissionBundle === undefined) {
     return customUnresolvedResult(target, "permission-bundle-unavailable");
@@ -234,7 +243,7 @@ async function resolveCustomTarget(args: {
   const context = await buildCustomConnectorRuntimeContext({
     rows: [row],
     featureSwitchContext: args.snapshot.featureSwitchContext,
-    connectorCatalogSnapshot: args.snapshot.connectorCatalogSnapshot,
+    connectorCatalogSnapshot: args.snapshot.connectorCatalogSelection,
     grants: [
       custom.grant ?? {
         customConnectorId: target.customConnectorId,

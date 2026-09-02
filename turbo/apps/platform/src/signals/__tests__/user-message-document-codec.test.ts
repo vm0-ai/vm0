@@ -512,6 +512,50 @@ describe("user message document codec", () => {
     expect(messageDocumentToPrompt(structured)).toBe("");
   });
 
+  it("keeps editable annotations on the logical file part", () => {
+    const annotations = {
+      marks: [
+        {
+          id: "mark-1",
+          ordinal: 1,
+          shape: "box" as const,
+          rect: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+          ink: "#5E6AD2",
+          note: "Fix this",
+        },
+      ],
+    };
+    const structured = editorDocToMessageDocument(
+      workflowComposerDocument({
+        type: "doc",
+        content: [{ type: "paragraph" }],
+      }),
+      {
+        attachments: [
+          {
+            ...persistedAttachments()[0]!,
+            annotatedFileId: "annotated-file-one",
+            annotations,
+          },
+        ],
+      },
+    );
+
+    expect(structured).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "file",
+          fileId: "file-one",
+          filenameSnapshot: "file-one.pdf",
+          contentType: "application/pdf",
+          annotatedFileId: "annotated-file-one",
+          annotations,
+        },
+      ],
+    });
+  });
+
   it("serializes feedback cards with their surrounding prompt sections", () => {
     const editorDocument = workflowComposerDocument({
       type: "doc",

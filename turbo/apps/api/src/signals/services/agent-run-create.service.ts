@@ -575,6 +575,7 @@ interface ResolvedAgentExecution {
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
   readonly persistedStorageMounts?: readonly PersistedStorageMount[];
+  readonly previousRunStorageMounts?: readonly PersistedStorageMount[];
   readonly agentSessionId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
@@ -1509,26 +1510,36 @@ function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
-function autoMemoryMountPath(framework: SupportedFramework): string {
+function autoMemoryMountPath(
+  framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
+): string {
+  if (piSandbox !== undefined) {
+    return PI_MEMORY_ROOT;
+  }
   return framework === "codex"
     ? CANONICAL_CODEX_MEMORY_MOUNT_PATH
     : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
 }
 
-function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
+function autoMemoryArtifact(
+  framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
+): ContextArtifact {
   return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
-    mountPath: autoMemoryMountPath(framework),
+    mountPath: autoMemoryMountPath(framework, piSandbox),
   });
 }
 
 function isCanonicalAutoMemoryArtifact(
   artifact: ContextArtifact,
   framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
-    artifact.mountPath === autoMemoryMountPath(framework)
+    artifact.mountPath === autoMemoryMountPath(framework, piSandbox)
   );
 }
 
@@ -1544,9 +1555,10 @@ function withAutoMemoryMissingRootPolicy(
 function withCanonicalAutoMemoryMissingRootPolicy(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
 ): readonly ContextArtifact[] {
   return artifacts.map((artifact) => {
-    return isCanonicalAutoMemoryArtifact(artifact, framework)
+    return isCanonicalAutoMemoryArtifact(artifact, framework, piSandbox)
       ? withAutoMemoryMissingRootPolicy(artifact)
       : artifact;
   });
@@ -1555,22 +1567,24 @@ function withCanonicalAutoMemoryMissingRootPolicy(
 function claimsAutoMemorySlot(
   artifact: ContextArtifact,
   framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME ||
-    artifact.mountPath === autoMemoryMountPath(framework)
+    artifact.mountPath === autoMemoryMountPath(framework, piSandbox)
   );
 }
 
 function withoutSupersededAutoMemoryArtifacts(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
+  piSandbox: PiModelConfig | undefined,
   slotOwnerIndex: number,
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
     return (
       index >= slotOwnerIndex ||
-      !isCanonicalAutoMemoryArtifact(artifact, framework)
+      !isCanonicalAutoMemoryArtifact(artifact, framework, piSandbox)
     );
   });
 }
@@ -1593,9 +1607,56 @@ function composeArtifacts(
   });
 }
 
+function withPinnedPiContinuationMemory(
+  artifacts: readonly ContextArtifact[],
+  previousRunStorageMounts: readonly PersistedStorageMount[] | undefined,
+): readonly ContextArtifact[] {
+  const previousMemoryMount = previousRunStorageMounts?.find((mount) => {
+    return (
+      mount.name === AUTO_MEMORY_ARTIFACT_NAME &&
+      mount.mountPath === PI_MEMORY_ROOT &&
+      mount.version !== undefined
+    );
+  });
+  if (!previousMemoryMount?.version) {
+    return artifacts;
+  }
+  const pinnedMemoryArtifact = withAutoMemoryMissingRootPolicy({
+    name: AUTO_MEMORY_ARTIFACT_NAME,
+    version: previousMemoryMount.version,
+    mountPath: PI_MEMORY_ROOT,
+  });
+  let slotOwnerIndex: number | undefined;
+  for (let index = artifacts.length - 1; index >= 0; index -= 1) {
+    const artifact = artifacts[index];
+    if (
+      artifact &&
+      (artifact.name === AUTO_MEMORY_ARTIFACT_NAME ||
+        artifact.mountPath === PI_MEMORY_ROOT)
+    ) {
+      slotOwnerIndex = index;
+      break;
+    }
+  }
+  if (slotOwnerIndex === undefined) {
+    return [...artifacts, pinnedMemoryArtifact];
+  }
+  const slotOwner = artifacts[slotOwnerIndex]!;
+  if (
+    slotOwner.name !== AUTO_MEMORY_ARTIFACT_NAME ||
+    slotOwner.mountPath !== PI_MEMORY_ROOT
+  ) {
+    return artifacts;
+  }
+  return artifacts.map((artifact, index) => {
+    return index === slotOwnerIndex ? pinnedMemoryArtifact : artifact;
+  });
+}
+
 function artifactsForRun(args: {
   readonly resolved: ResolvedAgentExecution;
   readonly framework: SupportedFramework;
+  readonly piSandbox: PiModelConfig | undefined;
   readonly includeAutoMemory: boolean;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
@@ -1603,9 +1664,16 @@ function artifactsForRun(args: {
   const composeContextArtifacts = isContinuation
     ? []
     : composeArtifacts(args.resolved.content);
-  const baseArtifacts = isContinuation
+  const unpinnedBaseArtifacts = isContinuation
     ? args.resolved.artifacts
     : [...composeContextArtifacts, ...args.resolved.artifacts];
+  const baseArtifacts =
+    isContinuation && args.piSandbox !== undefined && args.includeAutoMemory
+      ? withPinnedPiContinuationMemory(
+          unpinnedBaseArtifacts,
+          args.resolved.previousRunStorageMounts,
+        )
+      : unpinnedBaseArtifacts;
   const bodyArtifacts = args.bodyArtifacts ?? [];
   const artifacts = [...baseArtifacts, ...bodyArtifacts];
   if (!args.includeAutoMemory) {
@@ -1622,23 +1690,32 @@ function artifactsForRun(args: {
   let autoMemorySlotArtifactIndex: number | undefined;
   for (let index = artifacts.length - 1; index >= 0; index -= 1) {
     const artifact = artifacts[index];
-    if (artifact && claimsAutoMemorySlot(artifact, args.framework)) {
+    if (
+      artifact &&
+      claimsAutoMemorySlot(artifact, args.framework, args.piSandbox)
+    ) {
       autoMemorySlotArtifactIndex = index;
       break;
     }
   }
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
-      artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
+      artifacts: [
+        ...artifacts,
+        autoMemoryArtifact(args.framework, args.piSandbox),
+      ],
     };
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (!isCanonicalAutoMemoryArtifact(slotOwner, args.framework)) {
+  if (
+    !isCanonicalAutoMemoryArtifact(slotOwner, args.framework, args.piSandbox)
+  ) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
         args.framework,
+        args.piSandbox,
         autoMemorySlotArtifactIndex,
       ),
     };
@@ -1648,6 +1725,7 @@ function artifactsForRun(args: {
     artifacts: withCanonicalAutoMemoryMissingRootPolicy(
       artifacts,
       args.framework,
+      args.piSandbox,
     ),
   };
 }
@@ -5866,6 +5944,7 @@ function resolveBySessionId(
               previousRun: {
                 id: agentRuns.id,
                 vars: agentRuns.vars,
+                storageMounts: agentRuns.storageMounts,
                 modelProvider: agentRuns.modelProvider,
                 modelRuntimeProvider: agentRuns.modelRuntimeProvider,
                 modelRuntimeModel: agentRuns.modelRuntimeModel,
@@ -5923,6 +6002,8 @@ function resolveBySessionId(
         orgId: snapshot.agent.orgId,
         content: options.executionPlan.content,
         ...resolvedSessionStorage(snapshot.session),
+        previousRunStorageMounts:
+          snapshot.previousRun?.storageMounts ?? undefined,
         vars:
           (snapshot.previousRun?.vars as Record<string, string> | null) ??
           undefined,
@@ -7011,7 +7092,6 @@ function preparePiLaunchResources(args: {
             schemaVersion: 2,
             apiFirstTurn: {
               schemaVersion: 1,
-              ownershipTransfer: { schemaVersion: 1 },
               resourceSnapshotDigest: piResourceSnapshotDigest(
                 piResourceDiscoveryMounts(args.storageMounts),
               ),
@@ -9239,7 +9319,13 @@ function prepareRunOutputMetadata(args: {
   const artifacts = artifactsForRun({
     resolved: args.resolved,
     framework: args.framework,
-    includeAutoMemory: args.piSandbox === undefined,
+    piSandbox: args.piSandbox,
+    includeAutoMemory:
+      args.piSandbox === undefined ||
+      isFeatureEnabled(
+        FeatureSwitchKey.PiMemoryRecall,
+        args.featureSwitchContext,
+      ),
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {

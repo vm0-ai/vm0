@@ -159,6 +159,10 @@ type CallbackQuery = {
   readonly iss?: string;
 };
 
+interface RequestBaseUrlOptions {
+  readonly baseUrl?: string;
+}
+
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const DATADOG_US3_TOKEN_URL = "https://api.us3.datadoghq.com/oauth2/v1/token";
@@ -2645,16 +2649,46 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.authorizationUrl;
     },
 
-    async completeCustomConnectorOAuth2Callback(query: CallbackQuery) {
+    async startCustomConnectorOAuth2AtBaseUrl(
+      actor: ApiTestUser,
+      connectorId: string,
+      baseUrl: string,
+      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+    ): Promise<string> {
       const client = setupApp({
+        baseUrl,
+        context,
+        routes: customConnectorOAuth2Routes,
+      })(customConnectorOAuth2Contract);
+      const response = await accept(
+        client.start({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: { account },
+        }),
+        [200],
+      );
+      return response.body.authorizationUrl;
+    },
+
+    async completeCustomConnectorOAuth2Callback(
+      query: CallbackQuery,
+      options: RequestBaseUrlOptions = {},
+    ) {
+      const client = setupApp({
+        ...options,
         context,
         routes: customConnectorOAuth2Routes,
       })(customConnectorOAuth2Contract);
       return await accept(client.callback({ query }), [307]);
     },
 
-    async completeCustomConnectorOAuth2CallbackResult(query: CallbackQuery) {
+    async completeCustomConnectorOAuth2CallbackResult(
+      query: CallbackQuery,
+      options: RequestBaseUrlOptions = {},
+    ) {
       const client = setupApp({
+        ...options,
         context,
         routes: customConnectorOAuth2Routes,
       })(customConnectorOAuth2Contract);

@@ -2778,7 +2778,7 @@
         "prefixes": "Prefijos",
         "prefixesHint": "(uno por línea, solo HTTPS)",
         "redirectCopy": "Copiar URL de redirección",
-        "redirectHint": "(Registra esta URL en la aplicación OAuth del proveedor.)",
+        "redirectHint": "(Registra esta URL en la aplicación OAuth del proveedor. Mantén también registradas las URL de redirección existentes de VM0 u Okou.)",
         "redirectUrl": "URL de redirección",
         "removeApiAuthentication": "Eliminar la autenticación por API",
         "removeNoAuthentication": "Quitar «Sin autenticación»",

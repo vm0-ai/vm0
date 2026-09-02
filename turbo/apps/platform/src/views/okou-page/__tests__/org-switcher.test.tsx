@@ -100,7 +100,7 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      const switcher = buttonByText("Acme");
+      const switcher = buttonByLabel("Switch workspace");
       expect(
         within(switcher).getByTestId("pending-invitations-badge"),
       ).toBeInTheDocument();
@@ -185,12 +185,7 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      const label = screen.getByText("Solo");
-      const trigger = label.closest("button");
-      if (!trigger) {
-        throw new Error("Org switcher trigger not found");
-      }
-      return trigger;
+      return buttonByLabel("Switch workspace");
     });
 
     click(orgSwitcher);
@@ -259,12 +254,7 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      const label = screen.getByText("Shared");
-      const trigger = label.closest("button");
-      if (!trigger) {
-        throw new Error("Org switcher trigger not found");
-      }
-      return trigger;
+      return buttonByLabel("Switch workspace");
     });
 
     click(orgSwitcher);
@@ -323,12 +313,7 @@ describe("zero org switcher", () => {
     });
 
     const orgSwitcher = await waitFor(() => {
-      const label = screen.getByText("Current");
-      const trigger = label.closest("button");
-      if (!trigger) {
-        throw new Error("Org switcher trigger not found");
-      }
-      return trigger;
+      return buttonByLabel("Switch workspace");
     });
 
     click(orgSwitcher);
@@ -393,8 +378,9 @@ describe("zero org switcher", () => {
       },
     });
 
-    await screen.findByText("Acme");
-    const switcher = buttonByLabel("Trocar de espaço de trabalho");
+    const switcher = await waitFor(() => {
+      return buttonByLabel("Trocar de espaço de trabalho");
+    });
     click(switcher);
 
     await waitFor(() => {
