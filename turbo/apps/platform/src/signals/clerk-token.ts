@@ -1,11 +1,24 @@
-import type { BrowserClerk as Clerk } from "@clerk/shared/types";
-
 import { createDeferredPromise, withCleanup } from "./utils.ts";
 
-export type ClerkTokenSource = Pick<Clerk, "addListener" | "session">;
-type SettledClerkSession = Exclude<Clerk["session"], undefined>;
+interface ClerkTokenSession {
+  getToken(options?: { readonly skipCache?: boolean }): Promise<string | null>;
+}
 
-function waitForSettledClerkSession(
+interface ClerkTokenResources {
+  readonly session?: ClerkTokenSession | null;
+}
+
+export interface ClerkTokenSource {
+  readonly session: ClerkTokenSession | null | undefined;
+  addListener(
+    listener: (resources: ClerkTokenResources) => void,
+    options?: { readonly skipInitialEmit?: boolean },
+  ): () => void;
+}
+
+type SettledClerkSession = Exclude<ClerkTokenSource["session"], undefined>;
+
+export function waitForClerkSession(
   clerk: ClerkTokenSource,
   signal: AbortSignal,
 ): Promise<SettledClerkSession> {
@@ -16,7 +29,7 @@ function waitForSettledClerkSession(
   }
 
   const deferred = createDeferredPromise<SettledClerkSession>(signal);
-  const resolveIfSettled = (session: Clerk["session"]): void => {
+  const resolveIfSettled = (session: ClerkTokenSource["session"]): void => {
     if (session === undefined) {
       return;
     }
@@ -53,7 +66,7 @@ export async function readClerkToken(
   signal: AbortSignal,
   options: { readonly skipCache?: true } = {},
 ): Promise<string | null> {
-  const session = await waitForSettledClerkSession(clerk, signal);
+  const session = await waitForClerkSession(clerk, signal);
   signal.throwIfAborted();
   if (session === null) {
     return null;

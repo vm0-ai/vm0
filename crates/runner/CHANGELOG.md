@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.184.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.1...runner-rs-v0.184.2) (2026-09-02)
+
+
+### Documentation
+
+* **mitm-addon:** clarify Anthropic SSE callback gating ([#31146](https://github.com/vm0-ai/vm0/issues/31146)) ([7918adb](https://github.com/vm0-ai/vm0/commit/7918adba36c3ae21d85ad412ee61f0ea3924c293))
+
+
+### Refactoring
+
+* **rust:** share run artifact payload contract ([#31153](https://github.com/vm0-ai/vm0/issues/31153)) ([16c79bb](https://github.com/vm0-ai/vm0/commit/16c79bb75648f4b2def7b28ae0b1aadff326941c))
+
+
+### Performance Improvements
+
+* **runner:** batch idle pressure eviction ([#31165](https://github.com/vm0-ai/vm0/issues/31165)) ([aefdda8](https://github.com/vm0-ai/vm0/commit/aefdda825cc0b70e97386a2d17eb8d99f0bbc882))
+
+## [0.184.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.0...runner-rs-v0.184.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **python:** stop starred tails changing fixed first arguments ([#31131](https://github.com/vm0-ai/vm0/issues/31131)) ([6839ddc](https://github.com/vm0-ai/vm0/commit/6839ddc43e8ad32d5f71278cb1dce435558e7eec))
+
+
+### Refactoring
+
+* **runner:** remove model usage observation reporting ([#31091](https://github.com/vm0-ai/vm0/issues/31091)) ([54cc2d9](https://github.com/vm0-ai/vm0/commit/54cc2d9f2c38fb3f9fb7d4715b1f869d78561488))
+
+
+### Performance Improvements
+
+* **python:** scan proxy connect headers incrementally ([#31120](https://github.com/vm0-ai/vm0/issues/31120)) ([cb2ae6d](https://github.com/vm0-ai/vm0/commit/cb2ae6d2ba9d5c9e24929e899d1ac741e4aa72f5))
+* **runner:** bound session history sidecar exports ([#31115](https://github.com/vm0-ai/vm0/issues/31115)) ([b5bf5b9](https://github.com/vm0-ai/vm0/commit/b5bf5b9154ac85edf3b928bd9a1f627fe2b07a6a))
+* **runner:** expand fresh delivery scan to 64 ([#31127](https://github.com/vm0-ai/vm0/issues/31127)) ([2440591](https://github.com/vm0-ai/vm0/commit/2440591c9e338e8dfd96e5729e9b46d495788146))
+
 ## [0.184.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.4...runner-rs-v0.184.0) (2026-09-02)
 
 

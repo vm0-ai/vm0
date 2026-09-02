@@ -1777,7 +1777,7 @@ describe("POST /api/billing/checkout", () => {
 
   it("tags preview Stripe checkout objects with the current job ref", async () => {
     mockEnv("ENV", "preview");
-    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-123");
+    mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-123");
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -13960,7 +13960,7 @@ describe("usage pack allocation management", () => {
   it("ignores invitation PaymentIntents from another preview job", async () => {
     const purchase = await beginInvitationPurchase();
     mockEnv("ENV", "preview");
-    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-current");
+    mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-current");
 
     await postManagedUsagePackEvent("payment_intent.succeeded", {
       id: purchase.paymentIntentId,

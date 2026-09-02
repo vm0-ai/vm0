@@ -1722,14 +1722,14 @@ describe("chat lifecycle", () => {
       name: "Codex model capacity",
       threadId: "e7000000-0000-4000-a000-000000000030",
       error: "Selected model is at capacity. Please try a different model.",
-      title: "Codex model is busy",
+      title: "This model is busy right now",
     },
     {
       name: "Claude Code model capacity",
       threadId: "e7000000-0000-4000-a000-000000000031",
       error:
         "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
-      title: "Claude Code model is busy",
+      title: "This model is busy right now",
     },
   ])(
     "recognizes the latest $name error",
@@ -2137,7 +2137,7 @@ describe("chat lifecycle", () => {
     ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
-    click(buttonByText("Continue", card));
+    click(buttonByText("Try again", card));
     await waitFor(() => {
       expect(retriedPrompt).toBe("continue");
       expect(retriedUserMessage).toMatchObject({
@@ -2234,7 +2234,9 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
     expect(sentPrompt).toBeUndefined();
 
-    click(within(card).getByRole("combobox", { name: "GPT 5.6 Sol" }));
+    // The failed model is excluded from the menu, so the trigger offers the
+    // placeholder rather than a choice the user cannot make.
+    click(within(card).getByRole("combobox", { name: "Switch model" }));
     await expect(
       screen.findByRole("option", { name: /GPT 5\.6 Luna/u }),
     ).resolves.toBeInTheDocument();

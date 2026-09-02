@@ -27,7 +27,6 @@ import {
   ANNOTATION_INKS,
   ANNOTATION_RESIZE_EDGES,
   markOrdinal,
-  noteOnImage,
   nextMarkOrdinal,
   type AnnotationDrag,
   type AnnotationInk,
@@ -336,6 +335,7 @@ function MarkNotePopover({
 }) {
   const { t } = useTranslation();
   const setNote = useSet(signals.setAnnotationMarkNote$);
+  const bindNoteField = useSet(signals.bindAnnotationNoteField$);
   const removeMark = useSet(signals.removeAnnotationMark$);
   const deselect = useSet(signals.selectAnnotationMark$);
   const anchor = markAnchor(mark);
@@ -361,8 +361,15 @@ function MarkNotePopover({
           className="h-2.5 w-2.5 shrink-0 rounded-full"
         />
         <Input
-          // Only text marks take the caret. Focusing the field for every mark
-          // is what made Delete land in the input instead of removing the mark.
+          // The element is owned by `bindAnnotationNoteField$`, which is what
+          // `selectAnnotationNote$` focuses when a printed note is clicked. It
+          // stays a ref rather than an `autoFocus` because the field is already
+          // mounted when the popover is open, and a mount-time attribute cannot
+          // fire twice.
+          ref={bindNoteField}
+          // Only text marks take the caret on open: focusing the field for
+          // every mark is what made Delete land in the input instead of
+          // removing the mark.
           autoFocus={mark.shape === "text"}
           value={noteOf(mark)}
           onChange={(event) => {
@@ -558,7 +565,12 @@ function KeyboardShortcuts({
   const redo = useSet(signals.redoAnnotation$);
   const close = useSet(signals.closeAnnotationEditor$);
   const commit = useSet(signals.commitAnnotation$);
-  const selectedId = useGet(signals.annotationSelectedMarkId$);
+  // The mark the editor has OPEN, not the one selected for reshaping. Escape
+  // backs out one layer, and with a note open `annotationSelectedMarkId$` is
+  // null — so Escape took the `else` and closed the whole session, discarding
+  // every mark drawn so far. Clicking a note to edit it and pressing Escape to
+  // dismiss the caret is now the primary path, which made that the likely one.
+  const selectedId = useGet(signals.annotationOpenMarkId$);
   const pageSignal = useGet(pageSignal$);
   let cleanup: (() => void) | null = null;
 
@@ -656,22 +668,6 @@ function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
     };
   }
 
-  if (drag.mode === "note-move") {
-    return {
-      x: clamp01(start.x + dx),
-      y: clamp01(start.y + dy),
-      width: start.width,
-      height: 0,
-    };
-  }
-
-  if (drag.mode === "note-resize") {
-    // Only the width is stored; the height follows from how the text wraps.
-    // The floor and the image bounds belong to `clampNoteBox`, so there is one
-    // owner of what a legal note box is.
-    return { x: start.x, y: start.y, width: start.width + dx, height: 0 };
-  }
-
   // An edge grip moves one side; a corner grip moves two. Anything the grip
   // does not touch keeps its start value, so dragging the top edge cannot
   // shift the box sideways.
@@ -703,7 +699,6 @@ function useStrokeHandlers(signals: ImageAnnotationSignals): StrokeHandlers {
   const setDrag = useSet(signals.setAnnotationDrag$);
   const addMark = useSet(signals.addAnnotationMark$);
   const selectMark = useSet(signals.selectAnnotationMark$);
-  const selectNote = useSet(signals.selectAnnotationNote$);
 
   const pointAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = surface?.getBoundingClientRect();
@@ -725,8 +720,9 @@ function useStrokeHandlers(signals: ImageAnnotationSignals): StrokeHandlers {
       }
       // Starting a stroke on bare canvas also clears the selection, so the
       // handles and note of the previous mark do not linger over a new one.
+      // One call is enough: a null selection has no kind, and clearing it
+      // through both commands only read as if it did.
       selectMark(null);
-      selectNote(null);
       event.currentTarget.setPointerCapture(event.pointerId);
       setStroke({ tool, from: point, to: point, points: [point] });
     },
@@ -817,32 +813,6 @@ function handleAnchor(corner: ResizeCorner): { fx: number; fy: number } {
   return { fx, fy };
 }
 
-/** A note is resized on one axis only, so it gets one grip on its right edge. */
-function NoteWidthHandle({
-  mark,
-  onGrab,
-}: {
-  mark: ImageAnnotationMark;
-  onGrab: (event: ReactPointerEvent<HTMLElement>) => void;
-}) {
-  const note = noteOnImage(mark);
-  if (!note) {
-    return null;
-  }
-  return (
-    <span
-      role="presentation"
-      onPointerDown={onGrab}
-      style={{
-        left: percent(note.box.x + note.box.width),
-        top: percent(note.box.y),
-      }}
-      className="absolute -ml-[5px] mt-1.5 h-2.5 w-2.5 cursor-ew-resize rounded-full border border-border bg-background shadow-sm"
-      data-testid="annotation-note-width-handle"
-    />
-  );
-}
-
 /**
  * Handles only appear for marks that have a rectangle. A freehand stroke or an
  * arrow can still be selected and deleted; resizing them would mean editing
@@ -902,10 +872,14 @@ function ResizeHandles({
 }
 
 /**
- * Every note printed on the image, plus the grips for the one being placed.
+ * Every note printed on the image.
  *
- * It owns its own selection and drag so that moving a sentence into clear space
- * never disturbs the mark it explains — the two are edited independently.
+ * A note is NOT a free object. It is placed by `defaultNoteBox` under the mark
+ * it explains, and clicking it opens that mark's sentence for editing — Tong:
+ * *"mark 标注的文字还是不要让用户随便拖动了。另外标注文字点击也可以进行文本编辑，
+ * 现在是拖动"*. It used to carry its own move drag and a width grip, which meant
+ * the one gesture a label invites — click the words, change the words — was the
+ * one thing it did not do.
  */
 function NoteLayer({
   marks,
@@ -914,39 +888,7 @@ function NoteLayer({
   readonly marks: readonly ImageAnnotationMark[];
   readonly signals: ImageAnnotationSignals;
 }) {
-  const selectedNoteId = useGet(signals.annotationSelectedNoteId$);
-  const selectNote = useSet(signals.selectAnnotationNote$);
-  const surface = useGet(signals.annotationSurface$);
-  const beginDrag = useSet(signals.setAnnotationDrag$);
-
-  const selectedNote = marks.find((mark) => {
-    return mark.id === selectedNoteId && noteOnImage(mark) !== null;
-  });
-
-  const grabNote = (
-    mark: ImageAnnotationMark,
-    mode: "note-move" | "note-resize",
-    event: ReactPointerEvent<HTMLElement>,
-  ) => {
-    // The label sits on the drawing surface, so without this the grab also
-    // starts a new stroke on the canvas underneath it.
-    event.stopPropagation();
-    selectNote(mark.id);
-    const note = noteOnImage(mark);
-    const bounds = surface?.getBoundingClientRect();
-    if (!note || !bounds || bounds.width === 0) {
-      return;
-    }
-    beginDrag({
-      markId: mark.id,
-      mode,
-      origin: {
-        x: (event.clientX - bounds.left) / bounds.width,
-        y: (event.clientY - bounds.top) / bounds.height,
-      },
-      startRect: { ...note.box, height: 0 },
-    });
-  };
+  const openNote = useSet(signals.selectAnnotationNote$);
 
   return (
     <>
@@ -956,22 +898,11 @@ function NoteLayer({
             key={`${mark.id}-note`}
             mark={mark}
             onSelect={() => {
-              selectNote(mark.id);
-            }}
-            onGrab={(event) => {
-              grabNote(mark, "note-move", event);
+              openNote(mark.id);
             }}
           />
         );
       })}
-      {selectedNote && (
-        <NoteWidthHandle
-          mark={selectedNote}
-          onGrab={(event) => {
-            grabNote(selectedNote, "note-resize", event);
-          }}
-        />
-      )}
     </>
   );
 }
@@ -1024,10 +955,10 @@ function EditorStage({
   const zoom = useGet(signals.annotationZoom$);
   const surface = useGet(signals.annotationSurface$);
   const selectedId = useGet(signals.annotationSelectedMarkId$);
+  const openMarkId = useGet(signals.annotationOpenMarkId$);
   const selectMark = useSet(signals.selectAnnotationMark$);
   const bindSurface = useSet(signals.bindAnnotationSurface$);
   const moveRect = useSet(signals.moveAnnotationMarkRect$);
-  const moveNoteBox = useSet(signals.moveAnnotationNoteBox$);
   const handlers = useStrokeHandlers(signals);
 
   const box = surface?.getBoundingClientRect();
@@ -1039,17 +970,20 @@ function EditorStage({
   const selectedMark = annotation.marks.find((mark) => {
     return mark.id === selectedId;
   });
+  // Clicking a printed note opens the same popover the mark opens, with the
+  // caret already in the field. Only the grips stay off: the note was clicked
+  // to be rewritten, not to reshape the region it describes.
+  const openMark = annotation.marks.find((mark) => {
+    return mark.id === openMarkId;
+  });
   const grabHandle = useGrabHandle(signals, selectedMark);
 
-  // One pointer move, two things it might be dragging.
+  // A drag only ever moves or resizes a MARK now; a note follows the mark it
+  // belongs to and is never dragged (see `NoteLayer`).
   const applyDrag = (
     drag: AnnotationDrag,
     rect: { x: number; y: number; width: number; height: number },
   ) => {
-    if (drag.mode === "note-move" || drag.mode === "note-resize") {
-      moveNoteBox(drag.markId, { x: rect.x, y: rect.y, width: rect.width });
-      return;
-    }
     moveRect(drag.markId, rect);
   };
 
@@ -1121,9 +1055,7 @@ function EditorStage({
           {selectedMark && (
             <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
           )}
-          {selectedMark && (
-            <MarkNotePopover mark={selectedMark} signals={signals} />
-          )}
+          {openMark && <MarkNotePopover mark={openMark} signals={signals} />}
           {preview && (
             <MarkShape
               mark={preview}

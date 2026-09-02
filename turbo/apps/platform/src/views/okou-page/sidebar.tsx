@@ -59,6 +59,7 @@ import {
 import { ThreeColumnSearchDialog } from "./sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
@@ -217,9 +218,13 @@ function AccountDropdownContainer({
 
 function ExpandedSidebar() {
   const expanded = useGet(sidebarExpanded$);
+  const { t } = useTranslation();
   return (
     <aside
       data-sidebar-expanded={expanded || undefined}
+      aria-label={t(($) => {
+        return $.appShell.sidebar.ariaLabel;
+      })}
       className={cn(
         "zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
         "hidden data-[sidebar-expanded]:max-md:flex md:hidden",
@@ -227,6 +232,7 @@ function ExpandedSidebar() {
     >
       <ExpandedHeader />
       <ExpandedMainNav />
+      <InstatusStatusNotice placement="sidebar" />
       <ExpandedUpgradeSection />
       <ExpandedFooter />
     </aside>

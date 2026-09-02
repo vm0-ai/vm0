@@ -493,6 +493,9 @@ function mockCustomConnectorStory(): {
   });
   context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
     createBodies.push(body);
+    if (body.kind === "mcp" || body.authMode === "automatic") {
+      throw new Error("This UI story only creates HTTP custom connectors");
+    }
     const prefixTemplates = body.prefixTemplates ?? [];
     const fields = body.fields ?? [];
     const headerInjections = body.headerInjections ?? [];
@@ -6196,6 +6199,7 @@ describe("connectors page", () => {
         };
         authWindow.close();
         return respond(200, {
+          result: "authorization",
           authorizationUrl: "https://oauth.acme.test/authorize?state=mcp-ui",
         });
       },
@@ -6708,6 +6712,7 @@ describe("connectors page", () => {
         };
         authWindow.close();
         return respond(200, {
+          result: "authorization",
           authorizationUrl: "https://oauth.acme.test/authorize?state=ui-test",
         });
       },
@@ -7498,6 +7503,7 @@ describe("connectors page", () => {
         };
         authWindow.close();
         return respond(200, {
+          result: "authorization",
           authorizationUrl: "https://oauth.acme.test/authorize?state=test",
           connectionId,
         });

@@ -351,6 +351,7 @@ describe("Pi sandbox execution contract", () => {
       provider: "deepseek",
       baseUrl: "https://api.deepseek.com/",
       model: "deepseek-v4-flash",
+      api: "openai-responses" as const,
       apiKeyEnv: "OPENAI_API_KEY",
       credentialSecretName: "DEEPSEEK_API_KEY",
     },
@@ -378,10 +379,22 @@ describe("Pi sandbox execution contract", () => {
     rawSize: 1024,
   };
 
-  it("accepts optional Terra runtime policy while preserving legacy configs", () => {
+  it("keeps legacy Pi transports decodable while current configs use Responses", () => {
     expect(piModelConfigSchema.parse(piStoredContext.piModelConfig)).toEqual(
       piStoredContext.piModelConfig,
     );
+    const { api: _currentApi, ...legacyBase } = piStoredContext.piModelConfig;
+    for (const api of [
+      undefined,
+      "openai-completions",
+      "openai-codex-responses",
+    ] as const) {
+      const legacy = {
+        ...legacyBase,
+        ...(api === undefined ? {} : { api }),
+      };
+      expect(piModelConfigSchema.parse(legacy)).toEqual(legacy);
+    }
     expect(
       piModelConfigSchema.parse({
         provider: "openai",

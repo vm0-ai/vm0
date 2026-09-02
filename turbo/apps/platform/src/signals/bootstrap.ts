@@ -97,6 +97,7 @@ import {
   reloadFeatureSwitch$,
 } from "./external/feature-switch.ts";
 import {
+  setupBrowserLifecycleDiagnostics$,
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "./connection-diagnostics.ts";
@@ -543,7 +544,6 @@ export const bootstrap$ = command(
       getCapturedPreviewBypassForTarget(apiBaseUrl);
     set(setApiClientRuntime$, {
       clerk: get(clerk$),
-      environment: "app",
       apiBaseUrl,
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
@@ -556,6 +556,7 @@ export const bootstrap$ = command(
     // authenticated services, so their initial Clerk and Ably waits are kept
     // even while remote feature-switch hydration is still pending.
     set(setupConnectionDiagnostics$, signal);
+    set(setupBrowserLifecycleDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,

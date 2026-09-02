@@ -3,7 +3,7 @@ import { pathParams$, searchParams$ } from "../route.ts";
 import { setSidebarExpanded$ } from "../okou-page/nav.ts";
 import { setPendingDeleteThreadId$ } from "../okou-page/sidebar-state.ts";
 import { threadMeta } from "./chat-thread-event-sourcing.ts";
-import { sidebarActiveThreadIds$ } from "./chat-thread-indicators.ts";
+import { sidebarActiveThreadIds$ } from "./chat-thread-indicators-from-worker.ts";
 import { pinChatThread$, unpinChatThread$ } from "./chat-event.ts";
 import {
   currentLeftThread$,

@@ -1942,8 +1942,8 @@
       "providerIncompatibleAction": "Starten Sie eine neue Sitzung",
       "providerIncompatiblePrefix": "Diese Sitzung wurde bei einem anderen Modellanbieter gestartet und kann nicht mit dem aktuellen fortgesetzt werden.",
       "recovery": {
-        "capacityDescription": "Dieses Modell ist vorübergehend ausgelastet. Versuchen Sie es in einigen Minuten erneut oder wechseln Sie jetzt das Modell.",
-        "capacityTitle": "{{framework}}-Modell ist ausgelastet",
+        "capacityDescription": "Versuchen Sie es gleich erneut oder wechseln Sie das Modell.",
+        "capacityTitle": "Dieses Modell ist gerade ausgelastet",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Fortfahren",
@@ -4660,6 +4660,20 @@
       "teamDescription": "Skalieren Sie Ihr Team mit 10 parallelen Ausführungen und mehr Credits."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Service-Update schließen",
+    "label": "Service-Statusupdates",
+    "statuses": {
+      "identified": "Problem identifiziert",
+      "incident": "Service-Störung",
+      "investigating": "Wird untersucht",
+      "maintenance": "Wartung",
+      "maintenanceInProgress": "Wartung läuft",
+      "maintenanceScheduled": "Wartung geplant",
+      "monitoring": "Wiederherstellung wird überwacht"
+    },
+    "viewUpdates": "Neueste Updates ansehen"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Konto hinzufügen",
@@ -4791,6 +4805,7 @@
       "groups": {
         "alpha": "Alpha",
         "beta": "Beta",
+        "internal": "Intern",
         "released": "Veröffentlicht"
       },
       "title": "Labor"

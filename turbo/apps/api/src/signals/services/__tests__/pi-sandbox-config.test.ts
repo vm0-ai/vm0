@@ -21,6 +21,27 @@ const OPENROUTER_TERRA_ROUTE = {
 } as const;
 
 describe("Pi sandbox model configuration", () => {
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
+    "resolves direct %s through Responses",
+    (selectedModel) => {
+      expect(
+        resolvePiSandboxModelConfig({
+          type: "built-in",
+          concreteType: "deepseek",
+          environment: { OPENAI_MODEL: selectedModel },
+          selectedModel,
+        }),
+      ).toStrictEqual({
+        provider: "deepseek",
+        baseUrl: "https://api.deepseek.com/",
+        model: selectedModel,
+        api: "openai-responses",
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "DEEPSEEK_API_KEY",
+      });
+    },
+  );
+
   it("resolves the built-in OpenAI Terra primary route", () => {
     expect(
       resolvePiSandboxModelConfig({
@@ -161,6 +182,35 @@ describe("Pi sandbox model configuration", () => {
       }),
     ).toBeNull();
   });
+
+  it.each([
+    {
+      concreteType: "vercel-ai-gateway-codex",
+      environment: {
+        OPENAI_BASE_URL: "https://ai-gateway.vercel.sh/v1",
+        OPENAI_MODEL: "gpt-5.6-terra",
+      },
+    },
+    {
+      concreteType: "codex-oauth-token",
+      environment: {
+        OPENAI_BASE_URL: "https://chatgpt.com/backend-api",
+        OPENAI_MODEL: "gpt-5.6-terra",
+      },
+    },
+  ] as const)(
+    "keeps unreachable $concreteType routes outside the Pi launch config",
+    ({ concreteType, environment }) => {
+      expect(
+        resolvePiSandboxModelConfig({
+          type: "built-in",
+          concreteType,
+          environment,
+          selectedModel: "gpt-5.6-terra",
+        }),
+      ).toBeNull();
+    },
+  );
 
   it.each(["web", "agent"] as const)(
     "makes standard built-in Terra eligible for %s chat",

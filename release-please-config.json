@@ -28,6 +28,9 @@
         "turbo/apps/platform": {
             "release-type": "node"
         },
+        "turbo/apps/app-worker": {
+            "release-type": "node"
+        },
         "turbo/apps/desktop": {
             "release-type": "node",
             "component": "desktop"

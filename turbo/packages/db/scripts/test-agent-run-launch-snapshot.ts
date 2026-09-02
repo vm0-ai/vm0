@@ -265,6 +265,7 @@ async function readConstraintCatalog(client: Client): Promise<{
 async function validateConstraintValues(
   client: Client,
   runId: string,
+  supportsV2: boolean,
 ): Promise<void> {
   await client.query(
     `UPDATE "agent_runs" SET "launch_snapshot" = NULL WHERE "id" = $1`,
@@ -287,6 +288,29 @@ async function validateConstraintValues(
         runId,
       ],
     );
+  }
+
+  if (supportsV2) {
+    for (const framework of ["claude-code", "codex", "pi"] as const) {
+      for (const piMemoryGenerationEnabled of [false, true]) {
+        await client.query(
+          `
+            UPDATE "agent_runs"
+            SET "launch_snapshot" = $1::jsonb
+            WHERE "id" = $2
+          `,
+          [
+            JSON.stringify({
+              schemaVersion: 2,
+              framework,
+              runnerProfile: "vm0/default",
+              piMemoryGenerationEnabled,
+            }),
+            runId,
+          ],
+        );
+      }
+    }
   }
 
   await client.query(
@@ -316,6 +340,29 @@ async function validateConstraintValues(
       extra: "rejected",
     },
     { schemaVersion: 2, framework: "codex", runnerProfile: "vm0/default" },
+    {
+      schemaVersion: 2,
+      framework: "codex",
+      runnerProfile: "vm0/default",
+      piMemoryGenerationEnabled: "true",
+    },
+    {
+      schemaVersion: 2,
+      framework: "codex",
+      runnerProfile: "vm0/default",
+      piMemoryGenerationEnabled: true,
+      extra: "rejected",
+    },
+    ...(!supportsV2
+      ? [
+          {
+            schemaVersion: 2,
+            framework: "codex",
+            runnerProfile: "vm0/default",
+            piMemoryGenerationEnabled: true,
+          },
+        ]
+      : []),
     {
       schemaVersion: "1",
       framework: "codex",
@@ -367,6 +414,7 @@ function validateCallerIsolation(): void {
     "turbo/apps/api/src/signals/services/log-detail-run-selection.ts",
     "turbo/apps/api/src/signals/services/logs.service.ts",
     "turbo/apps/api/src/test-fixtures/agent-runs.ts",
+    "turbo/apps/api/src/test-fixtures/pi-memory-stage1-candidates.ts",
     "turbo/packages/api-contracts/src/contracts/test-runtime-state.ts",
   ]);
 
@@ -578,7 +626,7 @@ export async function validateAgentRunLaunchSnapshotMigration(): Promise<void> {
 
     const validatedConstraint = await readConstraintCatalog(setup);
     assert.equal(validatedConstraint.validated, true);
-    await validateConstraintValues(setup, fixture.runId);
+    await validateConstraintValues(setup, fixture.runId, false);
 
     await applyMigrationsFromDirectoryUpToTag(
       setup,
@@ -655,8 +703,10 @@ export async function validateAgentRunLaunchSnapshotSchema(
     });
     assert.equal((await readConstraintCatalog(client)).validated, true);
     await seedCanonicalAgentRun(client, fixture);
-    await validateConstraintValues(client, fixture.runId);
-    console.log("   ✅ fresh schema matches the nullable strict v1 contract\n");
+    await validateConstraintValues(client, fixture.runId, true);
+    console.log(
+      "   ✅ fresh schema matches the nullable strict v1/v2 contract\n",
+    );
   } finally {
     await client.end();
   }

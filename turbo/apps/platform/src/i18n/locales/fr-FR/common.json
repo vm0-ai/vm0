@@ -1973,8 +1973,8 @@
       "providerIncompatibleAction": "Commencer une nouvelle session",
       "providerIncompatiblePrefix": "Cette session a été commencée avec un fournisseur de modèle différent et ne peut pas être continuée avec le fournisseur actuel.",
       "recovery": {
-        "capacityDescription": "Ce modèle est temporairement saturé. Réessayez dans quelques minutes ou changez de modèle maintenant.",
-        "capacityTitle": "Le modèle {{framework}} est occupé",
+        "capacityDescription": "Réessayez dans quelques instants ou changez de modèle.",
+        "capacityTitle": "Ce modèle est saturé pour le moment",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Continuer",
@@ -4714,6 +4714,20 @@
       "teamDescription": "Développez votre équipe avec 10 exécutions parallèles et plus de crédits."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Masquer la mise à jour du service",
+    "label": "Mises à jour de l’état du service",
+    "statuses": {
+      "identified": "Problème identifié",
+      "incident": "Incident de service",
+      "investigating": "Investigation en cours",
+      "maintenance": "Maintenance",
+      "maintenanceInProgress": "Maintenance en cours",
+      "maintenanceScheduled": "Maintenance planifiée",
+      "monitoring": "Surveillance du rétablissement"
+    },
+    "viewUpdates": "Voir les dernières mises à jour"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Ajouter un compte",
@@ -4846,6 +4860,7 @@
       "groups": {
         "alpha": "Alpha",
         "beta": "Bêta",
+        "internal": "Internes",
         "released": "Publiées"
       },
       "title": "Laboratoire"

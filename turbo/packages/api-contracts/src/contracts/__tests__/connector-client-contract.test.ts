@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 
 import {
   connectorExternalCodeSessionStartResponseSchema,
@@ -267,11 +266,7 @@ describe("custom connector response contracts", () => {
     ).toStrictEqual({ ...payload, oauthSetup: "custom" });
   });
 
-  it("keeps automatic OAuth additive for previous response clients", () => {
-    const previousAuthResponseSchema = z.object({
-      authMode: z.enum(["manual", "oauth"]),
-      oauthConfig: z.object({}).passthrough().optional(),
-    });
+  it("parses top-level Automatic MCP authentication", () => {
     const payload = {
       id: "00000000-0000-4000-a000-000000000006",
       slug: "_example-mcp",
@@ -280,8 +275,7 @@ describe("custom connector response contracts", () => {
       fields: [],
       headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
       permissionBundleRef: null,
       skillMarkdown: null,
       storageVersion: 1,
@@ -296,9 +290,6 @@ describe("custom connector response contracts", () => {
     } as const;
 
     expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
-    expect(previousAuthResponseSchema.parse(payload)).toStrictEqual({
-      authMode: "oauth",
-    });
   });
 
   it("rejects responses without an auth mode", () => {
@@ -392,10 +383,12 @@ describe("connector client request contracts", () => {
     expect(
       createCustomConnectorBodySchema.parse({
         ...oauthDefinition,
-        authMode: "oauth",
-        oauthSetup: "automatic",
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
       }),
-    ).toMatchObject({ authMode: "oauth", oauthSetup: "automatic" });
+    ).toMatchObject({ authMode: "automatic" });
   });
 
   it("keeps additive request fields forward-compatible", () => {
@@ -411,8 +404,10 @@ describe("connector client request contracts", () => {
   it("rejects ambiguous OAuth setup variants", () => {
     const automatic = {
       ...oauthDefinition,
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
     } as const;
 
     expect(() => {

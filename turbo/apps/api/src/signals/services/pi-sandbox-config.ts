@@ -12,11 +12,7 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  isPiAgentModelSupported,
-  resolvePiAgentModelApi,
-  type PiOpenAICompatibleProvider,
-} from "@okouai/pi-agent-runtime";
+import { isPiAgentModelSupported } from "@okouai/pi-agent-runtime";
 
 import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
 import { isWebChatTriggerSource } from "./chat-trigger-source.service";
@@ -31,31 +27,35 @@ function normalizedBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+interface PiRuntimeContract {
+  readonly api: "openai-responses";
+  readonly thinkingLevel?: PiModelConfig["thinkingLevel"];
+  readonly serviceTier?: PiModelConfig["serviceTier"];
+}
+
 function piRuntimeContract(args: {
   readonly providerType: string;
-  readonly concreteType: ModelProviderType;
   readonly selectedModel: string;
-  readonly api: NonNullable<PiModelConfig["api"]>;
   readonly codexServiceTier: "fast" | undefined;
-}): Pick<PiModelConfig, "api" | "thinkingLevel" | "serviceTier"> {
+}): PiRuntimeContract {
   if (
     isBuiltInModelProviderType(args.providerType) &&
     args.selectedModel === "gpt-5.6-terra"
   ) {
     return {
-      api: args.api,
+      api: "openai-responses",
       thinkingLevel: "low",
       ...(args.codexServiceTier === "fast"
         ? { serviceTier: "priority" as const }
         : {}),
     };
   }
-  return args.concreteType === "openrouter-codex" ? { api: args.api } : {};
+  return { api: "openai-responses" };
 }
 
 function piProvider(
   concreteType: ModelProviderType,
-): PiOpenAICompatibleProvider | null {
+): "deepseek" | "openai" | "openrouter" | null {
   switch (concreteType) {
     case "deepseek": {
       return "deepseek";
@@ -66,25 +66,10 @@ function piProvider(
     case "openrouter-codex": {
       return "openrouter";
     }
-    case "vercel-ai-gateway-codex": {
-      return "vercel-ai-gateway";
-    }
-    case "codex-oauth-token": {
-      return "codex";
-    }
     default: {
       return null;
     }
   }
-}
-
-function piCredentialSecretName(
-  concreteType: ModelProviderType,
-): string | null {
-  if (concreteType === "codex-oauth-token") {
-    return "CHATGPT_ACCESS_TOKEN";
-  }
-  return getSecretNameForType(concreteType) ?? null;
 }
 
 export function shouldUsePiExecution(args: {
@@ -137,22 +122,19 @@ export function resolvePiSandboxModelConfig(
     return null;
   }
   const providerId = piProvider(concreteType.data);
-  const credentialSecretName = piCredentialSecretName(concreteType.data);
+  const credentialSecretName = getSecretNameForType(concreteType.data);
   if (!providerId || !credentialSecretName) {
     return null;
   }
-  const model =
-    provider.environment.OPENAI_MODEL ??
-    provider.environment.ANTHROPIC_MODEL ??
-    provider.selectedModel;
+  const model = provider.environment.OPENAI_MODEL ?? provider.selectedModel;
   if (!model) {
     return null;
   }
-  const api = resolvePiAgentModelApi({ provider: providerId, model });
-  const endpoint = api
-    ? getModelProviderPiEndpoint(concreteType.data, api)
-    : undefined;
-  if (!api || !endpoint) {
+  const endpoint = getModelProviderPiEndpoint(
+    concreteType.data,
+    "openai-responses",
+  );
+  if (!endpoint) {
     return null;
   }
   const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
@@ -163,17 +145,10 @@ export function resolvePiSandboxModelConfig(
     return null;
   }
 
-  const apiKeyEnv =
-    providerId === "moonshotai"
-      ? "ANTHROPIC_AUTH_TOKEN"
-      : providerId === "codex"
-        ? "CHATGPT_ACCESS_TOKEN"
-        : "OPENAI_API_KEY";
+  const apiKeyEnv = "OPENAI_API_KEY";
   const runtimeContract = piRuntimeContract({
     providerType: provider.type,
-    concreteType: concreteType.data,
     selectedModel: provider.selectedModel,
-    api,
     codexServiceTier,
   });
   const config = {

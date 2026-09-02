@@ -1939,8 +1939,8 @@
       "providerIncompatibleAction": "새 세션 시작",
       "providerIncompatiblePrefix": "이 세션은 다른 모델 공급자로 시작되어 현재 공급자로 계속할 수 없습니다.",
       "recovery": {
-        "capacityDescription": "이 모델은 일시적으로 사용량이 많습니다. 몇 분 후 다시 시도하거나 지금 다른 모델로 전환하세요.",
-        "capacityTitle": "{{framework}} 모델이 혼잡합니다",
+        "capacityDescription": "잠시 후 다시 시도하거나 다른 모델로 전환하세요.",
+        "capacityTitle": "이 모델은 지금 혼잡합니다",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "계속",
@@ -4652,6 +4652,20 @@
       "teamDescription": "10개 병렬 실행과 더 많은 크레딧으로 팀을 확장하세요."
     }
   },
+  "serviceStatus": {
+    "dismiss": "서비스 업데이트 닫기",
+    "label": "서비스 상태 업데이트",
+    "statuses": {
+      "identified": "문제 확인됨",
+      "incident": "서비스 장애",
+      "investigating": "조사 중",
+      "maintenance": "유지보수",
+      "maintenanceInProgress": "유지보수 진행 중",
+      "maintenanceScheduled": "유지보수 예정",
+      "monitoring": "복구 모니터링 중"
+    },
+    "viewUpdates": "최신 업데이트 보기"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "계정 추가",
@@ -4783,6 +4797,7 @@
       "groups": {
         "alpha": "알파",
         "beta": "베타",
+        "internal": "내부",
         "released": "출시됨"
       },
       "title": "랩"

@@ -8,24 +8,10 @@ import {
 export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
   "SharedDatabaseClientNotConnectedError";
 
-export const sharedDatabaseHeartbeatResultSchema = z
-  .object({ clientReconnected: z.boolean() })
-  .strict();
-
-export type SharedDatabaseHeartbeatResult = z.infer<
-  typeof sharedDatabaseHeartbeatResultSchema
->;
-
 const requestIdSchema = z.string().min(1);
 
-const heartbeatRequestSchema = z
-  .object({
-    type: z.literal("heartbeat"),
-    requestId: requestIdSchema,
-    token: z.string().min(1),
-    apiBaseUrl: z.string().url(),
-    vercelProtectionBypass: z.string().min(1).optional(),
-  })
+const registerTabMessageSchema = z
+  .object({ type: z.literal("register-tab") })
   .strict();
 
 const queryRequestSchema = z
@@ -51,52 +37,20 @@ const reloadComputedMessageSchema = z
   })
   .strict();
 
-const setTokenRequestSchema = z
-  .object({
-    type: z.literal("set-token"),
-    requestId: requestIdSchema,
-    recoveryId: requestIdSchema,
-    token: z.string().min(1).nullable(),
-  })
-  .strict();
-
 const disconnectRequestSchema = z
   .object({ type: z.literal("disconnect") })
   .strict();
 
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
-  heartbeatRequestSchema,
+  registerTabMessageSchema,
   queryRequestSchema,
   getComputedRequestSchema,
-  reloadComputedMessageSchema,
-  setTokenRequestSchema,
   disconnectRequestSchema,
 ]);
 
 export type SharedDatabaseClientMessage = z.infer<
   typeof sharedDatabaseClientMessageSchema
 >;
-
-export function redactSharedDatabaseClientMessageForLog(
-  message: SharedDatabaseClientMessage,
-): SharedDatabaseClientMessage {
-  if (message.type === "set-token") {
-    return {
-      ...message,
-      token: message.token === null ? null : "[redacted]",
-    };
-  }
-  if (message.type !== "heartbeat") {
-    return message;
-  }
-  return {
-    ...message,
-    token: "[redacted]",
-    ...(message.vercelProtectionBypass === undefined
-      ? {}
-      : { vercelProtectionBypass: "[redacted]" }),
-  };
-}
 
 const resultMessageSchema = z
   .object({
@@ -134,13 +88,6 @@ const reloadRequiredMessageSchema = z
   .object({ type: z.literal("reload-required") })
   .strict();
 
-const authenticationRequiredMessageSchema = z
-  .object({
-    type: z.literal("authentication-required"),
-    recoveryId: requestIdSchema,
-  })
-  .strict();
-
 const chatThreadReadCursorUpdatedMessageSchema = z
   .object({
     type: z.literal("chat-thread-read-cursor-updated"),
@@ -171,7 +118,6 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   invalidateMessageSchema,
   reconnectMessageSchema,
   reloadRequiredMessageSchema,
-  authenticationRequiredMessageSchema,
   reloadComputedMessageSchema,
   chatThreadReadCursorUpdatedMessageSchema,
   statusMessageSchema,

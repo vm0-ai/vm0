@@ -1973,8 +1973,8 @@
       "providerIncompatibleAction": "Empieza una nueva sesión",
       "providerIncompatiblePrefix": "Esta sesión se inició con un modelo diferente y no se puede continuar con el actual.",
       "recovery": {
-        "capacityDescription": "Este modelo está temporalmente al límite de capacidad. Inténtalo de nuevo en unos minutos o cambia de modelo ahora.",
-        "capacityTitle": "El modelo de {{framework}} está ocupado",
+        "capacityDescription": "Inténtalo de nuevo en unos minutos o cambia de modelo.",
+        "capacityTitle": "Este modelo está ocupado ahora mismo",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Continuar",
@@ -4714,6 +4714,20 @@
       "teamDescription": "Amplía tu equipo con 10 ejecuciones paralelas y más créditos."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Descartar actualización del servicio",
+    "label": "Actualizaciones del estado del servicio",
+    "statuses": {
+      "identified": "Problema identificado",
+      "incident": "Incidente del servicio",
+      "investigating": "Investigando",
+      "maintenance": "Mantenimiento",
+      "maintenanceInProgress": "Mantenimiento en curso",
+      "maintenanceScheduled": "Mantenimiento programado",
+      "monitoring": "Supervisando la recuperación"
+    },
+    "viewUpdates": "Ver las últimas actualizaciones"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Añadir cuenta",
@@ -4846,6 +4860,7 @@
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
+        "internal": "Internas",
         "released": "Lanzadas"
       },
       "title": "Laboratorio"

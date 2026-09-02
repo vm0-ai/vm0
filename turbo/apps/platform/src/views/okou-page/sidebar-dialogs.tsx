@@ -68,7 +68,7 @@ import {
 import {
   sidebarActiveThreadIds$,
   unreadAgentIds$,
-} from "../../signals/chat-page/chat-thread-indicators.ts";
+} from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   agentListDialogChatMessages$,

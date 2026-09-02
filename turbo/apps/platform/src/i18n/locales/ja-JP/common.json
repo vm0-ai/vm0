@@ -1939,8 +1939,8 @@
       "providerIncompatibleAction": "新しいセッションを開始する",
       "providerIncompatiblePrefix": "このセッションは別のモデル プロバイダーで開始されたため、現在のモデル プロバイダーでは続行できません。",
       "recovery": {
-        "capacityDescription": "このモデルは一時的に混雑しています。数分後にもう一度試すか、今すぐ別のモデルに切り替えてください。",
-        "capacityTitle": "{{framework}} モデルは混雑しています",
+        "capacityDescription": "少ししてからもう一度試すか、別のモデルに切り替えてください。",
+        "capacityTitle": "このモデルは現在混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "続ける",
@@ -4652,6 +4652,20 @@
       "teamDescription": "10 回の並列実行とより多くのクレジットでチームを拡張します。"
     }
   },
+  "serviceStatus": {
+    "dismiss": "サービス更新を閉じる",
+    "label": "サービスステータスの更新",
+    "statuses": {
+      "identified": "問題を特定しました",
+      "incident": "サービス障害",
+      "investigating": "調査中",
+      "maintenance": "メンテナンス",
+      "maintenanceInProgress": "メンテナンス中",
+      "maintenanceScheduled": "メンテナンス予定",
+      "monitoring": "復旧を監視中"
+    },
+    "viewUpdates": "最新情報を見る"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "アカウントを追加",
@@ -4783,6 +4797,7 @@
       "groups": {
         "alpha": "アルファ",
         "beta": "ベータ",
+        "internal": "内部",
         "released": "リリース済み"
       },
       "title": "研究室"

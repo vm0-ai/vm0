@@ -120,7 +120,7 @@ function CustomTile({
             onChange(next);
           }}
           placeholder="100"
-          className="h-6 w-full border-0 bg-transparent p-0 text-sm font-semibold shadow-none focus-visible:ring-0"
+          className="h-5 w-full border-0 bg-transparent p-0 text-sm font-semibold shadow-none focus-visible:ring-0"
           aria-label={t(($) => {
             return $.billing.credits.customAmountAria;
           })}

@@ -1942,8 +1942,8 @@
       "providerIncompatibleAction": "नया सत्र प्रारंभ करें",
       "providerIncompatiblePrefix": "यह सत्र एक अलग मॉडल प्रोवाइडर के साथ शुरू किया गया था और इसे वर्तमान के साथ जारी नहीं रखा जा सकता है।",
       "recovery": {
-        "capacityDescription": "यह मॉडल अस्थायी रूप से व्यस्त है। कुछ मिनट बाद फिर कोशिश करें, या अभी मॉडल बदलें।",
-        "capacityTitle": "{{framework}} मॉडल व्यस्त है",
+        "capacityDescription": "थोड़ी देर बाद फिर कोशिश करें, या मॉडल बदलें।",
+        "capacityTitle": "यह मॉडल अभी व्यस्त है",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "जारी रखें",
@@ -4660,6 +4660,20 @@
       "teamDescription": "10 समानांतर रन और अधिक क्रेडिट के साथ अपनी टीम को स्केल करें।"
     }
   },
+  "serviceStatus": {
+    "dismiss": "सेवा अपडेट बंद करें",
+    "label": "सेवा स्थिति अपडेट",
+    "statuses": {
+      "identified": "समस्या की पहचान हो गई",
+      "incident": "सेवा घटना",
+      "investigating": "जांच जारी है",
+      "maintenance": "रखरखाव",
+      "maintenanceInProgress": "रखरखाव जारी है",
+      "maintenanceScheduled": "रखरखाव निर्धारित है",
+      "monitoring": "बहाली की निगरानी जारी है"
+    },
+    "viewUpdates": "नवीनतम अपडेट देखें"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "खाता जोड़ें",
@@ -4791,6 +4805,7 @@
       "groups": {
         "alpha": "अल्फ़ा",
         "beta": "बीटा",
+        "internal": "आंतरिक",
         "released": "रिलीज़ किया गया"
       },
       "title": "प्रयोगशाला"

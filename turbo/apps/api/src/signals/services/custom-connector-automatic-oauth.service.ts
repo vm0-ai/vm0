@@ -126,8 +126,7 @@ const automaticOAuthBindingPersistenceSchema = z
     z.object({
       accountAuthMethod: z.literal("oauth"),
       accountStorageVersion: z.number().int().positive(),
-      connectorAuthMode: z.literal("oauth"),
-      connectorOAuthSetup: z.literal("automatic"),
+      connectorAuthMode: z.literal("automatic"),
       connectorStorageVersion: z.number().int().positive(),
     }),
     customConnectorAutomaticOAuthBindingSchema,
@@ -148,7 +147,6 @@ export async function readCustomConnectorAutomaticOAuthBinding(
       accountAuthMethod: connectors.authMethod,
       accountStorageVersion: connectors.storageVersion,
       connectorAuthMode: orgCustomConnectors.authMode,
-      connectorOAuthSetup: orgCustomConnectors.oauthSetup,
       connectorStorageVersion: orgCustomConnectors.storageVersion,
       connectorAccountId:
         customConnectorAccountOauthBindings.connectorAccountId,
@@ -368,7 +366,10 @@ interface CapturedUnauthorizedContext {
 async function probeAutomaticOAuthChallenge(
   endpoint: string,
   signal: AbortSignal,
-): Promise<CapturedUnauthorizedContext> {
+): Promise<
+  | { readonly kind: "none" }
+  | { readonly kind: "oauth"; readonly context: CapturedUnauthorizedContext }
+> {
   const authProvider: AuthProvider = {
     token: () => {
       return Promise.resolve(undefined);
@@ -388,14 +389,11 @@ async function probeAutomaticOAuthChallenge(
   signal.throwIfAborted();
   if (!connection.ok) {
     if (connection.error instanceof AutomaticOAuthChallengeCaptured) {
-      return connection.error.context;
+      return { kind: "oauth", context: connection.error.context };
     }
     throw connection.error;
   }
-  throw new CustomConnectorAutomaticOAuthError(
-    "incompatible",
-    "MCP server did not request OAuth authentication",
-  );
+  return { kind: "none" };
 }
 
 function requiredHttpsUrl(value: string, field: string): string {
@@ -856,7 +854,6 @@ async function resolveAutomaticOAuthClient(
     const [definition] = await tx
       .select({
         authMode: orgCustomConnectors.authMode,
-        oauthSetup: orgCustomConnectors.oauthSetup,
         storageVersion: orgCustomConnectors.storageVersion,
         endpoint: orgCustomConnectors.mcpEndpoint,
       })
@@ -871,8 +868,7 @@ async function resolveAutomaticOAuthClient(
       .limit(1);
     if (
       !definition ||
-      definition.authMode !== "oauth" ||
-      definition.oauthSetup !== "automatic" ||
+      definition.authMode !== "automatic" ||
       definition.storageVersion !== args.storageVersion ||
       definition.endpoint !== args.endpoint
     ) {
@@ -945,10 +941,15 @@ export type CustomConnectorAutomaticOAuthStateContext = {
 );
 
 interface CustomConnectorAutomaticOAuthAuthorization {
+  readonly kind: "oauth";
   readonly authorizationUrl: string;
   readonly codeVerifier: string;
   readonly requestedScope: string | null;
   readonly context: CustomConnectorAutomaticOAuthStateContext;
+}
+
+interface CustomConnectorAutomaticNoAuth {
+  readonly kind: "none";
 }
 
 type AutomaticOAuthBoundClientContext = {
@@ -983,14 +984,20 @@ export async function prepareCustomConnectorAutomaticOAuthAuthorization(
     readonly featureContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
-): Promise<CustomConnectorAutomaticOAuthAuthorization> {
-  const challenge = await automaticOAuthRemote(
+): Promise<
+  CustomConnectorAutomaticOAuthAuthorization | CustomConnectorAutomaticNoAuth
+> {
+  const probe = await automaticOAuthRemote(
     "MCP authorization challenge",
     signal,
     async () => {
       return await probeAutomaticOAuthChallenge(args.endpoint, signal);
     },
   );
+  if (probe.kind === "none") {
+    return probe;
+  }
+  const challenge = probe.context;
   const challengeParameters = extractWWWAuthenticateParams(challenge.response);
   const authority = await discoverAutomaticOAuthAuthority(
     {
@@ -1050,6 +1057,7 @@ export async function prepareCustomConnectorAutomaticOAuthAuthorization(
         }
       : { ...contextBase, registrationMethod: "cimd" };
   return {
+    kind: "oauth",
     authorizationUrl: authorization.authorizationUrl.toString(),
     codeVerifier: authorization.codeVerifier,
     requestedScope: authority.scope ?? null,

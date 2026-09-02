@@ -10,7 +10,7 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-gateways";
 import type { ExpandedFirewallConfig } from "@okouai/connectors/firewall-types";
 
-export const GATEWAY_RUNTIME_SECRET_NAME = "VM0_MODEL_PROVIDER_API_KEY";
+export const GATEWAY_RUNTIME_SECRET_NAME = "OKOU_MODEL_PROVIDER_API_KEY";
 
 interface CompileModelProviderGatewayRuntimeArgs {
   readonly surfaceId: string;

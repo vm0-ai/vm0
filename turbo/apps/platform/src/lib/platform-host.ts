@@ -5,6 +5,11 @@ type PlatformPublicBrand = "vm0" | "okou";
 
 export type PlatformService = "api" | "www" | "app" | "platform";
 
+export interface PlatformServiceStatusConfig {
+  readonly issuesUrl: string;
+  readonly pageBaseUrl: string;
+}
+
 // Resolved from `location` and build-time constants alone. The shared database
 // SharedWorker is a second entry point into this bundle and has no DOM, so
 // nothing here may read page state: every value must come from the hostname or
@@ -27,6 +32,8 @@ const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
 const OKOU_PAGES_DOMAIN = "okou-app.pages.dev";
+const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
+  /^((?:staging|pr-[0-9]+))-app-okou-app-preview\.vm0\.workers\.dev$/u;
 const OKOU_ROOT_DOMAINS = [
   OKOU_PRODUCTION_DOMAIN,
   OKOU_PREVIEW_DOMAIN,
@@ -38,6 +45,9 @@ const OFFICE_DOCUMENT_VIEWER_BASE_URL =
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
+const PRODUCTION_SERVICE_STATUS_ISSUES_URL =
+  "https://api.instatus.com/issues?locale=en&secretToBypassPrivacy=02c0ef5a&host=status.okou.ai";
+const PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL = "https://status.okou.ai";
 
 function browserHostname(): string | null {
   if (typeof location === "undefined" || !location.hostname) {
@@ -52,9 +62,31 @@ function isDomainOrSubdomain(hostname: string, domain: string): boolean {
 
 export function isOkouHostname(hostname: string): boolean {
   const normalizedHostname = hostname.toLowerCase().replace(/:\d+$/u, "");
-  return OKOU_ROOT_DOMAINS.some((domain) => {
-    return isDomainOrSubdomain(normalizedHostname, domain);
-  });
+  return (
+    OKOU_ROOT_DOMAINS.some((domain) => {
+      return isDomainOrSubdomain(normalizedHostname, domain);
+    }) || okouAppWorkerPreviewJobRef(normalizedHostname) !== null
+  );
+}
+
+export function okouAppWorkerPreviewJobRef(hostname: string): string | null {
+  return (
+    OKOU_APP_WORKER_PREVIEW_HOST_PATTERN.exec(hostname.toLowerCase())?.[1] ??
+    null
+  );
+}
+
+export function resolvePlatformServiceStatusConfig(
+  hostname: string,
+): PlatformServiceStatusConfig | null {
+  const normalizedHostname = hostname.toLowerCase();
+  return normalizedHostname === "app.vm0.ai" ||
+    normalizedHostname === "app.okou.ai"
+    ? {
+        issuesUrl: PRODUCTION_SERVICE_STATUS_ISSUES_URL,
+        pageBaseUrl: PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL,
+      }
+    : null;
 }
 
 function resolvePlatformPublicBrand(
@@ -115,6 +147,16 @@ function rewritePreviewServiceHostname(
   hostname: string,
   target: PlatformService,
 ): string {
+  const workerPreviewJobRef = okouAppWorkerPreviewJobRef(hostname);
+  if (workerPreviewJobRef) {
+    if (target === "app") {
+      return hostname;
+    }
+    const targetDomain =
+      target === "api" ? PREVIEW_API_DOMAIN : OKOU_PREVIEW_DOMAIN;
+    return `${workerPreviewJobRef}-${target}.${targetDomain}`;
+  }
+
   const rewrittenHostname = rewritePlatformHostname(hostname, target);
   const okouPreviewSuffix = `.${OKOU_PREVIEW_DOMAIN}`;
   if (target !== "api" || !rewrittenHostname.endsWith(okouPreviewSuffix)) {

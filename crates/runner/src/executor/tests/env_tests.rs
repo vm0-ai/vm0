@@ -4,6 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::{
     runs::CodexRuntimeConfig, storage::ArtifactEntryMissingRootPolicy,
 };
+use guest_contracts::env::{RunArtifact, RunArtifactMissingRootPolicy};
 use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
 use serde_json::json;
@@ -909,13 +910,13 @@ fn build_env_json_with_single_artifact() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0]["name"], "my-vol");
-    assert_eq!(parsed[0]["mountPath"], "/artifacts");
-    assert_eq!(parsed[0]["storageId"], "sid-1");
-    assert_eq!(parsed[0]["versionId"], "v1");
-    assert!(parsed[0].get("missingRootPolicy").is_none());
+    assert_eq!(parsed[0].name, "my-vol");
+    assert_eq!(parsed[0].mount_path, "/artifacts");
+    assert_eq!(parsed[0].storage_id, "sid-1");
+    assert_eq!(parsed[0].version_id, "v1");
+    assert_eq!(parsed[0].missing_root_policy, None);
     // Legacy singleton env vars must no longer be emitted.
     assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
     assert!(!env.contains_key("VM0_ARTIFACT_MOUNT_PATH"));
@@ -943,11 +944,14 @@ fn build_env_json_with_artifact_missing_root_policy() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
 
     assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0]["name"], "memory");
-    assert_eq!(parsed[0]["missingRootPolicy"], "preserveParentVersion");
+    assert_eq!(parsed[0].name, "memory");
+    assert_eq!(
+        parsed[0].missing_root_policy,
+        Some(RunArtifactMissingRootPolicy::PreserveParentVersion)
+    );
 }
 
 #[test]
@@ -977,14 +981,14 @@ fn build_env_json_with_two_artifacts() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 2);
-    assert_eq!(parsed[0]["name"], "art-a");
-    assert_eq!(parsed[0]["mountPath"], "/workspace");
-    assert_eq!(parsed[0]["storageId"], "sid-a");
-    assert_eq!(parsed[1]["name"], "art-b");
-    assert_eq!(parsed[1]["mountPath"], "/data");
-    assert_eq!(parsed[1]["storageId"], "sid-b");
+    assert_eq!(parsed[0].name, "art-a");
+    assert_eq!(parsed[0].mount_path, "/workspace");
+    assert_eq!(parsed[0].storage_id, "sid-a");
+    assert_eq!(parsed[1].name, "art-b");
+    assert_eq!(parsed[1].mount_path, "/data");
+    assert_eq!(parsed[1].storage_id, "sid-b");
 }
 
 #[test]

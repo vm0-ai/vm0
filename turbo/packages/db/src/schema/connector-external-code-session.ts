@@ -35,6 +35,7 @@ export const connectorExternalCodeSessions = pgTable(
     accountMutation: jsonb("account_mutation")
       .$type<StoredConnectorAccountMutation>()
       .notNull(),
+    completedConnectorId: uuid("completed_connector_id"),
     authorizationUrl: text("authorization_url").notNull(),
     oauthRequestedScopes: text("oauth_requested_scopes"),
     errorCode: varchar("error_code", { length: 255 }),

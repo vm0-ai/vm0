@@ -3,7 +3,6 @@ import { chatThreadMarkUnreadContract } from "@okouai/api-contracts/contracts/ch
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { reloadChatIndicators$ } from "../chat-thread-list-reload.ts";
 import {
   applyUnreadSnapshot$,
   clearOptimisticReadMark$,
@@ -30,6 +29,5 @@ export const markChatThreadUnread$ = command(
     signal.throwIfAborted();
     set(clearOptimisticReadMark$, threadId);
     set(applyUnreadSnapshot$, result.body.unreads);
-    set(reloadChatIndicators$);
   },
 );

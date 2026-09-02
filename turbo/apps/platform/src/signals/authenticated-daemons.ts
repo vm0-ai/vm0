@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { clerk$, setupClerk$ } from "./auth.ts";
 import { setAuthenticatedIdentity$ } from "./auth-context.ts";
-import { setupChatIndicatorForegroundCatchUp$ } from "./chat-thread-list-reload.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.ts";
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
@@ -66,9 +65,6 @@ export const setupAuthenticatedBootstrapData$ = command(
     }
     await get(bridgeConnected$);
     signal.throwIfAborted();
-    await Promise.all([
-      set(setupChatIndicatorForegroundCatchUp$, signal),
-      set(subscribeEventDrivenChatThreads$, signal),
-    ]);
+    await set(subscribeEventDrivenChatThreads$, signal);
   },
 );

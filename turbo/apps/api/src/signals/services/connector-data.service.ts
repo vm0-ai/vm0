@@ -678,11 +678,16 @@ function connectorProvidedBindingsForStoredConnectors(
   return provided;
 }
 
-function storedConnectorBySlug(args: {
+type StoredConnectorSelection =
+  | { readonly kind: "default" }
+  | { readonly kind: "exact"; readonly connectorId: string };
+
+function storedConnector(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorSlug: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly selection: StoredConnectorSelection;
 }): Computed<Promise<ConnectorWithRuntimeMethod | null>> {
   return computed(async (get): Promise<ConnectorWithRuntimeMethod | null> => {
     const db = get(db$);
@@ -710,7 +715,9 @@ function storedConnectorBySlug(args: {
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
           eq(connectors.connectorSlug, args.connectorSlug),
-          eq(connectors.isDefault, true),
+          args.selection.kind === "exact"
+            ? eq(connectors.id, args.selection.connectorId)
+            : eq(connectors.isDefault, true),
         ),
       )
       .limit(1);
@@ -741,7 +748,31 @@ export function connectorBySlug(args: {
     if (snapshot === null) {
       return null;
     }
-    const connector = await get(storedConnectorBySlug({ ...args, snapshot }));
+    const connector = await get(
+      storedConnector({
+        ...args,
+        snapshot,
+        selection: { kind: "default" },
+      }),
+    );
+    return connector?.response ?? null;
+  });
+}
+
+export function connectorById(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorSlug: string;
+  readonly connectorId: string;
+  readonly snapshot: ConnectorRuntimeSnapshot;
+}): Computed<Promise<ConnectorResponse | null>> {
+  return computed(async (get): Promise<ConnectorResponse | null> => {
+    const connector = await get(
+      storedConnector({
+        ...args,
+        selection: { kind: "exact", connectorId: args.connectorId },
+      }),
+    );
     return connector?.response ?? null;
   });
 }
@@ -2572,7 +2603,13 @@ export function connectorScopeDiff(args: {
     if (snapshot === null) {
       return null;
     }
-    const connector = await get(storedConnectorBySlug({ ...args, snapshot }));
+    const connector = await get(
+      storedConnector({
+        ...args,
+        snapshot,
+        selection: { kind: "default" },
+      }),
+    );
     return connector === null
       ? null
       : connectorAuthMethodScopeDiff(

@@ -571,6 +571,7 @@ describe("directed connector connect page", () => {
         expect(body.account).toStrictEqual({ intent: "add" });
         connected = true;
         return respond(200, {
+          result: "authorization",
           authorizationUrl: "https://acme.test/oauth/authorize",
           connectionId,
         });
@@ -661,6 +662,7 @@ describe("directed connector connect page", () => {
         });
         connectedAccountUpdatedAt = "2026-01-01T00:00:01Z";
         return respond(200, {
+          result: "authorization",
           authorizationUrl: "https://acme.test/oauth/reconnect",
           connectionId: siblingConnectionId,
         });
@@ -747,6 +749,7 @@ describe("directed connector connect page", () => {
         expect(body.account).toStrictEqual({ intent: "add" });
         connected = true;
         return respond(200, {
+          result: "authorization",
           authorizationUrl: "https://acme.test/oauth/authorize",
           connectionId,
         });

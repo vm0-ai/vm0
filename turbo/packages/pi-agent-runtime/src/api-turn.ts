@@ -111,8 +111,7 @@ export async function runPiApiFirstTurn(
       streamOptions: {
         apiKey: args.model.apiKey,
         signal,
-        ...(args.model.provider === "openrouter" &&
-        args.model.api === "openai-responses"
+        ...(args.model.provider === "openrouter"
           ? {
               onObservedServiceTier: (serviceTier: PiObservedServiceTier) => {
                 observedServiceTier = serviceTier;
