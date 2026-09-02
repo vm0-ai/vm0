@@ -890,9 +890,11 @@ export const piModelConfigSchema = z
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
-    // Keep legacy transport values decodable until old stored launch contexts
-    // drain. Current writers emit openai-responses, and the current Pi runtime
-    // normalizes every accepted value to that adapter.
+    // Current writers emit openai-responses; readers normalize absent or legacy
+    // values while the previous API can be rolled back, old runner/Sandbox
+    // instances complete their two-hour drain plus finalization, and executable
+    // pre-cutover contexts remain. Remove this field with #31085 after all three
+    // gates pass.
     api: z.enum(MODEL_PROVIDER_PI_APIS).optional(),
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])

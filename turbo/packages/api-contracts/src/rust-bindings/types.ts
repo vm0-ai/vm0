@@ -222,7 +222,7 @@ export const rustTypeBindings = [
           baseUrl: ["Base URL used for model requests."],
           model: ["Provider model identifier."],
           api: [
-            "Compatibility transport input. Current writers emit OpenAI Responses, and the current Pi runtime normalizes legacy values to Responses.",
+            "Cross-version transport input. Current writers emit OpenAI Responses; readers normalize absent or legacy values until the previous API rollback, runner/Sandbox drain, and pre-cutover context gates in #31085 pass.",
           ],
           thinkingLevel: [
             "Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.",

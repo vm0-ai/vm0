@@ -20,9 +20,10 @@ export interface PiAgentModelConfig {
   readonly apiKey: string;
   readonly model: string;
   /**
-   * Deployment-compatibility input only. New writers emit
-   * `openai-responses`; legacy values are ignored by the Responses-only
-   * runtime.
+   * Cross-version input only. New writers emit `openai-responses`; the runtime
+   * ignores absent or legacy values. Remove with #31085 after the previous API
+   * leaves the rollback window, the two-hour runner/Sandbox drain plus
+   * finalization completes, and no executable pre-cutover contexts remain.
    */
   readonly api?:
     | "openai-completions"

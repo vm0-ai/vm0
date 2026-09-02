@@ -91,6 +91,9 @@ export async function piSandboxAgentConfigFromEnv(
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
+  // Normalize old API/runner/Sandbox payloads and pre-cutover contexts during
+  // the prior-API rollback window and two-hour drain plus finalization. Remove
+  // this compatibility input only after the production gates in #31085 pass.
   const {
     api: _legacyApi,
     apiKeyEnv,
