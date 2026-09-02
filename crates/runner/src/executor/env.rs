@@ -287,18 +287,27 @@ fn validate_codex_runtime_config_field(config: &CodexRuntimeConfig) -> Result<()
         config.env_key.as_str(),
         config.wire_api.as_str(),
     ] {
-        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+        validate_run_payload_field(
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
+            value,
+        )?;
     }
     for (name, value) in config.http_headers.iter().flatten() {
-        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, name)?;
-        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+        validate_run_payload_field(
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
+            name,
+        )?;
+        validate_run_payload_field(
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
+            value,
+        )?;
     }
     if let Some(model_catalog) = &config.model_catalog
         && json_value_contains_nul_string(model_catalog)
     {
         return Err(format!(
             "run payload contains NUL byte for {}",
-            guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD
         ));
     }
     Ok(())
@@ -685,13 +694,16 @@ pub(super) fn prepare_run_payload_for_run(
     let mut settings = String::new();
     if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::ClaudeCode {
         if let Some(values) = &context.disallowed_tools {
-            disallowed_tools =
-                serialize_claude_tool_env(guest_contracts::env::DISALLOWED_TOOLS_ENV, values)?
-                    .unwrap_or_default();
+            disallowed_tools = serialize_claude_tool_env(
+                guest_contracts::env::DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
+                values,
+            )?
+            .unwrap_or_default();
         }
         if let Some(values) = &context.tools {
-            tools = serialize_claude_tool_env(guest_contracts::env::TOOLS_ENV, values)?
-                .unwrap_or_default();
+            tools =
+                serialize_claude_tool_env(guest_contracts::env::TOOLS_RUN_PAYLOAD_FIELD, values)?
+                    .unwrap_or_default();
         }
         if let Some(value) = &context.settings
             && !value.is_empty()

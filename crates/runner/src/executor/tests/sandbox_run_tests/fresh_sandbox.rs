@@ -1187,14 +1187,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         );
     }
     for key in [
-        guest_contracts::env::PROMPT_ENV,
-        guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
-        guest_contracts::env::SECRET_VALUES_ENV,
-        guest_contracts::env::DISALLOWED_TOOLS_ENV,
-        guest_contracts::env::TOOLS_ENV,
-        guest_contracts::env::SETTINGS_ENV,
-        guest_contracts::env::ARTIFACTS_ENV,
-        guest_contracts::env::FEATURE_FLAGS_ENV,
+        guest_contracts::env::PROMPT_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::SECRET_VALUES_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::TOOLS_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::SETTINGS_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD,
+        guest_contracts::env::FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
     ] {
         assert!(
             !start_env.contains_key(key),
