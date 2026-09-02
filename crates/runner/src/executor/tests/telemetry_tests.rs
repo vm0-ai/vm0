@@ -116,7 +116,7 @@ fn api_startup_boundaries_record_the_effective_path_and_exact_reuse_result() {
             assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
             assert_eq!(
                 operation.runner_resource_budget_vcpu_utilization_bucket,
-                Some(RunnerResourceBudgetUtilizationBucket::TwentySixToFifty),
+                Some(RunnerResourceBudgetUtilizationBucket::FiftyOneToSeventyFive),
             );
             assert_eq!(
                 operation.runner_resource_budget_memory_utilization_bucket,

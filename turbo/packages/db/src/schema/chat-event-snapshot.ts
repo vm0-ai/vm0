@@ -73,3 +73,31 @@ export const chatEventSnapshots = pgTable(
     ];
   },
 );
+
+/**
+ * Durable cycle state for the global Snapshot candidate scan. The time fence
+ * keeps new activity out of an in-progress cycle, while the stable thread-ID
+ * cursor guarantees every fixed cohort is exhausted before wrapping. Snapshot
+ * publication remains owned by the exact pointer CAS on chat_event_snapshots.
+ */
+export const chatEventSnapshotScanState = pgTable(
+  "chat_event_snapshot_scan_state",
+  {
+    scope: text("scope").primaryKey(),
+    cursorChatThreadId: uuid("cursor_chat_thread_id"),
+    cycleUpperBoundLastMessageAt: timestamp(
+      "cycle_upper_bound_last_message_at",
+      { precision: 3 },
+    )
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => {
+    return [
+      check(
+        "chat_event_snapshot_scan_state_scope_check",
+        sql`${table.scope} = 'global'`,
+      ),
+    ];
+  },
+);
