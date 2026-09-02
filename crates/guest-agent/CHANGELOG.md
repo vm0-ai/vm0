@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.4...guest-agent-v0.84.5) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
 ## [0.84.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.3...guest-agent-v0.84.4) (2026-09-02)
 
 

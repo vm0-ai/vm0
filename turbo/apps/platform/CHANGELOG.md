@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.828.0](https://github.com/vm0-ai/vm0/compare/app-v0.827.0...app-v0.828.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** send timezone on onboarding completion ([#31233](https://github.com/vm0-ai/vm0/issues/31233)) ([00b7296](https://github.com/vm0-ai/vm0/commit/00b7296dfd4bac4dfb840d3871b9767ac3139f35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.0
+    * @okouai/core bumped to 8.611.3
+
 ## [0.827.0](https://github.com/vm0-ai/vm0/compare/app-v0.826.0...app-v0.827.0) (2026-09-02)
 
 
