@@ -3324,10 +3324,14 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
     });
 
+    // Boundary exception (docs/testing/testing-external-behavior.md): the
+    // regression is the slot's reserved height, which clips the last thread
+    // row above an empty strip. jsdom loads no stylesheet and computes no
+    // layout, so no page-visible surface can observe it. The state itself is
+    // still built the production way, from the billing response the page
+    // fetches. Visual proof lives on the PR preview walkthrough.
     const upgradeSlot = list.lastElementChild;
     expect(upgradeSlot).toBeEmptyDOMElement();
-    // Padding alone would keep the slot tall enough to clip the last thread
-    // row above a reserved strip at the bottom of the column.
     expect(upgradeSlot).toHaveClass("empty:hidden");
   });
 
