@@ -16,6 +16,7 @@ import {
   createDraftSignals,
   createRestoredAttachment,
   type DraftSignals,
+  type RestorableAttachment,
 } from "./chat-draft.ts";
 import {
   buildDraftPersistencePayload,
@@ -42,7 +43,7 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
 interface RestoredAgentDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly attachments: PersistedAttachment[];
+  readonly attachments: RestorableAttachment[];
 }
 
 const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
@@ -50,7 +51,7 @@ const agentDraftCache$ = state(new Map<string, AgentDraftEntry>());
 function userMessageAgentDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
-): PersistedAttachment[] {
+): RestorableAttachment[] {
   const attachmentById = new Map(
     attachments.map((attachment) => {
       return [attachment.id, attachment] as const;
@@ -61,7 +62,17 @@ function userMessageAgentDraftAttachments(
       return [];
     }
     const attachment = attachmentById.get(part.fileId);
-    return attachment ? [attachment] : [];
+    return attachment
+      ? [
+          {
+            ...attachment,
+            ...(part.annotatedFileId
+              ? { annotatedFileId: part.annotatedFileId }
+              : {}),
+            ...(part.annotations ? { annotations: part.annotations } : {}),
+          },
+        ]
+      : [];
   });
 }
 
@@ -123,16 +134,16 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         draftAttachments,
         infos,
       ).map((result) => {
-        const annotation = get(result.attachment.annotation$);
+        const annotations = get(result.attachment.annotations$);
+        const annotatedFileId = get(result.attachment.annotatedFileId$);
         return {
           id: result.info.id,
           url: result.info.url,
           filename: result.attachment.filename,
           contentType: result.info.contentType,
           size: result.attachment.size,
-          // Rebuilt field by field, so anything new has to be carried across
-          // explicitly or a reload would silently drop the user's marks.
-          ...(annotation ? { annotation } : {}),
+          ...(annotatedFileId ? { annotatedFileId } : {}),
+          ...(annotations ? { annotations } : {}),
         };
       });
       const payload = buildDraftPersistencePayload({

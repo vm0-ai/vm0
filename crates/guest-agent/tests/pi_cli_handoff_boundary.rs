@@ -25,18 +25,18 @@ async fn guest_fails_closed_for_invalid_missing_conflicting_and_late_pi_boundari
             expected_code: "PI_HANDOFF_BOUNDARY_MISSING",
         },
         BoundaryCase {
-            name: "malformed",
-            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1}'"#,
+            name: "legacy-schema",
+            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'"#,
             expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
         },
         BoundaryCase {
             name: "zero",
-            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":0}'"#,
+            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":0,"ownershipTransferMode":"pending-tool-continuation"}'"#,
             expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
         },
         BoundaryCase {
             name: "overflowing",
-            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":2147483648}'"#,
+            script: r#"printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":2147483648,"ownershipTransferMode":"pending-tool-continuation"}'"#,
             expected_code: "PI_HANDOFF_BOUNDARY_INVALID",
         },
         BoundaryCase {
@@ -57,22 +57,22 @@ async fn guest_fails_closed_for_invalid_missing_conflicting_and_late_pi_boundari
         BoundaryCase {
             name: "conflicting",
             script: r#"
-printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'
-printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":5}'
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":5,"ownershipTransferMode":"pending-tool-continuation"}'
 "#,
             expected_code: "PI_HANDOFF_BOUNDARY_CONFLICT",
         },
         BoundaryCase {
             name: "late",
             script: r#"
-printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'
 IFS= read -r state_command
 case "$state_command" in
   *'"type":"get_state"'*) ;;
   *) exit 21 ;;
 esac
 printf '%s\n' "{\"id\":\"${OKOU_RUN_ID}:pi:get-state\",\"type\":\"response\",\"command\":\"get_state\",\"success\":true,\"data\":{\"sessionId\":\"11111111-1111-4111-8111-111111111111\",\"sessionFile\":\"/home/user/.pi/agent/sessions/--home-user-workspace--/session.jsonl\"}}"
-printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'
 "#,
             expected_code: "PI_HANDOFF_BOUNDARY_LATE",
         },

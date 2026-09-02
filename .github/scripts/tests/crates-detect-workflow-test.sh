@@ -16,6 +16,8 @@ crates_json=$(yq -o=json '.' "$CRATES_WORKFLOW")
 jq -e '
   .jobs.detect as $detect |
   .jobs.check as $check |
+  .jobs["host-cpu-fairness-test"] as $host_cpu |
+  .jobs["ci-gate-crates"] as $gate |
   {
     "any-changed": "${{ steps.detect.outputs.any-changed }}",
     "ci-changed": "${{ steps.detect.outputs.ci-changed }}",
@@ -26,6 +28,7 @@ jq -e '
     "ably-subscriber-changed": "${{ steps.detect.outputs.ably-subscriber-changed }}",
     "api-contracts-changed": "${{ steps.detect.outputs.api-contracts-changed }}",
     "runner-changed": "${{ steps.detect.outputs.runner-changed }}",
+    "sandbox-fc-changed": "${{ steps.detect.outputs.sandbox-fc-changed }}",
     "nbd-cow-changed": "${{ steps.detect.outputs.nbd-cow-changed }}",
     "vsock-test-changed": "${{ steps.detect.outputs.vsock-test-changed }}",
     "crates-runner-consumer-needed": "${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}",
@@ -57,6 +60,28 @@ jq -e '
   any($check.steps[]?;
     .name == "Configure Git safe directory" and
     .run == "git config --global --add safe.directory \"$GITHUB_WORKSPACE\""
+  ) and
+  ($host_cpu.needs | sort) == ([
+    "detect",
+    "runner-build",
+    "runner-behavior-lane-a",
+    "runner-behavior-lane-b",
+    "runner-behavior-lane-c",
+    "runner-behavior-lane-d"
+  ] | sort) and
+  $host_cpu.env.TARGET_TRIPLE == "${{ needs.runner-build.outputs.target }}" and
+  any($host_cpu.steps[]?;
+    .name == "Cross-compile host CPU fairness test" and
+    (.run | contains("--test host_cpu_fairness"))
+  ) and
+  any($host_cpu.steps[]?;
+    .name == "Verify weighted host CPU service with real Firecracker Guests" and
+    .run == ".github/scripts/runner-behavior-host-cpu-fairness.sh"
+  ) and
+  ($gate.needs | index("host-cpu-fairness-test")) != null and
+  any($gate.steps[]?;
+    .name == "Validate CI results" and
+    (.run | contains("needs.host-cpu-fairness-test.result"))
   )
 ' <<<"$crates_json" >/dev/null || fail "Crates workflow contract changed"
 

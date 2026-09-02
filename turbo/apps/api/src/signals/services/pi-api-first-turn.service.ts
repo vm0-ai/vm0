@@ -608,7 +608,6 @@ interface PreparedApiFirstTurn {
   readonly sessionId: string;
   readonly startedAt: number;
   readonly turn: PiApiFirstTurnResult;
-  readonly ownershipTransferCapability: ApiFirstTurnLaunchConfig["ownershipTransfer"];
 }
 
 type ApiFirstTurnExecutionContext =
@@ -620,7 +619,6 @@ interface ApiFirstTurnCommitIdentity {
   readonly baseSessionId: string;
   readonly baseSessionSha256: string | null;
   readonly deadlineAt: number;
-  readonly ownershipTransferSchemaVersion: 1 | null;
   readonly resourceSnapshotDigest: string;
   readonly sandboxEventSequenceStart: number;
   readonly sessionId: string;
@@ -634,8 +632,6 @@ function apiFirstTurnCommitIdentity(
     baseSessionId: launchConfig.baseSession.sessionId,
     baseSessionSha256: launchConfig.baseSession.sha256,
     deadlineAt: launchConfig.deadlineAt,
-    ownershipTransferSchemaVersion:
-      launchConfig.ownershipTransfer?.schemaVersion ?? null,
     resourceSnapshotDigest: launchConfig.resourceSnapshotDigest,
     sandboxEventSequenceStart: launchConfig.sandboxEventSequenceStart,
     sessionId,
@@ -650,8 +646,6 @@ function sameApiFirstTurnCommitIdentity(
     left.baseSessionId === right.baseSessionId &&
     left.baseSessionSha256 === right.baseSessionSha256 &&
     left.deadlineAt === right.deadlineAt &&
-    left.ownershipTransferSchemaVersion ===
-      right.ownershipTransferSchemaVersion &&
     left.resourceSnapshotDigest === right.resourceSnapshotDigest &&
     left.sandboxEventSequenceStart === right.sandboxEventSequenceStart &&
     left.sessionId === right.sessionId
@@ -923,13 +917,7 @@ async function executeApiModelTurn(
             "Pi API first turn lost eligibility before provider ownership",
           );
           if (state.activeDeliveryId) {
-            if (args.commitIdentity.ownershipTransferSchemaVersion === 1) {
-              throw new PiApiFirstTurnActiveInputBeforeProviderError();
-            }
-            throw piApiFirstTurnError(
-              "PI_API_FIRST_TURN_NOT_COMMITTABLE",
-              "Pi API first turn cannot claim provider ownership with active input",
-            );
+            throw new PiApiFirstTurnActiveInputBeforeProviderError();
           }
           modelSignal.throwIfAborted();
           markProviderRequestMayHaveStarted();
@@ -1045,7 +1033,6 @@ function validateApiFirstTurnH1(
 }
 
 function ownershipTransferManifest(args: {
-  readonly capability: ApiFirstTurnLaunchConfig["ownershipTransfer"];
   readonly mode: PiApiFirstTurnOwnershipTransferMode;
   readonly baseSession: PiApiFirstTurnManifest["baseSession"];
   readonly session: {
@@ -1055,25 +1042,10 @@ function ownershipTransferManifest(args: {
   };
   readonly sandboxEventSequenceStart: number;
 }): PiApiFirstTurnManifest {
-  if (args.capability?.schemaVersion === 1) {
-    return {
-      schemaVersion: 3,
-      outcome: "ownership-transfer",
-      mode: args.mode,
-      baseSession: args.baseSession,
-      session: args.session,
-      sandboxEventSequenceStart: args.sandboxEventSequenceStart,
-    };
-  }
-  if (args.mode !== "pending-tool-continuation") {
-    throw piApiFirstTurnError(
-      "PI_LAUNCH_CONFIG_INVALID",
-      "Pi ownership transfer is not supported by the selected Sandbox",
-    );
-  }
   return {
-    schemaVersion: 2,
-    outcome: "handoff",
+    schemaVersion: 3,
+    outcome: "ownership-transfer",
+    mode: args.mode,
     baseSession: args.baseSession,
     session: args.session,
     sandboxEventSequenceStart: args.sandboxEventSequenceStart,
@@ -1091,15 +1063,10 @@ function eligibleSandboxFallbackReason(
   args: {
     readonly failure: PiApiFirstTurnError;
     readonly ownership: PiApiFirstTurnOwnership;
-    readonly launchConfig: ApiFirstTurnLaunchConfig;
   },
   signal: AbortSignal,
 ): PiSandboxFallbackReason | null {
-  if (
-    signal.aborted ||
-    args.ownership.stage !== "pre-provider" ||
-    args.launchConfig.ownershipTransfer?.schemaVersion !== 1
-  ) {
+  if (signal.aborted || args.ownership.stage !== "pre-provider") {
     return null;
   }
   switch (args.failure.code) {
@@ -1164,8 +1131,7 @@ function materializeApiFirstTurnH0(args: {
 
 /**
  * Intentional runtime ownership fallback for a real preparation failure. This
- * is not old-Sandbox tolerance: the immutable launch capability proves the V3
- * reader. Keep it while API preparation happens after durable activation;
+ * remains necessary while API preparation happens after durable activation;
  * parent issue #30564 owns that lifecycle boundary.
  */
 const publishSandboxFallback$ = command(async function publishSandboxFallback(
@@ -1177,12 +1143,6 @@ const publishSandboxFallback$ = command(async function publishSandboxFallback(
   const { executionContext, launchConfig, sessionId } =
     validateApiFirstTurnLaunch(args);
   const commitIdentity = apiFirstTurnCommitIdentity(args);
-  if (launchConfig.ownershipTransfer?.schemaVersion !== 1) {
-    throw piApiFirstTurnError(
-      "PI_LAUNCH_CONFIG_INVALID",
-      "Pi sandbox fallback requires ownership-transfer capability proof",
-    );
-  }
   signal.throwIfAborted();
   const loadedSession = await set(
     loadResumeSessionJsonl$,
@@ -1251,7 +1211,6 @@ const publishSandboxFallback$ = command(async function publishSandboxFallback(
       );
     }
     const manifest = ownershipTransferManifest({
-      capability: launchConfig.ownershipTransfer,
       mode: "sandbox-first",
       baseSession: launchConfig.baseSession,
       session: {
@@ -1340,7 +1299,6 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     sessionId,
     startedAt,
     turn,
-    ownershipTransferCapability: launchConfig.ownershipTransfer,
   };
 });
 
@@ -1441,15 +1399,6 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
       "Pi API first turn lost commit eligibility after the provider request",
     );
     const hasActiveInput = state.activeDeliveryId !== null;
-    if (
-      hasActiveInput &&
-      prepared.commitIdentity.ownershipTransferSchemaVersion !== 1
-    ) {
-      throw piApiFirstTurnError(
-        "PI_API_FIRST_TURN_NOT_COMMITTABLE",
-        "Pi API first turn cannot preserve active input without ownership-transfer capability",
-      );
-    }
     const transferMode: PiApiFirstTurnOwnershipTransferMode | null = prepared
       .turn.handoffRequired
       ? "pending-tool-continuation"
@@ -1495,7 +1444,6 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
     await set(publishEvents$, { auth: prepared.auth, events }, signal);
     if (transferMode) {
       const manifest = ownershipTransferManifest({
-        capability: prepared.ownershipTransferCapability,
         mode: transferMode,
         baseSession: prepared.baseSession,
         session: {
@@ -1724,8 +1672,6 @@ export const runPiApiFirstTurn$ = command(
           {
             failure,
             ownership,
-            launchConfig:
-              activation.executionContext.piLaunchConfig.apiFirstTurn,
           },
           signal,
         );

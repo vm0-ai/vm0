@@ -93,7 +93,7 @@ impl SnapshotProcess {
             spawn.binary_path,
             spawn.api_sock,
         );
-        let mut child = spawn_firecracker(command, spawn.current_dir)?;
+        let mut child = spawn_firecracker(command, spawn.current_dir, None)?;
 
         // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
         // Stderr is also retained in a bounded ring buffer so that an early

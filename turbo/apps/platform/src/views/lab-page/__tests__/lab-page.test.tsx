@@ -170,8 +170,8 @@ describe("lab page", () => {
     });
 
     expectBefore(
-      featureSwitchRow(FeatureSwitchKey.Banking),
       featureSwitchRow(FeatureSwitchKey.CodexFastMode),
+      featureSwitchRow(FeatureSwitchKey.Banking),
     );
 
     expect(

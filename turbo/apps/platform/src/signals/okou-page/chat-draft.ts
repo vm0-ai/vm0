@@ -27,6 +27,8 @@ import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
+import { flattenAnnotatedImage } from "./flatten-annotated-image.ts";
+import { isAnnotationMeaningful } from "./image-annotation.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -59,10 +61,6 @@ const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
 const MAX_PART_UPLOAD_ATTEMPTS = 5;
 const PART_UPLOAD_RETRY_BASE_DELAY_MS = 250;
 const MULTIPART_ABORT_TIMEOUT_MS = 5000;
-const noUploadPending$ = computed((): boolean => {
-  return false;
-});
-
 interface MultipartUploadReference {
   id: string;
   filename: string;
@@ -329,7 +327,129 @@ export const uploadFileToStorage$ = command(
   },
 );
 
+export type AttachmentAnnotationUploadStatus =
+  | "idle"
+  | "pending"
+  | "uploaded"
+  | "failed";
+
+type AttachmentAnnotationUploadState =
+  | { readonly status: "idle" }
+  | { readonly status: "pending" }
+  | { readonly status: "uploaded"; readonly fileId: string }
+  | { readonly status: "failed" };
+
+function createAttachmentAnnotationSignals(args: {
+  readonly filename: string;
+  readonly fileInfo$: Computed<Promise<FileInfo | null>>;
+  readonly initialAnnotations?: ImageAnnotation;
+  readonly initialAnnotatedFileId?: string;
+}) {
+  const internalAnnotations$ = state<ImageAnnotation | null>(
+    args.initialAnnotations ?? null,
+  );
+  const initialUploadState: AttachmentAnnotationUploadState =
+    args.initialAnnotations && args.initialAnnotatedFileId
+      ? { status: "uploaded", fileId: args.initialAnnotatedFileId }
+      : args.initialAnnotations
+        ? { status: "failed" }
+        : { status: "idle" };
+  const internalUploadState$ =
+    state<AttachmentAnnotationUploadState>(initialUploadState);
+  const resetUploadSignal$ = resetSignal();
+
+  const annotations$ = computed((get) => {
+    return get(internalAnnotations$);
+  });
+  const annotatedFileId$ = computed((get): string | null => {
+    const upload = get(internalUploadState$);
+    return upload.status === "uploaded" ? upload.fileId : null;
+  });
+  const annotationUploadStatus$ = computed(
+    (get): AttachmentAnnotationUploadStatus => {
+      return get(internalUploadState$).status;
+    },
+  );
+  const annotationReady$ = computed((get): boolean => {
+    return (
+      !isAnnotationMeaningful(get(internalAnnotations$)) ||
+      get(internalUploadState$).status === "uploaded"
+    );
+  });
+
+  const confirmAnnotations$ = command(
+    async (
+      { get, set },
+      annotations: ImageAnnotation | null,
+      parentSignal: AbortSignal,
+    ): Promise<void> => {
+      const signal = set(resetUploadSignal$, parentSignal);
+      set(internalAnnotations$, annotations);
+      if (!annotations || !isAnnotationMeaningful(annotations)) {
+        set(internalUploadState$, { status: "idle" });
+        return;
+      }
+
+      set(internalUploadState$, { status: "pending" });
+      const rendered = await settle(
+        (async () => {
+          const original = await get(args.fileInfo$);
+          signal.throwIfAborted();
+          if (!original) {
+            throw new Error("Original image is unavailable");
+          }
+          const flattened = await flattenAnnotatedImage(
+            original.url,
+            annotations,
+            args.filename,
+            signal,
+          );
+          return await set(uploadFileToStorage$, flattened.file, signal);
+        })(),
+        signal,
+      );
+      if (!rendered.ok) {
+        set(internalUploadState$, { status: "failed" });
+        return;
+      }
+      set(internalUploadState$, {
+        status: "uploaded",
+        fileId: rendered.value.id,
+      });
+    },
+  );
+
+  const retryAnnotationUpload$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const annotations = get(internalAnnotations$);
+      if (!annotations || !isAnnotationMeaningful(annotations)) {
+        return;
+      }
+      await set(confirmAnnotations$, annotations, signal);
+    },
+  );
+
+  const cancelAnnotationUpload$ = command(({ get, set }) => {
+    set(resetUploadSignal$);
+    if (get(internalUploadState$).status === "pending") {
+      set(internalUploadState$, { status: "failed" });
+    }
+  });
+
+  return {
+    annotations$,
+    annotatedFileId$,
+    annotationUploadStatus$,
+    annotationReady$,
+    confirmAnnotations$,
+    retryAnnotationUpload$,
+    cancelAnnotationUpload$,
+  };
+}
+
 export interface ChatAttachment {
+  /** Stable identity for this attachment inside its owning composer. */
+  key: string;
   filename: string;
   contentType: string;
   size: number;
@@ -337,32 +457,27 @@ export interface ChatAttachment {
   imageLoad: ImageLoadSignals;
   /** Reactive file info (id + url) — loading while uploading, hasData when done. */
   fileInfo$: Computed<Promise<FileInfo | null>>;
-  /** Synchronous upload state used to guard composer submission. */
+  /** Whether either the original or its annotated derivative is uploading. */
   uploadPending$: Computed<boolean>;
+  /** Whether every file required by a send has been uploaded successfully. */
+  sendReady$: Computed<boolean>;
   /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
   cancel$: Command<void, []>;
   /** Start the upload and publish its fileInfo$ promise for later send-time resolution. */
   upload$: Command<Promise<void>, [AbortSignal]>;
-  /**
-   * Marks drawn on this image but not sent yet. They live beside the file
-   * rather than inside it: the uploaded bytes are never rewritten, so the
-   * editor can reopen fully editable and the original stays downloadable.
-   */
-  annotation$: Computed<ImageAnnotation | null>;
-  setAnnotation$: Command<void, [ImageAnnotation | null]>;
+  annotations$: Computed<ImageAnnotation | null>;
+  annotatedFileId$: Computed<string | null>;
+  annotationUploadStatus$: Computed<AttachmentAnnotationUploadStatus>;
+  confirmAnnotations$: Command<
+    Promise<void>,
+    [ImageAnnotation | null, AbortSignal]
+  >;
+  retryAnnotationUpload$: Command<Promise<void>, [AbortSignal]>;
+  cancelAnnotationUpload$: Command<void, []>;
 }
 
 function createChatAttachment(file: File): ChatAttachment {
   const contentType = inferUploadContentType(file);
-  const internalAnnotation$ = state<ImageAnnotation | null>(null);
-  const annotation$ = computed((get) => {
-    return get(internalAnnotation$);
-  });
-  const setAnnotation$ = command(
-    ({ set }, annotation: ImageAnnotation | null): void => {
-      set(internalAnnotation$, annotation);
-    },
-  );
   const imageLoad = createImageLoadSignals();
   const resetSignal$ = resetSignal();
   const internalUpload$ = state<AttachmentUploadState>({
@@ -380,11 +495,25 @@ function createChatAttachment(file: File): ChatAttachment {
     }
     return await upload.promise;
   });
+  const annotation = createAttachmentAnnotationSignals({
+    filename: file.name,
+    fileInfo$,
+  });
   const uploadPending$ = computed((get): boolean => {
-    return get(internalUpload$).status === "pending";
+    return (
+      get(internalUpload$).status === "pending" ||
+      get(annotation.annotationUploadStatus$) === "pending"
+    );
+  });
+  const sendReady$ = computed((get): boolean => {
+    return (
+      get(internalUpload$).status === "uploaded" &&
+      get(annotation.annotationReady$)
+    );
   });
   const cancel$ = command(({ set }) => {
     set(resetSignal$);
+    set(annotation.cancelAnnotationUpload$);
   });
 
   const upload$ = command(async ({ set }, parentSignal: AbortSignal) => {
@@ -397,16 +526,17 @@ function createChatAttachment(file: File): ChatAttachment {
   });
 
   return {
+    key: crypto.randomUUID(),
     filename: file.name,
     contentType,
     size: file.size,
     imageLoad,
     fileInfo$,
     uploadPending$,
+    sendReady$,
     cancel$,
     upload$,
-    annotation$,
-    setAnnotation$,
+    ...annotation,
   };
 }
 
@@ -478,6 +608,8 @@ export interface DraftInputSyncTarget {
  */
 export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
   readonly url?: string;
+  readonly annotatedFileId?: string;
+  readonly annotations?: ImageAnnotation;
 };
 
 /**
@@ -493,17 +625,6 @@ export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
 export function createRestoredAttachment(
   persisted: RestorableAttachment,
 ): ChatAttachment {
-  const internalAnnotation$ = state<ImageAnnotation | null>(
-    persisted.annotation ?? null,
-  );
-  const annotation$ = computed((get) => {
-    return get(internalAnnotation$);
-  });
-  const setAnnotation$ = command(
-    ({ set }, annotation: ImageAnnotation | null): void => {
-      set(internalAnnotation$, annotation);
-    },
-  );
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
     const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
@@ -523,27 +644,41 @@ export function createRestoredAttachment(
           contentType: persisted.contentType,
         };
   });
+  const annotation = createAttachmentAnnotationSignals({
+    filename: persisted.filename,
+    fileInfo$,
+    ...(persisted.annotations
+      ? { initialAnnotations: persisted.annotations }
+      : {}),
+    ...(persisted.annotatedFileId
+      ? { initialAnnotatedFileId: persisted.annotatedFileId }
+      : {}),
+  });
 
-  const cancel$ = command(() => {
-    // no-op: already uploaded, nothing to cancel
+  const cancel$ = command(({ set }) => {
+    set(annotation.cancelAnnotationUpload$);
   });
   // upload$ accepts a signal parameter to match the ChatAttachment interface.
   // The file is already uploaded, so this is a no-op.
   const upload$ = command((_visitor, _signal: AbortSignal): Promise<void> => {
     return Promise.resolve();
   });
+  const uploadPending$ = computed((get): boolean => {
+    return get(annotation.annotationUploadStatus$) === "pending";
+  });
 
   return {
+    key: crypto.randomUUID(),
     filename: persisted.filename,
     contentType: persisted.contentType,
     size: persisted.size,
     imageLoad: createImageLoadSignals(),
     fileInfo$,
-    uploadPending$: noUploadPending$,
+    uploadPending$,
+    sendReady$: annotation.annotationReady$,
     cancel$,
     upload$,
-    annotation$,
-    setAnnotation$,
+    ...annotation,
   };
 }
 
@@ -796,7 +931,7 @@ export function createDraftSignals(): DraftSignals {
 
   const attachmentUploadsReady$ = computed((get): boolean => {
     return get(internalAttachments$).every((attachment) => {
-      return !get(attachment.uploadPending$);
+      return get(attachment.sendReady$);
     });
   });
 

@@ -1,7 +1,7 @@
 import type { DesktopDeveloperToolsState } from "./desktop-bridge";
 import { latestWinsSingleFlight } from "./desktop-async-control";
 
-const OKOU_DEBUG_FEATURE_SWITCH_KEY = "okouDebug";
+const OKOU_DEBUG_FEATURE_SWITCH_KEY = "_debug";
 const COMPUTER_USE_DESKTOP_PLUGINS_FEATURE_SWITCH_KEY =
   "computerUseDesktopPlugins";
 const INTRO_VIDEO_FEATURE_SWITCH_KEY = "introVideo";

@@ -1502,7 +1502,10 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
     expect(
       expectCanonicalStorageManifest(customClaim.storageManifest)
         ?.storageMounts.filter((mount) => {
-          return mount.name === "custom-memory";
+          return (
+            mount.name === "memory" ||
+            mount.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+          );
         })
         .map((mount) => {
           return {

@@ -122,7 +122,6 @@ function toFeishuInstallationStatus(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly publicBrand: PublicBrand;
   },
 ): FeishuInstallationStatus {
   return {
@@ -135,14 +134,14 @@ function toFeishuInstallationStatus(
     botName: installation.botName,
     botAvatarUrl: installation.botAvatarUrl,
     callbackUrl: feishuCallbackUrl(installation.id, installation.publicBrand),
-    oauthRedirectUrl: feishuOAuthAppCallbackUrl(),
+    oauthRedirectUrl: feishuOAuthAppCallbackUrl(installation.publicBrand),
     oauthScopes: [...FEISHU_OAUTH_SCOPES],
     connectUrl: installation.setupCompletedAt
       ? buildFeishuOAuthConnectUrl({
           installationId: installation.id,
           orgId: args.orgId,
           userId: args.userId,
-          publicBrand: args.publicBrand,
+          publicBrand: installation.publicBrand,
         })
       : null,
     callbackVerified: Boolean(installation.callbackVerifiedAt),
@@ -235,7 +234,10 @@ export const feishuConnectStatus = (args: {
       args.userId,
     );
     const installations = rows.map((installation) => {
-      return toFeishuInstallationStatus(installation, connectedUsers, args);
+      return toFeishuInstallationStatus(installation, connectedUsers, {
+        orgId: args.orgId,
+        userId: args.userId,
+      });
     });
     return feishuStatusResponse(installations, args);
   });

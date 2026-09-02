@@ -8,6 +8,24 @@ import {
   getFeatureSwitchMetadata,
 } from "../feature-switch";
 
+describe("FeatureSwitchKey", () => {
+  it("uses the canonical internal switch names", () => {
+    expect(FeatureSwitchKey.PersonalModelProviderAccounts).toBe(
+      "_multipleSubscriptions",
+    );
+    expect(FeatureSwitchKey.Dummy).toBe("_dummy");
+    expect(FeatureSwitchKey.Lab).toBe("_lab");
+    expect(FeatureSwitchKey.SidebarSubscriptionUsage).toBe(
+      "_sidebarSubscriptionUsage",
+    );
+    expect(FeatureSwitchKey.FeishuIntegration).toBe("_feishuIntegration");
+    expect(FeatureSwitchKey.CodexFastMode).toBe("_fastModel");
+    expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
+    expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
+    expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
+  });
+});
+
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
@@ -121,6 +139,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
@@ -141,6 +160,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );

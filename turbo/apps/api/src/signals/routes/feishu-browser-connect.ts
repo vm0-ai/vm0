@@ -55,7 +55,6 @@ interface FeishuConnectArgs {
   readonly chatId: string;
   readonly ts: number;
   readonly sig: string;
-  readonly publicBrand: PublicBrand;
 }
 
 type FeishuConnectResult =
@@ -92,6 +91,7 @@ const startFeishuAccountOAuth$ = command(
       .select({
         orgId: feishuOrgInstallations.orgId,
         botName: feishuOrgInstallations.botName,
+        publicBrand: feishuOrgInstallations.publicBrand,
         setupCompletedAt: feishuOrgInstallations.setupCompletedAt,
       })
       .from(feishuOrgInstallations)
@@ -132,8 +132,8 @@ const startFeishuAccountOAuth$ = command(
         orgId: args.orgId,
         userId: args.userId,
         connectorId,
-        redirectUri: feishuOAuthAppCallbackUrl(),
-        publicBrand: args.publicBrand,
+        redirectUri: feishuOAuthAppCallbackUrl(installation.publicBrand),
+        publicBrand: installation.publicBrand,
         account,
         feishuContext: {
           installationId: args.installationId,
@@ -233,7 +233,6 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       chatId,
       ts,
       sig,
-      publicBrand,
     },
     signal,
   );
@@ -242,7 +241,6 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const publicBrand = get(publicBrand$);
   const bodyResult = await get(
     bodyResultOf(feishuBrowserConnectContract.connectFromApp),
   );
@@ -255,7 +253,6 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       userId: auth.userId,
-      publicBrand,
       ...bodyResult.data,
     },
     signal,

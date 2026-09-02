@@ -331,6 +331,23 @@ impl ResourceBudget {
         self.cpu_capacity.guest_capacity
     }
 
+    /// Normalize the fixed host reservation and Guest capacity to cgroup v2 weights.
+    ///
+    /// `R(P) + C(P) = P`, so this maps the reviewed admission headroom ratio
+    /// directly onto the kernel's full `1..=10000` weight range. The mapping
+    /// intentionally excludes `concurrency_factor`: overcommit changes how many
+    /// declared vCPUs may run, not the host-control share while they are runnable.
+    pub fn host_cpu_cgroup_weights(&self) -> (u32, u32) {
+        const TOTAL_WEIGHT: u32 = 10_000;
+
+        let total_capacity = self.cpu_capacity.host_reservation + self.cpu_capacity.guest_capacity;
+        let control_weight = (self.cpu_capacity.host_reservation / total_capacity
+            * f64::from(TOTAL_WEIGHT))
+        .round() as u32;
+        let control_weight = control_weight.clamp(1, TOTAL_WEIGHT - 1);
+        (control_weight, TOTAL_WEIGHT - control_weight)
+    }
+
     /// Returns the fractional declared-vCPU admission limit after overcommit.
     pub fn vcpu_admission_limit(&self) -> f64 {
         self.cpu_capacity.admission_limit
@@ -451,6 +468,18 @@ mod tests {
                 assert!(budget.try_reserve_inner(2, 1));
             }
             assert!(!budget.try_reserve_inner(2, 1));
+        }
+    }
+
+    #[test]
+    fn host_cpu_cgroup_weights_preserve_reservation_ratio() {
+        let cases = [(1, (600, 9400)), (4, (200, 9800)), (64, (36, 9964))];
+
+        for (host_cpus, expected) in cases {
+            let first = ResourceBudget::new(host_cpus, 1, 1.0, 0);
+            let overcommitted = ResourceBudget::new(host_cpus, 1, 2.0, 0);
+            assert_eq!(first.host_cpu_cgroup_weights(), expected);
+            assert_eq!(overcommitted.host_cpu_cgroup_weights(), expected);
         }
     }
 
