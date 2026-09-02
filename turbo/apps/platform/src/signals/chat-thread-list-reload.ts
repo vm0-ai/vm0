@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
 import { reloadSharedDatabaseComputed$ } from "./shared-database-bridge-state.ts";
 
@@ -33,22 +32,5 @@ export const applyChatThreadReadCursorUpdated$ = command(
     ) {
       set(clearOptimisticReadMark$, payload.threadId);
     }
-  },
-);
-
-const reloadChatIndicatorsOnForeground$ = command(
-  ({ set }, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    set(reloadChatIndicators$);
-  },
-);
-
-export const setupChatIndicatorForegroundCatchUp$ = command(
-  ({ set }, signal: AbortSignal) => {
-    set(
-      subscribeRealtimeReadyCatchUp$,
-      reloadChatIndicatorsOnForeground$,
-      signal,
-    );
   },
 );
