@@ -16,6 +16,10 @@ import {
   type MarkdownPreviewTreeComputed,
 } from "../markdown-preview-tree.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
+import {
+  createZoomableImageCanvasSignals,
+  type ZoomableImageCanvasSignals,
+} from "../zoomable-image-canvas.ts";
 
 // ---------------------------------------------------------------------------
 // Thread-owned utility sidebar.
@@ -112,6 +116,7 @@ export interface ThreadSidebarSignals {
    */
   readonly fullscreen$: Computed<boolean>;
   readonly toggleFullscreen$: Command<void, []>;
+  readonly imageCanvas: ZoomableImageCanvasSignals;
   /**
    * Thread-scoped artifact catalog. Loaded pages persist across sidebar
    * close/reopen — ccstate computeds keep the cache — and are only dropped
@@ -142,6 +147,7 @@ export function createThreadSidebarSignals(
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
   const resetArtifactPreviewSignal$ = resetSignal();
   const internalArtifactPreviewSignal$ = state(ownerSignal);
+  const imageCanvas = createZoomableImageCanvasSignals();
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
@@ -172,6 +178,7 @@ export function createThreadSidebarSignals(
     if (current?.type !== target.type) {
       set(internalFullscreen$, false);
     }
+    set(imageCanvas.reset$);
     set(
       internalArtifactPreviewSignal$,
       set(resetArtifactPreviewSignal$, ownerSignal),
@@ -195,6 +202,7 @@ export function createThreadSidebarSignals(
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
+    set(imageCanvas.reset$);
     if (resourceReset$) {
       set(resourceReset$);
     }
@@ -233,10 +241,12 @@ export function createThreadSidebarSignals(
       return get(internalFullscreen$);
     }),
     toggleFullscreen$: command(({ set }) => {
+      set(imageCanvas.reset$);
       set(internalFullscreen$, (fullscreen) => {
         return !fullscreen;
       });
     }),
+    imageCanvas,
     artifactCatalog,
     selectedArtifactText$,
     selectedArtifactMarkdownTree$,
