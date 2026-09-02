@@ -185,6 +185,73 @@ pub struct FactoryConfig {
     pub snapshot: Option<SnapshotRef>,
 }
 
+/// Whether a sandbox runtime must establish managed host CPU placement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostCpuPlacementMode {
+    /// Runtime initialization fails when the delegated host CPU boundary is unavailable.
+    Required,
+    /// Runtime initialization may continue unmanaged only when delegation is unavailable.
+    PreferManaged,
+}
+
+/// Runner-wide policy for weighted host CPU placement.
+///
+/// The concrete sandbox provider discovers and owns its host resource boundary;
+/// callers only choose the sibling weights and whether delegation is required.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HostCpuPlacementConfig {
+    control_weight: u32,
+    guests_weight: u32,
+    mode: HostCpuPlacementMode,
+}
+
+impl HostCpuPlacementConfig {
+    /// Smallest CPU weight accepted by cgroup v2.
+    pub const MIN_WEIGHT: u32 = 1;
+    /// Largest CPU weight accepted by cgroup v2.
+    pub const MAX_WEIGHT: u32 = 10_000;
+
+    /// Build a validated placement policy.
+    pub fn new(
+        control_weight: u32,
+        guests_weight: u32,
+        mode: HostCpuPlacementMode,
+    ) -> Result<Self, String> {
+        for (name, weight) in [
+            ("control_weight", control_weight),
+            ("guests_weight", guests_weight),
+        ] {
+            if !(Self::MIN_WEIGHT..=Self::MAX_WEIGHT).contains(&weight) {
+                return Err(format!(
+                    "{name} must be between {} and {}",
+                    Self::MIN_WEIGHT,
+                    Self::MAX_WEIGHT
+                ));
+            }
+        }
+        Ok(Self {
+            control_weight,
+            guests_weight,
+            mode,
+        })
+    }
+
+    /// Weight assigned to Runner control work.
+    pub fn control_weight(self) -> u32 {
+        self.control_weight
+    }
+
+    /// Aggregate weight assigned to all Firecracker Guests.
+    pub fn guests_weight(self) -> u32 {
+        self.guests_weight
+    }
+
+    /// Startup behavior when host cgroup delegation is unavailable.
+    pub fn mode(self) -> HostCpuPlacementMode {
+        self.mode
+    }
+}
+
 /// Runtime-wide configuration used to initialize shared backend resources.
 ///
 /// These values are discovered before a runtime is created and apply to every
@@ -195,6 +262,11 @@ pub struct RuntimeConfig {
     pub proxy_port: Option<u16>,
     /// DNS proxy port for DNS query interception. Shared across all factories.
     pub dns_port: Option<u16>,
+    /// Optional host CPU placement policy for normal sandboxes.
+    ///
+    /// `None` is reserved for direct developer utilities that do not enter the
+    /// Runner worker admission loop.
+    pub host_cpu_placement: Option<HostCpuPlacementConfig>,
 }
 
 #[cfg(test)]
@@ -223,5 +295,23 @@ mod tests {
         let id = SandboxId::new_v4();
         let parsed: SandboxId = id.to_string().parse().unwrap();
         assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn host_cpu_placement_config_validates_kernel_weight_range() {
+        let config = HostCpuPlacementConfig::new(
+            HostCpuPlacementConfig::MIN_WEIGHT,
+            HostCpuPlacementConfig::MAX_WEIGHT,
+            HostCpuPlacementMode::Required,
+        )
+        .unwrap();
+        assert_eq!(config.control_weight(), 1);
+        assert_eq!(config.guests_weight(), 10_000);
+        assert_eq!(config.mode(), HostCpuPlacementMode::Required);
+
+        assert!(HostCpuPlacementConfig::new(0, 1, HostCpuPlacementMode::Required).is_err());
+        assert!(
+            HostCpuPlacementConfig::new(1, 10_001, HostCpuPlacementMode::PreferManaged).is_err()
+        );
     }
 }

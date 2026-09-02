@@ -6,6 +6,22 @@ use super::support::{
     wait_budget_count, wait_cancel_token, wait_discover_entered,
     wait_status_idle_reuse_keys_and_active_runs,
 };
+
+#[test]
+fn host_cpu_placement_policy_uses_worker_mode_and_budget_ratio() {
+    let budget = ResourceBudget::new(4, 32_768, 2.0, 8);
+
+    let production = host_cpu_placement_config(&budget, false).unwrap();
+    assert_eq!(production.control_weight(), 200);
+    assert_eq!(production.guests_weight(), 9_800);
+    assert_eq!(production.mode(), sandbox::HostCpuPlacementMode::Required);
+
+    let local = host_cpu_placement_config(&budget, true).unwrap();
+    assert_eq!(local.control_weight(), 200);
+    assert_eq!(local.guests_weight(), 9_800);
+    assert_eq!(local.mode(), sandbox::HostCpuPlacementMode::PreferManaged);
+}
+
 // -----------------------------------------------------------------------
 // Test 11: Budget full → job skipped (not claimed) → budget freed → next job succeeds
 //

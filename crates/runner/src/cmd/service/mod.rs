@@ -39,6 +39,7 @@ use systemctl::{
 };
 use unit_config::read_unit_config_path_bounded;
 use unit_file::{
+    RUNNER_SERVICE_CONTROL_SUBGROUP_DIRECTIVE, RUNNER_SERVICE_CPU_DELEGATION_DIRECTIVE,
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
     validate_systemd_path, write_unit_file,
@@ -189,6 +190,13 @@ fn systemd_run_limit_nofile_property_arg() -> String {
     format!("--property={RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE}")
 }
 
+fn systemd_run_cpu_delegation_property_args() -> [String; 2] {
+    [
+        format!("--property={RUNNER_SERVICE_CPU_DELEGATION_DIRECTIVE}"),
+        format!("--property={RUNNER_SERVICE_CONTROL_SUBGROUP_DIRECTIVE}"),
+    ]
+}
+
 type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 
 async fn restore_service_state_after_reload_failure(
@@ -316,6 +324,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let desc_arg = format!("--description=VM0 Runner ({})", unit.unit_name());
     let syslog_arg = format!("--property=SyslogIdentifier={}", unit.unit_name());
     let nofile_arg = systemd_run_limit_nofile_property_arg();
+    let [delegate_arg, delegate_subgroup_arg] = systemd_run_cpu_delegation_property_args();
     with_service_activation_image_artifacts(
         &unit,
         &config_path,
@@ -333,6 +342,8 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
                 "--property=KillSignal=SIGTERM",
                 "--property=TimeoutStopSec=300",
                 &*nofile_arg,
+                &*delegate_arg,
+                &*delegate_subgroup_arg,
                 &*syslog_arg,
             ]);
             for entry in &args.env {
@@ -1469,6 +1480,17 @@ profiles:
         assert_eq!(
             systemd_run_limit_nofile_property_arg(),
             "--property=LimitNOFILE=524288:524288"
+        );
+    }
+
+    #[test]
+    fn systemd_run_delegates_cpu_with_control_subgroup() {
+        assert_eq!(
+            systemd_run_cpu_delegation_property_args(),
+            [
+                "--property=Delegate=cpu".to_string(),
+                "--property=DelegateSubgroup=control".to_string(),
+            ]
         );
     }
 

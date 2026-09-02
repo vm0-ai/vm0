@@ -186,6 +186,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         is_parked: false,
         park_outcome: None,
         park_fence: None,
+        host_cpu_cgroup: None,
     }
 }
 
@@ -3706,6 +3707,37 @@ async fn process_monitor_reports_unexpected_exit() {
 }
 
 #[tokio::test]
+async fn process_monitor_releases_guest_cpu_cgroup_after_reap() {
+    let temp = tempfile::tempdir().unwrap();
+    let leaf = temp.path().join("guest");
+    std::fs::create_dir(&leaf).unwrap();
+    let placement_file = std::fs::File::create(temp.path().join("placement")).unwrap();
+    let lease = GuestCpuCgroupLease::from_test_file(leaf.clone(), placement_file);
+    let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
+    let state_publish_lock = Arc::new(Mutex::new(()));
+    let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
+    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let mut child = monitored_cat_process();
+    let stdin = child.stdin.take();
+    let context = ProcessMonitorContext {
+        state,
+        state_publish_lock,
+        state_tx,
+        guest,
+        runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: Some(lease),
+    };
+
+    let handle = monitor_process_with_context("test-sandbox", child, context);
+    assert!(leaf.exists());
+
+    drop(stdin);
+    handle.wait().await;
+
+    assert!(!leaf.exists());
+}
+
+#[tokio::test]
 async fn process_monitor_cancels_control_server_after_exit() {
     let dir = tempfile::tempdir().unwrap();
     let sock_path = dir.path().join("control.sock");
@@ -3794,6 +3826,7 @@ async fn process_monitor_aborts_stuck_log_reader_after_exit() {
         state_tx,
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
     let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
 
@@ -3833,6 +3866,7 @@ async fn process_monitor_wait_cancel_keeps_log_reader_cleanup_owned() {
         state_tx,
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
     let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
 
@@ -4107,6 +4141,7 @@ async fn stdout_eof_does_not_mark_running_process_crashed() {
         state_tx: state_tx.clone(),
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
 
     let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
@@ -4201,6 +4236,7 @@ async fn process_monitor_fallback_does_not_kill_group_after_parent_reap() {
         state_tx,
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
 
     let handle = monitor_process_with_log_readers_and_exit_notifier(

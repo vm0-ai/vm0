@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use tracing::{info, warn};
 
@@ -11,6 +13,7 @@ use nbd_cow::pool::{DevicePoolConfig, DevicePoolHandle};
 use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::duration::duration_ms;
 use crate::factory::FirecrackerFactory;
+use crate::host_cpu_cgroup::HostCpuCgroupManager;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::runtime_dirs::checked_runtime_sock_dir;
@@ -24,6 +27,7 @@ pub struct FirecrackerRuntime {
     device_pool: DevicePoolHandle,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
+    host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
 }
 
 impl FirecrackerRuntime {
@@ -33,6 +37,10 @@ impl FirecrackerRuntime {
     /// All factories created via [`SandboxRuntime::create_factory`] share these
     /// resources.
     pub async fn new(config: sandbox::RuntimeConfig) -> Result<Self, SandboxError> {
+        let host_cpu_cgroup = match config.host_cpu_placement {
+            Some(placement) => HostCpuCgroupManager::initialize(placement)?,
+            None => None,
+        };
         let t = std::time::Instant::now();
         let netns_config = NetnsPoolConfig {
             proxy_port: config.proxy_port,
@@ -66,6 +74,7 @@ impl FirecrackerRuntime {
             device_pool,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
+            host_cpu_cgroup,
         })
     }
 
@@ -118,6 +127,7 @@ impl SandboxRuntime for FirecrackerRuntime {
             fc_config,
             Some(self.netns_pool.clone()),
             self.device_pool.clone(),
+            self.host_cpu_cgroup.clone(),
         )
         .await?;
         Ok(Box::new(factory))
