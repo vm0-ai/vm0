@@ -18,14 +18,14 @@ refuse_workspace_symlink_path() {
   done
 }
 
-workspace_device_mounted_elsewhere() {
-  [ -n "$workspace_dev" ] || return 1
+inspect_workspace_mountinfo() {
   while IFS=' ' read -r _ _ mount_dev _ _ _; do
     if [ "$mount_dev" = "$workspace_dev" ]; then
+      workspace_device_mounted_elsewhere=true
       return 0
     fi
-  done < "$workspace_mountinfo_path"
-  return 1
+  done <&3
+  return 0
 }
 
 ensure_workspace_owner() {
@@ -44,7 +44,15 @@ if mountpoint -q -- "$workspace_dir"; then
   exit 64
 fi
 
-if workspace_device_mounted_elsewhere; then
+workspace_device_mounted_elsewhere=false
+if [ -n "$workspace_dev" ]; then
+  if ! inspect_workspace_mountinfo 3< "$workspace_mountinfo_path"; then
+    echo "unable to inspect workspace mounts because mountinfo is unavailable: $workspace_mountinfo_path" >&2
+    exit 66
+  fi
+fi
+
+if [ "$workspace_device_mounted_elsewhere" = true ]; then
   echo "refusing to mount workspace drive because $workspace_device is already mounted outside $workspace_dir" >&2
   exit 64
 fi
