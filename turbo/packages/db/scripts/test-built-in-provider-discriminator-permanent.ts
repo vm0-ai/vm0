@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { upsertBuiltInNoSecretModelProviderIdentity } from "@okouai/db/operations/model-provider-built-in-identity";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const ACTIVE_PROVIDER_IDENTITY_HELPER = path.join(
+  dirname,
+  "../src/operations/model-provider-built-in-identity.ts",
+);
 
 function databaseErrorField(
   error: unknown,
@@ -12,6 +23,29 @@ function databaseErrorField(
   return typeof value === "string" ? value : undefined;
 }
 
+function databaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const code = Reflect.get(error, "code");
+  if (typeof code === "string") {
+    return code;
+  }
+  return databaseErrorCode(Reflect.get(error, "cause"));
+}
+
+async function assertActiveProviderIdentityHelperIsCanonicalOnly(): Promise<void> {
+  const source = await fs.readFile(ACTIVE_PROVIDER_IDENTITY_HELPER, "utf8");
+  const canonicalTypeFilters = source.match(
+    /eq\(modelProviders\.type, "built-in"\)/gu,
+  );
+  assert.equal(canonicalTypeFilters?.length, 1);
+  assert.doesNotMatch(source, /["'`]vm0["'`]/u);
+  assert.doesNotMatch(source, /\binArray\s*\(/u);
+  assert.doesNotMatch(source, /\bexistingProviders\b/u);
+  assert.doesNotMatch(source, /alias(?:-pair| rows?)/iu);
+}
+
 export async function validatePermanentBuiltInProviderDiscriminatorState(
   dbUrl: string,
 ): Promise<void> {
@@ -20,6 +54,7 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
   );
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
+  const db = drizzle(client);
 
   const ids = {
     run: "00000000-0000-4000-8000-000000299101",
@@ -31,11 +66,18 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     proposedProvider: "00000000-0000-4000-8000-000000299107",
     historicalProvider: "00000000-0000-4000-8000-000000299108",
     invalidPolicy: "00000000-0000-4000-8000-000000299109",
+    helperProvider: "00000000-0000-4000-8000-000000310840",
+    helperLockProbeProvider: "00000000-0000-4000-8000-000000310841",
+    helperUpdateProvider: "00000000-0000-4000-8000-000000310842",
+    helperRepeatedProvider: "00000000-0000-4000-8000-000000310843",
   } as const;
   const orgId = "org-provider-discriminator-permanent-30671";
+  const helperOrgId = "org-provider-identity-permanent-31084";
   const userId = "user-provider-discriminator-permanent-30671";
 
   try {
+    await assertActiveProviderIdentityHelperIsCanonicalOnly();
+
     const residuals = await client.query<{ count: number }>(`
       SELECT (
         (SELECT count(*) FROM "agent_runs" WHERE "model_provider" = 'vm0') +
@@ -239,6 +281,109 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     `);
     assert.deepEqual(indexState.rows, [{ count: 1 }]);
 
+    const created = await upsertBuiltInNoSecretModelProviderIdentity(
+      db,
+      {
+        orgId: helperOrgId,
+        selectedModel: "gpt-5.6-sol",
+        updatedAt: new Date("2026-09-02T00:00:00.000Z"),
+        proposedId: ids.helperProvider,
+      },
+      new AbortController().signal,
+    );
+    assert.equal(created.created, true);
+    assert.equal(created.provider.id, ids.helperProvider);
+    assert.equal(created.provider.type, "built-in");
+    assert.equal(created.provider.selectedModel, "gpt-5.6-sol");
+
+    const lockClient = new Client({ connectionString: dbUrl });
+    await lockClient.connect();
+    try {
+      await lockClient.query("BEGIN");
+      await lockClient.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+        `model_provider_state:${helperOrgId}:__org__:built-in`,
+      ]);
+      await client.query("SET lock_timeout = '100ms'");
+      try {
+        await assert.rejects(
+          upsertBuiltInNoSecretModelProviderIdentity(
+            db,
+            {
+              orgId: helperOrgId,
+              selectedModel: "gpt-5.6-terra",
+              updatedAt: new Date("2026-09-02T00:01:00.000Z"),
+              proposedId: ids.helperLockProbeProvider,
+            },
+            new AbortController().signal,
+          ),
+          (error: unknown) => {
+            return databaseErrorCode(error) === "55P03";
+          },
+        );
+      } finally {
+        await client.query("RESET lock_timeout");
+        await lockClient.query("ROLLBACK");
+      }
+    } finally {
+      await lockClient.end();
+    }
+
+    const afterLockProbe = await client.query<{
+      count: number;
+      id: string;
+      selectedModel: string;
+      type: string;
+    }>(
+      `
+        SELECT
+          count(*) OVER ()::integer AS "count",
+          "id"::text AS "id",
+          "selected_model" AS "selectedModel",
+          "type"
+        FROM "model_providers"
+        WHERE "org_id" = $1 AND "user_id" = '__org__'
+      `,
+      [helperOrgId],
+    );
+    assert.deepEqual(afterLockProbe.rows, [
+      {
+        count: 1,
+        id: ids.helperProvider,
+        selectedModel: "gpt-5.6-sol",
+        type: "built-in",
+      },
+    ]);
+
+    const updated = await upsertBuiltInNoSecretModelProviderIdentity(
+      db,
+      {
+        orgId: helperOrgId,
+        selectedModel: "gpt-5.6-terra",
+        updatedAt: new Date("2026-09-02T00:02:00.000Z"),
+        proposedId: ids.helperUpdateProvider,
+      },
+      new AbortController().signal,
+    );
+    assert.equal(updated.created, false);
+    assert.equal(updated.provider.id, ids.helperProvider);
+    assert.equal(updated.provider.type, "built-in");
+    assert.equal(updated.provider.selectedModel, "gpt-5.6-terra");
+
+    const repeated = await upsertBuiltInNoSecretModelProviderIdentity(
+      db,
+      {
+        orgId: helperOrgId,
+        selectedModel: "gpt-5.6-luna",
+        updatedAt: new Date("2026-09-02T00:03:00.000Z"),
+        proposedId: ids.helperRepeatedProvider,
+      },
+      new AbortController().signal,
+    );
+    assert.equal(repeated.created, false);
+    assert.equal(repeated.provider.id, ids.helperProvider);
+    assert.equal(repeated.provider.type, "built-in");
+    assert.equal(repeated.provider.selectedModel, "gpt-5.6-luna");
+
     console.log(
       "   ✅ permanent data and catalog state contain no exact vm0 discriminator or rollback bridge",
     );
@@ -247,6 +392,9 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     );
     console.log(
       "   ✅ exact-value contraction preserves other historical provider spellings\n",
+    );
+    console.log(
+      "   ✅ active helper is canonical-only and preserves creation, locking, update, repeated-upsert, and row identity semantics\n",
     );
   } finally {
     await client.query(`DELETE FROM "org_model_policies" WHERE "org_id" = $1`, [
@@ -257,6 +405,9 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
     ]);
     await client.query(`DELETE FROM "model_providers" WHERE "org_id" = $1`, [
       orgId,
+    ]);
+    await client.query(`DELETE FROM "model_providers" WHERE "org_id" = $1`, [
+      helperOrgId,
     ]);
     await client.query(`DELETE FROM "agent_sessions" WHERE "id" = $1`, [
       ids.session,
