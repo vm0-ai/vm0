@@ -64,6 +64,10 @@ import {
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { WorkflowMember } from "./workflow-data.service";
 import { resolveWorkflowAutomationConnectorId } from "./workflow-automation-account.service";
+import {
+  workflowAutomationAccountConnectorSlug,
+  type WorkflowAutomationAccountConnectorSlug,
+} from "./workflow-automation-account-classification.service";
 import { resolveStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 
 const DORMANT_CREATION_LEASE_MS = 5 * 60 * 1000;
@@ -154,35 +158,6 @@ function eventWatchFailureMessage(result: {
     : "Official Workflow event-watch reconciliation failed";
 }
 
-function accountConnectorSlug(
-  eventType: string | null,
-): "gmail" | "google-calendar" | "google-forms" | "notion" | "stripe" | null {
-  if (
-    eventType === "gmail-new-message" ||
-    eventType === "gmail-label-applied"
-  ) {
-    return "gmail";
-  }
-  if (
-    eventType === "google-calendar-event-created" ||
-    eventType === "google-calendar-event-updated" ||
-    eventType === "google-calendar-event-cancelled"
-  ) {
-    return "google-calendar";
-  }
-  if (
-    eventType === "notion-child-page-created" ||
-    eventType === "notion-database-item-created" ||
-    eventType === "notion-page-content-updated"
-  ) {
-    return "notion";
-  }
-  if (eventType === "google-forms-response-submitted") {
-    return "google-forms";
-  }
-  return eventType === "stripe-invoice-paid" ? "stripe" : null;
-}
-
 async function lockOfficialAutomationAccountProjection(
   db: Db,
   args: {
@@ -197,32 +172,21 @@ async function lockOfficialAutomationAccountProjection(
   | { readonly kind: "not-required" }
   | {
       readonly kind: "locked";
-      readonly connectorSlug:
-        | "gmail"
-        | "google-calendar"
-        | "google-forms"
-        | "notion"
-        | "stripe"
-        | null;
+      readonly connectorSlug: WorkflowAutomationAccountConnectorSlug | null;
       readonly eventConnectorId: string | null;
       readonly stripeBinding: StripeAutomationBinding | null;
     }
 > {
-  const currentConnectorSlug = accountConnectorSlug(args.currentEventType);
-  const nextConnectorSlug = accountConnectorSlug(args.nextEventType);
+  const currentConnectorSlug = workflowAutomationAccountConnectorSlug(
+    args.currentEventType,
+  );
+  const nextConnectorSlug = workflowAutomationAccountConnectorSlug(
+    args.nextEventType,
+  );
   const connectorSlugs = [currentConnectorSlug, nextConnectorSlug]
-    .filter(
-      (
-        slug,
-      ): slug is
-        | "gmail"
-        | "google-calendar"
-        | "google-forms"
-        | "notion"
-        | "stripe" => {
-        return slug !== null;
-      },
-    )
+    .filter((slug): slug is WorkflowAutomationAccountConnectorSlug => {
+      return slug !== null;
+    })
     .filter((slug, index, values) => {
       return values.indexOf(slug) === index;
     })
@@ -702,7 +666,9 @@ async function restoreFailedReconfiguration(
     const restoredNotionConfig =
       accountProjection.kind === "locked" &&
       accountProjection.eventConnectorId !== null &&
-      accountConnectorSlug(args.persisted.previous.eventType) === "notion"
+      workflowAutomationAccountConnectorSlug(
+        args.persisted.previous.eventType,
+      ) === "notion"
         ? notionConfigWithConnectorId(
             args.persisted.previous.eventType,
             args.persisted.previous.eventConfig,

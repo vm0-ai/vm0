@@ -330,6 +330,7 @@ export async function readWorkflowAutomationAutonomyFixture(
 ): Promise<{
   readonly autonomyBudget: number;
   readonly enabled: boolean;
+  readonly eventConnectorId: string | null;
   readonly lastRunId: string | null;
   readonly officialBlueprintKey: string | null;
   readonly officialResultEmailEnabled: boolean | null;
@@ -348,6 +349,7 @@ export async function readWorkflowAutomationAutonomyFixture(
     ? {
         autonomyBudget: state.autonomy_budget,
         enabled: state.enabled,
+        eventConnectorId: state.event_connector_id,
         lastRunId: state.last_run_id,
         officialBlueprintKey: state.official_blueprint_key,
         officialResultEmailEnabled: state.official_result_email_enabled,

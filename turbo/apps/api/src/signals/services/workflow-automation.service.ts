@@ -127,6 +127,10 @@ import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-f
 import { resolveStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
 import { lockConnectorAccountTarget } from "./auth-state-lock.service";
+import {
+  workflowAutomationAccountConnectorSlug,
+  type WorkflowAutomationAccountConnectorSlug,
+} from "./workflow-automation-account-classification.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -4985,38 +4989,9 @@ async function projectGoogleFormsEnabledEventConfig(
   return { ...config, connectorId: eventConnectorId };
 }
 
-type EnabledAutomationAccountProvider =
-  | "gmail"
-  | "google-calendar"
-  | "google-forms"
-  | "google-meet"
-  | "notion"
-  | "stripe";
-
-function enabledAutomationAccountProvider(
-  automation: AutomationRow,
-): EnabledAutomationAccountProvider | null {
-  if (supportedGmailEventType(automation.eventType)) {
-    return "gmail";
-  }
-  if (supportedGoogleCalendarEventType(automation.eventType)) {
-    return "google-calendar";
-  }
-  if (supportedGoogleFormsEventType(automation.eventType)) {
-    return "google-forms";
-  }
-  if (supportedGoogleMeetEventType(automation.eventType)) {
-    return "google-meet";
-  }
-  if (supportedNotionEventType(automation.eventType)) {
-    return "notion";
-  }
-  return automation.eventType === "stripe-invoice-paid" ? "stripe" : null;
-}
-
 async function resolveEnabledAutomationConnectorId(
   db: Db,
-  provider: Exclude<EnabledAutomationAccountProvider, "stripe">,
+  provider: Exclude<WorkflowAutomationAccountConnectorSlug, "stripe">,
   args: {
     readonly orgId: string;
     readonly userId: string;
@@ -5043,7 +5018,7 @@ async function resolveEnabledAutomationConnectorId(
 }
 
 function unavailableEnabledAutomationProjection(
-  provider: Exclude<EnabledAutomationAccountProvider, "stripe">,
+  provider: Exclude<WorkflowAutomationAccountConnectorSlug, "stripe">,
 ): EnabledAutomationAccountProjection {
   switch (provider) {
     case "gmail": {
@@ -5065,7 +5040,7 @@ function unavailableEnabledAutomationProjection(
 }
 
 function enabledAutomationUnavailableMessage(
-  provider: Exclude<EnabledAutomationAccountProvider, "stripe">,
+  provider: Exclude<WorkflowAutomationAccountConnectorSlug, "stripe">,
 ): string {
   switch (provider) {
     case "gmail": {
@@ -5091,7 +5066,7 @@ async function lockEnabledAutomationAccountProjection(
   automation: AutomationRow,
   signal: AbortSignal,
 ): Promise<EnabledAutomationAccountProjection> {
-  const provider = enabledAutomationAccountProvider(automation);
+  const provider = workflowAutomationAccountConnectorSlug(automation.eventType);
   if (provider === null) {
     return { status: "ok", required: false };
   }
@@ -5287,7 +5262,7 @@ async function prepareEnabledAutomationAccountProjection(
   | { readonly kind: "ok"; readonly eventConnectorId: string | null }
   | AutomationActionFailure
 > {
-  const provider = enabledAutomationAccountProvider(automation);
+  const provider = workflowAutomationAccountConnectorSlug(automation.eventType);
   if (provider === null || provider === "stripe") {
     return { kind: "ok", eventConnectorId: automation.eventConnectorId };
   }
