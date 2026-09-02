@@ -745,7 +745,7 @@ body {
    chat cards opt into their hover border here instead, mirroring
    `.zero-card.cursor-pointer:hover` below. */
 .zero-app .zero-chat-card-interactive:hover {
-  border-color: hsl(var(--foreground) / 0.2);
+  border-color: hsl(var(--gray-500));
 }
 
 /* White card: shared border, radius (all white cards except chat bubbles) */
