@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
 import {
+  PI_MEMORY_SUMMARY_MAX_BYTES,
+  PI_MEMORY_SUMMARY_MAX_TOKENS,
+} from "@okouai/api-contracts/contracts/runners";
+import {
   MAX_FILE_SIZE_BYTES,
   STORAGE_MANIFEST_MAX_FILES,
   STORAGE_MANIFEST_MAX_PATH_BYTES,
@@ -38,9 +42,6 @@ import {
 const log = logger("MemorySummaryProjection");
 
 const MEMORY_SUMMARY_FILENAME = "memory_summary.md";
-const MEMORY_SUMMARY_MAX_BYTES = 64 * 1024;
-const MEMORY_SUMMARY_MAX_TOKENS = 2500;
-
 const MANIFEST_MAX_BYTES = 16 * 1024 * 1024;
 const ARCHIVE_MAX_BYTES = 128 * 1024 * 1024;
 const TAR_MAX_OUTPUT_BYTES =
@@ -124,6 +125,13 @@ interface ReadyMemorySummaryProjection {
   readonly sourceHash: string;
   readonly sourceSize: number;
   readonly tokenCount: number;
+}
+
+interface ReadMemorySummaryProjectionArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly memoryStorageId: string;
+  readonly storageVersionId: string;
 }
 
 function isCanonicalUserMemoryStorage(
@@ -395,7 +403,7 @@ function validateManifest(args: {
   if (!summary || summary.size === 0) {
     return { status: "missing" };
   }
-  if (summary.size > MEMORY_SUMMARY_MAX_BYTES) {
+  if (summary.size > PI_MEMORY_SUMMARY_MAX_BYTES) {
     return { status: "over_limit" };
   }
   return { status: "valid", summary };
@@ -466,7 +474,7 @@ function extractSummaryFromArchive(
         entry.resume();
         return;
       }
-      if (entry.size > MEMORY_SUMMARY_MAX_BYTES) {
+      if (entry.size > PI_MEMORY_SUMMARY_MAX_BYTES) {
         overLimit = true;
         entry.resume();
         return;
@@ -613,7 +621,7 @@ const downloadProjectionArchive$ = command(
     if (!("ok" in tokenCount)) {
       return { status: "invalid" };
     }
-    if (tokenCount.ok > MEMORY_SUMMARY_MAX_TOKENS) {
+    if (tokenCount.ok > PI_MEMORY_SUMMARY_MAX_TOKENS) {
       return { status: "over_limit" };
     }
     return {
@@ -841,9 +849,9 @@ function readyProjectionIsAuthentic(
     projection.content.trim().length > 0 &&
     content.length === projection.sourceSize &&
     hashFileContent(content) === projection.sourceHash &&
-    content.length <= MEMORY_SUMMARY_MAX_BYTES &&
+    content.length <= PI_MEMORY_SUMMARY_MAX_BYTES &&
     tokenCount.ok === projection.tokenCount &&
-    projection.tokenCount <= MEMORY_SUMMARY_MAX_TOKENS
+    projection.tokenCount <= PI_MEMORY_SUMMARY_MAX_TOKENS
   );
 }
 
@@ -876,129 +884,131 @@ async function requeueInvalidReadyProjection(
   signal.throwIfAborted();
 }
 
-export const readMemorySummaryProjection$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly memoryStorageId: string;
-      readonly storageVersionId: string;
-    },
-    signal: AbortSignal,
-  ): Promise<ReadyMemorySummaryProjection | null> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .select({
-        storageId: storages.id,
-        storageOrgId: storages.orgId,
-        storageUserId: storages.userId,
-        storageName: storages.name,
-        projectionStatus: memorySummaryProjections.status,
-        content: memorySummaryProjections.content,
-        sourceHash: memorySummaryProjections.sourceHash,
-        sourceSize: memorySummaryProjections.sourceSize,
-        tokenCount: memorySummaryProjections.tokenCount,
-      })
-      .from(storages)
-      .innerJoin(
-        storageVersions,
-        and(
-          eq(storageVersions.storageId, storages.id),
-          eq(storageVersions.id, args.storageVersionId),
-        ),
-      )
-      .leftJoin(
-        memorySummaryProjections,
-        and(
-          eq(memorySummaryProjections.memoryStorageId, storages.id),
-          eq(memorySummaryProjections.storageVersionId, storageVersions.id),
-          eq(memorySummaryProjections.orgId, args.orgId),
-          eq(memorySummaryProjections.userId, args.userId),
-        ),
-      )
-      .where(
-        and(
-          eq(storages.id, args.memoryStorageId),
-          eq(storages.orgId, args.orgId),
-          eq(storages.userId, args.userId),
-          eq(storages.name, MEMORY_ARTIFACT_NAME),
-          ne(storages.userId, VOLUME_ORG_USER_ID),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-    if (!row) {
-      return null;
-    }
-    if (row.projectionStatus === null) {
-      const enqueued = await settle(
-        enqueueMemorySummaryProjection(
-          {
-            db,
-            storage: {
-              id: row.storageId,
-              orgId: row.storageOrgId,
-              userId: row.storageUserId,
-              name: row.storageName,
-            },
-            storageVersionId: args.storageVersionId,
-          },
-          signal,
-        ),
-        signal,
-      );
-      if (!enqueued.ok) {
-        log.warn("Memory summary projection read enqueue failed", {
-          orgId: args.orgId,
-          userId: args.userId,
-          memoryStorageId: args.memoryStorageId,
-          storageVersionId: args.storageVersionId,
-          errorClass: retryErrorClass(enqueued.error),
-        });
-      }
-      return null;
-    }
-    if (
-      row.projectionStatus !== "ready" ||
-      row.content === null ||
-      row.sourceHash === null ||
-      row.sourceSize === null ||
-      row.tokenCount === null
-    ) {
-      return null;
-    }
-
-    const ready = {
-      content: row.content,
-      sourceHash: row.sourceHash,
-      sourceSize: row.sourceSize,
-      tokenCount: row.tokenCount,
-    };
-    if (!readyProjectionIsAuthentic(ready)) {
-      const requeued = await settle(
-        requeueInvalidReadyProjection(
+export async function readMemorySummaryProjection(
+  db: Db,
+  args: ReadMemorySummaryProjectionArgs,
+  signal: AbortSignal,
+): Promise<ReadyMemorySummaryProjection | null> {
+  const [row] = await db
+    .select({
+      storageId: storages.id,
+      storageOrgId: storages.orgId,
+      storageUserId: storages.userId,
+      storageName: storages.name,
+      projectionStatus: memorySummaryProjections.status,
+      content: memorySummaryProjections.content,
+      sourceHash: memorySummaryProjections.sourceHash,
+      sourceSize: memorySummaryProjections.sourceSize,
+      tokenCount: memorySummaryProjections.tokenCount,
+    })
+    .from(storages)
+    .innerJoin(
+      storageVersions,
+      and(
+        eq(storageVersions.storageId, storages.id),
+        eq(storageVersions.id, args.storageVersionId),
+      ),
+    )
+    .leftJoin(
+      memorySummaryProjections,
+      and(
+        eq(memorySummaryProjections.memoryStorageId, storages.id),
+        eq(memorySummaryProjections.storageVersionId, storageVersions.id),
+        eq(memorySummaryProjections.orgId, args.orgId),
+        eq(memorySummaryProjections.userId, args.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(storages.id, args.memoryStorageId),
+        eq(storages.orgId, args.orgId),
+        eq(storages.userId, args.userId),
+        eq(storages.name, MEMORY_ARTIFACT_NAME),
+        ne(storages.userId, VOLUME_ORG_USER_ID),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!row) {
+    return null;
+  }
+  if (row.projectionStatus === null) {
+    const enqueued = await settle(
+      enqueueMemorySummaryProjection(
+        {
           db,
-          {
-            memoryStorageId: args.memoryStorageId,
-            storageVersionId: args.storageVersionId,
+          storage: {
+            id: row.storageId,
+            orgId: row.storageOrgId,
+            userId: row.storageUserId,
+            name: row.storageName,
           },
-          signal,
-        ),
+          storageVersionId: args.storageVersionId,
+        },
         signal,
-      );
-      log.warn("Memory summary projection failed read integrity", {
+      ),
+      signal,
+    );
+    if (!enqueued.ok) {
+      log.warn("Memory summary projection read enqueue failed", {
         orgId: args.orgId,
         userId: args.userId,
         memoryStorageId: args.memoryStorageId,
         storageVersionId: args.storageVersionId,
-        errorClass: "read_integrity_mismatch",
-        requeueErrorClass: requeued.ok
-          ? undefined
-          : retryErrorClass(requeued.error),
+        errorClass: retryErrorClass(enqueued.error),
       });
-      return null;
     }
-    return ready;
+    return null;
+  }
+  if (
+    row.projectionStatus !== "ready" ||
+    row.content === null ||
+    row.sourceHash === null ||
+    row.sourceSize === null ||
+    row.tokenCount === null
+  ) {
+    return null;
+  }
+
+  const ready = {
+    content: row.content,
+    sourceHash: row.sourceHash,
+    sourceSize: row.sourceSize,
+    tokenCount: row.tokenCount,
+  };
+  if (!readyProjectionIsAuthentic(ready)) {
+    const requeued = await settle(
+      requeueInvalidReadyProjection(
+        db,
+        {
+          memoryStorageId: args.memoryStorageId,
+          storageVersionId: args.storageVersionId,
+        },
+        signal,
+      ),
+      signal,
+    );
+    log.warn("Memory summary projection failed read integrity", {
+      orgId: args.orgId,
+      userId: args.userId,
+      memoryStorageId: args.memoryStorageId,
+      storageVersionId: args.storageVersionId,
+      errorClass: "read_integrity_mismatch",
+      requeueErrorClass: requeued.ok
+        ? undefined
+        : retryErrorClass(requeued.error),
+    });
+    return null;
+  }
+  return ready;
+}
+
+export const readMemorySummaryProjection$ = command(
+  async (
+    { set },
+    args: ReadMemorySummaryProjectionArgs,
+    signal: AbortSignal,
+  ): Promise<ReadyMemorySummaryProjection | null> => {
+    return await readMemorySummaryProjection(set(writeDb$), args, signal);
   },
 );
