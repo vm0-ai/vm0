@@ -41,7 +41,9 @@ interface PiMemoryPhase2OwnerScope {
 
 interface PiMemoryPhase2SelectedCandidate {
   readonly piSessionId: string;
+  readonly sourceRunId: string;
   readonly sourceHistoryHash: string;
+  readonly sourceCompletedAt: Date;
   readonly rawMemory: string;
   readonly rolloutSummary: string;
   readonly rolloutSlug: string | null;
@@ -230,7 +232,9 @@ async function selectClaimCandidates(
   const ranked = await tx
     .select({
       piSessionId: piMemoryStage1Candidates.piSessionId,
+      sourceRunId: piMemoryStage1Candidates.sourceRunId,
       sourceHistoryHash: piMemoryStage1Candidates.sourceHistoryHash,
+      sourceCompletedAt: piMemoryStage1Candidates.sourceCompletedAt,
       rawMemory: piMemoryStage1Candidates.rawMemory,
       rolloutSummary: piMemoryStage1Candidates.rolloutSummary,
       rolloutSlug: piMemoryStage1Candidates.rolloutSlug,
@@ -281,7 +285,9 @@ async function selectClaimCandidates(
     }
     const snapshot = {
       piSessionId: candidate.piSessionId,
+      sourceRunId: candidate.sourceRunId,
       sourceHistoryHash: candidate.sourceHistoryHash,
+      sourceCompletedAt: candidate.sourceCompletedAt,
       rawMemory: candidate.rawMemory,
       rolloutSummary: candidate.rolloutSummary,
       rolloutSlug: candidate.rolloutSlug,
