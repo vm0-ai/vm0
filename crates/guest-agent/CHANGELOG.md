@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.83.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.6...guest-agent-v0.83.7) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** centralize cli stderr diagnostic policy ([#30984](https://github.com/vm0-ai/vm0/issues/30984)) ([7f3d97c](https://github.com/vm0-ai/vm0/commit/7f3d97cc84f939ba04be5d9242349fdccfaf368b))
+
 ## [0.83.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.5...guest-agent-v0.83.6) (2026-09-01)
 
 
