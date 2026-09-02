@@ -53,6 +53,18 @@ for relative_path in "${required_files[@]}"; do
   cp "${canonical_dist}/${relative_path}" "$destination"
 done
 
+# Wrangler uploads these files as text/data modules imported by the standalone
+# Worker entrypoint. Keep the public route names above while using extensions
+# with unambiguous module types during bundling.
+cp "${worker_shell}/sw.js" "${worker_shell}/sw.txt"
+cp "${worker_shell}/manifest.webmanifest" "${worker_shell}/manifest.txt"
+cp "${worker_shell}/icons/icon-192.png" \
+  "${worker_shell}/icons/icon-192.bin"
+cp "${worker_shell}/icons/icon-512.png" \
+  "${worker_shell}/icons/icon-512.bin"
+cp "${worker_shell}/icons/icon-512-maskable.png" \
+  "${worker_shell}/icons/icon-512-maskable.bin"
+
 clerk_primary_app_domain_marker="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__"
 if grep -Fq "$clerk_primary_app_domain_marker" "${worker_shell}/index.html"; then
   sed -i \

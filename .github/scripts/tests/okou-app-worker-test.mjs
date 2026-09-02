@@ -185,6 +185,18 @@ const builtIndexTemplate = indexTemplate
   )
   .replaceAll("__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
   .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+const embeddedWorker = workerModule.createWorker({
+  icon192: new TextEncoder().encode("icon-192").buffer,
+  icon512: new TextEncoder().encode("icon-512").buffer,
+  icon512Maskable: new TextEncoder().encode("icon-maskable").buffer,
+  indexHtml: builtIndexTemplate.replace(
+    '<meta name="vm0-api-origin" content="" />',
+    `<meta name="vm0-api-origin" content="${previewOrigin}" />`,
+  ),
+  manifest: manifestTemplate,
+  robots: "User-agent: *\nAllow: /\n",
+  serviceWorker: 'self.addEventListener("install", () => {});',
+});
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
@@ -515,6 +527,43 @@ assert.equal(
 );
 assert.equal(serviceWorker.headers.get("service-worker-allowed"), "/");
 assert.equal(serviceWorker.headers.get("x-content-type-options"), "nosniff");
+
+const embeddedPage = await embeddedWorker.fetch(
+  new Request(
+    "https://pr-25304-app-okou-app-preview.vm0.workers.dev/settings/profile",
+  ),
+  { PUBLIC_BRAND: "okou" },
+);
+const embeddedHtml = await embeddedPage.text();
+assert.equal(embeddedPage.status, 200);
+assert.equal(
+  metaContent(embeddedHtml, "name", "vm0-api-origin"),
+  previewOrigin,
+);
+assert.equal(htmlAttribute(embeddedHtml, "data-app-brand-name"), "Okou");
+
+const embeddedServiceWorker = await embeddedWorker.fetch(
+  new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
+  { PUBLIC_BRAND: "okou" },
+);
+assert.equal(
+  await embeddedServiceWorker.text(),
+  'self.addEventListener("install", () => {});',
+);
+assert.equal(
+  embeddedServiceWorker.headers.get("content-type"),
+  "application/javascript; charset=UTF-8",
+);
+assert.equal(embeddedServiceWorker.headers.get("service-worker-allowed"), "/");
+
+const embeddedIcon = await embeddedWorker.fetch(
+  new Request(
+    "https://pr-25304-app-okou-app-preview.vm0.workers.dev/icons/icon-192.png",
+  ),
+  { PUBLIC_BRAND: "okou" },
+);
+assert.equal(embeddedIcon.headers.get("content-type"), "image/png");
+assert.equal(await embeddedIcon.text(), "icon-192");
 
 const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
 assert.equal(htmlAttribute(untrustedSuffix.html, "data-app-brand-name"), "VM0");

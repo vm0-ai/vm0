@@ -25,6 +25,15 @@ const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
 };
+const EMBEDDED_SHELL_CONTENT_TYPES = new Map([
+  ["/index.html", "text/html; charset=UTF-8"],
+  ["/sw.js", "application/javascript; charset=UTF-8"],
+  ["/manifest.webmanifest", "application/manifest+json; charset=UTF-8"],
+  ["/robots.txt", "text/plain; charset=UTF-8"],
+  ["/icons/icon-192.png", "image/png"],
+  ["/icons/icon-512.png", "image/png"],
+  ["/icons/icon-512-maskable.png", "image/png"],
+]);
 
 const VM0_APP_METADATA = {
   brandName: "VM0",
@@ -339,6 +348,69 @@ function gatewayResponse(status) {
   });
 }
 
+function embeddedShellAsset(pathname, embeddedShell) {
+  switch (pathname) {
+    case "/index.html":
+      return embeddedShell.indexHtml;
+    case "/sw.js":
+      return embeddedShell.serviceWorker;
+    case "/manifest.webmanifest":
+      return embeddedShell.manifest;
+    case "/robots.txt":
+      return embeddedShell.robots;
+    case "/icons/icon-192.png":
+      return embeddedShell.icon192;
+    case "/icons/icon-512.png":
+      return embeddedShell.icon512;
+    case "/icons/icon-512-maskable.png":
+      return embeddedShell.icon512Maskable;
+    default:
+      return embeddedShell.indexHtml;
+  }
+}
+
+function embeddedShellResponse(request, embeddedShell) {
+  if (!embeddedShell) {
+    return null;
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { Allow: "GET, HEAD" },
+    });
+  }
+
+  const requestUrl = new URL(request.url);
+  const exactContentType = EMBEDDED_SHELL_CONTENT_TYPES.get(
+    requestUrl.pathname,
+  );
+  const pathname = exactContentType ? requestUrl.pathname : "/index.html";
+  const body = embeddedShellAsset(pathname, embeddedShell);
+  if (
+    (pathname.startsWith("/icons/") && !(body instanceof ArrayBuffer)) ||
+    (!pathname.startsWith("/icons/") && typeof body !== "string")
+  ) {
+    return gatewayResponse(503);
+  }
+  return new Response(request.method === "HEAD" ? null : body, {
+    headers: {
+      "Content-Type":
+        exactContentType ?? EMBEDDED_SHELL_CONTENT_TYPES.get("/index.html"),
+    },
+  });
+}
+
+function fetchShellAsset(request, env, embeddedShell) {
+  const embeddedResponse = embeddedShellResponse(request, embeddedShell);
+  if (embeddedResponse) {
+    return Promise.resolve(embeddedResponse);
+  }
+  if (!env.ASSETS) {
+    return Promise.resolve(gatewayResponse(503));
+  }
+  return env.ASSETS.fetch(request);
+}
+
 function metaRequestHeaders(requestUrl, origin) {
   const headers = new Headers({ Accept: "application/json" });
   if (PREVIEW_API_ORIGIN_PATTERN.test(origin)) {
@@ -436,7 +508,7 @@ function withAppHeaders(response, requestUrl) {
   });
 }
 
-async function handleRequest(request, env, requestUrl) {
+async function handleRequest(request, env, requestUrl, embeddedShell) {
   if (
     (request.method === "GET" || request.method === "HEAD") &&
     requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
@@ -450,7 +522,11 @@ async function handleRequest(request, env, requestUrl) {
     let origin;
     try {
       const indexRequestUrl = new URL("/index.html", requestUrl);
-      assetResponse = await env.ASSETS.fetch(indexRequestUrl);
+      assetResponse = await fetchShellAsset(
+        new Request(indexRequestUrl),
+        env,
+        embeddedShell,
+      );
       if (!assetResponse.ok) {
         return gatewayResponse(503);
       }
@@ -519,7 +595,7 @@ async function handleRequest(request, env, requestUrl) {
     );
   }
 
-  const assetResponse = await env.ASSETS.fetch(request);
+  const assetResponse = await fetchShellAsset(request, env, embeddedShell);
   if (request.method !== "GET") {
     return assetResponse;
   }
@@ -543,10 +619,19 @@ async function handleRequest(request, env, requestUrl) {
   );
 }
 
-export default {
-  async fetch(request, env) {
-    const requestUrl = new URL(request.url);
-    const response = await handleRequest(request, env, requestUrl);
-    return withAppHeaders(response, requestUrl);
-  },
-};
+export function createWorker(embeddedShell) {
+  return {
+    async fetch(request, env) {
+      const requestUrl = new URL(request.url);
+      const response = await handleRequest(
+        request,
+        env,
+        requestUrl,
+        embeddedShell,
+      );
+      return withAppHeaders(response, requestUrl);
+    },
+  };
+}
+
+export default createWorker();

@@ -31,13 +31,18 @@ bash "$script" \
 
 expected_files="$(find "$worker_shell" -type f -printf '%P\n' | sort)"
 test "$expected_files" = "$(printf '%s\n' \
+  'icons/icon-192.bin' \
   'icons/icon-192.png' \
+  'icons/icon-512-maskable.bin' \
   'icons/icon-512-maskable.png' \
+  'icons/icon-512.bin' \
   'icons/icon-512.png' \
   'index.html' \
+  'manifest.txt' \
   'manifest.webmanifest' \
   'robots.txt' \
-  'sw.js')"
+  'sw.js' \
+  'sw.txt')"
 grep -Fq \
   '<meta name="vm0-api-origin" content="https://pr-23364-api.vm6.ai" />' \
   "${worker_shell}/index.html"
