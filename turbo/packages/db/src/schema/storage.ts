@@ -46,6 +46,11 @@ export const storages = pgTable(
         table.userId,
         table.name,
       ),
+      idOrgUserIdx: uniqueIndex("idx_storages_id_org_user").on(
+        table.id,
+        table.orgId,
+        table.userId,
+      ),
     };
   },
 );

@@ -27,6 +27,7 @@ import { blobs } from "@okouai/db/schema/blob";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
@@ -682,6 +683,61 @@ function collectMemoryFiles(
   });
 }
 
+function collectPiMemoryStage1Candidates(
+  runtime: ExportRuntime,
+  userId: string,
+  signal: AbortSignal,
+): Computed<
+  Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }>
+> {
+  return computed(async () => {
+    const rows = await runtime.db
+      .select({
+        memoryStorageId: piMemoryStage1Candidates.memoryStorageId,
+        orgId: piMemoryStage1Candidates.orgId,
+        piSessionId: piMemoryStage1Candidates.piSessionId,
+        sourceRunId: piMemoryStage1Candidates.sourceRunId,
+        sourceHistoryHash: piMemoryStage1Candidates.sourceHistoryHash,
+        sourceCompletedAt: piMemoryStage1Candidates.sourceCompletedAt,
+        eligibleAt: piMemoryStage1Candidates.eligibleAt,
+        status: piMemoryStage1Candidates.status,
+        retryAt: piMemoryStage1Candidates.retryAt,
+        retryCount: piMemoryStage1Candidates.retryCount,
+        lastErrorClass: piMemoryStage1Candidates.lastErrorClass,
+        rawMemory: piMemoryStage1Candidates.rawMemory,
+        rolloutSummary: piMemoryStage1Candidates.rolloutSummary,
+        rolloutSlug: piMemoryStage1Candidates.rolloutSlug,
+        generatedAt: piMemoryStage1Candidates.generatedAt,
+        lastSelectedSourceHistoryHash:
+          piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
+        usageCount: piMemoryStage1Candidates.usageCount,
+        lastUsedAt: piMemoryStage1Candidates.lastUsedAt,
+        createdAt: piMemoryStage1Candidates.createdAt,
+        updatedAt: piMemoryStage1Candidates.updatedAt,
+      })
+      .from(piMemoryStage1Candidates)
+      .where(eq(piMemoryStage1Candidates.userId, userId))
+      .orderBy(
+        asc(piMemoryStage1Candidates.orgId),
+        asc(piMemoryStage1Candidates.memoryStorageId),
+        asc(piMemoryStage1Candidates.piSessionId),
+      );
+    signal.throwIfAborted();
+    return {
+      entries:
+        rows.length === 0
+          ? []
+          : [
+              {
+                path: "memory/stage1-candidates.json",
+                content: JSON.stringify(rows, null, 2),
+              },
+            ],
+      count: rows.length,
+    };
+  });
+}
+
 interface ResolveSessionHistoryArgs {
   readonly sessionId: string;
   readonly hash: string | null;
@@ -932,6 +988,9 @@ function collectUserData(
     );
     const workflows = await get(collectWorkflowFiles(runtime, userId, signal));
     const memory = await get(collectMemoryFiles(runtime, userId, signal));
+    const memoryStage1Candidates = await get(
+      collectPiMemoryStage1Candidates(runtime, userId, signal),
+    );
     const conversationsResult = await get(
       collectConversationMessages(runtime, userId, signal),
     );
@@ -939,6 +998,7 @@ function collectUserData(
       ...agentInstructions.entries,
       ...workflows.entries,
       ...memory.entries,
+      ...memoryStage1Candidates.entries,
       ...conversationsResult.entries,
     ];
 
@@ -953,6 +1013,7 @@ function collectUserData(
             agentInstructionFiles: agentInstructions.count,
             workflowFiles: workflows.count,
             memoryFiles: memory.count,
+            memoryStage1Candidates: memoryStage1Candidates.count,
             conversationThreads: conversationsResult.threadCount,
             sessionHistories: conversationsResult.sessionHistoryCount,
           },

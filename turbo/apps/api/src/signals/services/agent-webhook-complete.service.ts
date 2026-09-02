@@ -13,6 +13,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { checkpoints } from "@okouai/db/schema/checkpoint";
 
 import { notFound } from "../../lib/error";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import type { Tx } from "../../lib/db-types";
@@ -46,6 +47,10 @@ import {
   persistAgentCheckpointInTransaction,
   prepareAgentCheckpointPersistence$,
 } from "./agent-webhook-checkpoints.service";
+import {
+  admitPiMemoryStage1Candidate,
+  type PiMemoryStage1Admission,
+} from "./pi-memory-stage1-candidate.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -119,6 +124,7 @@ interface RunRecord {
   readonly status: RunStatus;
   readonly userId: string;
   readonly chatThreadId: string | null;
+  readonly triggerSource: string | null;
   readonly launchSnapshot: (typeof agentRuns.$inferSelect)["launchSnapshot"];
 }
 
@@ -137,6 +143,7 @@ interface CompletionCommit {
   readonly transitionError?: string;
   readonly transitionFailureKind?: PreparedCompletion["failureKind"];
   readonly finalization: FinalizeActiveInputDeliveryResult;
+  readonly piMemoryStage1Admission?: PiMemoryStage1Admission;
 }
 
 type CompletionTransactionResult =
@@ -219,6 +226,7 @@ async function loadCompletionRun(
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
       launchSnapshot: agentRuns.launchSnapshot,
     })
     .from(agentRuns)
@@ -287,6 +295,7 @@ async function lockCompletionRun(
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       chatThreadId: agentRuns.chatThreadId,
+      triggerSource: agentRuns.triggerSource,
       launchSnapshot: agentRuns.launchSnapshot,
     })
     .from(agentRuns)
@@ -350,6 +359,7 @@ async function applyTerminalCompletion(
   input: CompleteAgentRunInput,
   run: RunRecord,
   prepared: PreparedCompletion,
+  completedAt: Date,
 ): Promise<void> {
   if (
     run.launchSnapshot?.framework === "pi" &&
@@ -361,7 +371,7 @@ async function applyTerminalCompletion(
     }
     const [session] = await tx
       .update(agentSessions)
-      .set({ conversationId, updatedAt: nowDate() })
+      .set({ conversationId, updatedAt: completedAt })
       .where(eq(agentSessions.id, run.sessionId))
       .returning({ id: agentSessions.id });
     if (!session) {
@@ -373,7 +383,7 @@ async function applyTerminalCompletion(
     .update(agentRuns)
     .set({
       status: prepared.status,
-      completedAt: nowDate(),
+      completedAt,
       ...(prepared.error !== undefined ? { error: prepared.error } : {}),
       failureReason: prepared.failureReason ?? null,
       ...(prepared.result !== undefined ? { result: prepared.result } : {}),
@@ -405,6 +415,45 @@ interface CompletionTransitionContext {
   readonly checkpointInput: AgentCheckpointInput | null;
   readonly checkpointPreparation: PreparedAgentCheckpoint | null;
   readonly expectedChatThreadId: string | null;
+}
+
+async function completeActiveAgentRunTransition(
+  tx: Tx,
+  input: CompleteAgentRunInput,
+  run: RunRecord,
+  prepared: PreparedCompletion,
+  finalization: FinalizeActiveInputDeliveryResult,
+): Promise<CompletionTransactionResult> {
+  const completedAt = nowDate();
+  await applyTerminalCompletion(tx, input, run, prepared, completedAt);
+  const launchSnapshot = run.launchSnapshot;
+  const piMemoryStage1Admission = await admitPiMemoryStage1Candidate(tx, {
+    runId: input.body.runId,
+    orgId: run.orgId,
+    userId: run.userId,
+    status: prepared.status,
+    framework: launchSnapshot?.framework ?? null,
+    generationEnabled:
+      launchSnapshot?.schemaVersion === 2
+        ? launchSnapshot.piMemoryGenerationEnabled
+        : false,
+    triggerSource: run.triggerSource,
+    chatThreadId: run.chatThreadId,
+    completedAt,
+    idleDelayMs: env("PI_MEMORY_STAGE1_IDLE_DELAY_MS"),
+  });
+  return {
+    kind: "committed",
+    commit: {
+      run,
+      transitioned: true,
+      responseStatus: prepared.status,
+      transitionError: prepared.error,
+      transitionFailureKind: prepared.failureKind,
+      finalization,
+      piMemoryStage1Admission,
+    },
+  };
 }
 
 async function completeAgentRunTransition(
@@ -482,18 +531,13 @@ async function completeAgentRunTransition(
     if (!prepared) {
       throw new Error("Active agent run completion was not prepared");
     }
-    await applyTerminalCompletion(tx, input, run, prepared);
-    return {
-      kind: "committed",
-      commit: {
-        run,
-        transitioned: true,
-        responseStatus: prepared.status,
-        transitionError: prepared.error,
-        transitionFailureKind: prepared.failureKind,
-        finalization,
-      },
-    };
+    return completeActiveAgentRunTransition(
+      tx,
+      input,
+      run,
+      prepared,
+      finalization,
+    );
   }
   if (run.status === "cancelled") {
     await applyCancelledCompletionMetadata(tx, input, run);
@@ -812,6 +856,32 @@ export const completeAgentRun$ = command(
         durationMs: 0,
         success: true,
         runId: input.body.runId,
+      });
+      const admission = commit.piMemoryStage1Admission;
+      if (!admission) {
+        throw new Error("Terminal transition is missing Pi memory admission");
+      }
+      recordSandboxOperation({
+        sandboxType: "runner",
+        actionType: "pi_memory_stage1_candidate_admission",
+        durationMs: 0,
+        success: true,
+        runId: input.body.runId,
+        dimensions: {
+          candidate_outcome: admission.outcome,
+          ...(admission.outcome === "skipped"
+            ? { candidate_skip_reason: admission.reason }
+            : {}),
+          ...(admission.memoryStorageId
+            ? { memory_storage_id: admission.memoryStorageId }
+            : {}),
+          ...(admission.piSessionId
+            ? { pi_session_id: admission.piSessionId }
+            : {}),
+          ...(admission.sourceHistoryHash
+            ? { source_history_hash: admission.sourceHistoryHash }
+            : {}),
+        },
       });
       if (commit.responseStatus === "completed") {
         L.debug("Run completed successfully", { runId: input.body.runId });

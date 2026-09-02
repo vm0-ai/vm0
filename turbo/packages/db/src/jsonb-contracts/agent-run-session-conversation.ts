@@ -3,11 +3,20 @@ import type { JsonValue } from "./shared";
 
 export type AgentRunVars = JsonValue;
 export type AgentRunSecretNames = string[];
-export type AgentRunLaunchSnapshot = {
+export interface AgentRunLaunchSnapshotV1 {
   schemaVersion: 1;
   framework: "claude-code" | "codex" | "pi";
   runnerProfile: string;
-};
+}
+export interface AgentRunLaunchSnapshotV2 {
+  schemaVersion: 2;
+  framework: "claude-code" | "codex" | "pi";
+  runnerProfile: string;
+  piMemoryGenerationEnabled: boolean;
+}
+export type AgentRunLaunchSnapshot =
+  | AgentRunLaunchSnapshotV1
+  | AgentRunLaunchSnapshotV2;
 export interface AgentRunOfficialWorkflowDefinitionProvenance {
   readonly name: string;
   readonly revision: string;

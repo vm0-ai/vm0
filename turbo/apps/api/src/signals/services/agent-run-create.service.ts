@@ -10010,12 +10010,16 @@ function finalizePreparedRunContext(
   return {
     ...prepared.context,
     launchSnapshot: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       framework:
         prepared.context.piSandbox === undefined
           ? prepared.context.framework
           : "pi",
       runnerProfile: runnerProfile(prepared.context.resolved.content),
+      piMemoryGenerationEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PiMemoryGeneration,
+        prepared.context.featureSwitchContext,
+      ),
     },
     body: withFinalRunAppendSystemPrompt({
       body: {
