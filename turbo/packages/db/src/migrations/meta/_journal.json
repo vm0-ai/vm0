@@ -1751,6 +1751,13 @@
       "when": 1788356460321,
       "tag": "1057_goofy_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 1058,
+      "version": "7",
+      "when": 1788360292386,
+      "tag": "1058_wide_tyger_tiger",
+      "breakpoints": true
     }
   ]
 }

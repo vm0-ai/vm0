@@ -34,6 +34,16 @@ private let clickTapCallback: CGEventTapCallBack = { _, type, event, refcon in
     return Unmanaged.passUnretained(event)
 }
 
+private let keyTapCallback: CGEventTapCallBack = { _, type, event, refcon in
+    guard let refcon else {
+        return Unmanaged.passUnretained(event)
+    }
+    let recorder = Unmanaged<ClickTrackRecorder>.fromOpaque(refcon)
+        .takeUnretainedValue()
+    recorder.handleKey(type: type, event: event)
+    return Unmanaged.passUnretained(event)
+}
+
 /// Records where and when the user clicked, and where the pointer went, for
 /// the whole session's duration.
 ///
@@ -42,9 +52,12 @@ private let clickTapCallback: CGEventTapCallBack = { _, type, event, refcon in
 /// separate Input Monitoring grant, whereas the session level rides the
 /// Accessibility grant the app already holds.
 ///
-/// Only mouse-down events are observed by the tap. Keystrokes are deliberately
-/// not captured: recording characters the user types would make this a
-/// keylogger, and nothing downstream needs them.
+/// The click tap observes mouse-down events only. A second, separate tap
+/// observes key-down events and keeps nothing but their timestamps: a camera
+/// needs to know *when* the user was typing so it can stay on the field, and
+/// nothing downstream needs to know *what* was typed. Key codes, characters and
+/// modifier flags are never read, so the track cannot become a keylogger. The
+/// two taps are separate so a refused keyboard tap cannot cost the click track.
 ///
 /// The pointer trail is sampled on a timer rather than through the tap.
 /// Reading the pointer position needs no permission, so the trail survives a
@@ -57,8 +70,11 @@ final class ClickTrackRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var clicks: [CapturedClick] = []
     private var samples: [CapturedPointerSample] = []
+    private var keyDowns: [UInt64] = []
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var keyTap: CFMachPort?
+    private var keyRunLoopSource: CFRunLoopSource?
     private var warnings: [String] = []
     private let trailQueue = DispatchQueue(label: "ai.okou.recorder.pointer-trail")
     private let trailPolicy = PointerTrailPolicy()
@@ -106,24 +122,59 @@ final class ClickTrackRecorder: @unchecked Sendable {
         tap = eventTap
         runLoopSource = source
         lock.unlock()
+
+        startKeyTiming()
+    }
+
+    /// Observes when keys go down, and nothing else about them.
+    private func startKeyTiming() {
+        guard
+            let eventTap = CGEvent.tapCreate(
+                tap: .cgAnnotatedSessionEventTap,
+                place: .tailAppendEventTap,
+                options: .listenOnly,
+                eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+                callback: keyTapCallback,
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
+            )
+        else {
+            lock.lock()
+            warnings.append(
+                "Typing timing is unavailable; grant Accessibility access to Okou to record when you type."
+            )
+            lock.unlock()
+            return
+        }
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+
+        lock.lock()
+        keyTap = eventTap
+        keyRunLoopSource = source
+        lock.unlock()
     }
 
     func stop() {
         lock.lock()
         let eventTap = tap
         let source = runLoopSource
+        let keyEventTap = keyTap
+        let keySource = keyRunLoopSource
         let timer = trailTimer
         tap = nil
         runLoopSource = nil
+        keyTap = nil
+        keyRunLoopSource = nil
         trailTimer = nil
         lock.unlock()
 
         timer?.cancel()
 
-        if let eventTap {
+        for eventTap in [eventTap, keyEventTap].compactMap({ $0 }) {
             CGEvent.tapEnable(tap: eventTap, enable: false)
         }
-        if let source {
+        for source in [source, keySource].compactMap({ $0 }) {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
     }
@@ -168,6 +219,27 @@ final class ClickTrackRecorder: @unchecked Sendable {
         )
         lock.lock()
         samples.append(sample)
+        lock.unlock()
+    }
+
+    /// Called on the run loop that owns the keyboard tap. Reads the timestamp
+    /// and nothing else from the event.
+    fileprivate func handleKey(type: CGEventType, event: CGEvent) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
+            let eventTap = keyTap
+            lock.unlock()
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return
+        }
+        guard type == .keyDown else {
+            return
+        }
+        let nanoseconds = event.timestamp
+        lock.lock()
+        keyDowns.append(nanoseconds)
         lock.unlock()
     }
 
@@ -216,12 +288,14 @@ final class ClickTrackRecorder: @unchecked Sendable {
     ) -> (
         clicks: [[String: Any]],
         pointerEvents: [[String: Any]],
+        typingBursts: [[String: Any]],
         droppedOutOfFrame: Int,
         warnings: [String]
     ) {
         lock.lock()
         let captured = clicks
         let capturedSamples = samples
+        let capturedKeyDowns = keyDowns
         let capturedWarnings = warnings
         lock.unlock()
 
@@ -279,9 +353,21 @@ final class ClickTrackRecorder: @unchecked Sendable {
         events.sort { left, right in
             left.tMs == right.tMs ? left.order < right.order : left.tMs < right.tMs
         }
+        // Key-downs before the first frame or inside a pause are moments the
+        // video does not contain, exactly like clicks there.
+        let keyOffsets = capturedKeyDowns.compactMap { nanoseconds -> Int? in
+            guard let offsetMs = timeline.offsetMilliseconds(atNanoseconds: nanoseconds) else {
+                return nil
+            }
+            return mediaMs(offsetMs)
+        }
+        let bursts: [[String: Any]] = typingBursts(fromKeyDownOffsetsMs: keyOffsets).map { burst in
+            ["startMs": burst.startMs, "endMs": burst.endMs]
+        }
         return (
             described,
             events.map { $0.json },
+            bursts,
             projection.droppedOutOfFrame,
             capturedWarnings
         )

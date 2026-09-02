@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.2...guest-agent-v0.84.3) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** share run artifact payload contract ([#31153](https://github.com/vm0-ai/vm0/issues/31153)) ([16c79bb](https://github.com/vm0-ai/vm0/commit/16c79bb75648f4b2def7b28ae0b1aadff326941c))
+
 ## [0.84.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.1...guest-agent-v0.84.2) (2026-09-02)
 
 

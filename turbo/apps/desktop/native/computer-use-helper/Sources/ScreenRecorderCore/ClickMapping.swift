@@ -270,3 +270,33 @@ public struct PointerTrailPolicy: Equatable, Sendable {
             || abs(y - previous.screenY) >= minimumDistancePoints
     }
 }
+
+/// A stretch of keyboard activity, in milliseconds on the recording's timeline.
+public struct TypingBurst: Equatable, Sendable {
+    public let startMs: Int
+    public let endMs: Int
+
+    public init(startMs: Int, endMs: Int) {
+        self.startMs = startMs
+        self.endMs = endMs
+    }
+}
+
+/// Groups key-down moments into bursts.
+///
+/// Only *when* keys went down is known, never which keys: that is all a camera
+/// needs to stay on the field being typed into, and it keeps the track from
+/// being a record of what was typed. A gap longer than `gapMs` ends a burst; a
+/// burst ends at its last key-down, so a single shortcut is a burst of length
+/// zero that consumers can tell apart from real typing.
+public func typingBursts(fromKeyDownOffsetsMs offsets: [Int], gapMs: Int = 800) -> [TypingBurst] {
+    var bursts: [TypingBurst] = []
+    for offset in offsets.sorted() {
+        if let last = bursts.last, offset - last.endMs <= gapMs {
+            bursts[bursts.count - 1] = TypingBurst(startMs: last.startMs, endMs: offset)
+        } else {
+            bursts.append(TypingBurst(startMs: offset, endMs: offset))
+        }
+    }
+    return bursts
+}

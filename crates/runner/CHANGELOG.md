@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.184.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.1...runner-rs-v0.184.2) (2026-09-02)
+
+
+### Documentation
+
+* **mitm-addon:** clarify Anthropic SSE callback gating ([#31146](https://github.com/vm0-ai/vm0/issues/31146)) ([7918adb](https://github.com/vm0-ai/vm0/commit/7918adba36c3ae21d85ad412ee61f0ea3924c293))
+
+
+### Refactoring
+
+* **rust:** share run artifact payload contract ([#31153](https://github.com/vm0-ai/vm0/issues/31153)) ([16c79bb](https://github.com/vm0-ai/vm0/commit/16c79bb75648f4b2def7b28ae0b1aadff326941c))
+
+
+### Performance Improvements
+
+* **runner:** batch idle pressure eviction ([#31165](https://github.com/vm0-ai/vm0/issues/31165)) ([aefdda8](https://github.com/vm0-ai/vm0/commit/aefdda825cc0b70e97386a2d17eb8d99f0bbc882))
+
 ## [0.184.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.0...runner-rs-v0.184.1) (2026-09-02)
 
 
