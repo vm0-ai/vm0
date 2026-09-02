@@ -88,7 +88,7 @@ export interface Phase2PrivateWorkspace {
   readonly diff: PiMemoryPhase2DiffSummary;
 }
 
-export interface ValidatedPreparedSet {
+interface ValidatedPreparedSet {
   readonly files: readonly PiMemoryPhase2PreparedFile[];
   readonly manifest: PiMemoryPhase2PreparedManifest;
   readonly contentIdentity: string;
