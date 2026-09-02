@@ -14,6 +14,21 @@ import type {
 } from "./api-types";
 import { UnsupportedPiResourceSnapshotError } from "./errors";
 
+function rethrowPiApiFirstTurnStage(error: unknown, stage: string): never {
+  if (typeof error === "object" && error !== null) {
+    try {
+      Object.defineProperty(error, "piModelTurnStage", {
+        configurable: true,
+        enumerable: true,
+        value: stage,
+      });
+    } catch {
+      // Keep the original provider failure if it cannot be annotated.
+    }
+  }
+  throw error;
+}
+
 function projectAssistantContent(
   message: AssistantMessage,
 ): PiApiAssistantContent[] {
@@ -139,17 +154,25 @@ export async function runPiApiFirstTurn(
       ownership: args.ownership,
       providerRequestBoundary: args.providerRequestBoundary,
     });
-    const errorStatus = providerErrorStatus(turn.assistantMessage);
-    return {
-      assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
-      handoffRequired: turn.handoffRequired,
-      observedServiceTier,
-      ...(errorStatus === undefined
-        ? {}
-        : { providerErrorStatus: errorStatus }),
-      sessionJsonl: memorySession.toJsonl(),
-    };
+    try {
+      const errorStatus = providerErrorStatus(turn.assistantMessage);
+      return {
+        assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
+        handoffRequired: turn.handoffRequired,
+        observedServiceTier,
+        ...(errorStatus === undefined
+          ? {}
+          : { providerErrorStatus: errorStatus }),
+        sessionJsonl: memorySession.toJsonl(),
+      };
+    } catch (error) {
+      return rethrowPiApiFirstTurnStage(error, "result-projection");
+    }
   } finally {
-    shell.session.dispose();
+    try {
+      shell.session.dispose();
+    } catch (error) {
+      rethrowPiApiFirstTurnStage(error, "session-disposal");
+    }
   }
 }

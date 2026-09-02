@@ -368,8 +368,12 @@ export async function runPiFirstModelTurn<TApi extends Api>(
   } catch (error) {
     rethrowPiModelTurnStage(error, "session-append");
   }
-  return {
-    assistantMessage,
-    handoffRequired: piAssistantRequiresHandoff(assistantMessage),
-  };
+  try {
+    return {
+      assistantMessage,
+      handoffRequired: piAssistantRequiresHandoff(assistantMessage),
+    };
+  } catch (error) {
+    rethrowPiModelTurnStage(error, "handoff-projection");
+  }
 }
