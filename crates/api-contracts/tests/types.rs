@@ -202,11 +202,13 @@ fn generated_pi_runtime_configs_round_trip_full_wire_shapes() {
         provider: PiModelConfigProvider::Deepseek,
         base_url: "https://api.deepseek.com/".to_string(),
         model: "deepseek-v4-flash".to_string(),
+        catalog_model: None,
         api: None,
         thinking_level: None,
         service_tier: None,
         api_key_env: PiModelConfigApiKeyEnv::OPENAIAPIKEY,
         credential_secret_name: "DEEPSEEK_API_KEY".to_string(),
+        credential_header: None,
     };
 
     let launch_value = serde_json::to_value(&launch).unwrap();
