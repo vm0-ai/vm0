@@ -39,7 +39,7 @@ def deferred_websocket_trim_scheduler(
 class TestModelProviderWebSocketUsageSourceRelease:
     """Tests for sources that cannot be delivered to the usage webhook."""
 
-    def test_model_websocket_missing_billing_context_reports_observation_and_releases_source(
+    def test_model_websocket_missing_billing_context_logs_underbilling_and_releases_source(
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
