@@ -5,8 +5,11 @@ import {
   type MorningBriefPreferenceResponse,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isValidTimeZone } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
@@ -20,6 +23,7 @@ import {
   installOfficialWorkflow$,
   loadOfficialWorkflowUserTimezone,
 } from "./official-workflow-installation.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { reconcileOfficialWorkflowInstallation$ } from "./official-workflow-reconciliation.service";
 import {
   disableWorkflowAutomation$,
@@ -51,6 +55,40 @@ interface MorningBriefPreferenceMutationArgs extends MorningBriefPreferenceArgs 
   readonly enabled: boolean;
   readonly publicBrand: PublicBrand;
 }
+
+interface EnsureMorningBriefDefaultEnabledArgs extends MorningBriefPreferenceArgs {
+  readonly publicBrand: PublicBrand;
+}
+
+export type EnsureMorningBriefDefaultEnabledResult =
+  | {
+      readonly outcome: "installed";
+      readonly workflowId: string;
+    }
+  | {
+      readonly outcome: "unchanged";
+      readonly reason: "existing-installation";
+      readonly installationCount: number;
+    }
+  | {
+      readonly outcome: "skipped";
+      readonly reason:
+        | "not-admin"
+        | "not-eligible"
+        | "feature-disabled"
+        | "missing-timezone"
+        | "missing-default-agent";
+    }
+  | {
+      readonly outcome: "failed";
+      readonly reason: "installation-failed";
+      readonly failureKind:
+        | "bad-request"
+        | "not-found"
+        | "forbidden"
+        | "conflict";
+      readonly message: string;
+    };
 
 function conflict(
   code: Extract<
@@ -298,6 +336,117 @@ export const morningBriefPreference$ = command(
     const db = set(writeDb$);
     signal.throwIfAborted();
     return await loadInstalledPreference(db, args);
+  },
+);
+
+async function hasMorningBriefDefaultEligibility(
+  db: ReadonlyDb,
+  args: MorningBriefPreferenceArgs,
+): Promise<boolean> {
+  const [metadata] = await db
+    .select({
+      eligibleAt: orgMembersMetadata.morningBriefDefaultEligibleAt,
+    })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, args.orgId),
+        eq(orgMembersMetadata.userId, args.member.userId),
+      ),
+    )
+    .limit(1);
+  return metadata?.eligibleAt !== null && metadata?.eligibleAt !== undefined;
+}
+
+export const ensureMorningBriefDefaultEnabled$ = command(
+  async (
+    { set },
+    args: EnsureMorningBriefDefaultEnabledArgs,
+    signal: AbortSignal,
+  ): Promise<EnsureMorningBriefDefaultEnabledResult> => {
+    const db = set(writeDb$);
+    return await withMorningBriefPreferenceLock(db, args, signal, async () => {
+      const installations = await loadMorningBriefWorkflowIds(db, args);
+      signal.throwIfAborted();
+      if (installations.length > 0) {
+        return {
+          outcome: "unchanged",
+          reason: "existing-installation",
+          installationCount: installations.length,
+        };
+      }
+
+      if (args.member.role !== "admin" && args.member.role !== "org:admin") {
+        return { outcome: "skipped", reason: "not-admin" };
+      }
+
+      if (!(await hasMorningBriefDefaultEligibility(db, args))) {
+        return { outcome: "skipped", reason: "not-eligible" };
+      }
+      signal.throwIfAborted();
+
+      const featureSwitchContext = await loadUserFeatureSwitchContext(
+        db,
+        args.orgId,
+        args.member.userId,
+      );
+      signal.throwIfAborted();
+      if (
+        !isFeatureEnabled(FeatureSwitchKey.MorningBrief, featureSwitchContext)
+      ) {
+        return { outcome: "skipped", reason: "feature-disabled" };
+      }
+
+      const unavailableReason = await loadUnavailableReason(db, args);
+      signal.throwIfAborted();
+      if (unavailableReason !== null) {
+        return { outcome: "skipped", reason: unavailableReason };
+      }
+
+      const agentId = await loadDefaultAgentId(db, args);
+      signal.throwIfAborted();
+      if (agentId === null) {
+        return { outcome: "skipped", reason: "missing-default-agent" };
+      }
+
+      const installed = await set(
+        installOfficialWorkflow$,
+        {
+          orgId: args.orgId,
+          member: args.member,
+          agentId,
+          definitionName: MORNING_BRIEF_OFFICIAL_DEFINITION_NAME,
+          blueprints: [
+            {
+              blueprintKey: MORNING_BRIEF_OFFICIAL_BLUEPRINT_KEY,
+              bindings: [],
+            },
+          ],
+        },
+        args.publicBrand,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (installed.kind === "ok") {
+        return { outcome: "installed", workflowId: installed.workflowId };
+      }
+
+      const racedInstallations = await loadMorningBriefWorkflowIds(db, args);
+      signal.throwIfAborted();
+      if (racedInstallations.length > 0) {
+        return {
+          outcome: "unchanged",
+          reason: "existing-installation",
+          installationCount: racedInstallations.length,
+        };
+      }
+      return {
+        outcome: "failed",
+        reason: "installation-failed",
+        failureKind: installed.kind,
+        message: installed.message,
+      };
+    });
   },
 );
 

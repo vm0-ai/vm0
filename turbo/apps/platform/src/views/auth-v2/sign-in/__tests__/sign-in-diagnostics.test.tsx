@@ -14,15 +14,10 @@ import {
 import { AUTH_V2_DIAGNOSTIC_EVENT } from "../../../../lib/posthog.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
 
-const { apiOriginMarker, posthog } = vi.hoisted(() => {
+const { posthog } = vi.hoisted(() => {
   vi.stubEnv("VITE_POSTHOG_KEY", "phc_auth_v2_recovery_diagnostics_test");
   window.location.href = "https://app.vm0.ai/";
-  const apiOriginMarker = document.createElement("meta");
-  apiOriginMarker.name = "vm0-api-origin";
-  apiOriginMarker.content = "https://api.vm0.ai";
-  document.head.append(apiOriginMarker);
   return {
-    apiOriginMarker,
     posthog: {
       capture: vi.fn<PostHog["capture"]>(),
       identify: vi.fn<PostHog["identify"]>(),
@@ -49,9 +44,7 @@ beforeEach(() => {
   posthog.unregister.mockClear();
 });
 
-afterAll(() => {
-  apiOriginMarker.remove();
-});
+afterAll(() => {});
 
 function diagnosticCalls(): unknown[][] {
   return posthog.capture.mock.calls.filter(([eventName]) => {

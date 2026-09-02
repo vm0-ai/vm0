@@ -53,12 +53,13 @@ export const customConnectorAuthModeSchema = z.enum([
   "none",
   "manual",
   "oauth",
+  "automatic",
 ]);
 export type CustomConnectorAuthMode = z.infer<
   typeof customConnectorAuthModeSchema
 >;
 
-export const customConnectorOAuthSetupSchema = z.enum(["custom", "automatic"]);
+export const customConnectorOAuthSetupSchema = z.literal("custom");
 export type CustomConnectorOAuthSetup = z.infer<
   typeof customConnectorOAuthSetupSchema
 >;
@@ -199,16 +200,15 @@ const customConnectorLegacyOAuthResponseSchema = z
     return { ...value, oauthSetup: "custom" as const };
   });
 
-const customConnectorAutomaticOAuthResponseSchema = z.object({
-  authMode: z.literal("oauth"),
-  oauthSetup: z.literal("automatic"),
+const customConnectorAutomaticResponseSchema = z.object({
+  authMode: z.literal("automatic"),
+  oauthSetup: z.never().optional(),
   oauthConfig: z.never().optional(),
 });
 
 const customConnectorOAuthResponseSchema = z.union([
   customConnectorCustomOAuthResponseSchema,
   customConnectorLegacyOAuthResponseSchema,
-  customConnectorAutomaticOAuthResponseSchema,
 ]);
 
 const customConnectorHttpAuthResponseSchema = z.union([
@@ -245,6 +245,7 @@ export const customConnectorMcpResponseSchema = z.intersection(
     customConnectorNoAuthResponseSchema,
     customConnectorManualAuthResponseSchema,
     customConnectorOAuthResponseSchema,
+    customConnectorAutomaticResponseSchema,
   ]),
 );
 export type CustomConnectorMcpResponse = z.infer<
@@ -291,52 +292,99 @@ const customConnectorDefinitionWriteBaseSchema = z.object({
   storageVersion: z.number().int().positive().optional(),
 });
 
+interface CustomConnectorAuthWrite {
+  readonly fields: readonly CustomConnectorField[];
+  readonly headerInjections: readonly CustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly CustomConnectorQueryInjection[];
+  readonly authMode?: CustomConnectorAuthMode;
+  readonly oauthSetup?: CustomConnectorOAuthSetup;
+  readonly oauthConfig?: CustomConnectorOAuthConfigInput;
+}
+
+function validateAutomaticAuthWrite(
+  value: CustomConnectorAuthWrite,
+  context: z.RefinementCtx,
+  connectorKind: "http" | "mcp",
+): void {
+  if (connectorKind !== "mcp") {
+    context.addIssue({
+      code: "custom",
+      message: "Automatic authentication requires an MCP connector",
+      path: ["authMode"],
+    });
+  }
+  if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "Automatic authentication cannot include OAuth setup",
+      path: ["authMode"],
+    });
+  }
+  if (
+    value.fields.length > 0 ||
+    value.headerInjections.length > 0 ||
+    value.queryInjections.length > 0
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Automatic authentication cannot include credential fields or injections",
+      path: ["authMode"],
+    });
+  }
+}
+
+function validateNoAuthWrite(
+  value: CustomConnectorAuthWrite,
+  context: z.RefinementCtx,
+  connectorKind: "http" | "mcp",
+): void {
+  if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "No authentication cannot include OAuth setup",
+      path: ["authMode"],
+    });
+  }
+  if (value.headerInjections.length > 0 || value.queryInjections.length > 0) {
+    context.addIssue({
+      code: "custom",
+      message: "No authentication cannot include authentication injections",
+      path: ["authMode"],
+    });
+  }
+  if (
+    value.fields.some((field) => {
+      return field.kind === "secret";
+    })
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "No authentication cannot include secret fields",
+      path: ["fields"],
+    });
+  }
+  if (connectorKind === "mcp" && value.fields.length > 0) {
+    context.addIssue({
+      code: "custom",
+      message: "No-auth MCP connectors cannot include fields",
+      path: ["fields"],
+    });
+  }
+}
+
 function validateCustomConnectorAuthWrite(
-  value: {
-    readonly fields: readonly CustomConnectorField[];
-    readonly headerInjections: readonly CustomConnectorHeaderInjection[];
-    readonly queryInjections: readonly CustomConnectorQueryInjection[];
-    readonly authMode?: CustomConnectorAuthMode;
-    readonly oauthSetup?: CustomConnectorOAuthSetup;
-    readonly oauthConfig?: CustomConnectorOAuthConfigInput;
-  },
+  value: CustomConnectorAuthWrite,
   context: z.RefinementCtx,
   connectorKind: "http" | "mcp",
 ): void {
   const authMode = value.authMode ?? "manual";
+  if (authMode === "automatic") {
+    validateAutomaticAuthWrite(value, context, connectorKind);
+    return;
+  }
   if (authMode === "none") {
-    if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "No authentication cannot include OAuth setup",
-        path: ["authMode"],
-      });
-    }
-    if (value.headerInjections.length > 0 || value.queryInjections.length > 0) {
-      context.addIssue({
-        code: "custom",
-        message: "No authentication cannot include authentication injections",
-        path: ["authMode"],
-      });
-    }
-    if (
-      value.fields.some((field) => {
-        return field.kind === "secret";
-      })
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "No authentication cannot include secret fields",
-        path: ["fields"],
-      });
-    }
-    if (connectorKind === "mcp" && value.fields.length > 0) {
-      context.addIssue({
-        code: "custom",
-        message: "No-auth MCP connectors cannot include fields",
-        path: ["fields"],
-      });
-    }
+    validateNoAuthWrite(value, context, connectorKind);
     return;
   }
   if (
@@ -355,23 +403,6 @@ function validateCustomConnectorAuthWrite(
         code: "custom",
         message: "Manual authentication cannot include OAuth setup",
         path: ["authMode"],
-      });
-    }
-    return;
-  }
-  if (value.oauthSetup === "automatic") {
-    if (connectorKind !== "mcp") {
-      context.addIssue({
-        code: "custom",
-        message: "Automatic OAuth requires an MCP connector",
-        path: ["oauthSetup"],
-      });
-    }
-    if (value.oauthConfig !== undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "Automatic OAuth cannot include static OAuth configuration",
-        path: ["oauthConfig"],
       });
     }
     return;
@@ -468,10 +499,35 @@ export const startCustomConnectorOAuth2BodySchema = z
   })
   .strict();
 
-export const startCustomConnectorOAuth2ResponseSchema = z.object({
+const startCustomConnectorOAuth2AuthorizationResponseSchema = z.object({
+  result: z.literal("authorization"),
   authorizationUrl: z.string().url(),
   connectionId: z.uuid().optional(),
 });
+
+const startCustomConnectorOAuth2ConnectedResponseSchema = z.object({
+  result: z.literal("connected"),
+  connector: customConnectorResponseSchema,
+  connectedAccountId: z.uuid(),
+});
+
+export const startCustomConnectorOAuth2ResponseSchema = z.preprocess(
+  (value) => {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      !("result" in value) &&
+      "authorizationUrl" in value
+    ) {
+      return { ...value, result: "authorization" };
+    }
+    return value;
+  },
+  z.discriminatedUnion("result", [
+    startCustomConnectorOAuth2AuthorizationResponseSchema,
+    startCustomConnectorOAuth2ConnectedResponseSchema,
+  ]),
+);
 
 export const customConnectorValueInputSchema = z.object({
   key: z.string().min(1).max(64),

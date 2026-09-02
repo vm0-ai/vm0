@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
 
-import { chatEventFromRow } from "@okouai/api-contracts/contracts/chat-event-row-projection";
 import {
   chatEventRowSchema,
   type ChatEventRow,
@@ -51,9 +50,9 @@ import {
 import {
   ChatEventSnapshotProjectionError,
   decodeChatEventSnapshotBody,
-  repairMorningBriefPhaseBSnapshot,
   type ChatEventSnapshotProjectionSubstage,
   type ChatEventSnapshotProjectionVariant,
+  validateChatEventSnapshotRows,
 } from "./chat-event-snapshot-body.service";
 
 const log = logger("api:cron:snapshot-chat-events");
@@ -529,29 +528,20 @@ async function decodeSnapshotPrefix(
   const decodedRows = await decodeSnapshotStage("raw_row", () => {
     return decodeChatEventSnapshotBody(decompressed);
   });
-  const repaired = await decodeSnapshotStage("projection", () => {
-    return repairMorningBriefPhaseBSnapshot(decompressed, decodedRows);
+  await decodeSnapshotStage("projection", () => {
+    validateChatEventSnapshotRows(decodedRows);
   });
-  const rows = repaired.rows;
   await decodeSnapshotStage("prefix", () => {
-    validateSnapshotPrefixRows(rows, args);
+    validateSnapshotPrefixRows(decodedRows, args);
   });
-  const terminal = rows.at(-1);
+  const terminal = decodedRows.at(-1);
   const terminalSeqId = terminal?.seqId ?? 0;
   const terminalEventId = terminal?.id ?? null;
   await decodeSnapshotStage("terminal", () => {
     validateSnapshotPrefixTerminal(args, terminalSeqId, terminalEventId);
   });
-  if (repaired.repairedContextRows > 0) {
-    log.debug("Repaired retired Morning Brief Chat Event Snapshot rows", {
-      type: "chat_event_snapshot_morning_brief_rows_repaired",
-      chatThreadId: args.chatThreadId,
-      repairedContextRows: repaired.repairedContextRows,
-      removedDocumentParts: repaired.removedDocumentParts,
-    });
-  }
   return {
-    body: repaired.body,
+    body: decompressed,
     terminalSeqId,
     terminalEventId,
   };
@@ -861,9 +851,7 @@ function prepareSnapshotArchive(
     prepared.normalization,
   );
   const preparedRows = decodeChatEventSnapshotBody(prepared.body);
-  for (const row of preparedRows) {
-    chatEventFromRow(row);
-  }
+  validateChatEventSnapshotRows(preparedRows);
   const preparedTerminal = preparedRows.at(-1);
   const terminalSeqId = preparedTerminal?.seqId ?? 0;
   if (terminalSeqId !== terminal.seqId) {

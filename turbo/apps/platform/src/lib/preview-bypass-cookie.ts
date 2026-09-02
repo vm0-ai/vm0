@@ -1,4 +1,5 @@
-const VERCEL_PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
+import { okouAppWorkerPreviewJobRef } from "./platform-host.ts";
+import { VERCEL_PROTECTION_BYPASS_NAME } from "./preview-bypass-name.ts";
 
 const PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS = 60 * 60;
 const PREVIEW_API_ROOT_DOMAIN = "vm6.ai";
@@ -25,12 +26,17 @@ function isCorrespondingPreviewService(
   sourceHostname: string,
   targetHostname: string,
 ): boolean {
+  const workerPreviewJobRef = okouAppWorkerPreviewJobRef(sourceHostname);
+  const target = hostnameBeforeRoot(targetHostname, PREVIEW_API_ROOT_DOMAIN);
+  if (workerPreviewJobRef) {
+    return target === `${workerPreviewJobRef}${BYPASS_TARGET_SERVICE_SUFFIX}`;
+  }
+
   const source = hostnameBeforeRoot(sourceHostname, OKOU_PREVIEW_ROOT_DOMAIN);
   if (!source.endsWith(APP_SERVICE_SUFFIX)) {
     return false;
   }
   const prefix = source.slice(0, -APP_SERVICE_SUFFIX.length);
-  const target = hostnameBeforeRoot(targetHostname, PREVIEW_API_ROOT_DOMAIN);
   return target === `${prefix}${BYPASS_TARGET_SERVICE_SUFFIX}`;
 }
 
@@ -62,7 +68,8 @@ function previewBypassForTarget(
 ): string | null {
   const targetHostname = targetUrl(target).hostname.toLowerCase();
   if (
-    !isHostnameWithin(location.hostname, OKOU_PREVIEW_ROOT_DOMAIN) ||
+    (!isHostnameWithin(location.hostname, OKOU_PREVIEW_ROOT_DOMAIN) &&
+      okouAppWorkerPreviewJobRef(location.hostname) === null) ||
     !isHostnameWithin(targetHostname, PREVIEW_API_ROOT_DOMAIN) ||
     !isCorrespondingPreviewService(
       location.hostname.toLowerCase(),

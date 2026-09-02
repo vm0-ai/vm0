@@ -1,5 +1,6 @@
 const BOOTSTRAP_AVATAR_SELECTOR = ".app-bootstrap-skeleton__avatar";
 const BOOTSTRAP_AVATAR_SVG_SELECTOR = ".app-bootstrap-skeleton__avatar-layers";
+const BOOTSTRAP_CONTENT_SELECTOR = ".app-bootstrap-skeleton__content";
 const BOOTSTRAP_AVATAR_ANIMATED_CLASS =
   "app-bootstrap-skeleton__avatar--animated";
 const STARTUP_IMAGE_REL = "apple-touch-startup-image";
@@ -142,17 +143,28 @@ function generateIOSPWAStartupImages(avatar: SVGSVGElement): void {
 export function scheduleIOSPWAStartupImages(enabled: boolean): void {
   const avatar = document.querySelector(BOOTSTRAP_AVATAR_SELECTOR);
   const avatarSvg = document.querySelector(BOOTSTRAP_AVATAR_SVG_SELECTOR);
+  const content = document.querySelector(BOOTSTRAP_CONTENT_SELECTOR);
   if (
     !(avatar instanceof HTMLElement) ||
-    !(avatarSvg instanceof SVGSVGElement)
+    !(avatarSvg instanceof SVGSVGElement) ||
+    !(content instanceof HTMLElement)
   ) {
-    throw new Error("Bootstrap avatar is unavailable");
+    throw new Error("Bootstrap skeleton is unavailable");
+  }
+
+  const useStartupImages = enabled && isAppleTouchDevice();
+  if (useStartupImages) {
+    const portrait = window.matchMedia("(orientation: portrait)").matches;
+    const currentScreenHeight = portrait
+      ? Math.max(screen.width, screen.height)
+      : Math.min(screen.width, screen.height);
+    content.style.top = `${currentScreenHeight / 2}px`;
   }
 
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
       avatar.classList.add(BOOTSTRAP_AVATAR_ANIMATED_CLASS);
-      if (enabled && isAppleTouchDevice()) {
+      if (useStartupImages) {
         generateIOSPWAStartupImages(avatarSvg);
       }
     });

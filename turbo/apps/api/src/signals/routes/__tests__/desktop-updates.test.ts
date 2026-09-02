@@ -145,9 +145,8 @@ describe("desktop update routes", () => {
   // would have changed it: the neutral path has to serve the Okou line the
   // `okou` form served rather than the Zero line. Both manifests are mocked, so
   // reading the wrong one resolves to a Zero artifact and fails here rather
-  // than 404ing. Every expectation is written out rather than taken from
-  // `apiNamespaceAliasPaths`, which returns a neutral path unchanged and so
-  // would assert nothing.
+  // than 404ing. Every expectation is written out rather than derived from the
+  // path under test, which would assert nothing.
   //
   // Two plainer redirect cases and an `/api/okou` cutover case used to sit
   // beside this one. #31088 left them without a path of their own to drive, and

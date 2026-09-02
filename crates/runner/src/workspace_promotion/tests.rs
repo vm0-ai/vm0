@@ -4,6 +4,7 @@ use super::*;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::{
@@ -22,7 +23,9 @@ use sandbox::{
     GuestProcessHandle, ProcessExit, Sandbox, SandboxFactory, SandboxId, StartAgentProcessRequest,
     StartProcessRequest,
 };
-use sandbox_mock::{ExecMatcher, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
+use sandbox_mock::{
+    ExecMatcher, MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides,
+};
 use sha2::{Digest, Sha256};
 use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -418,6 +421,7 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
+    assert_eq!(exec_calls[0].timeout, Duration::from_secs(30));
     assert_eq!(
         exec_calls[0].env_keys,
         vec![guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV]
@@ -465,6 +469,239 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
         .await
         .unwrap();
     assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_export_admission_queues_before_guest_exec() {
+    let history = br#"{"type":"message","content":"bounded export"}"#;
+    let first_identity = test_restored_session_identity("sess-export-first", history);
+    let second_identity = test_restored_session_identity("sess-export-second", history);
+    let first_fixture =
+        WorkspacePromotionFixture::new_with_restored_session_identity_and_export_capacity(
+            "thread:export-first",
+            Some(&first_identity),
+            1,
+        )
+        .await;
+    let second_fixture = WorkspacePromotionFixture::new_with_cache(
+        Arc::clone(&first_fixture._dir),
+        first_fixture.cache.clone(),
+        "thread:export-second",
+        Some(&second_identity),
+    )
+    .await;
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+    };
+
+    let gate = MockLifecycleGate::new();
+    let first_overrides = Arc::new(MockSandboxOverrides::new());
+    first_overrides.set_exec_lifecycle_gate(gate.clone());
+    let first_sandbox = Arc::new(MockSandbox::with_overrides(
+        first_fixture.sandbox_id.to_string(),
+        first_overrides,
+    ));
+    first_sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    first_sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    let second_sandbox = MockSandbox::new(second_fixture.sandbox_id.to_string());
+    second_sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    second_sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    let first_promotion = first_fixture.promotion;
+    let first_task_sandbox = Arc::clone(&first_sandbox);
+    let first_task = tokio::spawn(async move {
+        prepare_workspace_image_from_active_sandbox(
+            first_task_sandbox.as_ref(),
+            Some(first_promotion),
+            "test",
+        )
+        .await
+    });
+    gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
+
+    let second = prepare_workspace_image_from_active_sandbox(
+        &second_sandbox,
+        Some(second_fixture.promotion),
+        "test",
+    );
+    tokio::pin!(second);
+    assert!(matches!(futures_util::poll!(&mut second), Poll::Pending));
+    assert!(second_sandbox.exec_calls().is_empty());
+
+    gate.release_many(10);
+    let first_prepared = first_task
+        .await
+        .unwrap()
+        .expect("first workspace promotion should prepare");
+    let second_prepared = second
+        .await
+        .expect("queued workspace promotion should prepare");
+
+    assert!(
+        second_sandbox.exec_calls()[0]
+            .cmd
+            .contains("export-session-history-sidecar")
+    );
+    first_prepared.abandon("test").await;
+    second_prepared.abandon("test").await;
+}
+
+#[tokio::test]
+async fn session_history_sidecar_export_admission_releases_before_host_copy() {
+    let history = br#"{"type":"message","content":"parallel copy"}"#;
+    let first_identity = test_restored_session_identity("sess-copy-first", history);
+    let second_identity = test_restored_session_identity("sess-copy-second", history);
+    let first_fixture =
+        WorkspacePromotionFixture::new_with_restored_session_identity_and_export_capacity(
+            "thread:copy-first",
+            Some(&first_identity),
+            1,
+        )
+        .await;
+    let second_fixture = WorkspacePromotionFixture::new_with_cache(
+        Arc::clone(&first_fixture._dir),
+        first_fixture.cache.clone(),
+        "thread:copy-second",
+        Some(&second_identity),
+    )
+    .await;
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+    };
+
+    let first_sandbox = Arc::new(PostCopyGateSandbox::new(
+        first_fixture.sandbox_id.to_string(),
+    ));
+    first_sandbox.inner.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    first_sandbox
+        .inner
+        .push_copy_file_result(Ok(history.to_vec()));
+    let second_sandbox = Arc::new(MockSandbox::new(second_fixture.sandbox_id.to_string()));
+    second_sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    second_sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    let first_promotion = first_fixture.promotion;
+    let first_task_sandbox = Arc::clone(&first_sandbox);
+    let first_task = tokio::spawn(async move {
+        prepare_workspace_image_from_active_sandbox(
+            first_task_sandbox.as_ref(),
+            Some(first_promotion),
+            "test",
+        )
+        .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), first_sandbox.wait_for_copy())
+        .await
+        .expect("first promotion should reach host copy");
+    assert!(!first_task.is_finished());
+
+    let second_promotion = second_fixture.promotion;
+    let second_task_sandbox = Arc::clone(&second_sandbox);
+    let second_task = tokio::spawn(async move {
+        prepare_workspace_image_from_active_sandbox(
+            second_task_sandbox.as_ref(),
+            Some(second_promotion),
+            "test",
+        )
+        .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while second_sandbox.exec_calls().is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("second export should enter while first host copy is blocked");
+    assert!(
+        second_sandbox.exec_calls()[0]
+            .cmd
+            .contains("export-session-history-sidecar")
+    );
+
+    first_sandbox.release_copy();
+    let first_prepared = first_task
+        .await
+        .unwrap()
+        .expect("first workspace promotion should prepare");
+    let second_prepared = second_task
+        .await
+        .unwrap()
+        .expect("second workspace promotion should prepare");
+    first_prepared.abandon("test").await;
+    second_prepared.abandon("test").await;
+}
+
+#[tokio::test]
+async fn session_history_sidecar_export_admission_releases_after_panic() {
+    let history = br#"{"type":"message","content":"panic release"}"#;
+    let first_identity = test_restored_session_identity("sess-panic-first", history);
+    let second_identity = test_restored_session_identity("sess-panic-second", history);
+    let first_fixture =
+        WorkspacePromotionFixture::new_with_restored_session_identity_and_export_capacity(
+            "thread:panic-first",
+            Some(&first_identity),
+            1,
+        )
+        .await;
+    let second_fixture = WorkspacePromotionFixture::new_with_cache(
+        Arc::clone(&first_fixture._dir),
+        first_fixture.cache.clone(),
+        "thread:panic-second",
+        Some(&second_identity),
+    )
+    .await;
+
+    let first_prepared = prepare_workspace_image_from_active_sandbox(
+        &PanicExecSandbox::new("panic-export"),
+        Some(first_fixture.promotion),
+        "test",
+    )
+    .await;
+    assert!(first_prepared.is_none());
+
+    let second_sandbox = MockSandbox::new(second_fixture.sandbox_id.to_string());
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+    };
+    second_sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    second_sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    let second_prepared = tokio::time::timeout(
+        Duration::from_secs(5),
+        prepare_workspace_image_from_active_sandbox(
+            &second_sandbox,
+            Some(second_fixture.promotion),
+            "test",
+        ),
+    )
+    .await
+    .expect("second promotion should not wait on leaked export admission")
+    .expect("second workspace promotion should prepare");
+    second_prepared.abandon("test").await;
 }
 
 #[tokio::test]

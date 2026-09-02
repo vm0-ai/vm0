@@ -29,6 +29,18 @@ describe("clerk production topology", () => {
         CURRENT_PRIMARY_APP_DOMAIN,
       ),
     ).toBeNull();
+    expect(
+      resolveClerkProductionSatelliteDomain(
+        "app-worker.okou.ai",
+        CURRENT_PRIMARY_APP_DOMAIN,
+      ),
+    ).toBe("app-worker.okou.ai");
+    expect(
+      resolveClerkProductionSatelliteDomain(
+        "app-worker.vm0.ai",
+        CURRENT_PRIMARY_APP_DOMAIN,
+      ),
+    ).toBeNull();
   });
 
   it("switches VM0 hosts to the root satellite when Okou is primary", () => {
@@ -54,6 +66,18 @@ describe("clerk production topology", () => {
     expect(
       resolveClerkProductionSatelliteDomain(
         "www.vm0.ai",
+        CUTOVER_PRIMARY_APP_DOMAIN,
+      ),
+    ).toBe("vm0.ai");
+    expect(
+      resolveClerkProductionSatelliteDomain(
+        "app-worker.okou.ai",
+        CUTOVER_PRIMARY_APP_DOMAIN,
+      ),
+    ).toBeNull();
+    expect(
+      resolveClerkProductionSatelliteDomain(
+        "app-worker.vm0.ai",
         CUTOVER_PRIMARY_APP_DOMAIN,
       ),
     ).toBe("vm0.ai");

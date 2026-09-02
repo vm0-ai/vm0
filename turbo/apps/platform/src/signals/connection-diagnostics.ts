@@ -349,10 +349,9 @@ export const connectionDiagnostics$ = computed((get): ConnectionDiagnostics => {
 export function publishConnectionDiagnostic(
   event: ConnectionDiagnosticInput,
 ): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  globalThis.window.dispatchEvent(
+  // `globalThis` is an EventTarget in both the page and the SharedWorker, so
+  // the capture path needs no DOM global and no runtime branch.
+  globalThis.dispatchEvent(
     new CustomEvent<ConnectionDiagnosticInput>(CONNECTION_DIAGNOSTIC_EVENT, {
       detail: event,
     }),
@@ -400,9 +399,6 @@ export function connectionDiagnosticError(
 
 export const setupConnectionDiagnostics$ = command(
   ({ set }, signal: AbortSignal): void => {
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return;
-    }
     const handleDiagnosticEvent = (event: Event): void => {
       const diagnosticEvent = event as CustomEvent<ConnectionDiagnosticInput>;
       set(writeConnectionDiagnostic$, {
@@ -410,14 +406,17 @@ export const setupConnectionDiagnostics$ = command(
         event: diagnosticEvent.detail,
       });
     };
-    globalThis.window.addEventListener(
+    globalThis.addEventListener(
       CONNECTION_DIAGNOSTIC_EVENT,
       handleDiagnosticEvent,
-      {
-        signal,
-      },
+      { signal },
     );
+  },
+);
 
+/** Browser lifecycle signals that only a page can observe. */
+export const setupBrowserLifecycleDiagnostics$ = command(
+  (_ctx, signal: AbortSignal): void => {
     globalThis.document.addEventListener(
       "visibilitychange",
       () => {

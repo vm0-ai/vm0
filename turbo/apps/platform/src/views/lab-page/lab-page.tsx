@@ -97,6 +97,12 @@ export function LabPage() {
         return $.settings.lab.groups.alpha;
       }),
     },
+    {
+      stage: "internal",
+      title: t(($) => {
+        return $.settings.lab.groups.internal;
+      }),
+    },
   ];
 
   return (

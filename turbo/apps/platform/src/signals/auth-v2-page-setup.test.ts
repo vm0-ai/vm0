@@ -36,16 +36,11 @@ type Register = (properties: Record<string, unknown>) => void;
 type Reset = () => void;
 type Unregister = (property: string) => void;
 
-const { apiOriginMarker, posthog, posthogKey } = vi.hoisted(() => {
+const { posthog, posthogKey } = vi.hoisted(() => {
   const posthogKey = "phc_auth_v2_diagnostics_test";
   vi.stubEnv("VITE_POSTHOG_KEY", posthogKey);
   window.location.href = "https://app.vm0.ai/";
-  const apiOriginMarker = document.createElement("meta");
-  apiOriginMarker.name = "vm0-api-origin";
-  apiOriginMarker.content = "https://api.vm0.ai";
-  document.head.append(apiOriginMarker);
   return {
-    apiOriginMarker,
     posthogKey,
     posthog: {
       capture: vi.fn<Capture>(),
@@ -64,9 +59,7 @@ vi.mock("posthog-js/dist/module.slim", () => {
 
 const context = testContext();
 
-afterAll(() => {
-  apiOriginMarker.remove();
-});
+afterAll(() => {});
 
 beforeEach(() => {
   posthog.capture.mockClear();

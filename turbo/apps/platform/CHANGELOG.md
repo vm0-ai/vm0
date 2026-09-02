@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.825.0](https://github.com/vm0-ai/vm0/compare/app-v0.824.0...app-v0.825.0) (2026-09-02)
+
+
+### Features
+
+* **app:** add standalone worker previews ([#30987](https://github.com/vm0-ai/vm0/issues/30987)) ([7a4ce6a](https://github.com/vm0-ai/vm0/commit/7a4ce6ad45daa6c4cb823a9b7253340123dd98df))
+* **platform:** add internal Lab switch category ([#31177](https://github.com/vm0-ai/vm0/issues/31177)) ([996361b](https://github.com/vm0-ai/vm0/commit/996361bb352b5b94ec0852dbaa7ddc7086d7116e))
+* **platform:** group lab switches by rollout stage ([#31121](https://github.com/vm0-ai/vm0/issues/31121)) ([f23ecec](https://github.com/vm0-ai/vm0/commit/f23ecec9f8582cdd9a90281af7833266d7fb84ca))
+* **platform:** preview supported office file formats ([#31013](https://github.com/vm0-ai/vm0/issues/31013)) ([5f5cf9e](https://github.com/vm0-ai/vm0/commit/5f5cf9ebb7a737439660e274efc1d6f094f29773))
+
+
+### Bug Fixes
+
+* **platform:** align iOS startup image handoff ([#31174](https://github.com/vm0-ai/vm0/issues/31174)) ([4ca361b](https://github.com/vm0-ai/vm0/commit/4ca361bda768db6441d6ef3fbf00eb0fc21db202))
+* **platform:** align model recovery card with the app card and button language ([#31072](https://github.com/vm0-ai/vm0/issues/31072)) ([330236c](https://github.com/vm0-ai/vm0/commit/330236cf9046140c54b8398bc9c0321ef800597d))
+* **platform:** count share selections by message group ([#31126](https://github.com/vm0-ai/vm0/issues/31126)) ([74fb353](https://github.com/vm0-ai/vm0/commit/74fb35396e9c734e63a17d142f9345bd7c343ce7))
+* **platform:** highlight pinned agents for chat threads ([#31125](https://github.com/vm0-ai/vm0/issues/31125)) ([08255dc](https://github.com/vm0-ai/vm0/commit/08255dc889faf77224deaa4cbdc0fffed945a84c))
+* **platform:** prevent desktop viewport pinch zoom ([#31137](https://github.com/vm0-ai/vm0/issues/31137)) ([3cd64e6](https://github.com/vm0-ai/vm0/commit/3cd64e646ee868eca2f6329a2b331b1c057d223f))
+* **platform:** update chat sidebar navigation ([#31099](https://github.com/vm0-ai/vm0/issues/31099)) ([44a87b5](https://github.com/vm0-ai/vm0/commit/44a87b5c24314251273323c3f875e45fd12c4b51))
+* project remaining public brand surfaces ([#31151](https://github.com/vm0-ai/vm0/issues/31151)) ([769b53e](https://github.com/vm0-ai/vm0/commit/769b53e654a275477750026201f55207dc13d839))
+
+
+### Refactoring
+
+* **platform:** simplify Geist font stack ([#31158](https://github.com/vm0-ai/vm0/issues/31158)) ([4349067](https://github.com/vm0-ai/vm0/commit/43490673b124826f3cc7e0fafc241133bca8c0d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+    * @okouai/core bumped to 8.611.0
+
 ## [0.824.0](https://github.com/vm0-ai/vm0/compare/app-v0.823.0...app-v0.824.0) (2026-09-02)
 
 

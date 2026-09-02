@@ -416,13 +416,11 @@
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
-        "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
         "works": "Tempat {{agentName}} bekerja"
       },
       "rail": {
-        "new": "Baru",
         "workflows": "Alur kerja",
         "works": "Bekerja"
       },
@@ -1819,7 +1817,7 @@
       "noAccounts": "Tidak ada rekening aktif yang tersedia. Hubungkan kembali atau perbaiki institusi terlebih dahulu.",
       "oneDay": "24 jam",
       "oneHour": "1 jam",
-      "popupBlocked": "Izinkan pop-up untuk Zero, lalu coba lagi.",
+      "popupBlocked": "Izinkan pop-up untuk {{assistantName}}, lalu coba lagi.",
       "readOnly": "Rekening, saldo, dan transaksi · hanya baca",
       "repair": "Perbaiki",
       "repairRequired": "{{institution}} perlu diperbaiki",
@@ -1941,8 +1939,8 @@
       "providerIncompatibleAction": "Mulai sesi baru",
       "providerIncompatiblePrefix": "Sesi ini dimulai dengan provider model yang berbeda dan tidak bisa dilanjutkan dengan yang saat ini.",
       "recovery": {
-        "capacityDescription": "Model ini sementara mencapai kapasitas. Coba lagi dalam beberapa menit, atau ganti model sekarang.",
-        "capacityTitle": "Model {{framework}} sedang sibuk",
+        "capacityDescription": "Coba lagi sebentar lagi, atau ganti model.",
+        "capacityTitle": "Model ini sedang sibuk",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Lanjutkan",
@@ -2024,7 +2022,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Tinjau video intro Anda",
-        "help": "Konfirmasikan pilihan yang akan diterima Zero di utas chat baru",
+        "help": "Konfirmasikan pilihan yang akan diterima {{assistantName}} di utas chat baru",
         "instructions": "Petunjuk pengeditan",
         "source": "Sumber",
         "voice": "Suara"
@@ -4660,6 +4658,20 @@
       "teamDescription": "Kembangkan tim Anda dengan 10 eksekusi paralel dan lebih banyak kredit."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Tutup pembaruan layanan",
+    "label": "Pembaruan status layanan",
+    "statuses": {
+      "identified": "Masalah teridentifikasi",
+      "incident": "Insiden layanan",
+      "investigating": "Sedang diselidiki",
+      "maintenance": "Pemeliharaan",
+      "maintenanceInProgress": "Pemeliharaan sedang berlangsung",
+      "maintenanceScheduled": "Pemeliharaan terjadwal",
+      "monitoring": "Memantau pemulihan"
+    },
+    "viewUpdates": "Lihat pembaruan terbaru"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Tambah akun",
@@ -4791,6 +4803,7 @@
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
+        "internal": "Internal",
         "released": "Dirilis"
       },
       "title": "Lab"

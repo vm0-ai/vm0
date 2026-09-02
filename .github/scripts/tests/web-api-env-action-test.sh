@@ -78,13 +78,6 @@ assert_env_absent_value() {
   fi
 }
 
-assert_file_absent() {
-  local path="$1"
-  if [[ -e "$path" ]]; then
-    fail "expected unpublished output file to be absent"
-  fi
-}
-
 assert_env_key_absent() {
   local env_file="$1"
   local key="$2"
@@ -151,23 +144,6 @@ assert_machine_secret_aliases_absent() {
   assert_env_key_absent "$env_file" VM0_MACHINE_SECRET_KEY
 }
 
-assert_machine_secret_source_state() {
-  local output="$1"
-  local state="$2"
-  local expected
-  local source_lines
-  expected="::notice::API machine secret source canonical_key=OKOU_MACHINE_SECRET_KEY legacy_key=VM0_MACHINE_SECRET_KEY state=${state}"
-  source_lines="$(grep -F "API machine secret source" <<< "$output" || true)"
-  if [[ "$source_lines" != "$expected" ]]; then
-    fail "unexpected API machine secret source evidence for ${state}"
-  fi
-}
-
-assert_machine_secret_source_evidence_absent() {
-  local output="$1"
-  assert_not_contains "$output" "API machine secret source"
-}
-
 assert_machine_secret_values_absent_from_output() {
   local output="$1"
   shift
@@ -211,45 +187,18 @@ assert_no_fixture_secret_values() {
   done
 }
 
-assert_github_app_source_state() {
-  local output="$1"
-  local suffix="$2"
-  local state="$3"
-  assert_contains \
-    "$output" \
-    "canonical_key=OKOU_GITHUB_APP_${suffix} legacy_key=VM0_GITHUB_APP_${suffix} state=${state}"
-}
-
-assert_github_app_source_states() {
-  local output="$1"
-  local state="$2"
-  local suffix
-  for suffix in "${GITHUB_APP_VAR_SUFFIXES[@]}" "${GITHUB_APP_SECRET_SUFFIXES[@]}"; do
-    assert_github_app_source_state "$output" "$suffix" "$state"
-  done
-}
-
-assert_github_app_source_evidence_absent() {
-  local output="$1"
-  local suffix
-  for suffix in "${GITHUB_APP_VAR_SUFFIXES[@]}" "${GITHUB_APP_SECRET_SUFFIXES[@]}"; do
-    assert_not_contains "$output" "canonical_key=OKOU_GITHUB_APP_${suffix}"
-  done
-}
-
 assert_github_app_mapping_values() {
   local env_file="$1"
-  local source_prefix="$2"
-  local repo_vars_json="$3"
-  local repo_secrets_json="$4"
+  local repo_vars_json="$2"
+  local repo_secrets_json="$3"
   local suffix
   local expected
   for suffix in "${GITHUB_APP_VAR_SUFFIXES[@]}"; do
-    expected="$(jq -r --arg key "${source_prefix}_GITHUB_APP_${suffix}" '.[$key] // ""' <<< "$repo_vars_json")"
+    expected="$(jq -r --arg key "OKOU_GITHUB_APP_${suffix}" '.[$key] // ""' <<< "$repo_vars_json")"
     assert_env_value "$env_file" "GITHUB_APP_${suffix}" "$expected"
   done
   for suffix in "${GITHUB_APP_SECRET_SUFFIXES[@]}"; do
-    expected="$(jq -r --arg key "${source_prefix}_GITHUB_APP_${suffix}" '.[$key] // ""' <<< "$repo_secrets_json")"
+    expected="$(jq -r --arg key "OKOU_GITHUB_APP_${suffix}" '.[$key] // ""' <<< "$repo_secrets_json")"
     assert_env_value "$env_file" "GITHUB_APP_${suffix}" "$expected"
   done
 }
@@ -368,7 +317,7 @@ run_action() {
 
   repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","OKOU_PRICE_PRO":"price_test_pro","OKOU_PRICE_TEAM":"price_test_team","OKOU_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","OKOU_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","OKOU_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","OKOU_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","OKOU_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","OKOU_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","OKOU_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","OKOU_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","OKOU_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
   repo_vars_json="$(jq -c '. + {OKOU_PUBLIC_ARTIFACTS_BASE_URL: "https://cdn.okou.test", OKOU_PUBLIC_HOST_DOMAIN: "okou.app", OKOU_HOST_SCHEME: "https", OKOU_ONE_TIME_CAMPAIGN: "test-campaign", VM0_DEFAULT_AGENT: "hostile-retired-default-agent"}' <<< "$repo_vars_json")"
-  repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","OKOU_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","OKOU_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","OKOU_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","OKOU_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","OKOU_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","OKOU_BROWSER_USE_API_KEY":"github-browser-use-api-key","OKOU_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","OKOU_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","OKOU_SOCIAL_SOCIALKIT_TOKEN":"github-socialkit-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
+  repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","OKOU_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","OKOU_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","OKOU_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","OKOU_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","OKOU_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","OKOU_BROWSER_USE_API_KEY":"github-browser-use-api-key","OKOU_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","OKOU_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","OKOU_SOCIAL_SOCIALKIT_TOKEN":"github-socialkit-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","OKOU_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
   if [[ "$branded_config" == "empty" ]]; then
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_secrets_json")"
@@ -379,7 +328,7 @@ run_action() {
     repo_secrets_json="$(
       jq -c \
         --argjson machine_secret_sources "$machine_secret_repo_secrets_json" \
-        'del(.OKOU_MACHINE_SECRET_KEY, .VM0_MACHINE_SECRET_KEY) + $machine_secret_sources' \
+        'del(.OKOU_MACHINE_SECRET_KEY) + $machine_secret_sources' \
         <<< "$repo_secrets_json"
     )"
   fi
@@ -438,11 +387,10 @@ run_machine_secret_action() {
     "$repo_secrets_json"
 }
 
-assert_machine_secret_source_case() {
-  local state="$1"
-  local input_environment="$2"
-  local repo_secrets_json="$3"
-  local expected="$4"
+assert_machine_secret_canonical_case() {
+  local input_environment="$1"
+  local repo_secrets_json="$2"
+  local expected="$3"
   local test_dir
   local output
   local env_file
@@ -451,7 +399,6 @@ assert_machine_secret_source_case() {
   output="$(run_machine_secret_action "$test_dir" api "$input_environment" "$repo_secrets_json" 2>&1)"
   env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${test_dir}/github-output")"
   assert_contains "$output" "Rendered"
-  assert_machine_secret_source_state "$output" "$state"
   assert_machine_secret_values_absent_from_output "$output" "$expected"
   assert_machine_secret_canonical_only "$env_file" "$expected"
 }
@@ -478,33 +425,8 @@ github_app_canonical_output="$(run_github_app_action "$github_app_canonical_dir"
 github_app_canonical_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${github_app_canonical_dir}/github-output")"
 assert_contains "$github_app_canonical_output" "Rendered"
 assert_no_fixture_secret_values "$github_app_canonical_output"
-assert_github_app_source_states "$github_app_canonical_output" "canonical-only"
-assert_github_app_mapping_values "$github_app_canonical_env_file" OKOU "$github_app_canonical_vars_json" "$github_app_canonical_secrets_json"
+assert_github_app_mapping_values "$github_app_canonical_env_file" "$github_app_canonical_vars_json" "$github_app_canonical_secrets_json"
 assert_github_app_source_keys_absent "$github_app_canonical_env_file"
-
-github_app_legacy_vars_json='{"VM0_GITHUB_APP_SLUG":" github-legacy-slug ","VM0_GITHUB_APP_ID":"github-legacy-id","VM0_GITHUB_APP_CLIENT_ID":"github-legacy-client-id"}'
-github_app_legacy_secrets_json='{"VM0_GITHUB_APP_CLIENT_SECRET":"github-legacy-client-secret","VM0_GITHUB_APP_WEBHOOK_SECRET":"github-legacy-webhook-secret","VM0_GITHUB_APP_PRIVATE_KEY":"github-legacy-private-key"}'
-github_app_legacy_dir="$(mktemp -d)"
-TEMP_DIRS+=("$github_app_legacy_dir")
-github_app_legacy_output="$(run_github_app_action "$github_app_legacy_dir" "$github_app_legacy_vars_json" "$github_app_legacy_secrets_json" 2>&1)"
-github_app_legacy_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${github_app_legacy_dir}/github-output")"
-assert_contains "$github_app_legacy_output" "Rendered"
-assert_no_fixture_secret_values "$github_app_legacy_output"
-assert_github_app_source_states "$github_app_legacy_output" "legacy-only"
-assert_github_app_mapping_values "$github_app_legacy_env_file" VM0 "$github_app_legacy_vars_json" "$github_app_legacy_secrets_json"
-assert_github_app_source_keys_absent "$github_app_legacy_env_file"
-
-github_app_dual_vars_json='{"OKOU_GITHUB_APP_SLUG":" github-dual-slug ","VM0_GITHUB_APP_SLUG":" github-dual-slug ","OKOU_GITHUB_APP_ID":"github-dual-id","VM0_GITHUB_APP_ID":"github-dual-id","OKOU_GITHUB_APP_CLIENT_ID":"github-dual-client-id","VM0_GITHUB_APP_CLIENT_ID":"github-dual-client-id"}'
-github_app_dual_secrets_json='{"OKOU_GITHUB_APP_CLIENT_SECRET":"github-dual-client-secret","VM0_GITHUB_APP_CLIENT_SECRET":"github-dual-client-secret","OKOU_GITHUB_APP_WEBHOOK_SECRET":"github-dual-webhook-secret","VM0_GITHUB_APP_WEBHOOK_SECRET":"github-dual-webhook-secret","OKOU_GITHUB_APP_PRIVATE_KEY":"github-dual-private-key","VM0_GITHUB_APP_PRIVATE_KEY":"github-dual-private-key"}'
-github_app_dual_dir="$(mktemp -d)"
-TEMP_DIRS+=("$github_app_dual_dir")
-github_app_dual_output="$(run_github_app_action "$github_app_dual_dir" "$github_app_dual_vars_json" "$github_app_dual_secrets_json" 2>&1)"
-github_app_dual_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${github_app_dual_dir}/github-output")"
-assert_contains "$github_app_dual_output" "Rendered"
-assert_no_fixture_secret_values "$github_app_dual_output"
-assert_github_app_source_states "$github_app_dual_output" dual
-assert_github_app_mapping_values "$github_app_dual_env_file" OKOU "$github_app_dual_vars_json" "$github_app_dual_secrets_json"
-assert_github_app_source_keys_absent "$github_app_dual_env_file"
 
 github_app_empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$github_app_empty_dir")
@@ -512,83 +434,24 @@ github_app_empty_output="$(run_github_app_action "$github_app_empty_dir" '{}' '{
 github_app_empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${github_app_empty_dir}/github-output")"
 assert_contains "$github_app_empty_output" "Rendered"
 assert_no_fixture_secret_values "$github_app_empty_output"
-assert_github_app_source_evidence_absent "$github_app_empty_output"
 assert_github_app_empty_outputs "$github_app_empty_env_file"
 assert_github_app_source_keys_absent "$github_app_empty_env_file"
 
-github_app_var_conflict_dir="$(mktemp -d)"
-TEMP_DIRS+=("$github_app_var_conflict_dir")
-status=0
-github_app_var_conflict_output="$(run_github_app_action "$github_app_var_conflict_dir" '{"OKOU_GITHUB_APP_SLUG":"github-canonical-conflict","VM0_GITHUB_APP_SLUG":"github-legacy-conflict"}' '{}' 2>&1)" || status=$?
-if [[ "$status" -eq 0 ]]; then
-  fail "expected conflicting GitHub App variable aliases to fail"
-fi
-assert_contains "$github_app_var_conflict_output" "canonical_key=OKOU_GITHUB_APP_SLUG legacy_key=VM0_GITHUB_APP_SLUG state=conflict"
-assert_no_fixture_secret_values "$github_app_var_conflict_output"
-assert_file_absent "${github_app_var_conflict_dir}/github-output"
-assert_file_absent "${github_app_var_conflict_dir}/web-api-api-preview.env"
-
-github_app_secret_conflict_dir="$(mktemp -d)"
-TEMP_DIRS+=("$github_app_secret_conflict_dir")
-status=0
-github_app_secret_conflict_output="$(run_github_app_action "$github_app_secret_conflict_dir" '{}' '{"OKOU_GITHUB_APP_CLIENT_SECRET":"github-canonical-conflict-secret","VM0_GITHUB_APP_CLIENT_SECRET":"github-legacy-conflict-secret"}' 2>&1)" || status=$?
-if [[ "$status" -eq 0 ]]; then
-  fail "expected conflicting GitHub App secret aliases to fail"
-fi
-assert_contains "$github_app_secret_conflict_output" "canonical_key=OKOU_GITHUB_APP_CLIENT_SECRET legacy_key=VM0_GITHUB_APP_CLIENT_SECRET state=conflict"
-assert_no_fixture_secret_values "$github_app_secret_conflict_output"
-assert_file_absent "${github_app_secret_conflict_dir}/github-output"
-assert_file_absent "${github_app_secret_conflict_dir}/web-api-api-preview.env"
-
-assert_machine_secret_source_case \
-  canonical-only \
+assert_machine_secret_canonical_case \
   preview \
   '{"OKOU_MACHINE_SECRET_KEY":" preview-canonical-machine-secret=bytes "}' \
   " preview-canonical-machine-secret=bytes "
-assert_machine_secret_source_case \
-  canonical-only \
+assert_machine_secret_canonical_case \
   production \
   '{"OKOU_MACHINE_SECRET_KEY":" production-canonical-machine-secret=bytes "}' \
   " production-canonical-machine-secret=bytes "
-assert_machine_secret_source_case \
-  dual \
-  preview \
-  '{"OKOU_MACHINE_SECRET_KEY":" equal-dual-machine-secret=bytes ","VM0_MACHINE_SECRET_KEY":" equal-dual-machine-secret=bytes "}' \
-  " equal-dual-machine-secret=bytes "
 
 machine_secret_absent_dir="$(mktemp -d)"
 TEMP_DIRS+=("$machine_secret_absent_dir")
 machine_secret_absent_output="$(run_machine_secret_action "$machine_secret_absent_dir" api preview '{}' 2>&1)"
 machine_secret_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${machine_secret_absent_dir}/github-output")"
 assert_contains "$machine_secret_absent_output" "Rendered"
-assert_machine_secret_source_evidence_absent "$machine_secret_absent_output"
 assert_machine_secret_aliases_absent "$machine_secret_absent_env_file"
-
-machine_secret_conflict_dir="$(mktemp -d)"
-TEMP_DIRS+=("$machine_secret_conflict_dir")
-status=0
-machine_secret_conflict_output="$(
-  run_machine_secret_action \
-    "$machine_secret_conflict_dir" \
-    api \
-    preview \
-    '{"OKOU_MACHINE_SECRET_KEY":" canonical-conflict-machine-secret ","VM0_MACHINE_SECRET_KEY":" legacy-conflict-machine-secret "}' \
-    2>&1
-)" || status=$?
-if [[ "$status" -eq 0 ]]; then
-  fail "expected conflicting API machine secret aliases to fail"
-fi
-expected_machine_secret_conflict="::error::API machine secret source conflict canonical_key=OKOU_MACHINE_SECRET_KEY legacy_key=VM0_MACHINE_SECRET_KEY state=conflict"
-machine_secret_conflict_lines="$(grep -F "API machine secret source" <<< "$machine_secret_conflict_output" || true)"
-if [[ "$machine_secret_conflict_lines" != "$expected_machine_secret_conflict" ]]; then
-  fail "unexpected API machine secret conflict evidence"
-fi
-assert_machine_secret_values_absent_from_output \
-  "$machine_secret_conflict_output" \
-  " canonical-conflict-machine-secret " \
-  " legacy-conflict-machine-secret "
-assert_file_absent "${machine_secret_conflict_dir}/github-output"
-assert_file_absent "${machine_secret_conflict_dir}/web-api-api-preview.env"
 
 machine_secret_web_dir="$(mktemp -d)"
 TEMP_DIRS+=("$machine_secret_web_dir")
@@ -602,7 +465,6 @@ machine_secret_web_output="$(
 )"
 machine_secret_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${machine_secret_web_dir}/github-output")"
 assert_contains "$machine_secret_web_output" "Rendered"
-assert_machine_secret_source_state "$machine_secret_web_output" canonical-only
 assert_machine_secret_values_absent_from_output "$machine_secret_web_output" " web-isolated-machine-secret "
 assert_machine_secret_aliases_absent "$machine_secret_web_env_file"
 
@@ -656,7 +518,6 @@ success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir" 2>&1
 success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${success_dir}/github-output")"
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
-assert_machine_secret_source_state "$success_output" legacy-only
 assert_machine_secret_values_absent_from_output "$success_output" "github-atom-machine-secret"
 assert_zero_keys_with_live_readers_absent "$success_env_file"
 assert_env_key_absent "$success_env_file" VM0_DEFAULT_AGENT
@@ -742,7 +603,6 @@ preview_web_output="$(run_action "$(build_doppler_secrets_json)" "$preview_web_d
 preview_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${preview_web_dir}/github-output")"
 assert_contains "$preview_web_output" "Rendered"
 assert_no_fixture_secret_values "$preview_web_output"
-assert_machine_secret_source_state "$preview_web_output" legacy-only
 assert_machine_secret_values_absent_from_output "$preview_web_output" "github-atom-machine-secret"
 assert_preview_job_ref_aliases_absent "$preview_web_env_file"
 assert_env_key_absent "$preview_web_env_file" VM0_DEFAULT_AGENT
@@ -771,7 +631,7 @@ assert_no_fixture_secret_values "$empty_output"
 assert_zero_keys_with_live_readers_absent "$empty_env_file"
 assert_debug_canonical_only "$empty_env_file"
 assert_api_backend_url_canonical_only "$empty_env_file" "https://pr-123-api-backend.vm0.test"
-assert_machine_secret_canonical_only "$empty_env_file" "github-atom-machine-secret"
+assert_machine_secret_aliases_absent "$empty_env_file"
 assert_env_value "$empty_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL ""
 assert_env_value "$empty_env_file" OKOU_PUBLIC_HOST_DOMAIN ""
 assert_env_value "$empty_env_file" OKOU_MAPS_GOOGLE_MAPS_TOKEN ""
@@ -786,7 +646,6 @@ production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production
 production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_web_dir}/github-output")"
 assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
-assert_machine_secret_source_state "$production_web_output" legacy-only
 assert_machine_secret_values_absent_from_output "$production_web_output" "github-atom-machine-secret"
 assert_zero_keys_with_live_readers_absent "$production_web_env_file"
 assert_env_key_absent "$production_web_env_file" VM0_DEFAULT_AGENT
@@ -818,7 +677,6 @@ production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production
 production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
-assert_machine_secret_source_state "$production_api_output" legacy-only
 assert_machine_secret_values_absent_from_output "$production_api_output" "github-atom-machine-secret"
 assert_zero_keys_with_live_readers_absent "$production_api_env_file"
 assert_env_key_absent "$production_api_env_file" VM0_DEFAULT_AGENT

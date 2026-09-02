@@ -644,6 +644,51 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, user.body.runId, [200]);
   });
 
+  it("falls back to a pending automation ahead of an admitted goal", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "continue after the hinted automation fallback",
+      objectiveBrief: "Continue after the hinted automation fallback",
+    });
+    const automationEventId = await admitWorkflowAutomationEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      triggerBrief: "automation wins the hinted goal fallback",
+    });
+
+    await drainChatThreadQueueFixture({
+      threadId: automation.threadId,
+      signal: context.signal,
+      goalContinuationAdmitted: true,
+    });
+
+    const [workflowRunId] = await workflowRunIds(automation.threadId);
+    if (!workflowRunId) {
+      throw new Error("Expected the pending automation to create a run");
+    }
+    await expect(
+      pendingAutomationEvents(automation.threadId),
+    ).resolves.toHaveLength(0);
+    const goalQueue = await readGoalQueueStateFixture(automation.threadId);
+    expect(goalQueue.runIds).toHaveLength(0);
+    expect(goalQueue.eventIds).toContain(goal.eventId);
+    const events = await wf.readThreadEvents(automation.threadId);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        revokesEventId: automationEventId,
+        runId: workflowRunId,
+      }),
+    );
+
+    await runsApi.requestCancelRun(scenario.actor, workflowRunId, [200]);
+  });
+
   it("runs a newer automation event before a pending goal continuation on the same thread", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

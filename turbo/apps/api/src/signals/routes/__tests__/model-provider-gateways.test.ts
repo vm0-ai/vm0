@@ -392,7 +392,7 @@ describe("custom model provider gateway routes", () => {
             hostPolicy: { kind: "publicDestination" },
             auth: {
               headers: {
-                Authorization: `Bearer \${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+                Authorization: `Bearer \${{ secrets.OKOU_MODEL_PROVIDER_API_KEY }}`,
               },
             },
           },
@@ -411,7 +411,7 @@ describe("custom model provider gateway routes", () => {
             headerEntries: [
               {
                 name: "Authorization",
-                value: `Bearer \${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+                value: `Bearer \${{ secrets.OKOU_MODEL_PROVIDER_API_KEY }}`,
               },
             ],
           },
@@ -496,7 +496,7 @@ describe("custom model provider gateway routes", () => {
             base: "https://gateway.example.com/openai/v1/responses",
             auth: {
               headers: {
-                "x-api-key": `\${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,
+                "x-api-key": `\${{ secrets.OKOU_MODEL_PROVIDER_API_KEY }}`,
               },
             },
           },

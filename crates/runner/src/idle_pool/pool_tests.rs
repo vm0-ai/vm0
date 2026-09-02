@@ -284,7 +284,7 @@ async fn rejected_parked_idle_candidate_returns_active_owned_lease() {
 }
 
 #[test]
-fn evict_oldest() {
+fn pressure_ordering_evicts_oldest_first() {
     let mut pool = IdlePool::new(pool_config(0));
     let now = Instant::now();
 
@@ -296,14 +296,16 @@ fn evict_oldest() {
     );
     let _ = park_at(&mut pool, "new", make_candidate_for("new", 4, 4096), now);
 
-    let evicted = pool.evict_oldest().unwrap();
+    let reuse_keys = pool.oldest_first_pressure_keys();
+    assert_eq!(reuse_keys, vec!["old", "new"]);
+    let evicted = pool.evict_for_pressure(&reuse_keys[0]).unwrap();
     assert_eq!(evicted.budget_vcpu(), 2); // the old one
     assert_eq!(pool.len(), 1);
     assert!(pool.take("new").is_some());
 }
 
 #[test]
-fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
+fn pressure_ordering_breaks_equal_park_time_by_reuse_key() {
     let mut pool = IdlePool::new(pool_config(0));
     let parked_at = Instant::now();
     for reuse_key in ["session-z", "session-a", "session-m"] {
@@ -315,8 +317,8 @@ fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
         );
     }
 
-    let evicted = pool.evict_oldest().unwrap();
-    assert_eq!(evicted.reuse_key(), "session-a");
+    let reuse_keys = pool.oldest_first_pressure_keys();
+    assert_eq!(reuse_keys, vec!["session-a", "session-m", "session-z"]);
 }
 
 #[test]
@@ -340,27 +342,26 @@ fn pressure_selection_reserves_exact_match_before_oldest_eviction() {
         parked_at,
     );
 
-    let selection = pool.reserve_reusable_or_evict_oldest(
+    let selection = pool.reserve_reusable_for_pressure(
         Some("session-matching"),
         "vm0/default",
         &None,
         Some(history_generation_run_id),
     );
 
-    let IdlePoolPressureSelection::Reusable(reservation) = selection else {
-        panic!("matching entry must be reserved before pressure eviction");
-    };
+    let reservation = selection.expect("matching entry must be reserved before pressure eviction");
     assert_eq!(pool.held_reuse_keys(), vec!["session-unrelated"]);
     assert!(matches!(
-        pool.restore_reserved(*reservation),
+        pool.restore_reserved(reservation),
         RestoreReservedIdleResult::Restored
     ));
 }
 
 #[test]
-fn evict_oldest_empty_returns_none() {
-    let mut pool = IdlePool::new(pool_config(0));
-    assert!(pool.evict_oldest().is_none());
+fn pressure_ordering_empty_returns_no_keys() {
+    let pool = IdlePool::new(pool_config(0));
+    let reuse_keys = pool.oldest_first_pressure_keys();
+    assert!(reuse_keys.is_empty());
 }
 
 #[test]

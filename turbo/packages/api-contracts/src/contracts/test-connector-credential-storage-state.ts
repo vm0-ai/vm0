@@ -252,7 +252,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       org_id: z.string(),
       user_id: z.string(),
       custom_connector_id: z.uuid(),
-      auth_method: z.enum(["manual", "oauth"]),
+      auth_method: z.enum(["none", "manual", "oauth"]),
       storage_version: z.number().int().positive(),
       needs_reconnect: z.boolean().optional(),
     }),

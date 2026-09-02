@@ -29,7 +29,11 @@ export type {
   OrgCustomConnectorQueryInjection,
 } from "@okouai/db/jsonb-contracts/org-custom-connector";
 
-export type OrgCustomConnectorAuthMode = "none" | "manual" | "oauth";
+export type OrgCustomConnectorAuthMode =
+  | "none"
+  | "manual"
+  | "oauth"
+  | "automatic";
 export type OrgCustomConnectorMcpTransport = "streamable-http";
 export type OrgCustomConnectorOAuthSetup = "custom" | "automatic";
 
@@ -109,7 +113,7 @@ export const orgCustomConnectors = pgTable(
       ),
       check(
         "chk_org_custom_connectors_auth_mode",
-        sql`${table.authMode} IN ('none', 'manual', 'oauth')`,
+        sql`${table.authMode} IN ('none', 'manual', 'oauth', 'automatic')`,
       ),
       check(
         "chk_org_custom_connectors_oauth_setup",
@@ -121,15 +125,18 @@ export const orgCustomConnectors = pgTable(
             ${table.authMode} = 'oauth'
             AND (
               ${table.oauthSetup} IS NULL
-              OR ${table.oauthSetup} IN ('custom', 'automatic')
+              OR ${table.oauthSetup} = 'custom'
             )
+          ) OR (
+            ${table.authMode} = 'automatic'
+            AND ${table.oauthSetup} = 'automatic'
           )
         )`,
       ),
       check(
         "chk_org_custom_connectors_automatic_oauth_mcp",
         sql`(
-          ${table.oauthSetup} IS DISTINCT FROM 'automatic'
+          ${table.authMode} <> 'automatic'
           OR (
             ${table.mcpEndpoint} IS NOT NULL
             AND ${table.mcpTransport} = 'streamable-http'
@@ -158,7 +165,7 @@ export const orgCustomConnectors = pgTable(
                   AND ${table.headerInjections} = '[]'::jsonb
                   AND ${table.queryInjections} = '[]'::jsonb
                 ) OR (
-                  ${table.authMode} <> 'none'
+                  ${table.authMode} IN ('manual', 'oauth')
                   AND (
                     ${table.headerInjections} <> '[]'::jsonb
                     OR ${table.queryInjections} <> '[]'::jsonb
@@ -173,12 +180,12 @@ export const orgCustomConnectors = pgTable(
               AND ${table.prefixTemplates} = '[]'::jsonb
               AND (
                 (
-                  ${table.authMode} = 'none'
+                  ${table.authMode} IN ('none', 'automatic')
                   AND ${table.fields} = '[]'::jsonb
                   AND ${table.headerInjections} = '[]'::jsonb
                   AND ${table.queryInjections} = '[]'::jsonb
                 ) OR (
-                  ${table.authMode} <> 'none'
+                  ${table.authMode} IN ('manual', 'oauth')
                   AND (
                     ${table.headerInjections} <> '[]'::jsonb
                     OR ${table.queryInjections} <> '[]'::jsonb

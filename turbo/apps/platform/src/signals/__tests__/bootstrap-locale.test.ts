@@ -148,6 +148,32 @@ describe("bootstrap locale", () => {
     }
   });
 
+  it.each([
+    ["https://app.vm0.ai/", "Zero", "Okou"],
+    ["https://app.okou.ai/", "Okou", "Zero"],
+  ] as const)(
+    "projects assistant copy for every locale on %s",
+    async (url, assistantName, otherAssistantName) => {
+      context.mocks.browser.url(url);
+
+      for (const locale of SUPPORTED_LOCALES) {
+        await initializeI18n(locale);
+        const messages = [
+          i18n.t(($) => {
+            return $.chat.banking.popupBlocked;
+          }),
+          i18n.t(($) => {
+            return $.chat.introVideo.review.help;
+          }),
+        ];
+        for (const message of messages) {
+          expect(message).toContain(assistantName);
+          expect(message).not.toContain(otherAssistantName);
+        }
+      }
+    },
+  );
+
   it("keeps runtime locale state unchanged when resources fail", async () => {
     await initializeI18n(DEFAULT_LOCALE);
     context.mocks.http.get(frFRCommonUrl, () => {

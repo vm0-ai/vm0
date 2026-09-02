@@ -105,6 +105,13 @@ def create_anthropic_messages_sse_usage_extractor(
     have been fed, callers must invoke ``scanner.finish()`` to flush a trailing
     event without a blank-line terminator.
 
+    ``include_usage`` controls both usage extraction and delivery of the
+    callbacks described below. When it is ``False``, usage parsing is disabled
+    and ``on_parse_error``, ``on_lifecycle_event``, and ``on_accounting_event``
+    are not called, even when provided. ``failure_observer`` is independent of
+    this option and continues to receive failure evidence for events it
+    requests.
+
     When a captured event cannot be parsed or exceeds an extractor bound,
     ``on_parse_error(event_type, error)`` receives the resolved event identity
     and parser diagnostic only for ``message_start`` and ``message_delta``.

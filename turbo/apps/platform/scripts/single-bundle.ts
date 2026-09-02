@@ -127,6 +127,7 @@ function outputDescription(outputs: readonly GeneratedOutput[]): string {
 function chunkViolations(
   chunk: GeneratedChunk,
   allowedStaticImports: ReadonlySet<string>,
+  allowedBundledPackages: ReadonlySet<string> = new Set(),
 ): string[] {
   const violations: string[] = [];
   const unexpectedImports = (chunk.imports ?? []).filter((fileName) => {
@@ -147,7 +148,9 @@ function chunkViolations(
     (chunk.moduleIds ?? [])
       .map(bundledPackage)
       .filter((packageName): packageName is string => {
-        return packageName !== undefined;
+        return (
+          packageName !== undefined && !allowedBundledPackages.has(packageName)
+        );
       }),
   );
   if (forbiddenPackages.size > 0) {
@@ -331,7 +334,7 @@ export function singleWorkerBundleViolations(
         .join(", ")}`,
     ];
   }
-  return chunkViolations(chunk, new Set());
+  return chunkViolations(chunk, new Set(), new Set(["@clerk/clerk-js"]));
 }
 
 export function applicationJavaScriptBundlePlugin(): Plugin {

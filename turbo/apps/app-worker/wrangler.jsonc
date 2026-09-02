@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "okou-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-02",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": false,
+  "preview_urls": false,
+  // Phase-one previews read hashed app assets through the existing public
+  // static.okou.io R2 origin. The Worker source also supports a native
+  // STATIC_ASSETS_BUCKET binding once a dedicated deploy token is provisioned.
+  "env": {
+    "preview": {
+      "name": "okou-app-preview",
+      "workers_dev": true,
+      "preview_urls": true,
+      "vars": {
+        "PUBLIC_BRAND": "okou",
+      },
+    },
+    "production": {
+      "name": "okou-app-production",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "app-worker.okou.ai",
+          "custom_domain": true,
+        },
+        {
+          "pattern": "app-worker.vm0.ai",
+          "custom_domain": true,
+        },
+      ],
+    },
+  },
+}

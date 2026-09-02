@@ -1072,10 +1072,12 @@ describe("chat lifecycle", () => {
       },
     );
 
-    // Thread detail never responds in this scenario, so page bootstrap has no
-    // settled completion to await. Readiness comes from the rendered thread
-    // instead, per the `detachedSetupPage` contract.
-    detachedSetupPage({
+    // Thread detail never responds here, but the app skeleton does not wait on
+    // it: it retires on `initialEventsReady$`, which the events handler above
+    // satisfies. `setupPageAndWaitForContent` is itself detached, so gating on
+    // the skeleton settles bootstrap without awaiting the pending thread
+    // detail, and keeps page startup out of the `findBy` polling budget below.
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${EVENT_SOURCED_RENAME_THREAD_ID}`,
       sharedWorkerTestTransport: "message-port",

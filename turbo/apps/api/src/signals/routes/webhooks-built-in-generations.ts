@@ -10,7 +10,7 @@ import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { pathParamsOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { safeJsonParse, safeSync, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import {
   downloadFalImage,
   getFalImageBillableUnits,
@@ -56,6 +56,7 @@ import {
 } from "../services/video-generation.service";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { redactPresignedUrls } from "../../lib/presigned-url-redaction";
 import {
   avatarVideoPricing$,
   downloadJoggAiAvatarVideo,
@@ -278,6 +279,7 @@ const PROVIDER_FAILURE_DETAIL_KEYS = [
   "error_message",
   "errorMessage",
   "message",
+  "msg",
   "detail",
   "description",
   "status_message",
@@ -300,6 +302,9 @@ function providerFailureLogKey(key: string): string {
     case "err_msg": {
       return "errorMessage";
     }
+    case "msg": {
+      return "message";
+    }
     case "status_message": {
       return "statusMessage";
     }
@@ -317,17 +322,36 @@ function truncateProviderFailureDetail(value: string): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
-function stringifyProviderFailureDetail(value: unknown): string | undefined {
+const MAX_PROVIDER_FAILURE_DETAIL_DEPTH = 5;
+
+function scalarProviderFailureDetail(value: unknown): string | undefined {
   if (typeof value === "string") {
-    return value ? truncateProviderFailureDetail(value) : undefined;
+    const trimmed = value.trim();
+    return trimmed
+      ? truncateProviderFailureDetail(redactPresignedUrls(trimmed))
+      : undefined;
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
+  return undefined;
+}
+
+function stringifyProviderFailureDetail(
+  value: unknown,
+  depth = 0,
+): string | undefined {
+  const scalar = scalarProviderFailureDetail(value);
+  if (scalar) {
+    return scalar;
+  }
+  if (depth >= MAX_PROVIDER_FAILURE_DETAIL_DEPTH) {
+    return undefined;
+  }
   if (Array.isArray(value)) {
     const text = value
       .map((item) => {
-        return stringifyProviderFailureDetail(item);
+        return stringifyProviderFailureDetail(item, depth + 1);
       })
       .filter((item): item is string => {
         return Boolean(item);
@@ -339,17 +363,15 @@ function stringifyProviderFailureDetail(value: unknown): string | undefined {
     return undefined;
   }
   for (const key of PROVIDER_FAILURE_DETAIL_KEYS) {
-    const detail = stringifyProviderFailureDetail(value[key]);
+    const detail = stringifyProviderFailureDetail(value[key], depth + 1);
     if (detail) {
       return detail;
     }
   }
-  const serialized = safeSync(() => {
-    return JSON.stringify(value);
-  });
-  return "ok" in serialized
-    ? truncateProviderFailureDetail(serialized.ok)
-    : undefined;
+  // Deliberately no JSON.stringify fallback: an unrecognized object is the
+  // provider echoing our request back, and serializing it put user prompts and
+  // reference image URLs into production logs.
+  return undefined;
 }
 
 export function providerFailureDetailsForLog(

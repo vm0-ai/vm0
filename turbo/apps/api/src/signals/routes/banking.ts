@@ -3,13 +3,17 @@ import {
   bankingPublicContract,
   bankingUserContract,
 } from "@okouai/api-contracts/contracts/banking";
+import {
+  appUrlForPublicBrand,
+  publicBrandPresentation,
+} from "@okouai/core/public-brand";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { request$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -173,9 +177,12 @@ const createConnectSessionInner$ = command(
       return body.response;
     }
     const auth = get(organizationAuthContext$);
-    const redirectOrigin = new URL(env("APP_URL")).origin;
+    const configuredAppUrl = env("APP_URL");
+    const redirectOrigin = new URL(
+      appUrlForPublicBrand(configuredAppUrl, get(publicBrand$)),
+    ).origin;
     const webhookOrigin = new URL(
-      env("FINICITY_WEBHOOK_BASE_URL") ?? redirectOrigin,
+      env("FINICITY_WEBHOOK_BASE_URL") ?? configuredAppUrl,
     ).origin;
     return await set(
       startBankingConnectSession$,
@@ -220,18 +227,19 @@ const revokeAgentGrantInner$ = command(async ({ get, set }) => {
   });
 });
 
-const connectReturn$ = command(() => {
+const connectReturn$ = command(({ get }) => {
+  const { assistantName } = publicBrandPresentation(get(publicBrand$));
   const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Return to Zero</title>
+    <title>Return to ${assistantName}</title>
   </head>
   <body style="font-family:ui-sans-serif,system-ui,sans-serif;margin:0;display:grid;min-height:100vh;place-items:center;background:#fafafa;color:#18181b">
     <main style="max-width:28rem;padding:2rem;text-align:center">
       <h1 style="font-size:1.25rem;margin:0 0 .75rem">Return to Chat</h1>
-      <p style="color:#71717a;line-height:1.5;margin:0">You can close this window and continue in Zero Chat.</p>
+      <p style="color:#71717a;line-height:1.5;margin:0">You can close this window and continue in ${assistantName} Chat.</p>
     </main>
     <script>window.close()</script>
   </body>

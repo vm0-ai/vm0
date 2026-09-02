@@ -60,6 +60,7 @@ export enum FeatureSwitchKey {
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   PiMemoryRecall = "piMemoryRecall",
+  PiMemoryGeneration = "piMemoryGeneration",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",

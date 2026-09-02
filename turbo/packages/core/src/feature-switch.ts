@@ -28,7 +28,11 @@ export interface FeatureSwitchMetadata {
   readonly rolloutStage: FeatureSwitchRolloutStage;
 }
 
-export type FeatureSwitchRolloutStage = "released" | "beta" | "alpha";
+export type FeatureSwitchRolloutStage =
+  | "released"
+  | "beta"
+  | "alpha"
+  | "internal";
 
 export interface FeatureSwitchContext {
   readonly userId?: string;
@@ -293,6 +297,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PiMemoryGeneration]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
+    enabled: false,
+  },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -529,8 +539,12 @@ export function getFeatureSwitchDescriptions(): Record<
 }
 
 function getFeatureSwitchRolloutStage(
+  key: FeatureSwitchKey,
   featureSwitch: FeatureSwitch,
 ): FeatureSwitchRolloutStage {
+  if (key.startsWith("_")) {
+    return "internal";
+  }
   if (featureSwitch.enabled) {
     return "released";
   }
@@ -557,7 +571,7 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
-      rolloutStage: getFeatureSwitchRolloutStage(featureSwitch),
+      rolloutStage: getFeatureSwitchRolloutStage(key, featureSwitch),
     };
   }
   return result;

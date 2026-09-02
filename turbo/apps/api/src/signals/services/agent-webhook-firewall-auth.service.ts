@@ -5114,7 +5114,11 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
           },
     );
   }
-  if (runtime.connector.authMode === "oauth") {
+  if (
+    runtime.connector.authMode === "oauth" ||
+    (runtime.connector.authMode === "automatic" &&
+      runtime.credentialAccess.resolvedAuthMethod === "oauth")
+  ) {
     const secretName = customConnectorSecretKey({
       connectorId: runtime.connector.id,
       kind: "secret",

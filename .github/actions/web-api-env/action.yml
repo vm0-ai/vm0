@@ -95,53 +95,6 @@ runs:
           json_get "$secrets_json" "$1"
         }
 
-        # Stage 1 protects repository configuration consumed by checked-out
-        # deployment workflows during the supported old-workflow rerun and
-        # rollback window. Remove legacy reads only after #28914 establishes
-        # equal canonical config, retires old-only rollback targets, and
-        # records zero legacy-only source evidence.
-        resolve_repo_alias() {
-          local accessor="$1"
-          local canonical_key="$2"
-          local legacy_key="$3"
-          local source_label="${4:-GitHub App}"
-          local canonical_value
-          local legacy_value
-          local state
-          local value
-
-          canonical_value="$("$accessor" "$canonical_key")"
-          legacy_value="$("$accessor" "$legacy_key")"
-          if [[ -n "$canonical_value" && -n "$legacy_value" ]]; then
-            if [[ "$canonical_value" != "$legacy_value" ]]; then
-              printf '::error::%s source conflict canonical_key=%s legacy_key=%s state=conflict\n' \
-                "$source_label" \
-                "$canonical_key" \
-                "$legacy_key" \
-                >&2
-              return 1
-            fi
-            state="dual"
-            value="$canonical_value"
-          elif [[ -n "$canonical_value" ]]; then
-            state="canonical-only"
-            value="$canonical_value"
-          elif [[ -n "$legacy_value" ]]; then
-            state="legacy-only"
-            value="$legacy_value"
-          else
-            return 0
-          fi
-
-          printf '::notice::%s source canonical_key=%s legacy_key=%s state=%s\n' \
-            "$source_label" \
-            "$canonical_key" \
-            "$legacy_key" \
-            "$state" \
-            >&2
-          printf '%s' "$value"
-        }
-
         doppler_secret() {
           json_get "$doppler_secrets_json" "$1"
         }
@@ -187,13 +140,13 @@ runs:
           add_oauth_client_config_key "${prefix}_OAUTH_CLIENT_SECRET"
         }
 
-        github_app_slug="$(resolve_repo_alias repo_var OKOU_GITHUB_APP_SLUG VM0_GITHUB_APP_SLUG)"
-        github_app_id="$(resolve_repo_alias repo_var OKOU_GITHUB_APP_ID VM0_GITHUB_APP_ID)"
-        github_app_client_id="$(resolve_repo_alias repo_var OKOU_GITHUB_APP_CLIENT_ID VM0_GITHUB_APP_CLIENT_ID)"
-        github_app_client_secret="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_CLIENT_SECRET VM0_GITHUB_APP_CLIENT_SECRET)"
-        github_app_webhook_secret="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_WEBHOOK_SECRET VM0_GITHUB_APP_WEBHOOK_SECRET)"
-        github_app_private_key="$(resolve_repo_alias repo_secret OKOU_GITHUB_APP_PRIVATE_KEY VM0_GITHUB_APP_PRIVATE_KEY)"
-        machine_secret_key="$(resolve_repo_alias repo_secret OKOU_MACHINE_SECRET_KEY VM0_MACHINE_SECRET_KEY "API machine secret")"
+        github_app_slug="$(repo_var OKOU_GITHUB_APP_SLUG)"
+        github_app_id="$(repo_var OKOU_GITHUB_APP_ID)"
+        github_app_client_id="$(repo_var OKOU_GITHUB_APP_CLIENT_ID)"
+        github_app_client_secret="$(repo_secret OKOU_GITHUB_APP_CLIENT_SECRET)"
+        github_app_webhook_secret="$(repo_secret OKOU_GITHUB_APP_WEBHOOK_SECRET)"
+        github_app_private_key="$(repo_secret OKOU_GITHUB_APP_PRIVATE_KEY)"
+        machine_secret_key="$(repo_secret OKOU_MACHINE_SECRET_KEY)"
         api_backend_url="$INPUT_API_BACKEND_URL"
 
         : > "$env_file"

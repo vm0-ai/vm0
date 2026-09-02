@@ -1,3 +1,5 @@
+import { createServer, type ServerResponse } from "node:http";
+
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
@@ -19,7 +21,174 @@ const EMPTY_RESOURCE_SNAPSHOT = {
   skills: [],
 };
 
+function responsesTextSse(response: ServerResponse, text: string): void {
+  const responseId = "resp_terra_sandbox";
+  const messageId = "msg_terra_sandbox";
+  const events = [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: {
+        type: "message",
+        id: messageId,
+        role: "assistant",
+        status: "in_progress",
+        content: [],
+      },
+    },
+    {
+      type: "response.output_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: text,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: {
+        type: "message",
+        id: messageId,
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    },
+    {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            id: messageId,
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ],
+        usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+      },
+    },
+  ];
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(
+    events
+      .map((event) => {
+        return `data: ${JSON.stringify(event)}\n\n`;
+      })
+      .join(""),
+  );
+}
+
 describe("official Pi AgentSession runtime", () => {
+  it.each([
+    {
+      name: "standard",
+      api: "openai-completions",
+      serviceTier: undefined,
+    },
+    {
+      name: "fast",
+      api: "openai-codex-responses",
+      serviceTier: "priority",
+    },
+  ] as const)(
+    "normalizes legacy transport for $name Sandbox turns",
+    async ({ api, serviceTier }) => {
+      const providerRequests: Array<{
+        readonly url: string | undefined;
+        readonly body: unknown;
+      }> = [];
+      const server = createServer((request, response) => {
+        void (async () => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of request) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          providerRequests.push({
+            url: request.url,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+          });
+          responsesTextSse(response, "Terra Sandbox answer");
+        })().catch((error: unknown) => {
+          response.destroy(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        });
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Terra Sandbox test server has no TCP address");
+      }
+      const sessionManager = SessionManager.inMemory("/home/user/workspace", {
+        id: "00000000-0000-4000-8000-000000000126",
+      });
+      const created = await createPiAgentSessionForRuntime({
+        cwd: "/home/user/workspace",
+        agentDir: "/home/user/.pi/agent",
+        sessionManager,
+        model: {
+          ...TERRA_MODEL,
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          api,
+          ...(serviceTier === undefined ? {} : { serviceTier }),
+        },
+        appendSystemPrompt: null,
+        resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+      });
+
+      try {
+        await created.session.prompt("answer through the Sandbox");
+
+        expect(providerRequests).toHaveLength(1);
+        expect(providerRequests[0]).toMatchObject({
+          url: "/v1/responses",
+          body: {
+            model: "gpt-5.6-terra",
+            reasoning: { effort: "low" },
+          },
+        });
+        if (serviceTier === undefined) {
+          expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
+        } else {
+          expect(providerRequests[0]?.body).toMatchObject({
+            service_tier: "priority",
+          });
+        }
+      } finally {
+        created.session.dispose();
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+    },
+  );
+
   it("uses Terra low thinking for a fresh session", async () => {
     const sessionManager = SessionManager.inMemory("/home/user/workspace", {
       id: "00000000-0000-4000-8000-000000000124",

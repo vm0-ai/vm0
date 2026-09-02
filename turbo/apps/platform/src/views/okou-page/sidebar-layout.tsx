@@ -54,9 +54,7 @@ import {
   applyTypefaceDocumentAttribute,
   colorTheme$,
 } from "../../signals/theme.ts";
-
-// Keep this aligned with the Tailwind `md` breakpoint used by the layout.
-const SIDEBAR_DESKTOP_MEDIA_QUERY = "(min-width: 48rem)";
+import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);

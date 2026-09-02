@@ -2,19 +2,26 @@
 set -euo pipefail
 
 if (( $# != 2 )); then
-  echo "usage: $0 <job-ref> <cloudflare-preview-domain>" >&2
+  echo "usage: $0 <job-ref> <cloudflare-workers-subdomain>" >&2
   exit 1
 fi
 
 job_ref="$1"
-cloudflare_preview_domain="$2"
+cloudflare_workers_subdomain="$2"
 
 : "${job_ref:?job ref is required}"
-: "${cloudflare_preview_domain:?Cloudflare preview domain is required}"
+: "${cloudflare_workers_subdomain:?Cloudflare Workers subdomain is required}"
 
 if [[ ! "$job_ref" =~ ^pr-[0-9]+$ && "$job_ref" != "staging" ]]; then
   echo "unsupported app preview job ref: $job_ref" >&2
   exit 1
 fi
 
-printf 'https://%s-app.%s\n' "$job_ref" "$cloudflare_preview_domain"
+if [[ ! "$cloudflare_workers_subdomain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+  echo "invalid Cloudflare Workers subdomain: $cloudflare_workers_subdomain" >&2
+  exit 1
+fi
+
+printf 'https://%s-app-okou-app-preview.%s.workers.dev\n' \
+  "$job_ref" \
+  "$cloudflare_workers_subdomain"

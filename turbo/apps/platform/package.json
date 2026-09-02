@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app",
-  "version": "0.824.0",
+  "version": "0.825.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tsconfig.build-config.json --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-js": "6.25.8",
     "@clerk/localizations": "^4.13.8",
     "@clerk/react": "^6.12.8",
     "@clerk/shared": "4.25.8",
@@ -102,8 +103,8 @@
     "oxlint-tsgolint": "7.0.2001",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "unicode-emoji-json": "^0.9.0",
     "typescript-eslint": "^8.67.0",
+    "unicode-emoji-json": "^0.9.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.10"
   }

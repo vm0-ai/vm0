@@ -11,6 +11,8 @@ if grep -q '^  deploy-desktop:' "$turbo_workflow"; then
   exit 1
 fi
 
+# The Ruby program is intentionally a literal single-quoted shell argument.
+# shellcheck disable=SC2016
 ruby -e '
   require "yaml"
 
@@ -58,6 +60,12 @@ ruby -e '
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
   raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
+
+  preview = build.fetch("steps").find { |step| step["id"] == "preview" }
+  preview_env = preview.fetch("env")
+  raise "Desktop preview must use the Workers subdomain" unless preview_env.fetch("CF_WORKERS_SUBDOMAIN") == "${{ vars.CF_WORKERS_SUBDOMAIN }}"
+  raise "Desktop preview must not use the retired Pages domain" if preview_env.key?("CF_PAGES_PREVIEW_DOMAIN")
+  raise "Desktop preview URL must pass the Workers subdomain" unless preview.fetch("run").include?("$CF_WORKERS_SUBDOMAIN")
 
   artifact_step = deploy.fetch("steps").find { |step| step["id"] == "artifact" }
   raise "deploy-desktop must resolve the checked-out commit" unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
