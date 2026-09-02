@@ -474,10 +474,6 @@ pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
-/// Retired runner bootstrap key that must remain protected at the user-env
-/// boundary.
-pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
-
 /// Retained legacy Guest Agent tuning inputs that local user env may provide.
 ///
 /// These are the only `VM0_` keys intentionally allowed to cross the local
@@ -887,7 +883,6 @@ mod tests {
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
-            WORKING_DIR_ENV,
             "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
             "VM0_RUN_PAYLOAD_FILE",

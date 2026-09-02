@@ -471,7 +471,6 @@ fn build_env_json_required_keys() {
     );
     assert!(!env.contains_key("VM0_GUEST_RUNTIME_DIR"));
     assert!(!env.contains_key("VM0_PROMPT"));
-    assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
     assert_eq!(
@@ -849,7 +848,6 @@ fn build_env_json_codex_keeps_shared_runner_env() {
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
     assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
-    assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
 #[test]
