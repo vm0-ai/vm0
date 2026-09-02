@@ -21,8 +21,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   testContext,
@@ -230,7 +230,10 @@ async function openDrawer(
   sharedWorkerTestTransport: "direct" | "message-port" = "direct",
 ): Promise<void> {
   mockQueuedThread();
-  detachedSetupPage({
+  // Settle the app bootstrap on its own observable signal before polling for
+  // the queue button, so the button's `waitFor` budget covers only the queue
+  // marker rendering instead of the whole page startup.
+  await setupPageAndWaitForContent({
     context,
     path: `/chats/${THREAD_ID}`,
     featureSwitches: {
