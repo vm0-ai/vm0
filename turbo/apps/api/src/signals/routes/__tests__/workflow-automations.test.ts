@@ -676,8 +676,13 @@ describe("okou workflow automations", () => {
 
   async function connectGoogleCalendar(
     scenario: AutomationScenario,
+    options: {
+      readonly accessToken?: string;
+      readonly email?: string;
+      readonly subject?: string;
+    } = { email: GOOGLE_CALENDAR_EMAIL },
   ): Promise<string> {
-    mockGoogleCalendarConnectorOAuth({ email: GOOGLE_CALENDAR_EMAIL });
+    mockGoogleCalendarConnectorOAuth(options);
     await wf.connectConnector(scenario.actor, "google-calendar");
     const connector = await connectorsApi.readConnectorBySlug(
       scenario.actor,
@@ -2703,6 +2708,11 @@ describe("okou workflow automations", () => {
         body: {
           kind: "event",
           eventType: "google-calendar-event-created",
+          eventConfig: {
+            provider: "google-calendar",
+            event: "event_created",
+            calendarId: GOOGLE_CALENDAR_EMAIL,
+          },
         },
       }),
       [201],
@@ -3462,7 +3472,7 @@ describe("okou workflow automations", () => {
     await connectGoogleCalendar(scenario);
     const watch = configureGoogleCalendarWatchMock();
     const stop = configureGoogleCalendarStopMock([500, 204]);
-    await accept(
+    const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
@@ -3517,6 +3527,319 @@ describe("okou workflow automations", () => {
       { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
       { id: watch.channelIds[0], resourceId: "calendar-resource-1" },
     ]);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(stop.calls).toBe(3);
+  });
+
+  it("self-heals a renamed primary Calendar target without crossing accounts", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    const legacyCalendarId = "legacy-primary@example.com";
+    const firstAccessToken = "renamed-primary-first-token";
+    const secondAccessToken = "renamed-primary-second-token";
+    const watchCalls = new Map<string, number>();
+    const actions: string[] = [];
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        ({ request, params }) => {
+          const calendarId = params.calendarId;
+          const authorization = request.headers.get("authorization");
+          if (typeof calendarId !== "string" || authorization === null) {
+            throw new Error("Expected a Calendar target and access token");
+          }
+          const accessToken = authorization.replace("Bearer ", "");
+          actions.push(`${accessToken}:events:${calendarId}`);
+          return HttpResponse.json({
+            items: [],
+            nextSyncToken: `${accessToken}-${calendarId}-sync`,
+          });
+        },
+      ),
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId",
+        ({ request, params }) => {
+          const calendarId = params.calendarId;
+          const authorization = request.headers.get("authorization");
+          if (typeof calendarId !== "string" || authorization === null) {
+            throw new Error("Expected a Calendar target and access token");
+          }
+          const accessToken = authorization.replace("Bearer ", "");
+          actions.push(`${accessToken}:resolve:${calendarId}`);
+          return HttpResponse.json({
+            id:
+              accessToken === firstAccessToken
+                ? "renamed-primary-resource"
+                : `${calendarId}-resource`,
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request, params }) => {
+          const calendarId = params.calendarId;
+          const authorization = request.headers.get("authorization");
+          if (typeof calendarId !== "string" || authorization === null) {
+            throw new Error("Expected a Calendar target and access token");
+          }
+          const accessToken = authorization.replace("Bearer ", "");
+          const call = (watchCalls.get(accessToken) ?? 0) + 1;
+          watchCalls.set(accessToken, call);
+          actions.push(`${accessToken}:watch:${calendarId}:${call}`);
+          if (
+            accessToken === firstAccessToken &&
+            calendarId === legacyCalendarId &&
+            call === 2
+          ) {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
+          const body = (await request.json()) as {
+            readonly id: string;
+          };
+          return HttpResponse.json({
+            id: body.id,
+            resourceId: `${accessToken}-resource-${call}`,
+            resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
+            expiration: String(now() + 60 * 60 * 1000),
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/channels/stop",
+        ({ request }) => {
+          const authorization = request.headers.get("authorization");
+          if (authorization === null) {
+            throw new Error("Expected a Calendar access token");
+          }
+          const accessToken = authorization.replace("Bearer ", "");
+          actions.push(`${accessToken}:stop`);
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    const first = await setupFixture();
+    await connectGoogleCalendar(first, {
+      accessToken: firstAccessToken,
+      email: "first-owner@example.com",
+      subject: "renamed-primary-first-subject",
+    });
+    const firstAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: first.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          eventConfig: {
+            provider: "google-calendar",
+            event: "event_created",
+            calendarId: legacyCalendarId,
+          },
+        },
+      }),
+      [201],
+    );
+
+    const second = await setupFixture();
+    await connectGoogleCalendar(second, {
+      accessToken: secondAccessToken,
+      email: "second-owner@example.com",
+      subject: "renamed-primary-second-subject",
+    });
+    const secondAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: second.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          eventConfig: {
+            provider: "google-calendar",
+            event: "event_created",
+            calendarId: legacyCalendarId,
+          },
+        },
+      }),
+      [201],
+    );
+
+    const renewed = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 2,
+      failed: 0,
+    });
+
+    mocks.clerk.session(
+      first.fixture.userId,
+      first.fixture.orgId,
+      "org:member",
+    );
+    await expect(
+      wf.readAutomation(firstAutomation.body.id),
+    ).resolves.toMatchObject({ eventConfig: { calendarId: "primary" } });
+    mocks.clerk.session(
+      second.fixture.userId,
+      second.fixture.orgId,
+      "org:member",
+    );
+    await expect(
+      wf.readAutomation(secondAutomation.body.id),
+    ).resolves.toMatchObject({
+      eventConfig: { calendarId: legacyCalendarId },
+    });
+
+    const primaryWatchIndex = actions.indexOf(
+      `${firstAccessToken}:watch:primary:3`,
+    );
+    const legacyStopIndex = actions.indexOf(`${firstAccessToken}:stop`);
+    expect(primaryWatchIndex).toBeGreaterThan(-1);
+    expect(legacyStopIndex).toBeGreaterThan(primaryWatchIndex);
+    expect(
+      actions.filter((action) => {
+        return action.startsWith(`${secondAccessToken}:resolve:`);
+      }),
+    ).toStrictEqual([]);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: secondAutomation.body.id },
+      }),
+      [200],
+    );
+    mocks.clerk.session(
+      first.fixture.userId,
+      first.fixture.orgId,
+      "org:member",
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: firstAutomation.body.id },
+      }),
+      [200],
+    );
+  });
+
+  it("does not remap a shared Calendar when provider resources differ", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    const sharedCalendarId = "shared-calendar@example.com";
+    const accessToken = "shared-calendar-token";
+    let watchCalls = 0;
+    let primaryWatchCalls = 0;
+    let stopCalls = 0;
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        () => {
+          return HttpResponse.json({ items: [], nextSyncToken: "shared-sync" });
+        },
+      ),
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId",
+        ({ params }) => {
+          return HttpResponse.json({
+            id:
+              params.calendarId === "primary"
+                ? "owner-primary-resource"
+                : "shared-resource",
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request, params }) => {
+          if (params.calendarId === "primary") {
+            primaryWatchCalls += 1;
+          }
+          watchCalls += 1;
+          if (watchCalls === 2) {
+            return HttpResponse.json(
+              { error: { status: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          }
+          const body = (await request.json()) as { readonly id: string };
+          return HttpResponse.json({
+            id: body.id,
+            resourceId: "shared-channel-resource",
+            resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${String(params.calendarId)}/events`,
+            expiration: String(now() + 60 * 60 * 1000),
+          });
+        },
+      ),
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        stopCalls += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario, {
+      accessToken,
+      email: "shared-owner@example.com",
+      subject: "shared-calendar-subject",
+    });
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          eventConfig: {
+            provider: "google-calendar",
+            event: "event_created",
+            calendarId: sharedCalendarId,
+          },
+        },
+      }),
+      [201],
+    );
+
+    const renewed = await accept(
+      renewGoogleCalendarWatchesClient().renew({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(renewed.body).toStrictEqual({
+      success: true,
+      renewed: 0,
+      failed: 1,
+    });
+    await expect(wf.readAutomation(automation.body.id)).resolves.toMatchObject({
+      eventConfig: { calendarId: sharedCalendarId },
+    });
+    expect(primaryWatchCalls).toBe(0);
+    expect(stopCalls).toBe(0);
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: automation.body.id },
+      }),
+      [200],
+    );
+    expect(stopCalls).toBe(1);
   });
 
   it("leaves a Gmail automation disabled when watch setup fails", async () => {

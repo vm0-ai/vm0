@@ -14,7 +14,6 @@ from tests.usage_buffer_helpers import (
     RecordingEnqueue,
     event,
     flush_log_entries,
-    observation,
 )
 from tests.usage_helpers import RecordingTimer, install_recording_usage_timer
 
@@ -746,106 +745,6 @@ def test_timer_saturated_flush_reschedules_retry_without_real_sleep(tmp_path):
     )
 
 
-def test_priority_preempted_flush_keeps_timer_for_usage_buffered_during_enqueue(tmp_path):
-    pending_path = tmp_path / "usage-pending"
-    enqueue = RecordingEnqueue(return_value=False)
-    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
-    proxy_log_path = str(tmp_path / "proxy.jsonl")
-    usage.set_pending_path(str(pending_path))
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/runners/model-usage-observations",
-        "token-a",
-        "run-1",
-        [observation(source_key="observation-source", input_tokens=1)],
-        proxy_log_path,
-    )
-    assert len(timers) == 1
-
-    assert usage.flush_usage_events(trigger="test") == 0
-
-    enqueue.assert_called_once()
-    assert enqueue.last_call.log_type == "model_usage_observation"
-    assert len(timers) == 2
-    assert timers[0].cancelled is True
-    assert timers[1].started is True
-
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [event(source_key="usage-source-1")],
-        proxy_log_path,
-    )
-    attempted_log_types = []
-
-    def enqueue_and_buffer_later_usage(url, sandbox_token, payload, path, log_type):
-        attempted_log_types.append(log_type)
-        if log_type == "usage_event" and payload["runId"] == "run-1":
-            usage.buffer_usage_events(
-                url,
-                sandbox_token,
-                "run-2",
-                [event(source_key="usage-source-2")],
-                path,
-            )
-            assert len(timers) == 4
-        return True
-
-    enqueue.side_effect = enqueue_and_buffer_later_usage
-    enqueue.clear()
-    assert usage.flush_usage_events(trigger="test") == 2
-
-    assert attempted_log_types == ["usage_event", "model_usage_observation"]
-    assert len(timers) == 4
-    assert timers[2].cancelled is True
-    assert timers[3].started is True
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=1,
-        reports=0,
-        flush_request_id="priority-deferred",
-    )
-
-    enqueue.clear()
-    timers[3].callback()
-
-    enqueue.assert_called_once()
-    assert enqueue.last_call.payload["runId"] == "run-2"
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="priority-drained",
-    )
-
-
-def test_model_observation_timer_is_fixed_and_independent_from_billing_configuration(tmp_path):
-    enqueue = RecordingEnqueue()
-    timers = install_recording_usage_timer(enqueue_webhook=enqueue)
-    usage.configure_usage_buffer(flush_interval_seconds=5)
-
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "sandbox-token",
-        "run-1",
-        [event(source_key="usage-source")],
-        str(tmp_path / "billing.jsonl"),
-    )
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/runners/model-usage-observations",
-        "runner-token",
-        "run-1",
-        [observation(source_key="observation-source", input_tokens=1)],
-        str(tmp_path / "observation.jsonl"),
-    )
-
-    assert len(timers) == 2
-    assert 4 <= timers[0].delay <= 6
-    assert 240 <= timers[1].delay <= 360
-
-
 def test_failed_timer_start_allows_idempotent_replay_to_reschedule(tmp_path):
     pending_path = tmp_path / "usage-pending"
     enqueue = RecordingEnqueue()
@@ -1106,18 +1005,14 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
     )
 
 
-@pytest.mark.parametrize(
-    "log_type",
-    ["usage_event", "model_usage_observation"],
-)
-def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path, log_type: str):
+def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path):
     callbacks: list[Callable[[usage.webhook.WebhookDeliveryOutcome], None]] = []
     enqueued_keys: list[str] = []
     pending_path = tmp_path / "usage-pending"
 
     def enqueue_webhook(url, sandbox_token, payload, path, delivery_log_type, delivery_callback):
         del url, sandbox_token, path
-        assert delivery_log_type == log_type
+        assert delivery_log_type == "usage_event"
         enqueued_keys.append(payload["events"][0]["idempotencyKey"])
         if len(enqueued_keys) == 1:
             callbacks.append(delivery_callback)
@@ -1127,22 +1022,13 @@ def test_timer_delivery_failure_after_enqueue_reschedules_retry(tmp_path, log_ty
 
     timers = install_recording_usage_timer(enqueue_webhook=enqueue_webhook)
     usage.set_pending_path(str(pending_path))
-    if log_type == "usage_event":
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "token-a",
-            "run-1",
-            [event(source_key="source-1", quantity=10)],
-            str(tmp_path / "proxy.jsonl"),
-        )
-    else:
-        usage.buffer_model_usage_observations(
-            "https://api.test/api/runners/model-usage-observations",
-            "runner-token",
-            "run-1",
-            [observation(source_key="source-1", input_tokens=10)],
-            str(tmp_path / "proxy.jsonl"),
-        )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
 
     timers[0].callback()
 

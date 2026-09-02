@@ -5693,7 +5693,7 @@ function SelectablePagedGroupRow({
     if (phase !== "selecting") {
       return;
     }
-    const result = toggle(events);
+    const result = toggle(group.beginEventId, events);
     if (result === "too-large") {
       toast.error(
         t(($) => {

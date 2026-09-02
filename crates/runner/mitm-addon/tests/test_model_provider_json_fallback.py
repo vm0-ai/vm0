@@ -38,7 +38,6 @@ from tests.model_provider_response_helpers import (
     standard_success_payload,
 )
 from tests.stream_buffer_helpers import set_response_stream_buffer
-from tests.usage_helpers import compact_observation_quantities
 
 
 class TestModelProviderJsonFallback:
@@ -177,15 +176,6 @@ class TestModelProviderJsonFallback:
         source_event_keys = {event["source_idempotency_key"] for event in source_events}
         aggregate_event_keys = {event["idempotencyKey"] for event in webhook.usage_events()}
         assert source_event_keys.isdisjoint(aggregate_event_keys)
-
-        source_observations = source_entry["model_usage_observations"]
-        assert all(observation["buffer_accepted"] is True for observation in source_observations)
-        aggregate_observation_keys = {
-            event["idempotencyKey"] for event in webhook.model_usage_observation_events()
-        }
-        assert {
-            observation["source_idempotency_key"] for observation in source_observations
-        }.isdisjoint(aggregate_observation_keys)
 
         serialized = read_jsonl_text_after_flush(proxy_log_path)
         for secret in (
@@ -639,47 +629,14 @@ class TestModelProviderJsonFallback:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == expected_event_quantities(provider_case)
 
-    def test_non_billable_openai_json_reports_observation_without_billing(
-        self, tmp_path, real_flow
-    ):
+    def test_non_billable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
+        """Non-billable model-provider fallback must not emit usage warnings."""
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow = model_provider_flow(
             real_flow,
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
-            proxy_log_path=proxy_log_path,
-        )
-        body = standard_success_payload(OPENAI_RESPONSES_CASE)
-        set_response_stream_buffer(flow, body)
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
-        )
-
-        webhook = run_response(flow, self._usage_webhook_api)
-
-        assert webhook.usage_events() == []
-        observations = webhook.model_usage_observation_events()
-        by_category = compact_observation_quantities(observations)
-        assert by_category == expected_event_quantities(OPENAI_RESPONSES_CASE)
-        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
-        [source_entry] = model_usage_source_entries(flow)
-        assert source_entry["usage_events"] == []
-        assert all(
-            observation["buffer_accepted"] is True
-            for observation in source_entry["model_usage_observations"]
-        )
-
-    def test_non_observable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
-        """Model-provider fallback without MODEL_USAGE_PROVIDER must not emit warnings."""
-        proxy_log_path = tmp_path / "proxy.jsonl"
-        flow = model_provider_flow(
-            real_flow,
-            tmp_path,
-            OPENAI_RESPONSES_CASE,
-            billable=False,
-            observable=False,
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'

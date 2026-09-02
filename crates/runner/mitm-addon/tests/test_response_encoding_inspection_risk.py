@@ -151,9 +151,7 @@ class TestResponseEncodingInspectionRisk:
         assert "model_json_usage_finish" in flow.metadata
         assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
 
-    def test_non_billable_observable_model_sse_keeps_pass_through(
-        self, real_flow, tmp_path, mitm_ctx
-    ) -> None:
+    def test_non_billable_model_sse_keeps_pass_through(self, real_flow, tmp_path, mitm_ctx) -> None:
         flow = self._model_flow(
             real_flow,
             tmp_path,
@@ -191,16 +189,22 @@ class TestResponseEncodingInspectionRisk:
         upstream_chunk = b"upstream-error-brotli"
         assert response_stream(flow)(upstream_chunk) == upstream_chunk
 
-    def test_non_observable_model_response_does_not_log_encoding_risk(
+    def test_billable_model_without_canonical_model_still_rejects_uninspectable_response(
         self, real_flow, tmp_path, mitm_ctx
     ) -> None:
-        flow = self._model_flow(real_flow, tmp_path, content_encoding="zstd")
+        flow = self._model_flow(real_flow, tmp_path, content_encoding="private-encoding-value")
         flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER)
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
 
-        assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert entry["reason"] == "response_encoding_not_stream_decodable"
+        assert entry["firewall_billable"] is True
+        assert entry["inspection_disposition"] == "fail_closed"
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert response_stream(flow)(b"uninspectable-model-response") == b""
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 

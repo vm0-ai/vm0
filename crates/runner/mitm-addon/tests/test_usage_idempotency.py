@@ -8,8 +8,6 @@ from usage.idempotency import (
     USAGE_EVENT_NAMESPACE_AGGREGATE,
     USAGE_EVENT_NAMESPACE_CONNECTOR,
     USAGE_EVENT_NAMESPACE_MODEL,
-    USAGE_OBSERVATION_NAMESPACE_AGGREGATE,
-    USAGE_OBSERVATION_NAMESPACE_MODEL,
     derive_usage_idempotency_key,
     encode_uuid_name,
 )
@@ -18,9 +16,7 @@ from usage.idempotency import (
 def test_usage_event_namespaces_are_stable():
     assert str(USAGE_EVENT_NAMESPACE_CONNECTOR) == "2f8e4a91-6d3c-4b5a-8e7f-9c1d2e3f4a5b"
     assert str(USAGE_EVENT_NAMESPACE_MODEL) == "18a22204-d25e-4170-8973-86477f864bfb"
-    assert str(USAGE_OBSERVATION_NAMESPACE_MODEL) == "13733c67-514d-4111-9249-45dde8c1c312"
     assert str(USAGE_EVENT_NAMESPACE_AGGREGATE) == "4c4ee19a-b1b4-47e6-aef4-642d972cf4f5"
-    assert str(USAGE_OBSERVATION_NAMESPACE_AGGREGATE) == "5779afcd-fd50-4f2b-a01f-ed206a9b3bdb"
 
 
 @pytest.mark.parametrize(
@@ -63,16 +59,6 @@ def test_model_usage_idempotency_key_is_stable():
             ("run-abc-123", "msg-usage-1", "tokens.input"),
         )
         == "9461ab1d-30a7-5268-b8f1-84bb9152f7ba"
-    )
-
-
-def test_model_usage_observation_idempotency_key_is_stable():
-    assert (
-        derive_usage_idempotency_key(
-            USAGE_OBSERVATION_NAMESPACE_MODEL,
-            ("run-abc-123", "msg-usage-1", "tokens.input"),
-        )
-        == "3a2e5512-9481-5f10-926b-3c35b487f71d"
     )
 
 

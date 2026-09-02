@@ -2093,6 +2093,29 @@ describe("zero sidebar", () => {
     ).toStrictEqual(["Support Agent", "Research Agent"]);
   });
 
+  it("marks the current thread agent as selected in the pinned agent grid", async () => {
+    prepareAgents();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    mockSidebarThreadStory([
+      createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
+    ]);
+
+    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(pinnedAgentLink(grid, "Research Agent")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    });
+    expect(pinnedAgentLink(grid, "Zero")).not.toHaveAttribute("aria-current");
+  });
+
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
     mockMobileLayout();
     prepareAgents();

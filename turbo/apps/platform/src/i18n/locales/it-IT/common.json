@@ -4843,24 +4843,13 @@
       "title": "Esporta dati"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Reimposta tutto",
-        "resetting": "Reimpostazione…"
-      },
-      "description": "Attiva o disattiva le funzionalità sperimentali.",
+      "description": "Visualizza le funzionalità per fase di rilascio.",
       "documentTitle": "Laboratorio",
-      "empty": {
-        "description": "Nessuna funzionalità cambia per questo manutentore.",
-        "title": "Nessuna funzionalità cambia"
-      },
-      "filters": {
-        "all": "Tutto"
-      },
       "groups": {
-        "connectors": "Connettori",
-        "other": "Altro"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "released": "Rilasciate"
       },
-      "maintainer": "Manutentore: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {

@@ -4780,24 +4780,13 @@
       "title": "データのエクスポート"
     },
     "lab": {
-      "actions": {
-        "resetAll": "すべてリセット",
-        "resetting": "リセット中…"
-      },
-      "description": "実験的機能のオンとオフを切り替えます。",
+      "description": "ロールアウト段階別に機能スイッチを確認できます。",
       "documentTitle": "研究室",
-      "empty": {
-        "description": "このメンテナには機能スイッチがありません。",
-        "title": "機能スイッチなし"
-      },
-      "filters": {
-        "all": "すべて"
-      },
       "groups": {
-        "connectors": "コネクター",
-        "other": "その他"
+        "alpha": "アルファ",
+        "beta": "ベータ",
+        "released": "リリース済み"
       },
-      "maintainer": "メンテナ: {{maintainer}}",
       "title": "研究室"
     },
     "models": {

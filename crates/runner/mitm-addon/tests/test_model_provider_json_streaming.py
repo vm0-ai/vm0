@@ -31,7 +31,6 @@ from tests.model_provider_response_helpers import (
     run_response,
     standard_success_payload,
 )
-from tests.usage_helpers import compact_observation_quantities
 from usage.quantities import MAX_USAGE_QUANTITY
 
 
@@ -54,7 +53,7 @@ class TestModelProviderJsonStreaming:
     def _sync_usage_delivery(self, sync_usage_executor, usage_webhook_api):
         self._usage_webhook_api = usage_webhook_api
 
-    def test_non_observable_json_response_does_not_register_incremental_parser(
+    def test_non_billable_json_response_does_not_register_incremental_parser(
         self,
         tmp_path,
         real_flow,
@@ -64,7 +63,6 @@ class TestModelProviderJsonStreaming:
             tmp_path,
             ANTHROPIC_JSON_CASE,
             billable=False,
-            observable=False,
         )
         flow.response = tutils.tresp(
             status_code=200,
@@ -254,17 +252,6 @@ class TestModelProviderJsonStreaming:
                 event["quantity"]
                 for event in webhook.usage_events()
                 if event["category"].startswith(input_categories)
-            )
-            == MAX_USAGE_QUANTITY
-        )
-        observation_quantities = compact_observation_quantities(
-            webhook.model_usage_observation_events()
-        )
-        assert (
-            sum(
-                quantity
-                for category, quantity in observation_quantities.items()
-                if category.startswith(input_categories)
             )
             == MAX_USAGE_QUANTITY
         )

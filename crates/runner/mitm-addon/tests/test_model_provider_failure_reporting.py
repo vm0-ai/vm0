@@ -20,7 +20,6 @@ import body_decoding
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import model_provider_failure
-import model_websocket_usage
 import platform_api
 import usage.anthropic_messages as anthropic_messages
 import usage.model_json as model_json
@@ -34,7 +33,6 @@ from tests.model_provider_websocket_helpers import (
     capture_openai_responses_extractor_feeds,
     feed_websocket_client_message,
     feed_websocket_server_message,
-    set_websocket_message,
 )
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
 
@@ -2071,49 +2069,6 @@ def test_websocket_known_delta_skips_full_parse_without_disabling_failure_state(
         )
         mitm_addon.websocket_end(flow)
 
-    assert _reported_payloads(model_provider_failure_api) == [
-        {"failureKind": "provider_unavailable"}
-    ]
-
-
-def test_websocket_failure_only_flow_uses_one_parse_per_server_frame(
-    tmp_path,
-    real_flow,
-    mitm_ctx,
-    monkeypatch: pytest.MonkeyPatch,
-    model_provider_failure_api,
-):
-    flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
-    flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER)
-    capture_deferred_websocket_trims(monkeypatch)
-    model_provider_failure.admit_flow(flow)
-    mitm_addon.responseheaders(flow)
-    assert not model_websocket_usage.is_enabled(flow)
-    full_body_feeds = capture_openai_responses_extractor_feeds(monkeypatch)
-    client_frame = b'{"type":"response.create"}'
-    created_frame = b'{"type":"response.created","response":{"id":"failure-only"}}'
-    failed_frame = (
-        b'{"type":"response.failed","response":{"id":"failure-only",'
-        b'"error":{"code":"service_unavailable"}}}'
-    )
-
-    with mitm_ctx():
-        mitm_addon.response(flow)
-        set_websocket_message(
-            flow,
-            from_client=True,
-            content=client_frame,
-        )
-        mitm_addon.websocket_message(flow)
-        set_websocket_message(flow, from_client=False, content=created_frame)
-        mitm_addon.websocket_message(flow)
-        set_websocket_message(flow, from_client=False, content=failed_frame)
-        mitm_addon.websocket_message(flow)
-        mitm_addon.websocket_end(flow)
-
-    assert full_body_feeds.count(client_frame) == 1
-    assert full_body_feeds.count(created_frame) == 1
-    assert full_body_feeds.count(failed_frame) == 1
     assert _reported_payloads(model_provider_failure_api) == [
         {"failureKind": "provider_unavailable"}
     ]

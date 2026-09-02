@@ -2,11 +2,11 @@
 
 The stable facade covers:
 
-- Observable model-provider responses (SSE streams, non-streaming JSON, and
+- Billable model-provider responses (SSE streams, non-streaming JSON, and
   inspected WebSocket events): extract model token counts, preserve
   per-response source identity for WebSocket reporting, and buffer results for
-  aggregate platform webhook upload to billing and/or observation endpoints
-  through a background thread pool — see :mod:`usage.providers.model_provider`.
+  aggregate platform webhook upload through a background thread pool — see
+  :mod:`usage.providers.model_provider`.
   Cross-provider non-streaming JSON dispatch is owned by :mod:`usage.model_json`.
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``metadata_keys.FIREWALL_BILLABLE``): compute
@@ -36,14 +36,10 @@ from .anthropic_messages import (
 )
 from .buffer import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
-    buffer_model_usage_observations,
-    buffer_source_model_usage_observations,
     buffer_source_usage_events,
     buffer_usage_events,
     configure_usage_buffer,
     drain_usage_events_after_executor_shutdown,
-    flush_billing_usage_events,
-    flush_model_usage_observations,
     flush_usage_events,
     reset_usage_buffer_for_tests,
 )
@@ -93,15 +89,13 @@ from .providers.connectors import (
 )
 from .providers.model_provider import (
     has_positive_model_provider_usage,
-    is_model_provider_usage_observable,
+    is_model_provider_usage_billable,
     log_ignored_model_provider_usage_source,
     log_terminal_model_provider_usage_sources,
     release_model_provider_usage_tiers,
     report_model_provider_usage,
-    report_model_provider_usage_observation,
     report_model_provider_usage_source,
 )
-from .reporting_context import configure_model_usage_observation_reporting
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
@@ -115,11 +109,8 @@ __all__ = [
     "OpenAIResponsesServerFailureEvidence",
     "OpenAIResponsesServerLifecycle",
     "admit_buffered_report",
-    "buffer_model_usage_observations",
-    "buffer_source_model_usage_observations",
     "buffer_source_usage_events",
     "buffer_usage_events",
-    "configure_model_usage_observation_reporting",
     "configure_usage_buffer",
     "create_anthropic_messages_json_usage_extractor",
     "create_anthropic_messages_sse_usage_extractor",
@@ -138,8 +129,6 @@ __all__ = [
     "extract_openai_chat_completions_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_with_error_from_json",
-    "flush_billing_usage_events",
-    "flush_model_usage_observations",
     "flush_usage_events",
     "has_connector_response_parser",
     "has_positive_model_provider_usage",
@@ -147,7 +136,7 @@ __all__ = [
     "inspect_openai_responses_client_event_json",
     "inspect_openai_responses_event_json",
     "inspect_openai_responses_server_event",
-    "is_model_provider_usage_observable",
+    "is_model_provider_usage_billable",
     "log_ignored_model_provider_usage_source",
     "log_terminal_model_provider_usage_sources",
     "merge_openai_responses_usage_result",
@@ -156,7 +145,6 @@ __all__ = [
     "release_model_provider_usage_tiers",
     "report_connector_usage",
     "report_model_provider_usage",
-    "report_model_provider_usage_observation",
     "report_model_provider_usage_source",
     "reset_usage_buffer_for_tests",
     "set_pending_path",

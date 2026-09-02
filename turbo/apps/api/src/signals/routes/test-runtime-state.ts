@@ -909,6 +909,7 @@ async function autonomyBudgetFixtureActionResponse(
         .select({
           autonomyBudget: workflowAutomations.autonomyBudget,
           enabled: workflowAutomations.enabled,
+          eventConnectorId: workflowAutomations.eventConnectorId,
           lastRunId: workflowAutomations.lastRunId,
           officialBlueprintKey: workflowAutomations.officialBlueprintKey,
           officialResultEmailEnabled:
@@ -926,6 +927,7 @@ async function autonomyBudgetFixtureActionResponse(
             ? {
                 autonomy_budget: automation.autonomyBudget,
                 enabled: automation.enabled,
+                event_connector_id: automation.eventConnectorId,
                 last_run_id: automation.lastRunId,
                 official_blueprint_key: automation.officialBlueprintKey,
                 official_result_email_enabled:

@@ -756,8 +756,8 @@ jobs:
         run: .github/scripts/wait-runner-image.sh
 
   # Balance by recent step medians plus durable polling overhead: lane A is
-  # about 140s, B 129-133s, C 121-129s, and D 192-194s. Keep the two balloon
-  # scenarios in separate lanes; the high-retention 180s proof stays alone.
+  # about 140s, B 129-133s, and C 121-129s. The bounded balloon scenario stays
+  # in lane A and caps deliberate Guest pressure allocation at 512 MiB.
   runner-behavior-lane-a:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -887,35 +887,6 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-upgrade-local.sh
 
-  runner-behavior-lane-d:
-    runs-on: ubuntu-latest
-    needs: [runner-build]
-    timeout-minutes: 35
-    env:
-      METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-      HOST: ${{ needs.runner-build.outputs.host }}
-      JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
-      BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-      DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-      DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-user: ${{ env.METAL_USER }}
-          ssh-hosts: ${{ env.HOST }}
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Test high-retention balloon pressure
-        timeout-minutes: 5
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-balloon-pressure.sh
-
   host-cpu-fairness-test:
     runs-on: ubuntu-latest
     container:
@@ -926,14 +897,12 @@ jobs:
       - runner-behavior-lane-a
       - runner-behavior-lane-b
       - runner-behavior-lane-c
-      - runner-behavior-lane-d
     if: |
       !cancelled() &&
       needs.runner-build.result == 'success' &&
       needs.runner-behavior-lane-a.result == 'success' &&
       needs.runner-behavior-lane-b.result == 'success' &&
-      needs.runner-behavior-lane-c.result == 'success' &&
-      needs.runner-behavior-lane-d.result == 'success' && (
+      needs.runner-behavior-lane-c.result == 'success' && (
         needs.detect.outputs.sandbox-fc-changed == 'true' ||
         needs.detect.outputs.ci-changed == 'true'
       )
@@ -1000,7 +969,6 @@ jobs:
       - runner-behavior-lane-a
       - runner-behavior-lane-b
       - runner-behavior-lane-c
-      - runner-behavior-lane-d
       - host-cpu-fairness-test
       - nbd-cow-test
     # Always run so the gate reports an explicit result (not "skipped").
@@ -1051,7 +1019,6 @@ jobs:
           check_result "runner-behavior-lane-a" "${{ needs.runner-behavior-lane-a.result }}" "true"
           check_result "runner-behavior-lane-b" "${{ needs.runner-behavior-lane-b.result }}" "true"
           check_result "runner-behavior-lane-c" "${{ needs.runner-behavior-lane-c.result }}" "true"
-          check_result "runner-behavior-lane-d" "${{ needs.runner-behavior-lane-d.result }}" "true"
           check_result "host-cpu-fairness-test" "${{ needs.host-cpu-fairness-test.result }}" "true"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
 

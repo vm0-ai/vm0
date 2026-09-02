@@ -663,9 +663,12 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (307 | 503)[],
       publicBrand: PublicBrand = "vm0",
     ) {
-      const client = setupApp({ context, routes: githubOauthRoutes })(
-        githubOauthContract,
-      );
+      const client = setupApp({
+        baseUrl:
+          publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+        context,
+        routes: githubOauthRoutes,
+      })(githubOauthContract);
       return await accept(
         client.install({
           query,
@@ -683,9 +686,12 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (307 | 401 | 503)[],
       publicBrand: PublicBrand = "vm0",
     ) {
-      const client = setupApp({ context, routes: githubOauthRoutes })(
-        githubOauthContract,
-      );
+      const client = setupApp({
+        baseUrl:
+          publicBrand === "okou" ? "https://api.okou.ai" : "https://api.vm0.ai",
+        context,
+        routes: githubOauthRoutes,
+      })(githubOauthContract);
       return await accept(
         client.connect({
           extraHeaders: {
@@ -704,10 +710,15 @@ export function createBddIntegrationApi(context: TestContext) {
       query: GithubAppSetupCallbackQuery,
       statuses: readonly 307[],
       publicBrand: PublicBrand = "vm0",
+      baseUrl = publicBrand === "okou"
+        ? "https://api.okou.ai"
+        : "https://api.vm0.ai",
     ) {
-      const client = setupApp({ context, routes: githubOauthRoutes })(
-        githubOauthContract,
-      );
+      const client = setupApp({
+        baseUrl,
+        context,
+        routes: githubOauthRoutes,
+      })(githubOauthContract);
       return await accept(
         client.setupCallback({
           query,
