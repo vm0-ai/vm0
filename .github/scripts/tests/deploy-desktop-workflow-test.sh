@@ -11,6 +11,8 @@ if grep -q '^  deploy-desktop:' "$turbo_workflow"; then
   exit 1
 fi
 
+# The Ruby program is intentionally a literal single-quoted shell argument.
+# shellcheck disable=SC2016
 ruby -e '
   require "yaml"
 

@@ -69,6 +69,14 @@ unless deploy_source.include?("wrangler versions upload") &&
     deploy_source.include?("--env preview")
   raise "Worker preview deployment must upload an aliased preview environment version"
 end
+preview_enable_index = deploy_source.index('/workers/scripts/okou-app-preview/subdomain')
+preview_upload_index = deploy_source.index("wrangler versions upload")
+unless preview_enable_index && preview_upload_index && preview_enable_index < preview_upload_index
+  raise "Worker preview URLs must be enabled before uploading the aliased version"
+end
+unless deploy_source.include?("Cloudflare-Workers-Script-Api-Date: 2025-08-01")
+  raise "Worker preview configuration must use Cloudflare's current script API"
+end
 
 readiness_step = find_step.call("Wait for standalone app Worker readiness")
 unless readiness_step.fetch("env").fetch("WORKER_URL") == expected_deployment_url

@@ -1505,12 +1505,8 @@ jobs:
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
           : "${EXPECTED_PREVIEW_URL:?app Worker preview URL is required}"
 
-          cd turbo
-          pnpm --filter @okouai/app-worker exec wrangler versions upload \
-            --env preview \
-            --preview-alias "$WORKER_PREVIEW_ALIAS" \
-            --message "app artifact ${ARTIFACT_SHA}"
-
+          # Preview URLs must already be enabled when Wrangler uploads the
+          # version, otherwise Cloudflare does not register --preview-alias.
           subdomain_response="$(curl \
             --silent \
             --show-error \
@@ -1519,10 +1515,17 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/okou-app-preview/subdomain" \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             --header "Content-Type: application/json" \
+            --header "Cloudflare-Workers-Script-Api-Date: 2025-08-01" \
             --data '{"enabled":true,"previews_enabled":true}')"
           jq --exit-status \
             '.success == true and .result.enabled == true and .result.previews_enabled == true' \
             <<< "$subdomain_response" >/dev/null
+
+          cd turbo
+          pnpm --filter @okouai/app-worker exec wrangler versions upload \
+            --env preview \
+            --preview-alias "$WORKER_PREVIEW_ALIAS" \
+            --message "app artifact ${ARTIFACT_SHA}"
 
           echo "url=$EXPECTED_PREVIEW_URL" >> "$GITHUB_OUTPUT"
 

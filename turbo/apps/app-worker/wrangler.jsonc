@@ -3,6 +3,7 @@
   "name": "okou-app",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-02",
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
