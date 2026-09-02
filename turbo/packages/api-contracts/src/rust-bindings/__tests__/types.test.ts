@@ -333,6 +333,16 @@ describe("Rust type bindings", () => {
     );
     expect(firstRender).toContain("pub struct RequestCheckpoint {");
     expect(firstRender).toContain("pub checkpoint: Option<RequestCheckpoint>,");
+    expect(firstRender).toContain("pub struct RequestFailureSummary {");
+    expect(firstRender).toContain(
+      "pub failure_summary: Option<RequestFailureSummary>,",
+    );
+    expect(firstRender).toContain(
+      "pub enum RequestFailureSummaryFailureClass {",
+    );
+    expect(firstRender).toContain(
+      "pub enum RequestFailureSummaryFailureReason {",
+    );
     expect(firstRender).toContain("pub exit_code: i32,");
     expect(firstRender).toContain("pub last_event_sequence: Option<u32>,");
     expect(firstRender).toContain("pub enum SessionHistoryEncoding {");

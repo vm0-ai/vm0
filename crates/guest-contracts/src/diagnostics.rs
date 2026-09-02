@@ -158,6 +158,69 @@ impl FailureDiagnostic {
         self.workload_resource_limit = Some(workload_resource_limit);
         self
     }
+
+    /// Return the compact failure attribution carried by completion requests.
+    #[must_use]
+    pub const fn summary(&self) -> FailureDiagnosticSummary {
+        FailureDiagnosticSummary {
+            failure_class: self.failure_class,
+            failure_reason: self.failure_reason,
+        }
+    }
+}
+
+/// Compact failure attribution carried by completion requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FailureDiagnosticSummary {
+    /// Coarse failure category observed by the guest or runner.
+    pub failure_class: FailureClass,
+    /// Parsed detailed failure reason, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<FailureReason>,
+}
+
+impl FailureDiagnosticSummary {
+    /// Whether this is a known non-operational CLI/provider outcome.
+    ///
+    /// This policy intentionally excludes ambiguous network and checkpoint
+    /// failures. Keep both branches exhaustive so new diagnostic values require
+    /// an explicit observability decision.
+    #[must_use]
+    pub const fn is_non_operational_cli_outcome(self) -> bool {
+        match (self.failure_class, self.failure_reason) {
+            (
+                FailureClass::CliNonzero,
+                Some(
+                    FailureReason::InsufficientCredits
+                    | FailureReason::InvalidApiKey
+                    | FailureReason::InvalidCredentials
+                    | FailureReason::TermsAcceptanceRequired
+                    | FailureReason::ContextWindowExceeded
+                    | FailureReason::OutputTokenLimit
+                    | FailureReason::ProviderOverloaded
+                    | FailureReason::ProviderStreamTimeout
+                    | FailureReason::ProviderServerError
+                    | FailureReason::SafetyPolicyRefusal
+                    | FailureReason::ReconnectRequired
+                    | FailureReason::UsageLimit,
+                ),
+            ) => true,
+            (
+                FailureClass::CliNonzero,
+                Some(FailureReason::SessionHistoryLimit | FailureReason::ResponseConnectionLost)
+                | None,
+            ) => false,
+            (
+                FailureClass::WorkingDirSetupFailed
+                | FailureClass::CliExecutionError
+                | FailureClass::ClaudeZeroTurnNoHistory
+                | FailureClass::EventUploadFailed
+                | FailureClass::CheckpointFailed,
+                _,
+            ) => false,
+        }
+    }
 }
 
 /// Bounded structured details for terminal heartbeat failure.
@@ -977,6 +1040,89 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_summary_uses_compact_wire_shape() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_failure_reason(FailureReason::UsageLimit);
+
+        let summary = diagnostic.summary();
+        assert_eq!(
+            serde_json::to_value(summary).unwrap(),
+            serde_json::json!({
+                "failureClass": "cli_nonzero",
+                "failureReason": "usage_limit",
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<FailureDiagnosticSummary>(
+                serde_json::to_value(summary).unwrap()
+            )
+            .unwrap(),
+            summary
+        );
+
+        let without_reason = FailureDiagnosticSummary {
+            failure_class: FailureClass::CliNonzero,
+            failure_reason: None,
+        };
+        assert_eq!(
+            serde_json::to_value(without_reason).unwrap(),
+            serde_json::json!({ "failureClass": "cli_nonzero" })
+        );
+    }
+
+    #[test]
+    fn non_operational_cli_outcome_policy_covers_every_failure_reason() {
+        let cases = [
+            (FailureReason::SessionHistoryLimit, false),
+            (FailureReason::InsufficientCredits, true),
+            (FailureReason::InvalidApiKey, true),
+            (FailureReason::InvalidCredentials, true),
+            (FailureReason::TermsAcceptanceRequired, true),
+            (FailureReason::ContextWindowExceeded, true),
+            (FailureReason::OutputTokenLimit, true),
+            (FailureReason::ProviderOverloaded, true),
+            (FailureReason::ProviderStreamTimeout, true),
+            (FailureReason::ProviderServerError, true),
+            (FailureReason::ResponseConnectionLost, false),
+            (FailureReason::SafetyPolicyRefusal, true),
+            (FailureReason::ReconnectRequired, true),
+            (FailureReason::UsageLimit, true),
+        ];
+
+        for (failure_reason, expected) in cases {
+            let summary = FailureDiagnosticSummary {
+                failure_class: FailureClass::CliNonzero,
+                failure_reason: Some(failure_reason),
+            };
+            assert_eq!(
+                summary.is_non_operational_cli_outcome(),
+                expected,
+                "unexpected policy for {}",
+                failure_reason.as_str()
+            );
+        }
+
+        assert!(
+            !FailureDiagnosticSummary {
+                failure_class: FailureClass::CliNonzero,
+                failure_reason: None,
+            }
+            .is_non_operational_cli_outcome()
+        );
+        assert!(
+            !FailureDiagnosticSummary {
+                failure_class: FailureClass::CheckpointFailed,
+                failure_reason: Some(FailureReason::UsageLimit),
+            }
+            .is_non_operational_cli_outcome()
+        );
     }
 
     #[test]

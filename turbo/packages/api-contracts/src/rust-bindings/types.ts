@@ -665,6 +665,54 @@ export const rustTypeBindings = [
         },
       },
       {
+        rustTypeName: "RequestFailureSummary",
+        rustDoc: [
+          "Compact structured failure attribution included with completion.",
+        ],
+        fields: {
+          failureClass: ["Coarse category of the observed run failure."],
+          failureReason: ["Optional detailed reason parsed from CLI output."],
+        },
+      },
+      {
+        rustTypeName: "RequestFailureSummaryFailureClass",
+        rustDoc: ["Coarse failure categories reported during completion."],
+        variants: {
+          working_dir_setup_failed: [
+            "Working-directory setup failed before CLI launch.",
+          ],
+          cli_execution_error: ["The CLI process could not be executed."],
+          cli_nonzero: ["The CLI process exited with a non-zero status."],
+          claude_zero_turn_no_history: [
+            "Claude Code produced no turns and no usable session history.",
+          ],
+          event_upload_failed: ["Terminal event delivery failed."],
+          checkpoint_failed: ["Checkpoint preparation or upload failed."],
+        },
+      },
+      {
+        rustTypeName: "RequestFailureSummaryFailureReason",
+        rustDoc: ["Detailed failure reasons reported during completion."],
+        variants: {
+          session_history_limit: ["Session history exceeded its size limit."],
+          insufficient_credits: ["The provider account lacks credits."],
+          invalid_api_key: ["The configured API key is invalid."],
+          invalid_credentials: ["The configured credentials are invalid."],
+          terms_acceptance_required: [
+            "The provider requires acceptance of updated terms.",
+          ],
+          context_window_exceeded: ["The model context window was exceeded."],
+          output_token_limit: ["The provider output-token limit was reached."],
+          provider_overloaded: ["The provider reported overload."],
+          provider_stream_timeout: ["The provider stream timed out."],
+          provider_server_error: ["The provider returned a server error."],
+          response_connection_lost: ["The response connection was lost."],
+          safety_policy_refusal: ["The provider refused for safety policy."],
+          reconnect_required: ["The CLI requires reconnecting."],
+          usage_limit: ["The provider reported a usage limit."],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: ["Request body for completing an agent run."],
         fields: {
@@ -686,6 +734,9 @@ export const rustTypeBindings = [
           ],
           checkpoint: [
             "Optional final checkpoint persisted atomically with completion.",
+          ],
+          failureSummary: [
+            "Optional compact structured attribution for a failed run.",
           ],
         },
       },

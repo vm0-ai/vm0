@@ -655,6 +655,87 @@ pub mod webhooks {
                 pub volume_versions_snapshot: Option<RequestCheckpointVolumeVersionsSnapshot>,
             }
 
+            /// Coarse failure categories reported during completion.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestFailureSummaryFailureClass {
+                /// Working-directory setup failed before CLI launch.
+                #[serde(rename = "working_dir_setup_failed")]
+                WorkingDirSetupFailed,
+                /// The CLI process could not be executed.
+                #[serde(rename = "cli_execution_error")]
+                CliExecutionError,
+                /// The CLI process exited with a non-zero status.
+                #[serde(rename = "cli_nonzero")]
+                CliNonzero,
+                /// Claude Code produced no turns and no usable session history.
+                #[serde(rename = "claude_zero_turn_no_history")]
+                ClaudeZeroTurnNoHistory,
+                /// Terminal event delivery failed.
+                #[serde(rename = "event_upload_failed")]
+                EventUploadFailed,
+                /// Checkpoint preparation or upload failed.
+                #[serde(rename = "checkpoint_failed")]
+                CheckpointFailed,
+            }
+
+            /// Detailed failure reasons reported during completion.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestFailureSummaryFailureReason {
+                /// Session history exceeded its size limit.
+                #[serde(rename = "session_history_limit")]
+                SessionHistoryLimit,
+                /// The provider account lacks credits.
+                #[serde(rename = "insufficient_credits")]
+                InsufficientCredits,
+                /// The configured API key is invalid.
+                #[serde(rename = "invalid_api_key")]
+                InvalidApiKey,
+                /// The configured credentials are invalid.
+                #[serde(rename = "invalid_credentials")]
+                InvalidCredentials,
+                /// The provider requires acceptance of updated terms.
+                #[serde(rename = "terms_acceptance_required")]
+                TermsAcceptanceRequired,
+                /// The model context window was exceeded.
+                #[serde(rename = "context_window_exceeded")]
+                ContextWindowExceeded,
+                /// The provider output-token limit was reached.
+                #[serde(rename = "output_token_limit")]
+                OutputTokenLimit,
+                /// The provider reported overload.
+                #[serde(rename = "provider_overloaded")]
+                ProviderOverloaded,
+                /// The provider stream timed out.
+                #[serde(rename = "provider_stream_timeout")]
+                ProviderStreamTimeout,
+                /// The provider returned a server error.
+                #[serde(rename = "provider_server_error")]
+                ProviderServerError,
+                /// The response connection was lost.
+                #[serde(rename = "response_connection_lost")]
+                ResponseConnectionLost,
+                /// The provider refused for safety policy.
+                #[serde(rename = "safety_policy_refusal")]
+                SafetyPolicyRefusal,
+                /// The CLI requires reconnecting.
+                #[serde(rename = "reconnect_required")]
+                ReconnectRequired,
+                /// The provider reported a usage limit.
+                #[serde(rename = "usage_limit")]
+                UsageLimit,
+            }
+
+            /// Compact structured failure attribution included with completion.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct RequestFailureSummary {
+                /// Coarse category of the observed run failure.
+                pub failure_class: RequestFailureSummaryFailureClass,
+                /// Optional detailed reason parsed from CLI output.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub failure_reason: Option<RequestFailureSummaryFailureReason>,
+            }
+
             /// Request body for completing an agent run.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -684,6 +765,9 @@ pub mod webhooks {
                 /// Optional final checkpoint persisted atomically with completion.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub checkpoint: Option<RequestCheckpoint>,
+                /// Optional compact structured attribution for a failed run.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub failure_summary: Option<RequestFailureSummary>,
             }
         }
 

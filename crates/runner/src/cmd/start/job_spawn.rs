@@ -735,6 +735,12 @@ pub(super) async fn run_job(
             cancelled_for_log,
             executor_result.outcome.failure.as_ref(),
         );
+        let failure_summary = executor_result
+            .outcome
+            .failure
+            .as_ref()
+            .and_then(|failure| failure.diagnostic.as_ref())
+            .map(|diagnostic| diagnostic.summary());
 
         let completion_payload = CompletionPayload::new(
             run_id,
@@ -744,6 +750,7 @@ pub(super) async fn run_job(
             reuse_result,
             completion_auth,
         )
+        .with_failure_summary(failure_summary)
         .with_active_input_delivery_ids(std::mem::take(
             &mut executor_result.outcome.active_input_delivery_ids,
         ))

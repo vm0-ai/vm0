@@ -2064,6 +2064,7 @@ mod tests {
             run_id,
             exit_code: 0,
             error: None,
+            failure_summary: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,
@@ -4001,6 +4002,7 @@ mod tests {
                     run_id: RunId::nil(),
                     exit_code: 1,
                     error: Some("boom".to_string()),
+                    failure_summary: None,
                     sandbox_id: None,
                     sandbox_reuse_result: None,
                     workspace_reuse_result: None,
@@ -4045,9 +4047,57 @@ mod tests {
                 run_id,
                 exit_code: 0,
                 error: None,
+                failure_summary: None,
                 sandbox_id: None,
                 sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
                 workspace_reuse_result: Some(WorkspaceReuseResult::NoReuseKey),
+                active_input_delivery_ids: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_complete_serializes_compact_failure_summary() {
+        use guest_contracts::diagnostics::{FailureClass, FailureDiagnosticSummary, FailureReason};
+
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path)
+                    .header("authorization", "Bearer sandbox-token")
+                    .json_body(serde_json::json!({
+                        "runId": run_id,
+                        "exitCode": 1,
+                        "error": "provider usage limit",
+                        "failureSummary": {
+                            "failureClass": "cli_nonzero",
+                            "failureReason": "usage_limit",
+                        },
+                    }));
+                then.status(200);
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        api.complete(
+            "sandbox-token",
+            &CompleteRequest {
+                run_id,
+                exit_code: 1,
+                error: Some("provider usage limit".to_string()),
+                failure_summary: Some(FailureDiagnosticSummary {
+                    failure_class: FailureClass::CliNonzero,
+                    failure_reason: Some(FailureReason::UsageLimit),
+                }),
+                sandbox_id: None,
+                sandbox_reuse_result: None,
+                workspace_reuse_result: None,
                 active_input_delivery_ids: Vec::new(),
             },
         )

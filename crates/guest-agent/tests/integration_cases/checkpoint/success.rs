@@ -44,7 +44,7 @@ fn assert_session_history_prune_operation(
 }
 
 #[tokio::test]
-async fn pi_checkpoint_reports_full_combined_completion_payload() {
+async fn pi_checkpoint_reports_full_failed_combined_completion_payload() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
@@ -66,12 +66,17 @@ async fn pi_checkpoint_reports_full_combined_completion_payload() {
             .json_body_includes(
                 json!({
                     "runId": "test-run-001",
-                    "exitCode": 0,
+                    "exitCode": 1,
+                    "error": "provider usage limit",
                     "lastEventSequence": 42,
                     "sandboxId": "00000000-0000-4000-8000-000000000abc",
                     "sandboxReuseResult": "reused",
                     "workspaceReuseResult": "sandboxReused",
                     "activeInputDeliveryIds": ["11111111-1111-4111-8111-111111111111"],
+                    "failureSummary": {
+                        "failureClass": "cli_nonzero",
+                        "failureReason": "usage_limit"
+                    },
                     "checkpoint": {
                         "cliAgentType": "pi",
                         "cliAgentSessionId": session_id,
@@ -93,10 +98,14 @@ async fn pi_checkpoint_reports_full_combined_completion_payload() {
             .unwrap();
     guest_agent::complete::report_checkpoint_for_run(
         &runtime,
-        0,
-        None,
+        1,
+        Some("provider usage limit"),
         Some(42),
         &active_input_delivery_ids,
+        Some(guest_contracts::diagnostics::FailureDiagnosticSummary {
+            failure_class: guest_contracts::diagnostics::FailureClass::CliNonzero,
+            failure_reason: Some(guest_contracts::diagnostics::FailureReason::UsageLimit),
+        }),
         checkpoint,
     )
     .await

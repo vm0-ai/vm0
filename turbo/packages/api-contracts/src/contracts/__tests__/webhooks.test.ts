@@ -223,6 +223,58 @@ describe("agent completion reuse outcomes", () => {
   });
 });
 
+describe("agent completion failure summary", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    exitCode: 1,
+    error: "provider usage limit",
+  };
+
+  it("accepts a compact known diagnostic and omission for old senders", () => {
+    expect(
+      webhookCompleteContract.complete.body.parse({
+        ...baseBody,
+        failureSummary: {
+          failureClass: "cli_nonzero",
+          failureReason: "usage_limit",
+        },
+      }),
+    ).toMatchObject({
+      failureSummary: {
+        failureClass: "cli_nonzero",
+        failureReason: "usage_limit",
+      },
+    });
+    expect(
+      webhookCompleteContract.complete.body.safeParse(baseBody).success,
+    ).toBe(true);
+    expect(
+      webhookCompleteContract.complete.body.safeParse({
+        runId: baseBody.runId,
+        exitCode: 0,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects unknown and malformed diagnostic summaries", () => {
+    const invalidSummaries = [
+      { failureClass: "unknown" },
+      { failureClass: "cli_nonzero", failureReason: "unknown" },
+      { failureReason: "usage_limit" },
+      { failureClass: "cli_nonzero", unexpected: true },
+    ];
+
+    for (const failureSummary of invalidSummaries) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          failureSummary,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
 describe("agent completion active input receipts", () => {
   const baseBody = {
     runId: "00000000-0000-4000-8000-000000000000",

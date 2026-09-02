@@ -12,10 +12,43 @@ use api_contracts::generated::types::{
     },
     webhooks::agent::{
         checkpoints::{self, prepare_history},
+        complete,
         storages::{FileEntryWithHash, commit, prepare},
     },
 };
 use serde_json::json;
+
+#[test]
+fn generated_completion_request_round_trips_failure_summary() {
+    let request = complete::Request {
+        run_id: "run-123".to_string(),
+        exit_code: 1,
+        error: Some("provider usage limit".to_string()),
+        last_event_sequence: None,
+        sandbox_id: None,
+        sandbox_reuse_result: None,
+        workspace_reuse_result: None,
+        active_input_delivery_ids: None,
+        checkpoint: None,
+        failure_summary: Some(complete::RequestFailureSummary {
+            failure_class: complete::RequestFailureSummaryFailureClass::CliNonzero,
+            failure_reason: Some(complete::RequestFailureSummaryFailureReason::UsageLimit),
+        }),
+    };
+
+    let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(
+        value["failureSummary"],
+        json!({
+            "failureClass": "cli_nonzero",
+            "failureReason": "usage_limit",
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<complete::Request>(value).unwrap(),
+        request
+    );
+}
 
 #[test]
 fn generated_model_provider_failure_request_requires_connection_source() {

@@ -859,6 +859,7 @@ async fn complete_execution(
                     None,
                     state.last_event_sequence,
                     state.active_input_delivery_ids,
+                    None,
                     checkpoint,
                 )
                 .await;
@@ -930,6 +931,10 @@ async fn complete_execution(
                             state.failure_message,
                             state.last_event_sequence,
                             state.active_input_delivery_ids,
+                            state
+                                .failure_diagnostic
+                                .as_ref()
+                                .map(FailureDiagnostic::summary),
                             checkpoint,
                         )
                         .await

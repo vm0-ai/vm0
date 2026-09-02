@@ -708,6 +708,7 @@ mod tests {
             run_id,
             exit_code: 0,
             error: None,
+            failure_summary: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,

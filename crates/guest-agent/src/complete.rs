@@ -24,6 +24,7 @@ use crate::http::HttpClient;
 use crate::run_context::GuestRuntime;
 use api_contracts::generated::types::webhooks::agent::complete;
 use guest_common::{log_info, log_warn};
+use guest_contracts::diagnostics::FailureDiagnosticSummary;
 use serde::Serialize;
 use std::time::Instant;
 
@@ -48,6 +49,8 @@ struct CompletePayload<'a> {
     active_input_delivery_ids: Option<&'a [String]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     checkpoint: Option<&'a complete::RequestCheckpoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure_summary: Option<FailureDiagnosticSummary>,
 }
 
 fn as_optional(value: &str) -> Option<&str> {
@@ -77,6 +80,7 @@ pub async fn report_checkpoint_for_run(
     error: Option<&str>,
     last_event_sequence: Option<u32>,
     active_input_delivery_ids: &[String],
+    failure_summary: Option<FailureDiagnosticSummary>,
     checkpoint: PreparedCheckpoint,
 ) -> Result<(), AgentError> {
     let api_started_at = Instant::now();
@@ -89,6 +93,7 @@ pub async fn report_checkpoint_for_run(
             last_event_sequence,
             active_input_delivery_ids,
             Some(checkpoint.request()),
+            failure_summary,
         ),
         constants::HTTP_MAX_ATTEMPTS,
     )
@@ -155,6 +160,7 @@ fn payload_for_runtime<'a>(
     last_event_sequence: Option<u32>,
     active_input_delivery_ids: &'a [String],
     checkpoint: Option<&'a complete::RequestCheckpoint>,
+    failure_summary: Option<FailureDiagnosticSummary>,
 ) -> CompletePayload<'a> {
     let config = &runtime.config;
     CompletePayload {
@@ -167,6 +173,7 @@ fn payload_for_runtime<'a>(
         workspace_reuse_result: as_optional(&config.workspace_reuse_result),
         active_input_delivery_ids: as_optional_slice(active_input_delivery_ids),
         checkpoint,
+        failure_summary,
     }
 }
 
@@ -189,6 +196,7 @@ fn checkpointless_payload_for_run<'a>(
         workspace_reuse_result: as_optional(workspace_reuse_result),
         active_input_delivery_ids: as_optional_slice(active_input_delivery_ids),
         checkpoint: None,
+        failure_summary: None,
     }
 }
 
@@ -218,6 +226,7 @@ mod tests {
             workspace_reuse_result: None,
             active_input_delivery_ids: None,
             checkpoint: None,
+            failure_summary: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(json, r#"{"runId":"run-123","exitCode":0}"#);
@@ -235,6 +244,7 @@ mod tests {
             workspace_reuse_result: Some("sandboxReused"),
             active_input_delivery_ids: None,
             checkpoint: None,
+            failure_summary: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains(r#""sandboxId":"abc""#));
@@ -256,6 +266,7 @@ mod tests {
             workspace_reuse_result: None,
             active_input_delivery_ids: None,
             checkpoint: None,
+            failure_summary: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(!json.contains("sandboxId"));
@@ -274,6 +285,7 @@ mod tests {
             workspace_reuse_result: Some("cacheMiss"),
             active_input_delivery_ids: None,
             checkpoint: None,
+            failure_summary: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains(r#""sandboxId":"sid""#));
@@ -299,11 +311,42 @@ mod tests {
             workspace_reuse_result: None,
             active_input_delivery_ids: None,
             checkpoint: None,
+            failure_summary: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(
             json,
             r#"{"runId":"run-123","exitCode":0,"lastEventSequence":7}"#
+        );
+    }
+
+    #[test]
+    fn payload_includes_compact_failure_summary() {
+        use guest_contracts::diagnostics::{FailureClass, FailureReason};
+
+        let payload = CompletePayload {
+            run_id: "run-123",
+            exit_code: 1,
+            error: Some("provider usage limit"),
+            last_event_sequence: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: None,
+            checkpoint: None,
+            failure_summary: Some(FailureDiagnosticSummary {
+                failure_class: FailureClass::CliNonzero,
+                failure_reason: Some(FailureReason::UsageLimit),
+            }),
+        };
+
+        let json = serde_json::to_value(payload).unwrap();
+        assert_eq!(
+            json["failureSummary"],
+            serde_json::json!({
+                "failureClass": "cli_nonzero",
+                "failureReason": "usage_limit",
+            })
         );
     }
 }

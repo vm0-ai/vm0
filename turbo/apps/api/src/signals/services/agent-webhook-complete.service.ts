@@ -113,6 +113,7 @@ type CompletionResponse =
 
 interface RunRecord {
   readonly cancellationRecoveryCompleted: boolean | null;
+  readonly modelProvider: (typeof agentRuns.$inferSelect)["modelProvider"];
   readonly orgId: string;
   readonly sessionId: string;
   readonly status: RunStatus;
@@ -147,6 +148,48 @@ type CompletionTransactionResult =
   | { readonly kind: "committed"; readonly commit: CompletionCommit };
 
 const L = logger("webhook:complete");
+
+type CompletionFailureSummary = NonNullable<
+  WebhookCompleteBody["failureSummary"]
+>;
+
+function isSuppressibleFailureReason(
+  reason: CompletionFailureSummary["failureReason"],
+): boolean {
+  switch (reason) {
+    case "insufficient_credits":
+    case "invalid_api_key":
+    case "invalid_credentials":
+    case "terms_acceptance_required":
+    case "context_window_exceeded":
+    case "output_token_limit":
+    case "provider_overloaded":
+    case "provider_stream_timeout":
+    case "provider_server_error":
+    case "safety_policy_refusal":
+    case "reconnect_required":
+    case "usage_limit": {
+      return true;
+    }
+    case "session_history_limit":
+    case "response_connection_lost":
+    case undefined: {
+      return false;
+    }
+  }
+}
+
+function shouldSuppressRunFailedWarning(
+  modelProvider: RunRecord["modelProvider"],
+  summary: CompletionFailureSummary | undefined,
+): boolean {
+  return (
+    modelProvider !== null &&
+    modelProvider !== "built-in" &&
+    summary?.failureClass === "cli_nonzero" &&
+    isSuppressibleFailureReason(summary.failureReason)
+  );
+}
 
 function checkpointInputForCompletion(
   input: CompleteAgentRunInput,
@@ -212,6 +255,7 @@ async function loadCompletionRun(
   const [run] = await db
     .select({
       orgId: agentRuns.orgId,
+      modelProvider: agentRuns.modelProvider,
       sessionId: agentRuns.sessionId,
       status: agentRuns.status,
       userId: agentRuns.userId,
@@ -279,6 +323,7 @@ async function lockCompletionRun(
   const [run] = await tx
     .select({
       orgId: agentRuns.orgId,
+      modelProvider: agentRuns.modelProvider,
       sessionId: agentRuns.sessionId,
       status: agentRuns.status,
       userId: agentRuns.userId,
@@ -816,7 +861,12 @@ export const completeAgentRun$ = command(
           runId: input.body.runId,
           error: commit.transitionError,
         });
-      } else {
+      } else if (
+        !shouldSuppressRunFailedWarning(
+          commit.run.modelProvider,
+          input.body.failureSummary,
+        )
+      ) {
         L.warn("Run failed", {
           runId: input.body.runId,
           exitCode: input.body.exitCode,

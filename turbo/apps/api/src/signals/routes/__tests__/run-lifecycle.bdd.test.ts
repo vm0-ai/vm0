@@ -1444,6 +1444,36 @@ async function entitledRunActor(): Promise<{
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
+function webhookCompleteLogCounts(
+  runId: string,
+  message = "Run failed",
+): {
+  readonly debug: number;
+  readonly info: number;
+  readonly warn: number;
+  readonly error: number;
+} {
+  const matches = (call: readonly unknown[]): boolean => {
+    const [loggedMessage, rawFields] = call;
+    if (
+      loggedMessage !== message ||
+      typeof rawFields !== "object" ||
+      rawFields === null
+    ) {
+      return false;
+    }
+    const fields = rawFields as Readonly<Record<string, unknown>>;
+    return fields.context === "webhook:complete" && fields.runId === runId;
+  };
+
+  return {
+    debug: context.mocks.axiomLogging.debug.mock.calls.filter(matches).length,
+    info: context.mocks.axiomLogging.info.mock.calls.filter(matches).length,
+    warn: context.mocks.axiomLogging.warn.mock.calls.filter(matches).length,
+    error: context.mocks.axiomLogging.error.mock.calls.filter(matches).length,
+  };
+}
+
 function zeroBackedDirectRunBody(args: {
   readonly agentId: string;
   readonly prompt: string;
@@ -18315,6 +18345,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
             runId: run.runId,
             exitCode: 1,
             error: "runner reported failure",
+            failureSummary: {
+              failureClass: "cli_nonzero",
+              failureReason: "usage_limit",
+            },
           },
           sandboxHeaders,
           [200],
@@ -18325,6 +18359,10 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         runId: run.runId,
         exitCode: 1,
         error: "guest reported failure",
+        failureSummary: {
+          failureClass: "cli_nonzero",
+          failureReason: "usage_limit",
+        },
         checkpoint: {
           cliAgentType: "claude-code",
           cliAgentSessionId,
@@ -18344,6 +18382,12 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
           ? "runner reported failure"
           : "guest reported failure",
       );
+      expect(webhookCompleteLogCounts(run.runId)).toStrictEqual({
+        debug: 0,
+        info: 0,
+        warn: 0,
+        error: 0,
+      });
 
       const continued = await api.createRun(actor, {
         agentId,
@@ -18397,6 +18441,123 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       await api.requestCancelRun(actor, afterRetry.runId, [200]);
     },
   );
+
+  it.each([
+    [
+      "built-in ownership",
+      "built-in",
+      { failureClass: "cli_nonzero", failureReason: "usage_limit" },
+    ],
+    ["missing failure summary", "anthropic-api-key", undefined],
+    [
+      "session-history limit",
+      "anthropic-api-key",
+      {
+        failureClass: "cli_nonzero",
+        failureReason: "session_history_limit",
+      },
+    ],
+    [
+      "response connection loss",
+      "anthropic-api-key",
+      {
+        failureClass: "cli_nonzero",
+        failureReason: "response_connection_lost",
+      },
+    ],
+    [
+      "non-CLI failure class",
+      "anthropic-api-key",
+      { failureClass: "checkpoint_failed", failureReason: "usage_limit" },
+    ],
+    [
+      "unknown provider ownership",
+      null,
+      { failureClass: "cli_nonzero", failureReason: "usage_limit" },
+    ],
+  ] as const)(
+    "keeps the generic failure warning for %s",
+    async (_, provider, summary) => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const { actor, agentId } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "retain an operationally relevant failure warning",
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      if (provider !== "anthropic-api-key") {
+        await setRunModelProviderFixture({
+          runId: run.runId,
+          modelProvider: provider,
+        });
+      }
+
+      const response = await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 1,
+          error: "retained failure detail",
+          ...(summary === undefined ? {} : { failureSummary: summary }),
+        },
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        [200],
+      );
+
+      expect(response.body).toStrictEqual({ success: true, status: "failed" });
+      const failed = await api.readRun(actor, run.runId);
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toBe("retained failure detail");
+      expect(webhookCompleteLogCounts(run.runId)).toStrictEqual({
+        debug: 0,
+        info: 0,
+        warn: 1,
+        error: 0,
+      });
+    },
+  );
+
+  it("keeps the dedicated missing-checkpoint warning", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "finish without a checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const response = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        failureSummary: {
+          failureClass: "cli_nonzero",
+          failureReason: "usage_limit",
+        },
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, status: "failed" });
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.error).toBe("Checkpoint for run not found");
+    expect(webhookCompleteLogCounts(run.runId)).toStrictEqual({
+      debug: 0,
+      info: 0,
+      warn: 0,
+      error: 0,
+    });
+    expect(
+      webhookCompleteLogCounts(
+        run.runId,
+        "Run failed because checkpoint was not found",
+      ),
+    ).toStrictEqual({ debug: 0, info: 0, warn: 1, error: 0 });
+  });
 
   it("preserves generic cancellation recovery in a combined request", async () => {
     const api = createRunsApi(context);

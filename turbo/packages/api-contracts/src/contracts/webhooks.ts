@@ -468,6 +468,39 @@ const webhookCheckpointCreateBodySchema = z
   .strict()
   .superRefine(requireCheckpointHistory);
 
+export const webhookCompleteFailureClassSchema = z.enum([
+  "working_dir_setup_failed",
+  "cli_execution_error",
+  "cli_nonzero",
+  "claude_zero_turn_no_history",
+  "event_upload_failed",
+  "checkpoint_failed",
+]);
+
+export const webhookCompleteFailureReasonSchema = z.enum([
+  "session_history_limit",
+  "insufficient_credits",
+  "invalid_api_key",
+  "invalid_credentials",
+  "terms_acceptance_required",
+  "context_window_exceeded",
+  "output_token_limit",
+  "provider_overloaded",
+  "provider_stream_timeout",
+  "provider_server_error",
+  "response_connection_lost",
+  "safety_policy_refusal",
+  "reconnect_required",
+  "usage_limit",
+]);
+
+export const webhookCompleteFailureSummarySchema = z
+  .object({
+    failureClass: webhookCompleteFailureClassSchema,
+    failureReason: webhookCompleteFailureReasonSchema.optional(),
+  })
+  .strict();
+
 const webhookCompleteBodySchema = z
   .object({
     runId: z.string().min(1, "runId is required"),
@@ -482,6 +515,7 @@ const webhookCompleteBodySchema = z
     workspaceReuseResult: workspaceReuseResultSchema.optional(),
     activeInputDeliveryIds: activeInputDeliveryIdsSchema.optional(),
     checkpoint: webhookCheckpointMetadataSchema.optional(),
+    failureSummary: webhookCompleteFailureSummarySchema.optional(),
   })
   .superRefine((body, context) => {
     const workspaceResult = body.workspaceReuseResult;

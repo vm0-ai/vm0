@@ -47,6 +47,7 @@ pub(super) fn complete_request(
         run_id,
         exit_code,
         error: error.map(str::to_owned),
+        failure_summary: None,
         sandbox_id: None,
         sandbox_reuse_result: None,
         workspace_reuse_result: None,

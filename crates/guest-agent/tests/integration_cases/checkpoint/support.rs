@@ -56,6 +56,7 @@ pub(super) async fn report_prepared_checkpoint(
         None,
         None,
         &[],
+        None,
         checkpoint,
     )
     .await

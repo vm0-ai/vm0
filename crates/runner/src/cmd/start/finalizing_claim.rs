@@ -944,6 +944,7 @@ async fn complete_claimed_without_sandbox(
                 run_id: context.run_id,
                 exit_code: failure.exit_code,
                 error: Some(failure.error),
+                failure_summary: None,
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,
                 workspace_reuse_result: None,

@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
+use guest_contracts::diagnostics::FailureDiagnosticSummary;
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
@@ -1644,6 +1645,9 @@ pub struct CompleteRequest {
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Compact structured failure attribution reported by the guest or runner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_summary: Option<FailureDiagnosticSummary>,
     /// Sandbox the run executed against. `None` when the run failed before
     /// sandbox allocation; otherwise set on every completion regardless of
     /// reuse status.
@@ -2119,6 +2123,7 @@ mod tests {
                 .unwrap(),
             exit_code: 0,
             error: None,
+            failure_summary: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,
@@ -2129,10 +2134,41 @@ mod tests {
         assert!(json.get("exitCode").is_some());
         // optionals omitted when None
         assert!(json.get("error").is_none());
+        assert!(json.get("failureSummary").is_none());
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
         assert!(json.get("workspaceReuseResult").is_none());
         assert!(json.get("activeInputDeliveryIds").is_none());
+    }
+
+    #[test]
+    fn complete_request_serializes_compact_failure_summary() {
+        use guest_contracts::diagnostics::{FailureClass, FailureReason};
+
+        let req = CompleteRequest {
+            run_id: "550e8400-e29b-41d4-a716-446655440000"
+                .parse::<RunId>()
+                .unwrap(),
+            exit_code: 1,
+            error: Some("provider usage limit".into()),
+            failure_summary: Some(FailureDiagnosticSummary {
+                failure_class: FailureClass::CliNonzero,
+                failure_reason: Some(FailureReason::UsageLimit),
+            }),
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
+        };
+
+        let json = serde_json::to_value(req).unwrap();
+        assert_eq!(
+            json["failureSummary"],
+            serde_json::json!({
+                "failureClass": "cli_nonzero",
+                "failureReason": "usage_limit",
+            })
+        );
     }
 
     #[test]
@@ -2143,6 +2179,7 @@ mod tests {
                 .unwrap(),
             exit_code: 1,
             error: Some("timeout".into()),
+            failure_summary: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,
@@ -2164,6 +2201,7 @@ mod tests {
                 .unwrap(),
             exit_code: 0,
             error: None,
+            failure_summary: None,
             sandbox_id: Some(sid),
             sandbox_reuse_result: Some(SandboxReuseResult::Reused),
             workspace_reuse_result: Some(WorkspaceReuseResult::SandboxReused),

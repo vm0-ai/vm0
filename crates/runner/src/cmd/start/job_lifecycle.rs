@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
+use guest_contracts::diagnostics::FailureDiagnosticSummary;
 use sandbox::SandboxId;
 
 use crate::ids::RunId;
@@ -140,6 +141,7 @@ pub(super) struct CompletionPayload {
     run_id: RunId,
     exit_code: i32,
     error: Option<String>,
+    failure_summary: Option<FailureDiagnosticSummary>,
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
     workspace_reuse_result: Option<WorkspaceReuseResult>,
@@ -178,6 +180,7 @@ impl CompletionPayload {
             run_id,
             exit_code,
             error,
+            failure_summary: None,
             sandbox_id,
             reuse_result,
             workspace_reuse_result: None,
@@ -194,6 +197,14 @@ impl CompletionPayload {
         self
     }
 
+    pub(super) fn with_failure_summary(
+        mut self,
+        failure_summary: Option<FailureDiagnosticSummary>,
+    ) -> Self {
+        self.failure_summary = failure_summary;
+        self
+    }
+
     pub(super) fn with_active_input_delivery_ids(
         mut self,
         active_input_delivery_ids: Vec<String>,
@@ -207,6 +218,7 @@ impl CompletionPayload {
             run_id,
             exit_code,
             error,
+            failure_summary,
             sandbox_id,
             reuse_result,
             workspace_reuse_result,
@@ -220,6 +232,7 @@ impl CompletionPayload {
                     run_id,
                     exit_code,
                     error,
+                    failure_summary,
                     sandbox_id: Some(sandbox_id),
                     sandbox_reuse_result: Some(reuse_result),
                     workspace_reuse_result,
@@ -318,6 +331,7 @@ mod tests {
     struct CompletionAuthProvider {
         auth_matches: Arc<AtomicBool>,
         active_input_delivery_ids: Arc<std::sync::Mutex<Vec<String>>>,
+        failure_summary: Arc<std::sync::Mutex<Option<FailureDiagnosticSummary>>>,
     }
 
     #[async_trait]
@@ -336,6 +350,7 @@ mod tests {
                 Ordering::SeqCst,
             );
             *self.active_input_delivery_ids.lock().unwrap() = request.active_input_delivery_ids;
+            *self.failure_summary.lock().unwrap() = request.failure_summary;
         }
 
         async fn heartbeat(&self, _state: &HeartbeatState) {}
@@ -379,9 +394,11 @@ mod tests {
     async fn completion_payload_forwards_completion_auth() {
         let auth_matches = Arc::new(AtomicBool::new(false));
         let active_input_delivery_ids = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let failure_summary = Arc::new(std::sync::Mutex::new(None));
         let provider = CompletionAuthProvider {
             auth_matches: Arc::clone(&auth_matches),
             active_input_delivery_ids: Arc::clone(&active_input_delivery_ids),
+            failure_summary: Arc::clone(&failure_summary),
         };
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -394,6 +411,10 @@ mod tests {
             SandboxReuseResult::PoolMiss,
             CompletionAuth::sandbox_token(run_id, "completion-token".to_string()),
         )
+        .with_failure_summary(Some(FailureDiagnosticSummary {
+            failure_class: guest_contracts::diagnostics::FailureClass::CliNonzero,
+            failure_reason: Some(guest_contracts::diagnostics::FailureReason::UsageLimit),
+        }))
         .with_active_input_delivery_ids(vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()])
         .report(&provider)
         .await;
@@ -405,6 +426,13 @@ mod tests {
         assert_eq!(
             *active_input_delivery_ids.lock().unwrap(),
             vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()]
+        );
+        assert_eq!(
+            *failure_summary.lock().unwrap(),
+            Some(FailureDiagnosticSummary {
+                failure_class: guest_contracts::diagnostics::FailureClass::CliNonzero,
+                failure_reason: Some(guest_contracts::diagnostics::FailureReason::UsageLimit),
+            })
         );
     }
 

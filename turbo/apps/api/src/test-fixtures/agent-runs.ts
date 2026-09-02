@@ -576,7 +576,7 @@ export async function setRunModelRuntimeRouteFixture(args: {
  */
 export async function setRunModelProviderFixture(args: {
   readonly runId: string;
-  readonly modelProvider: ModelProviderType;
+  readonly modelProvider: ModelProviderType | null;
 }): Promise<void> {
   const updated = await db()
     .update(agentRuns)

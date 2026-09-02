@@ -6,8 +6,8 @@
 
 use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic,
-    EventDeliveryDiagnostic, FailureClass, FailureDiagnostic, FailureReason,
-    HeartbeatFailureDiagnostic, WorkloadResourceLimitDiagnostic,
+    EventDeliveryDiagnostic, FailureClass, FailureDiagnostic, HeartbeatFailureDiagnostic,
+    WorkloadResourceLimitDiagnostic,
 };
 use tracing::info;
 
@@ -456,27 +456,8 @@ impl From<Option<&WorkloadResourceLimitDiagnostic>> for JobWorkloadResourceLogFi
 }
 
 fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
-    match diagnostic.failure_class {
-        FailureClass::CliNonzero => matches!(
-            diagnostic.failure_reason,
-            Some(
-                FailureReason::InsufficientCredits
-                    | FailureReason::InvalidApiKey
-                    | FailureReason::InvalidCredentials
-                    | FailureReason::TermsAcceptanceRequired
-                    | FailureReason::ContextWindowExceeded
-                    | FailureReason::OutputTokenLimit
-                    | FailureReason::ProviderOverloaded
-                    | FailureReason::ProviderStreamTimeout
-                    | FailureReason::ProviderServerError
-                    | FailureReason::SafetyPolicyRefusal
-                    | FailureReason::ReconnectRequired
-                    | FailureReason::UsageLimit
-            )
-        ),
-        FailureClass::ClaudeZeroTurnNoHistory => true,
-        _ => false,
-    }
+    diagnostic.summary().is_non_operational_cli_outcome()
+        || diagnostic.failure_class == FailureClass::ClaudeZeroTurnNoHistory
 }
 
 #[cfg(test)]
@@ -490,9 +471,10 @@ mod tests {
         EventDeliveryActiveBatchDiagnostic, EventDeliveryAttemptFailureKind,
         EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
         EventDeliveryDrainTimeoutDiagnostic, EventDeliveryFailedBatchDiagnostic, FailureClass,
-        FailureDetailSource, HeartbeatAttemptFailureKind, HeartbeatCompletedAttemptDiagnostic,
-        HeartbeatFailedCycleDiagnostic, HeartbeatFailureDiagnostic, PromptMetadata,
-        SessionHistoryStatus, WorkloadResourceLimitDiagnostic,
+        FailureDetailSource, FailureReason, HeartbeatAttemptFailureKind,
+        HeartbeatCompletedAttemptDiagnostic, HeartbeatFailedCycleDiagnostic,
+        HeartbeatFailureDiagnostic, PromptMetadata, SessionHistoryStatus,
+        WorkloadResourceLimitDiagnostic,
     };
     use tracing::Level;
     use tracing_subscriber::prelude::*;
