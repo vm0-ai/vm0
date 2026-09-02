@@ -182,6 +182,14 @@ export interface RecorderNativeBackend {
   readonly dispose: () => void;
   readonly getCapabilities: () => Promise<DesktopRecorderCapabilities>;
   /**
+   * Asks the system for the screen recording grant and reports the answer.
+   *
+   * macOS only shows its prompt the first time; once answered it returns the
+   * standing answer without asking again, which is why this is safe to call
+   * before each capture and is the only path that can raise the prompt at all.
+   */
+  readonly requestScreenRecordingPermission: () => Promise<boolean>;
+  /**
    * The windows and displays on screen. Reading this asks ScreenCaptureKit for
    * the screen recording grant, so it is only called once the user is choosing
    * what to record.

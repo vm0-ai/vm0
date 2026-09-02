@@ -36,6 +36,7 @@ function createBackendFake(
   return {
     dispose: vi.fn(),
     getCapabilities: vi.fn(async () => ({ supportsMicrophone: true })),
+    requestScreenRecordingPermission: vi.fn(async () => true),
     listSources: vi.fn(async () => [
       { id: "display:1", kind: "display" as const, title: "Built-in Display" },
     ]),

@@ -780,6 +780,7 @@ async function startRecorderCapture(
   captured: DesktopRecorderArea | null,
 ): Promise<void> {
   const windows = getRecorderWindows();
+  await screenRecorder.ensureScreenRecordingPermission();
   await screenRecorder.prepare(request);
   await screenRecorder.start();
   // The bar has done its job; leaving it up would put it in the capture.
@@ -793,6 +794,7 @@ function installDesktopRecorder(): void {
       getState: () => screenRecorder.getState(),
       getCapabilities: () => screenRecorder.getCapabilities(),
       listWindowOptions: async () => {
+        await screenRecorder.ensureScreenRecordingPermission();
         const [sources, previews] = await Promise.all([
           screenRecorder.listSources(),
           screenRecorder.listWindowPreviews(),

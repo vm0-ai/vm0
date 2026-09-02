@@ -215,35 +215,37 @@ describe("Desktop IPC boundary", () => {
 
     installDesktopRecorderIpc(api, { recorderUrl });
 
-    for (const { channel, args } of [
-      { channel: DESKTOP_RECORDER_CHANNELS.getState, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.getCapabilities, args: [] },
-      {
-        channel: DESKTOP_RECORDER_CHANNELS.startCapture,
-        args: [{ sourceKind: "display", systemAudio: true, microphone: false }],
-      },
-      {
-        channel: DESKTOP_RECORDER_CHANNELS.beginAreaSelection,
-        args: [{ systemAudio: true, microphone: false }],
-      },
-      {
-        channel: DESKTOP_RECORDER_CHANNELS.completeAreaSelection,
-        args: [null],
-      },
-      { channel: DESKTOP_RECORDER_CHANNELS.selectWindow, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.listWindowOptions, args: [] },
-      {
-        channel: DESKTOP_RECORDER_CHANNELS.completeWindowSelection,
-        args: [null],
-      },
+    // Keyed by channel so a new recorder channel cannot be added without
+    // deciding what an untrusted page may send it. The list below is checked
+    // against the channel table, and a missing entry fails this test.
+    const sampleArgs: Record<string, readonly unknown[]> = {
+      [DESKTOP_RECORDER_CHANNELS.getState]: [],
+      [DESKTOP_RECORDER_CHANNELS.getCapabilities]: [],
+      [DESKTOP_RECORDER_CHANNELS.startCapture]: [
+        { sourceKind: "display", systemAudio: true, microphone: false },
+      ],
+      [DESKTOP_RECORDER_CHANNELS.beginAreaSelection]: [
+        { systemAudio: true, microphone: false },
+      ],
+      [DESKTOP_RECORDER_CHANNELS.completeAreaSelection]: [null],
+      [DESKTOP_RECORDER_CHANNELS.selectWindow]: [],
+      [DESKTOP_RECORDER_CHANNELS.listWindowOptions]: [],
+      [DESKTOP_RECORDER_CHANNELS.completeWindowSelection]: [null],
       // Ending a capture is as sensitive as starting one: an untrusted page
       // reaching discard would throw away someone's recording.
-      { channel: DESKTOP_RECORDER_CHANNELS.pause, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.resume, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.discard, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.stop, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.cancel, args: [] },
-    ]) {
+      [DESKTOP_RECORDER_CHANNELS.pause]: [],
+      [DESKTOP_RECORDER_CHANNELS.resume]: [],
+      [DESKTOP_RECORDER_CHANNELS.discard]: [],
+      [DESKTOP_RECORDER_CHANNELS.stop]: [],
+      [DESKTOP_RECORDER_CHANNELS.cancel]: [],
+      [DESKTOP_RECORDER_CHANNELS.openScreenRecordingSettings]: [],
+    };
+
+    expect(Object.keys(sampleArgs).sort()).toEqual(
+      Object.values(DESKTOP_RECORDER_CHANNELS).sort(),
+    );
+
+    for (const [channel, args] of Object.entries(sampleArgs)) {
       await expect(invokeIpc(channel, blockedAppUrl, ...args)).rejects.toThrow(
         "Screen recording is unavailable on this page",
       );

@@ -232,6 +232,10 @@ private let windowPreviewMaxWidth = 400.0
 private let windowPreviewMaxHeight = 250.0
 /// Upper bound on how many windows are captured for one picker opening.
 private let windowPreviewLimit = 24
+/// Budget for the whole command. The client gives every request 15 seconds, so
+/// a per-capture wait alone is not a bound: 24 slow windows would blow past it
+/// and the picker would report a timeout while this is still working.
+private let windowPreviewBudget: TimeInterval = 8
 
 /// Captures one window as a PNG data URL, or `nil` when the system declines.
 ///
@@ -289,9 +293,10 @@ private func handleWindowPreviews() throws -> [String: Any] {
         )
     }
     let content = try shareableContent()
+    let deadline = Date().addingTimeInterval(windowPreviewBudget)
     var previews: [[String: Any]] = []
     for window in content.windows {
-        guard previews.count < windowPreviewLimit else {
+        guard previews.count < windowPreviewLimit, Date() < deadline else {
             break
         }
         guard let title = window.title, !title.isEmpty else {

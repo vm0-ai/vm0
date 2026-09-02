@@ -422,6 +422,10 @@ export function createRecorderNativeBackend(
         },
       };
     },
+    requestScreenRecordingPermission: async () => {
+      const result = await client.request("recorder.requestPermission");
+      return requiredBoolean(result, "granted");
+    },
     listWindowPreviews: async () => {
       const result = await client.request("recorder.windowPreviews");
       const value = result.previews;
