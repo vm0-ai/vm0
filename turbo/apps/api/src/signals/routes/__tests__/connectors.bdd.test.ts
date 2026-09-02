@@ -995,6 +995,97 @@ describe("CONN-02: OAuth device authorization", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
+  it("re-polls the exact non-default account added by a device authorization session", async () => {
+    const provider = mockTestOAuthDeviceConnectorProvider();
+    const actor = createBddApi(context).user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const defaultSession = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      { intent: "add" },
+    );
+    const defaultPoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      defaultSession.sessionId,
+      defaultSession.sessionToken,
+    );
+    if (defaultPoll.status !== "complete") {
+      throw new Error(
+        `Expected complete default device auth, received ${defaultPoll.status}`,
+      );
+    }
+
+    const siblingSession = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      { intent: "add" },
+    );
+    const siblingPoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      siblingSession.sessionId,
+      siblingSession.sessionToken,
+    );
+    if (siblingPoll.status !== "complete") {
+      throw new Error(
+        `Expected complete sibling device auth, received ${siblingPoll.status}`,
+      );
+    }
+
+    expect(siblingPoll.connector.id).not.toBe(defaultPoll.connector.id);
+    const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "test-oauth-device",
+    );
+    expect(accounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: defaultPoll.connector.id,
+          isDefault: true,
+        }),
+        expect.objectContaining({
+          id: siblingPoll.connector.id,
+          isDefault: false,
+        }),
+      ]),
+    );
+
+    const rePoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      siblingSession.sessionId,
+      siblingSession.sessionToken,
+    );
+    if (rePoll.status !== "complete") {
+      throw new Error(
+        `Expected complete device auth replay, received ${rePoll.status}`,
+      );
+    }
+    expect(rePoll.connector.id).toBe(siblingPoll.connector.id);
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "test-oauth-device",
+      siblingPoll.connector.id,
+    );
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "test-oauth-device",
+      defaultPoll.connector.id,
+    );
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
   it("starts and completes the Stripe CLI device authorization method", async () => {
     const stripeProvider = mockStripeCliDashboardAuth();
 
