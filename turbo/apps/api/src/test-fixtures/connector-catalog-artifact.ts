@@ -603,6 +603,18 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "asana",
+    label: "Asana",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "asana",
+        prefix: "ASANA",
+        tokenEnvironmentNames: ["ASANA_TOKEN"],
+        scopes: ["default"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "aws",
     label: "AWS",
     authMethods: [
@@ -1145,6 +1157,18 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "gumroad",
+    label: "Gumroad",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "gumroad",
+        prefix: "GUMROAD",
+        tokenEnvironmentNames: ["GUMROAD_TOKEN"],
+        scopes: ["view_profile", "view_sales"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "hubspot",
     label: "HubSpot",
     authMethods: [
@@ -1179,6 +1203,23 @@ const connectors = [
         envBindings: {
           INSFORGE_API_KEY: secret("INSFORGE_API_KEY"),
           INSFORGE_DOMAIN: variable("INSFORGE_DOMAIN"),
+        },
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "intervals-icu",
+    label: "Intervals.icu",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "intervals-icu",
+        authMethodId: "oauth",
+        scopes: ["ACTIVITY:READ", "WELLNESS:READ"],
+        values: {
+          accessToken: secret("INTERVALS_ICU_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          INTERVALS_ICU_TOKEN: secret("INTERVALS_ICU_ACCESS_TOKEN"),
         },
       }),
     ],
@@ -1324,6 +1365,18 @@ const connectors = [
           "pages_show_list",
           "public_profile",
         ],
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "monday",
+    label: "Monday.com",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "monday",
+        prefix: "MONDAY",
+        tokenEnvironmentNames: ["MONDAY_TOKEN"],
+        scopes: ["me:read", "boards:read", "boards:write"],
       }),
     ],
   }),
@@ -1643,6 +1696,18 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "sentry",
+    label: "Sentry",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "sentry",
+        prefix: "SENTRY",
+        tokenEnvironmentNames: ["SENTRY_TOKEN"],
+        scopes: ["org:read", "project:read", "event:read"],
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "serpapi",
     label: "SerpApi",
     authMethods: [
@@ -1735,6 +1800,18 @@ const connectors = [
           STEAM_ID: variable("STEAM_ID"),
           STEAM_WEB_API_KEY: secret("STEAM_WEB_API_KEY"),
         },
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "strava",
+    label: "Strava",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "strava",
+        prefix: "STRAVA",
+        tokenEnvironmentNames: ["STRAVA_TOKEN"],
+        scopes: ["read", "activity:read_all", "profile:read_all"],
       }),
     ],
   }),
@@ -1949,6 +2026,39 @@ const connectors = [
     ],
   }),
   connector({
+    connectorSlug: "todoist",
+    label: "Todoist",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "todoist",
+        authMethodId: "oauth",
+        scopes: ["data:read_write"],
+        values: {
+          accessToken: secret("TODOIST_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          TODOIST_TOKEN: secret("TODOIST_ACCESS_TOKEN"),
+        },
+      }),
+    ],
+  }),
+  connector({
+    connectorSlug: "vercel",
+    label: "Vercel",
+    authMethods: [
+      providerMethod({
+        connectorSlug: "vercel",
+        authMethodId: "oauth",
+        values: {
+          accessToken: secret("VERCEL_ACCESS_TOKEN"),
+        },
+        envBindings: {
+          VERCEL_TOKEN: secret("VERCEL_ACCESS_TOKEN"),
+        },
+      }),
+    ],
+  }),
+  connector({
     connectorSlug: "webflow",
     label: "Webflow",
     authMethods: [
@@ -1979,6 +2089,25 @@ const connectors = [
       billable: true,
       placeholders: { X_TOKEN: "fixture-x-token" },
     }),
+  }),
+  connector({
+    connectorSlug: "xero",
+    label: "Xero",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "xero",
+        prefix: "XERO",
+        tokenEnvironmentNames: ["XERO_TOKEN"],
+        scopes: [
+          "openid",
+          "profile",
+          "email",
+          "accounting.transactions",
+          "accounting.contacts.read",
+          "offline_access",
+        ],
+      }),
+    ],
   }),
   connector({
     connectorSlug: "youtube",
