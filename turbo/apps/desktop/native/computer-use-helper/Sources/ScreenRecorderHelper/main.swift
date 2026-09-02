@@ -366,6 +366,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var outputURL: URL?
     private var sessionStartedAt: CMTime?
     private var latestSampleAt: CMTime?
+    /// Media time of the last sample written to each track, keyed by the
+    /// writer input, so a sample that would not advance its track is refused
+    /// before the writer refuses it and fails.
+    private var lastWrittenSeconds: [ObjectIdentifier: Double] = [:]
     private var clickTimeline: ClickTimeline?
     private var pauseTimeline = PauseTimeline()
     private var startedAtUnixMs = 0
@@ -896,6 +900,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         let input = writerInputLocked(for: type)
         let start = sessionStartedAt
         let timeline = pauseTimeline
+        let lastWritten = input.map { lastWrittenSeconds[ObjectIdentifier($0)] } ?? nil
         lock.unlock()
 
         // A writer that has failed answers `isReadyForMoreMediaData` with false
@@ -909,28 +914,41 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         guard let input, input.isReadyForMoreMediaData, let start else {
             return
         }
-        lock.lock()
-        latestSampleAt = timestamp
-        lock.unlock()
         // Frames keep arriving while paused; they are dropped, and everything
-        // after a pause is shifted back so the movie has no frozen stretch.
+        // after a pause is shifted back so the movie has no frozen stretch. A
+        // sample stamped before the anchor frame, or one that would not move
+        // its track forward, is dropped too: the writer would refuse it and
+        // then refuse everything after it. `SampleTimingPolicy` owns the rule.
         let captureSeconds = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
-        guard let mediaSeconds = timeline.mediaTime(forCaptureTime: captureSeconds)
+        guard
+            let mediaSeconds = SampleTimingPolicy.mediaTime(
+                captureSeconds: captureSeconds,
+                pauses: timeline,
+                lastWrittenSeconds: lastWritten
+            )
         else {
             return
         }
+        // Retimed in the sample's own timebase, not a coarser one: rounding
+        // 48 kHz audio onto a 600 Hz grid could move neighbouring buffers onto
+        // each other.
         guard
             let retimed = retimedSampleBuffer(
                 sampleBuffer,
                 to: CMTimeAdd(
                     start,
-                    CMTime(seconds: mediaSeconds, preferredTimescale: 600)
+                    CMTime(seconds: mediaSeconds, preferredTimescale: timestamp.timescale)
                 )
             )
         else {
             return
         }
-        if !input.append(retimed), assetWriter.status == .failed {
+        if input.append(retimed) {
+            lock.lock()
+            latestSampleAt = timestamp
+            lastWrittenSeconds[ObjectIdentifier(input)] = mediaSeconds
+            lock.unlock()
+        } else if assetWriter.status == .failed {
             noteWriterFailure(assetWriter)
         }
     }
