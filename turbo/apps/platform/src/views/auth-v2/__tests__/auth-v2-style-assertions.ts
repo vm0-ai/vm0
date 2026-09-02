@@ -127,7 +127,7 @@ export async function renderedAuthV2LinkContrast(
   styleElement.textContent = [
     compiler.build(restingColorClasses),
     `[data-theme="dark"] {
-      --color-card: rgb(42 42 42);
+      --color-card: rgb(44 42 40);
       --color-brand-text: rgb(255 165 0);
       --color-brand-text-hover: rgb(255 197 128);
     }`,

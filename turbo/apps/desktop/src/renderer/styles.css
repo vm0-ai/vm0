@@ -1,6 +1,6 @@
 :root {
-  color: #222222;
-  background: #f8f8f8;
+  color: #26221d;
+  background: #f9f8f6;
   /* Zero brand palette (mirrors design-system.css / tokens.css in vm0). */
   --brand: #ffa500;
   --brand-hover: #e19100;
@@ -44,7 +44,7 @@ body {
       rgba(255, 255, 255, 0.92),
       rgba(246, 247, 249, 0.86)
     ),
-    #f8f8f8;
+    #f9f8f6;
 }
 
 button {
@@ -84,7 +84,7 @@ button {
 
 .app-header h1 {
   margin: 0;
-  color: #282828;
+  color: #312820;
   font-size: 14px;
   line-height: 1.2;
   font-weight: 600;
@@ -154,7 +154,7 @@ button {
 .step-card-locked {
   min-height: 128px;
   padding: 16px;
-  color: #767676;
+  color: #857666;
   background: rgba(255, 255, 255, 0.64);
   box-shadow: none;
 }
@@ -170,7 +170,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #575757;
+  color: #675747;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
@@ -183,7 +183,7 @@ button {
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
-  color: #232323;
+  color: #242121;
   background: var(--brand);
   font-size: 12px;
   line-height: 1;
@@ -206,7 +206,7 @@ button {
 
 .step-heading h2 {
   margin: 0;
-  color: #282828;
+  color: #312820;
   font-size: 20px;
   line-height: 1.16;
   font-weight: 720;
@@ -216,7 +216,7 @@ button {
 .step-heading p {
   max-width: 640px;
   margin: 0;
-  color: #767676;
+  color: #857666;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -243,14 +243,14 @@ button {
 }
 
 .compact-step-copy strong {
-  color: #282828;
+  color: #312820;
   font-size: 13px;
   line-height: 1.2;
   font-weight: 700;
 }
 
 .compact-step-copy span {
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.25;
   overflow: hidden;
@@ -259,7 +259,7 @@ button {
 }
 
 .runtime-grid span {
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 600;
@@ -267,7 +267,7 @@ button {
 
 .runtime-grid strong {
   min-width: 0;
-  color: #282828;
+  color: #312820;
   font-size: 14px;
   line-height: 1.3;
   font-weight: 650;
@@ -310,7 +310,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #373737;
+  color: #43372b;
 }
 
 .panel-heading h2 {
@@ -330,7 +330,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #393939;
+  color: #45392e;
   background: #ffffff;
   cursor: pointer;
   transition:
@@ -345,7 +345,7 @@ button {
 
 .button:hover:not(:disabled) {
   border-color: rgba(30, 38, 52, 0.25);
-  background: #f6f6f6;
+  background: #f8f6f4;
 }
 
 .button:disabled {
@@ -354,7 +354,7 @@ button {
 }
 
 .button-primary {
-  color: #232323;
+  color: #242121;
   border-color: var(--brand);
   background: var(--brand);
 }
@@ -429,7 +429,7 @@ button {
 }
 
 .checkbox-row-meta {
-  color: #4c4c4c;
+  color: #5c4c3d;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 650;
@@ -471,7 +471,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #767676;
+  color: #857666;
 }
 
 .command-log-main {
@@ -498,7 +498,7 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #4c4c4c;
+  color: #5c4c3d;
 }
 
 .command-log-section-details > .command-log-section-title {
@@ -517,7 +517,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #767676;
+  color: #857666;
   transition: transform 120ms ease;
 }
 
@@ -546,7 +546,7 @@ button {
 }
 
 .key-value-list dt {
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.35;
   font-weight: 650;
@@ -555,7 +555,7 @@ button {
 
 .key-value-list dd {
   margin: 0;
-  color: #282828;
+  color: #312820;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -566,7 +566,7 @@ button {
 }
 
 .compact-empty {
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -578,8 +578,8 @@ button {
   border: 1px solid rgba(30, 38, 52, 0.08);
   border-radius: 7px;
   padding: 10px;
-  color: #282828;
-  background: #fafafa;
+  color: #312820;
+  background: #fcfaf8;
   overflow: auto;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
@@ -599,7 +599,7 @@ button {
   padding: 0;
   display: grid;
   gap: 0;
-  color: #393939;
+  color: #45392e;
   background: #ffffff;
   overflow: hidden;
   cursor: pointer;
@@ -610,7 +610,7 @@ button {
   max-height: 240px;
   display: block;
   object-fit: contain;
-  background: #1c1c1c;
+  background: #271c11;
 }
 
 .screenshot-thumbnail span {
@@ -638,19 +638,19 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: #fafafa;
+  background: #fcfaf8;
 }
 
 .visible-element-row span {
   min-width: 0;
-  color: #282828;
+  color: #312820;
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .visible-element-row code {
-  color: #575757;
+  color: #675747;
   font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
@@ -670,12 +670,12 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  background: #fafafa;
+  background: #fcfaf8;
 }
 
 .filesystem-directory-row span {
   min-width: 0;
-  color: #282828;
+  color: #312820;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -728,8 +728,8 @@ button {
   border: 1px solid rgba(30, 38, 52, 0.08);
   border-radius: 7px;
   padding: 8px 10px;
-  background: #fafafa;
-  color: #282828;
+  background: #fcfaf8;
+  color: #312820;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -739,12 +739,12 @@ button {
 }
 
 .mcp-config-input::placeholder {
-  color: #767676;
+  color: #857666;
   opacity: 0.78;
 }
 
 .raw-log-details summary {
-  color: #4c4c4c;
+  color: #5c4c3d;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
@@ -756,7 +756,7 @@ button {
 }
 
 .row-title {
-  color: #282828;
+  color: #312820;
   font-size: 14px;
   line-height: 1.35;
   font-weight: 650;
@@ -764,7 +764,7 @@ button {
 
 .row-meta {
   margin-top: 2px;
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.35;
 }
@@ -798,8 +798,8 @@ button {
 .automation-pill-unknown,
 .automation-pill-not_running,
 .automation-pill-not_installed {
-  color: #444444;
-  background: #f4f4f4;
+  color: #544434;
+  background: #f7f4f2;
 }
 
 .automation-pill-denied {
@@ -808,8 +808,8 @@ button {
 }
 
 .status-offline {
-  color: #4c4c4c;
-  background: #f2f2f2;
+  color: #5c4c3d;
+  background: #f6f2ee;
 }
 
 .status-connecting,
@@ -850,7 +850,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: #fafafa;
+  background: #fcfaf8;
 }
 
 .inline-alert {
@@ -911,13 +911,13 @@ button {
 }
 
 .runtime-error-header strong {
-  color: #282828;
+  color: #312820;
   font-size: 13px;
   line-height: 1.25;
 }
 
 .runtime-error-header span {
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.25;
 }
@@ -937,7 +937,7 @@ button {
 
 .runtime-error-section h3 {
   margin: 0;
-  color: #4c4c4c;
+  color: #5c4c3d;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
@@ -969,7 +969,7 @@ button {
   padding: 9px 10px;
   display: grid;
   gap: 6px;
-  background: #fafafa;
+  background: #fcfaf8;
 }
 
 .runtime-error-log-row div {
@@ -981,14 +981,14 @@ button {
 }
 
 .runtime-error-log-row strong {
-  color: #282828;
+  color: #312820;
   font-size: 12px;
   line-height: 1.25;
   font-weight: 700;
 }
 
 .runtime-error-log-row span {
-  color: #767676;
+  color: #857666;
   font-size: 11px;
   line-height: 1.25;
   text-align: right;
@@ -997,7 +997,7 @@ button {
 
 .runtime-error-log-row p {
   margin: 0;
-  color: #4c4c4c;
+  color: #5c4c3d;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -1013,7 +1013,7 @@ button {
   padding: 16px;
   display: flex;
   align-items: center;
-  color: #767676;
+  color: #857666;
   background: rgba(248, 250, 252, 0.7);
   font-size: 13px;
   line-height: 1.45;
@@ -1029,7 +1029,7 @@ button {
 
 .startup-loading-title {
   margin: 0;
-  color: #575757;
+  color: #675747;
   font-size: 15px;
   line-height: 1.2;
   font-weight: 600;
@@ -1157,7 +1157,7 @@ button {
 
 .hero-name {
   margin: 24px 0 0;
-  color: #181818;
+  color: #1d1814;
   font-size: 17px;
   line-height: 1.2;
   font-weight: 650;
@@ -1165,7 +1165,7 @@ button {
 }
 
 .hero-name-muted {
-  color: #5d5d5d;
+  color: #685d52;
 }
 
 .hero-substatus {
@@ -1173,7 +1173,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #a4a4a4;
+  color: #afa49a;
   font-size: 12.5px;
   line-height: 1.3;
 }
@@ -1183,7 +1183,7 @@ button {
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #c9c9c9;
+  background: #cfc9c3;
 }
 
 .status-dot.is-online {
@@ -1281,7 +1281,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #232323;
+  color: #242121;
   background: var(--brand);
   font-size: 13px;
   font-weight: 600;
@@ -1315,7 +1315,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #a4a4a4;
+  color: #afa49a;
   font-size: 12px;
   line-height: 1.3;
 }
@@ -1340,7 +1340,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #a4a4a4;
+  color: #afa49a;
   background: transparent;
   cursor: pointer;
   transition:
@@ -1350,7 +1350,7 @@ button {
 
 .footer-menu-trigger:hover,
 .footer-menu-trigger[aria-expanded="true"] {
-  color: #5d5d5d;
+  color: #685d52;
   background: rgba(20, 23, 29, 0.05);
 }
 
@@ -1377,7 +1377,7 @@ button {
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #393939;
+  color: #45392e;
   background: transparent;
   font-size: 13px;
   font-weight: 500;
@@ -1388,7 +1388,7 @@ button {
 }
 
 .footer-menu-item:hover:not(:disabled) {
-  background: #f6f6f6;
+  background: #f8f6f4;
 }
 
 .footer-menu-item.is-danger {
@@ -1431,7 +1431,7 @@ button {
 .arrival-label {
   position: relative;
   z-index: 1;
-  color: #232323;
+  color: #242121;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1527,14 +1527,14 @@ button {
 }
 
 .screenshot-lightbox-header strong {
-  color: #282828;
+  color: #312820;
   font-size: 13px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 .screenshot-lightbox-header span {
-  color: #767676;
+  color: #857666;
   font-size: 12px;
   line-height: 1.25;
 }
@@ -1545,7 +1545,7 @@ button {
   min-height: 0;
   display: block;
   object-fit: contain;
-  background: #1c1c1c;
+  background: #271c11;
 }
 
 .icon-only-button {
@@ -1556,13 +1556,13 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #393939;
+  color: #45392e;
   background: #ffffff;
   cursor: pointer;
 }
 
 .icon-only-button:hover {
-  background: #f6f6f6;
+  background: #f8f6f4;
 }
 
 @media (max-width: 760px) {

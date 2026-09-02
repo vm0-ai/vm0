@@ -10,7 +10,7 @@ import {
 
 const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(255, 165, 0)";
 // Amber is a light fill, so the label is Ink rather than white.
-const AUTH_V2_PRIMARY_TEXT_COLOR = "rgb(34, 34, 34)";
+const AUTH_V2_PRIMARY_TEXT_COLOR = "rgb(36, 34, 33)";
 const UNSUPPORTED_CHROME_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/110.0.0.0 Safari/537.36";
 
@@ -117,7 +117,7 @@ test("primary actions retain brand styling while links remain accessible", async
   await expect(continueButton).toHaveClass(/\btext-primary-foreground\b/);
   await expect(signInLink).toHaveClass(/\btext-brand-text\b/);
   await expectAccessibleLinkContrast(signInLink, root);
-  await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(34, 34, 34)");
+  await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(36, 34, 33)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -129,7 +129,7 @@ test("primary actions retain brand styling while links remain accessible", async
   await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
-    "rgb(247, 247, 247)",
+    "rgb(250, 245, 243)",
   );
 });
 

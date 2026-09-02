@@ -13,21 +13,25 @@
  * The two primitive scales below are the published palette:
  * https://zero-design-color.sites.vm0.io
  *
- * `--primary-*` carries Amber, whose brand stop is `--primary-300` (#ffa500)
- * rather than the 700 the old orange used, because that scale is adopted
- * stop-for-stop from the palette.
+ * `--gray-*` carries Sand, one neutral anchored at both ends (Linen and Ink) so
+ * the product has no cool grey. `--primary-*` carries Amber, whose brand stop is
+ * `--primary-300` (#ffa500) rather than the 700 the old orange used, because
+ * that scale is adopted stop-for-stop from the palette.
  *
- * `--gray-*` is achromatic: every stop is a true grey, R = G = B. The palette's
- * Sand ramp is warm, and warmth that reads as character on a swatch accumulates
- * across a full product -- page, chrome, fills, borders and text all leaning the
- * same way -- until the interface looks tinted rather than warm. The ramp keeps
- * Sand's lightness ladder and drops its chroma; the interaction layers are
- * neutral for the same reason, since a warm hover would put the cast straight
- * back on every row and menu item.
+ * Sand is the one deliberate deviation. As published, every one of its stops
+ * puts green *below* the midpoint of red and blue -- Linen is #faf5f3, whose
+ * green sits 1.5 under -- which reads as a magenta cast rather than as warmth.
+ * Each stop is therefore rotated to hue 30, where green lands on that midpoint.
+ * Rotating hue at fixed S and L cannot change chroma (C = (1-|2L-1|)*S has no
+ * hue term), so every stop keeps its exact lightness and its exact red-to-blue
+ * spread; only the green channel moves.
  *
- * The brand neutral #faf5f3 therefore no longer paints the ramp. It survives as
- * `--color-brand-linen` for surfaces that should read as brand rather than as
- * chrome.
+ * Linen itself is exempt: #faf5f3 is the brand colour and is pinned to its
+ * published value at `--gray-100` (and at the dark theme's `--gray-950`, which
+ * is the same stop). It therefore sits one unit of green below its rotated
+ * neighbours -- invisible at this chroma, and the point of the rotation was
+ * never one stop but the way the cast compounded across all twelve. The
+ * interaction ladder is solved against Linen, so it keeps Linen's hue too.
  *
  * Amber is a light fill: it takes Ink text, never white (8.09:1 vs 1.97:1).
  * That is why `--primary-foreground` is Ink in both themes.
@@ -127,11 +131,6 @@
    * brand appears as a wash behind text or as text itself, and keep the raw
    * stops for fills that already pair with `--primary-foreground`.
    * =================================== */
-  /* The brand neutral. The working ramp is achromatic, so this is the one
-     place #faf5f3 survives; reach for it on a surface that should read as
-     brand rather than as chrome. */
-  --color-brand-linen: #faf5f3;
-
   --color-brand-subtle: hsl(var(--brand-subtle));
   --color-brand-text: hsl(var(--brand-text));
   --color-brand-text-hover: hsl(var(--brand-text-hover));
@@ -285,30 +284,30 @@
     /* Background/Gray Color Scale (Sand — warm neutral, dual-anchored on
        Linen #FAF5F3 and Ink #242121). Only `--gray-0` is generated, above the
        published 50. */
-    --gray-0: 0 0% 98.8%; /* #FCFCFC */
-    --gray-50: 0 0% 97.7%; /* #F9F9F9 - default neutral fill */
-    --gray-100: 0 0% 96.7%; /* #F7F7F7 */
-    --gray-200: 0 0% 92.9%; /* #EDEDED */
-    --gray-300: 0 0% 86.9%; /* #DEDEDE */
-    --gray-400: 0 0% 84%; /* #D6D6D6 */
-    --gray-500: 0 0% 62.2%; /* #9F9F9F */
-    --gray-600: 0 0% 52.7%; /* #868686 */
-    --gray-700: 0 0% 42.9%; /* #6D6D6D */
-    --gray-800: 0 0% 33.1%; /* #545454 */
-    --gray-900: 0 0% 23.3%; /* #3B3B3B */
-    --gray-950: 0 0% 13.5%; /* #222222 - Ink */
+    --gray-0: 30 41.2% 98.8%; /* #FDFCFB */
+    --gray-50: 30 41.2% 97.7%; /* #FCF9F7 - default neutral fill */
+    --gray-100: 17.1 41.2% 96.7%; /* #FAF5F3 - Linen, brand colour (pinned) */
+    --gray-200: 30 16.7% 92.9%; /* #F0EDEA */
+    --gray-300: 30 7.5% 86.9%; /* #E0DEDB */
+    --gray-400: 30 2.9% 84%; /* #D7D6D5 */
+    --gray-500: 30 1.6% 62.2%; /* #A09F9D */
+    --gray-600: 30 1.2% 52.7%; /* #888685 */
+    --gray-700: 30 1.4% 42.9%; /* #6F6D6C */
+    --gray-800: 30 1.8% 33.1%; /* #565453 */
+    --gray-900: 30 2.5% 23.3%; /* #3D3B3A */
+    --gray-950: 30 4.3% 13.5%; /* #242221 - Ink */
 
     /* Divider Color */
-    --divider: 0 0% 94.8%; /* #F2F2F2 - between Sand 100 and 200 */
+    --divider: 30 25% 94.8%; /* #F5F2EE - between Sand 100 and 200 */
 
     /* Theme-aware Colors */
     --white: 0 0% 100%; /* #FFFFFF */
-    --black: 0 0% 13.5%; /* #222222 - Ink */
+    --black: 30 4.3% 13.5%; /* #242221 - Ink */
 
     /* Dialog scrim. Deliberately NOT theme-aware: --black inverts to #FFFFFF
        in dark, which would lighten the backdrop instead of dimming it. The
        dark theme reuses this value and only raises the alpha. */
-    --overlay: 0 0% 13.5%; /* #222222 - Ink */
+    --overlay: 30 4.3% 13.5%; /* #242221 - Ink */
 
     /* ===================================
      * Semantic Colors (Light Theme)
@@ -322,7 +321,7 @@
        The page itself is near-white on purpose: it is the largest surface in
        the product, and a tint that reads as warmth on a swatch reads as dirt
        across a full canvas. The warmth lives on the chrome and the fills. */
-    --background: 0 0% 99.4%; /* #FDFDFD - above gray-0 */
+    --background: 30 41.2% 99.4%; /* #FEFDFD - above gray-0 */
     --foreground: var(--gray-950); /* gray-950 */
 
     --card: var(--white); /* white */
@@ -334,7 +333,7 @@
     --primary: var(--primary-300); /* primary-300 - brand */
     /* Amber is a light fill and cannot carry white text (1.97:1). Ink clears
        8.09:1 and is the same in both themes, because the fill is too. */
-    --primary-foreground: 0 0% 13.5%; /* #222222 - Ink on brand */
+    --primary-foreground: 30 4.3% 13.5%; /* #242221 - Ink on brand */
 
     --secondary: 17.1 41.2% 96.7%; /* gray-100 - direct value for opacity modifier support */
     --secondary-foreground: var(--gray-950); /* gray-950 */
@@ -382,7 +381,7 @@
        desaturates as it darkens while a fixed layer holds its chroma, so the
        pressed step runs slightly warmer than gray-300 -- tune here if it ever
        reads too peach. */
-    --state-layer: 0 0% 37.3%;
+    --state-layer: 17.1 82.4% 33.3%;
 
     --state-hover-alpha: 5%;
     --state-selected-alpha: 8.5%;
@@ -394,7 +393,7 @@
     /* Segment control (light): white lifts off the gray-100 track. */
     --segment-selected: 0 0% 100%;
     --segment-selected-shadow:
-      0 1px 2px hsl(0 0% 13.5% / 0.06), 0 1px 3px hsl(0 0% 13.5% / 0.08);
+      0 1px 2px hsl(30 4.3% 13.5% / 0.06), 0 1px 3px hsl(30 4.3% 13.5% / 0.08);
 
     --radius: 0.5rem;
   }
@@ -430,28 +429,28 @@
        Every stop is generated along Sand's own hue path, so nothing here is
        off-palette -- 50 is Ink and 950 is Linen exactly, and 800 lands on
        Sand 500, the published dark muted text. */
-    --gray-0: 0 0% 10.5%; /* #1B1B1B - deepest page bg */
-    --gray-50: 0 0% 13.5%; /* #222222 - Ink, page bg */
-    --gray-100: 0 0% 18.5%; /* #2F2F2F - sidebar, popover */
-    --gray-200: 0 0% 22.5%; /* #393939 - border, input */
-    --gray-300: 0 0% 26.5%; /* #444444 - accent hover */
-    --gray-400: 0 0% 30.5%; /* #4E4E4E - stronger border */
-    --gray-500: 0 0% 36.5%; /* #5D5D5D */
-    --gray-600: 0 0% 45.5%; /* #747474 */
-    --gray-700: 0 0% 52.5%; /* #868686 */
+    --gray-0: 30 4.3% 10.5%; /* #1C1B1A - deepest page bg */
+    --gray-50: 30 4.3% 13.5%; /* #242221 - Ink, page bg */
+    --gray-100: 30 3.4% 18.5%; /* #312F2E - sidebar, popover */
+    --gray-200: 30 2.7% 22.5%; /* #3B3938 - border, input */
+    --gray-300: 30 2.3% 26.5%; /* #454442 - accent hover */
+    --gray-400: 30 2% 30.5%; /* #4F4E4C - stronger border */
+    --gray-500: 30 1.6% 36.5%; /* #5F5D5C */
+    --gray-600: 30 1.3% 45.5%; /* #767473 */
+    --gray-700: 30 1.2% 52.5%; /* #878684 */
     /* Raised from Sand 500 to clear 4.5:1 against `--muted`, which is the
        segment-control track and the densest place secondary text lands.
        On Sand 500 that pairing was 4.24:1 -- a failure this ramp inherited
        rather than introduced; the old cool ramp was 4.14:1. */
-    --gray-800: 0 0% 64.5%; /* #A4A4A4 */
-    --gray-900: 0 0% 81.5%; /* #D0D0D0 */
-    --gray-950: 0 0% 96.7%; /* #F7F7F7 */
+    --gray-800: 30 1.5% 64.5%; /* #A5A3A2 */
+    --gray-900: 30 4.1% 81.5%; /* #D2D0CE */
+    --gray-950: 17.1 41.2% 96.7%; /* #FAF5F3 - Linen, brand colour (pinned) */
 
     /* Divider Color (Dark) */
-    --divider: 0 0% 22%; /* #383838 */
+    --divider: 30 2.7% 22%; /* #3A3837 */
 
     /* Theme-aware Colors (Dark - inverted) */
-    --white: 0 0% 13.5%; /* #222222 - Ink */
+    --white: 30 4.3% 13.5%; /* #242221 - Ink */
     --black: 0 0% 100%; /* #FFFFFF */
 
     /* ===================================
@@ -468,7 +467,7 @@
 
     --primary: var(--primary-300); /* primary-300 - brand */
     /* Same Amber fill as light, so the same Ink text (8.09:1). */
-    --primary-foreground: 0 0% 13.5%; /* #222222 - Ink on brand */
+    --primary-foreground: 30 4.3% 13.5%; /* #242221 - Ink on brand */
 
     --secondary: 30 3.1% 20.5%; /* gray-200 (dark) - lighter than card for inner elements */
     --secondary-foreground: var(--gray-950); /* gray-950 */
@@ -486,7 +485,7 @@
     /* Coral 400 rather than light's Coral 700: a dark page needs the lighter
        stop to stay legible, and that stop flips the label to Ink (7.21:1). */
     --destructive: 13.1 100% 72.2%; /* #FF9071 - Coral 400 */
-    --destructive-foreground: 0 0% 13.5%; /* #222222 - Ink on Coral 400 */
+    --destructive-foreground: 30 4.3% 13.5%; /* #242221 - Ink on Coral 400 */
 
     --border: var(--gray-200); /* gray-200 - primary border color */
     --input: var(
@@ -522,7 +521,7 @@
        step, so the alphas are raised rather than mirrored. Sand's dark stops
        are a very quiet warm neutral, so the layer takes Linen's hue and stays
        just saturated enough to hold it as the alpha climbs. */
-    --state-layer: 0 0% 97%;
+    --state-layer: 17.1 100% 97%;
 
     --state-hover-alpha: 7%;
     --state-selected-alpha: 12%;
