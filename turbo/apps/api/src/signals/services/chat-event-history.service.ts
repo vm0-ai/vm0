@@ -11,7 +11,10 @@ import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 
 import type { Db } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
-import { decodeChatEventSnapshotBody } from "./chat-event-snapshot-body.service";
+import {
+  decodeChatEventSnapshotBody,
+  validateChatEventSnapshotRows,
+} from "./chat-event-snapshot-body.service";
 import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
 
 const gunzipAsync = promisify(gunzip);
@@ -79,6 +82,7 @@ function decodeSnapshotRows(
   },
 ): readonly ChatEventRow[] {
   const rows = decodeChatEventSnapshotBody(body);
+  validateChatEventSnapshotRows(rows);
   let previousSeqId: number | null = null;
   for (const row of rows) {
     if (
