@@ -416,13 +416,11 @@
         "agents": "एजेंटों",
         "artifacts": "आर्टिफ़ैक्ट्स",
         "connectors": "कनेक्टर्स",
-        "newChat": "नई चैट",
         "settings": "सेटिंग्स",
         "workflows": "वर्कफ़्लो",
         "works": "जहां {{agentName}} काम करता है"
       },
       "rail": {
-        "new": "नया",
         "workflows": "वर्कफ़्लो",
         "works": "काम करता है"
       },

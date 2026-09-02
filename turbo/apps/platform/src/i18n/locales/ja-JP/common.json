@@ -416,13 +416,11 @@
         "agents": "エージェント",
         "artifacts": "アーティファクト",
         "connectors": "コネクター",
-        "newChat": "新しいチャット",
         "settings": "設定",
         "workflows": "ワークフロー",
         "works": "{{agentName}}の連携先"
       },
       "rail": {
-        "new": "新しい",
         "workflows": "ワークフロー",
         "works": "連携先"
       },

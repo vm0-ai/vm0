@@ -416,13 +416,11 @@
         "agents": "Agents",
         "artifacts": "Artifacts",
         "connectors": "Connectors",
-        "newChat": "New chat",
         "settings": "Settings",
         "workflows": "Workflows",
         "works": "Where {{agentName}} works"
       },
       "rail": {
-        "new": "New",
         "workflows": "Workflows",
         "works": "Channels"
       },

@@ -6,7 +6,7 @@ import {
   Package,
   Route,
   Users,
-  Edit,
+  MessageCircle,
   ChevronRight,
   PanelLeftClose,
   Plug,
@@ -57,13 +57,6 @@ import {
 } from "./sidebar-pinned.tsx";
 import { ThreeColumnSearchDialog } from "./sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
-import { rootSignal$ } from "../../signals/root-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import {
-  createNewChatThread$,
-  newChatThreadDisabled$,
-} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
@@ -471,7 +464,7 @@ function LabeledRailLink({
     switch (id) {
       case "chat": {
         return t(($) => {
-          return $.appShell.sidebar.rail.new;
+          return $.appShell.sidebar.chat;
         });
       }
       case "workflows": {
@@ -610,9 +603,9 @@ function LabeledNavRail() {
       activeKeys: ["home", "agentChat", "agentIdeas", "chat"],
       pathname: "/",
       label: t(($) => {
-        return $.appShell.sidebar.navigation.newChat;
+        return $.appShell.sidebar.chat;
       }),
-      icon: Edit as NavIcon,
+      icon: MessageCircle as NavIcon,
     },
     ...manageNav,
     ...footerNav,
@@ -701,28 +694,12 @@ function ThreeColumnSearchDialogContainer() {
 }
 
 function ChatListColumn() {
-  const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const createNewChat = useSet(createNewChatThread$);
-  const newChatDisabled = useGet(newChatThreadDisabled$);
-  const rootSignal = useGet(rootSignal$);
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
   const { t } = useTranslation();
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchWorkspace;
   });
   const searchShortcutLabel = getShortcutLabel("mod+k");
-  const newChatLabel = t(($) => {
-    return $.appShell.sidebar.navigation.newChat;
-  });
-  const onNewChat = () => {
-    if (!currentChatAgentId) {
-      return;
-    }
-    detach(
-      createNewChat(currentChatAgentId, "main", rootSignal),
-      Reason.DomCallback,
-    );
-  };
   return (
     <aside
       data-testid="chat-list-column"
@@ -756,24 +733,6 @@ function ChatListColumn() {
                 {searchLabel}
                 <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
               </p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                onClick={onNewChat}
-                disabled={!currentChatAgentId || newChatDisabled}
-                aria-label={newChatLabel}
-                variant="quiet"
-                size="icon-sm"
-                iconSize="md"
-              >
-                <Edit size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{newChatLabel}</p>
             </TooltipContent>
           </Tooltip>
           <ThreeColumnChatListToggle hidden={false} tooltipSide="bottom" />

@@ -3318,7 +3318,7 @@ describe("zero sidebar", () => {
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
   });
 
-  it("renders the three-column navigation", async () => {
+  it("renders the three-column chat navigation and actions", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
@@ -3331,6 +3331,11 @@ describe("zero sidebar", () => {
     });
 
     // Labeled icon rail carries text captions for its nav destinations.
+    const chatLink = within(rail).getByLabelText("Chat");
+    expect(within(rail).getByText("Chat")).toBeInTheDocument();
+    expect(
+      chatLink.querySelector(".lucide-message-circle"),
+    ).toBeInTheDocument();
     expect(within(rail).getByText("Agents")).toBeInTheDocument();
     expect(within(rail).getByText("Connectors")).toBeInTheDocument();
 
@@ -3339,11 +3344,13 @@ describe("zero sidebar", () => {
     expect(within(list).getByText("Chat")).toBeInTheDocument();
     const searchButton = within(list).getByLabelText("Search workspace");
     const newChatButton = within(list).getByLabelText("New chat");
+    const chatThreadsTitle = within(list).getByText("Chats with Zero");
     expect(searchButton).toHaveAttribute(
       "aria-keyshortcuts",
       "Meta+K Control+K",
     );
-    expect(newChatButton).toBeInTheDocument();
+    expect(chatThreadsTitle.parentElement).toContainElement(newChatButton);
+    expect(newChatButton.querySelector(".lucide-plus")).toBeInTheDocument();
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
@@ -3381,7 +3388,7 @@ describe("zero sidebar", () => {
     expect(upgradeSlot).toHaveClass("empty:hidden");
   });
 
-  it("keeps the new-chat rail responsive across consecutive clicks", async () => {
+  it("keeps the chat rail responsive across consecutive clicks", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Existing conversation"),
@@ -3399,14 +3406,14 @@ describe("zero sidebar", () => {
         "Existing conversation",
       ),
     ).toBeInTheDocument();
-    const newChatLink = within(rail).getByLabelText("New chat");
-    click(newChatLink);
+    const chatLink = within(rail).getByLabelText("Chat");
+    click(chatLink);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
     click(
-      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("New chat"),
+      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("Chat"),
     );
 
     await waitFor(() => {
