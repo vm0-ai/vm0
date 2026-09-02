@@ -828,6 +828,19 @@ describe("chat inline feedback", () => {
     await user.click(
       screen.getByRole("combobox", { name: "Translation language" }),
     );
+    const languageListbox = await screen.findByRole("listbox");
+    const languageMenu = languageListbox.closest(
+      "[data-chat-selection-interaction]",
+    );
+    if (!(languageMenu instanceof HTMLElement)) {
+      throw new Error("Translation language menu is not available");
+    }
+    fireEvent.scroll(languageMenu);
+    expect(
+      screen.getByText("Gardez la liste de lancement courte et exploitable."),
+    ).toBeInTheDocument();
+    expect(languageListbox).toBeInTheDocument();
+
     await user.click(await screen.findByRole("option", { name: "简体中文" }));
     await waitFor(() => {
       expect(preferenceUpdates).toContainEqual({
