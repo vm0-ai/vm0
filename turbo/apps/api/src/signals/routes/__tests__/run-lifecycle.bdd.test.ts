@@ -9590,7 +9590,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("uses exact runtime projections and authoritative fallback for builtin sync", async () => {
+  it("uses exact runtime projections and authoritative fallback for mixed sync", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     mockEnv(
@@ -9614,6 +9614,63 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["lark"]);
 
+    const permissionedCustom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_runtime-projection-permissioned-${randomUUID().slice(0, 8)}`,
+        displayName: "Runtime Projection Permissioned",
+        prefixTemplates: [
+          "https://runtime-projection-permissioned.example.test/api/",
+        ],
+        permissionBundleRef: "builtin:slack@1",
+      }),
+    );
+    const plainCustom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_runtime-projection-plain-${randomUUID().slice(0, 8)}`,
+        displayName: "Runtime Projection Plain",
+        prefixTemplates: ["https://runtime-projection-plain.example.test/api/"],
+      }),
+    );
+    onTestFinished(async () => {
+      await installApiTestConnectorCatalog();
+      await connectors.deleteCustomConnector(
+        actor,
+        permissionedCustom.id,
+        [204, 404],
+      );
+      await connectors.deleteCustomConnector(actor, plainCustom.id, [204, 404]);
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      permissionedCustom.id,
+      "permissioned-runtime-token",
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      plainCustom.id,
+      "plain-runtime-token",
+    );
+    const customGrants = [
+      {
+        customConnectorId: permissionedCustom.id,
+        permissionNames: ["chat:write"],
+      },
+      { customConnectorId: plainCustom.id, permissionNames: [] },
+    ];
+    const customGrantResponse =
+      await connectors.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agentId,
+        customGrants,
+        [200],
+      );
+    if (customGrantResponse.status !== 200) {
+      throw new Error("Expected custom connector grants to succeed");
+    }
+    expect(customGrantResponse.body.grants).toStrictEqual(customGrants);
+
     const run = await api.createRun(actor, {
       agentId,
       prompt: "refresh lark through exact runtime projections",
@@ -9628,35 +9685,107 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       throw new Error("Expected the lark runtime target");
     }
     expect(larkTarget.sourceId).toBe(connected.id);
+    const permissionedTarget = customConnectorRuntimeRegistration(
+      claim,
+      permissionedCustom.id,
+    );
+    const plainTarget = customConnectorRuntimeRegistration(
+      claim,
+      plainCustom.id,
+    );
+    const mixedTargets = [larkTarget, permissionedTarget, plainTarget];
 
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-runtime-sync-projection-${randomUUID()}`,
       runtimeProjection: true,
     });
-    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("figma");
     await corruptApiTestConnectorCatalogActiveSnapshotPayload();
 
-    const [projectedRuntime] = await api.syncConnectorRuntime(run.runId, {
-      targets: [larkTarget],
-    });
-    expect(projectedRuntime).toMatchObject({
+    const [projectedBuiltin, projectedPermissioned, projectedPlain] =
+      await api.syncConnectorRuntime(run.runId, {
+        targets: mixedTargets,
+      });
+    expect(projectedBuiltin).toMatchObject({
       target: { kind: "builtin", connectorSlug: "lark" },
       state: "available",
+    });
+    const permissionedRuntime = availableCustomConnectorRuntime(
+      projectedPermissioned,
+    );
+    expect(permissionedRuntime).toMatchObject({
+      target: {
+        kind: "custom",
+        customConnectorId: permissionedCustom.id,
+      },
+      firewall: { sourceId: permissionedTarget.sourceId },
+      baseUrlVars: {},
+    });
+    expect(
+      permissionedRuntime.firewall.firewall.apis[0]?.permissions,
+    ).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(permissionedRuntime.networkPolicy.allow).toContain("chat:write");
+    expect(permissionedRuntime.networkPolicy.deny.length).toBeGreaterThan(0);
+    expect(permissionedRuntime.networkPolicy.unknownPolicy).toBe("deny");
+    const plainRuntime = availableCustomConnectorRuntime(projectedPlain);
+    expect(plainRuntime).toMatchObject({
+      target: { kind: "custom", customConnectorId: plainCustom.id },
+      firewall: { sourceId: plainTarget.sourceId },
+      baseUrlVars: {},
+    });
+    expect(plainRuntime.firewall.firewall.apis[0]?.permissions).toStrictEqual(
+      [],
+    );
+    const [projectedPlainOnly] = await api.syncConnectorRuntime(run.runId, {
+      targets: [plainTarget],
+    });
+    expect(availableCustomConnectorRuntime(projectedPlainOnly)).toMatchObject({
+      target: { kind: "custom", customConnectorId: plainCustom.id },
+      firewall: { sourceId: plainTarget.sourceId },
+      baseUrlVars: {},
     });
 
     await installApiTestConnectorCatalog({
       catalogVersion: `api-test-runtime-sync-fallback-${randomUUID()}`,
       runtimeProjection: true,
     });
-    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("lark");
+    await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
 
-    const [fallbackRuntime] = await api.syncConnectorRuntime(run.runId, {
-      targets: [larkTarget],
+    const fallbackRuntimes = await api.syncConnectorRuntime(run.runId, {
+      targets: mixedTargets,
     });
-    expect(fallbackRuntime).toMatchObject({
-      target: { kind: "builtin", connectorSlug: "lark" },
-      state: "available",
-    });
+    expect(fallbackRuntimes).toMatchObject([
+      {
+        target: { kind: "builtin", connectorSlug: "lark" },
+        state: "available",
+      },
+      {
+        target: {
+          kind: "custom",
+          customConnectorId: permissionedCustom.id,
+        },
+        state: "available",
+        firewall: { sourceId: permissionedTarget.sourceId },
+        baseUrlVars: {},
+      },
+      {
+        target: { kind: "custom", customConnectorId: plainCustom.id },
+        state: "available",
+        firewall: { sourceId: plainTarget.sourceId },
+        baseUrlVars: {},
+      },
+    ]);
+    const fallbackPermissioned = availableCustomConnectorRuntime(
+      fallbackRuntimes[1],
+    );
+    expect(fallbackPermissioned.networkPolicy).toStrictEqual(
+      permissionedRuntime.networkPolicy,
+    );
+    expect(
+      fallbackPermissioned.firewall.firewall.apis[0]?.permissions,
+    ).toStrictEqual(permissionedRuntime.firewall.firewall.apis[0]?.permissions);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
