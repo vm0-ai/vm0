@@ -507,11 +507,32 @@ interface ArtifactDownload {
   readonly media: SniffedMedia | null;
 }
 
+async function readMediaHead(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  while (bufferedBytes < MEDIA_SNIFF_BYTES) {
+    const next = await reader.read();
+    signal.throwIfAborted();
+    if (next.done) {
+      break;
+    }
+    chunks.push(next.value);
+    bufferedBytes += next.value.byteLength;
+  }
+  return concatChunks(chunks, bufferedBytes);
+}
+
 /**
  * Start the artifact download and read just enough of it to identify the
  * container. The filename and content type are decided from this before the
  * artifact object is allocated, and the same open stream then carries the whole
  * body into R2, so the artifact is fetched exactly once.
+ *
+ * The caller owns the returned reader and must cancel it on every path that
+ * does not hand it to `streamDownloadToArtifact$`.
  */
 async function openArtifactDownload(
   downloadUrl: string,
@@ -531,18 +552,9 @@ async function openArtifactDownload(
     throw new Error("SocialKit artifact exceeds the 2 GiB limit");
   }
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bufferedBytes = 0;
-  while (bufferedBytes < MEDIA_SNIFF_BYTES) {
-    const next = await reader.read();
-    signal.throwIfAborted();
-    if (next.done) {
-      break;
-    }
-    chunks.push(next.value);
-    bufferedBytes += next.value.byteLength;
-  }
-  const head = concatChunks(chunks, bufferedBytes);
+  const head = await onRejection(readMediaHead(reader, signal), () => {
+    startUntrackedBestEffortCleanup(reader.cancel());
+  });
   return { reader, head, media: sniffMedia(head) };
 }
 
@@ -1055,6 +1067,12 @@ const persistAndSettleSocialKitDownloadUsage$ = command(
   },
 );
 
+interface StoredArtifactObject {
+  readonly key: string;
+  readonly url: string;
+  readonly sizeBytes: number;
+}
+
 const materializeSocialKitArtifact$ = command(
   async (
     { set },
@@ -1089,55 +1107,65 @@ const materializeSocialKitArtifact$ = command(
     const contentType =
       media?.contentType ??
       (args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4");
-    const existing = await set(
-      resolveArtifactObject$,
-      {
-        userId: args.job.userId,
-        id: args.job.id,
-        filenameHint: filename,
-        variant: "socialkit",
+    // The artifact key is derived from the sniffed extension, so the download
+    // must already be open before an object stored by an earlier attempt can be
+    // looked up. Every retry re-polls the provider and gets a fresh
+    // `downloadUrl`, so reopening it on a recovery pass costs one request
+    // rather than depending on a link that has since expired.
+    const stored = await onRejection(
+      (async (): Promise<StoredArtifactObject> => {
+        const existing = await set(
+          resolveArtifactObject$,
+          {
+            userId: args.job.userId,
+            id: args.job.id,
+            filenameHint: filename,
+            variant: "socialkit",
+          },
+          signal,
+        );
+        if (existing) {
+          // A previous attempt already stored this object, so drop the stream
+          // instead of downloading a body nothing will consume.
+          startUntrackedBestEffortCleanup(download.reader.cancel());
+          return {
+            key: existing.key,
+            url: existing.url,
+            sizeBytes: existing.size,
+          };
+        }
+        const location = await set(
+          allocateArtifactObject$,
+          {
+            userId: args.job.userId,
+            id: args.job.id,
+            variant: "socialkit",
+            filename,
+            publicBrand: args.job.publicBrand,
+          },
+          signal,
+        );
+        const sizeBytes = await set(
+          streamDownloadToArtifact$,
+          {
+            download,
+            bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+            key: location.key,
+            contentType,
+            metadata: location.metadata,
+          },
+          signal,
+        );
+        return { key: location.key, url: location.url, sizeBytes };
+      })(),
+      () => {
+        // `streamDownloadToArtifact$` cancels the reader on its own failures.
+        // This covers the window before it takes ownership, where a rejected
+        // lookup or allocation would otherwise leave the response body open.
+        startUntrackedBestEffortCleanup(download.reader.cancel());
       },
-      signal,
     );
-    let stored: {
-      readonly key: string;
-      readonly url: string;
-      readonly sizeBytes: number;
-    };
-    if (existing) {
-      // A previous attempt already stored this object, so drop the stream
-      // instead of downloading a body nothing will consume.
-      startUntrackedBestEffortCleanup(download.reader.cancel());
-      stored = {
-        key: existing.key,
-        url: existing.url,
-        sizeBytes: existing.size,
-      };
-    } else {
-      const location = await set(
-        allocateArtifactObject$,
-        {
-          userId: args.job.userId,
-          id: args.job.id,
-          variant: "socialkit",
-          filename,
-          publicBrand: args.job.publicBrand,
-        },
-        signal,
-      );
-      const sizeBytes = await set(
-        streamDownloadToArtifact$,
-        {
-          download,
-          bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-          key: location.key,
-          contentType,
-          metadata: location.metadata,
-        },
-        signal,
-      );
-      stored = { key: location.key, url: location.url, sizeBytes };
-    }
+    signal.throwIfAborted();
     const artifact = {
       id: args.job.id,
       url: stored.url,
