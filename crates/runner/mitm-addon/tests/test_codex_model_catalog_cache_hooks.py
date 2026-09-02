@@ -206,6 +206,46 @@ async def test_fully_percent_encoded_maximum_catalog_query_reuses_canonical_cach
 
 
 @pytest.mark.parametrize(
+    "raw_query",
+    [
+        pytest.param("client_version=%FF", id="invalid-value-ff"),
+        pytest.param("client_version=%FE", id="invalid-value-fe"),
+        pytest.param("client_version=bad\udcff", id="surrogate-value"),
+        pytest.param("%FF=0.145.0", id="invalid-name"),
+    ],
+)
+async def test_invalid_utf8_catalog_query_never_reuses_or_populates_cache(
+    real_flow,
+    raw_query: str,
+):
+    valid_flow = catalog_flow(real_flow, version="\ufffd")
+    await install_catalog(valid_flow)
+    catalog_cache.release_flow_state(valid_flow)
+
+    invalid_flow = catalog_flow(real_flow)
+    _set_catalog_query(invalid_flow, raw_query)
+
+    await catalog_cache.prepare_request(invalid_flow, request_end_stream=True)
+
+    assert invalid_flow.response is None
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(invalid_flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_url",
+    }
+
+    invalid_flow.response = catalog_response(body=b'{"models":[{"slug":"invalid"}]}')
+    assert await finish_response(invalid_flow) == telemetry
+
+    valid_hit = catalog_flow(real_flow, version="\ufffd")
+    await catalog_cache.prepare_request(valid_hit, request_end_stream=True)
+
+    assert valid_hit.response is not None
+    assert valid_hit.response.content == CATALOG_BODY
+
+
+@pytest.mark.parametrize(
     ("raw_query", "character_bounded"),
     [
         pytest.param(
@@ -270,6 +310,8 @@ async def test_high_cardinality_catalog_query_bypasses_before_percent_decoding(r
         raw_query,
         keep_blank_values=True,
         strict_parsing=True,
+        encoding="utf-8",
+        errors="strict",
         max_num_fields=catalog_cache.MAX_CATALOG_QUERY_FIELDS,
     )
     assert flow.response is None

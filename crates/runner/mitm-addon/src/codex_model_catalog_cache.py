@@ -328,6 +328,8 @@ def _catalog_url(original_url: str) -> str | None:
             raw_query,
             keep_blank_values=True,
             strict_parsing=True,
+            encoding="utf-8",
+            errors="strict",
             max_num_fields=MAX_CATALOG_QUERY_FIELDS,
         )
     except ValueError:
@@ -335,13 +337,15 @@ def _catalog_url(original_url: str) -> str | None:
     if len(query) != MAX_CATALOG_QUERY_FIELDS or query[0][0] != _CLIENT_VERSION_QUERY_NAME:
         return None
     client_version = query[0][1]
-    if (
-        not client_version
-        or len(client_version.encode()) > _MAX_CLIENT_VERSION_BYTES
-        or any(
-            ord(character) < _ASCII_CONTROL_BOUNDARY or ord(character) == _ASCII_DELETE
-            for character in client_version
-        )
+    if not client_version:
+        return None
+    try:
+        encoded_client_version = client_version.encode()
+    except UnicodeEncodeError:
+        return None
+    if len(encoded_client_version) > _MAX_CLIENT_VERSION_BYTES or any(
+        ord(character) < _ASCII_CONTROL_BOUNDARY or ord(character) == _ASCII_DELETE
+        for character in client_version
     ):
         return None
     encoded_version = urllib.parse.quote(client_version, safe="")
