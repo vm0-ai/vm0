@@ -146,6 +146,11 @@ const startFeishuAccountOAuth$ = command(
     if ("status" in oauth) {
       return { kind: "installation_not_found" };
     }
+    if (oauth.result !== "authorization") {
+      throw new Error(
+        "Feishu Custom OAuth unexpectedly completed without OAuth",
+      );
+    }
     return {
       kind: "success",
       authorizationUrl: oauth.authorizationUrl,

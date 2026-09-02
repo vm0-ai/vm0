@@ -733,6 +733,11 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
           [200],
         );
         signal.throwIfAborted();
+        if (result.body.result !== "authorization") {
+          throw new Error(
+            "The current connector flow expected OAuth authorization",
+          );
+        }
         expectedConnectionId = result.body.connectionId ?? null;
         authWindow.location.href = result.body.authorizationUrl;
         navigated = true;

@@ -2519,7 +2519,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "3d78e7fdc88339a81ea83a1dff647a4b",
+    bodyHash: "38dbed0f0e2d06ff139fcdcc17c87344",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
     kind: "f",
@@ -3865,9 +3865,9 @@ async function validateCustomConnectorOauthModeConstraints(
       $3,
       $4,
       '[]'::jsonb,
-      '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
       '[]'::jsonb,
-      'oauth',
+      '[]'::jsonb,
+      'automatic',
       'automatic',
       'https://mcp.example.test',
       'streamable-http',
@@ -3967,6 +3967,28 @@ async function validateCustomConnectorOauthModeConstraints(
       "Migration Other Automatic OAuth Connector",
       fixture.createdBy,
     ]);
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        INSERT INTO "org_custom_connectors" (
+          "id", "org_id", "slug", "display_name", "fields",
+          "header_injections", "query_injections", "auth_mode",
+          "oauth_setup", "mcp_endpoint", "mcp_transport", "created_by"
+        ) VALUES (
+          $1, $2, '_migration_legacy_automatic',
+          'Migration Legacy Automatic Connector', '[]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
+          '[]'::jsonb, 'oauth', 'automatic',
+          'https://mcp.example.test', 'streamable-http', $3
+        )
+      `,
+      values: [
+        fixture.invalidOauthConnectorId,
+        fixture.orgId,
+        fixture.createdBy,
+      ],
+    });
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
@@ -4099,6 +4121,16 @@ async function validateCustomConnectorOauthModeConstraints(
       query: `
         UPDATE "org_custom_connectors"
         SET "mcp_endpoint" = NULL, "mcp_transport" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.automaticConnectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "header_injections" =
+          '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb
         WHERE "id" = $1
       `,
       values: [fixture.automaticConnectorId],
@@ -4291,7 +4323,7 @@ async function validateCustomConnectorOauthModeConstraints(
   }
 
   console.log(
-    "   ✅ OAuth setup variants, old-writer transitions, bindings, and cascades preserve strict ownership\n",
+    "   ✅ OAuth and Automatic modes, old-writer transitions, bindings, and cascades preserve strict ownership\n",
   );
 }
 

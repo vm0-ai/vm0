@@ -16,6 +16,7 @@ import {
   type CustomConnectorAuthMode,
 } from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
+import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-connector-oauth-config";
@@ -53,6 +54,7 @@ import {
   connectorCredentialStorageIsCompatible,
   resolveStoredConnectorRuntimeMethod,
 } from "./connector-credential-access.service";
+import { customConnectorAccountAuthMethodIsCompatible } from "./custom-connector-credential-access.service";
 import {
   connectorCredentialReconnectReasonWithMethod,
   connectorCredentialStatusForAccess,
@@ -67,6 +69,7 @@ const log = logger("connector-account-lifecycle");
 
 const accessTokenSecret = alias(secrets, "connector_account_access_token");
 const refreshTokenSecret = alias(secrets, "connector_account_refresh_token");
+const idTokenSecret = alias(secrets, "connector_account_id_token");
 const oauthScopesSchema = z.array(z.string());
 const cursorSchema = z
   .object({
@@ -120,6 +123,9 @@ function accountSelection() {
     providerAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
     accessTokenId: accessTokenSecret.id,
     refreshTokenId: refreshTokenSecret.id,
+    idTokenId: idTokenSecret.id,
+    automaticOAuthBindingId:
+      customConnectorAccountOauthBindings.connectorAccountId,
   };
 }
 
@@ -147,17 +153,39 @@ function parseOauthScopes(value: string | null): string[] | null {
   return value === null ? null : oauthScopesSchema.parse(JSON.parse(value));
 }
 
-function customConnectorHasRequiredCredentialMaterial(
-  authMode: CustomConnectorAuthMode,
-  hasAccessToken: boolean,
-): boolean {
-  switch (authMode) {
-    case "none":
+function customConnectorHasRequiredCredentialMaterial(args: {
+  readonly definitionAuthMode: CustomConnectorAuthMode;
+  readonly storedAuthMethod: string;
+  readonly hasAccessToken: boolean;
+  readonly hasRefreshToken: boolean;
+  readonly hasIdToken: boolean;
+  readonly hasAutomaticOAuthBinding: boolean;
+  readonly hasTokenExpiry: boolean;
+}): boolean {
+  if (args.definitionAuthMode === "automatic") {
+    return args.storedAuthMethod === "oauth"
+      ? args.hasAccessToken && args.hasAutomaticOAuthBinding
+      : !args.hasAccessToken &&
+          !args.hasRefreshToken &&
+          !args.hasIdToken &&
+          !args.hasAutomaticOAuthBinding &&
+          !args.hasTokenExpiry;
+  }
+  switch (args.definitionAuthMode) {
+    case "none": {
+      return (
+        !args.hasAccessToken &&
+        !args.hasRefreshToken &&
+        !args.hasIdToken &&
+        !args.hasAutomaticOAuthBinding &&
+        !args.hasTokenExpiry
+      );
+    }
     case "manual": {
       return true;
     }
     case "oauth": {
-      return hasAccessToken;
+      return args.hasAccessToken && !args.hasAutomaticOAuthBinding;
     }
   }
 }
@@ -248,6 +276,26 @@ async function loadConnectorAccountRows(
         eq(refreshTokenSecret.name, "refresh_token"),
       ),
     )
+    .leftJoin(
+      idTokenSecret,
+      and(
+        eq(idTokenSecret.connectorId, connectors.id),
+        eq(idTokenSecret.name, "id_token"),
+      ),
+    )
+    .leftJoin(
+      customConnectorAccountOauthBindings,
+      and(
+        eq(
+          customConnectorAccountOauthBindings.connectorAccountId,
+          connectors.id,
+        ),
+        eq(
+          customConnectorAccountOauthBindings.customConnectorId,
+          orgCustomConnectors.id,
+        ),
+      ),
+    )
     .where(
       and(
         eq(connectors.orgId, args.orgId),
@@ -274,11 +322,20 @@ async function loadConnectorAccountSummaryGroups(
     isNotNull(connectors.tokenExpiresAt),
     lte(connectors.tokenExpiresAt, sql`clock_timestamp()`),
   )} THEN TRUE ELSE FALSE END`.mapWith(pgBooleanDecoder);
+  const hasTokenExpiry = sql`CASE WHEN ${isNotNull(
+    connectors.tokenExpiresAt,
+  )} THEN TRUE ELSE FALSE END`.mapWith(pgBooleanDecoder);
   const hasAccessToken = sql`CASE WHEN ${isNotNull(
     accessTokenSecret.id,
   )} THEN TRUE ELSE FALSE END`.mapWith(pgBooleanDecoder);
   const hasRefreshToken = sql`CASE WHEN ${isNotNull(
     refreshTokenSecret.id,
+  )} THEN TRUE ELSE FALSE END`.mapWith(pgBooleanDecoder);
+  const hasIdToken = sql`CASE WHEN ${isNotNull(
+    idTokenSecret.id,
+  )} THEN TRUE ELSE FALSE END`.mapWith(pgBooleanDecoder);
+  const hasAutomaticOAuthBinding = sql`CASE WHEN ${isNotNull(
+    customConnectorAccountOauthBindings.connectorAccountId,
   )} THEN TRUE ELSE FALSE END`.mapWith(pgBooleanDecoder);
   return await db
     .select({
@@ -291,8 +348,11 @@ async function loadConnectorAccountSummaryGroups(
       definitionStorageVersion: orgCustomConnectors.storageVersion,
       providerAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
       tokenExpired,
+      hasTokenExpiry,
       hasAccessToken,
       hasRefreshToken,
+      hasIdToken,
+      hasAutomaticOAuthBinding,
       accountCount: count(),
     })
     .from(connectors)
@@ -324,6 +384,26 @@ async function loadConnectorAccountSummaryGroups(
         eq(refreshTokenSecret.name, "refresh_token"),
       ),
     )
+    .leftJoin(
+      idTokenSecret,
+      and(
+        eq(idTokenSecret.connectorId, connectors.id),
+        eq(idTokenSecret.name, "id_token"),
+      ),
+    )
+    .leftJoin(
+      customConnectorAccountOauthBindings,
+      and(
+        eq(
+          customConnectorAccountOauthBindings.connectorAccountId,
+          connectors.id,
+        ),
+        eq(
+          customConnectorAccountOauthBindings.customConnectorId,
+          orgCustomConnectors.id,
+        ),
+      ),
+    )
     .where(
       and(eq(connectors.orgId, args.orgId), eq(connectors.userId, args.userId)),
     )
@@ -337,8 +417,11 @@ async function loadConnectorAccountSummaryGroups(
       orgCustomConnectors.storageVersion,
       orgCustomConnectorOauthConfigs.providerAdapter,
       tokenExpired,
+      hasTokenExpiry,
       hasAccessToken,
       hasRefreshToken,
+      hasIdToken,
+      hasAutomaticOAuthBinding,
     );
 }
 
@@ -455,20 +538,26 @@ function customConnection(
     return null;
   }
   const contractCurrent =
-    row.authMethod === row.definitionAuthMode &&
-    row.storageVersion === row.definitionStorageVersion;
+    customConnectorAccountAuthMethodIsCompatible(
+      row.definitionAuthMode,
+      row.authMethod,
+    ) && row.storageVersion === row.definitionStorageVersion;
   const credentialStatus = connectorCredentialStatusForAccess({
     storedNeedsReconnect: row.needsReconnect,
-    tokenExpiresAt:
-      row.definitionAuthMode === "oauth" ? row.tokenExpiresAt : null,
+    tokenExpiresAt: row.authMethod === "oauth" ? row.tokenExpiresAt : null,
     now,
     isRefreshable: row.refreshTokenId !== null,
   });
   const hasRequiredCredentialMaterial =
-    customConnectorHasRequiredCredentialMaterial(
-      row.definitionAuthMode,
-      row.accessTokenId !== null,
-    );
+    customConnectorHasRequiredCredentialMaterial({
+      definitionAuthMode: row.definitionAuthMode,
+      storedAuthMethod: row.authMethod,
+      hasAccessToken: row.accessTokenId !== null,
+      hasRefreshToken: row.refreshTokenId !== null,
+      hasIdToken: row.idTokenId !== null,
+      hasAutomaticOAuthBinding: row.automaticOAuthBindingId !== null,
+      hasTokenExpiry: row.tokenExpiresAt !== null,
+    });
   const connectionStatus =
     contractCurrent &&
     credentialStatus === "available" &&
@@ -569,19 +658,26 @@ function projectSummaryGroup(
     return null;
   }
   const contractCurrent =
-    row.authMethod === row.definitionAuthMode &&
-    row.storageVersion === row.definitionStorageVersion;
+    customConnectorAccountAuthMethodIsCompatible(
+      row.definitionAuthMode,
+      row.authMethod,
+    ) && row.storageVersion === row.definitionStorageVersion;
   const credentialStatus = connectorCredentialStatusForAccess({
     storedNeedsReconnect: row.needsReconnect,
-    tokenExpiresAt: row.tokenExpired ? now : null,
+    tokenExpiresAt: row.authMethod === "oauth" && row.tokenExpired ? now : null,
     now,
     isRefreshable: row.hasRefreshToken,
   });
   const hasRequiredCredentialMaterial =
-    customConnectorHasRequiredCredentialMaterial(
-      row.definitionAuthMode,
-      row.hasAccessToken,
-    );
+    customConnectorHasRequiredCredentialMaterial({
+      definitionAuthMode: row.definitionAuthMode,
+      storedAuthMethod: row.authMethod,
+      hasAccessToken: row.hasAccessToken,
+      hasRefreshToken: row.hasRefreshToken,
+      hasIdToken: row.hasIdToken,
+      hasAutomaticOAuthBinding: row.hasAutomaticOAuthBinding,
+      hasTokenExpiry: row.hasTokenExpiry,
+    });
   return {
     target: { kind: "custom", customConnectorId: row.customConnectorId },
     needsAttention:
