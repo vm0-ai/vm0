@@ -347,12 +347,27 @@ function sidebar(): HTMLElement {
   return screen.getByTestId("chat-list-column");
 }
 
-function mobileSidebar(): HTMLElement {
+function queryMobileSidebar(): HTMLElement | null {
   const drawer = document.querySelector("aside.zero-pwa-fixed-cover");
-  if (!(drawer instanceof HTMLElement)) {
+  return drawer instanceof HTMLElement ? drawer : null;
+}
+
+function mobileSidebar(): HTMLElement {
+  const drawer = queryMobileSidebar();
+  if (!drawer) {
     throw new Error("Mobile sidebar not found");
   }
   return drawer;
+}
+
+function mockMobileLayout() {
+  return context.mocks.browser.matchMedia(false);
+}
+
+function mockDesktopLayout() {
+  return context.mocks.browser.matchMedia((query) => {
+    return query === "(min-width: 48rem)";
+  });
 }
 
 function pinnedAgentLink(
@@ -441,8 +456,11 @@ function createDataTransferStub(
   } as unknown as DataTransfer;
 }
 
-function threadRowByTitle(title: string): HTMLElement {
-  const link = threadLinkByTitle(title);
+function threadRowByTitle(
+  title: string,
+  container: HTMLElement = sidebar(),
+): HTMLElement {
+  const link = threadLinkByTitle(title, container);
   const row = link.parentElement;
   if (!row) {
     throw new Error(`${title} thread row not found`);
@@ -450,8 +468,11 @@ function threadRowByTitle(title: string): HTMLElement {
   return row;
 }
 
-function threadLinkByTitle(title: string): HTMLElement {
-  const link = queryAllByRoleFast("link", sidebar()).find((candidate) => {
+function threadLinkByTitle(
+  title: string,
+  container: HTMLElement = sidebar(),
+): HTMLElement {
+  const link = queryAllByRoleFast("link", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === title;
   });
   if (!link) {
@@ -688,6 +709,7 @@ describe("zero sidebar", () => {
   });
 
   it("refreshes rendered unread indicators from shared thread invalidations", async () => {
+    mockMobileLayout();
     prepareAgents();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
@@ -725,7 +747,7 @@ describe("zero sidebar", () => {
     });
     const agentRow = agentRowByName(nav, "Zero");
     const threadRow = await waitFor(() => {
-      return threadRowByTitle("Remote unread conversation");
+      return threadRowByTitle("Remote unread conversation", nav);
     });
     await waitFor(() => {
       expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
@@ -1487,60 +1509,45 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("keeps three-column desktop and mobile chat virtualization isolated", async () => {
+  it("mounts only the sidebar for the current viewport", async () => {
     prepareDefaultAgent();
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b2050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Isolated overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
+    const mediaQuery = mockMobileLayout();
 
     setupSidebarPage({
       context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
+      path: `/agents/${AGENT_ID}/chat`,
     });
-
-    const desktopList = await screen.findByTestId("chat-list-column");
-    const mobileList = mobileSidebar();
-    const desktopScrollArea = await within(desktopList).findByTestId(
-      "sidebar-scroll-area",
-    );
-    const mobileScrollArea = await within(mobileList).findByTestId(
-      "sidebar-scroll-area",
-    );
-    Object.defineProperties(desktopScrollArea, {
-      clientHeight: { configurable: true, value: 200 },
-      scrollHeight: { configurable: true, value: 1000 },
-      scrollTop: { configurable: true, value: 780, writable: true },
-    });
-    Object.defineProperties(mobileScrollArea, {
-      clientHeight: { configurable: true, value: 200 },
-      scrollHeight: { configurable: true, value: 1000 },
-      scrollTop: { configurable: true, value: 0, writable: true },
-    });
-
-    fireEvent.scroll(mobileScrollArea);
-    fireEvent.scroll(desktopScrollArea);
 
     await waitFor(() => {
-      expect(
-        within(desktopList).getByText("Archived context"),
-      ).toBeInTheDocument();
-      expect(within(desktopList).queryByText("Release plan")).toBeNull();
-      expect(within(mobileList).getByText("Release plan")).toBeInTheDocument();
-      expect(within(mobileList).queryByText("Archived context")).toBeNull();
+      expect(mobileSidebar()).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
+
+    act(() => {
+      mediaQuery.setMatches(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("labeled-nav-rail")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
+    });
+    expect(queryMobileSidebar()).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
+
+    act(() => {
+      mediaQuery.setMatches(false);
+    });
+
+    await waitFor(() => {
+      expect(mobileSidebar()).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
   });
 
   it("keeps virtualized chats visible after deletion refreshes a clamped viewport", async () => {
@@ -2006,6 +2013,7 @@ describe("zero sidebar", () => {
   });
 
   it("shows cached agents when opening the conversation picker", async () => {
+    mockMobileLayout();
     const team = prepareAgents();
     const releaseRefresh = context.mocks.deferred<void>();
     let initialTeamServed = false;
@@ -2062,6 +2070,7 @@ describe("zero sidebar", () => {
   });
 
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
+    mockMobileLayout();
     prepareAgents();
     let createRequests = 0;
     const researchThread = createThread(
@@ -2171,18 +2180,21 @@ describe("zero sidebar", () => {
         screen.queryByRole("dialog", { name: "Talk to" }),
       ).not.toBeInTheDocument();
       expect(
-        within(sidebar()).getByText("Chats with Research Agent"),
+        within(initialSidebar).getByText("Chats with Research Agent"),
       ).toBeInTheDocument();
       expect(
-        within(sidebar()).getByText("Research kickoff"),
+        within(initialSidebar).getByText("Research kickoff"),
       ).toBeInTheDocument();
-      expect(within(sidebar()).queryByText("New chat")).not.toBeInTheDocument();
+      expect(
+        within(initialSidebar).queryByText("New chat"),
+      ).not.toBeInTheDocument();
     });
 
     expect(createRequests).toBe(0);
   });
 
   it("closes the mobile sidebar after selecting a pinned agent", async () => {
+    mockMobileLayout();
     prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -2344,6 +2356,7 @@ describe("zero sidebar", () => {
   });
 
   it("unifies local thread titles with indexed message matches", async () => {
+    mockMobileLayout();
     prepareAgents();
     context.mocks.data.agents([
       {
@@ -2436,7 +2449,7 @@ describe("zero sidebar", () => {
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
-      expect(sidebar()).toBeInTheDocument();
+      expect(mobileSidebar()).toBeInTheDocument();
     });
     click(within(mobileSidebar()).getByLabelText("Open a conversation"));
 
@@ -2866,6 +2879,7 @@ describe("zero sidebar", () => {
   });
 
   it("shows agent unread indicators and dropdown actions", async () => {
+    mockMobileLayout();
     prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -2979,6 +2993,7 @@ describe("zero sidebar", () => {
   });
 
   it("marks all pinned agent chats read from the agent menu", async () => {
+    mockMobileLayout();
     prepareAgents();
     context.mocks.data.userPreferences({
       pinnedAgentIds: [RESEARCH_AGENT_ID],
@@ -3030,6 +3045,7 @@ describe("zero sidebar", () => {
   });
 
   it("marks all default agent chats read from the default agent menu", async () => {
+    mockMobileLayout();
     prepareAgents();
 
     let hasUnread = true;
@@ -3105,6 +3121,7 @@ describe("zero sidebar", () => {
   });
 
   it("localizes agent navigation and the conversation dialog in Brazilian Portuguese", async () => {
+    mockMobileLayout();
     prepareAgents();
     context.mocks.data.userPreferences({
       locale: "pt-BR",
@@ -3147,6 +3164,7 @@ describe("zero sidebar", () => {
   });
 
   it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
+    mockMobileLayout();
     prepareDefaultAgent();
 
     setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -3223,6 +3241,7 @@ describe("zero sidebar", () => {
   });
 
   it("orders artifacts after connectors in the manage navigation", async () => {
+    mockMobileLayout();
     prepareDefaultAgent();
 
     setupSidebarPage({
@@ -4581,6 +4600,7 @@ describe("zero sidebar", () => {
   });
 
   it("localizes desktop and mobile shell navigation and shortcut help", async () => {
+    const mediaQuery = mockDesktopLayout();
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Localized conversation"),
@@ -4612,6 +4632,11 @@ describe("zero sidebar", () => {
     expect(
       within(rail).getByLabelText("Onde Zero trabalha"),
     ).toBeInTheDocument();
+
+    act(() => {
+      mediaQuery.setMatches(false);
+    });
+
     expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
     await expect(
       screen.findByLabelText("Abrir artefatos no celular"),
@@ -4636,6 +4661,7 @@ describe("zero sidebar", () => {
   });
 
   it("localizes desktop and mobile shell navigation in Japanese", async () => {
+    const mediaQuery = mockDesktopLayout();
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Localized conversation"),
@@ -4664,6 +4690,11 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("コネクター")).toBeInTheDocument();
     expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
     expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
+
+    act(() => {
+      mediaQuery.setMatches(false);
+    });
+
     expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
     await expect(
       screen.findByLabelText("モバイルでアーティファクトを開く"),
@@ -4690,6 +4721,7 @@ describe("zero sidebar", () => {
   });
 
   it("localizes desktop and mobile shell navigation in Spanish", async () => {
+    const mediaQuery = mockDesktopLayout();
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Localized conversation"),
@@ -4720,6 +4752,11 @@ describe("zero sidebar", () => {
     expect(
       within(rail).getByLabelText("Dónde trabaja Zero"),
     ).toBeInTheDocument();
+
+    act(() => {
+      mediaQuery.setMatches(false);
+    });
+
     expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
     await expect(
       screen.findByLabelText("Abrir artefactos en móvil"),
