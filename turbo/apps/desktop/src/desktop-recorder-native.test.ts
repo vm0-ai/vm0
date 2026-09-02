@@ -17,6 +17,8 @@ interface HelperBehavior {
   readonly prelude?: string;
   readonly silent?: boolean;
   readonly exit?: boolean;
+  /** Answers only after this long, the way a finalize of a long movie does. */
+  readonly delayMs?: number;
 }
 
 const SOURCES: HelperBehavior = {
@@ -109,6 +111,15 @@ function handleLine(line) {
   if (behavior.prelude) process.stdout.write(behavior.prelude);
   if (behavior.exit) process.exit(1);
   if (behavior.silent) return;
+  if (behavior.delayMs) {
+    const delayed = { ...behavior, delayMs: 0 };
+    setTimeout(() => respond(request, delayed), behavior.delayMs);
+    return;
+  }
+  respond(request, behavior);
+}
+
+function respond(request, behavior) {
   if (behavior.error) {
     process.stdout.write(
       JSON.stringify({ id: request.id, status: "failed", error: behavior.error }) + "\\n"
@@ -143,8 +154,13 @@ process.stdin.resume();
 function createBackend(
   helperPath: string,
   requestTimeoutMs = 5_000,
+  stopTimeoutMs?: number,
 ): RecorderNativeBackend {
-  const backend = createRecorderNativeBackend({ helperPath, requestTimeoutMs });
+  const backend = createRecorderNativeBackend({
+    helperPath,
+    requestTimeoutMs,
+    ...(stopTimeoutMs === undefined ? {} : { stopTimeoutMs }),
+  });
   openBackends.push(backend);
   return backend;
 }
@@ -425,6 +441,56 @@ describe("createRecorderNativeBackend", () => {
     expect(await rejection(backend.getStatus("session-1"))).toMatchObject({
       code: "capture_failed",
       message: "Screen recorder helper returned an invalid status",
+    });
+  });
+
+  it("gives stop its own budget so a long finalize is not abandoned", async () => {
+    // The helper drains the stream and finalizes the movie inside `stop`,
+    // which for a long recording runs well past the ordinary request budget.
+    // Timing it out at that budget put the controller back to "recording"
+    // while the helper had already stopped, and the session was lost.
+    const { helperPath } = await createHelper({
+      "recorder.state": {
+        delayMs: 800,
+        result: { status: "recording", elapsedMs: 1 },
+      },
+      "recorder.stop": { ...STOP, delayMs: 800 },
+    });
+    const backend = createBackend(helperPath, 300, 3_000);
+
+    expect(await rejection(backend.getStatus("session-1"))).toMatchObject({
+      message: "Screen recorder helper timed out running recorder.state",
+    });
+    await expect(backend.stop("session-1")).resolves.toMatchObject({
+      videoPath: "/tmp/screen-recording.mp4",
+    });
+  });
+
+  it("carries the writer failure the helper reports on a stopped recording", async () => {
+    const { helperPath } = await createHelper({
+      "recorder.stop": {
+        result: {
+          ...STOP.result,
+          failure: {
+            code: "capture_failed",
+            message: "Cannot append sample buffer",
+          },
+        },
+      },
+    });
+    const backend = createBackend(helperPath);
+
+    await expect(backend.stop("session-1")).resolves.toEqual({
+      videoPath: "/tmp/screen-recording.mp4",
+      clickTrackPath: "/tmp/screen-recording.clicks.json",
+      durationMs: 4200,
+      sizeBytes: 8192,
+      width: 1920,
+      height: 1080,
+      failure: {
+        code: "capture_failed",
+        message: "Cannot append sample buffer",
+      },
     });
   });
 

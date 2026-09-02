@@ -16,6 +16,14 @@ import type {
 
 const HELPER_NAME = "screen-recorder-helper";
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * `recorder.stop` waits on the helper draining the capture stream and then
+ * finalizing the movie, which for a long recording takes well past the
+ * ordinary request budget. Timing it out at the ordinary budget abandoned the
+ * finalize while it was still running, and left the controller believing the
+ * capture was still open.
+ */
+const DEFAULT_STOP_TIMEOUT_MS = 60_000;
 
 class DesktopRecorderHelperError extends Error {
   constructor(
@@ -151,6 +159,7 @@ class RecorderHelperClient {
   request(
     kind: string,
     payload: Record<string, unknown> = {},
+    timeoutMs: number = this.requestTimeoutMs,
   ): Promise<Record<string, unknown>> {
     if (this.closed) {
       return Promise.reject(
@@ -172,7 +181,7 @@ class RecorderHelperClient {
             ),
           );
         }
-      }, this.requestTimeoutMs);
+      }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => {
           clearTimeout(timer);
@@ -331,6 +340,7 @@ function toSources(
 function toRecording(
   result: Record<string, unknown>,
 ): DesktopRecorderRecording {
+  const failure = isRecord(result.failure) ? result.failure : null;
   return {
     videoPath: requiredString(result, "videoPath"),
     clickTrackPath: requiredString(result, "clickTrackPath"),
@@ -338,6 +348,17 @@ function toRecording(
     sizeBytes: requiredNumber(result, "sizeBytes"),
     width: requiredNumber(result, "width"),
     height: requiredNumber(result, "height"),
+    ...(failure
+      ? {
+          failure: {
+            code: errorCode(failure.code),
+            message:
+              typeof failure.message === "string"
+                ? failure.message
+                : "Screen recording failed",
+          },
+        }
+      : {}),
   };
 }
 
@@ -379,12 +400,14 @@ export function createRecorderNativeBackend(
   options: {
     readonly helperPath?: string;
     readonly requestTimeoutMs?: number;
+    readonly stopTimeoutMs?: number;
   } = {},
 ): RecorderNativeBackend {
   const client = new RecorderHelperClient(
     options.helperPath ?? resolveNativeHelperPath(HELPER_NAME),
     options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   );
+  const stopTimeoutMs = options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
 
   return {
     dispose: () => {
@@ -461,7 +484,9 @@ export function createRecorderNativeBackend(
       await client.request("recorder.discard", { sessionId });
     },
     stop: async (sessionId: string) =>
-      toRecording(await client.request("recorder.stop", { sessionId })),
+      toRecording(
+        await client.request("recorder.stop", { sessionId }, stopTimeoutMs),
+      ),
     getStatus: async (sessionId: string) =>
       toNativeStatus(await client.request("recorder.state", { sessionId })),
   };

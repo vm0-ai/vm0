@@ -235,6 +235,14 @@ export class DesktopRecorderController {
     }
     this.lastRecording = recording;
     this.sessionId = null;
+    // A capture whose writer broke still hands back the file it managed to
+    // write, but shipping it as the finished recording is how a two-second
+    // movie reached the editor. Keep it, say why, and leave delivery to a
+    // deliberate retry.
+    if (recording.failure) {
+      this.failSession(recording.failure);
+      return recording;
+    }
     await this.runDelivery(recording);
     return recording;
   }
@@ -351,8 +359,9 @@ export class DesktopRecorderController {
     this.lastRecording = recording;
     this.sessionId = null;
     this.elapsedMs = 0;
-    if (failure) {
-      this.failSession(failure);
+    const reason = failure ?? recording.failure;
+    if (reason) {
+      this.failSession(reason);
       return;
     }
     await this.runDelivery(recording);

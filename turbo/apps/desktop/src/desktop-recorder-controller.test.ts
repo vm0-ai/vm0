@@ -406,6 +406,68 @@ describe("DesktopRecorderController", () => {
     });
   });
 
+  it("keeps a recording whose writer broke and does not deliver it", async () => {
+    // The helper hands the file back with the failure it hit: what was
+    // written before the writer died is still worth a deliberate retry, but
+    // shipping it as the finished recording put a two-second movie in front
+    // of the user with nothing saying why.
+    const broken: DesktopRecorderRecording = {
+      ...RECORDING,
+      failure: {
+        code: "capture_failed",
+        message: "Cannot append sample buffer",
+      },
+    };
+    const { controller, deliver, openReview } = createController(
+      createBackendFake({ stop: vi.fn(async () => broken) }),
+    );
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.stop();
+
+    const state = controller.getState();
+    expect(state.status).toBe("idle");
+    expect(state.error).toEqual({
+      code: "capture_failed",
+      message: "Cannot append sample buffer",
+    });
+    expect(state.lastRecording).toEqual(broken);
+    expect(deliver).not.toHaveBeenCalled();
+    expect(openReview).not.toHaveBeenCalled();
+
+    await controller.retryDelivery();
+    expect(deliver).toHaveBeenCalledWith(broken);
+  });
+
+  it("reports a writer failure noticed by the poll before the user stops", async () => {
+    const broken: DesktopRecorderRecording = {
+      ...RECORDING,
+      failure: { code: "capture_failed", message: "Disk full" },
+    };
+    const { controller, deliver } = createController(
+      createBackendFake({
+        getStatus: vi.fn(
+          async (): Promise<DesktopRecorderNativeStatus> => ({
+            status: "failed",
+            elapsedMs: 900,
+            error: { code: "capture_failed", message: "Disk full" },
+          }),
+        ),
+        stop: vi.fn(async () => broken),
+      }),
+    );
+    await enableAndPrepare(controller);
+    await controller.start();
+
+    await controller.refreshRecordingStatus();
+
+    expect(controller.getState().status).toBe("idle");
+    expect(controller.getState().error?.message).toBe("Disk full");
+    expect(controller.getState().lastRecording).toEqual(broken);
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
   it("can deliver a salvaged recording on request", async () => {
     const backend = createBackendFake({
       getStatus: vi.fn(

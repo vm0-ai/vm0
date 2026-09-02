@@ -86,7 +86,17 @@ private func resolveDisplay(
 
 // MARK: - Source discovery
 
-private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableContent {
+/// Reads what ScreenCaptureKit can share.
+///
+/// `onScreenWindowsOnly` is off by default because "on screen" means the active
+/// Space: a full-screen editor or browser on its own Space would otherwise be
+/// missing from the picker and unresolvable as a capture target. Callers that
+/// only need displays pass `true`, because the wide read walks every window on
+/// every Space and is the slowest part of starting a recording.
+private func shareableContent(
+    timeout: TimeInterval = 10,
+    onScreenWindowsOnly: Bool = false
+) throws -> SCShareableContent {
     // Asking ScreenCaptureKit without the grant makes the system put its own
     // prompt on screen, every single time. Once the answer is already no, say
     // so instead: the app can then offer Settings rather than the user being
@@ -99,13 +109,9 @@ private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableC
     }
     let semaphore = DispatchSemaphore(value: 0)
     let box = ResultBox<SCShareableContent>()
-    // `onScreenWindowsOnly` is off because "on screen" means the active Space.
-    // With it on, a full-screen editor or browser living on its own Space was
-    // missing from the picker, and picking it later could not be resolved
-    // either. `recordableWindows` drops the system chrome the wider list adds.
     SCShareableContent.getExcludingDesktopWindows(
         true,
-        onScreenWindowsOnly: false
+        onScreenWindowsOnly: onScreenWindowsOnly
     ) { content, error in
         box.set(value: content, error: error)
         semaphore.signal()
@@ -351,7 +357,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     /// Set when the stream ended without `stop` being called. The session stays
     /// finalizable so the partial recording and its click track are still
     /// written; only the reported status changes.
-    private var externalStop: (reason: StreamStopReason, message: String)?
+    private var externalStop: (reason: StreamStopReason, code: String, message: String)?
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -620,12 +626,18 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         systemAudio?.markAsFinished()
         microphone?.markAsFinished()
 
+        var writerFailure: String?
         if let assetWriter {
             let semaphore = DispatchSemaphore(value: 0)
             assetWriter.finishWriting {
                 semaphore.signal()
             }
             _ = semaphore.wait(timeout: .now() + 30)
+            if assetWriter.status == .failed {
+                writerFailure =
+                    assetWriter.error?.localizedDescription
+                    ?? "The screen recording could not be written"
+            }
         }
 
         guard let url else {
@@ -651,7 +663,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             startedAtUnixMs: startedAt
         )
 
-        return [
+        var result: [String: Any] = [
             "videoPath": url.path,
             "clickTrackPath": clickTrackPath,
             "durationMs": Int(duration * 1000),
@@ -659,6 +671,19 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             "width": outputSize.width,
             "height": outputSize.height,
         ]
+        // The file is handed back either way — it holds whatever was written
+        // before the failure — but the caller must not deliver it as a finished
+        // recording. Reported here as well as through `recorder.state`, because
+        // a stop that races the poll would otherwise ship it.
+        lock.lock()
+        let failure = externalStop.flatMap { $0.reason == .failed ? $0 : nil }
+        lock.unlock()
+        if let writerFailure {
+            result["failure"] = ["code": "capture_failed", "message": writerFailure]
+        } else if let failure {
+            result["failure"] = ["code": failure.code, "message": failure.message]
+        }
+        return result
     }
 
     private func writeClickTrack(
@@ -712,7 +737,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         ]
         if let externalStop, externalStop.reason == .failed {
             described["error"] = [
-                "code": "source_lost",
+                "code": externalStop.code,
                 "message": externalStop.message,
             ]
         }
@@ -796,10 +821,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     /// frames that were captured before the stream ended, and discarding them
     /// would throw away the recording the user just made. `stop` finalizes as
     /// usual, and the reported status tells the caller to run it.
-    private func noteExternalStop(reason: StreamStopReason, message: String) {
+    private func noteExternalStop(
+        reason: StreamStopReason,
+        code: String = "source_lost",
+        message: String
+    ) {
         lock.lock()
         if externalStop == nil {
-            externalStop = (reason, message)
+            externalStop = (reason, code, message)
         }
         let captureStream = stream
         stream = nil
@@ -864,15 +893,25 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                 )
             }
         }
-        latestSampleAt = timestamp
         let input = writerInputLocked(for: type)
         let start = sessionStartedAt
         let timeline = pauseTimeline
         lock.unlock()
 
+        // A writer that has failed answers `isReadyForMoreMediaData` with false
+        // for the rest of its life. Treating that like ordinary back-pressure
+        // dropped every later frame in silence while the clock kept running,
+        // and `stop` then delivered a recording holding its first fragment.
+        if assetWriter.status == .failed {
+            noteWriterFailure(assetWriter)
+            return
+        }
         guard let input, input.isReadyForMoreMediaData, let start else {
             return
         }
+        lock.lock()
+        latestSampleAt = timestamp
+        lock.unlock()
         // Frames keep arriving while paused; they are dropped, and everything
         // after a pause is shifted back so the movie has no frozen stretch.
         let captureSeconds = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
@@ -891,7 +930,24 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         else {
             return
         }
-        input.append(retimed)
+        if !input.append(retimed), assetWriter.status == .failed {
+            noteWriterFailure(assetWriter)
+        }
+    }
+
+    /// Ends the capture because the file can no longer be written to.
+    ///
+    /// Reported as `capture_failed` rather than `source_lost`: the source is
+    /// still there, it is the output that broke. What was written before the
+    /// failure is kept for `stop` to finalize, the same as any other external
+    /// end.
+    private func noteWriterFailure(_ assetWriter: AVAssetWriter) {
+        noteExternalStop(
+            reason: .failed,
+            code: "capture_failed",
+            message: assetWriter.error?.localizedDescription
+                ?? "The screen recording could not be written"
+        )
     }
 }
 
@@ -948,7 +1004,10 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
         microphone: microphone,
         microphoneSupported: microphoneSupported()
     )
-    let content = try shareableContent()
+    // Only a window capture has to find its target among every Space's
+    // windows; a display or area capture is aimed at a display and pays for
+    // the wide read with nothing but a slower start.
+    let content = try shareableContent(onScreenWindowsOnly: sourceKind != "window")
 
     let filter: SCContentFilter
     let geometry: CaptureGeometry
