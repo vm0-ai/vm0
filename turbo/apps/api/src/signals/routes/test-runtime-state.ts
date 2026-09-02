@@ -1717,11 +1717,6 @@ type PreviousApiRunnerJobContextProfileAction = Extract<
   { action: "set-runner-job-context-profile-as-previous-api" }
 >;
 
-type PreviousApiRunnerJobPiOwnershipTransferAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "set-runner-job-pi-ownership-transfer-as-previous-api" }
->;
-
 type PreviousApiWorkflowAutomationEventConnectorAction = Extract<
   TestRuntimeStateActionBody,
   { action: "clear-workflow-automation-event-connector-as-previous-api" }
@@ -1797,32 +1792,6 @@ async function setRunnerJobContextProfileAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-async function setRunnerJobPiOwnershipTransferAsPreviousApi(
-  db: Db,
-  body: PreviousApiRunnerJobPiOwnershipTransferAction,
-  signal: AbortSignal,
-) {
-  // The previous API persisted this exact marker in every Pi launch slot.
-  // Current claims must retain marker-bearing queued contexts during rollout.
-  const [updated] = await db
-    .update(runnerJobQueue)
-    .set({
-      executionContext: sql`jsonb_set(
-        ${runnerJobQueue.executionContext},
-        '{piLaunchConfig,apiFirstTurn,ownershipTransfer}',
-        '{"schemaVersion":1}'::jsonb,
-        true
-      )`,
-    })
-    .where(eq(runnerJobQueue.runId, body.run_id))
-    .returning({ runId: runnerJobQueue.runId });
-  signal.throwIfAborted();
-  if (!updated) {
-    throw new Error("Expected a Pi runner job for previous API marker update");
-  }
-  return { status: 200 as const, body: { ok: true as const } };
-}
-
 async function clearWorkflowAutomationEventConnectorAsPreviousApi(
   db: Db,
   body: PreviousApiWorkflowAutomationEventConnectorAction,
@@ -1849,7 +1818,6 @@ type CompatibilityFixtureAction =
   | PreviousApiComputerAccessAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
-  | PreviousApiRunnerJobPiOwnershipTransferAction
   | PreviousApiWorkflowAutomationEventConnectorAction
   | ConnectorPermissionBaselineMutationAction;
 
@@ -2110,7 +2078,6 @@ function isCompatibilityFixtureAction(
     "set-computer-use-host-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
-    "set-runner-job-pi-ownership-transfer-as-previous-api",
     "clear-workflow-automation-event-connector-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
@@ -2142,13 +2109,6 @@ async function compatibilityFixtureActionResponse(
     }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
-    }
-    case "set-runner-job-pi-ownership-transfer-as-previous-api": {
-      return await setRunnerJobPiOwnershipTransferAsPreviousApi(
-        db,
-        body,
-        signal,
-      );
     }
     case "clear-workflow-automation-event-connector-as-previous-api": {
       return await clearWorkflowAutomationEventConnectorAsPreviousApi(

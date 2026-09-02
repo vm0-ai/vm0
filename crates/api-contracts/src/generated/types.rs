@@ -47,14 +47,6 @@ pub mod runners {
             pub sha256: Option<String>,
         }
 
-        /// Sandbox capability for the versioned Pi ownership-transfer manifest.
-        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        pub struct PiLaunchConfigApiFirstTurnOwnershipTransfer {
-            /// Pi ownership-transfer capability version.
-            pub schema_version: i64,
-        }
-
         /// API-mediated first-turn configuration for Pi.
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -73,9 +65,6 @@ pub mod runners {
             pub base_session: PiLaunchConfigApiFirstTurnBaseSession,
             /// First sandbox event sequence number for the resumed session.
             pub sandbox_event_sequence_start: u64,
-            /// Optional proof that the selected Sandbox supports ownership-transfer manifests.
-            #[serde(default, skip_serializing_if = "Option::is_none")]
-            pub ownership_transfer: Option<PiLaunchConfigApiFirstTurnOwnershipTransfer>,
         }
 
         /// Frozen exact-version Pi memory recall selection.
