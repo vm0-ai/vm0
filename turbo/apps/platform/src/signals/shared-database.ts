@@ -1,4 +1,5 @@
 import { command, computed, state, type Command } from "ccstate";
+import type { QueueResponse } from "@okouai/api-contracts/contracts/runs";
 import type {
   ChatThreadIndicators,
   ChatEventDataKey,
@@ -39,13 +40,25 @@ const reloadComputerUseHostsFromWorker$ = command(({ set }): void => {
   });
 });
 
+const internalReloadQueueDataFromWorker$ = state(0);
+
+const reloadQueueDataFromWorker$ = command(({ set }): void => {
+  set(internalReloadQueueDataFromWorker$, (value) => {
+    return value + 1;
+  });
+});
+
 export const reloadComputedFromWorker$ = command(
   ({ set }, computedKey: ComputedKey): void => {
     if (computedKey === "chat-thread-indicators") {
       set(reloadChatIndicatorsLocally$);
       return;
     }
-    set(reloadComputerUseHostsFromWorker$);
+    if (computedKey === "computer-use-hosts") {
+      set(reloadComputerUseHostsFromWorker$);
+      return;
+    }
+    set(reloadQueueDataFromWorker$);
   },
 );
 
@@ -64,6 +77,13 @@ export const computerUseHostsFromWorker$ = computed(
     return await get(installedSharedDatabaseBridge$).getComputed(
       "computer-use-hosts",
     );
+  },
+);
+
+export const queueDataFromWorker$ = computed(
+  async (get): Promise<QueueResponse> => {
+    get(internalReloadQueueDataFromWorker$);
+    return await get(installedSharedDatabaseBridge$).getComputed("queue-data");
   },
 );
 

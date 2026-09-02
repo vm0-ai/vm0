@@ -25,7 +25,7 @@ import {
   setConcurrencyQuantity$,
   setQueueDrawerOpen$,
 } from "../../signals/queue-page/queue-drawer-state.ts";
-import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
+import { queueDataFromWorker$ } from "../../signals/shared-database.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
@@ -702,7 +702,7 @@ function ConcurrencyPurchaseCardMount({
 
 function QueueDrawerContent() {
   const { t } = useTranslation();
-  const dataLoadable = useLastLoadable(queueData$);
+  const dataLoadable = useLastLoadable(queueDataFromWorker$);
   const data = dataLoadable.state === "hasData" ? dataLoadable.data : null;
   const pageSignal = useGet(pageSignal$);
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);

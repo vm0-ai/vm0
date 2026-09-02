@@ -170,7 +170,9 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         ? "chat-thread-indicators"
         : message.name === "computerUseHostsChanged"
           ? "computer-use-hosts"
-          : null;
+          : message.name === "billing:changed"
+            ? "queue-data"
+            : null;
     if (!computedKey) {
       return;
     }
