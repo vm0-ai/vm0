@@ -520,7 +520,6 @@
       "agentLoading": "エージェントを読み込み中",
       "connect": "Google Drive を接続します",
       "connectTooltip": "Google Drive を接続してアーティファクトをアップロードする",
-      "failedToOpenConnect": "Google Drive 接続ページを開けませんでした",
       "noArtifacts": "同期するアーティファクトがありません",
       "partial_one": "{{count}} ファイルの {{synced}} を Google Drive に同期しました",
       "partial_other": "{{count}} ファイルの {{synced}} を Google Drive に同期しました",

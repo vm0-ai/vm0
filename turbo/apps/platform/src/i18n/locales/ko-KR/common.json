@@ -520,7 +520,6 @@
       "agentLoading": "에이전트가 아직 로딩 중입니다",
       "connect": "Google Drive 연결",
       "connectTooltip": "아티팩트 업로드를 위해 Google Drive를 연결하세요",
-      "failedToOpenConnect": "Google Drive 연결 페이지를 열지 못했습니다",
       "noArtifacts": "동기화할 아티팩트가 없습니다",
       "partial_one": "{{count}}개 중 {{synced}}개 파일을 Google Drive에 동기화했습니다",
       "partial_other": "{{count}}개 중 {{synced}}개 파일을 Google Drive에 동기화했습니다",

@@ -339,6 +339,7 @@ function artifactDialogSyncTarget(
   return {
     agentId: artifact.agentId,
     disconnected: artifact.googleDriveDisconnected,
+    recovery: artifact.googleDriveRecovery,
     fileId: artifact.fileId,
     filename: artifact.filename,
     onSyncSuccess:
@@ -386,6 +387,10 @@ function artifactDialogMetadataFromItem(params: {
     filename: params.item.file.filename,
     googleDriveDisconnected:
       params.item.file.googleDriveSync?.status === "disconnected",
+    googleDriveRecovery:
+      params.item.file.googleDriveSync?.status === "disconnected"
+        ? params.item.file.googleDriveSync.recovery
+        : undefined,
     googleDriveSynced: params.item.file.googleDriveSync?.status === "synced",
     onSyncSuccess: params.onSyncSuccess,
     runId: params.item.runId,
