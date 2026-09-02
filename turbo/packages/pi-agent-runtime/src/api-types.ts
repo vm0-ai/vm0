@@ -86,6 +86,8 @@ export interface PiApiFirstTurnResult {
   readonly assistantMessage: PiApiAssistantMessage;
   readonly handoffRequired: boolean;
   readonly observedServiceTier: PiObservedServiceTier;
+  /** Sanitized upstream status for failed Responses requests, when available. */
+  readonly providerErrorStatus?: number;
   readonly sessionJsonl: string;
 }
 

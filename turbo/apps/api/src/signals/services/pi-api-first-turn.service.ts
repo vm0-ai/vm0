@@ -979,6 +979,14 @@ async function executeApiModelTurn(
     turn.assistantMessage.stopReason === "error" ||
     turn.assistantMessage.stopReason === "aborted"
   ) {
+    L.warn("Pi API first-turn provider stopped", {
+      runId: args.activation.runId,
+      provider: args.executionContext.piModelConfig.provider,
+      stopReason: turn.assistantMessage.stopReason,
+      ...(turn.providerErrorStatus === undefined
+        ? {}
+        : { providerStatus: turn.providerErrorStatus }),
+    });
     throw piApiFirstTurnError(
       "PI_API_MODEL_FAILED",
       `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,

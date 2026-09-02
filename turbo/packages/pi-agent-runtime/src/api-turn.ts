@@ -43,6 +43,20 @@ function projectAssistantContent(
   });
 }
 
+function providerErrorStatus(message: AssistantMessage): number | undefined {
+  if (message.stopReason !== "error" || !message.errorMessage) {
+    return undefined;
+  }
+  const match = /(?:API error \()?(\d{3})(?:\)|\s|:)/.exec(
+    message.errorMessage,
+  );
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const status = Number(match[1]);
+  return status >= 400 && status <= 599 ? status : undefined;
+}
+
 export function projectPiApiAssistantMessage(
   message: AssistantMessage,
 ): PiApiAssistantMessage {
@@ -125,10 +139,14 @@ export async function runPiApiFirstTurn(
       ownership: args.ownership,
       providerRequestBoundary: args.providerRequestBoundary,
     });
+    const errorStatus = providerErrorStatus(turn.assistantMessage);
     return {
       assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
       handoffRequired: turn.handoffRequired,
       observedServiceTier,
+      ...(errorStatus === undefined
+        ? {}
+        : { providerErrorStatus: errorStatus }),
       sessionJsonl: memorySession.toJsonl(),
     };
   } finally {
