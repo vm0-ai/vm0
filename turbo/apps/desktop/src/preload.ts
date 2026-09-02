@@ -165,8 +165,8 @@ const desktopRecorderApi: DesktopRecorderApi = {
   getState() {
     return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.getState);
   },
-  listSources() {
-    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.listSources);
+  getCapabilities() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.getCapabilities);
   },
   startCapture(request) {
     return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.startCapture, request);

@@ -166,6 +166,17 @@ private func microphoneSupported() -> Bool {
     return false
 }
 
+/// What this system can record, without asking what is on screen.
+///
+/// Kept apart from `recorder.sources` because reading the window list makes
+/// ScreenCaptureKit demand the screen recording grant, and the bar only wants
+/// to know whether the microphone toggle is usable. Prompting for a permission
+/// the moment the bar opens, before anything is being recorded, is not a thing
+/// to do to someone.
+private func handleCapabilities() -> [String: Any] {
+    return ["supportsMicrophone": microphoneSupported()]
+}
+
 private func handleSources() throws -> [String: Any] {
     let content = try shareableContent()
     var sources: [[String: Any]] = []
@@ -194,10 +205,7 @@ private func handleSources() throws -> [String: Any] {
         sources.append(source)
     }
 
-    return [
-        "sources": sources,
-        "supportsMicrophone": microphoneSupported(),
-    ]
+    return ["sources": sources]
 }
 
 /// Largest preview the picker shows, in pixels. Big enough to recognise a
@@ -1074,6 +1082,8 @@ private func handle(_ request: [String: Any]) throws -> [String: Any] {
     }
     let payload = isRecord(request["payload"] ?? [:]) ?? [:]
     switch kind {
+    case "recorder.capabilities":
+        return handleCapabilities()
     case "recorder.sources":
         return try handleSources()
     case "recorder.windowPreviews":

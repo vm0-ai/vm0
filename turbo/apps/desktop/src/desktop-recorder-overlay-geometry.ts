@@ -15,7 +15,7 @@ interface OverlayDisplayBounds {
  * looked like: a grey band nobody asked for. Failure messages are drawn inside
  * the surface instead.
  */
-export const RECORDER_BAR_SIZE = Object.freeze({ width: 866, height: 116 });
+export const RECORDER_BAR_SIZE = Object.freeze({ width: 866, height: 92 });
 
 /** Gap between the bar and the bottom edge of the screen, in points. */
 const RECORDER_BAR_BOTTOM_MARGIN = 72;

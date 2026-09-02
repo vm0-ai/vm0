@@ -198,10 +198,7 @@ describe("Desktop IPC boundary", () => {
       await import("./desktop-recorder-electron");
     const api = {
       getState: vi.fn(),
-      listSources: vi.fn(async () => ({
-        sources: [],
-        supportsMicrophone: true,
-      })),
+      getCapabilities: vi.fn(async () => ({ supportsMicrophone: true })),
       listWindowOptions: vi.fn(async () => []),
       startCapture: vi.fn(async () => {}),
       pause: vi.fn(async () => {}),
@@ -219,7 +216,7 @@ describe("Desktop IPC boundary", () => {
 
     for (const { channel, args } of [
       { channel: DESKTOP_RECORDER_CHANNELS.getState, args: [] },
-      { channel: DESKTOP_RECORDER_CHANNELS.listSources, args: [] },
+      { channel: DESKTOP_RECORDER_CHANNELS.getCapabilities, args: [] },
       {
         channel: DESKTOP_RECORDER_CHANNELS.startCapture,
         args: [{ sourceKind: "display", systemAudio: true, microphone: false }],
@@ -270,10 +267,7 @@ describe("Desktop IPC boundary", () => {
       await import("./desktop-recorder-electron");
     const api = {
       getState: vi.fn(),
-      listSources: vi.fn(async () => ({
-        sources: [],
-        supportsMicrophone: true,
-      })),
+      getCapabilities: vi.fn(async () => ({ supportsMicrophone: true })),
       listWindowOptions: vi.fn(async () => []),
       startCapture: vi.fn(async () => {}),
       pause: vi.fn(async () => {}),

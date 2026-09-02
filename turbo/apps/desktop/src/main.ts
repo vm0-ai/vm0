@@ -791,13 +791,13 @@ function installDesktopRecorder(): void {
   installDesktopRecorderIpc(
     {
       getState: () => screenRecorder.getState(),
-      listSources: () => screenRecorder.listSources(),
+      getCapabilities: () => screenRecorder.getCapabilities(),
       listWindowOptions: async () => {
         const [sources, previews] = await Promise.all([
           screenRecorder.listSources(),
           screenRecorder.listWindowPreviews(),
         ]);
-        return buildWindowOptions(sources.sources, previews);
+        return buildWindowOptions(sources, previews);
       },
       startCapture: async (request) => {
         const windows = getRecorderWindows();

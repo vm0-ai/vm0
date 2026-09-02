@@ -7,8 +7,9 @@ import type {
   DesktopRecorderPrepareRequest,
   DesktopRecorderPrepareResult,
   DesktopRecorderRecording,
+  DesktopRecorderCapabilities,
+  DesktopRecorderSource,
   DesktopRecorderSourceKind,
-  DesktopRecorderSourceList,
   DesktopRecorderWindowPreview,
   RecorderNativeBackend,
 } from "./desktop-recorder-types";
@@ -297,7 +298,9 @@ class RecorderHelperClient {
   }
 }
 
-function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
+function toSources(
+  result: Record<string, unknown>,
+): readonly DesktopRecorderSource[] {
   const value = result.sources;
   if (!Array.isArray(value)) {
     throw new DesktopRecorderHelperError(
@@ -322,10 +325,7 @@ function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
       ...(bundleId ? { bundleId } : {}),
     };
   });
-  return {
-    sources,
-    supportsMicrophone: requiredBoolean(result, "supportsMicrophone"),
-  };
+  return sources;
 }
 
 function toRecording(
@@ -389,6 +389,12 @@ export function createRecorderNativeBackend(
   return {
     dispose: () => {
       client.dispose();
+    },
+    getCapabilities: async (): Promise<DesktopRecorderCapabilities> => {
+      const result = await client.request("recorder.capabilities");
+      return {
+        supportsMicrophone: requiredBoolean(result, "supportsMicrophone"),
+      };
     },
     listSources: async () =>
       toSources(await client.request("recorder.sources")),

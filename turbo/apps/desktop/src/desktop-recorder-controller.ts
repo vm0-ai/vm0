@@ -4,7 +4,8 @@ import {
   type DesktopRecorderError,
   type DesktopRecorderPrepareRequest,
   type DesktopRecorderRecording,
-  type DesktopRecorderSourceList,
+  type DesktopRecorderCapabilities,
+  type DesktopRecorderSource,
   type DesktopRecorderWindowPreview,
   type DesktopRecorderState,
   type DesktopRecorderStatus,
@@ -108,7 +109,11 @@ export class DesktopRecorderController {
     void this.releaseAfterDisable();
   }
 
-  async listSources(): Promise<DesktopRecorderSourceList> {
+  async getCapabilities(): Promise<DesktopRecorderCapabilities> {
+    return await this.requireBackend().getCapabilities();
+  }
+
+  async listSources(): Promise<readonly DesktopRecorderSource[]> {
     return await this.requireBackend().listSources();
   }
 

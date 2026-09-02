@@ -6,8 +6,8 @@ import type { DesktopIdentity } from "./config";
 import type {
   DesktopRecorderAreaSelection,
   DesktopRecorderAudioChoice,
+  DesktopRecorderCapabilities,
   DesktopRecorderCaptureRequest,
-  DesktopRecorderSourceList,
   DesktopRecorderState,
   DesktopRecorderWindowChoice,
   DesktopRecorderWindowOption,
@@ -104,7 +104,7 @@ export interface DesktopDeveloperToolsApi {
 
 export interface DesktopRecorderApi {
   readonly getState: () => Promise<DesktopRecorderState>;
-  readonly listSources: () => Promise<DesktopRecorderSourceList>;
+  readonly getCapabilities: () => Promise<DesktopRecorderCapabilities>;
   readonly startCapture: (
     request: DesktopRecorderCaptureRequest,
   ) => Promise<void>;

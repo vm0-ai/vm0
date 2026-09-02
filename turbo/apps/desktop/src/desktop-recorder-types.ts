@@ -96,8 +96,8 @@ export interface DesktopRecorderWindowChoice {
   readonly title: string;
 }
 
-export interface DesktopRecorderSourceList {
-  readonly sources: readonly DesktopRecorderSource[];
+/** What this system can record, known without reading the screen. */
+export interface DesktopRecorderCapabilities {
   /** ScreenCaptureKit only reaches the microphone on macOS 15 and later. */
   readonly supportsMicrophone: boolean;
 }
@@ -180,7 +180,13 @@ export interface DesktopRecorderNativeStatus {
  */
 export interface RecorderNativeBackend {
   readonly dispose: () => void;
-  readonly listSources: () => Promise<DesktopRecorderSourceList>;
+  readonly getCapabilities: () => Promise<DesktopRecorderCapabilities>;
+  /**
+   * The windows and displays on screen. Reading this asks ScreenCaptureKit for
+   * the screen recording grant, so it is only called once the user is choosing
+   * what to record.
+   */
+  readonly listSources: () => Promise<readonly DesktopRecorderSource[]>;
   /** One image per window, for the picker to show them by. */
   readonly listWindowPreviews: () => Promise<
     readonly DesktopRecorderWindowPreview[]

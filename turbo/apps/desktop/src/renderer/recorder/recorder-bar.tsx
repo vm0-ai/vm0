@@ -32,16 +32,18 @@ export function RecorderBar(): React.ReactElement {
     if (!recorder) {
       return;
     }
+    // Capabilities only, deliberately: reading what is on screen would make
+    // the system demand the recording permission the moment the bar opens.
     void recorder
-      .listSources()
-      .then((listed) => {
-        setMicrophoneSupported(listed.supportsMicrophone);
+      .getCapabilities()
+      .then((capabilities) => {
+        setMicrophoneSupported(capabilities.supportsMicrophone);
       })
-      .catch((listError: unknown) => {
+      .catch((capabilitiesError: unknown) => {
         setError(
-          listError instanceof Error
-            ? listError.message
-            : "Could not read what is on screen",
+          capabilitiesError instanceof Error
+            ? capabilitiesError.message
+            : "Could not read what this Mac can record",
         );
       });
   }, []);

@@ -38,12 +38,12 @@ select {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 0 22px 0 64px;
-  border-radius: 18px;
+  padding: 0 18px 0 56px;
+  border-radius: 16px;
   background: rgb(38 38 42 / 96%);
   color: #f5f5f7;
   box-shadow: 0 18px 48px rgb(0 0 0 / 38%);
@@ -59,7 +59,7 @@ select {
 .recorder-bar__close {
   position: absolute;
   top: 50%;
-  left: 18px;
+  left: 16px;
   display: grid;
   place-items: center;
   width: 24px;
@@ -90,10 +90,10 @@ select {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 5px;
   box-sizing: border-box;
-  width: 92px;
-  height: 76px;
+  width: 88px;
+  height: 64px;
   padding: 0 6px;
   border: 1px solid transparent;
   border-radius: 12px;
@@ -123,7 +123,7 @@ select {
 
 .recorder-bar__divider {
   width: 1px;
-  height: 44px;
+  height: 36px;
   background: rgb(255 255 255 / 14%);
 }
 
@@ -132,7 +132,7 @@ select {
   flex-shrink: 0;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px;
+  padding: 8px 13px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -155,7 +155,7 @@ select {
 
 .recorder-bar__start {
   flex-shrink: 0;
-  padding: 12px 22px;
+  padding: 10px 20px;
   border: 0;
   border-radius: 10px;
   background: #e8590c;
@@ -184,7 +184,7 @@ select {
   left: 0;
   margin: 0;
   padding: 5px 22px;
-  border-radius: 0 0 18px 18px;
+  border-radius: 0 0 16px 16px;
   background: rgb(74 26 20 / 96%);
   color: #ffb4a2;
   font-size: 12px;

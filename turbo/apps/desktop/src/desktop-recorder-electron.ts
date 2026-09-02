@@ -6,8 +6,8 @@ import type {
   DesktopRecorderArea,
   DesktopRecorderAreaSelection,
   DesktopRecorderAudioChoice,
+  DesktopRecorderCapabilities,
   DesktopRecorderCaptureRequest,
-  DesktopRecorderSourceList,
   DesktopRecorderState,
   DesktopRecorderWindowChoice,
   DesktopRecorderWindowOption,
@@ -19,7 +19,7 @@ interface DesktopRecorderIpcOptions {
 
 interface DesktopRecorderNativeApi {
   readonly getState: () => DesktopRecorderState;
-  readonly listSources: () => Promise<DesktopRecorderSourceList>;
+  readonly getCapabilities: () => Promise<DesktopRecorderCapabilities>;
   readonly startCapture: (
     request: DesktopRecorderCaptureRequest,
   ) => Promise<void>;
@@ -138,9 +138,9 @@ export function installDesktopRecorderIpc(
     assertRecorderPage(event);
     return api.getState();
   });
-  ipcMain.handle(DESKTOP_RECORDER_CHANNELS.listSources, async (event) => {
+  ipcMain.handle(DESKTOP_RECORDER_CHANNELS.getCapabilities, async (event) => {
     assertRecorderPage(event);
-    return await api.listSources();
+    return await api.getCapabilities();
   });
   ipcMain.handle(DESKTOP_RECORDER_CHANNELS.listWindowOptions, async (event) => {
     assertRecorderPage(event);
