@@ -6,13 +6,16 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::cli_stderr_diagnostics::{
+    CLI_STDERR_OMITTED_LONG_LINE, CLI_STDERR_RESULT_MAX_LINE_BYTES,
+};
 use std::time::Duration;
 
 #[tokio::test]
 async fn cli_failure_omits_overlong_final_stderr() -> Result<(), Box<dyn std::error::Error>> {
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let overlong_line = "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES + 1);
+    let overlong_line = "x".repeat(CLI_STDERR_RESULT_MAX_LINE_BYTES + 1);
 
     unsafe {
         common::setup_env(
@@ -35,10 +38,7 @@ async fn cli_failure_omits_overlong_final_stderr() -> Result<(), Box<dyn std::er
     .expect("execute_cli should return promptly")?;
 
     assert_eq!(cli_result.exit_code, 1);
-    assert_eq!(
-        cli_result.stderr_lines,
-        vec![common::CLI_STDERR_OMITTED_LONG_LINE]
-    );
+    assert_eq!(cli_result.stderr_lines, vec![CLI_STDERR_OMITTED_LONG_LINE]);
 
     Ok(())
 }
