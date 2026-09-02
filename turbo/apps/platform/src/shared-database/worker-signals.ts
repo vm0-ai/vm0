@@ -10,6 +10,10 @@ import {
   reloadComputerUseHosts$,
 } from "../signals/external/computer-use-hosts.ts";
 import {
+  queueData$,
+  reloadQueueData$,
+} from "../signals/queue-page/queue-signals.ts";
+import {
   setAblyLoop$,
   setAblyPayloadLoop$,
   setupRealtime$,
@@ -288,7 +292,11 @@ const reloadWorkerComputed$ = command(
       set(reloadChatIndicators$);
       return;
     }
-    set(reloadComputerUseHosts$);
+    if (computedKey === "computer-use-hosts") {
+      set(reloadComputerUseHosts$);
+      return;
+    }
+    set(reloadQueueData$);
   },
 );
 
@@ -327,14 +335,25 @@ export const reloadWorkerComputerUseHostsFromRealtime$ = command(
   },
 );
 
+export const reloadWorkerQueueDataFromRealtime$ = command(
+  ({ set }, signal: AbortSignal): boolean => {
+    signal.throwIfAborted();
+    set(reloadWorkerComputed$, "queue-data");
+    set(reloadComputedForConnections$, "queue-data");
+    return false;
+  },
+);
+
 export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
   ({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
     set(broadcastSharedDatabaseReconnect$);
     set(reloadWorkerComputed$, "chat-thread-indicators");
     set(reloadWorkerComputed$, "computer-use-hosts");
+    set(reloadWorkerComputed$, "queue-data");
     set(reloadComputedForConnections$, "chat-thread-indicators");
     set(reloadComputedForConnections$, "computer-use-hosts");
+    set(reloadComputedForConnections$, "queue-data");
   },
 );
 
@@ -406,6 +425,19 @@ const runCredentialStoreDaemons$ = command(
             scope: "user",
             topic: "computerUseHostsChanged",
             loopCommand$: reloadWorkerComputerUseHostsFromRealtime$,
+            options: {
+              runOnForegroundCatchUp: false,
+              runOnSubscribe: true,
+            },
+          },
+          signal,
+        ),
+        set(
+          setAblyLoop$,
+          {
+            scope: "user",
+            topic: "billing:changed",
+            loopCommand$: reloadWorkerQueueDataFromRealtime$,
             options: {
               runOnForegroundCatchUp: false,
               runOnSubscribe: true,
@@ -528,7 +560,9 @@ export const getComputedStoreMessage$ = command(
     const value =
       message.computedKey === "chat-thread-indicators"
         ? await get(workerChatThreadIndicators$)
-        : await get(computerUseHosts$);
+        : message.computedKey === "computer-use-hosts"
+          ? await get(computerUseHosts$)
+          : await get(queueData$);
     signal.throwIfAborted();
     return value;
   },

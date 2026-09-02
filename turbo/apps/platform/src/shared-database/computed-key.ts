@@ -1,5 +1,9 @@
 import { DESKTOP_PRODUCTS } from "@okouai/api-contracts/contracts/client-headers";
 import { computerUseHostStatusSchema } from "@okouai/api-contracts/contracts/computer-use";
+import {
+  queueResponseSchema,
+  type QueueResponse,
+} from "@okouai/api-contracts/contracts/runs";
 import { z } from "zod";
 
 import {
@@ -10,6 +14,7 @@ import {
 export const computedKeySchema = z.enum([
   "chat-thread-indicators",
   "computer-use-hosts",
+  "queue-data",
 ]);
 
 export type ComputedKey = z.infer<typeof computedKeySchema>;
@@ -30,6 +35,7 @@ export type ListedComputerUseHost = z.infer<typeof listedComputerUseHostSchema>;
 interface ComputedValueMap {
   readonly "chat-thread-indicators": ChatThreadIndicators;
   readonly "computer-use-hosts": ListedComputerUseHost[];
+  readonly "queue-data": QueueResponse;
 }
 
 export type ComputedValue<TKey extends ComputedKey> = ComputedValueMap[TKey];
@@ -45,5 +51,8 @@ export function parseComputedValue(
   if (computedKey === "chat-thread-indicators") {
     return chatThreadIndicatorsSchema.parse(value);
   }
-  return listedComputerUseHostSchema.array().parse(value);
+  if (computedKey === "computer-use-hosts") {
+    return listedComputerUseHostSchema.array().parse(value);
+  }
+  return queueResponseSchema.parse(value);
 }
