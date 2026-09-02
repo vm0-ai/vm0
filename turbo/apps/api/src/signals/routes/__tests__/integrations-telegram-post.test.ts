@@ -962,6 +962,84 @@ describe("POST /api/telegram/register", () => {
     });
   });
 
+  it.each([
+    {
+      caseName: "the VM0 canonical default",
+      apiOrigin: "https://api.vm0.ai",
+      displayName: "Zero",
+      seedDefaultAgent: true,
+      expectedAgentName: "Zero",
+    },
+    {
+      caseName: "the Okou canonical default",
+      apiOrigin: "https://api.okou.ai",
+      displayName: "Zero",
+      seedDefaultAgent: true,
+      expectedAgentName: "Okou",
+    },
+    {
+      caseName: "a renamed Okou canonical default",
+      apiOrigin: "https://api.okou.ai",
+      displayName: "Finance Agent",
+      seedDefaultAgent: true,
+      expectedAgentName: "Finance Agent",
+    },
+    {
+      caseName: "a non-canonical Okou agent named Zero",
+      apiOrigin: "https://api.okou.ai",
+      displayName: "Zero",
+      seedDefaultAgent: false,
+      expectedAgentName: "Zero",
+    },
+  ] as const)(
+    "brands Telegram command descriptions for $caseName",
+    async ({ apiOrigin, displayName, seedDefaultAgent, expectedAgentName }) => {
+      const telegramBotId = newTelegramBotId();
+      const fixture = await trackFixture(
+        seedTelegramPostFixture({
+          telegramBotId,
+          installBot: false,
+          seedDefaultAgent,
+        }),
+      );
+      const actor = actorForFixture(fixture);
+      await authOrgApi.updateAgentMetadata(actor, fixture.composeId, {
+        displayName,
+      });
+      mockEnv("OKOU_WEB_URL", "https://api.vm0.ai");
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockTelegramGetMe({
+        botId: telegramBotId,
+        username: `command_bot_${telegramBotId}`,
+      });
+      context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
+      context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
+
+      const response = await postRegisterRaw(
+        {
+          botToken: TEST_BOT_TOKEN,
+          ...(seedDefaultAgent ? {} : { defaultAgentId: fixture.composeId }),
+        },
+        apiOrigin,
+      );
+
+      expect(response.status).toBe(201);
+      expect(context.mocks.telegram.setMyCommands).toHaveBeenCalledWith(
+        TEST_BOT_TOKEN,
+        expect.arrayContaining([
+          {
+            command: "connect",
+            description: `Connect to ${expectedAgentName}`,
+          },
+          {
+            command: "disconnect",
+            description: `Disconnect from ${expectedAgentName}`,
+          },
+        ]),
+      );
+    },
+  );
+
   it("uses the active org default agent when defaultAgentId is omitted", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(

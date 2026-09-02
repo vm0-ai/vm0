@@ -445,7 +445,9 @@ async fn upload_archive_bundle(
         .await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
-        return Err(e);
+        return Err(AgentError::Checkpoint(format!(
+            "artifact archive upload failed: {e}"
+        )));
     }
 
     log_info!(LOG_TAG, "Uploading manifest to S3...");
@@ -458,7 +460,9 @@ async fn upload_archive_bundle(
         .await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
-        return Err(e);
+        return Err(AgentError::Checkpoint(format!(
+            "artifact manifest upload failed: {e}"
+        )));
     }
     record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), true, None);
     Ok(())
@@ -1012,7 +1016,7 @@ mod tests {
         let archive_upload = server.mock(|when, then| {
             when.method(PUT)
                 .path("/test/failed-artifact-archive-upload");
-            then.status(403);
+            then.status(500);
         });
         let manifest_upload = server.mock(|when, then| {
             when.method(PUT)
@@ -1040,12 +1044,15 @@ mod tests {
         )
         .await;
 
-        let Err(AgentError::Http(message)) = result else {
-            panic!("expected archive upload HTTP error");
+        let Err(AgentError::Checkpoint(message)) = result else {
+            panic!("expected archive upload checkpoint error");
         };
-        assert_eq!(message, "PUT presigned: HTTP 403 Forbidden");
+        assert_eq!(
+            message,
+            "artifact archive upload failed: http: PUT presigned failed after 3 attempts; last failure: HTTP 500"
+        );
         prepare.assert_calls(1);
-        archive_upload.assert_calls(1);
+        archive_upload.assert_calls(3);
         manifest_upload.assert_calls(0);
         commit.assert_calls(0);
         assert_eq!(
@@ -1136,10 +1143,13 @@ mod tests {
         )
         .await;
 
-        let Err(AgentError::Http(message)) = result else {
-            panic!("expected manifest upload HTTP error");
+        let Err(AgentError::Checkpoint(message)) = result else {
+            panic!("expected manifest upload checkpoint error");
         };
-        assert_eq!(message, "PUT presigned: HTTP 403 Forbidden");
+        assert_eq!(
+            message,
+            "artifact manifest upload failed: http: PUT presigned: HTTP 403 Forbidden"
+        );
         prepare.assert_calls(1);
         archive_upload.assert_calls(1);
         manifest_upload.assert_calls(1);

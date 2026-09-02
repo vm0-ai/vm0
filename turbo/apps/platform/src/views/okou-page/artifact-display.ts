@@ -1,5 +1,6 @@
 import type { AttachmentArtifactMetadata } from "../../signals/okou-page/attachment-chips.ts";
 import { i18n } from "../../i18n/index.ts";
+import { officeFilePreviewKind } from "./office-file-preview.ts";
 
 type ArtifactDisplayKind =
   | "markdown"
@@ -126,6 +127,16 @@ function artifactTitleKind(
   artifactKind: ArtifactTitleMetadata["artifactKind"],
 ): ArtifactTitleKind {
   if (artifactKind === "presentation-html") {
+    return "presentation";
+  }
+  const officePreviewKind = officeFilePreviewKind(filename);
+  if (officePreviewKind === "document") {
+    return "document";
+  }
+  if (officePreviewKind === "spreadsheet") {
+    return "data";
+  }
+  if (officePreviewKind === "presentation") {
     return "presentation";
   }
   const extension = fileExtension(filename);

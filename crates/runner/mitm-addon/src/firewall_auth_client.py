@@ -529,22 +529,31 @@ def _abort_stream(stream: _ConnectedStream) -> None:
 async def _read_proxy_connect_status(sock: socket.socket) -> tuple[int, bool]:
     loop = asyncio.get_running_loop()
     buffer = bytearray()
+    header_terminator = b"\r\n\r\n"
+    search_start = 0
     total_header_bytes = 0
     while True:
-        header_end = buffer.find(b"\r\n\r\n")
+        header_end = buffer.find(header_terminator, search_start)
         if header_end < 0:
             remaining_bytes = _MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES - total_header_bytes
             if len(buffer) > remaining_bytes:
                 raise ValueError("Firewall auth HTTP proxy response headers too large")
+            previous_buffer_end = len(buffer)
             chunk = await loop.sock_recv(sock, remaining_bytes + 1 - len(buffer))
             if not chunk:
                 raise asyncio.IncompleteReadError(bytes(buffer), None)
             buffer.extend(chunk)
+            # A terminator crossing this read can start only in the last three old bytes.
+            search_start = max(
+                0,
+                previous_buffer_end - len(header_terminator) + 1,
+            )
             continue
 
-        header_end += len(b"\r\n\r\n")
+        header_end += len(header_terminator)
         header_block = bytes(buffer[:header_end])
         del buffer[:header_end]
+        search_start = 0
         total_header_bytes += len(header_block)
         if total_header_bytes > _MAX_FIREWALL_AUTH_RESPONSE_HEADER_BYTES:
             raise ValueError("Firewall auth HTTP proxy response headers too large")

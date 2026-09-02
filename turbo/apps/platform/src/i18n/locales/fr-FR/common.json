@@ -430,13 +430,11 @@
         "agents": "Agents",
         "artifacts": "Artéfacts",
         "connectors": "Connecteurs",
-        "newChat": "Nouveau chat",
         "settings": "Paramètres",
         "workflows": "Workflows",
         "works": "Où {{agentName}} travaille"
       },
       "rail": {
-        "new": "Nouveau",
         "workflows": "Workflows",
         "works": "Travail"
       },
@@ -1852,7 +1850,7 @@
       "noAccounts": "Aucun compte actif n'est disponible. Reconnectez ou réparez d'abord l'établissement.",
       "oneDay": "24 heures",
       "oneHour": "1 heure",
-      "popupBlocked": "Autorisez les fenêtres contextuelles pour Zero, puis réessayez.",
+      "popupBlocked": "Autorisez les fenêtres contextuelles pour {{assistantName}}, puis réessayez.",
       "readOnly": "Comptes, soldes et transactions · lecture seule",
       "repair": "Réparer",
       "repairRequired": "{{institution}} doit être réparé",
@@ -1975,8 +1973,8 @@
       "providerIncompatibleAction": "Commencer une nouvelle session",
       "providerIncompatiblePrefix": "Cette session a été commencée avec un fournisseur de modèle différent et ne peut pas être continuée avec le fournisseur actuel.",
       "recovery": {
-        "capacityDescription": "Ce modèle est temporairement saturé. Réessayez dans quelques minutes ou changez de modèle maintenant.",
-        "capacityTitle": "Le modèle {{framework}} est occupé",
+        "capacityDescription": "Réessayez dans quelques instants ou changez de modèle.",
+        "capacityTitle": "Ce modèle est saturé pour le moment",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Continuer",
@@ -2033,12 +2031,21 @@
       },
       "cardDescription": "Transformez un fichier ou un enregistrement d'écran en vidéo finalisée",
       "description": "Ajoutez une source, choisissez éventuellement un avatar et une voix, puis créez la vidéo dans un fil de discussion.",
+      "desktop": {
+        "checkingCompatibility": "Vérification de la compatibilité",
+        "description": "L'enregistrement d'écran se fait dans l'application de bureau {{desktopProductName}}, qui capture n'importe quelle fenêtre et note vos clics.",
+        "download": "Télécharger pour macOS",
+        "handoffDetail": "Votre prise s'ouvre ici, prête pour un présentateur et une voix.",
+        "handoffTitle": "Revenez automatiquement à cet assistant",
+        "heading": "Enregistrer avec {{desktopProductName}} Desktop",
+        "illustration": "L'enregistrement a lieu dans {{desktopProductName}} Desktop",
+        "installDetail": "Nécessite un Mac avec puce Apple et macOS 14 ou version ultérieure. Les Mac Intel ne sont pas pris en charge.",
+        "installTitle": "Téléchargez et installez {{desktopProductName}} Desktop",
+        "recordDetail": "Arrêtez-le depuis le même menu une fois terminé.",
+        "recordTitle": "Lancez un enregistrement depuis la barre de menus",
+        "unsupportedIntelMac": "Nécessite un Mac avec puce Apple"
+      },
       "errors": {
-        "recordingEmpty": "L'enregistrement est vide. Veuillez réessayer.",
-        "recordingFailed": "Impossible de démarrer l'enregistrement d'écran. Réessayez dans une version récente de Chrome.",
-        "recordingPermission": "Aucun élément n'a été partagé. Choisissez un onglet, une fenêtre ou un écran lorsque vous êtes prêt.",
-        "recordingShareEnded": "Le partage d'écran s'est arrêté avant le début de l'enregistrement.",
-        "recordingUnsupported": "Ce navigateur ne prend pas en charge l'enregistrement d'écran.",
         "sendFailed": "Le fil de discussion n'a pas pu être créé. Votre source reste enregistrée localement et a été téléchargée comme sauvegarde.",
         "uploadFailed": "La source n'a pas pu être importée. Elle reste enregistrée localement et a été téléchargée comme sauvegarde."
       },
@@ -2046,55 +2053,33 @@
         "back": "Retour",
         "createInChat": "Créer dans le chat",
         "download": "Télécharger la source",
-        "next": "Suivant",
-        "startRecording": "Choisir l'écran et démarrer",
-        "stopRecording": "Arrêter l'enregistrement"
-      },
-      "recording": {
-        "chooseSurface": "Choisissez un onglet, une fenêtre ou un écran",
-        "countdown": "L'enregistrement commence après le compte à rebours",
-        "description": "Chrome vous demandera quoi partager. L'enregistrement ne commence qu'après le compte à rebours de trois secondes.",
-        "heading": "Enregistrer votre écran",
-        "localNote": "Vous pouvez arrêter depuis la barre de partage de Chrome ou revenir ici. L'enregistrement reste local jusqu'à la création du fil de discussion.",
-        "microphone": "Microphone",
-        "microphoneHelp": "Ajoutez une narration pendant votre démonstration",
-        "recordingLocally": "Enregistrement local",
-        "systemAudio": "Audio système",
-        "systemAudioHelp": "Les sources disponibles dépendent de Chrome et de votre système"
+        "next": "Suivant"
       },
       "review": {
         "avatar": "Avatar",
         "heading": "Vérifier votre vidéo d'introduction",
-        "help": "Confirmez les choix que Zero recevra dans le nouveau fil de discussion",
+        "help": "Confirmez les choix que {{assistantName}} recevra dans le nouveau fil de discussion",
         "instructions": "Instructions de montage",
         "source": "Source",
         "voice": "Voix"
       },
       "source": {
-        "chatDescription": "Ouvrez un fil maintenant et façonnez la vidéo avec Zero",
-        "chatDetail": "Ajoutez une source, un avatar ou une voix plus tard dans le chat",
-        "chatTitle": "Commencer dans le chat",
-        "documentDescription": "Transformez votre contenu en vidéo d'introduction commentée",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Importer des diapositives ou un document",
-        "dropDescription": "Diapositives, documents ou enregistrements",
-        "dropTitle": "Déposez une source ici",
+        "documentDescription": "Transformez vos diapositives en vidéo d'introduction commentée",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Importer des diapositives",
         "heading": "Comment souhaitez-vous commencer ?",
-        "help": "Ajoutez un contenu existant, enregistrez votre écran ou décrivez la vidéo avec vos propres mots",
-        "recordDescription": "Choisissez un onglet, une fenêtre ou tout l'écran",
-        "recordDetail": "Démarre après un compte à rebours de trois secondes",
+        "help": "Importez les diapositives dont vous disposez ou enregistrez votre écran avec {{desktopProductName}} Desktop",
+        "recordDescription": "Capturez une démo avec l'application de bureau",
+        "recordDetail": "Nécessite {{desktopProductName}} Desktop sur macOS",
         "recordTitle": "Enregistrer votre écran",
-        "videoDescription": "Laissez l'IA améliorer le rythme, le cadrage et la narration",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Importer un enregistrement"
+        "uploadDescription": "Choisissez un fichier sur votre ordinateur",
+        "uploadTitle": "Importer une source"
       },
       "sourceReview": {
         "format": "Format",
         "heading": "Votre source est prête",
         "help": "Vérifiez le fichier avant de continuer",
         "inAccount": "Dans votre compte",
-        "inBrowser": "Dans ce navigateur",
-        "inTab": "Jusqu'à la fermeture de cet onglet",
         "replace": "Remplacer la source",
         "saved": "Enregistrée",
         "source": "Source"
@@ -4856,24 +4841,14 @@
       "title": "Exporter les données"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Tout réinitialiser",
-        "resetting": "Réinitialisation…"
-      },
-      "description": "Activer ou désactiver les fonctionnalités expérimentales.",
+      "description": "Consultez les fonctionnalités par phase de déploiement.",
       "documentTitle": "Laboratoire",
-      "empty": {
-        "description": "Aucun interrupteur de fonctionnalité pour ce mainteneur.",
-        "title": "Aucun interrupteur de fonctionnalité"
-      },
-      "filters": {
-        "all": "Tout"
-      },
       "groups": {
-        "connectors": "Connecteurs",
-        "other": "Autre"
+        "alpha": "Alpha",
+        "beta": "Bêta",
+        "internal": "Internes",
+        "released": "Publiées"
       },
-      "maintainer": "Mainteneur : {{maintainer}}",
       "title": "Laboratoire"
     },
     "models": {

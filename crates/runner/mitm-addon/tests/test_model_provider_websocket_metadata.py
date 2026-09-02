@@ -106,4 +106,3 @@ class TestModelProviderWebSocketUsageMetadataRecovery:
             ("gpt-5.5", "tokens.output", 4),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)

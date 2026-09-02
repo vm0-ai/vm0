@@ -81,6 +81,12 @@ public struct CapturedClick: Equatable, Sendable {
     public let button: String
     public let clickCount: Int
     public let modifiers: [String]
+    /// Where the captured region stood when this click happened, for a source
+    /// that moves during the recording. A window capture follows the window
+    /// wherever it is dragged, so a click after the drag must be projected
+    /// through the window's position at that moment, not the one it had when
+    /// the capture was prepared. `nil` means the recording's geometry applies.
+    public let geometry: CaptureGeometry?
 
     public init(
         ticks: UInt64,
@@ -88,7 +94,8 @@ public struct CapturedClick: Equatable, Sendable {
         screenY: Double,
         button: String,
         clickCount: Int,
-        modifiers: [String]
+        modifiers: [String],
+        geometry: CaptureGeometry? = nil
     ) {
         self.ticks = ticks
         self.screenX = screenX
@@ -96,6 +103,7 @@ public struct CapturedClick: Equatable, Sendable {
         self.button = button
         self.clickCount = clickCount
         self.modifiers = modifiers
+        self.geometry = geometry
     }
 }
 
@@ -134,7 +142,7 @@ public func projectClicks(
             continue
         }
         guard
-            let point = geometry.mapClick(
+            let point = (click.geometry ?? geometry).mapClick(
                 screenX: click.screenX,
                 screenY: click.screenY,
                 outputSize: outputSize

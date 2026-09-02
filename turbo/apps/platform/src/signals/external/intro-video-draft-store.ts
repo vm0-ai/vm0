@@ -1,6 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 
-export type IntroVideoSourceKind = "document" | "recording" | "video";
+export type IntroVideoSourceKind = "document" | "recording";
 
 export interface IntroVideoDraftRecord {
   readonly blob: Blob;

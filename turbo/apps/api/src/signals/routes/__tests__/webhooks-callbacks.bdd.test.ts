@@ -6540,7 +6540,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
     mockEnv("ENV", "preview");
-    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-bdd-123");
+    mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-bdd-123");
 
     const mismatchedMetadata = {
       vm0_environment: "preview",

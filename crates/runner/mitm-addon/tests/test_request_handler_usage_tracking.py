@@ -257,24 +257,14 @@ def _auth_url_rewrite_token_meta() -> dict[str, object]:
     }
 
 
-@pytest.mark.parametrize(
-    ("firewall_billable", "model_usage_observable"),
-    [(True, False), (False, True)],
-)
 def test_repeated_eligibility_checks_keep_one_usage_flow_in_flight(
     usage_pending_path,
     real_flow,
-    firewall_billable,
-    model_usage_observable,
 ):
     """One flow owns one drain unit across changed eligibility signals."""
     flow = _model_provider_tracking_flow(real_flow)
 
-    terminal_usage.track_flow_if_needed(
-        flow,
-        firewall_billable,
-        model_usage_observable,
-    )
+    terminal_usage.track_flow_if_needed(flow, True)
     usage.write_pending_snapshot(flush_request_id="after-first-admission")
     assert_pending(
         usage_pending_path,
@@ -284,11 +274,7 @@ def test_repeated_eligibility_checks_keep_one_usage_flow_in_flight(
         flush_request_id="after-first-admission",
     )
 
-    terminal_usage.track_flow_if_needed(
-        flow,
-        not firewall_billable,
-        not model_usage_observable,
-    )
+    terminal_usage.track_flow_if_needed(flow, False)
     usage.write_pending_snapshot(flush_request_id="after-repeated-admission")
     assert_pending(
         usage_pending_path,
@@ -683,11 +669,12 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     mitm_ctx,
     fake_firewall_headers,
 ):
-    """Non-billable model providers without observation metadata are not tracked."""
+    """Non-billable model providers are not tracked even with a canonical model."""
     reg_path = _write_model_provider_tracking_registry(
         tmp_path,
         run_id=_MODEL_PROVIDER_RUN_ID,
         sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
+        sandbox_fields={"modelUsageProvider": "claude-sonnet-4-6"},
     )
     flow = _model_provider_tracking_flow(real_flow)
 
@@ -704,68 +691,6 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     assert_pending(
         usage_pending_path,
         flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="request-1",
-    )
-
-
-async def test_non_billable_model_provider_with_invalid_model_usage_provider_is_not_tracked(
-    tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
-):
-    """Only non-empty string modelUsageProvider values make model providers observable."""
-    reg_path = _write_model_provider_tracking_registry(
-        tmp_path,
-        run_id=_MODEL_PROVIDER_RUN_ID,
-        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
-        sandbox_fields={"modelUsageProvider": 123},
-    )
-    flow = _model_provider_tracking_flow(real_flow)
-
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        fake_firewall_headers(),
-    ):
-        await mitm_addon.request(flow)
-
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER_FIREWALL_NAME
-    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
-    assert flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] == 123
-    usage.write_pending_snapshot(flush_request_id="request-1")
-    assert_pending(
-        usage_pending_path,
-        flows=0,
-        buffered=0,
-        reports=0,
-        flush_request_id="request-1",
-    )
-
-
-async def test_non_billable_observable_model_provider_is_tracked_before_responseheaders(
-    tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
-):
-    """BYOK model observations drain during shutdown even without billing."""
-    reg_path = _write_model_provider_tracking_registry(
-        tmp_path,
-        run_id=_MODEL_PROVIDER_RUN_ID,
-        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
-        sandbox_fields={"modelUsageProvider": "claude-sonnet-4-6"},
-    )
-    flow = _model_provider_tracking_flow(real_flow)
-
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        fake_firewall_headers(),
-    ):
-        await mitm_addon.request(flow)
-
-    assert flow.metadata[metadata_keys.FIREWALL_NAME] == _MODEL_PROVIDER_FIREWALL_NAME
-    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
-    assert flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] == "claude-sonnet-4-6"
-    usage.write_pending_snapshot(flush_request_id="request-1")
-    assert_pending(
-        usage_pending_path,
-        flows=1,
         buffered=0,
         reports=0,
         flush_request_id="request-1",

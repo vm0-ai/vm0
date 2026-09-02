@@ -38,8 +38,6 @@ interface Logger {
   level: Level;
 }
 
-type RetainedAliasResolutionEvent = "stripe_preview_job_ref_alias_resolution";
-
 class LoggerRegistry {
   private readonly store = new Map<string, Logger>();
 
@@ -349,14 +347,6 @@ export function logger(name: string): Logger {
   const loggerInstance = createLogger(name);
   registry.set(name, loggerInstance);
   return loggerInstance;
-}
-
-export function logAliasResolutionInfo(
-  loggerInstance: Pick<Logger, "info">,
-  event: RetainedAliasResolutionEvent,
-  fields: Readonly<Record<string, string>>,
-): void {
-  loggerInstance.info(event, fields);
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

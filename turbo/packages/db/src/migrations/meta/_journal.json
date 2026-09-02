@@ -1716,6 +1716,20 @@
       "when": 1788334500283,
       "tag": "1052_fast_nighthawk",
       "breakpoints": true
+    },
+    {
+      "idx": 1053,
+      "version": "7",
+      "when": 1788341885276,
+      "tag": "1053_new_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 1054,
+      "version": "7",
+      "when": 1788345300373,
+      "tag": "1054_memory_summary_projections",
+      "breakpoints": true
     }
   ]
 }

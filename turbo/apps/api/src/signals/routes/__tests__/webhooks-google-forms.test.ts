@@ -11,7 +11,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -282,7 +282,10 @@ function formsPushBody(messageId: string, watchId: string): string {
   });
 }
 
-async function postWebhook(rawBody: string): Promise<{
+async function postWebhook(
+  rawBody: string,
+  googleIdToken = signedGoogleIdToken(),
+): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {
@@ -292,7 +295,7 @@ async function postWebhook(rawBody: string): Promise<{
   }).request("/api/webhooks/google-forms", {
     method: "POST",
     headers: {
-      authorization: `Bearer ${signedGoogleIdToken()}`,
+      authorization: `Bearer ${googleIdToken}`,
       "Content-Type": "application/json",
     },
     body: rawBody,
@@ -369,7 +372,7 @@ async function setupGoogleFormsAutomation() {
   }
   expect(created.body.eventConfig.connectorId).toBe(connector.id);
   expect(created.body).not.toHaveProperty("warning");
-  return { automationId: created.body.id, chatThreadId, formsApi };
+  return { actor, automationId: created.body.id, chatThreadId, formsApi };
 }
 
 describe("Google Forms Pub/Sub webhook", () => {
@@ -460,6 +463,72 @@ describe("Google Forms Pub/Sub webhook", () => {
     });
     expect(formsApi.responseFilters).toHaveLength(2);
     await flushWaitUntilForTest();
+  });
+
+  it("silently acknowledges events after Forms access becomes unavailable", async () => {
+    const startedAt = now();
+    const { actor, automationId, formsApi } =
+      await setupGoogleFormsAutomation();
+    const watchId = formsApi.watchIds[0];
+    if (!watchId) {
+      throw new Error("Expected a Google Forms watch id");
+    }
+
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      }),
+    );
+    const googleIdToken = signedGoogleIdToken();
+    mockNow(startedAt + 2 * 60 * 60 * 1000);
+    context.mocks.axiomLogging.warn.mockClear();
+
+    for (const messageId of [
+      "pubsub-forms-access-unavailable-first",
+      "pubsub-forms-access-unavailable-repeat",
+    ]) {
+      const response = await postWebhook(
+        formsPushBody(messageId, watchId),
+        googleIdToken,
+      );
+      expect(response).toStrictEqual({
+        status: 200,
+        body: {
+          success: true,
+          watchStates: 1,
+          dispatched: 0,
+          duplicates: 0,
+        },
+      });
+    }
+
+    expect(refreshCalls).toBe(1);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+        return message === "Connector credential refresh failed";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Google Forms event skipped because connector access is unavailable",
+      expect.anything(),
+    );
+
+    mockNow(startedAt);
+    mockGoogleFormsConnectorOAuth();
+    await workflows.connectConnector(actor, "google-forms");
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped workflow actor");
+    }
+    mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: automationId },
+      }),
+      [204],
+    );
   });
 
   it("ignores an unknown watch id", async () => {

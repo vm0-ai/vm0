@@ -411,6 +411,38 @@ async function selectAvatarRecommendationFilters(
   await user.keyboard("{Escape}");
 }
 
+// Serves the deck the detail preview renders into its slide shadow roots. The
+// inline stylesheet gives every slide a fixed size so the preview scales it the
+// same way it scales a real deck.
+function mockStyledPresentationDeck(
+  template: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
+): void {
+  context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+    return new Response(
+      `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+        .map((_, index) => {
+          return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
+        })
+        .join("")}</body></html>`,
+      { headers: { "Content-Type": "text/html" } },
+    );
+  });
+}
+
+// Opens the picker and the template's detail preview from its card. Returns the
+// dialog, which stays mounted across the picker/detail transition.
+async function openPresentationDetailPreview(
+  template: (typeof PRESENTATION_TEMPLATE_PICKER_ITEMS)[number],
+): Promise<HTMLElement> {
+  click(
+    await waitFor(() => {
+      return screen.getByLabelText("Template");
+    }),
+  );
+  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+  return screen.getByRole("dialog");
+}
+
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
@@ -438,6 +470,44 @@ beforeEach(() => {
 });
 
 describe("chat composer templates", () => {
+  // Whichever test renders the chat page first pays a one-time cost for
+  // evaluating the chat-page module graph and for React's first render of it
+  // (~900ms in CI). That cost lands inside the first test's 5000ms budget, so
+  // this file opens with its cheapest page-rendering assertion. Keep it first:
+  // putting a long interaction sequence here stacks the one-time cost on top of
+  // the sequence and leaves the test without margin on a contended runner.
+  it("places the template control immediately after the legacy attach button by default", async () => {
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+
+    await waitFor(() => {
+      const controls = Array.from(
+        composer.querySelectorAll(
+          [
+            'button[aria-label="Attach"]',
+            'button[aria-label="Template"]',
+            'button[aria-label="Connectors"]',
+          ].join(","),
+        ),
+      ).map((button) => {
+        return button.getAttribute("aria-label");
+      });
+
+      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
+      expect(
+        composer.querySelector('button[aria-label="Upload"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("inserts multiple inline templates and sends a template-only message", async () => {
     const user = userEvent.setup({ delay: null });
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
@@ -775,38 +845,6 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(highResolutionImage).toHaveAttribute("data-loaded", "true");
       expect(lowResolutionImage).not.toHaveAttribute("data-replaced");
-    });
-  });
-
-  it("places the template control immediately after the legacy attach button by default", async () => {
-    mockChatLifecycle(context, { threadId: THREAD_ID });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const composer = composerElementFrom(
-      await screen.findByPlaceholderText(PLACEHOLDER),
-    );
-
-    await waitFor(() => {
-      const controls = Array.from(
-        composer.querySelectorAll(
-          [
-            'button[aria-label="Attach"]',
-            'button[aria-label="Template"]',
-            'button[aria-label="Connectors"]',
-          ].join(","),
-        ),
-      ).map((button) => {
-        return button.getAttribute("aria-label");
-      });
-
-      expect(controls).toStrictEqual(["Attach", "Template", "Connectors"]);
-      expect(
-        composer.querySelector('button[aria-label="Upload"]'),
-      ).not.toBeInTheDocument();
     });
   });
 
@@ -2418,18 +2456,14 @@ describe("chat composer templates", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:template-detail-1");
   });
 
+  // This test used to also cover the theme lifecycle, which put two independent
+  // contracts plus page bootstrap into one 5000ms budget and left ~1.1s of
+  // margin on a healthy CI runner. The theme lifecycle now has its own test.
+  // Navigation keeps the render assertions that share its warm preview state,
+  // so neither test re-pays for loading a cold detail preview.
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(
-        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
-          .map((_, index) => {
-            return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
-          })
-          .join("")}</body></html>`,
-        { headers: { "Content-Type": "text/html" } },
-      );
-    });
+    mockStyledPresentationDeck(template);
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -2437,14 +2471,7 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    click(
-      await waitFor(() => {
-        return screen.getByLabelText("Template");
-      }),
-    );
-    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
-
-    const templateDialog = screen.getByRole("dialog");
+    const templateDialog = await openPresentationDetailPreview(template);
     expect(
       within(templateDialog).getByRole("heading", {
         name: `Template / ${template.title}`,
@@ -2538,51 +2565,6 @@ describe("chat composer templates", () => {
       "true",
     );
 
-    click(screen.getByLabelText("Select style Candy party"));
-    expect(screen.getByLabelText("Select style Candy party")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(
-      within(templateDialog)
-        .getByLabelText("Preview slide 1")
-        .querySelector("iframe"),
-    ).toBeNull();
-    const prismSlidePreviewButton =
-      within(templateDialog).getByLabelText("Preview slide 1");
-    expect(
-      prismSlidePreviewButton.querySelector(
-        `[aria-label="${template.title} slide 1 preview"]`,
-      )?.shadowRoot,
-    ).toBe(carnivalShadowRoot);
-    expect(carnivalShadowPreviewRoot?.style.getPropertyValue("--accent")).toBe(
-      "#7257E6",
-    );
-    expect(prismSlidePreviewButton.querySelectorAll("span")).toHaveLength(1);
-
-    const templateButton = queryAllByRoleFast("button", templateDialog).find(
-      (candidate) => {
-        return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
-        );
-      },
-    );
-    if (!templateButton) {
-      throw new Error("Template button not found");
-    }
-    click(templateButton);
-    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
-
-    await waitFor(() => {
-      expect(
-        within(templateDialog).getByLabelText("Preview slide 1"),
-      ).toHaveAttribute("aria-pressed", "true");
-    });
-    expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-
     fireEvent.keyDown(
       screen.getByLabelText(`${template.title} slide preview`),
       {
@@ -2657,6 +2639,81 @@ describe("chat composer templates", () => {
         "true",
       );
     });
+  });
+
+  it("restores the default presentation detail theme when the preview reopens", async () => {
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    mockStyledPresentationDeck(template);
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const templateDialog = await openPresentationDetailPreview(template);
+    const firstSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 1");
+    await waitFor(() => {
+      expect(
+        firstSlidePreviewButton.querySelector(
+          `[aria-label="${template.title} slide 1 preview"]`,
+        )?.shadowRoot,
+      ).not.toBeNull();
+    });
+    const carnivalShadowRoot = firstSlidePreviewButton.querySelector(
+      `[aria-label="${template.title} slide 1 preview"]`,
+    )?.shadowRoot;
+    const carnivalShadowPreviewRoot =
+      carnivalShadowRoot?.querySelector<HTMLElement>(
+        ".vm0-shadow-preview-root",
+      ) ?? null;
+    expect(carnivalShadowPreviewRoot?.style.getPropertyValue("--accent")).toBe(
+      "#FF7A1A",
+    );
+
+    click(screen.getByLabelText("Select style Candy party"));
+    expect(screen.getByLabelText("Select style Candy party")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const prismSlidePreviewButton =
+      within(templateDialog).getByLabelText("Preview slide 1");
+    expect(prismSlidePreviewButton.querySelector("iframe")).toBeNull();
+    // Switching the theme restyles the existing shadow root instead of
+    // remounting the preview, so the accent changes in place.
+    expect(
+      prismSlidePreviewButton.querySelector(
+        `[aria-label="${template.title} slide 1 preview"]`,
+      )?.shadowRoot,
+    ).toBe(carnivalShadowRoot);
+    expect(carnivalShadowPreviewRoot?.style.getPropertyValue("--accent")).toBe(
+      "#7257E6",
+    );
+    expect(prismSlidePreviewButton.querySelectorAll("span")).toHaveLength(1);
+
+    const templateButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+
+    await waitFor(() => {
+      expect(
+        within(templateDialog).getByLabelText("Preview slide 1"),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("selects an illustration style from the picker", async () => {

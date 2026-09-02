@@ -12,6 +12,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cameraCommand } from "../camera";
 
+/** What the fake ffprobe says about the video stream, adjustable per test. */
+const probedStream = vi.hoisted(() => {
+  return { avg_frame_rate: "30/1", r_frame_rate: "30/1" };
+});
+
 vi.mock("child_process", async () => {
   const { readFileSync, writeFileSync } =
     await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -19,14 +24,7 @@ vi.mock("child_process", async () => {
     execFileSync: vi.fn((command: string, args: readonly string[]) => {
       if (command === "ffprobe") {
         return JSON.stringify({
-          streams: [
-            {
-              width: 1920,
-              height: 1080,
-              avg_frame_rate: "30/1",
-              r_frame_rate: "30/1",
-            },
-          ],
+          streams: [{ width: 1920, height: 1080, ...probedStream }],
           format: { duration: "10.000000" },
         });
       }
@@ -66,6 +64,8 @@ describe("okou video camera command", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    probedStream.avg_frame_rate = "30/1";
+    probedStream.r_frame_rate = "30/1";
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -177,6 +177,55 @@ describe("okou video camera command", () => {
         "-c:v",
         "libx264",
       ]),
+    );
+  });
+
+  it("renders at the frame rate the recording declares, not the probed average", async () => {
+    // A screen capture only stores a frame when the picture changes, so
+    // ffprobe averages a mostly still recording to well under one frame per
+    // second. That figure is valid as far as ffprobe is concerned, and it
+    // used to become the output frame rate.
+    probedStream.avg_frame_rate = "150/241";
+    probedStream.r_frame_rate = "1/2";
+    const videoPath = join(directory, "recording.mp4");
+    const eventsPath = join(directory, "recording.clicks.json");
+    const outputPath = join(directory, "draft.mp4");
+    writeFileSync(videoPath, Buffer.from("source-video"));
+    writeFileSync(
+      eventsPath,
+      JSON.stringify({
+        version: 1,
+        recording: {
+          durationMs: 10_000,
+          video: { width: 1920, height: 1080, frameRate: 30 },
+        },
+        clicks: [{ tMs: 2_000, normalized: { x: 0.12, y: 0.22 } }],
+        pointerEvents: [
+          { tMs: 1_700, kind: "move", normalized: { x: 0.1, y: 0.2 } },
+          { tMs: 2_000, kind: "click", normalized: { x: 0.12, y: 0.22 } },
+        ],
+      }),
+    );
+
+    await cameraCommand.parseAsync(
+      ["--file", videoPath, "--events", eventsPath, "--output", outputPath],
+      { from: "user" },
+    );
+
+    const result = JSON.parse(stdout()) as {
+      planPath: string;
+      frameRate: number;
+    };
+    expect(result.frameRate).toBe(30);
+    const plan = JSON.parse(readFileSync(result.planPath, "utf8")) as {
+      source: { frameRate: number };
+    };
+    expect(plan.source.frameRate).toBe(30);
+    const ffmpegCall = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return call[0] === "ffmpeg";
+    });
+    expect(ffmpegCall?.[1]).toEqual(
+      expect.arrayContaining(["-vf", expect.stringMatching(/^fps=30,/u)]),
     );
   });
 

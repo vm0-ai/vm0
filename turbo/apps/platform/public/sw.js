@@ -1,10 +1,13 @@
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
+const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
+  /^(?:staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u;
 
 function defaultNotificationTitle() {
   const hostname = self.location.hostname.toLowerCase();
-  const isOkou = OKOU_ROOT_DOMAINS.some((domain) => {
-    return hostname === domain || hostname.endsWith(`.${domain}`);
-  });
+  const isOkou =
+    OKOU_ROOT_DOMAINS.some((domain) => {
+      return hostname === domain || hostname.endsWith(`.${domain}`);
+    }) || OKOU_APP_WORKER_PREVIEW_HOST_PATTERN.test(hostname);
   return isOkou ? "Okou" : "VM0";
 }
 

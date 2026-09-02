@@ -1094,6 +1094,7 @@ async function reconcileGoogleMeetSubscriptionLifecycle(
     readonly userId: string;
     readonly connectorId: string;
     readonly allowStagedOfficialTarget?: boolean;
+    readonly ensurePreparedOfficialTarget?: boolean;
   },
   signal: AbortSignal,
 ): Promise<GoogleMeetSubscriptionReconcileResult> {
@@ -1104,16 +1105,18 @@ async function reconcileGoogleMeetSubscriptionLifecycle(
       connectorSlug: "google-meet",
     });
     signal.throwIfAborted();
-    const hasConsumer = await hasEnabledGoogleMeetConsumer(
-      {
-        db: tx,
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorId: args.connectorId,
-        allowStagedOfficialTarget: args.allowStagedOfficialTarget === true,
-      },
-      signal,
-    );
+    const hasConsumer =
+      args.ensurePreparedOfficialTarget === true ||
+      (await hasEnabledGoogleMeetConsumer(
+        {
+          db: tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: args.connectorId,
+          allowStagedOfficialTarget: args.allowStagedOfficialTarget === true,
+        },
+        signal,
+      ));
     if (hasConsumer) {
       return {
         result: await ensureGoogleMeetTranscriptGeneratedSubscriptionUnderLock(
@@ -1191,7 +1194,13 @@ export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
   },
   signal: AbortSignal,
 ): Promise<GoogleMeetSubscriptionReconcileResult> {
-  return await reconcileGoogleMeetSubscriptionLifecycle(args, signal);
+  return await reconcileGoogleMeetSubscriptionLifecycle(
+    {
+      ...args,
+      ensurePreparedOfficialTarget: args.allowStagedOfficialTarget === true,
+    },
+    signal,
+  );
 }
 
 async function loadGoogleMeetConnectorInventory(

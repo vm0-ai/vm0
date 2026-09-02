@@ -107,24 +107,31 @@ const runnerProfileDisposition = {
 const nonWorkflowPhysicalEntries = [
   ...physicalEntries(
     [
-      "agentphone_user_links",
-      "chat_automation_context",
-      "chat_github_context",
-      "email_outbox",
-      "export_jobs",
-      "feishu_org_installations",
-      "push_subscriptions",
-      "shared_threads",
-      "telegram_installations",
-      "telegram_official_user_links",
-      "usage_pack_invitation_purchases",
-    ].map((tableName) => {
-      return {
-        key: `default:public.${tableName}.public_brand`,
-        kind: "default" as const,
+      ...[
+        "agentphone_user_links",
+        "chat_automation_context",
+        "chat_github_context",
+        "email_outbox",
+        "export_jobs",
+        "feishu_org_installations",
+        "push_subscriptions",
+        "shared_threads",
+        "telegram_installations",
+        "telegram_official_user_links",
+        "usage_pack_invitation_purchases",
+      ].map((tableName) => {
+        return {
+          key: `default:public.${tableName}.public_brand`,
+          kind: "default" as const,
+          sources: SNAPSHOT_AND_CATALOG,
+        };
+      }),
+      {
+        key: "default:public.github_installations.setup_public_brand",
+        kind: "default",
         sources: SNAPSHOT_AND_CATALOG,
-      };
-    }),
+      },
+    ],
     publicBrandDisposition,
   ),
   ...physicalEntries(

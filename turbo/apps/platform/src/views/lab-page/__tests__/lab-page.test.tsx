@@ -3,30 +3,26 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import {
-  click,
-  detachedSetupPage,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-function featureSwitchControl(feature: FeatureSwitchKey): HTMLElement {
-  const label = screen.getByText(feature).closest("label");
-  if (!(label instanceof HTMLElement)) {
+function featureSwitchRow(feature: FeatureSwitchKey): HTMLElement {
+  const row = screen.getByText(feature).closest("li");
+  if (!(row instanceof HTMLElement)) {
     throw new Error(`${feature} feature row not found`);
   }
-  return within(label).getByRole("switch");
+  return row;
 }
 
-function featureSwitchRow(feature: FeatureSwitchKey): HTMLElement {
-  const label = screen.getByText(feature).closest("label");
-  if (!(label instanceof HTMLElement)) {
-    throw new Error(`${feature} feature row not found`);
+function featureSwitchGroup(name: string): HTMLElement {
+  const section = screen.getByRole("heading", { name }).closest("section");
+  if (!(section instanceof HTMLElement)) {
+    throw new Error(`${name} feature group not found`);
   }
-  return label;
+  return section;
 }
 
 function expectBefore(first: HTMLElement, second: HTMLElement): void {
@@ -35,16 +31,6 @@ function expectBefore(first: HTMLElement, second: HTMLElement): void {
       first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
     ),
   ).toBeTruthy();
-}
-
-function maintainerFilterButton(label: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.trim().toLowerCase().startsWith(label);
-  });
-  if (!button) {
-    throw new Error(`${label} maintainer filter not found`);
-  }
-  return button;
 }
 
 describe("lab page", () => {
@@ -62,103 +48,60 @@ describe("lab page", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-      expect(featureSwitchControl(FeatureSwitchKey.Banking)).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
+      expect(
+        within(featureSwitchGroup("Beta")).getByText(FeatureSwitchKey.Banking),
+      ).toBeInTheDocument();
       expect(screen.getByTestId("pinned-agent-card")).toBeInTheDocument();
       expect(pathname()).toBe("/_/lab");
     });
   });
 
-  it("lets users toggle and reset feature switches", async () => {
-    let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
-      [FeatureSwitchKey.Lab]: true,
-      [FeatureSwitchKey.TestOauthConnector]: false,
-    };
+  it("groups every switch by rollout stage without personal controls", async () => {
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches, effectiveSwitches: switches });
-    });
-    context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
-      switches = { ...switches, ...body.switches };
-      return respond(200, {
-        switches: body.switches,
-        effectiveSwitches: switches,
-      });
-    });
-    context.mocks.api(featureSwitchesContract.delete, ({ respond }) => {
-      switches = {};
-      return respond(200, { deleted: true });
+      return respond(200, { switches: {}, effectiveSwitches: {} });
     });
 
     detachedSetupPage({ context, path: "/_/lab" });
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-      expect(screen.getByText("Other")).toBeInTheDocument();
-      expect(screen.getAllByText("Connectors").length).toBeGreaterThan(0);
-      expect(
-        screen.getAllByText("Maintainer: liangyou@vm0.ai").length,
-      ).toBeGreaterThan(0);
     });
 
-    const testOauthSwitch = featureSwitchControl(
-      FeatureSwitchKey.TestOauthConnector,
-    );
-    expect(testOauthSwitch).toHaveAttribute("aria-checked", "false");
+    const released = within(featureSwitchGroup("Released"));
+    const beta = within(featureSwitchGroup("Beta"));
+    const alpha = within(featureSwitchGroup("Alpha"));
+    const internal = within(featureSwitchGroup("Internal"));
 
-    click(testOauthSwitch);
-
-    await waitFor(() => {
-      expect(
-        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
-      ).toHaveAttribute("aria-checked", "true");
-    });
-
-    click(screen.getByText("Reset all"));
-
-    await waitFor(() => {
-      expect(
-        featureSwitchControl(FeatureSwitchKey.TestOauthConnector),
-      ).toHaveAttribute("aria-checked", "false");
-    });
+    expect(
+      released.getAllByRole("listitem").length +
+        beta.getAllByRole("listitem").length +
+        alpha.getAllByRole("listitem").length +
+        internal.getAllByRole("listitem").length,
+    ).toBe(Object.values(FeatureSwitchKey).length);
+    for (const key of Object.values(FeatureSwitchKey).filter((feature) => {
+      return feature.startsWith("_");
+    })) {
+      expect(internal.getByText(key)).toBeInTheDocument();
+      expect(released.queryByText(key)).not.toBeInTheDocument();
+      expect(beta.queryByText(key)).not.toBeInTheDocument();
+      expect(alpha.queryByText(key)).not.toBeInTheDocument();
+    }
+    expect(
+      beta.queryByText(FeatureSwitchKey.IntroVideo),
+    ).not.toBeInTheDocument();
+    expect(alpha.getByText(FeatureSwitchKey.IntroVideo)).toBeInTheDocument();
+    expect(
+      alpha.getByText(FeatureSwitchKey.AhrefsConnector),
+    ).toBeInTheDocument();
+    expect(released.queryByRole("switch")).not.toBeInTheDocument();
+    expect(beta.queryByRole("switch")).not.toBeInTheDocument();
+    expect(alpha.queryByRole("switch")).not.toBeInTheDocument();
+    expect(internal.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reset all")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Maintainer:/u)).not.toBeInTheDocument();
   });
 
-  it("writes only the canonical Notion automation switch", async () => {
-    let switches: Record<string, boolean> = {
-      [FeatureSwitchKey.Lab]: true,
-      [FeatureSwitchKey.NotionWorkflowAutomations]: false,
-    };
-    let updateBody: Record<string, boolean> | undefined;
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches, effectiveSwitches: switches });
-    });
-    context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
-      updateBody = body.switches;
-      switches = { ...switches, ...body.switches };
-      return respond(200, {
-        switches,
-        effectiveSwitches: switches,
-      });
-    });
-
-    detachedSetupPage({ context, path: "/_/lab" });
-
-    await waitFor(() => {
-      expect(
-        featureSwitchControl(FeatureSwitchKey.NotionWorkflowAutomations),
-      ).toHaveAttribute("aria-checked", "false");
-    });
-    click(featureSwitchControl(FeatureSwitchKey.NotionWorkflowAutomations));
-
-    await waitFor(() => {
-      expect(updateBody).toStrictEqual({
-        [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-      });
-    });
-  });
-
-  it("shows feature switches in name order without sort controls", async () => {
+  it("shows feature switches in name order within each rollout stage", async () => {
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
     });
@@ -171,46 +114,11 @@ describe("lab page", () => {
 
     expectBefore(
       featureSwitchRow(FeatureSwitchKey.CodexFastMode),
-      featureSwitchRow(FeatureSwitchKey.Banking),
+      featureSwitchRow(FeatureSwitchKey.Lab),
     );
-
-    expect(
-      screen.queryByRole("combobox", { name: "Sort features" }),
-    ).not.toBeInTheDocument();
   });
 
-  it("filters feature switches by maintainer", async () => {
-    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
-      return respond(200, { switches: {}, effectiveSwitches: {} });
-    });
-
-    detachedSetupPage({ context, path: "/_/lab" });
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
-    });
-
-    click(maintainerFilterButton("lancy"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByText(FeatureSwitchKey.AhrefsConnector),
-      ).not.toBeInTheDocument();
-    });
-
-    click(maintainerFilterButton("all"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(FeatureSwitchKey.AhrefsConnector),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows the Lab controls in Brazilian Portuguese", async () => {
+  it("shows the Lab rollout groups in Brazilian Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
     context.mocks.data.userPreferences({ locale: "pt-BR" });
     context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
@@ -226,10 +134,15 @@ describe("lab page", () => {
       expect(document.title).toBe("Lab | VM0");
     });
     expect(
-      screen.getByText("Ative ou desative recursos experimentais."),
+      screen.getByText("Veja os recursos por estágio de lançamento."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Redefinir tudo")).toBeInTheDocument();
-    expect(screen.getByText("Outros")).toBeInTheDocument();
-    expect(screen.getAllByText("Conectores").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("heading", { name: "Lançados" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Beta" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Alfa" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Internos" }),
+    ).toBeInTheDocument();
   });
 });

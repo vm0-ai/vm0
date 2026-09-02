@@ -225,22 +225,27 @@ export function MarkShape({
 export function MarkNoteLabel({
   mark,
   onSelect,
-  onGrab,
 }: {
   mark: ImageAnnotationMark;
   onSelect?: () => void;
-  onGrab?: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
   const note = noteOnImage(mark);
   if (!note) {
     return null;
   }
 
+  // A label is words, and the gesture words invite is "click them to change
+  // them". It used to carry a move drag and a width grip instead, so a click
+  // moved the sentence and there was no way to edit it from the image at all.
+  // The label stops the pointer from reaching the canvas underneath — without
+  // that, pressing it also starts a new stroke.
   const interaction = onSelect
     ? {
         onClick: onSelect,
-        ...(onGrab ? { onPointerDown: onGrab } : {}),
-        className: "absolute cursor-move",
+        onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+          event.stopPropagation();
+        },
+        className: "absolute cursor-text",
         "data-testid": `annotation-note-label-${mark.id}`,
       }
     : { className: "pointer-events-none absolute" };

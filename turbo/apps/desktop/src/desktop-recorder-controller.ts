@@ -223,18 +223,37 @@ export class DesktopRecorderController {
     this.setStatus("finalizing");
     // A rejected stop leaves the session in the caller's hands: go back to
     // `recording` so the stop can be retried, rather than stranding the machine
-    // in `finalizing` where neither stop nor prepare is accepted again.
-    const recording = await this.restoreStatusOnFailure(
-      resumeStatus,
-      async () => {
-        return await backend.stop(sessionId);
-      },
-    );
+    // in `finalizing` where neither stop nor prepare is accepted again. The
+    // reason is recorded as well as rethrown: the window that asked is often
+    // gone by the time the answer arrives, and a rejection nobody receives
+    // left the controls vanished with nothing anywhere saying why.
+    let recording: DesktopRecorderRecording;
+    try {
+      recording = await backend.stop(sessionId);
+    } catch (error) {
+      if (this.featureEnabled) {
+        this.error = {
+          code: "capture_failed",
+          message: error instanceof Error ? error.message : String(error),
+        };
+        this.setStatus(resumeStatus);
+        this.onChange();
+      }
+      throw error;
+    }
     if (!this.featureEnabled) {
       return recording;
     }
     this.lastRecording = recording;
     this.sessionId = null;
+    // A capture whose writer broke still hands back the file it managed to
+    // write, but shipping it as the finished recording is how a two-second
+    // movie reached the editor. Keep it, say why, and leave delivery to a
+    // deliberate retry.
+    if (recording.failure) {
+      this.failSession(recording.failure);
+      return recording;
+    }
     await this.runDelivery(recording);
     return recording;
   }
@@ -351,8 +370,9 @@ export class DesktopRecorderController {
     this.lastRecording = recording;
     this.sessionId = null;
     this.elapsedMs = 0;
-    if (failure) {
-      this.failSession(failure);
+    const reason = failure ?? recording.failure;
+    if (reason) {
+      this.failSession(reason);
       return;
     }
     await this.runDelivery(recording);

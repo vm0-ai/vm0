@@ -38,11 +38,7 @@ import {
   getDatasetName,
   ingestToAxiom,
 } from "./signals/external/axiom";
-import {
-  type RouteEntry,
-  withApiNamespaceAliases,
-  withMigratedBrandedPaths,
-} from "./signals/route-entry";
+import type { RouteEntry } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configureOfficialWorkflowReconciliationDispatcher } from "./signals/services/official-workflow-reconciliation-registration.service";
 import { configurePiApiFirstTurnDispatcher } from "./signals/services/pi-api-first-turn-registration.service";
@@ -610,17 +606,15 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // The namespace expansion first, then the branded paths migrated routes owe:
-  // the expansion consumes the declared path, so the second stage produces
-  // finished registrations rather than input to another derivation. Uniqueness
-  // over this composition is asserted against the production route table in
-  // `__tests__/migrated-branded-paths.test.ts`, not here — test apps
+  // A route is registered at the path its contract declares, and nowhere else.
+  // Two stages used to sit here: one registered the branded paths migrated
+  // routes owed their released callers, which #31088 emptied and #31090
+  // removed, and one derived the canonical form of a branded declaration,
+  // which #31094 removed once nothing declared one. Uniqueness is asserted
+  // against the production route table in
+  // `__tests__/api-namespace-compatibility.test.ts`, not here — test apps
   // deliberately compose overlapping route slices.
-  const registeredRoutes = withMigratedBrandedPaths(
-    withApiNamespaceAliases(routes),
-  );
-
-  for (const entry of registeredRoutes) {
+  for (const entry of routes) {
     const { route } = entry;
     const routeHandler = honoSignalHandler(
       entry.handler,

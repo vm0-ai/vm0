@@ -114,6 +114,72 @@ describe("release-please API deployment graph", () => {
     expect(manifest["turbo/apps/cli"]).toBe(cliPackage.version);
   });
 
+  it("release-manages the standalone App Worker deployment source", () => {
+    const releaseConfig = readJson<ReleasePleaseConfig>(
+      "release-please-config.json",
+    );
+    const manifest = readJson<Record<string, string>>(
+      ".release-please-manifest.json",
+    );
+    const exclusions = readJson<Record<string, string>>(
+      ".github/release-please-workspace-exclusions.json",
+    );
+    const appWorkerPackage = readJson<VersionedPackageJson>(
+      "turbo/apps/app-worker/package.json",
+    );
+    const releaseWorkflow = readText(".github/workflows/release-please.yml");
+    const releaseJob = workflowJobBlock(releaseWorkflow, "release-please");
+    const promoteAppProductionJob = workflowJobBlock(
+      releaseWorkflow,
+      "promote-app-production",
+    );
+    const promoteAppWorkerProductionJob = workflowJobBlock(
+      releaseWorkflow,
+      "promote-app-worker-production",
+    );
+    const updateRollbackDashboardJob = workflowJobBlock(
+      releaseWorkflow,
+      "update-rollback-dashboard",
+    );
+    const githubExpressionStart = String.fromCodePoint(36, 123, 123);
+
+    expect(releaseConfig.packages["turbo/apps/app-worker"]).toStrictEqual({
+      "release-type": "node",
+    });
+    expect(manifest["turbo/apps/app-worker"]).toBe(appWorkerPackage.version);
+    expect(exclusions).not.toHaveProperty("turbo/apps/app-worker");
+    expect(releaseJob).toContain(
+      `app_worker_release_created: ${githubExpressionStart} steps.release.outputs['turbo/apps/app-worker--release_created'] }}`,
+    );
+    expect(releaseJob).toContain(
+      `app_worker_version: ${githubExpressionStart} steps.release.outputs['turbo/apps/app-worker--version'] }}`,
+    );
+    expect(releaseJob).toContain(
+      `app_deploy_required: ${githubExpressionStart} steps.app-release.outputs.required }}`,
+    );
+    expect(releaseJob).toContain(
+      "steps.release.outputs['turbo/apps/app-worker--sha']",
+    );
+    expect(releaseJob).toContain(
+      "steps.release.outputs['turbo/apps/app-worker--tag_name']",
+    );
+    expect(promoteAppProductionJob).toContain(
+      "needs.release-please.outputs.app_deploy_required == 'true'",
+    );
+    expect(promoteAppWorkerProductionJob).toContain(
+      "needs.release-please.outputs.app_deploy_required == 'true'",
+    );
+    expect(promoteAppWorkerProductionJob).toContain("continue-on-error: true");
+    expect(promoteAppWorkerProductionJob).toContain("app-worker.okou.ai");
+    expect(promoteAppWorkerProductionJob).toContain("app-worker.vm0.ai");
+    expect(updateRollbackDashboardJob).toContain(
+      "needs.release-please.outputs.app_deploy_required != 'true'",
+    );
+    expect(updateRollbackDashboardJob).not.toContain(
+      "promote-app-worker-production",
+    );
+  });
+
   it("uses the release-managed connectors version as catalog validator identity", () => {
     const releaseConfig = readJson<ReleasePleaseConfig>(
       "release-please-config.json",

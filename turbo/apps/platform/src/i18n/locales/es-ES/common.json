@@ -430,13 +430,11 @@
         "agents": "Agentes",
         "artifacts": "Artefactos",
         "connectors": "Conectores",
-        "newChat": "Nuevo chat",
         "settings": "Configuración",
         "workflows": "Flujos de trabajo",
         "works": "Dónde trabaja {{agentName}}"
       },
       "rail": {
-        "new": "Nuevo",
         "workflows": "Flujos de trabajo",
         "works": "Integraciones"
       },
@@ -1852,7 +1850,7 @@
       "noAccounts": "No hay cuentas activas disponibles. Vuelve a conectar o repara la institución primero.",
       "oneDay": "24 horas",
       "oneHour": "1 hora",
-      "popupBlocked": "Permite las ventanas emergentes de Zero y vuelve a intentarlo.",
+      "popupBlocked": "Permite las ventanas emergentes de {{assistantName}} y vuelve a intentarlo.",
       "readOnly": "Cuentas, saldos y transacciones · solo lectura",
       "repair": "Reparar",
       "repairRequired": "{{institution}} necesita reparación",
@@ -1975,8 +1973,8 @@
       "providerIncompatibleAction": "Empieza una nueva sesión",
       "providerIncompatiblePrefix": "Esta sesión se inició con un modelo diferente y no se puede continuar con el actual.",
       "recovery": {
-        "capacityDescription": "Este modelo está temporalmente al límite de capacidad. Inténtalo de nuevo en unos minutos o cambia de modelo ahora.",
-        "capacityTitle": "El modelo de {{framework}} está ocupado",
+        "capacityDescription": "Inténtalo de nuevo en unos minutos o cambia de modelo.",
+        "capacityTitle": "Este modelo está ocupado ahora mismo",
         "claudeCode": "Claude Code",
         "codex": "Codex",
         "continue": "Continuar",
@@ -2033,12 +2031,21 @@
       },
       "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
       "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
+      "desktop": {
+        "checkingCompatibility": "Comprobación de compatibilidad",
+        "description": "La grabación de pantalla vive en la aplicación de escritorio {{desktopProductName}}, que captura cualquier ventana y registra dónde haces clic.",
+        "download": "Descargar para macOS",
+        "handoffDetail": "Tu grabación se abre aquí, lista para un presentador y una voz.",
+        "handoffTitle": "Vuelve a este asistente automáticamente",
+        "heading": "Graba con {{desktopProductName}} Desktop",
+        "illustration": "La grabación ocurre en {{desktopProductName}} Desktop",
+        "installDetail": "Requiere un Mac Apple Silicon con macOS 14 o más reciente. No se soportan Macs Intel.",
+        "installTitle": "Descarga e instala {{desktopProductName}} Desktop",
+        "recordDetail": "Detenla desde el mismo menú cuando termines.",
+        "recordTitle": "Inicia una grabación desde la barra de menús",
+        "unsupportedIntelMac": "Requiere un Mac Apple Silicon"
+      },
       "errors": {
-        "recordingEmpty": "La grabación está vacía. Inténtalo de nuevo.",
-        "recordingFailed": "No se pudo iniciar la grabación de pantalla. Inténtalo de nuevo en una versión reciente de Chrome.",
-        "recordingPermission": "No se compartió nada. Elige una pestaña, ventana o pantalla cuando estés listo.",
-        "recordingShareEnded": "La pantalla dejó de compartirse antes de que empezara la grabación.",
-        "recordingUnsupported": "Este navegador no admite la grabación de pantalla.",
         "sendFailed": "No se pudo crear el hilo de chat. La fuente sigue guardada localmente y se ha descargado como copia de seguridad.",
         "uploadFailed": "No se pudo subir la fuente. Sigue guardada localmente y se ha descargado como copia de seguridad."
       },
@@ -2046,55 +2053,33 @@
         "back": "Atrás",
         "createInChat": "Crear en el chat",
         "download": "Descargar fuente",
-        "next": "Siguiente",
-        "startRecording": "Elegir pantalla e iniciar",
-        "stopRecording": "Detener grabación"
-      },
-      "recording": {
-        "chooseSurface": "Elige una pestaña, ventana o pantalla",
-        "countdown": "La grabación comienza después de la cuenta atrás",
-        "description": "Chrome te preguntará qué quieres compartir. La grabación solo comienza cuando termina la cuenta atrás de tres segundos.",
-        "heading": "Graba tu pantalla",
-        "localNote": "Puedes detenerla desde la barra de uso compartido de Chrome o volver aquí. La grabación permanece en local hasta que se crea el hilo de chat.",
-        "microphone": "Micrófono",
-        "microphoneHelp": "Añade narración mientras haces la demostración",
-        "recordingLocally": "Grabando en local",
-        "systemAudio": "Audio del sistema",
-        "systemAudioHelp": "Las fuentes disponibles dependen de Chrome y de tu sistema"
+        "next": "Siguiente"
       },
       "review": {
         "avatar": "Avatar",
         "heading": "Revisa tu vídeo de introducción",
-        "help": "Confirma las opciones que recibirá Zero en el nuevo hilo de chat",
+        "help": "Confirma las opciones que recibirá {{assistantName}} en el nuevo hilo de chat",
         "instructions": "Instrucciones de edición",
         "source": "Fuente",
         "voice": "Voz"
       },
       "source": {
-        "chatDescription": "Abre un hilo ahora y da forma al vídeo con Zero",
-        "chatDetail": "Añade una fuente, un avatar o una voz más tarde en el chat",
-        "chatTitle": "Empezar en el chat",
-        "documentDescription": "Convierte tu contenido en un vídeo de introducción narrado",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Subir diapositivas o un documento",
-        "dropDescription": "Diapositivas, documentos o grabaciones",
-        "dropTitle": "Suelta una fuente aquí",
+        "documentDescription": "Convierte tus diapositivas en un vídeo de introducción narrado",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Subir diapositivas",
         "heading": "¿Cómo quieres empezar?",
-        "help": "Añade algo que ya tengas, graba tu pantalla o describe el vídeo con tus propias palabras",
-        "recordDescription": "Elige una pestaña, ventana o toda la pantalla",
-        "recordDetail": "Comienza tras una cuenta atrás de tres segundos",
+        "help": "Sube las diapositivas que ya tienes o graba tu pantalla con {{desktopProductName}} Desktop",
+        "recordDescription": "Captura una demo con la aplicación de escritorio",
+        "recordDetail": "Necesita {{desktopProductName}} Desktop en macOS",
         "recordTitle": "Grabar la pantalla",
-        "videoDescription": "Deja que la IA mejore el ritmo, el encuadre y la narración",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Subir una grabación"
+        "uploadDescription": "Elige un archivo de tu ordenador",
+        "uploadTitle": "Subir fuente"
       },
       "sourceReview": {
         "format": "Formato",
         "heading": "Tu fuente está lista",
         "help": "Comprueba el archivo antes de continuar",
         "inAccount": "En tu cuenta",
-        "inBrowser": "En este navegador",
-        "inTab": "Hasta que cierres esta pestaña",
         "replace": "Sustituir fuente",
         "saved": "Guardada",
         "source": "Fuente"
@@ -4856,24 +4841,14 @@
       "title": "Datos de exportación"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Restablecer todo",
-        "resetting": "Restableciendo..."
-      },
-      "description": "Activa o desactiva funciones experimentales.",
+      "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
-      "empty": {
-        "description": "No hay funciones experimentales para este responsable.",
-        "title": "Sin funciones experimentales"
-      },
-      "filters": {
-        "all": "Todos"
-      },
       "groups": {
-        "connectors": "Conectores",
-        "other": "Otro"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "internal": "Internas",
+        "released": "Lanzadas"
       },
-      "maintainer": "Responsable: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {

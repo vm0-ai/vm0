@@ -59,10 +59,14 @@ if ((
   exit 1
 fi
 
-app_asset_url="${public_assets_url}/${app_files[0]}"
-stylesheet_asset_url="${public_assets_url}/${stylesheet_files[0]}"
-vendor_asset_url="${public_assets_url}/${vendor_files[0]}"
-runtime_asset_url="${public_assets_url}/${runtime_files[0]}"
+document_assets_url="$public_assets_url"
+if [[ "$app_url" == https://*.workers.dev ]]; then
+  document_assets_url="${app_url}/okou-app/assets"
+fi
+app_asset_url="${document_assets_url}/${app_files[0]}"
+stylesheet_asset_url="${document_assets_url}/${stylesheet_files[0]}"
+vendor_asset_url="${document_assets_url}/${vendor_files[0]}"
+runtime_asset_url="${document_assets_url}/${runtime_files[0]}"
 worker_asset_url="${app_url}/okou-app/assets/${worker_files[0]}"
 document_url="${app_url}/sign-up"
 document_retry_delay_seconds=10
