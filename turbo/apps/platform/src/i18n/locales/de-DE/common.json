@@ -5933,35 +5933,6 @@
       "noWorkflows": "Noch keine Workflows. Erstellen Sie eine im Chat, um fortzufahren."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Verbinden",
-          "enable": "Für Agent aktivieren",
-          "reconnect": "Wieder verbinden",
-          "reviewPermissions": "Überprüfen Sie die Berechtigungen"
-        },
-        "aria": "Integration-Bereitschaft",
-        "check": "Integrationen prüfen",
-        "checkAgain": "Überprüfen Sie es noch einmal",
-        "checking": "Überprüfung...",
-        "description": "Sehen Sie, welche integrierten Integrationen dieser Workflow möglicherweise benötigt und ob sie bereit sind.",
-        "empty": "Es wurden keine erforderlichen Integrationen erkannt",
-        "error": {
-          "inputTooLong": "Dieser Workflow ist zu lang, um ihn zu überprüfen. Halten Sie den Namen, die Beschreibung und die Anweisungen auf maximal 100.000 Zeichen beschränkt.",
-          "retry": "Wir konnten die Integrationen nicht überprüfen. Versuchen Sie es erneut.",
-          "timeout": "Zeitüberschreitung bei der Integrationsprüfung. Versuchen Sie es erneut."
-        },
-        "saveFirst": "Speichern Sie Ihre Änderungen, bevor Sie die Integrationen überprüfen.",
-        "status": {
-          "connected": "Verbunden",
-          "notConnected": "Nicht verbunden",
-          "notEnabled": "Für diesen Agenten nicht aktiviert",
-          "reconnect": "Erneute Verbindung erforderlich",
-          "scopeMismatch": "Berechtigungen aktualisieren",
-          "unavailable": "Derzeit nicht verfügbar"
-        },
-        "title": "Integration-Bereitschaft"
-      },
       "copy": {
         "agentFallback": "der Agent",
         "copied": "Kopiert nach {{agent}}",

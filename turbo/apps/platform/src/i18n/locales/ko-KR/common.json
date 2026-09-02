@@ -5925,35 +5925,6 @@
       "noWorkflows": "아직 워크플로가 없습니다. 계속하려면 채팅에서 만드세요."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "연결",
-          "enable": "에이전트에 대해 활성화",
-          "reconnect": "다시 연결",
-          "reviewPermissions": "권한 검토"
-        },
-        "aria": "커넥터 준비 상태",
-        "check": "커넥터 확인",
-        "checkAgain": "다시 확인",
-        "checking": "확인 중...",
-        "description": "이 워크플로에 필요한 내장 커넥터와 준비 상태를 확인하세요.",
-        "empty": "필요한 커넥터가 감지되지 않았습니다",
-        "error": {
-          "inputTooLong": "이 워크플로는 너무 깁니다. 이름, 설명, 지침을 100,000자 이내로 유지하세요.",
-          "retry": "커넥터를 확인할 수 없습니다. 다시 시도하세요.",
-          "timeout": "커넥터 확인 시간이 초과되었습니다. 다시 시도하세요."
-        },
-        "saveFirst": "커넥터를 확인하기 전에 변경 사항을 저장하세요.",
-        "status": {
-          "connected": "연결됨",
-          "notConnected": "연결되지 않음",
-          "notEnabled": "이 에이전트에 대해 활성화되지 않음",
-          "reconnect": "다시 연결 필요",
-          "scopeMismatch": "권한 업데이트",
-          "unavailable": "현재 사용할 수 없음"
-        },
-        "title": "커넥터 준비 상태"
-      },
       "copy": {
         "agentFallback": "에이전트",
         "copied": "{{agent}}에 복사됨",

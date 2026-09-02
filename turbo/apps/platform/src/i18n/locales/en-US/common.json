@@ -5925,35 +5925,6 @@
       "noWorkflows": "No workflows yet. Create one in chat to continue."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connect",
-          "enable": "Enable for agent",
-          "reconnect": "Reconnect",
-          "reviewPermissions": "Review permissions"
-        },
-        "aria": "Connector readiness",
-        "check": "Check connectors",
-        "checkAgain": "Check again",
-        "checking": "Checking...",
-        "description": "See which built-in connectors this workflow may need and whether they're ready.",
-        "empty": "No required connectors detected",
-        "error": {
-          "inputTooLong": "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.",
-          "retry": "We couldn't check connectors. Try again.",
-          "timeout": "The connector check timed out. Try again."
-        },
-        "saveFirst": "Save your changes before checking connectors.",
-        "status": {
-          "connected": "Connected",
-          "notConnected": "Not connected",
-          "notEnabled": "Not enabled for this agent",
-          "reconnect": "Reconnect required",
-          "scopeMismatch": "Update permissions",
-          "unavailable": "Currently unavailable"
-        },
-        "title": "Connector readiness"
-      },
       "copy": {
         "agentFallback": "the agent",
         "copied": "Copied to {{agent}}",

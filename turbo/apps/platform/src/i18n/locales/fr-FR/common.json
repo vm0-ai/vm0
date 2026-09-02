@@ -5997,35 +5997,6 @@
       "noWorkflows": "Pas encore de workflow. Créez-en un en chat pour continuer."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connecter",
-          "enable": "Activer pour l'agent",
-          "reconnect": "Reconnecter",
-          "reviewPermissions": "Vérifier les autorisations"
-        },
-        "aria": "Prêt du connecteur",
-        "check": "Vérifier les connecteurs",
-        "checkAgain": "Vérifier à nouveau",
-        "checking": "Vérification...",
-        "description": "Voir quels connecteurs intégrés ce workflow peut nécessiter et s'ils sont prêts.",
-        "empty": "Aucun connecteur requis détecté",
-        "error": {
-          "inputTooLong": "Ce workflow est trop long pour être vérifié. Gardez le nom, la description et les instructions dans une limite de 100 000 caractères.",
-          "retry": "Nous n'avons pas pu vérifier les connecteurs. Réessayez.",
-          "timeout": "La vérification du connecteur a expiré. Réessayez."
-        },
-        "saveFirst": "Enregistrez vos modifications avant de vérifier les connecteurs.",
-        "status": {
-          "connected": "Connecté",
-          "notConnected": "Non connecté",
-          "notEnabled": "Non activé pour cet agent",
-          "reconnect": "Reconnecter requis",
-          "scopeMismatch": "Mettre à jour les autorisations",
-          "unavailable": "Actuellement indisponible"
-        },
-        "title": "Disponibilité du connecteur"
-      },
       "copy": {
         "agentFallback": "l'agent",
         "copied": "Copié vers {{agent}}",
