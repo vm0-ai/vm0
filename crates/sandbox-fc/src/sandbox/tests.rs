@@ -2619,6 +2619,51 @@ async fn apply_storage_manifest_preserves_terminal_metadata() {
 }
 
 #[tokio::test]
+async fn mount_workspace_drive_maps_empty_request_and_terminal_metadata() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+
+    let mount = sandbox.mount_workspace_drive();
+    let respond = async {
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, vsock_proto::MSG_WORKSPACE_DRIVE_MOUNT);
+        vsock_proto::decode_workspace_drive_mount_request(&request.payload).unwrap();
+
+        let payload = vsock_proto::encode_workspace_drive_mount_result(
+            vsock_proto::ExecTermination::WaitFailed,
+            17,
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"out",
+                truncated: true,
+            },
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: false,
+            },
+            "containment cleanup failed",
+        )
+        .unwrap();
+        let response = vsock_proto::encode(
+            vsock_proto::MSG_WORKSPACE_DRIVE_MOUNT_RESULT,
+            request.seq,
+            &payload,
+        )
+        .unwrap();
+        guest.write_all(&response).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(mount, respond);
+    let result = result.unwrap();
+
+    assert_eq!(result.termination, ExecTermination::WaitFailed);
+    assert_eq!(result.guest_duration_ms, Some(17));
+    assert_eq!(result.stdout, b"out");
+    assert_eq!(result.stderr, b"err");
+    assert!(result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+    assert_eq!(result.diagnostic, "containment cleanup failed");
+}
+
+#[tokio::test]
 async fn verify_session_history_identity_maps_fixed_request_and_terminal_metadata() {
     let sandbox = test_sandbox_with_state(SandboxState::Running);
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;

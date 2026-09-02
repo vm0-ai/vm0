@@ -762,10 +762,9 @@ mod tests {
                         message: self.primary_error().unwrap().to_string(),
                     }));
                 }
-                Self::WorkspaceMountFailure => overrides.add_exec_error_matcher(
-                    "workspace_device='/dev/vdb'",
-                    sandbox_exec_error(self.primary_error().unwrap()),
-                ),
+                Self::WorkspaceMountFailure => overrides.push_workspace_drive_mount_result(Err(
+                    sandbox_workspace_mount_error(self.primary_error().unwrap()),
+                )),
                 Self::GuestRestoreFailure => overrides.push_guest_state_restore_result(Err(
                     sandbox_exec_error(self.primary_error().unwrap()),
                 )),
@@ -790,6 +789,14 @@ mod tests {
     fn sandbox_exec_error(message: impl Into<String>) -> SandboxError {
         SandboxError::Operation {
             operation: SandboxOperation::Exec,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn sandbox_workspace_mount_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::MountWorkspaceDrive,
             reason: SandboxOperationReason::Guest,
             message: message.into(),
         }
@@ -944,13 +951,11 @@ mod tests {
 
         let proxy = BenchmarkProxyHarness::new().await;
         let overrides = Arc::new(MockSandboxOverrides::new());
-        overrides.add_exec_error_matcher(
-            "workspace_device='/dev/vdb'",
-            sandbox_exec_error(PRIMARY_ERROR),
-        );
+        overrides
+            .push_workspace_drive_mount_result(Err(sandbox_workspace_mount_error(PRIMARY_ERROR)));
         queue_stop_failures(&overrides);
-        let exec_gate = MockLifecycleGate::new();
-        overrides.set_exec_lifecycle_gate(exec_gate.clone());
+        let workspace_mount_gate = MockLifecycleGate::new();
+        overrides.set_workspace_drive_mount_lifecycle_gate(workspace_mount_gate.clone());
         let destroy_gate = MockLifecycleGate::new();
         overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
@@ -967,11 +972,11 @@ mod tests {
         )
         .with_subscriber(subscriber);
         let corrupt_registry_and_observe_destroy = async {
-            let exec_seen = overrides
-                .wait_exec_call_count(1, BENCHMARK_LIFECYCLE_TEST_TIMEOUT)
+            let workspace_mount_seen = overrides
+                .wait_workspace_drive_mount_call_count(1, BENCHMARK_LIFECYCLE_TEST_TIMEOUT)
                 .await;
             let corrupt_result = tokio::fs::write(&proxy.registry_path, b"{invalid-json").await;
-            exec_gate.release_one();
+            workspace_mount_gate.release_one();
 
             let destroy_entry = destroy_gate
                 .wait_entered(1, BENCHMARK_LIFECYCLE_TEST_TIMEOUT)
@@ -980,7 +985,7 @@ mod tests {
             let events = captured.entries();
             destroy_gate.release_one();
             (
-                exec_seen,
+                workspace_mount_seen,
                 corrupt_result,
                 destroy_entry,
                 destroy_calls,
@@ -995,10 +1000,13 @@ mod tests {
             .await
             .expect("benchmark cleanup failure scenario timed out");
         let (result, _timing) = run_output;
-        let (exec_seen, corrupt_result, destroy_entry, destroy_calls, events_at_destroy) =
+        let (workspace_mount_seen, corrupt_result, destroy_entry, destroy_calls, events_at_destroy) =
             observation;
 
-        assert!(exec_seen, "workspace setup exec was not observed");
+        assert!(
+            workspace_mount_seen,
+            "workspace setup mount was not observed"
+        );
         corrupt_result.expect("corrupt temporary proxy registry");
         assert_eq!(destroy_entry.unwrap(), 1);
         assert_eq!(destroy_calls, 1);

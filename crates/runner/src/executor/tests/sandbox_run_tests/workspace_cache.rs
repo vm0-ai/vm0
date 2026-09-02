@@ -440,12 +440,11 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     let mut config = test_executor_config(dir.path()).await;
     config.workspace_cache = Some(cache.clone());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "mount -t ext4".to_string(),
-        exit_code: 64,
-        stdout: Vec::new(),
-        stderr: b"cached mount denied".to_vec(),
-    });
+    overrides.push_workspace_drive_mount_result(Ok(ExecResult::new(
+        64,
+        Vec::new(),
+        b"cached mount denied".to_vec(),
+    )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = codex_oauth_context();
     let session_id = "00000000-0000-4000-8000-000000023425";

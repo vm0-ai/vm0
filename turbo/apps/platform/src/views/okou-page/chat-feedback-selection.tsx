@@ -7,7 +7,7 @@ import {
   MessageCircle,
   X,
 } from "lucide-react";
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
@@ -226,10 +226,19 @@ function TranslationLanguageSelect({
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent data-chat-selection-interaction className="max-h-64">
+      {/* Seven 32px rows plus their gaps, list padding, and popup borders. */}
+      <SelectContent
+        data-chat-selection-interaction
+        hideScrollButtons
+        className="max-h-[258px] overscroll-contain"
+      >
         {items.map((item) => {
           return (
-            <SelectItem key={item.value} value={item.value}>
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              className="h-8 whitespace-nowrap"
+            >
               {item.label}
             </SelectItem>
           );
@@ -246,8 +255,8 @@ function TranslationAction({
 }) {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const [translationLoadable, translate] = useLoadableSet(feedback.translate$);
-  const translating = translationLoadable.state === "loading";
+  const translate = useSet(feedback.translate$);
+  const translating = useTranslationLoading(feedback);
   return (
     <button
       type="button"
@@ -271,6 +280,12 @@ function TranslationAction({
   );
 }
 
+function useTranslationLoading(feedback: ChatThreadFeedbackSignals): boolean {
+  const translationPromise = useGet(feedback.translationPromise$);
+  const translationLoadable = useLoadable(feedback.translationPromise$);
+  return translationPromise !== null && translationLoadable.state === "loading";
+}
+
 function TranslationResult({
   feedback,
   result,
@@ -286,10 +301,10 @@ function TranslationResult({
   const [languageLoadable, setLanguage] = useLoadableSet(
     feedback.setTranslationLanguage$,
   );
-  const [translationLoadable, translate] = useLoadableSet(feedback.translate$);
+  const translate = useSet(feedback.translate$);
   const language =
     useLastResolved(feedback.translationLanguage$) ?? result.targetLanguage;
-  const translating = translationLoadable.state === "loading";
+  const translating = useTranslationLoading(feedback);
   const updatingLanguage = languageLoadable.state === "loading" || translating;
   const copyTranslation = useSet(feedback.copyTranslation$);
   return (

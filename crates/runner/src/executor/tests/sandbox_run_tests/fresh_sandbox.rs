@@ -940,7 +940,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let mut mount_result = ExecResult::new(64, Vec::new(), b"mount denied".to_vec());
     mount_result.guest_duration_ms = Some(31);
-    overrides.add_exec_result_matcher("mount -t ext4", mount_result);
+    overrides.push_workspace_drive_mount_result(Ok(mount_result));
     let factory = MockSandboxFactory::with_overrides(overrides);
     let ctx = minimal_context();
     let notifications = Arc::new(AtomicUsize::new(0));
@@ -992,12 +992,11 @@ async fn execute_job_workspace_mount_failure_drains_early_prefetch_before_destro
     let wait_gate = MockLifecycleGate::new();
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     overrides.set_process_cancel_releases_wait_gate(false);
-    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "mount -t ext4".to_string(),
-        exit_code: 64,
-        stdout: Vec::new(),
-        stderr: b"mount denied".to_vec(),
-    });
+    overrides.push_workspace_drive_mount_result(Ok(ExecResult::new(
+        64,
+        Vec::new(),
+        b"mount denied".to_vec(),
+    )));
     let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
 
     let task = tokio::spawn({

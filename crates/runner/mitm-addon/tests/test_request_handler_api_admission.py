@@ -1,6 +1,7 @@
 """Platform API admission request hook integration tests."""
 
 import json
+import urllib.parse
 
 import pytest
 from mitmproxy import connection
@@ -10,6 +11,7 @@ import mitm_addon
 import platform_api
 import registry
 import request_classification
+import upstream_admission
 import upstream_destination_binding
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.upstream_connection_helpers import (
@@ -370,6 +372,22 @@ async def test_malformed_vm0_api_url_is_cached_as_non_match(
     monkeypatch,
     malformed_platform_api_url,
 ):
+    parsed_api_urls: list[str] = []
+    parse_api_url = urllib.parse.urlparse
+
+    def track_api_url_parse(
+        api_url: str,
+        scheme: str = "",
+        allow_fragments: bool = True,
+    ) -> urllib.parse.ParseResult:
+        parsed_api_urls.append(api_url)
+        return parse_api_url(
+            api_url,
+            scheme=scheme,
+            allow_fragments=allow_fragments,
+        )
+
+    monkeypatch.setattr(upstream_admission.urllib.parse, "urlparse", track_api_url_parse)
     flows = [
         real_flow(with_response=False, host="api.vm0.ai"),
         real_flow(with_response=False, host="api.vm0.ai"),
@@ -383,10 +401,20 @@ async def test_malformed_vm0_api_url_is_cached_as_non_match(
         for flow in flows:
             await mitm_addon.request(flow)
 
+        assert parsed_api_urls == [malformed_platform_api_url]
+
+        updated_api_url = "ftp://api.vm0.ai"
+        mitm_addon.ctx.options.vm0_api_url = updated_api_url
+        mitm_addon.configure({"vm0_api_url"})
+        updated_flow = real_flow(with_response=False, host="api.vm0.ai")
+        flows.append(updated_flow)
+        await mitm_addon.request(updated_flow)
+
     for flow in flows:
         assert flow.response is None
         assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
         assert "x-vercel-protection-bypass" not in flow.request.headers
+    assert parsed_api_urls == [malformed_platform_api_url, updated_api_url]
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 

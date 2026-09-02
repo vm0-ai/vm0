@@ -7,8 +7,10 @@ import type {
   DesktopRecorderPrepareRequest,
   DesktopRecorderPrepareResult,
   DesktopRecorderRecording,
+  DesktopRecorderCapabilities,
+  DesktopRecorderSource,
   DesktopRecorderSourceKind,
-  DesktopRecorderSourceList,
+  DesktopRecorderWindowPreview,
   RecorderNativeBackend,
 } from "./desktop-recorder-types";
 
@@ -296,7 +298,9 @@ class RecorderHelperClient {
   }
 }
 
-function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
+function toSources(
+  result: Record<string, unknown>,
+): readonly DesktopRecorderSource[] {
   const value = result.sources;
   if (!Array.isArray(value)) {
     throw new DesktopRecorderHelperError(
@@ -321,10 +325,7 @@ function toSources(result: Record<string, unknown>): DesktopRecorderSourceList {
       ...(bundleId ? { bundleId } : {}),
     };
   });
-  return {
-    sources,
-    supportsMicrophone: requiredBoolean(result, "supportsMicrophone"),
-  };
+  return sources;
 }
 
 function toRecording(
@@ -389,6 +390,12 @@ export function createRecorderNativeBackend(
     dispose: () => {
       client.dispose();
     },
+    getCapabilities: async (): Promise<DesktopRecorderCapabilities> => {
+      const result = await client.request("recorder.capabilities");
+      return {
+        supportsMicrophone: requiredBoolean(result, "supportsMicrophone"),
+      };
+    },
     listSources: async () =>
       toSources(await client.request("recorder.sources")),
     prepare: async (
@@ -414,6 +421,32 @@ export function createRecorderNativeBackend(
           scale: requiredNumber(geometry, "scale"),
         },
       };
+    },
+    requestScreenRecordingPermission: async () => {
+      const result = await client.request("recorder.requestPermission");
+      return requiredBoolean(result, "granted");
+    },
+    listWindowPreviews: async () => {
+      const result = await client.request("recorder.windowPreviews");
+      const value = result.previews;
+      if (!Array.isArray(value)) {
+        throw new DesktopRecorderHelperError(
+          "capture_failed",
+          "Screen recorder helper returned invalid window previews",
+        );
+      }
+      return value.map((entry): DesktopRecorderWindowPreview => {
+        if (!isRecord(entry)) {
+          throw new DesktopRecorderHelperError(
+            "capture_failed",
+            "Screen recorder helper returned an invalid window preview",
+          );
+        }
+        return {
+          id: requiredString(entry, "id"),
+          previewDataUrl: requiredString(entry, "previewDataUrl"),
+        };
+      });
     },
     start: async (sessionId: string, outputPath: string) => {
       await client.request("recorder.start", { sessionId, outputPath });

@@ -4,12 +4,6 @@ import { describe, expect, it } from "vitest";
 import { schema } from "../index";
 import { officialWorkflowReconciliationWork } from "../schema/official-workflow-catalog";
 import {
-  strapiIntegrations,
-  strapiWebhookDeliveries,
-  strapiWorkflowAutomations,
-  strapiWorkflowPendingEvents,
-} from "../schema/strapi-integration";
-import {
   officialWorkflowAutomationIdentities,
   workflows,
   workflowAutomations,
@@ -55,7 +49,6 @@ describe("workflow schema physical identity", () => {
       workflowGithubProcessedEvents: getTableConfig(
         workflowGithubProcessedEvents,
       ).name,
-      strapiWorkflowAutomations: getTableConfig(strapiWorkflowAutomations).name,
     }).toEqual({
       officialWorkflowReconciliationWork:
         "official_workflow_reconciliation_work",
@@ -66,7 +59,6 @@ describe("workflow schema physical identity", () => {
       workflowWebhookAutomations: "workflow_webhook_automations",
       workflowWebhookDeliveries: "workflow_webhook_deliveries",
       workflowGithubProcessedEvents: "workflow_github_processed_events",
-      strapiWorkflowAutomations: "workflow_strapi_automations",
     });
   });
 
@@ -84,7 +76,6 @@ describe("workflow schema physical identity", () => {
     expect(schema.workflowGithubProcessedEvents).toBe(
       workflowGithubProcessedEvents,
     );
-    expect(schema.strapiWorkflowAutomations).toBe(strapiWorkflowAutomations);
   });
 
   it("keeps every Official projection on the canonical Workflow relations", () => {
@@ -133,10 +124,6 @@ describe("workflow schema physical identity", () => {
       workflowGithubProcessedEvents: explicitNames(
         workflowGithubProcessedEvents,
       ),
-      strapiIntegrations: explicitNames(strapiIntegrations),
-      strapiWorkflowAutomations: explicitNames(strapiWorkflowAutomations),
-      strapiWebhookDeliveries: explicitNames(strapiWebhookDeliveries),
-      strapiWorkflowPendingEvents: explicitNames(strapiWorkflowPendingEvents),
     }).toEqual({
       officialWorkflowReconciliationWork: {
         indexes: ["idx_official_workflow_reconciliation_work_due"],
@@ -200,33 +187,6 @@ describe("workflow schema physical identity", () => {
         indexes: [
           "idx_workflow_github_processed_automation_delivery",
           "idx_workflow_github_processed_subject",
-        ],
-        checks: [],
-      },
-      strapiIntegrations: {
-        indexes: [
-          "idx_strapi_integrations_org",
-          "idx_strapi_integrations_org_base_url",
-          "idx_strapi_integrations_token_hash",
-        ],
-        checks: [],
-      },
-      strapiWorkflowAutomations: {
-        indexes: ["idx_workflow_strapi_automations_integration"],
-        checks: [],
-      },
-      strapiWebhookDeliveries: {
-        indexes: [
-          "idx_strapi_webhook_deliveries_integration_body",
-          "idx_strapi_webhook_deliveries_received",
-        ],
-        checks: [],
-      },
-      strapiWorkflowPendingEvents: {
-        indexes: [
-          "idx_strapi_pending_events_automation_document_active",
-          "idx_strapi_pending_events_due",
-          "idx_strapi_pending_events_integration",
         ],
         checks: [],
       },

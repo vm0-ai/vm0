@@ -118,7 +118,6 @@ export const automationEventTypeSchema = z.enum([
   "notion-child-page-created",
   "notion-database-item-created",
   "notion-page-content-updated",
-  "strapi-entry-published",
   "stripe-invoice-paid",
   "webhook-received",
 ]);
@@ -729,19 +728,6 @@ export type StripeInvoicePaidEventConfig = z.infer<
   typeof stripeInvoicePaidEventConfigSchema
 >;
 
-export const strapiEntryPublishedEventConfigSchema = z
-  .object({
-    provider: z.literal("strapi"),
-    event: z.literal("entry_published"),
-    integrationId: z.string().uuid(),
-    contentTypeUid: z.string().trim().min(1).max(255).optional(),
-    locale: z.string().trim().min(1).max(64).optional(),
-  })
-  .strict();
-export type StrapiEntryPublishedEventConfig = z.infer<
-  typeof strapiEntryPublishedEventConfigSchema
->;
-
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-based Automation schedule model:
@@ -779,9 +765,6 @@ const workflowAutomationSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
-  // Retained new App -> old API fallback from P1. Remove the optional parser
-  // in #29991 only after production proves pre-P1 APIs are no longer serving
-  // or retained for rollback.
   official: z
     .object({
       blueprintKey: officialWorkflowBlueprintKeySchema,
@@ -796,8 +779,7 @@ const workflowAutomationSummaryBaseSchema = z.object({
       parameterBindings: z.array(officialWorkflowParameterBindingSchema),
     })
     .strict()
-    .nullable()
-    .optional(),
+    .nullable(),
 });
 
 export const workflowScheduleAutomationSummarySchema =
@@ -961,15 +943,6 @@ export const workflowNotionPageContentUpdatedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const workflowStrapiEntryPublishedAutomationSummarySchema =
-  workflowAutomationSummaryBaseSchema.extend({
-    kind: z.literal("event"),
-    eventType: z.literal("strapi-entry-published"),
-    eventConfig: strapiEntryPublishedEventConfigSchema,
-    schedule: z.null(),
-    scheduleSummary: z.null(),
-  });
-
 export const stripeWorkflowAutomationHealthSchema = z.object({
   lastMatchingEventReceivedAt: z.string().datetime().nullable(),
   lastDeliveryStatus: z
@@ -1024,7 +997,6 @@ export const eventAutomationSummarySchema = z.discriminatedUnion("eventType", [
   workflowNotionChildPageCreatedAutomationSummarySchema,
   workflowNotionDatabaseItemCreatedAutomationSummarySchema,
   workflowNotionPageContentUpdatedAutomationSummarySchema,
-  workflowStrapiEntryPublishedAutomationSummarySchema,
   workflowStripeInvoicePaidAutomationSummarySchema,
   workflowWebhookReceivedAutomationSummarySchema,
 ]);
@@ -1212,15 +1184,6 @@ export const chatThreadWorkflowNotionPageContentUpdatedAutomationSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowStrapiEntryPublishedAutomationSchema =
-  chatThreadWorkflowAutomationBaseSchema.extend({
-    kind: z.literal("event"),
-    eventType: z.literal("strapi-entry-published"),
-    eventConfig: strapiEntryPublishedEventConfigSchema,
-    schedule: z.null(),
-    scheduleSummary: z.null(),
-  });
-
 export const chatThreadWorkflowStripeInvoicePaidAutomationSchema =
   chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
@@ -1257,7 +1220,6 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowNotionChildPageCreatedAutomationSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema,
   chatThreadWorkflowNotionPageContentUpdatedAutomationSchema,
-  chatThreadWorkflowStrapiEntryPublishedAutomationSchema,
   chatThreadWorkflowStripeInvoicePaidAutomationSchema,
   chatThreadWorkflowWebhookReceivedAutomationSchema,
 ]);
@@ -1427,14 +1389,6 @@ export const workflowNotionPageContentUpdatedAutomationCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const workflowStrapiEntryPublishedAutomationCreateRequestSchema =
-  z.object({
-    kind: z.literal("event"),
-    eventType: z.literal("strapi-entry-published"),
-    eventConfig: strapiEntryPublishedEventConfigSchema,
-    enabled: z.boolean().optional(),
-  });
-
 export const workflowStripeInvoicePaidAutomationCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("stripe-invoice-paid"),
@@ -1468,7 +1422,6 @@ export const workflowAutomationCreateRequestSchema = z.union([
   workflowNotionChildPageCreatedAutomationCreateRequestSchema,
   workflowNotionDatabaseItemCreatedAutomationCreateRequestSchema,
   workflowNotionPageContentUpdatedAutomationCreateRequestSchema,
-  workflowStrapiEntryPublishedAutomationCreateRequestSchema,
   workflowStripeInvoicePaidAutomationCreateRequestSchema,
   workflowWebhookReceivedAutomationCreateRequestSchema,
 ]);
@@ -1517,9 +1470,6 @@ export const workflowSummarySchema = z.object({
   createdAt: z.string().datetime(),
   canManage: z.boolean(),
   canPublish: z.boolean(),
-  // Retained new App -> old API fallback from P1. Remove the optional parser
-  // in #29991 only after production proves pre-P1 APIs are no longer serving
-  // or retained for rollback.
   official: z
     .object({
       definitionName: workflowNameSchema,
@@ -1528,8 +1478,7 @@ export const workflowSummarySchema = z.object({
       readOnly: z.literal(true),
     })
     .strict()
-    .nullable()
-    .optional(),
+    .nullable(),
   shadowedBy: z
     .object({
       id: z.string().uuid(),

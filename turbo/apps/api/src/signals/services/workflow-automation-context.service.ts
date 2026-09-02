@@ -411,10 +411,6 @@ export const TRIGGER_RENDERERS: Readonly<
   "notion-page-content-updated": (payload) => {
     return renderNotionEvent(payload, "Notion page", "content was updated");
   },
-  "strapi-entry-published": (payload) => {
-    const integration = objectField(payload, "integration");
-    return `Strapi published entry ${stringField(payload, "uid")} ${stringField(payload, "documentId")} on ${stringField(integration, "name")} (latest change ${stringField(payload, "latestEventAt")}).`;
-  },
   "stripe-invoice-paid": (payload) => {
     const event = objectField(payload, "event");
     const invoice = objectField(payload, "invoice");
@@ -582,10 +578,6 @@ const DISPLAY_MESSAGE_RENDERERS: Readonly<
       },
     );
   },
-  "strapi-entry-published": (payload) => {
-    const integration = objectField(payload, "integration");
-    return `Strapi entry "${stringField(payload, "documentId")}" was published in ${stringField(integration, "name")}.`;
-  },
   "stripe-invoice-paid": (payload) => {
     const invoice = objectField(payload, "invoice");
     return `Stripe invoice "${stringField(invoice, "id")}" was paid.`;
@@ -627,9 +619,6 @@ const GOOGLE_MEET_NOTES = [
 const NOTION_NOTES = [
   "Not included below: the Notion page body and child blocks. Connected Notion tools and the Notion API return them for the page id below.",
 ] as const;
-const STRAPI_NOTES = [
-  "Not included below: the Strapi entry content fields. The configured Strapi connector returns them for the document metadata below.",
-] as const;
 const STRIPE_NOTES = [
   "The event below is the normalized, signed Stripe webhook snapshot, not live Stripe data.",
   "No omitted invoice line-item pages were fetched; all line items embedded in the signed snapshot are included.",
@@ -659,7 +648,6 @@ export const EVENT_NOTES: Readonly<
   "notion-child-page-created": NOTION_NOTES,
   "notion-database-item-created": NOTION_NOTES,
   "notion-page-content-updated": NOTION_NOTES,
-  "strapi-entry-published": STRAPI_NOTES,
   "stripe-invoice-paid": STRIPE_NOTES,
   "webhook-received": WEBHOOK_NOTES,
   schedule: NO_NOTES,
@@ -716,7 +704,6 @@ export const EVENT_POLICY: Readonly<
   "notion-child-page-created": EVENT_SOURCE_POLICY,
   "notion-database-item-created": EVENT_SOURCE_POLICY,
   "notion-page-content-updated": EVENT_SOURCE_POLICY,
-  "strapi-entry-published": EVENT_SOURCE_POLICY,
   "stripe-invoice-paid": EVENT_SOURCE_POLICY,
   "webhook-received": EVENT_SOURCE_POLICY,
   schedule: SCHEDULE_POLICY,

@@ -7,6 +7,9 @@ mod common;
 
 use base64::Engine;
 use guest_agent::masker::SecretMasker;
+use guest_contracts::cli_stderr_diagnostics::{
+    CLI_STDERR_OMITTED_LONG_LINE, CLI_STDERR_RESULT_MAX_LINE_BYTES, CLI_STDERR_RESULT_MAX_LINES,
+};
 use std::time::Duration;
 
 #[tokio::test]
@@ -29,7 +32,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "retained-tail-fragment-three",
     ]
     .join("\n");
-    let mut stderr_payload = (0..(common::CLI_STDERR_RESULT_MAX_LINES + 1))
+    let mut stderr_payload = (0..(CLI_STDERR_RESULT_MAX_LINES + 1))
         .map(|i| match i {
             10 => "tail-boundary-start".to_string(),
             11 => "dropped-tail-fragment-zero".to_string(),
@@ -43,23 +46,20 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         .join("\n");
     let exact_limit_line = format!(
         "exact-limit-{}",
-        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-limit-".len())
+        "x".repeat(CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-limit-".len())
     );
     let exact_limit_crlf_line = format!(
         "exact-crlf-{}",
-        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-crlf-".len())
+        "x".repeat(CLI_STDERR_RESULT_MAX_LINE_BYTES - "exact-crlf-".len())
     );
     let overlong_secret_line = format!(
         "overlong-secret-prefix-{secret}-{}",
-        "x".repeat(common::CLI_STDERR_RESULT_MAX_LINE_BYTES)
+        "x".repeat(CLI_STDERR_RESULT_MAX_LINE_BYTES)
     );
-    assert_eq!(
-        exact_limit_line.len(),
-        common::CLI_STDERR_RESULT_MAX_LINE_BYTES
-    );
+    assert_eq!(exact_limit_line.len(), CLI_STDERR_RESULT_MAX_LINE_BYTES);
     assert_eq!(
         exact_limit_crlf_line.len(),
-        common::CLI_STDERR_RESULT_MAX_LINE_BYTES
+        CLI_STDERR_RESULT_MAX_LINE_BYTES
     );
 
     stderr_payload.push_str(&format!("\n{exact_limit_crlf_line}\r"));
@@ -101,10 +101,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     .expect("execute_cli should return promptly")?;
 
     assert_eq!(cli_result.exit_code, 1);
-    assert_eq!(
-        cli_result.stderr_lines.len(),
-        common::CLI_STDERR_RESULT_MAX_LINES
-    );
+    assert_eq!(cli_result.stderr_lines.len(), CLI_STDERR_RESULT_MAX_LINES);
     let stderr = cli_result.stderr_lines.join("\n");
     assert!(
         !cli_result.stderr_lines.iter().any(|line| line == "line-5"),
@@ -144,7 +141,7 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         "stderr result should keep lines at the exact size limit, got: {stderr}"
     );
     assert!(
-        stderr.contains(common::CLI_STDERR_OMITTED_LONG_LINE),
+        stderr.contains(CLI_STDERR_OMITTED_LONG_LINE),
         "stderr result should omit overlong lines, got: {stderr}"
     );
     assert!(

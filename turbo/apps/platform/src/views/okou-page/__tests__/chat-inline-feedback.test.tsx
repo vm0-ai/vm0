@@ -734,6 +734,7 @@ describe("chat inline feedback", () => {
     const selectedContent = "Keep the launch checklist short and actionable.";
     const translationRequests: unknown[] = [];
     const preferenceUpdates: unknown[] = [];
+    const translationResponse = context.mocks.deferred<void>();
     let preferences: UserPreferencesResponse = {
       timezone: "UTC",
       locale: "en-US",
@@ -755,8 +756,9 @@ describe("chat inline feedback", () => {
     });
     context.mocks.api(
       chatTranslationContract.translate,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
         translationRequests.push(body);
+        await translationResponse.promise;
         return respond(200, {
           text:
             body.targetLanguage === "fr"
@@ -813,7 +815,9 @@ describe("chat inline feedback", () => {
       expect(translationRequests).toStrictEqual([
         { text: selectedContent, targetLanguage: "fr" },
       ]);
+      expect(buttonByText("Translate")).toBeDisabled();
     });
+    translationResponse.resolve();
     await expect(
       screen.findByText("Gardez la liste de lancement courte et exploitable."),
     ).resolves.toBeInTheDocument();
@@ -824,6 +828,19 @@ describe("chat inline feedback", () => {
     await user.click(
       screen.getByRole("combobox", { name: "Translation language" }),
     );
+    const languageListbox = await screen.findByRole("listbox");
+    const languageMenu = languageListbox.closest(
+      "[data-chat-selection-interaction]",
+    );
+    if (!(languageMenu instanceof HTMLElement)) {
+      throw new Error("Translation language menu is not available");
+    }
+    fireEvent.scroll(languageMenu);
+    expect(
+      screen.getByText("Gardez la liste de lancement courte et exploitable."),
+    ).toBeInTheDocument();
+    expect(languageListbox).toBeInTheDocument();
+
     await user.click(await screen.findByRole("option", { name: "简体中文" }));
     await waitFor(() => {
       expect(preferenceUpdates).toContainEqual({
@@ -1225,6 +1242,7 @@ describe("chat inline feedback", () => {
           createdAt: "2026-07-17T00:00:00.000Z",
           canManage: true,
           canPublish: false,
+          official: null,
         },
       ]);
     });

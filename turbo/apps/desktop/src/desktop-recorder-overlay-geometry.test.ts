@@ -175,38 +175,37 @@ describe("recorderControllerBounds", () => {
   });
 });
 
-describe("overlay window sizes", () => {
+describe("overlay failure messages", () => {
   const css = readFileSync(
     new URL("./renderer/recorder/recorder.css", import.meta.url),
     "utf8",
   );
 
-  /** The height of an overlay's own surface, as the stylesheet sets it. */
-  function surfaceHeight(selector: string): number {
+  /** How far an overlay's failure message sits from its bottom edge. */
+  function messageBottom(selector: string): number {
     const start = css.indexOf(`${selector} {`);
     const end = css.indexOf("}", start);
     if (start === -1 || end === -1) {
       throw new Error(`No rule found for ${selector}`);
     }
-    const height = /height:\s*(\d+)px/.exec(css.slice(start, end));
-    if (!height?.[1]) {
-      throw new Error(`No fixed height found for ${selector}`);
+    const bottom = /bottom:\s*(-?\d+)(?:px)?/.exec(css.slice(start, end));
+    if (!bottom?.[1]) {
+      throw new Error(`No bottom offset found for ${selector}`);
     }
-    return Number(height[1]);
+    return Number(bottom[1]);
   }
 
-  // The window is what the system clips to. A message drawn below the surface
-  // but outside the window is not cut off or dimmed, it is never on screen, so
-  // a failed recording looks like a button that did nothing.
-  it("leaves room under the bar for the message a failure shows", () => {
-    expect(RECORDER_BAR_SIZE.height).toBeGreaterThan(
-      surfaceHeight(".recorder-bar"),
-    );
+  // The window is exactly the surface, and the system clips to the window, so a
+  // message placed below the surface is not dimmed or cut off: it is never on
+  // screen, and the failure looks like a button that did nothing. Reserving a
+  // strip for it instead exposed the window's backing as a grey band.
+  it("draws the bar's message inside the window", () => {
+    expect(messageBottom(".recorder-bar__error")).toBeGreaterThanOrEqual(0);
   });
 
-  it("leaves room under the controller for the message a failure shows", () => {
-    expect(RECORDER_CONTROLLER_SIZE.height).toBeGreaterThan(
-      surfaceHeight(".recording-controller"),
-    );
+  it("draws the controller's message inside the window", () => {
+    expect(
+      messageBottom(".recording-controller__error"),
+    ).toBeGreaterThanOrEqual(0);
   });
 });

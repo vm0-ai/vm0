@@ -1,10 +1,8 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { ChatThreadPage } from "../../views/okou-page/chat-thread-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { hash$, searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
@@ -84,11 +82,7 @@ const internalSetupChatPage$ = command(
     set(captureNavigationTiming$);
 
     const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
-    const initialEventId = get(featureSwitch$)[
-      FeatureSwitchKey.ChatConversationLocator
-    ]
-      ? chatEventIdFromHash(get(hash$))
-      : null;
+    const initialEventId = chatEventIdFromHash(get(hash$));
     const rightThreadId =
       sidebarThreadId && sidebarThreadId !== threadId ? sidebarThreadId : null;
 

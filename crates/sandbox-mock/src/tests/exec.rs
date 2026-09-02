@@ -51,6 +51,24 @@ async fn sandbox_exec_lifecycle_gate_blocks_after_recording_call() {
 }
 
 #[tokio::test]
+async fn workspace_drive_mount_lifecycle_gate_blocks_after_recording_call() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let gate = MockLifecycleGate::new();
+    overrides.set_workspace_drive_mount_lifecycle_gate(gate.clone());
+    let sandbox = MockSandbox::with_overrides("gated-workspace-mount", Arc::clone(&overrides));
+    let mount = tokio::spawn(async move { sandbox.mount_workspace_drive().await });
+
+    gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
+    assert_eq!(overrides.workspace_drive_mount_calls(), 1);
+    assert!(!mount.is_finished());
+    gate.release_one();
+    assert_eq!(
+        mount.await.unwrap().unwrap().termination,
+        ExecTermination::Exited { exit_code: 0 }
+    );
+}
+
+#[tokio::test]
 async fn sandbox_exec_rejects_invalid_env_key_without_recording_call() {
     let sandbox = MockSandbox::new("test-1");
     let result = sandbox
@@ -134,6 +152,59 @@ async fn sandbox_queued_exec_results() {
     // Fourth call falls back to default (exit 0).
     let r4 = sandbox.exec(&req).await.unwrap();
     assert_eq!(r4.termination, ExecTermination::Exited { exit_code: 0 });
+}
+
+#[tokio::test]
+async fn workspace_drive_mount_results_are_isolated_from_generic_exec() {
+    let sandbox = MockSandbox::new("test-1");
+    sandbox.push_workspace_drive_mount_result(Ok(ExecResult::new(
+        64,
+        b"mount out".to_vec(),
+        b"mount failed".to_vec(),
+    )));
+    sandbox.push_exec_result(Ok(ExecResult::new(7, b"exec out".to_vec(), Vec::new())));
+
+    let mount = sandbox.mount_workspace_drive().await.unwrap();
+    assert_eq!(mount.termination, ExecTermination::Exited { exit_code: 64 });
+    assert_eq!(mount.stderr, b"mount failed");
+    assert_eq!(sandbox.workspace_drive_mount_calls(), 1);
+
+    let exec = sandbox
+        .exec(&ExecRequest {
+            cmd: "test",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+        })
+        .await
+        .unwrap();
+    assert_eq!(exec.termination, ExecTermination::Exited { exit_code: 7 });
+    assert_eq!(exec.stdout, b"exec out");
+}
+
+#[tokio::test]
+async fn shared_workspace_drive_mount_results_are_consumed_across_sandboxes() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_workspace_drive_mount_result(Ok(ExecResult::new(
+        64,
+        Vec::new(),
+        b"first mount failed".to_vec(),
+    )));
+    let first = MockSandbox::with_overrides("first", Arc::clone(&overrides));
+    let second = MockSandbox::with_overrides("second", Arc::clone(&overrides));
+
+    assert_eq!(
+        first.mount_workspace_drive().await.unwrap().termination,
+        ExecTermination::Exited { exit_code: 64 }
+    );
+    assert_eq!(
+        second.mount_workspace_drive().await.unwrap().termination,
+        ExecTermination::Exited { exit_code: 0 }
+    );
+    assert_eq!(overrides.workspace_drive_mount_calls(), 2);
 }
 
 #[tokio::test]

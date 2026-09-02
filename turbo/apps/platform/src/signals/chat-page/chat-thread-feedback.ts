@@ -111,6 +111,7 @@ export interface ChatThreadFeedbackSignals {
   readonly close$: Command<void, []>;
   readonly copy$: Command<Promise<void>, [AbortSignal]>;
   readonly translationLanguage$: Computed<Promise<ChatTranslationLanguage>>;
+  readonly translationPromise$: Computed<Promise<void> | null>;
   readonly translationResult$: Computed<ChatThreadTranslationResult | null>;
   readonly setTranslationLanguage$: Command<
     Promise<void>,
@@ -324,13 +325,14 @@ function shouldDismissSelectionForInteractionTarget(
 
 function isSelectionInteractionTarget(target: EventTarget | null): boolean {
   return (
-    target instanceof HTMLElement &&
+    target instanceof Element &&
     target.closest(SELECTION_INTERACTION_SELECTOR) !== null
   );
 }
 
 function createSelectionState(threadId: string) {
   const internalSelection$ = state<CapturedFeedbackSelection | null>(null);
+  const internalTranslationPromise$ = state<Promise<void> | null>(null);
   const internalTranslationResult$ = state<ChatThreadTranslationResult | null>(
     null,
   );
@@ -355,6 +357,7 @@ function createSelectionState(threadId: string) {
     set(resetToolbarSignal$);
     set(resetTranslationSignal$);
     set(internalSelection$, null);
+    set(internalTranslationPromise$, null);
     set(internalTranslationResult$, null);
   });
   const capture$ = command(({ get, set }) => {
@@ -371,6 +374,7 @@ function createSelectionState(threadId: string) {
       return;
     }
     set(resetTranslationSignal$);
+    set(internalTranslationPromise$, null);
     set(internalTranslationResult$, null);
     set(internalSelection$, selection);
   });
@@ -398,6 +402,7 @@ function createSelectionState(threadId: string) {
   });
   return {
     internalSelection$,
+    internalTranslationPromise$,
     internalTranslationResult$,
     resetToolbarSignal$,
     resetTranslationSignal$,
@@ -411,10 +416,12 @@ function createSelectionState(threadId: string) {
 
 function createTranslationState({
   selection$,
+  promise$,
   result$,
   resetTranslationSignal$,
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
+  promise$: State<Promise<void> | null>;
   result$: State<ChatThreadTranslationResult | null>;
   resetTranslationSignal$: ReturnType<typeof resetSignal>;
 }) {
@@ -429,6 +436,9 @@ function createTranslationState({
   const translationResult$ = computed((get) => {
     return get(result$);
   });
+  const translationPromise$ = computed((get) => {
+    return get(promise$);
+  });
   const setTranslationLanguage$ = command(
     async (
       { set },
@@ -441,7 +451,7 @@ function createTranslationState({
       signal.throwIfAborted();
     },
   );
-  const translate$ = command(
+  const performTranslation$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const selection = get(selection$);
       if (!selection) {
@@ -469,6 +479,11 @@ function createTranslationState({
       set(result$, { text: response.text, targetLanguage });
     },
   );
+  const translate$ = command(({ set }, signal: AbortSignal): Promise<void> => {
+    const promise = set(performTranslation$, signal);
+    set(promise$, promise);
+    return promise;
+  });
   const copyTranslation$ = command(
     async ({ get }, signal: AbortSignal): Promise<void> => {
       const result = get(result$);
@@ -489,6 +504,7 @@ function createTranslationState({
   );
   return {
     translationLanguage$,
+    translationPromise$,
     translationResult$,
     setTranslationLanguage$,
     translate$,
@@ -739,7 +755,10 @@ function createListenersRef({
       );
       doc.addEventListener(
         "scroll",
-        () => {
+        (event) => {
+          if (isSelectionInteractionTarget(event.target)) {
+            return;
+          }
           set(dismissOnScroll$);
         },
         { capture: true, passive: true, signal },
@@ -755,6 +774,7 @@ export function createChatThreadFeedbackSignals(
   const selection = createSelectionState(threadId);
   const translation = createTranslationState({
     selection$: selection.internalSelection$,
+    promise$: selection.internalTranslationPromise$,
     result$: selection.internalTranslationResult$,
     resetTranslationSignal$: selection.resetTranslationSignal$,
   });
@@ -788,6 +808,7 @@ export function createChatThreadFeedbackSignals(
     close$: selection.close$,
     copy$: selection.copy$,
     translationLanguage$: translation.translationLanguage$,
+    translationPromise$: translation.translationPromise$,
     translationResult$: translation.translationResult$,
     setTranslationLanguage$: translation.setTranslationLanguage$,
     translate$: translation.translate$,

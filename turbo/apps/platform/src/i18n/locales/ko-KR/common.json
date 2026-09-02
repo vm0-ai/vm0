@@ -2054,6 +2054,7 @@
         "format": "형식",
         "heading": "소스가 준비되었습니다",
         "help": "계속하기 전에 파일을 확인하세요",
+        "inAccount": "내 계정에",
         "inBrowser": "이 브라우저에",
         "inTab": "이 탭을 닫을 때까지",
         "replace": "소스 교체",
@@ -3138,45 +3139,6 @@
         "uninstallDescription": "이 작업은 워크스페이스에서 {{bot}}을(를) 제거하고 이를 사용하는 모든 {{brandName}} 계정의 연결을 해제합니다. 이 작업은 취소할 수 없습니다.",
         "uninstallTargetFallback": "이 봇",
         "uninstallTitle": "Feishu 봇을 제거하시겠습니까?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "취소",
-          "checkTest": "테스트 확인",
-          "copy": "복사",
-          "create": "통합 생성",
-          "remove": "제거",
-          "revealAuthorization": "권한 헤더 표시"
-        },
-        "addDescription": "하나의 통합으로 여러 워크플로 자동화를 지원할 수 있습니다.",
-        "addTitle": "Strapi 인스턴스 추가",
-        "adminRequired": "조직 관리자가 Strapi 통합을 추가하거나 업데이트하도록 요청하세요.",
-        "authorizationHeader": "권한 헤더",
-        "copied": "{{label}} 복사됨",
-        "description": "{{assistantName}}가 게시된 Strapi 항목에 반응하고 후속 작업을 자동화하도록 하세요.",
-        "documentTitle": "Strapi",
-        "empty": "연결된 Strapi 인스턴스가 없습니다.",
-        "form": {
-          "name": "이름",
-          "namePlaceholder": "회사 CMS",
-          "url": "Strapi URL"
-        },
-        "instructions": "Strapi에서 설정 → 웹후크를 열고 이 URL과 권한 헤더를 추가한 후 entry.publish를 선택하고 트리거를 클릭하여 Strapi 테스트 웹후크를 전송하세요.",
-        "lastPublish": "마지막 게시: {{date}}",
-        "lastTest": "마지막 테스트: {{date}}",
-        "notReceived": "수신되지 않음",
-        "removeDescription": "먼저 워크플로 자동화를 제거하세요. 이 URL로의 Strapi 웹후크 요청이 중단됩니다.",
-        "removeTitle": "Strapi 통합을 제거하시겠습니까?",
-        "tested": "웹후크 테스트 완료",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi 통합이 생성되었습니다",
-          "noTestReceived": "아직 Strapi 테스트 웹후크를 수신하지 못했습니다",
-          "removed": "Strapi 통합이 제거되었습니다",
-          "testReceived": "Strapi 테스트 웹후크 수신됨"
-        },
-        "webhookUrl": "웹후크 URL",
-        "whereAssistantWorks": "{{assistantName}}가 작동하는 위치"
       },
       "telegram": {
         "addBot": "봇 추가",
@@ -5862,26 +5824,6 @@
         "time": "시간 ({{timezone}})",
         "updateScheduleAria": "일정 자동화 업데이트"
       },
-      "strapi": {
-        "addAction": "Strapi 자동화 추가",
-        "addAria": "Strapi 항목 게시 자동화 추가",
-        "addDescription": "일치하는 현지화 게시 이벤트가 완료된 후 이 워크플로를 실행합니다.",
-        "addTitle": "Strapi 자동화 추가",
-        "configure": "Strapi 구성",
-        "connectFirst": "이 자동화를 생성하기 전에 Strapi 인스턴스를 연결하세요.",
-        "contentType": "콘텐츠 유형 UID (선택 사항)",
-        "contentTypeAny": "모든 콘텐츠 유형",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "일치하는 Strapi 항목이 게시된 후 실행됩니다.",
-        "entryPublishedTitle": "Strapi 항목 게시됨",
-        "instance": "Strapi 인스턴스",
-        "locale": "로케일 (선택 사항)",
-        "localeAny": "모든 로케일",
-        "localeHint": "로케일을 비워두면 동일 문서의 모든 현지화 게시 이벤트가 하나의 워크플로 실행으로 결합됩니다.",
-        "localePlaceholder": "en",
-        "localeSummary": "로케일 {{locale}}",
-        "rule": "일치하는 Strapi 항목이 게시될 때"
-      },
       "stripe": {
         "addAction": "Stripe 자동화 추가",
         "addAria": "Stripe 인보이스 결제 완료 자동화 추가",
@@ -5927,7 +5869,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "웹후크"
       },
@@ -6248,10 +6189,6 @@
       "title": "Slack",
       "uninstallDescription": "이 작업은 워크스페이스 전체에서 Slack 통합을 제거합니다. 연결된 모든 사용자가 연결 해제되고, {{displayName}}가 Slack에서 메시지나 멘션에 더 이상 응답하지 않습니다. 이 작업은 취소할 수 없습니다.",
       "uninstallTitle": "Slack 통합을 제거하시겠습니까?"
-    },
-    "strapi": {
-      "description": "항목이 게시될 때 작업 자동화",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "관리자에게 Microsoft Teams 통합 설치를 요청하세요",
