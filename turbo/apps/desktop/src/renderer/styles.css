@@ -1,12 +1,12 @@
 :root {
-  color: #1d2026;
-  background: #f6f7f9;
+  color: #26221d;
+  background: #f9f8f6;
   /* Zero brand palette (mirrors design-system.css / tokens.css in vm0). */
-  --brand: #ed4e01;
-  --brand-hover: #ff6a1f;
-  --brand-press: #d54501;
-  --brand-soft: rgba(237, 78, 1, 0.1);
-  --brand-ring: rgba(237, 78, 1, 0.3);
+  --brand: #ffa500;
+  --brand-hover: #e19100;
+  --brand-press: #c37d00;
+  --brand-soft: rgba(255, 165, 0, 0.14);
+  --brand-ring: rgba(255, 165, 0, 0.35);
   --desktop-titlebar-height: 52px;
   --desktop-titlebar-left-inset: 92px;
   font-family:
@@ -44,7 +44,7 @@ body {
       rgba(255, 255, 255, 0.92),
       rgba(246, 247, 249, 0.86)
     ),
-    #f6f7f9;
+    #f9f8f6;
 }
 
 button {
@@ -84,7 +84,7 @@ button {
 
 .app-header h1 {
   margin: 0;
-  color: #202631;
+  color: #312820;
   font-size: 14px;
   line-height: 1.2;
   font-weight: 600;
@@ -154,7 +154,7 @@ button {
 .step-card-locked {
   min-height: 128px;
   padding: 16px;
-  color: #667085;
+  color: #857666;
   background: rgba(255, 255, 255, 0.64);
   box-shadow: none;
 }
@@ -170,7 +170,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #475467;
+  color: #675747;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
@@ -183,7 +183,7 @@ button {
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
-  color: #ffffff;
+  color: #242121;
   background: var(--brand);
   font-size: 12px;
   line-height: 1;
@@ -191,12 +191,12 @@ button {
 }
 
 .step-index-ready {
-  background: #067647;
+  background: #007360;
 }
 
 .step-index-pending {
-  color: #7a4a12;
-  background: #fef0c7;
+  color: #4f3208;
+  background: #ffead3;
 }
 
 .step-heading {
@@ -206,7 +206,7 @@ button {
 
 .step-heading h2 {
   margin: 0;
-  color: #202631;
+  color: #312820;
   font-size: 20px;
   line-height: 1.16;
   font-weight: 720;
@@ -216,7 +216,7 @@ button {
 .step-heading p {
   max-width: 640px;
   margin: 0;
-  color: #667085;
+  color: #857666;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -243,14 +243,14 @@ button {
 }
 
 .compact-step-copy strong {
-  color: #202631;
+  color: #312820;
   font-size: 13px;
   line-height: 1.2;
   font-weight: 700;
 }
 
 .compact-step-copy span {
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.25;
   overflow: hidden;
@@ -259,7 +259,7 @@ button {
 }
 
 .runtime-grid span {
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 600;
@@ -267,7 +267,7 @@ button {
 
 .runtime-grid strong {
   min-width: 0;
-  color: #202631;
+  color: #312820;
   font-size: 14px;
   line-height: 1.3;
   font-weight: 650;
@@ -289,13 +289,13 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #b42318;
+  color: #bc3500;
   background: #ffffff;
   cursor: pointer;
 }
 
 .status-error-button:hover {
-  background: #fef3f2;
+  background: #fff7f4;
 }
 
 .panel {
@@ -310,7 +310,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #2b3443;
+  color: #43372b;
 }
 
 .panel-heading h2 {
@@ -330,7 +330,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #2e3645;
+  color: #45392e;
   background: #ffffff;
   cursor: pointer;
   transition:
@@ -345,7 +345,7 @@ button {
 
 .button:hover:not(:disabled) {
   border-color: rgba(30, 38, 52, 0.25);
-  background: #f4f6f8;
+  background: #f8f6f4;
 }
 
 .button:disabled {
@@ -354,7 +354,7 @@ button {
 }
 
 .button-primary {
-  color: #ffffff;
+  color: #242121;
   border-color: var(--brand);
   background: var(--brand);
 }
@@ -365,14 +365,14 @@ button {
 }
 
 .button-danger {
-  color: #9f1239;
+  color: #bc3500;
   border-color: rgba(225, 29, 72, 0.24);
-  background: #fff1f2;
+  background: #fff7f4;
 }
 
 .button-danger:hover:not(:disabled) {
   border-color: rgba(225, 29, 72, 0.4);
-  background: #ffe4e6;
+  background: #ffeae4;
 }
 
 .permission-list,
@@ -429,7 +429,7 @@ button {
 }
 
 .checkbox-row-meta {
-  color: #3d4a5c;
+  color: #5c4c3d;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 650;
@@ -471,7 +471,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #667085;
+  color: #857666;
 }
 
 .command-log-main {
@@ -498,7 +498,7 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #3d4a5c;
+  color: #5c4c3d;
 }
 
 .command-log-section-details > .command-log-section-title {
@@ -517,7 +517,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #667085;
+  color: #857666;
   transition: transform 120ms ease;
 }
 
@@ -546,7 +546,7 @@ button {
 }
 
 .key-value-list dt {
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.35;
   font-weight: 650;
@@ -555,7 +555,7 @@ button {
 
 .key-value-list dd {
   margin: 0;
-  color: #202631;
+  color: #312820;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -566,7 +566,7 @@ button {
 }
 
 .compact-empty {
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -578,8 +578,8 @@ button {
   border: 1px solid rgba(30, 38, 52, 0.08);
   border-radius: 7px;
   padding: 10px;
-  color: #202631;
-  background: #f8fafc;
+  color: #312820;
+  background: #fcfaf8;
   overflow: auto;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
@@ -599,7 +599,7 @@ button {
   padding: 0;
   display: grid;
   gap: 0;
-  color: #2e3645;
+  color: #45392e;
   background: #ffffff;
   overflow: hidden;
   cursor: pointer;
@@ -610,7 +610,7 @@ button {
   max-height: 240px;
   display: block;
   object-fit: contain;
-  background: #111827;
+  background: #271c11;
 }
 
 .screenshot-thumbnail span {
@@ -638,19 +638,19 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: #f8fafc;
+  background: #fcfaf8;
 }
 
 .visible-element-row span {
   min-width: 0;
-  color: #202631;
+  color: #312820;
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .visible-element-row code {
-  color: #475467;
+  color: #675747;
   font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
@@ -670,12 +670,12 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  background: #f8fafc;
+  background: #fcfaf8;
 }
 
 .filesystem-directory-row span {
   min-width: 0;
-  color: #202631;
+  color: #312820;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -728,8 +728,8 @@ button {
   border: 1px solid rgba(30, 38, 52, 0.08);
   border-radius: 7px;
   padding: 8px 10px;
-  background: #f8fafc;
-  color: #202631;
+  background: #fcfaf8;
+  color: #312820;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -739,12 +739,12 @@ button {
 }
 
 .mcp-config-input::placeholder {
-  color: #667085;
+  color: #857666;
   opacity: 0.78;
 }
 
 .raw-log-details summary {
-  color: #3d4a5c;
+  color: #5c4c3d;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
@@ -756,7 +756,7 @@ button {
 }
 
 .row-title {
-  color: #202631;
+  color: #312820;
   font-size: 14px;
   line-height: 1.35;
   font-weight: 650;
@@ -764,7 +764,7 @@ button {
 
 .row-meta {
   margin-top: 2px;
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.35;
 }
@@ -791,50 +791,50 @@ button {
 .status-online,
 .outcome-approved,
 .command-status-succeeded {
-  color: #067647;
-  background: #ecfdf3;
+  color: #007360;
+  background: #d8fdf2;
 }
 
 .automation-pill-unknown,
 .automation-pill-not_running,
 .automation-pill-not_installed {
-  color: #344054;
-  background: #f2f4f7;
+  color: #544434;
+  background: #f7f4f2;
 }
 
 .automation-pill-denied {
-  color: #b42318;
-  background: #fef3f2;
+  color: #bc3500;
+  background: #fff7f4;
 }
 
 .status-offline {
-  color: #3d4a5c;
-  background: #eef2f6;
+  color: #5c4c3d;
+  background: #f6f2ee;
 }
 
 .status-connecting,
 .status-recovering {
-  color: #175cd3;
-  background: #eff8ff;
+  color: #3462d3;
+  background: #f4f8ff;
 }
 
 .command-status-running {
-  color: #175cd3;
-  background: #eff8ff;
+  color: #3462d3;
+  background: #f4f8ff;
 }
 
 .status-unauthenticated,
 .status-needs_organization {
-  color: #b54708;
-  background: #fffaeb;
+  color: #885600;
+  background: #fff9f2;
 }
 
 .status-disabled,
 .status-error,
 .outcome-denied,
 .command-status-failed {
-  color: #b42318;
-  background: #fef3f2;
+  color: #bc3500;
+  background: #fff7f4;
 }
 
 .runtime-grid {
@@ -850,7 +850,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: #f8fafc;
+  background: #fcfaf8;
 }
 
 .inline-alert {
@@ -861,16 +861,16 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #92400e;
-  background: #fffbeb;
+  color: #6c4300;
+  background: #fff9f2;
   font-size: 13px;
   line-height: 1.4;
 }
 
 .inline-alert-error {
   border-color: rgba(180, 35, 24, 0.22);
-  color: #b42318;
-  background: #fef3f2;
+  color: #bc3500;
+  background: #fff7f4;
 }
 
 .runtime-error-modal {
@@ -911,13 +911,13 @@ button {
 }
 
 .runtime-error-header strong {
-  color: #202631;
+  color: #312820;
   font-size: 13px;
   line-height: 1.25;
 }
 
 .runtime-error-header span {
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.25;
 }
@@ -937,7 +937,7 @@ button {
 
 .runtime-error-section h3 {
   margin: 0;
-  color: #3d4a5c;
+  color: #5c4c3d;
   font-size: 12px;
   line-height: 1.2;
   font-weight: 700;
@@ -948,8 +948,8 @@ button {
   border: 1px solid rgba(180, 35, 24, 0.14);
   border-radius: 7px;
   padding: 10px;
-  color: #7a271a;
-  background: #fef3f2;
+  color: #932d0b;
+  background: #fff7f4;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -969,7 +969,7 @@ button {
   padding: 9px 10px;
   display: grid;
   gap: 6px;
-  background: #f8fafc;
+  background: #fcfaf8;
 }
 
 .runtime-error-log-row div {
@@ -981,14 +981,14 @@ button {
 }
 
 .runtime-error-log-row strong {
-  color: #202631;
+  color: #312820;
   font-size: 12px;
   line-height: 1.25;
   font-weight: 700;
 }
 
 .runtime-error-log-row span {
-  color: #667085;
+  color: #857666;
   font-size: 11px;
   line-height: 1.25;
   text-align: right;
@@ -997,7 +997,7 @@ button {
 
 .runtime-error-log-row p {
   margin: 0;
-  color: #3d4a5c;
+  color: #5c4c3d;
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     monospace;
@@ -1013,7 +1013,7 @@ button {
   padding: 16px;
   display: flex;
   align-items: center;
-  color: #667085;
+  color: #857666;
   background: rgba(248, 250, 252, 0.7);
   font-size: 13px;
   line-height: 1.45;
@@ -1029,7 +1029,7 @@ button {
 
 .startup-loading-title {
   margin: 0;
-  color: #475467;
+  color: #675747;
   font-size: 15px;
   line-height: 1.2;
   font-weight: 600;
@@ -1157,7 +1157,7 @@ button {
 
 .hero-name {
   margin: 24px 0 0;
-  color: #14171d;
+  color: #1d1814;
   font-size: 17px;
   line-height: 1.2;
   font-weight: 650;
@@ -1165,7 +1165,7 @@ button {
 }
 
 .hero-name-muted {
-  color: #525b68;
+  color: #685d52;
 }
 
 .hero-substatus {
@@ -1173,7 +1173,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #9aa3af;
+  color: #afa49a;
   font-size: 12.5px;
   line-height: 1.3;
 }
@@ -1183,11 +1183,11 @@ button {
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #c3c8cf;
+  background: #cfc9c3;
 }
 
 .status-dot.is-online {
-  background: #15a06b;
+  background: #008d76;
 }
 
 .status-dot.is-pending {
@@ -1281,7 +1281,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #ffffff;
+  color: #242121;
   background: var(--brand);
   font-size: 13px;
   font-weight: 600;
@@ -1315,7 +1315,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #9aa3af;
+  color: #afa49a;
   font-size: 12px;
   line-height: 1.3;
 }
@@ -1340,7 +1340,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #9aa3af;
+  color: #afa49a;
   background: transparent;
   cursor: pointer;
   transition:
@@ -1350,7 +1350,7 @@ button {
 
 .footer-menu-trigger:hover,
 .footer-menu-trigger[aria-expanded="true"] {
-  color: #525b68;
+  color: #685d52;
   background: rgba(20, 23, 29, 0.05);
 }
 
@@ -1377,7 +1377,7 @@ button {
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #2e3645;
+  color: #45392e;
   background: transparent;
   font-size: 13px;
   font-weight: 500;
@@ -1388,15 +1388,15 @@ button {
 }
 
 .footer-menu-item:hover:not(:disabled) {
-  background: #f4f6f8;
+  background: #f8f6f4;
 }
 
 .footer-menu-item.is-danger {
-  color: #9f1239;
+  color: #bc3500;
 }
 
 .footer-menu-item.is-danger:hover:not(:disabled) {
-  background: #fff1f2;
+  background: #fff7f4;
 }
 
 .footer-menu-item:disabled {
@@ -1425,13 +1425,13 @@ button {
       rgba(255, 255, 255, 0.9),
       transparent 48%
     ),
-    radial-gradient(circle at 50% 50%, #ff8a3d, #ed4e01 72%);
+    radial-gradient(circle at 50% 50%, #ffc580, #ffa500 72%);
 }
 
 .arrival-label {
   position: relative;
   z-index: 1;
-  color: #ffffff;
+  color: #242121;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1527,14 +1527,14 @@ button {
 }
 
 .screenshot-lightbox-header strong {
-  color: #202631;
+  color: #312820;
   font-size: 13px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 .screenshot-lightbox-header span {
-  color: #667085;
+  color: #857666;
   font-size: 12px;
   line-height: 1.25;
 }
@@ -1545,7 +1545,7 @@ button {
   min-height: 0;
   display: block;
   object-fit: contain;
-  background: #111827;
+  background: #271c11;
 }
 
 .icon-only-button {
@@ -1556,13 +1556,13 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #2e3645;
+  color: #45392e;
   background: #ffffff;
   cursor: pointer;
 }
 
 .icon-only-button:hover {
-  background: #f4f6f8;
+  background: #f8f6f4;
 }
 
 @media (max-width: 760px) {
