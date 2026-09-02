@@ -6066,35 +6066,6 @@
       "noWorkflows": "Nessun flusso di lavoro ancora. Creane uno in chat per continuare."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connettiti",
-          "enable": "Abilita per l'agente",
-          "reconnect": "Riconnettiti",
-          "reviewPermissions": "Esaminare le autorizzazioni"
-        },
-        "aria": "Disponibilità del connettore",
-        "check": "Controllare i connettori",
-        "checkAgain": "Controlla di nuovo",
-        "checking": "Controllo...",
-        "description": "Scopri di quali connettori integrati potrebbe aver bisogno questo flusso di lavoro e se sono pronti.",
-        "empty": "Nessun connettore richiesto rilevato",
-        "error": {
-          "inputTooLong": "Questo flusso di lavoro è troppo lungo per essere controllato. Mantieni il nome, la descrizione e le istruzioni entro 100.000 caratteri.",
-          "retry": "Non è stato possibile controllare i connettori. Riprova.",
-          "timeout": "Il controllo del connettore è scaduto. Riprova."
-        },
-        "saveFirst": "Salva le modifiche prima di controllare i connettori.",
-        "status": {
-          "connected": "Connesso",
-          "notConnected": "Non connesso",
-          "notEnabled": "Non abilitato per questo agente",
-          "reconnect": "Riconnessione necessaria",
-          "scopeMismatch": "Aggiorna autorizzazioni",
-          "unavailable": "Attualmente non disponibile"
-        },
-        "title": "Disponibilità del connettore"
-      },
       "copy": {
         "agentFallback": "l'agente",
         "copied": "Copiato in {{agent}}",

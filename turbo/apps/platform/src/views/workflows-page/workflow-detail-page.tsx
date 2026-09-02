@@ -32,7 +32,6 @@ import type {
   WorkflowAutomationSummary,
   WorkflowUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
-import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -60,8 +59,6 @@ import {
   Upload,
   EllipsisVertical,
   Eye,
-  ExternalLink,
-  PlugZap,
   Video,
   Webhook,
   X,
@@ -110,7 +107,6 @@ import { user$ } from "../../signals/auth.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import {
   changeWorkflowVisibility$,
-  checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
   createWorkflowChatRunFinishedAutomation$,
   createWorkflowGithubWebhookAutomation$,
@@ -201,7 +197,6 @@ import {
   type GmailTextField,
   type GmailTextOperator,
   workflowMetadataPatch$,
-  workflowConnectorReadiness$,
   targetedWorkflowAutomationId$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import {
@@ -214,10 +209,7 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import {
-  detachedNavigateTo$,
-  generateRouterPath,
-} from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason, settle } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/okou-page/org-plan-capabilities.ts";
@@ -264,7 +256,6 @@ import {
 import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { AutomationListIcon } from "../okou-page/workflow-automations-page.tsx";
 import { emptyAutomationsImg } from "../okou-page/platform-assets.ts";
-import { ConnectorIcon } from "../okou-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 import {
   createOfficialWorkflowConfigurationForm,
@@ -319,35 +310,6 @@ function automationActionCopy() {
     }),
     runNow: i18n.t(($) => {
       return $.workflows.automations.common.runNow;
-    }),
-  };
-}
-
-function connectorReadinessCopy() {
-  return {
-    aria: i18n.t(($) => {
-      return $.workflows.detail.connectors.aria;
-    }),
-    check: i18n.t(($) => {
-      return $.workflows.detail.connectors.check;
-    }),
-    checkAgain: i18n.t(($) => {
-      return $.workflows.detail.connectors.checkAgain;
-    }),
-    checking: i18n.t(($) => {
-      return $.workflows.detail.connectors.checking;
-    }),
-    description: i18n.t(($) => {
-      return $.workflows.detail.connectors.description;
-    }),
-    empty: i18n.t(($) => {
-      return $.workflows.detail.connectors.empty;
-    }),
-    saveFirst: i18n.t(($) => {
-      return $.workflows.detail.connectors.saveFirst;
-    }),
-    title: i18n.t(($) => {
-      return $.workflows.detail.connectors.title;
     }),
   };
 }
@@ -1458,26 +1420,9 @@ function WorkflowInfoTab({
 }) {
   const actionDialog = useGet(workflowActionDialog$);
   const setActionDialog = useSet(setWorkflowActionDialog$);
-  const features = useGet(featureSwitch$);
-  const metadataPatch = useGet(workflowMetadataPatch$);
-  const fileDraft = useGet(workflowFileDraft$);
-  const connectorReadinessEnabled =
-    features[FeatureSwitchKey.WorkflowConnectorReadiness] ?? false;
-  const hasUnsavedReadinessInputs = hasUnsavedConnectorReadinessInputs(
-    detail,
-    metadataPatch,
-    fileDraft,
-  );
-
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
       <WorkflowMetadataForm detail={detail} />
-      {connectorReadinessEnabled && !detail.official ? (
-        <WorkflowConnectorReadiness
-          detail={detail}
-          hasUnsavedInputs={hasUnsavedReadinessInputs}
-        />
-      ) : null}
       <div className="zero-card overflow-hidden">
         <div className="p-4 sm:p-5">
           <InlineSettingsRow
@@ -1908,374 +1853,6 @@ function OfficialWorkflowUninstallDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function hasUnsavedConnectorReadinessInputs(
-  detail: WorkflowDetailResponse,
-  metadataPatch: {
-    readonly workflowId: string;
-    readonly displayName?: string;
-    readonly name?: string;
-    readonly description?: string;
-  } | null,
-  fileDraft: {
-    readonly workflowId: string;
-    readonly filePath: string | null;
-    readonly sourceContent: string;
-    readonly content: string;
-  } | null,
-): boolean {
-  const metadataDefaults = workflowMetadataDefaults(detail);
-  const metadataValues =
-    metadataPatch?.workflowId === detail.id
-      ? { ...metadataDefaults, ...metadataPatch }
-      : metadataDefaults;
-  const metadataDirty =
-    metadataValues.name !== metadataDefaults.name ||
-    metadataValues.description !== metadataDefaults.description;
-  const instruction = detail.instruction ?? "";
-  const instructionDirty =
-    fileDraft?.workflowId === detail.id &&
-    fileDraft.filePath === null &&
-    fileDraft.sourceContent === instruction &&
-    fileDraft.content !== instruction;
-  return metadataDirty || instructionDirty;
-}
-
-const CONNECTOR_READINESS_STATUS_GROUP: Readonly<
-  Record<PlatformWorkflowConnectorReadinessEntry["status"], number>
-> = Object.freeze({
-  "reconnect-required": 0,
-  "scope-mismatch": 0,
-  "not-connected": 0,
-  "not-enabled-for-agent": 0,
-  unavailable: 1,
-  connected: 2,
-});
-
-function sortConnectorReadinessEntries(
-  entries: readonly PlatformWorkflowConnectorReadinessEntry[],
-): PlatformWorkflowConnectorReadinessEntry[] {
-  return [...entries].sort((left, right) => {
-    const groupOrder =
-      CONNECTOR_READINESS_STATUS_GROUP[left.status] -
-      CONNECTOR_READINESS_STATUS_GROUP[right.status];
-    if (groupOrder !== 0) {
-      return groupOrder;
-    }
-    return left.label.localeCompare(right.label);
-  });
-}
-
-function connectorReadinessStatus(
-  status: PlatformWorkflowConnectorReadinessEntry["status"],
-): {
-  readonly label: string;
-  readonly dotClassName: string;
-  readonly textClassName: string;
-} {
-  switch (status) {
-    case "reconnect-required": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.status.reconnect;
-        }),
-        dotClassName: "bg-amber-500",
-        textClassName: "text-amber-600 dark:text-amber-400",
-      };
-    }
-    case "scope-mismatch": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.status.scopeMismatch;
-        }),
-        dotClassName: "bg-amber-500",
-        textClassName: "text-amber-600 dark:text-amber-400",
-      };
-    }
-    case "not-connected": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.status.notConnected;
-        }),
-        dotClassName: "bg-amber-500",
-        textClassName: "text-amber-600 dark:text-amber-400",
-      };
-    }
-    case "not-enabled-for-agent": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.status.notEnabled;
-        }),
-        dotClassName: "bg-amber-500",
-        textClassName: "text-amber-600 dark:text-amber-400",
-      };
-    }
-    case "unavailable": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.status.unavailable;
-        }),
-        dotClassName: "bg-gray-400",
-        textClassName: "text-muted-foreground",
-      };
-    }
-    case "connected": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.status.connected;
-        }),
-        dotClassName: "bg-emerald-500",
-        textClassName: "text-emerald-600 dark:text-emerald-400",
-      };
-    }
-  }
-}
-
-function connectorReadinessAction(
-  entry: PlatformWorkflowConnectorReadinessEntry,
-  agentId: string,
-): { readonly label: string; readonly href: string } | null {
-  const query = new URLSearchParams({ agentId }).toString();
-  switch (entry.status) {
-    case "reconnect-required": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.action.reconnect;
-        }),
-        href: `${generateRouterPath(ROUTES.directedConnect, {
-          connectorSlug: entry.connectorSlug,
-        })}?${query}`,
-      };
-    }
-    case "scope-mismatch": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.action.reviewPermissions;
-        }),
-        href: `${generateRouterPath(ROUTES.directedConnect, {
-          connectorSlug: entry.connectorSlug,
-        })}?${query}`,
-      };
-    }
-    case "not-connected": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.action.connect;
-        }),
-        href: `${generateRouterPath(ROUTES.directedConnect, {
-          connectorSlug: entry.connectorSlug,
-        })}?${query}`,
-      };
-    }
-    case "not-enabled-for-agent": {
-      return {
-        label: i18n.t(($) => {
-          return $.workflows.detail.connectors.action.enable;
-        }),
-        href: `${generateRouterPath(ROUTES.directedAuthorize, {
-          connectorSlug: entry.connectorSlug,
-        })}?${query}`,
-      };
-    }
-    case "connected":
-    case "unavailable": {
-      return null;
-    }
-  }
-}
-
-function connectorReadinessErrorMessage(
-  errorKind: "input-too-long" | "timeout" | "retry",
-): string {
-  switch (errorKind) {
-    case "input-too-long": {
-      return i18n.t(($) => {
-        return $.workflows.detail.connectors.error.inputTooLong;
-      });
-    }
-    case "timeout": {
-      return i18n.t(($) => {
-        return $.workflows.detail.connectors.error.timeout;
-      });
-    }
-    case "retry": {
-      return i18n.t(($) => {
-        return $.workflows.detail.connectors.error.retry;
-      });
-    }
-  }
-}
-
-function WorkflowConnectorReadiness({
-  detail,
-  hasUnsavedInputs,
-}: {
-  readonly detail: WorkflowDetailResponse;
-  readonly hasUnsavedInputs: boolean;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const copy = connectorReadinessCopy();
-  const readinessState = useGet(workflowConnectorReadiness$);
-  const [, checkReadiness] = useLoadableSet(checkWorkflowConnectorReadiness$);
-  const currentState =
-    readinessState?.workflowId === detail.id ? readinessState : null;
-  const checking = currentState?.status === "pending";
-  const failed = currentState?.status === "error";
-  const errorMessage =
-    currentState?.status === "error"
-      ? connectorReadinessErrorMessage(currentState.errorKind)
-      : null;
-  const response =
-    currentState?.status === "success" ? currentState.response : null;
-  const entries = response
-    ? sortConnectorReadinessEntries(response.connectors)
-    : null;
-  const checkLabel = checking
-    ? copy.checking
-    : response || failed
-      ? copy.checkAgain
-      : copy.check;
-
-  return (
-    <section className="zero-card overflow-hidden" aria-label={copy.aria}>
-      <div className="p-4 sm:p-5">
-        <InlineSettingsRow
-          label={copy.title}
-          description={copy.description}
-          alignControls="center"
-        >
-          <div className="flex w-full flex-col items-start gap-2 sm:items-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-9 gap-2 rounded-lg"
-              disabled={checking || hasUnsavedInputs}
-              onClick={() => {
-                detach(
-                  checkReadiness(detail.id, pageSignal),
-                  Reason.DomCallback,
-                  "check workflow connector readiness",
-                );
-              }}
-            >
-              {checking ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <PlugZap size={14} />
-              )}
-              {checkLabel}
-            </Button>
-            {hasUnsavedInputs ? (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                {copy.saveFirst}
-              </p>
-            ) : null}
-          </div>
-        </InlineSettingsRow>
-      </div>
-      {errorMessage ? (
-        <div
-          role="alert"
-          className="flex items-start gap-2 border-t border-border/50 px-4 py-3 text-sm text-destructive sm:px-5"
-        >
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <p>{errorMessage}</p>
-        </div>
-      ) : null}
-      {entries ? (
-        entries.length > 0 ? (
-          <ul
-            className="divide-y divide-border/50 border-t border-border/50"
-            aria-live="polite"
-          >
-            {entries.map((entry) => {
-              return (
-                <WorkflowConnectorReadinessRow
-                  key={entry.connectorSlug}
-                  entry={entry}
-                  agentId={detail.agentId}
-                />
-              );
-            })}
-          </ul>
-        ) : (
-          <div
-            className="flex items-center gap-2 border-t border-border/50 px-4 py-4 text-sm text-muted-foreground sm:px-5"
-            aria-live="polite"
-          >
-            <CircleCheck size={16} className="shrink-0 text-emerald-500" />
-            {copy.empty}
-          </div>
-        )
-      ) : null}
-    </section>
-  );
-}
-
-function WorkflowConnectorReadinessRow({
-  entry,
-  agentId,
-}: {
-  readonly entry: PlatformWorkflowConnectorReadinessEntry;
-  readonly agentId: string;
-}) {
-  const status = connectorReadinessStatus(entry.status);
-  const action = connectorReadinessAction(entry, agentId);
-
-  return (
-    <li className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50">
-          <ConnectorIcon icon={entry.icon} size={18} />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">
-            {entry.label}
-          </p>
-          <p className="mt-1 text-xs leading-snug text-muted-foreground">
-            {entry.reason}
-          </p>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center justify-between gap-3 pl-11 sm:justify-end sm:pl-0">
-        <span
-          className={cn(
-            "flex items-center gap-2 whitespace-nowrap text-xs",
-            status.textClassName,
-          )}
-        >
-          <span
-            className={cn(
-              "h-1.5 w-1.5 shrink-0 rounded-full",
-              status.dotClassName,
-            )}
-            aria-hidden="true"
-          />
-          {status.label}
-        </span>
-        {action ? (
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-8 gap-1.5 rounded-lg"
-          >
-            <a
-              href={action.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`${action.label} ${entry.label}`}
-            >
-              {action.label}
-              <ExternalLink size={13} />
-            </a>
-          </Button>
-        ) : null}
-      </div>
-    </li>
   );
 }
 

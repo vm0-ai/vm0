@@ -6066,35 +6066,6 @@
       "noWorkflows": "Todavía no hay flujos de trabajo. Crea uno en el chat para continuar."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Conectar",
-          "enable": "Habilitar para el agente",
-          "reconnect": "Volver a conectar",
-          "reviewPermissions": "Revisar permisos"
-        },
-        "aria": "Preparación de los conectores",
-        "check": "Revisar conectores",
-        "checkAgain": "Revisar de nuevo",
-        "checking": "Comprobando...",
-        "description": "Consulta qué conectores integrados puede necesitar este flujo de trabajo y si están listos.",
-        "empty": "No se detectaron conectores necesarios",
-        "error": {
-          "inputTooLong": "Este flujo de trabajo es demasiado largo para comprobarlo. Mantén el nombre, la descripción y las instrucciones dentro de 100.000 caracteres.",
-          "retry": "No pudimos comprobar los conectores. Inténtalo de nuevo.",
-          "timeout": "La comprobación del conector se agotó. Inténtalo de nuevo."
-        },
-        "saveFirst": "Guarda tus cambios antes de revisar los conectores.",
-        "status": {
-          "connected": "Conectado",
-          "notConnected": "No conectado",
-          "notEnabled": "No activado para este agente",
-          "reconnect": "Se requiere reconexión",
-          "scopeMismatch": "Actualizar permisos",
-          "unavailable": "Actualmente no disponible"
-        },
-        "title": "Preparación de los conectores"
-      },
       "copy": {
         "agentFallback": "El agente",
         "copied": "Copiado a {{agent}}",

@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
-import { publicConnectorCatalogIconSchema } from "./connector-catalog";
 import {
   officialWorkflowBlueprintKeySchema,
   officialWorkflowParameterBindingSchema,
@@ -1608,38 +1606,6 @@ export const workflowChatThreadResponseSchema = z.object({
   prompt: z.string(),
 });
 
-export const workflowConnectorReadinessStatusSchema = z.enum([
-  "connected",
-  "not-connected",
-  "scope-mismatch",
-  "reconnect-required",
-  "not-enabled-for-agent",
-  "unavailable",
-]);
-export type WorkflowConnectorReadinessStatus = z.infer<
-  typeof workflowConnectorReadinessStatusSchema
->;
-
-export const workflowConnectorReadinessEntrySchema = z.object({
-  connectorSlug: connectorSlugSchema,
-  label: z.string().min(1),
-  icon: publicConnectorCatalogIconSchema.optional(),
-  reason: z.string().min(1),
-  status: workflowConnectorReadinessStatusSchema,
-});
-export type WorkflowConnectorReadinessEntry = z.infer<
-  typeof workflowConnectorReadinessEntrySchema
->;
-
-export const workflowConnectorReadinessResponseSchema = z
-  .object({
-    connectors: z.array(workflowConnectorReadinessEntrySchema),
-  })
-  .strict();
-export type WorkflowConnectorReadinessResponse = z.infer<
-  typeof workflowConnectorReadinessResponseSchema
->;
-
 const workflowIdParams = z.object({ workflowId: z.string().uuid() });
 
 export const workflowsCollectionContract = c.router({
@@ -1765,25 +1731,6 @@ export const workflowsDetailContract = c.router({
     },
     summary:
       "Run the workflow once in its shared chat thread (equivalent to /slug)",
-  },
-  connectorReadiness: {
-    method: "POST",
-    path: "/api/workflows/:workflowId/connector-readiness",
-    headers: authHeadersSchema,
-    pathParams: workflowIdParams,
-    body: c.noBody(),
-    responses: {
-      200: workflowConnectorReadinessResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      413: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary:
-      "Detect the built-in connectors a workflow may need and report their readiness",
   },
 });
 

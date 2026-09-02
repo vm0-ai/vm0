@@ -5,10 +5,6 @@ import type {
   PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { UserPermissionGrantResponse } from "@okouai/api-contracts/contracts/user-permission-grants";
-import type {
-  WorkflowConnectorReadinessEntry,
-  WorkflowConnectorReadinessResponse,
-} from "@okouai/api-contracts/contracts/workflows";
 
 export type PlatformConnector = ConnectorResponse;
 export type PlatformConnectorCatalogStatusItem =
@@ -16,11 +12,6 @@ export type PlatformConnectorCatalogStatusItem =
 export type PlatformConnectorPermissionMetadata =
   PublicConnectorCatalogPermissionDetail;
 export type PlatformUserPermissionGrant = UserPermissionGrantResponse;
-export type PlatformWorkflowConnectorReadinessEntry =
-  WorkflowConnectorReadinessEntry;
-export type PlatformWorkflowConnectorReadinessResponse =
-  WorkflowConnectorReadinessResponse;
-
 export const singleAccountConnectorMutation = {
   intent: "single-account",
 } satisfies ConnectorAccountMutationIntent;

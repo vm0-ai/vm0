@@ -13,7 +13,6 @@ import {
   chatThreadWorkflowAutomationSchema,
   stripeInvoicePaidEventConfigSchema,
   workflowAutomationSummarySchema,
-  workflowConnectorReadinessResponseSchema,
   workflowUpdateRequestSchema,
   workflowAutomationCreateRequestSchema,
   workflowAutomationUpdateRequestSchema,
@@ -447,51 +446,5 @@ describe("workflow update contract", () => {
     });
 
     expect(parsed.success).toBe(false);
-  });
-});
-
-describe("workflow connector readiness contract", () => {
-  it("accepts all readiness states without limiting the connector count", () => {
-    const entries = [
-      { connectorSlug: "github", status: "connected" },
-      { connectorSlug: "gmail", status: "not-connected" },
-      { connectorSlug: "notion", status: "scope-mismatch" },
-      { connectorSlug: "slack", status: "reconnect-required" },
-      { connectorSlug: "linear", status: "not-enabled-for-agent" },
-      { connectorSlug: "google-drive", status: "unavailable" },
-    ] as const;
-
-    const parsed = workflowConnectorReadinessResponseSchema.parse({
-      connectors: entries.map((entry, index) => {
-        return {
-          connectorSlug: entry.connectorSlug,
-          label: `Connector ${index}`,
-          icon: {
-            url: `https://icons.example.test/${entry.connectorSlug}.svg`,
-            invertInDarkMode: false,
-          },
-          reason: "The workflow uses this service.",
-          status: entry.status,
-        };
-      }),
-    });
-
-    expect(parsed.connectors).toHaveLength(entries.length);
-  });
-
-  it("rejects unknown readiness states", () => {
-    expect(
-      workflowConnectorReadinessResponseSchema.safeParse({
-        connectors: [
-          {
-            connectorSlug: "github",
-            label: "GitHub",
-            reason: "The workflow reads issues.",
-            status: "unknown",
-            confidence: 0.9,
-          },
-        ],
-      }).success,
-    ).toBe(false);
   });
 });

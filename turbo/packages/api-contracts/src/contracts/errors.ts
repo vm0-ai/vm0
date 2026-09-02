@@ -46,10 +46,6 @@ export const ApiError = {
     status: 503 as const,
     code: "MODEL_PROVIDER_UNAVAILABLE",
   },
-  CONNECTOR_READINESS_TIMEOUT: {
-    status: 503 as const,
-    code: "CONNECTOR_READINESS_TIMEOUT",
-  },
   EVENT_DELIVERY_UNAVAILABLE: {
     status: 503 as const,
     code: "EVENT_DELIVERY_UNAVAILABLE",

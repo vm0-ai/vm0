@@ -57,7 +57,6 @@ import {
   reloadWorkflowData$,
   workflowReloadVersion$,
 } from "./workflow-reload.ts";
-import type { PlatformWorkflowConnectorReadinessResponse } from "../connector-domain.ts";
 import { onRef } from "../utils.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
@@ -272,28 +271,6 @@ const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
 const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
 );
-type WorkflowConnectorReadinessState =
-  | {
-      readonly workflowId: string;
-      readonly requestId: string;
-      readonly status: "pending";
-    }
-  | {
-      readonly workflowId: string;
-      readonly requestId: string;
-      readonly status: "error";
-      readonly errorKind: "input-too-long" | "timeout" | "retry";
-    }
-  | {
-      readonly workflowId: string;
-      readonly requestId: string;
-      readonly status: "success";
-      readonly response: PlatformWorkflowConnectorReadinessResponse;
-    };
-
-const internalWorkflowConnectorReadiness$ =
-  state<WorkflowConnectorReadinessState | null>(null);
-
 export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
@@ -434,10 +411,6 @@ export const workflowMetadataPatch$ = computed((get) => {
   return get(internalWorkflowMetadataPatch$);
 });
 
-export const workflowConnectorReadiness$ = computed((get) => {
-  return get(internalWorkflowConnectorReadiness$);
-});
-
 export const patchWorkflowMetadataForm$ = command(
   (
     { set },
@@ -475,7 +448,6 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalEditingGmailMatchConditions$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
-  set(internalWorkflowConnectorReadiness$, null);
 });
 
 export const workflowDetailActiveTab$ = computed((get) => {
@@ -733,7 +705,6 @@ export const setSelectedWorkflowFilePath$ = command(
 /** Bump to refetch every workflow list and detail. */
 export const reloadWorkflows$ = command(({ set }) => {
   set(reloadWorkflowData$);
-  set(internalWorkflowConnectorReadiness$, null);
 });
 
 export function isMorningBriefWorkflow(
@@ -827,49 +798,6 @@ export const currentWorkflowDetail$ = computed(
       [200, 404],
     );
     return result.status === 404 ? null : result.body;
-  },
-);
-
-export const checkWorkflowConnectorReadiness$ = command(
-  async ({ get, set }, workflowId: string, signal: AbortSignal) => {
-    const requestId = crypto.randomUUID();
-    set(internalWorkflowConnectorReadiness$, {
-      workflowId,
-      requestId,
-      status: "pending",
-    });
-    const client = get(apiClient$)(workflowsDetailContract);
-    const result = await accept(
-      client.connectorReadiness({
-        params: { workflowId },
-        fetchOptions: { signal },
-      }),
-      [200, 413, 503],
-    );
-    signal.throwIfAborted();
-    if (get(internalWorkflowConnectorReadiness$)?.requestId !== requestId) {
-      return;
-    }
-    if (result.status !== 200) {
-      set(internalWorkflowConnectorReadiness$, {
-        workflowId,
-        requestId,
-        status: "error",
-        errorKind:
-          result.status === 413
-            ? "input-too-long"
-            : result.body.error.code === "CONNECTOR_READINESS_TIMEOUT"
-              ? "timeout"
-              : "retry",
-      });
-      return;
-    }
-    set(internalWorkflowConnectorReadiness$, {
-      workflowId,
-      requestId,
-      status: "success",
-      response: result.body,
-    });
   },
 );
 

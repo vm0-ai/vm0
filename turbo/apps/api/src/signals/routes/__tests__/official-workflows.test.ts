@@ -130,10 +130,6 @@ function authHeaders(actor: ApiTestUser) {
   return { authorization: "Bearer clerk-session" };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 async function selectBuiltInDefaultModel(actor: ApiTestUser): Promise<void> {
   await seedVm0BuiltInModelKey(context, "claude-sonnet-5");
   await runs.updateOrgModelPolicies(actor, [
@@ -1428,12 +1424,6 @@ async function installOfficialWorkflowLifecycleScenario() {
   });
   const headers = authHeaders(actor);
   await setOfficialWorkflowsEnabled(actor, true);
-  await updateFeatureSwitchesForUser(
-    context,
-    { orgId: actor.orgId, userId: actor.userId },
-    { [FeatureSwitchKey.WorkflowConnectorReadiness]: true },
-  );
-
   const installBody = {
     agentId,
     blueprints: [
@@ -1782,8 +1772,17 @@ describe.sequential("Morning Brief preference", () => {
 });
 
 describe.sequential("Official Workflow installations", () => {
-  it("materializes the deployed Official Workflows through generic installation state", async () => {
+  it("materializes the deployed Morning Brief while hiding retired Definitions", async () => {
     installCatalogStorageFixture();
+    await syncCatalog(
+      catalog([
+        activeDefinition(
+          "connector-doctor",
+          [scheduledBlueprint()],
+          "Legacy retired Definition instruction.",
+        ),
+      ]),
+    );
     const synced = await syncDeployedCatalog();
     expect(synced.body).toMatchObject({ outcome: "accepted", diagnostics: [] });
 
@@ -1807,16 +1806,7 @@ describe.sequential("Official Workflow installations", () => {
       discovered.body.map(({ name, displayName }) => {
         return { name, displayName };
       }),
-    ).toStrictEqual([
-      {
-        name: "connector-doctor",
-        displayName: "Connector Doctor",
-      },
-      {
-        name: "morning-brief",
-        displayName: "Morning Brief",
-      },
-    ]);
+    ).toStrictEqual([{ name: "morning-brief", displayName: "Morning Brief" }]);
 
     const installedMorningBrief = await accept(
       officialClient().install({
@@ -1874,84 +1864,6 @@ describe.sequential("Official Workflow installations", () => {
       enabled: true,
       officialBlueprintKey: "daily-delivery",
       officialResultEmailEnabled: true,
-    });
-
-    const installedConnectorDoctor = await accept(
-      officialClient().install({
-        headers,
-        params: { definitionName: "connector-doctor" },
-        body: {
-          agentId,
-          blueprints: [{ blueprintKey: "weekly-check", bindings: [] }],
-        },
-      }),
-      [201],
-    );
-    expect(installedConnectorDoctor.body.definition).toMatchObject({
-      name: "connector-doctor",
-      lifecycle: "active",
-      blueprints: [{ key: "weekly-check" }],
-    });
-    expect(installedConnectorDoctor.body.workflow).toMatchObject({
-      name: "connector-doctor",
-      displayName: "Connector Doctor",
-      agentId,
-      official: {
-        definitionName: "connector-doctor",
-        installationState: "installed",
-        definitionLifecycle: "active",
-        readOnly: true,
-      },
-    });
-    expect(installedConnectorDoctor.body.workflow.automations).toHaveLength(1);
-    const connectorDoctorAutomation =
-      installedConnectorDoctor.body.workflow.automations[0];
-    expect(connectorDoctorAutomation).toMatchObject({
-      kind: "schedule",
-      enabled: true,
-      chatThreadId: expect.any(String),
-      schedule: {
-        type: "cron",
-        cronExpression: "0 9 * * 1",
-        timezone: "Asia/Shanghai",
-      },
-      official: {
-        blueprintKey: "weekly-check",
-        reconciliationStatus: "current",
-        intendedEnabled: true,
-        parameterBindings: [],
-      },
-    });
-    if (!connectorDoctorAutomation?.chatThreadId) {
-      throw new Error("Expected the Connector Doctor shared automation thread");
-    }
-    expect(connectorDoctorAutomation.chatThreadId).not.toBe(
-      morningBriefAutomation.chatThreadId,
-    );
-    const persistedConnectorDoctor = await accept(
-      installationClient().get({
-        headers,
-        params: { workflowId: installedConnectorDoctor.body.workflow.id },
-      }),
-      [200],
-    );
-    expect(persistedConnectorDoctor.body.workflow.automations).toHaveLength(1);
-    expect(persistedConnectorDoctor.body.workflow.automations).toMatchObject([
-      {
-        id: connectorDoctorAutomation.id,
-        chatThreadId: connectorDoctorAutomation.chatThreadId,
-      },
-    ]);
-    await expect(
-      readWorkflowAutomationAutonomyFixture(
-        context,
-        connectorDoctorAutomation.id,
-      ),
-    ).resolves.toMatchObject({
-      autonomyBudget: 10,
-      enabled: true,
-      officialBlueprintKey: "weekly-check",
-      officialResultEmailEnabled: false,
     });
   });
 
@@ -2058,12 +1970,6 @@ describe.sequential("Official Workflow installations", () => {
     const headers = authHeaders(actor);
     await accept(officialClient().list({ headers }), [403]);
     await setOfficialWorkflowsEnabled(actor, true);
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      { [FeatureSwitchKey.WorkflowConnectorReadiness]: true },
-    );
-
     const sharedAgentOwner = bdd.user({
       orgId: actor.orgId,
       orgRole: "org:member",
@@ -2327,137 +2233,6 @@ describe.sequential("Official Workflow installations", () => {
         return automation.enabled;
       }),
     ).toBeTruthy();
-  });
-
-  it("uses accepted Official content and installation dependencies for connector readiness", async () => {
-    installCatalogStorageFixture();
-    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
-    const definitionName = `api-test-readiness-${suffix}`;
-    const instruction = "Read the accepted Official Gmail inbox.";
-    const sourceCatalog = catalog([
-      activeDefinition(definitionName, [gmailBlueprint()], instruction),
-    ]);
-    await syncCatalog(sourceCatalog);
-
-    const { actor } = await workflowBdd.setupWorkflowOrg();
-    const { agentId } = await workflowBdd.createAgent(actor);
-    onTestFinished(async () => {
-      installCatalogStorageFixture();
-      await bdd.deleteAgent(actor, agentId);
-      await cleanupCatalog();
-    });
-
-    mockGmailConnectorOAuth({
-      email: `official-readiness-${suffix}@example.test`,
-    });
-    await workflowBdd.connectConnector(actor, "gmail");
-    await runs.enableAgentConnectors(actor, agentId, ["gmail"]);
-    mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
-    server.use(
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
-        return HttpResponse.json({
-          historyId: "100",
-          expiration: "4102444800000",
-        });
-      }),
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
-    await setOfficialWorkflowsEnabled(actor, true);
-    if (!actor.orgId) {
-      throw new Error("Expected organization-scoped readiness actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: actor.orgId, userId: actor.userId },
-      { [FeatureSwitchKey.WorkflowConnectorReadiness]: true },
-    );
-    const headers = authHeaders(actor);
-    const installed = await accept(
-      officialClient().install({
-        headers,
-        params: { definitionName },
-        body: {
-          agentId,
-          blueprints: [{ blueprintKey: "gmail-trigger", bindings: [] }],
-        },
-      }),
-      [201],
-    );
-
-    const modelRequests: unknown[] = [];
-    mockOptionalEnv("OPENROUTER_API_KEY", "official-readiness-test-key");
-    server.use(
-      http.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        async ({ request }) => {
-          modelRequests.push(await request.json());
-          return HttpResponse.json({
-            choices: [
-              {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({ connectors: [] }),
-                },
-              },
-            ],
-          });
-        },
-      ),
-    );
-
-    const readiness = await accept(
-      workflowClient().connectorReadiness({
-        headers,
-        params: { workflowId: installed.body.workflow.id },
-      }),
-      [200],
-    );
-
-    expect(readiness.body.connectors).toMatchObject([
-      {
-        connectorSlug: "gmail",
-        reason: "This workflow has a Gmail event automation.",
-        status: "connected",
-      },
-    ]);
-    expect(modelRequests).toHaveLength(1);
-    const modelRequest = modelRequests[0];
-    if (!isRecord(modelRequest) || !Array.isArray(modelRequest.messages)) {
-      throw new Error("Expected OpenRouter request messages");
-    }
-    const userMessage = modelRequest.messages.find((message) => {
-      return isRecord(message) && message.role === "user";
-    });
-    if (!isRecord(userMessage) || typeof userMessage.content !== "string") {
-      throw new Error("Expected OpenRouter user message");
-    }
-    const modelPayload: unknown = JSON.parse(userMessage.content);
-    expect(modelPayload).toMatchObject({
-      workflow: {
-        name: definitionName,
-        description: `Description for ${definitionName}`,
-        instruction,
-      },
-    });
-
-    await cleanupCatalog();
-    const unavailable = await accept(
-      workflowClient().connectorReadiness({
-        headers,
-        params: { workflowId: installed.body.workflow.id },
-      }),
-      [503],
-    );
-    expect(unavailable.body).toStrictEqual({
-      error: {
-        code: "PROVIDER_UNAVAILABLE",
-        message:
-          "Official Workflow content is temporarily unavailable. Please retry.",
-      },
-    });
-    expect(modelRequests).toHaveLength(1);
   });
 
   it("projects installed state, guards mutations, and preserves reconfiguration identity", async () => {
