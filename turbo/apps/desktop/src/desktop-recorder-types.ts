@@ -134,6 +134,12 @@ export interface DesktopRecorderRecording {
   readonly sizeBytes: number;
   readonly width: number;
   readonly height: number;
+  /**
+   * Set when the capture broke before it was stopped. The file still holds
+   * whatever was written up to that point, so it is kept for a deliberate
+   * retry, but it must not be delivered as though the recording finished.
+   */
+  readonly failure?: DesktopRecorderError;
 }
 
 export interface DesktopRecorderState {
