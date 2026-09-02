@@ -79,12 +79,15 @@ import {
   validateOrgMetadataAcquisitionFirstPartySourceBackfill,
   validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema,
 } from "./test-org-metadata-acquisition-first-party-source-backfill";
+import {
+  applyOrgMetadataAcquisitionFirstPartySourceContractOnRegeneratedSchema,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_CONTRACT_MIGRATION,
+  validateOrgMetadataAcquisitionFirstPartySourceContract,
+} from "./test-org-metadata-acquisition-first-party-source-contract";
 import { validateOrgMetadataAcquisitionFirstPartySourceExpansion } from "./test-org-metadata-acquisition-first-party-source-expansion";
 import {
   installOrgMetadataAcquisitionFirstPartySourceArtifactsOnRegeneratedSchema,
   ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
   validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
 } from "./test-org-metadata-acquisition-first-party-source-permanent";
 import { validateOrgPlanEntitlementRestrictionExpansion } from "./test-org-plan-entitlement-restriction-expansion";
@@ -2445,9 +2448,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "org_metadata",
     triggerName: "ensure_legacy_org_metadata_plan_entitlement",
   },
-  // Temporary #30379 expand/mirror bridge. Remove only with #28368 after the
-  // backfill, canonical application/reporting switch, and rollback gates pass.
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
   {
     definition:
       "CREATE TRIGGER sync_legacy_org_plan_entitlement_can_buy_credits BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_can_buy_credits()",
@@ -2562,8 +2562,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   ORG_METADATA_PLAN_ENTITLEMENT_PERMANENT_FUNCTION,
-  // Same temporary #30379 bridge and #28368 removal gate as its trigger.
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
   {
     bodyHash: "7740cf65befb5e06a73e1f21bcfdd5cc",
     functionName: "fill_legacy_chat_thread_snapshot_event_seq_id",
@@ -11116,6 +11114,9 @@ async function main(): Promise<void> {
     await validateOrgMetadataAcquisitionFirstPartySourceBackfill(
       dbUrl.toString(),
     );
+    await validateOrgMetadataAcquisitionFirstPartySourceContract(
+      dbUrl.toString(),
+    );
     await validateOrgPlanEntitlementRestrictionExpansion(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionBackfill(dbUrl.toString());
     await validateOrgPlanEntitlementRestrictionNotNull(dbUrl.toString());
@@ -11177,6 +11178,14 @@ async function main(): Promise<void> {
         ),
         "utf8",
       );
+    const orgMetadataAcquisitionFirstPartySourceContractMigrationSql =
+      await fs.readFile(
+        path.join(
+          MIGRATIONS_DIR,
+          `${ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_CONTRACT_MIGRATION}.sql`,
+        ),
+        "utf8",
+      );
     const orgPlanEntitlementRestrictionMigrationSql = await fs.readFile(
       path.join(
         MIGRATIONS_DIR,
@@ -11214,6 +11223,10 @@ async function main(): Promise<void> {
     await validateOrgMetadataAcquisitionFirstPartySourceBackfillOnRegeneratedSchema(
       dbUrl2,
       orgMetadataAcquisitionFirstPartySourceBackfillMigrationSql,
+    );
+    await applyOrgMetadataAcquisitionFirstPartySourceContractOnRegeneratedSchema(
+      dbUrl2,
+      orgMetadataAcquisitionFirstPartySourceContractMigrationSql,
     );
     await installOrgPlanEntitlementRestrictionArtifactsOnRegeneratedSchema(
       dbUrl2,
