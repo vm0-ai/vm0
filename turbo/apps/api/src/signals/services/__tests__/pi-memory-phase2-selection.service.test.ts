@@ -1,4 +1,3 @@
-/* oxlint-disable jest/prefer-expect-resolves, vitest/prefer-to-be-falsy, vitest/prefer-to-be-truthy -- Direct state-machine assertions keep each selection fence visually paired. */
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -6,6 +5,7 @@ import {
   PI_MEMORY_PHASE2_MAX_ATTEMPTS,
   PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES,
   PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES,
+  piMemoryPhase2Jobs,
 } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 
@@ -83,6 +83,15 @@ describe("Pi memory Phase 2 selection", () => {
         sourceCompletedAt: new Date(oldestAllowed.getTime() - 1),
       },
       {
+        piSessionId: "used-in-future",
+        sourceCompletedAt: oldestAllowed,
+        lastUsedAt: new Date(NOW.getTime() + 1),
+      },
+      {
+        piSessionId: "source-in-future",
+        sourceCompletedAt: new Date(NOW.getTime() + 1),
+      },
+      {
         piSessionId: "blank",
         rawMemory: " \n ",
         rolloutSummary: "\t",
@@ -133,8 +142,8 @@ describe("Pi memory Phase 2 selection", () => {
         }),
       );
       expect(ids.size).toBe(256);
-      expect(ids.has(better.piSessionId)).toBe(true);
-      expect(ids.has(worse.piSessionId)).toBe(false);
+      expect(ids.has(better.piSessionId)).toBeTruthy();
+      expect(ids.has(worse.piSessionId)).toBeFalsy();
     }
 
     await expectBoundaryWinner(
@@ -212,15 +221,15 @@ describe("Pi memory Phase 2 selection", () => {
       scope,
     });
     expect(exact?.selected).toHaveLength(256);
-    expect(
-      await failPiMemoryPhase2Job(db(), {
+    await expect(
+      failPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: exact?.leaseToken ?? "missing",
         claimedRevision: exact?.claimedRevision ?? -1,
         currentTime: new Date(NOW.getTime() + 1),
         errorClass: "test_retry",
       }),
-    ).toBe(true);
+    ).resolves.toBeTruthy();
 
     const topRanked = exact?.selected.find((candidate) => {
       return candidate.piSessionId === "session-256";
@@ -249,14 +258,25 @@ describe("Pi memory Phase 2 selection", () => {
       oneByteOver?.selected.some((candidate) => {
         return candidate.piSessionId === "session-001";
       }),
-    ).toBe(false);
+    ).toBeFalsy();
   });
 
-  it("rejects mutated, duplicate, and over-cap completion selections", async () => {
+  it("rejects every invalid completion selection without partial mutation", async () => {
     const scope = await createPhase2TestScope("completion-metadata");
-    await insertPhase2Candidates(scope, [
+    const [sourceHistoryHash] = await insertPhase2Candidates(scope, [
       { piSessionId: "selected", rawMemory: "exact bytes" },
     ]);
+    await db()
+      .update(piMemoryStage1Candidates)
+      .set({ lastSelectedSourceHistoryHash: sourceHistoryHash as string })
+      .where(
+        and(
+          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
+          eq(piMemoryStage1Candidates.orgId, scope.orgId),
+          eq(piMemoryStage1Candidates.userId, scope.userId),
+          eq(piMemoryStage1Candidates.piSessionId, "selected"),
+        ),
+      );
     await insertPendingPhase2Job(scope);
     const claimed = await claimPiMemoryPhase2Job(db(), {
       currentTime: NOW,
@@ -272,42 +292,75 @@ describe("Pi memory Phase 2 selection", () => {
       claimedRevision: claimed.claimedRevision,
       currentTime: new Date(NOW.getTime() + 1),
     };
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
-        ...fence,
-        selected: [
-          {
+    const jobBefore = await db()
+      .select()
+      .from(piMemoryPhase2Jobs)
+      .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId));
+    async function expectRejected(
+      selected: Parameters<typeof succeedPiMemoryPhase2Job>[1]["selected"],
+    ): Promise<void> {
+      await expect(
+        succeedPiMemoryPhase2Job(db(), {
+          ...fence,
+          selected,
+        }),
+      ).resolves.toBeFalsy();
+      await expect(
+        db()
+          .select()
+          .from(piMemoryPhase2Jobs)
+          .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId)),
+      ).resolves.toStrictEqual(jobBefore);
+      await expect(
+        db()
+          .select({
+            marker: piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
+          })
+          .from(piMemoryStage1Candidates)
+          .where(
+            and(
+              eq(
+                piMemoryStage1Candidates.memoryStorageId,
+                scope.memoryStorageId,
+              ),
+              eq(piMemoryStage1Candidates.piSessionId, "selected"),
+            ),
+          ),
+      ).resolves.toStrictEqual([{ marker: sourceHistoryHash }]);
+    }
+
+    await expectRejected([
+      {
+        ...(claimed.selected[0] as (typeof claimed.selected)[number]),
+        rawMemory: "changed byte count",
+      },
+    ]);
+    await expectRejected([
+      claimed.selected[0] as (typeof claimed.selected)[number],
+      claimed.selected[0] as (typeof claimed.selected)[number],
+    ]);
+    await expectRejected([
+      {
+        ...(claimed.selected[0] as (typeof claimed.selected)[number]),
+        rawMemory: "x".repeat(PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES + 1),
+      },
+    ]);
+    await expectRejected(
+      Array.from(
+        { length: PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES + 1 },
+        (_, index) => {
+          return {
             ...(claimed.selected[0] as (typeof claimed.selected)[number]),
-            rawMemory: "changed byte count",
-          },
-        ],
-      }),
-    ).toBe(false);
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
-        ...fence,
-        selected: [
-          claimed.selected[0] as (typeof claimed.selected)[number],
-          claimed.selected[0] as (typeof claimed.selected)[number],
-        ],
-      }),
-    ).toBe(false);
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
-        ...fence,
-        selected: [
-          {
-            ...(claimed.selected[0] as (typeof claimed.selected)[number]),
-            rawMemory: "x".repeat(PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES + 1),
-          },
-        ],
-      }),
-    ).toBe(false);
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
+            piSessionId: `unique-${index.toString().padStart(3, "0")}`,
+          };
+        },
+      ),
+    );
+    await expect(
+      succeedPiMemoryPhase2Job(db(), {
         ...fence,
         selected: claimed.selected,
       }),
-    ).toBe(true);
+    ).resolves.toBeTruthy();
   });
 });

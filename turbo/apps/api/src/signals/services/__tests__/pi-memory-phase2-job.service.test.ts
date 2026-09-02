@@ -1,4 +1,3 @@
-/* oxlint-disable jest/prefer-expect-resolves, vitest/prefer-to-be-falsy, vitest/prefer-to-be-truthy -- Direct state-machine assertions keep each PostgreSQL transition and fence visually paired. */
 import { randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
@@ -82,7 +81,7 @@ describe("Pi memory Phase 2 job transitions", () => {
       }),
     ]);
     expect([first, second]).toStrictEqual([true, true]);
-    expect(await readPhase2Job(scope)).toMatchObject({
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "pending",
       inputRevision: 2,
       completedRevision: 0,
@@ -103,7 +102,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         },
       });
     });
-    expect(failed).toBe(true);
+    expect(failed).toBeTruthy();
     expect((await readPhase2Job(scope))?.inputRevision).toBe(2);
 
     const replay = await db().transaction(async (tx) => {
@@ -116,7 +115,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         result: { kind: "succeeded_no_output" },
       });
     });
-    expect(replay).toBe(false);
+    expect(replay).toBeFalsy();
     expect((await readPhase2Job(scope))?.inputRevision).toBe(2);
   });
 
@@ -238,7 +237,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         enqueuedAt: NOW,
       });
     });
-    expect(await readPhase2Job(scope)).toMatchObject({
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "leased",
       inputRevision: 2,
       completedRevision: 0,
@@ -290,65 +289,65 @@ describe("Pi memory Phase 2 job transitions", () => {
       throw new Error("Expected a claimed job");
     }
 
-    expect(
-      await heartbeatPiMemoryPhase2Job(db(), {
+    await expect(
+      heartbeatPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: randomUUID(),
         claimedRevision: claimed.claimedRevision,
         currentTime: new Date(NOW.getTime() + 1000),
       }),
-    ).toBe(false);
-    expect(
-      await heartbeatPiMemoryPhase2Job(db(), {
+    ).resolves.toBeFalsy();
+    await expect(
+      heartbeatPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: claimed.leaseExpiresAt,
       }),
-    ).toBe(false);
-    expect(
-      await heartbeatPiMemoryPhase2Job(db(), {
+    ).resolves.toBeFalsy();
+    await expect(
+      heartbeatPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: new Date(NOW.getTime() + 1000),
       }),
-    ).toBe(true);
+    ).resolves.toBeTruthy();
 
     const failedAt = new Date(NOW.getTime() + 2000);
-    expect(
-      await failPiMemoryPhase2Job(db(), {
+    await expect(
+      failPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: randomUUID(),
         claimedRevision: claimed.claimedRevision,
         currentTime: failedAt,
         errorClass: "provider_timeout",
       }),
-    ).toBe(false);
-    expect(
-      await failPiMemoryPhase2Job(db(), {
+    ).resolves.toBeFalsy();
+    await expect(
+      failPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: failedAt,
         errorClass: "provider_timeout",
       }),
-    ).toBe(true);
-    expect(await readPhase2Job(scope)).toMatchObject({
+    ).resolves.toBeTruthy();
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "retryable_failure",
       retryCount: 1,
       retryAt: new Date(failedAt.getTime() + PI_MEMORY_PHASE2_RETRY_DELAY_MS),
       lastErrorClass: "provider_timeout",
     });
 
-    expect(
-      await claimPiMemoryPhase2Job(db(), {
+    await expect(
+      claimPiMemoryPhase2Job(db(), {
         currentTime: new Date(
           failedAt.getTime() + PI_MEMORY_PHASE2_RETRY_DELAY_MS - 1,
         ),
         scope,
       }),
-    ).toBeNull();
+    ).resolves.toBeNull();
     const retryAt = new Date(
       failedAt.getTime() + PI_MEMORY_PHASE2_RETRY_DELAY_MS,
     );
@@ -385,7 +384,7 @@ describe("Pi memory Phase 2 job transitions", () => {
       currentTime: new Date(thirdAt.getTime() + 1),
       errorClass: "provider_timeout",
     });
-    expect(await readPhase2Job(scope)).toMatchObject({
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "terminal_failure",
       retryCount: 3,
       retryAt: null,
@@ -396,7 +395,7 @@ describe("Pi memory Phase 2 job transitions", () => {
     await db().transaction(async (tx) => {
       await advancePiMemoryPhase2InputRevision(tx, { ...scope, enqueuedAt });
     });
-    expect(await readPhase2Job(scope)).toMatchObject({
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "pending",
       inputRevision: 2,
       retryCount: 0,
@@ -444,21 +443,23 @@ describe("Pi memory Phase 2 job transitions", () => {
         currentTime: new Date(NOW.getTime() + 1),
         ...invalid,
       };
-      expect(await heartbeatPiMemoryPhase2Job(db(), fence)).toBe(false);
-      expect(
-        await failPiMemoryPhase2Job(db(), {
+      await expect(
+        heartbeatPiMemoryPhase2Job(db(), fence),
+      ).resolves.toBeFalsy();
+      await expect(
+        failPiMemoryPhase2Job(db(), {
           ...fence,
           errorClass: "rejected_fence",
         }),
-      ).toBe(false);
-      expect(
-        await succeedPiMemoryPhase2Job(db(), {
+      ).resolves.toBeFalsy();
+      await expect(
+        succeedPiMemoryPhase2Job(db(), {
           ...fence,
           selected: claimed.selected,
         }),
-      ).toBe(false);
+      ).resolves.toBeFalsy();
     }
-    expect(await readPhase2Job(scope)).toStrictEqual(before);
+    await expect(readPhase2Job(scope)).resolves.toStrictEqual(before);
 
     await db().transaction(async (tx) => {
       await advancePiMemoryPhase2InputRevision(tx, {
@@ -466,16 +467,16 @@ describe("Pi memory Phase 2 job transitions", () => {
         enqueuedAt: new Date(NOW.getTime() + 2),
       });
     });
-    expect(
-      await failPiMemoryPhase2Job(db(), {
+    await expect(
+      failPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: new Date(NOW.getTime() + 3),
         errorClass: "old_revision_failed",
       }),
-    ).toBe(true);
-    expect(await readPhase2Job(scope)).toMatchObject({
+    ).resolves.toBeTruthy();
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "pending",
       inputRevision: 2,
       completedRevision: 0,
@@ -530,32 +531,32 @@ describe("Pi memory Phase 2 job transitions", () => {
     if (!second || !third) {
       throw new Error("Expected both takeover claims");
     }
-    expect(
-      await heartbeatPiMemoryPhase2Job(db(), {
+    await expect(
+      heartbeatPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: second.leaseToken,
         claimedRevision: second.claimedRevision,
         currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
       }),
-    ).toBe(false);
-    expect(
-      await failPiMemoryPhase2Job(db(), {
+    ).resolves.toBeFalsy();
+    await expect(
+      failPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: second.leaseToken,
         claimedRevision: second.claimedRevision,
         currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
         errorClass: "stale_owner",
       }),
-    ).toBe(false);
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
+    ).resolves.toBeFalsy();
+    await expect(
+      succeedPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: second.leaseToken,
         claimedRevision: second.claimedRevision,
         currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
         selected: second.selected,
       }),
-    ).toBe(false);
+    ).resolves.toBeFalsy();
     expect((await readPhase2Job(scope))?.leaseToken).toBe(third.leaseToken);
   });
 
@@ -566,22 +567,22 @@ describe("Pi memory Phase 2 job transitions", () => {
       completedRevision: 1,
       lastSucceededAt: NOW,
     });
-    expect(
-      await claimPiMemoryPhase2Job(db(), {
+    await expect(
+      claimPiMemoryPhase2Job(db(), {
         currentTime: new Date(
           NOW.getTime() + PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS - 1,
         ),
         scope,
       }),
-    ).toBeNull();
-    expect(
-      await claimPiMemoryPhase2Job(db(), {
+    ).resolves.toBeNull();
+    await expect(
+      claimPiMemoryPhase2Job(db(), {
         currentTime: new Date(
           NOW.getTime() + PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS,
         ),
         scope,
       }),
-    ).not.toBeNull();
+    ).resolves.not.toBeNull();
   });
 
   it("finalizes only the frozen tuple set and preserves newer input", async () => {
@@ -621,15 +622,15 @@ describe("Pi memory Phase 2 job transitions", () => {
       throw new Error("Expected selection claim");
     }
 
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
+    await expect(
+      succeedPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: new Date(NOW.getTime() + 1),
         selected: [...claimed.selected].reverse(),
       }),
-    ).toBe(false);
+    ).resolves.toBeFalsy();
     await replacePhase2CandidateSource({
       scope,
       piSessionId: "selected-a",
@@ -641,17 +642,17 @@ describe("Pi memory Phase 2 job transitions", () => {
         enqueuedAt: new Date(NOW.getTime() + 2),
       });
     });
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
+    await expect(
+      succeedPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: new Date(NOW.getTime() + 3),
         selected: claimed.selected,
       }),
-    ).toBe(true);
+    ).resolves.toBeTruthy();
 
-    expect(await readPhase2Job(scope)).toMatchObject({
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "pending",
       inputRevision: 2,
       completedRevision: 1,
@@ -711,16 +712,16 @@ describe("Pi memory Phase 2 job transitions", () => {
     if (!claimed) {
       throw new Error("Expected empty selection claim");
     }
-    expect(
-      await succeedPiMemoryPhase2Job(db(), {
+    await expect(
+      succeedPiMemoryPhase2Job(db(), {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
         currentTime: new Date(NOW.getTime() + 1),
         selected: [],
       }),
-    ).toBe(true);
-    expect(await readPhase2Job(scope)).toMatchObject({
+    ).resolves.toBeTruthy();
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "idle",
       inputRevision: 1,
       completedRevision: 1,
@@ -736,6 +737,64 @@ describe("Pi memory Phase 2 job transitions", () => {
     expect(candidate?.marker).toBeNull();
   });
 
+  it("finalizes the immutable selection snapshot validated before lock waits", async () => {
+    const scope = await createPhase2TestScope("immutable-success-input");
+    const [sourceHistoryHash] = await insertPhase2Candidates(scope, [
+      { piSessionId: "immutable-selected" },
+    ]);
+    await insertPendingPhase2Job(scope);
+    const claimed = await claimPiMemoryPhase2Job(db(), {
+      currentTime: NOW,
+      scope,
+    });
+    expect(claimed).not.toBeNull();
+    if (!claimed) {
+      throw new Error("Expected immutable selection claim");
+    }
+    const mutableSelection = [...claimed.selected];
+    let completion: Promise<boolean> | undefined;
+    await db().transaction(async (tx) => {
+      await tx
+        .select({ piSessionId: piMemoryStage1Candidates.piSessionId })
+        .from(piMemoryStage1Candidates)
+        .where(
+          and(
+            eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
+            eq(piMemoryStage1Candidates.orgId, scope.orgId),
+            eq(piMemoryStage1Candidates.userId, scope.userId),
+          ),
+        )
+        .for("update", { of: piMemoryStage1Candidates });
+      completion = succeedPiMemoryPhase2Job(db(), {
+        ...scope,
+        leaseToken: claimed.leaseToken,
+        claimedRevision: claimed.claimedRevision,
+        currentTime: new Date(NOW.getTime() + 1),
+        selected: mutableSelection,
+      });
+      mutableSelection.splice(0);
+    });
+    if (!completion) {
+      throw new Error("Expected in-flight completion");
+    }
+    await expect(completion).resolves.toBeTruthy();
+
+    const [candidate] = await db()
+      .select({
+        marker: piMemoryStage1Candidates.lastSelectedSourceHistoryHash,
+      })
+      .from(piMemoryStage1Candidates)
+      .where(
+        and(
+          eq(piMemoryStage1Candidates.memoryStorageId, scope.memoryStorageId),
+          eq(piMemoryStage1Candidates.orgId, scope.orgId),
+          eq(piMemoryStage1Candidates.userId, scope.userId),
+          eq(piMemoryStage1Candidates.piSessionId, "immutable-selected"),
+        ),
+      );
+    expect(candidate?.marker).toBe(sourceHistoryHash);
+  });
+
   it("cascades control state without deleting the referenced history blob", async () => {
     const scope = await createPhase2TestScope("delete-cascade");
     const [hash] = await insertPhase2Candidates(scope, [
@@ -744,7 +803,7 @@ describe("Pi memory Phase 2 job transitions", () => {
     await insertPendingPhase2Job(scope);
     await db().delete(storages).where(eq(storages.id, scope.memoryStorageId));
 
-    expect(await readPhase2Job(scope)).toBeUndefined();
+    await expect(readPhase2Job(scope)).resolves.toBeUndefined();
     const [candidate] = await db()
       .select()
       .from(piMemoryStage1Candidates)

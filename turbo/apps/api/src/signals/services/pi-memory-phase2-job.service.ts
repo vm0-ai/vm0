@@ -250,10 +250,12 @@ async function selectClaimCandidates(
           and(
             isNotNull(piMemoryStage1Candidates.lastUsedAt),
             gte(piMemoryStage1Candidates.lastUsedAt, oldestAllowed),
+            lte(piMemoryStage1Candidates.lastUsedAt, currentTime),
           ),
           and(
             isNull(piMemoryStage1Candidates.lastUsedAt),
             gte(piMemoryStage1Candidates.sourceCompletedAt, oldestAllowed),
+            lte(piMemoryStage1Candidates.sourceCompletedAt, currentTime),
           ),
         ),
       ),
@@ -569,7 +571,10 @@ export async function succeedPiMemoryPhase2Job(
     readonly selected: readonly PiMemoryPhase2SelectedCandidate[];
   },
 ): Promise<boolean> {
-  const metadata = selectionMetadata(args.selected);
+  const selectedSnapshot = args.selected.map((candidate) => {
+    return { ...candidate };
+  });
+  const metadata = selectionMetadata(selectedSnapshot);
   if (metadata === null) {
     return false;
   }
@@ -612,7 +617,7 @@ export async function succeedPiMemoryPhase2Job(
           isNotNull(piMemoryStage1Candidates.lastSelectedSourceHistoryHash),
         ),
       );
-    for (const selected of args.selected) {
+    for (const selected of selectedSnapshot) {
       await tx
         .update(piMemoryStage1Candidates)
         .set({
