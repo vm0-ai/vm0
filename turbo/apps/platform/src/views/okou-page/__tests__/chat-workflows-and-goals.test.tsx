@@ -8,7 +8,6 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WEBSITE_TEMPLATE_ITEMS,
 } from "@okouai/core";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import type {
   ChatThreadWorkflowAutomation,
@@ -1195,9 +1194,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     detachedSetupPage({
       context,
       path: `/chats/${threadId}#event-msg-goal-deep-link-assistant-1`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatConversationLocator]: true,
-      },
     });
 
     await expect(
