@@ -46,7 +46,10 @@ import {
   mockGoogleFormsConnectorOAuth,
   mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
-import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
+import {
+  mockGoogleCalendarConnectorOAuth,
+  mockNotionConnectorOAuth,
+} from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
@@ -1674,6 +1677,227 @@ describe("workflows", () => {
       "Bearer calendar-copy-second-token",
       "Bearer calendar-copy-first-token",
     ]);
+  });
+
+  it("rebinds copied Notion automations before exposing the destination workflow", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Notion workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.NotionWorkflowAutomations]: true,
+      },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Notion Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Notion Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `notion-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Notion copy source",
+    });
+
+    const parentPageId = randomUUID();
+    const parentPageUrl = `https://www.notion.so/Roadmap-${parentPageId.replaceAll("-", "")}`;
+    server.use(
+      http.get(
+        `https://api.notion.com/v1/pages/${parentPageId}`,
+        ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer notion-copy-default-token",
+          );
+          return HttpResponse.json({
+            object: "page",
+            id: parentPageId,
+            created_time: "2026-09-01T00:00:00.000Z",
+            last_edited_time: "2026-09-01T00:00:00.000Z",
+            archived: false,
+            in_trash: false,
+            url: parentPageUrl,
+            parent: { type: "workspace" },
+            properties: {
+              title: {
+                id: "title",
+                type: "title",
+                title: [{ type: "text", plain_text: "Roadmap" }],
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    mockNotionConnectorOAuth({
+      accessToken: "notion-copy-default-token",
+      ownerId: "notion-copy-default-user",
+      ownerName: "Notion Copy Default",
+    });
+    const defaultStart = await connectorApi.startOauth(
+      actor,
+      "notion",
+      "oauth",
+      sourceAgent.agentId,
+    );
+    const defaultState = new URL(
+      defaultStart.authorizationUrl,
+    ).searchParams.get("state");
+    if (!defaultState) {
+      throw new Error("Expected default Notion OAuth state");
+    }
+    await connectorApi.completeOauthCallback("notion", {
+      code: "notion-copy-default-code",
+      state: defaultState,
+    });
+
+    mockNotionConnectorOAuth({
+      accessToken: "notion-copy-selected-token",
+      ownerId: "notion-copy-selected-user",
+      ownerName: "Notion Copy Selected",
+    });
+    const selectedStart = await connectorApi.startOauth(
+      actor,
+      "notion",
+      "oauth",
+      sourceAgent.agentId,
+      { intent: "add", displayName: "Notion Copy Selected" },
+    );
+    const selectedState = new URL(
+      selectedStart.authorizationUrl,
+    ).searchParams.get("state");
+    if (!selectedState) {
+      throw new Error("Expected selected Notion OAuth state");
+    }
+    await connectorApi.completeOauthCallback("notion", {
+      code: "notion-copy-selected-code",
+      state: selectedState,
+    });
+    const accounts = await connectorApi.listBuiltinConnectorAccounts(
+      actor,
+      "notion",
+    );
+    const defaultAccount = accounts.find((account) => {
+      return account.externalId === "notion-copy-default-user";
+    });
+    const selectedAccount = accounts.find((account) => {
+      return account.externalId === "notion-copy-selected-user";
+    });
+    if (!defaultAccount || !selectedAccount) {
+      throw new Error("Expected both Notion accounts");
+    }
+
+    const sourceAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "notion-child-page-created",
+          eventConfig: {
+            provider: "notion",
+            event: "child_page_created",
+            parentPageUrl,
+          },
+        },
+      }),
+      [201],
+    );
+    if (
+      sourceAutomation.body.kind !== "event" ||
+      sourceAutomation.body.eventType !== "notion-child-page-created" ||
+      !sourceAutomation.body.chatThreadId
+    ) {
+      throw new Error("Expected a source Notion automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: sourceAutomation.body.chatThreadId },
+        body: {
+          connectionId: selectedAccount.id,
+          target: { kind: "builtin", connectorSlug: "notion" },
+        },
+      }),
+      [200],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, sourceAutomation.body.id),
+    ).resolves.toMatchObject({ eventConnectorId: selectedAccount.id });
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    const copiedAutomation = copiedAutomations.body.find((automation) => {
+      return (
+        automation.kind === "event" &&
+        automation.eventType === "notion-child-page-created"
+      );
+    });
+    if (
+      !copiedAutomation ||
+      copiedAutomation.kind !== "event" ||
+      copiedAutomation.eventType !== "notion-child-page-created" ||
+      !copiedAutomation.chatThreadId
+    ) {
+      throw new Error("Expected the copied Notion automation");
+    }
+    expect(copiedAutomation).toMatchObject({
+      enabled: true,
+      eventConfig: { connectorId: defaultAccount.id },
+    });
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, copiedAutomation.id),
+    ).resolves.toMatchObject({
+      enabled: true,
+      eventConnectorId: defaultAccount.id,
+    });
+    const copiedSelections = await accept(
+      chatThreadConnectorSelectionsClient().get({
+        headers: authHeaders(actor),
+        params: { id: copiedAutomation.chatThreadId },
+      }),
+      [200],
+    );
+    expect(copiedSelections.body.selections).toStrictEqual([]);
+
+    const sourceAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+    expect(sourceAutomations.body).toContainEqual(
+      expect.objectContaining({
+        id: sourceAutomation.body.id,
+        eventConfig: expect.objectContaining({
+          connectorId: selectedAccount.id,
+        }),
+      }),
+    );
   });
 
   it("rebinds copied Stripe automations to the target thread default account", async () => {
