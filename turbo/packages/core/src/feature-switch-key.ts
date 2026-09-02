@@ -65,4 +65,5 @@ export enum FeatureSwitchKey {
   GradientColorThemes = "gradientColorThemes",
   DesktopScreenRecording = "desktopScreenRecording",
   IosPwaStartupImages = "iosPwaStartupImages",
+  GeistTypeface = "geistTypeface",
 }
