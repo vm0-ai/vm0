@@ -121,6 +121,7 @@ describe("isFeatureEnabled", () => {
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
+      rolloutStage: "beta",
     });
   });
 
