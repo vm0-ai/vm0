@@ -18,15 +18,48 @@ import type { ModelProviderSelection } from "../../views/okou-page/components/mo
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
+import { onRef, setLoop } from "../utils.ts";
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
+const internalTaglineDisplayed$ = state("");
+
 export const reloadTagline$ = command(({ set }) => {
   set(internalTaglineIndex$, Math.floor(Math.random() * 18));
+  set(internalTaglineDisplayed$, "");
 });
 
 export const chatPageTaglineIndex$ = computed((get) => {
   return get(internalTaglineIndex$);
 });
+
+export const chatPageTaglineDisplayed$ = computed((get) => {
+  return get(internalTaglineDisplayed$);
+});
+
+const startTaglineTypewriter$ = command(
+  async ({ set }, element: HTMLElement, signal: AbortSignal) => {
+    const text = element.dataset.typewriterText ?? "";
+    const parsedSpeed = Number.parseInt(
+      element.dataset.typewriterSpeed ?? "40",
+      10,
+    );
+    const speed = Number.isFinite(parsedSpeed) ? parsedSpeed : 40;
+
+    set(internalTaglineDisplayed$, "");
+    let index = 0;
+    await setLoop(
+      () => {
+        index += 1;
+        set(internalTaglineDisplayed$, text.slice(0, index));
+        return index >= text.length;
+      },
+      speed,
+      signal,
+    );
+  },
+);
+
+export const chatPageTaglineTypewriterRef$ = onRef(startTaglineTypewriter$);
 
 // ---------------------------------------------------------------------------
 // Landing-page composer model selection
