@@ -16,11 +16,14 @@ import {
   rmSync,
   statSync,
 } from "fs";
-import { basename, extname, join, resolve } from "path";
+import { basename, extname, isAbsolute, normalize, sep } from "path";
 import { pathToFileURL } from "url";
 
 import { Command, InvalidArgumentError } from "commander";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
+import { decodeSandboxTokenPayload } from "../../lib/api/sandbox-token";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 const DEFAULT_WIDTH = 1600;
@@ -32,11 +35,30 @@ const DECK_EXTENSIONS = [".ppt", ".pptx", ".pdf"];
 
 /** Waits for fonts, images, and CSS background images, then two paint frames. */
 const SETTLE = `(async()=>{
-  await Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,12000))]);
-  await Promise.race([
-    Promise.all(Array.from(document.images).filter(i=>!i.complete).map(i=>new Promise(r=>{i.onload=i.onerror=r}))),
-    new Promise(r=>setTimeout(r,12000))
-  ]);
+  const wait=(promise,label)=>new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error("Timed out waiting for "+label)),12000);
+    promise.then(value=>{clearTimeout(timer);resolve(value)},error=>{clearTimeout(timer);reject(error)});
+  });
+  const loadImage=src=>new Promise(resolve=>{
+    const image=new Image();
+    image.onload=image.onerror=resolve;
+    image.src=src;
+    if(image.complete) resolve();
+  });
+  await wait(document.fonts.ready,"fonts");
+  await wait(
+    Promise.all(Array.from(document.images).filter(image=>!image.complete).map(image=>new Promise(resolve=>{image.onload=image.onerror=resolve}))),
+    "images"
+  );
+  const backgroundUrls=[...new Set(
+    Array.from(document.querySelectorAll("*")).flatMap(node=>
+      Array.from(
+        getComputedStyle(node).backgroundImage.matchAll(/url\\((?:"([^"]*)"|'([^']*)'|([^)]*))\\)/gu),
+        match=>(match[1]??match[2]??match[3]??"").trim()
+      ).filter(Boolean)
+    )
+  )];
+  await wait(Promise.all(backgroundUrls.map(loadImage)),"CSS background images");
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   return 1;
 })()`;
@@ -51,6 +73,32 @@ interface Options {
   readonly height: number;
   readonly slides: string;
   readonly json?: boolean;
+}
+
+/**
+ * Input and output paths are an explicit local-CLI trust boundary: the operator
+ * chooses them and may intentionally address any location they can access.
+ */
+function operatorPath(input: string): string {
+  return normalize(
+    isAbsolute(input) ? input : `${process.cwd()}${sep}${input}`,
+  );
+}
+
+/** Resolve a single directory entry without allowing the entry to escape. */
+function childPath(directory: string, name: string): string {
+  if (name === "." || name === ".." || basename(name) !== name) {
+    throw new Error(`Invalid directory entry: ${name}`);
+  }
+  return normalize(`${directory}${sep}${name}`);
+}
+
+function presentationScreenshotEnabled(): boolean {
+  const payload = decodeSandboxTokenPayload();
+  return isFeatureEnabled(FeatureSwitchKey.PresentationScreenshot, {
+    userId: payload?.userId,
+    orgId: payload?.orgId,
+  });
 }
 
 function run(command: string, args: readonly string[]): string {
@@ -71,9 +119,7 @@ function clearPages(outDir: string): void {
   mkdirSync(outDir, { recursive: true });
   for (const name of readdirSync(outDir)) {
     if (/^page-\d+\.png$/u.test(name)) {
-      // Local CLI output paths are intentionally operator-selected.
-      // nosemgrep
-      rmSync(join(outDir, name), { force: true });
+      rmSync(childPath(outDir, name), { force: true });
     }
   }
 }
@@ -111,16 +157,12 @@ function renumber(outDir: string): string[] {
 
   const staged = rendered.map((item, index) => {
     const name = `.staged-${process.pid.toString()}-${index.toString()}.png`;
-    // Local CLI output paths are intentionally operator-selected.
-    // nosemgrep
-    renameSync(join(outDir, item.name), join(outDir, name));
+    renameSync(childPath(outDir, item.name), childPath(outDir, name));
     return name;
   });
   return staged.map((name, index) => {
     const final = `page-${(index + 1).toString().padStart(3, "0")}.png`;
-    // Local CLI output paths are intentionally operator-selected.
-    // nosemgrep
-    renameSync(join(outDir, name), join(outDir, final));
+    renameSync(childPath(outDir, name), childPath(outDir, final));
     return final;
   });
 }
@@ -133,9 +175,7 @@ function captureDeck(options: Options, outDir: string): string[] {
   requireTool("pdftocairo", "poppler-utils");
   clearPages(outDir);
 
-  // Local CLI output paths are intentionally operator-selected.
-  // nosemgrep
-  const scratch = mkdtempSync(join(outDir, ".okou-convert-"));
+  const scratch = mkdtempSync(childPath(outDir, ".okou-convert-"));
   try {
     let pdf = options.input;
     if (converts) {
@@ -153,9 +193,7 @@ function captureDeck(options: Options, outDir: string): string[] {
       if (produced === undefined) {
         throw new Error("LibreOffice produced no PDF");
       }
-      // The file name comes directly from readdirSync(scratch).
-      // nosemgrep
-      pdf = join(scratch, produced);
+      pdf = childPath(scratch, produced);
     }
     run("pdftocairo", [
       "-png",
@@ -166,9 +204,7 @@ function captureDeck(options: Options, outDir: string): string[] {
       "-scale-to-y",
       options.height.toString(),
       pdf,
-      // Local CLI output paths are intentionally operator-selected.
-      // nosemgrep
-      join(outDir, "page"),
+      childPath(outDir, "page"),
     ]);
     return renumber(outDir);
   } finally {
@@ -219,9 +255,7 @@ function htmlSources(input: string): { url: string; label: string }[] {
   if (/^https?:\/\//u.test(input)) {
     return [{ url: input, label: input }];
   }
-  // Reading an operator-selected local input is this CLI's contract.
-  // nosemgrep
-  const path = resolve(input);
+  const path = operatorPath(input);
   if (statSync(path).isDirectory()) {
     const names = readdirSync(path)
       .filter((name) => {
@@ -235,9 +269,7 @@ function htmlSources(input: string): { url: string; label: string }[] {
       throw new Error(`No page-level .html files in ${path}`);
     }
     return names.map((name) => {
-      // The file name comes directly from readdirSync(path).
-      // nosemgrep
-      return { url: pathToFileURL(join(path, name)).href, label: name };
+      return { url: pathToFileURL(childPath(path, name)).href, label: name };
     });
   }
   if (extname(path).toLowerCase() !== ".html") {
@@ -280,13 +312,11 @@ function captureHtml(options: Options, outDir: string): string[] {
 
     for (const source of htmlSources(options.input)) {
       page.call(["open", source.url]);
-      page.quiet(["eval", SETTLE]);
+      page.call(["eval", SETTLE]);
 
       for (const box of slideBoxes(page, options.slides)) {
         const file = `page-${(files.length + 1).toString().padStart(3, "0")}.png`;
-        // Local CLI output paths are intentionally operator-selected.
-        // nosemgrep
-        const target = join(outDir, file);
+        const target = childPath(outDir, file);
         capturePage(page, box, target, options);
         files.push(file);
       }
@@ -308,7 +338,7 @@ function capturePage(
     for (let attempt = 0; attempt <= RETRIES; attempt += 1) {
       if (attempt > 0) {
         page.call(["reload"]);
-        page.quiet(["eval", SETTLE]);
+        page.call(["eval", SETTLE]);
       }
       // An element-scoped screenshot returns the page background for a slide
       // below the fold, so scroll it to the viewport origin and capture that.
@@ -381,9 +411,12 @@ export const presentationScreenshotCommand = new Command()
   .option("--json", "Print the result as JSON")
   .action(
     withErrorHandler(async (options: Options) => {
-      // Writing to an operator-selected output is this CLI's contract.
-      // nosemgrep
-      const outDir = resolve(options.out);
+      if (!presentationScreenshotEnabled()) {
+        throw new Error(
+          "Presentation screenshot is not enabled for this workspace",
+        );
+      }
+      const outDir = operatorPath(options.out);
       const resolved: Options = {
         ...options,
         slides: options.slides === "none" ? "" : options.slides,

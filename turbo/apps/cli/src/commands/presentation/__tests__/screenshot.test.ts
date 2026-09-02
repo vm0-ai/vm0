@@ -6,7 +6,13 @@
  * filesystem walk, page numbering, and size check run unchanged.
  */
 import { execFileSync } from "child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -20,7 +26,24 @@ const state = {
   installed: new Set(["soffice", "pdftocairo"]),
   deckPages: 3,
   size: { width: 1600, height: 900 },
+  backgroundReady: true,
+  settleFails: false,
 };
+
+function okouToken(orgId: string): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId: "user-presentation-screenshot",
+      runId: "run-presentation-screenshot",
+      orgId,
+      scope: "okou",
+      capabilities: [],
+      iat: 1,
+      exp: 4_102_444_800,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_header.${payload}.signature`;
+}
 
 /** A 2x2 PNG is enough; only the IHDR dimensions are read back. */
 function png(width: number, height: number): Buffer {
@@ -68,12 +91,28 @@ vi.mock("child_process", () => {
       }
       const verb = args[3];
       if (verb === "eval") {
-        return (args[4] ?? "").includes("querySelectorAll")
+        const expression = args[4] ?? "";
+        if (expression.includes("document.fonts.ready")) {
+          if (state.settleFails) {
+            throw new Error("browser settle failed");
+          }
+          if (expression.includes("backgroundImage")) {
+            state.backgroundReady = true;
+          }
+          return "1";
+        }
+        return expression.includes("querySelectorAll")
           ? JSON.stringify(JSON.stringify(state.slides))
           : "1";
       }
       if (verb === "screenshot" && args[4] !== undefined) {
-        writeFileSync(args[4], png(state.size.width, state.size.height));
+        writeFileSync(
+          args[4],
+          Buffer.concat([
+            png(state.size.width, state.size.height),
+            Buffer.from([state.backgroundReady ? 1 : 0]),
+          ]),
+        );
       }
       return "";
     }),
@@ -120,12 +159,16 @@ describe("okou presentation screenshot", () => {
     state.installed = new Set(["soffice", "pdftocairo"]);
     state.deckPages = 3;
     state.size = { width: 1600, height: 900 };
+    state.backgroundReady = true;
+    state.settleFails = false;
+    vi.stubEnv("OKOU_TOKEN", okouToken("org_3ANttyrbWYJk6JKRSTRLEsbsDLe"));
     logSpy.mockClear();
     errorSpy.mockClear();
     vi.mocked(execFileSync).mockClear();
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(workDir, { recursive: true, force: true });
   });
 
@@ -189,6 +232,27 @@ describe("okou presentation screenshot", () => {
     expect(readdirSync(outDir)).toHaveLength(3);
   });
 
+  it("waits for CSS background images before keeping a capture", async () => {
+    state.backgroundReady = false;
+    writeFileSync(join(workDir, "page.html"), "<html></html>");
+
+    await run("--input", join(workDir, "page.html"), "--out", outDir);
+
+    expect(readFileSync(join(outDir, "page-001.png")).at(-1)).toBe(1);
+  });
+
+  it("fails closed when browser settling fails", async () => {
+    state.settleFails = true;
+    writeFileSync(join(workDir, "page.html"), "<html></html>");
+
+    await expect(
+      run("--input", join(workDir, "page.html"), "--out", outDir),
+    ).rejects.toThrow(/process\.exit/u);
+
+    expect(stderr()).toContain("browser settle failed");
+    expect(readdirSync(outDir)).toEqual([]);
+  });
+
   it("captures one page per file in a layout directory, skipping partials", async () => {
     writeFileSync(join(workDir, "_shell.html"), "<html></html>");
     writeFileSync(join(workDir, "cover.html"), "<html></html>");
@@ -216,5 +280,18 @@ describe("okou presentation screenshot", () => {
       run("--input", join(workDir, "notes.txt"), "--out", outDir),
     ).rejects.toThrow(/process\.exit/u);
     expect(stderr()).toContain("Unsupported input extension: .txt");
+  });
+
+  it("rejects execution while the rollout switch is off", async () => {
+    vi.stubEnv("OKOU_TOKEN", okouToken("org-external"));
+    writeFileSync(join(workDir, "deck.pdf"), "%PDF-1.4");
+
+    await expect(
+      run("--input", join(workDir, "deck.pdf"), "--out", outDir),
+    ).rejects.toThrow(/process\.exit/u);
+
+    expect(stderr()).toContain(
+      "Presentation screenshot is not enabled for this workspace",
+    );
   });
 });
