@@ -2445,16 +2445,11 @@ describe("connectors page", () => {
     const manager = await screen.findByRole("dialog", {
       name: "Manage Stripe accounts",
     });
-    const actions = await waitFor(() => {
+    await waitFor(() => {
       expect(accountListRequestCount).toBeGreaterThan(0);
       return within(manager).getAllByLabelText("Account actions");
     });
-    const personalActions = actions.at(1);
-    if (!personalActions) {
-      throw new Error("Expected Personal account actions");
-    }
-    click(personalActions);
-    click(menuItemByText("Reconnect"));
+    click(buttonByText("Reconnect", manager));
 
     const connectDialog = await screen.findByRole("dialog", {
       name: "Stripe",

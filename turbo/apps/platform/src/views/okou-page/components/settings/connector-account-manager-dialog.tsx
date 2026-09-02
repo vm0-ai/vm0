@@ -301,19 +301,15 @@ function AccountsCard({
   if (!loadable.data.available) {
     return <AccountsMessage messageKey="accountsUnavailable" />;
   }
-  if (loadable.data.connections.length === 0 && !defaultConnection) {
+  // The default account stays pinned at the top even while a search filters the
+  // rest, so the dialog always shows which account new runs will use.
+  const others = loadable.data.connections.filter((account) => {
+    return account.id !== defaultConnection?.id;
+  });
+  if (!defaultConnection && others.length === 0) {
     return <AccountsMessage messageKey="noAccountsFound" />;
   }
-  // The default account stays pinned at the top even while a search filters
-  // the rest, so the dialog always shows which account new runs will use.
-  const rows = defaultConnection
-    ? [
-        defaultConnection,
-        ...loadable.data.connections.filter((account) => {
-          return account.id !== defaultConnection.id;
-        }),
-      ]
-    : loadable.data.connections;
+  const rows = defaultConnection ? [defaultConnection, ...others] : others;
   return (
     <RadioGroup
       value={defaultConnection?.id ?? null}
@@ -334,6 +330,9 @@ function AccountsCard({
           </div>
         );
       })}
+      {defaultConnection && others.length === 0 ? (
+        <AccountsMessage messageKey="noAccountsFound" />
+      ) : null}
     </RadioGroup>
   );
 }
