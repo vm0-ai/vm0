@@ -1010,6 +1010,141 @@ fn cli_failure_reason_ignores_codex_provider_overloaded_text() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_trusted_codex_rate_limit_retry_exhaustion() {
+    for message in [
+        "exceeded retry limit, last status: 429 Too Many Requests",
+        "Codex failed: exceeded retry limit, last status: 429 Too Many Requests, request id: req_123",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            message,
+        );
+
+        assert_eq!(
+            reason,
+            Some(FailureReason::ProviderRateLimited),
+            "message: {message}"
+        );
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_untrusted_codex_rate_limit_retry_exhaustion() {
+    let signature = "exceeded retry limit, last status: 429 Too Many Requests";
+
+    for (framework, source) in [
+        (AgentFramework::Codex, FailureDetailSource::Stderr),
+        (AgentFramework::ClaudeCode, FailureDetailSource::CodexJsonl),
+    ] {
+        let reason = super::classify_cli_failure_reason(framework, source, signature);
+
+        assert_eq!(reason, None, "framework: {framework:?}, source: {source:?}");
+    }
+}
+
+#[test]
+fn codex_rate_limit_reason_is_attached_without_changing_failure_class() {
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(FailureDetailSource::CodexJsonl);
+    let failure_message = selected_failure_message(
+        "exceeded retry limit, last status: 429 Too Many Requests, request id: req_123",
+        FailureDetailSource::CodexJsonl,
+        None,
+    );
+
+    let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
+
+    assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::ProviderRateLimited)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::CodexJsonl)
+    );
+}
+
+#[test]
+fn cli_failure_reason_classifies_exact_codex_unsupported_model_envelope() {
+    let message = r#"Codex failed: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."}}"#;
+
+    assert_eq!(
+        super::classify_cli_failure_reason(
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            message,
+        ),
+        Some(FailureReason::UnsupportedModel)
+    );
+}
+
+#[test]
+fn cli_failure_reason_rejects_untrusted_or_near_miss_unsupported_model_envelopes() {
+    const EXACT_MESSAGE: &str =
+        "The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account.";
+    let cases = [
+        (
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::Stderr,
+            format!(
+                r#"{{"type":"error","status":400,"error":{{"type":"invalid_request_error","message":"{EXACT_MESSAGE}"}}}}"#
+            ),
+        ),
+        (
+            AgentFramework::Codex,
+            FailureDetailSource::CodexJsonl,
+            format!(
+                r#"{{"type":"error","status":400,"error":{{"type":"invalid_request_error","message":"{EXACT_MESSAGE}"}}}}"#
+            ),
+        ),
+        (
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            format!(
+                r#"{{"type":"error","status":401,"error":{{"type":"invalid_request_error","message":"{EXACT_MESSAGE}"}}}}"#
+            ),
+        ),
+        (
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            format!(
+                r#"{{"type":"error","status":400,"error":{{"type":"unsupported_model","message":"{EXACT_MESSAGE}"}}}}"#
+            ),
+        ),
+        (
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            r#"{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account"}}"#.to_string(),
+        ),
+        (
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            EXACT_MESSAGE.to_string(),
+        ),
+        (
+            AgentFramework::Codex,
+            FailureDetailSource::Stderr,
+            "{malformed".to_string(),
+        ),
+    ];
+
+    for (framework, source, message) in cases {
+        assert_eq!(
+            super::classify_cli_failure_reason(framework, source, &message),
+            None,
+            "framework: {framework:?}, source: {source:?}, message: {message}"
+        );
+    }
+}
+
+#[test]
 fn cli_failure_reason_classifies_codex_model_capacity() {
     let reason = classify_cli_failure_reason(
         AgentFramework::Codex,

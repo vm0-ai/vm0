@@ -262,6 +262,7 @@ fn recovery_checkpoint_resolves_history_from_codex_sessions_root() -> TestResult
             1,
             None,
             None,
+            None,
             &[],
             checkpoint,
         )
