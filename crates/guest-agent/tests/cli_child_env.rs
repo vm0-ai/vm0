@@ -27,7 +27,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
-        std::env::remove_var(guest_contracts::env::API_URL_ENV);
         std::env::set_var(
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "http://127.0.0.1:1",
@@ -93,7 +92,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         serde_json::to_vec(&serde_json::json!({
             "CUSTOM_USER_ENV": "visible-to-cli",
             "BASH_ENV": "/tmp/user-bash-env",
-            "VM0_API_BACKEND_URL": "https://user-env.example.invalid",
             "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
             "HOME": user_home_str,
@@ -145,7 +143,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     unsafe {
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
-        std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
         std::env::set_var(
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "https://stale-canonical-api.example.invalid",
@@ -209,10 +206,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             .get(guest_contracts::env::CANONICAL_API_URL_ENV)
             .map(String::as_str),
         Some("http://127.0.0.1:1")
-    );
-    assert!(
-        !cli_env.contains_key(guest_contracts::env::API_URL_ENV),
-        "Claude child env contains the legacy API URL alias"
     );
     assert_eq!(
         cli_env.get("HOME").map(String::as_str),
