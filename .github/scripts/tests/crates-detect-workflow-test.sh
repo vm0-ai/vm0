@@ -66,9 +66,9 @@ jq -e '
     "runner-build",
     "runner-behavior-lane-a",
     "runner-behavior-lane-b",
-    "runner-behavior-lane-c",
-    "runner-behavior-lane-d"
+    "runner-behavior-lane-c"
   ] | sort) and
+  (.jobs | has("runner-behavior-lane-d") | not) and
   $host_cpu.env.TARGET_TRIPLE == "${{ needs.runner-build.outputs.target }}" and
   any($host_cpu.steps[]?;
     .name == "Cross-compile host CPU fairness test" and
@@ -79,9 +79,11 @@ jq -e '
     .run == ".github/scripts/runner-behavior-host-cpu-fairness.sh"
   ) and
   ($gate.needs | index("host-cpu-fairness-test")) != null and
+  ($gate.needs | index("runner-behavior-lane-d")) == null and
   any($gate.steps[]?;
     .name == "Validate CI results" and
-    (.run | contains("needs.host-cpu-fairness-test.result"))
+    (.run | contains("needs.host-cpu-fairness-test.result")) and
+    (.run | contains("needs.runner-behavior-lane-d.result") | not)
   )
 ' <<<"$crates_json" >/dev/null || fail "Crates workflow contract changed"
 
