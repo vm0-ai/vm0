@@ -1,8 +1,4 @@
 import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
-import {
-  apiNamespaceAliasPaths,
-  brandedApiNamespace,
-} from "@okouai/api-contracts/contracts/api-namespaces";
 import type { SignalRouteHandler } from "./context/route";
 
 export type { SignalRouteHandler };
@@ -40,66 +36,20 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 }
 
 /**
- * True when the expansion may register `aliasPath` for a contract declaring
- * `declaredPath`. The declared path and the canonical `/api/okou/**` form
- * register; a derived `/api/zero/**` form never does.
- */
-function servesNamespaceAliasPath(
-  declaredPath: string,
-  aliasPath: string,
-): boolean {
-  return (
-    aliasPath === declaredPath || brandedApiNamespace(aliasPath) !== "zero"
-  );
-}
-
-/**
- * Registers the canonical `/api/okou/**` form of every branded contract path.
- * The legacy `/api/zero/**` form is never derived.
- *
- * Until #28701 this expansion derived the legacy form unconditionally and
- * marked the registrations `LEGACY_ZERO_PATHS` did not list, so
- * `createAppWithRoutes` could report the first request that reached one. That
- * fallback existed because the request log retained about three days, which
- * cannot tell a drained caller apart from a weekly one. #28701 measured the
- * whole 6.3-day window instead, narrowed that table to the six paths a Slack or
- * Teams app configuration still held, and dropped both the derivation and the
- * reporting behind it.
- *
- * #30667 then removed the table itself. Each of its six paths is named directly
- * by a `MIGRATED_BRANDED_PATHS` row below, so none of them lost a registration,
- * and nothing in this repository produces a `/api/zero/**` URL any more — the
- * last producer was `callbackRedirectUri` in `routes/teams-oauth.ts`, unified
- * onto the canonical path in the same commit. A `/api/zero/**` path is now
- * served only where that table names it.
- */
-export function withApiNamespaceAliases(
-  routes: readonly RouteEntry[],
-): readonly RouteEntry[] {
-  return routes.flatMap((entry) => {
-    return apiNamespaceAliasPaths(entry.route.path)
-      .filter((path) => {
-        return servesNamespaceAliasPath(entry.route.path, path);
-      })
-      .map((path) => {
-        return routeEntryWithPath(entry, path);
-      });
-  });
-}
-
-/**
  * The branded paths a migrated route still answers on, keyed by the neutral
  * canonical path its contract now declares.
  *
- * This is the only table left that registers a branded path, and since #30667
- * the only thing that registers a `/api/zero/**` path at all. It names branded
- * registrations for a contract that declares a neutral path, including the
- * `/api/okou/**` form the expansion above cannot derive.
- * `apiNamespaceAliasPaths` returns a neutral path unchanged, so once #28278
- * moves a contract off `/api/okou/**` the expansion produces no branded path
- * for it and neither branded path is registered any more — published CLI builds
- * still calling the branded path would get a 404 with nothing able to say
- * otherwise.
+ * This is the only thing left that registers a branded path at all. It names
+ * branded registrations for a contract that declares a neutral path, so once
+ * #28278 moves a contract off `/api/okou/**` a row here is the only reason
+ * either branded form still resolves — without one, published CLI builds still
+ * calling the branded path would get a 404 with nothing able to say otherwise.
+ *
+ * A blanket expansion used to sit in front of this table, deriving the
+ * canonical `/api/okou/**` form of a branded contract path. #28984 moved the
+ * last contract off the brand namespace, which made that expansion an identity
+ * transform on every path in the table, and #31094 removed it. A contract now
+ * declares a neutral path and this table is the whole branded surface.
  *
  * A migrated route generally owes both branded forms, so a value is a list
  * rather than a single path.
@@ -544,10 +494,8 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
  * that has moved to its neutral path keeps serving the branded paths released
  * callers still hold.
  *
- * Applied after `withApiNamespaceAliases` and never before it: these paths are
- * finished registrations, and passing a row's `/api/zero/**` form back through
- * the expansion would derive its canonical sibling a second time and register
- * that path twice.
+ * A row names finished registrations: the paths it lists are registered as
+ * written and nothing derives anything further from them.
  */
 export function withMigratedBrandedPaths(
   routes: readonly RouteEntry[],

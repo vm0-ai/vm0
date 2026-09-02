@@ -20,7 +20,7 @@ function binding(id: string, path: string): RuntimeApiRouteBinding {
   return { id, owner: "guest-agent", route: contract.get };
 }
 
-describe("runtime API schema namespaces", () => {
+describe("runtime API schema document", () => {
   it("publishes official runner model usage observation ingestion", () => {
     const document = buildRuntimeApiSchemaDocument("2026-08-12T00:00:00.000Z");
     const route = document.routes.find(({ id }) => {
@@ -76,36 +76,7 @@ describe("runtime API schema namespaces", () => {
     });
   });
 
-  it.each(["/api/zero/example", "/api/okou/example"] as const)(
-    "publishes both branded namespaces from $sourcePath with schema parity",
-    (sourcePath) => {
-      const document = buildRuntimeApiSchemaDocument(
-        "2026-08-12T00:00:00.000Z",
-        [binding("guest.example", sourcePath)],
-      );
-
-      expect(document.supportedBrandedApiNamespacePaths).toStrictEqual([
-        "/api/okou",
-        "/api/zero",
-      ]);
-      expect(
-        document.routes.map(({ id, path }) => {
-          return { id, path };
-        }),
-      ).toStrictEqual([
-        { id: "guest.example.okou", path: "/api/okou/example" },
-        { id: "guest.example.zero", path: "/api/zero/example" },
-      ]);
-
-      const [okou, zero] = document.routes;
-      if (!okou || !zero) {
-        throw new Error("Expected both runtime API namespace routes");
-      }
-      expect({ ...okou, id: zero.id, path: zero.path }).toStrictEqual(zero);
-    },
-  );
-
-  it("keeps neutral runtime routes single", () => {
+  it("publishes one snapshot per binding, at the path its contract declares", () => {
     const document = buildRuntimeApiSchemaDocument("2026-08-12T00:00:00.000Z", [
       binding("guest.example", "/api/webhooks/agent/example"),
     ]);

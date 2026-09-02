@@ -40,7 +40,6 @@ import {
 } from "./signals/external/axiom";
 import {
   type RouteEntry,
-  withApiNamespaceAliases,
   withMigratedBrandedPaths,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
@@ -610,15 +609,11 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToApp);
   }
 
-  // The namespace expansion first, then the branded paths migrated routes owe:
-  // the expansion consumes the declared path, so the second stage produces
-  // finished registrations rather than input to another derivation. Uniqueness
+  // The declared paths, plus the branded paths migrated routes owe. Uniqueness
   // over this composition is asserted against the production route table in
   // `__tests__/migrated-branded-paths.test.ts`, not here — test apps
   // deliberately compose overlapping route slices.
-  const registeredRoutes = withMigratedBrandedPaths(
-    withApiNamespaceAliases(routes),
-  );
+  const registeredRoutes = withMigratedBrandedPaths(routes);
 
   for (const entry of registeredRoutes) {
     const { route } = entry;

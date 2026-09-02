@@ -187,8 +187,7 @@ describe("desktop update routes", () => {
   // path move alone would have changed it: the line is derived from the request
   // namespace, so the neutral path has to inherit the Okou line the `okou` form
   // served rather than fall through to Zero. Every expectation is written out
-  // rather than taken from `apiNamespaceAliasPaths`, which returns a neutral
-  // path unchanged and so would assert nothing.
+  // rather than derived from the path under test, which would assert nothing.
   it("serves the moved desktop routes on the neutral and both branded paths", async () => {
     mockDesktopUpdateManifest(
       stableManifest("0.12.0", {

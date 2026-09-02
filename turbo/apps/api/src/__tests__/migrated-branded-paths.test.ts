@@ -9,7 +9,6 @@ import { slackOauthRoutes } from "../signals/routes/slack-oauth";
 import {
   assertUniqueRouteRegistrations,
   type RouteEntry,
-  withApiNamespaceAliases,
   withMigratedBrandedPaths,
 } from "../signals/route-entry";
 import { testContext } from "./test-context";
@@ -89,8 +88,8 @@ function registeredPaths(entries: readonly RouteEntry[]): readonly string[] {
 }
 
 // The paths a released caller of the synthetic route holds. Restated here
-// rather than read back from the table or from `apiNamespaceAliasPaths`, so
-// this stays true when the registration that serves them disappears.
+// rather than read back from the table, so this stays true when the
+// registration that serves them disappears.
 const BRANDED_PATHS_OWED = [
   "/api/okou/synthetic/thing",
   "/api/zero/synthetic/thing",
@@ -98,11 +97,9 @@ const BRANDED_PATHS_OWED = [
 
 // Every route a #28278 slice has moved off `/api/okou/**`, keyed by the
 // neutral path its contract declares now and holding the two branded paths
-// released callers still reach it at. Restated here rather than read back
-// from `MIGRATED_BRANDED_PATHS` or derived from `apiNamespaceAliasPaths`: the
-// table is what a migration edits, and the function returns a neutral path
-// unchanged, so an expectation taken from either asserts nothing. Each slice
-// appends its own rows.
+// released callers still reach it at. Restated here rather than read back from
+// `MIGRATED_BRANDED_PATHS`: the table is what a migration edits, so an
+// expectation taken from it asserts nothing. Each slice appends its own rows.
 const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28422
   "/api/logs/:id": ["/api/okou/logs/:id", "/api/zero/logs/:id"],
@@ -155,26 +152,23 @@ function missingBrandedPaths(
   brandedPaths: Readonly<Record<string, readonly string[]>>,
 ): readonly string[] {
   const registered = new Set(
-    registeredPaths(
-      withMigratedBrandedPaths(withApiNamespaceAliases(routes), brandedPaths),
-    ),
+    registeredPaths(withMigratedBrandedPaths(routes, brandedPaths)),
   );
   return BRANDED_PATHS_OWED.filter((path) => {
     return !registered.has(path);
   });
 }
 
-// `withApiNamespaceAliases` derives a branded route's canonical namespace and
-// leaves a neutral path alone, which is why a contract that moves to its
-// neutral path loses both branded registrations. This file covers the table
-// that gives them back: what it registers, what it must not touch, and the
-// migration mistake it exists to make loud.
+// A route is registered at the path its contract declares, which is why a
+// contract that moves to its neutral path loses both branded registrations.
+// This file covers the table that gives them back: what it registers, what it
+// must not touch, and the migration mistake it exists to make loud.
 describe("branded paths for migrated neutral routes", () => {
   const context = testContext();
 
   it("registers the neutral path and every branded path a row names", () => {
     const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases([NEUTRAL_ROUTE]),
+      [NEUTRAL_ROUTE],
       MIGRATED_TABLE,
     );
 
@@ -193,10 +187,10 @@ describe("branded paths for migrated neutral routes", () => {
   });
 
   // The table names paths one row at a time. If it ever derived them, it would
-  // be a second blanket expansion, and #28278 would have gained nothing.
+  // be a blanket expansion, and #28278 would have gained nothing.
   it("registers only itself for a neutral path no row names", () => {
     const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases([UNNAMED_ROUTE]),
+      [UNNAMED_ROUTE],
       MIGRATED_TABLE,
     );
 
@@ -205,7 +199,7 @@ describe("branded paths for migrated neutral routes", () => {
 
   it("fails uniqueness when a row collides with a declared path", () => {
     const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases([NEUTRAL_ROUTE, BRANDED_ROUTE]),
+      [NEUTRAL_ROUTE, BRANDED_ROUTE],
       MIGRATED_TABLE,
     );
 
@@ -216,37 +210,14 @@ describe("branded paths for migrated neutral routes", () => {
     );
   });
 
-  // Pins the order `createAppWithRoutes` composes the two stages in. A row
-  // names a finished registration, so producing the branded paths before the
-  // blanket expansion would feed `/api/okou/synthetic/thing` back into it and
-  // derive its sibling namespace a second time.
-  it("registers each branded path once only when applied after the expansion", () => {
-    const composed = withMigratedBrandedPaths(
-      withApiNamespaceAliases([NEUTRAL_ROUTE]),
-      MIGRATED_TABLE,
-    );
-    const reversed = withApiNamespaceAliases(
-      withMigratedBrandedPaths([NEUTRAL_ROUTE], MIGRATED_TABLE),
-    );
-
-    expect(() => {
-      assertUniqueRouteRegistrations(composed);
-    }).not.toThrow();
-    expect(() => {
-      assertUniqueRouteRegistrations(reversed);
-    }).toThrow(
-      "Duplicate API route registration: POST /api/okou/synthetic/thing",
-    );
-  });
-
   // The failure a migration slice would otherwise take to production: the
   // contract moves, every mechanism assertion still holds, and both branded
   // paths 404 for callers running a released build. A row is the way out, and
   // adding one has to be deliberate.
   //
-  // Since #28701 the expansion no longer derives an unlisted `/api/zero/**`
-  // path, so a branded contract owes its legacy form to a table row even before
-  // the move. The canonical form is what the move itself drops.
+  // A route is registered only at the path its contract declares, so a branded
+  // contract owes its legacy form to a table row even before the move. The
+  // canonical form is what the move itself drops.
   it("reports the branded paths a move to a neutral path drops", () => {
     const beforeMove = missingBrandedPaths([BRANDED_ROUTE], {});
     const movedWithoutRow = missingBrandedPaths([NEUTRAL_ROUTE], {});
@@ -264,9 +235,7 @@ describe("branded paths for migrated neutral routes", () => {
   // table through the composition production registers, so a moved contract
   // that lost its rows fails here rather than 404ing a released caller.
   it("serves every migrated route at its neutral path and both branded paths", () => {
-    const registered = withMigratedBrandedPaths(
-      withApiNamespaceAliases(ROUTES),
-    );
+    const registered = withMigratedBrandedPaths(ROUTES);
 
     for (const [neutral, brandedPaths] of Object.entries(
       MIGRATED_ROUTE_PATHS,
@@ -310,9 +279,7 @@ describe("branded paths for migrated neutral routes", () => {
   // assertion for reasons that have nothing to do with the table.
   it("keeps the production route table free of colliding registrations", () => {
     expect(() => {
-      assertUniqueRouteRegistrations(
-        withMigratedBrandedPaths(withApiNamespaceAliases(ROUTES)),
-      );
+      assertUniqueRouteRegistrations(withMigratedBrandedPaths(ROUTES));
     }).not.toThrow();
   });
 
@@ -444,10 +411,10 @@ describe("branded paths for migrated neutral routes", () => {
   // nothing for this case to drive.
 
   // The synthetic routes are not in the production `MIGRATED_BRANDED_PATHS`, so
-  // this app registers only what the two contracts declare and what the
-  // expansion derives from them. Since #28701 that no longer includes the
-  // legacy form of the branded contract, which is why the last status is a 404
-  // rather than the third 200 this test asserted while the fallback existed.
+  // this app registers exactly what the two contracts declare. Nothing derives
+  // the legacy form of the branded contract, which is why the last status is a
+  // 404 rather than the third 200 this test asserted while the fallback
+  // existed.
   it("builds an app that serves every path it registers", async () => {
     const app = createAppWithRoutes({
       signal: context.signal,
