@@ -39,6 +39,7 @@ impl CpuAdmissionCapacity {
         // R(P) follows GKE's node CPU reservation curve:
         // https://cloud.google.com/kubernetes-engine/docs/concepts/plan-node-sizes#cpu_reservations
         //
+        // P is the logical CPU capacity visible to Runner; F is concurrency_factor.
         // R(P) = 0.06 * min(P, 1)
         //      + 0.01 * clamp(P - 1, 0, 1)
         //      + 0.005 * clamp(P - 2, 0, 2)
