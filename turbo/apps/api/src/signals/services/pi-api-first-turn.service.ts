@@ -157,6 +157,38 @@ function sha256(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
+function providerRejectionDiagnostic(error: unknown): {
+  readonly errorMessageLength?: number;
+  readonly errorMessageSha256?: string;
+  readonly errorName?: string;
+  readonly missingApiKey?: boolean;
+  readonly providerStatus?: number;
+} {
+  const message = error instanceof Error ? error.message : undefined;
+  const record =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>)
+      : undefined;
+  const candidateStatus = record?.status ?? record?.statusCode;
+  const providerStatus =
+    typeof candidateStatus === "number" &&
+    candidateStatus >= 400 &&
+    candidateStatus <= 599
+      ? candidateStatus
+      : undefined;
+  return {
+    ...(error instanceof Error ? { errorName: error.name } : {}),
+    ...(message === undefined
+      ? {}
+      : {
+          errorMessageLength: message.length,
+          errorMessageSha256: sha256(Buffer.from(message, "utf8")),
+          missingApiKey: message.startsWith("No API key for provider:"),
+        }),
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
+}
+
 async function decodeSessionHistory(args: {
   readonly encoded: Buffer;
   readonly encoding: string;
@@ -615,6 +647,33 @@ type ApiFirstTurnExecutionContext =
 type ApiFirstTurnLaunchConfig =
   ApiFirstTurnExecutionContext["piLaunchConfig"]["apiFirstTurn"];
 
+function logProviderOperationRejected(
+  activation: PiApiFirstTurnActivation,
+  executionContext: ApiFirstTurnExecutionContext,
+  error: unknown,
+): void {
+  L.warn("Pi API first-turn operation rejected", {
+    runId: activation.runId,
+    provider: executionContext.piModelConfig.provider,
+    ...providerRejectionDiagnostic(error),
+  });
+}
+
+function logProviderStopped(
+  activation: PiApiFirstTurnActivation,
+  executionContext: ApiFirstTurnExecutionContext,
+  turn: PiApiFirstTurnResult,
+): void {
+  L.warn("Pi API first-turn provider stopped", {
+    runId: activation.runId,
+    provider: executionContext.piModelConfig.provider,
+    stopReason: turn.assistantMessage.stopReason,
+    ...(turn.providerErrorStatus === undefined
+      ? {}
+      : { providerStatus: turn.providerErrorStatus }),
+  });
+}
+
 interface ApiFirstTurnCommitIdentity {
   readonly baseSessionId: string;
   readonly baseSessionSha256: string | null;
@@ -929,6 +988,11 @@ async function executeApiModelTurn(
     awaitWithSignal(operation, modelSignal),
   );
   if (!executed.ok) {
+    logProviderOperationRejected(
+      args.activation,
+      args.executionContext,
+      executed.error,
+    );
     if (modelSignal.aborted) {
       waitUntil(
         observeDiscardedProviderResult(operation, args.context, args.ownership),
@@ -979,14 +1043,7 @@ async function executeApiModelTurn(
     turn.assistantMessage.stopReason === "error" ||
     turn.assistantMessage.stopReason === "aborted"
   ) {
-    L.warn("Pi API first-turn provider stopped", {
-      runId: args.activation.runId,
-      provider: args.executionContext.piModelConfig.provider,
-      stopReason: turn.assistantMessage.stopReason,
-      ...(turn.providerErrorStatus === undefined
-        ? {}
-        : { providerStatus: turn.providerErrorStatus }),
-    });
+    logProviderStopped(args.activation, args.executionContext, turn);
     throw piApiFirstTurnError(
       "PI_API_MODEL_FAILED",
       `Pi API first-turn model stopped with ${turn.assistantMessage.stopReason}`,
