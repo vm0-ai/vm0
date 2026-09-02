@@ -85,14 +85,15 @@ enum Warning {
         pid: u32,
         sandbox_id: String,
         base_dir: PathBuf,
-        identity: Option<process::FirecrackerProcessIdentity>,
+        generation: Option<process::ProcfsProcessGeneration>,
     },
     /// A firecracker process whose ppid chain doesn't lead to any runner.
     OrphanFirecracker {
         pid: u32,
         sandbox_id: String,
+        base_dir: Option<PathBuf>,
         ppid: Option<u32>,
-        identity: Option<process::FirecrackerProcessIdentity>,
+        generation: Option<process::ProcfsProcessGeneration>,
     },
     /// A mitmdump process on an unclaimed port whose ppid chain is orphaned.
     OrphanMitmdump {
@@ -271,12 +272,18 @@ impl Warning {
                 pid,
                 sandbox_id,
                 base_dir,
-                identity,
+                generation,
             } => {
                 // Resolved if fresh discovery no longer contains the same
                 // Firecracker observation or sandbox_id is now known (either
                 // tracked as active or parked as idle).
-                if !fresh_contains_firecracker(fresh, *pid, identity.as_ref()) {
+                if !fresh_contains_firecracker(
+                    fresh,
+                    *pid,
+                    sandbox_id,
+                    Some(base_dir),
+                    generation.as_ref(),
+                ) {
                     return false;
                 }
                 match read_status(base_dir).await {
@@ -292,12 +299,23 @@ impl Warning {
                 }
             }
             Self::StaleMitmproxy { port } => fresh.mitmdumps.iter().any(|mitm| mitm.port == *port),
-            Self::OrphanFirecracker { pid, identity, .. } => {
+            Self::OrphanFirecracker {
+                pid,
+                sandbox_id,
+                base_dir,
+                generation,
+                ..
+            } => {
                 // Resolved if fresh discovery no longer contains the same
                 // Firecracker observation or a runner registry entry appeared
                 // after the initial scan and now owns the process.
-                fresh_contains_firecracker(fresh, *pid, identity.as_ref())
-                    && process::is_orphan(*pid, runner_pids).await
+                fresh_contains_firecracker(
+                    fresh,
+                    *pid,
+                    sandbox_id,
+                    base_dir.as_deref(),
+                    generation.as_ref(),
+                ) && process::is_orphan(*pid, runner_pids).await
             }
             Self::OrphanMitmdump { pid, .. } => {
                 // Resolved if the process exited or a runner registry entry
@@ -342,14 +360,15 @@ fn pid_exists(pid: u32) -> bool {
 fn fresh_contains_firecracker(
     fresh: &process::DiscoveredProcesses,
     pid: u32,
-    identity: Option<&process::FirecrackerProcessIdentity>,
+    sandbox_id: &str,
+    base_dir: Option<&Path>,
+    generation: Option<&process::ProcfsProcessGeneration>,
 ) -> bool {
     fresh.firecrackers.iter().any(|firecracker| {
         firecracker.pid == pid
-            && match identity {
-                Some(identity) => firecracker.identity.as_ref() == Some(identity),
-                None => firecracker.identity.is_none(),
-            }
+            && firecracker.sandbox_id == sandbox_id
+            && firecracker.base_dir.as_deref() == base_dir
+            && firecracker.generation.as_ref() == generation
     })
 }
 
@@ -1147,7 +1166,7 @@ fn correlate_jobs(
                 pid: fc.pid,
                 sandbox_id: fc.sandbox_id.clone(),
                 base_dir: base_dir.to_path_buf(),
-                identity: fc.identity.clone(),
+                generation: fc.generation,
             });
             jobs.push(JobReport {
                 status: JobStatus::NotInStatus {
@@ -1226,8 +1245,9 @@ async fn detect_orphan_firecrackers(
             warnings.push(Warning::OrphanFirecracker {
                 pid: fc.pid,
                 sandbox_id: fc.sandbox_id.clone(),
+                base_dir: fc.base_dir.clone(),
                 ppid: fc.ppid,
-                identity: fc.identity.clone(),
+                generation: fc.generation,
             });
         }
     }
@@ -1770,19 +1790,14 @@ printf '%s\n' \
     }
 
     fn fc_info(pid: u32, sandbox_id: &str, base_dir: &Path) -> process::FirecrackerProcessInfo {
-        let sandbox_id = sandbox_id.to_string();
-        let base_dir = base_dir.to_path_buf();
         process::FirecrackerProcessInfo {
             pid,
             ppid: None,
-            sandbox_id: sandbox_id.clone(),
-            base_dir: Some(base_dir.clone()),
-            identity: Some(process::FirecrackerProcessIdentity {
-                pid,
+            sandbox_id: sandbox_id.to_string(),
+            base_dir: Some(base_dir.to_path_buf()),
+            generation: Some(process::ProcfsProcessGeneration {
                 pgid: pid,
                 starttime: u64::from(pid),
-                sandbox_id,
-                base_dir: Some(base_dir),
             }),
         }
     }
@@ -1987,17 +2002,17 @@ printf '%s\n' \
             fc_info(401, "sandbox-idle", Path::new("/data/r1")), // idle, OK
             fc_info(402, "sandbox-orphan", Path::new("/data/r1")), // orphan, warn
         ];
-        let expected_identity = fc[2].identity.clone();
+        let expected_generation = fc[2].generation;
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 2, "one active job + one orphan surface");
         assert_eq!(warnings.len(), 1);
         let msg = warnings[0].to_string();
         assert!(msg.contains("sandbox-orphan"), "{msg}");
         assert!(msg.contains("not in status.json"), "{msg}");
-        let Warning::FirecrackerNotInStatus { identity, .. } = &warnings[0] else {
+        let Warning::FirecrackerNotInStatus { generation, .. } = &warnings[0] else {
             panic!("orphan Firecracker must produce FirecrackerNotInStatus");
         };
-        assert_eq!(identity, &expected_identity);
+        assert_eq!(generation, &expected_generation);
 
         // The orphan row must carry the sandbox_id in `NotInStatus`, not
         // misfiled into a `run_id` variant. Type-checking this here locks
@@ -2021,7 +2036,7 @@ printf '%s\n' \
             ppid: None,
             sandbox_id: "sbox-abc".into(),
             base_dir: Some(PathBuf::from("/data/r2")),
-            identity: None,
+            generation: None,
         }];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
@@ -2465,7 +2480,7 @@ printf '%s\n' \
             pid: 101,
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
-            identity: fresh.firecrackers[0].identity.clone(),
+            generation: fresh.firecrackers[0].generation,
         };
         assert!(
             !warning.persists(None, &fresh, &[], None).await,
@@ -2500,7 +2515,7 @@ printf '%s\n' \
             pid: 101,
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
-            identity: fresh.firecrackers[0].identity.clone(),
+            generation: fresh.firecrackers[0].generation,
         };
         assert!(!warning.persists(None, &fresh, &[], None).await);
     }
@@ -2525,7 +2540,7 @@ printf '%s\n' \
             pid: 101,
             sandbox_id: "S-ghost".into(),
             base_dir: base_dir.clone(),
-            identity: fresh.firecrackers[0].identity.clone(),
+            generation: fresh.firecrackers[0].generation,
         };
         assert!(warning.persists(None, &fresh, &[], None).await);
     }
@@ -2539,7 +2554,7 @@ printf '%s\n' \
             pid: firecracker.pid,
             sandbox_id: "S-anything".into(),
             base_dir,
-            identity: firecracker.identity,
+            generation: firecracker.generation,
         };
         assert!(!warning.persists(None, &empty_fresh(), &[], None).await);
     }
@@ -2553,16 +2568,47 @@ printf '%s\n' \
             pid: original.pid,
             sandbox_id: original.sandbox_id.clone(),
             base_dir: base_dir.clone(),
-            identity: original.identity,
+            generation: original.generation,
         };
         let mut replacement = fc_info(101, "S-ghost", &base_dir);
-        replacement.identity.as_mut().unwrap().starttime += 1;
+        replacement.generation.as_mut().unwrap().starttime += 1;
         let fresh = process::DiscoveredProcesses {
             firecrackers: vec![replacement],
             mitmdumps: vec![],
             dnsmasqs: vec![],
         };
 
+        assert!(!warning.persists(None, &fresh, &[], None).await);
+    }
+
+    #[tokio::test]
+    async fn firecracker_not_in_status_clears_when_workspace_facts_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().to_path_buf();
+        let original = fc_info(101, "S-ghost", &base_dir);
+        let warning = Warning::FirecrackerNotInStatus {
+            pid: original.pid,
+            sandbox_id: original.sandbox_id.clone(),
+            base_dir: base_dir.clone(),
+            generation: original.generation,
+        };
+
+        let mut changed_sandbox = original.clone();
+        changed_sandbox.sandbox_id = "S-replacement".into();
+        let fresh = process::DiscoveredProcesses {
+            firecrackers: vec![changed_sandbox],
+            mitmdumps: vec![],
+            dnsmasqs: vec![],
+        };
+        assert!(!warning.persists(None, &fresh, &[], None).await);
+
+        let mut changed_base_dir = original;
+        changed_base_dir.base_dir = Some(base_dir.join("replacement"));
+        let fresh = process::DiscoveredProcesses {
+            firecrackers: vec![changed_base_dir],
+            mitmdumps: vec![],
+            dnsmasqs: vec![],
+        };
         assert!(!warning.persists(None, &fresh, &[], None).await);
     }
 
@@ -2721,7 +2767,7 @@ printf '%s\n' \
     async fn orphan_firecracker_recheck_requires_same_identified_observation() {
         let child = sleeping_child();
         let firecracker = fc_info(child.0.id(), "sandbox-orphan", Path::new("/data/r1"));
-        let expected_identity = firecracker.identity.clone();
+        let expected_generation = firecracker.generation;
         let fresh = process::DiscoveredProcesses {
             firecrackers: vec![firecracker.clone()],
             mitmdumps: vec![],
@@ -2730,10 +2776,10 @@ printf '%s\n' \
         let warnings = detect_orphan_firecrackers(&[firecracker], &[], None).await;
         assert_eq!(warnings.len(), 1);
         let warning = &warnings[0];
-        let Warning::OrphanFirecracker { identity, .. } = warning else {
+        let Warning::OrphanFirecracker { generation, .. } = warning else {
             panic!("orphan Firecracker must produce OrphanFirecracker");
         };
-        assert_eq!(identity, &expected_identity);
+        assert_eq!(generation, &expected_generation);
         assert!(warning.persists(None, &fresh, &[], None).await);
         assert!(
             !warning
@@ -2742,7 +2788,7 @@ printf '%s\n' \
         );
 
         let mut replacement = fresh.firecrackers[0].clone();
-        replacement.identity.as_mut().unwrap().pgid += 1;
+        replacement.generation.as_mut().unwrap().pgid += 1;
         let replacement_fresh = process::DiscoveredProcesses {
             firecrackers: vec![replacement],
             mitmdumps: vec![],
@@ -2762,7 +2808,7 @@ printf '%s\n' \
             ppid: Some(std::process::id()),
             sandbox_id: sandbox_id.clone(),
             base_dir: None,
-            identity: None,
+            generation: None,
         };
         let fresh = process::DiscoveredProcesses {
             firecrackers: vec![firecracker.clone()],
@@ -2779,12 +2825,9 @@ printf '%s\n' \
             ppid: Some(std::process::id()),
             sandbox_id: sandbox_id.clone(),
             base_dir: None,
-            identity: Some(process::FirecrackerProcessIdentity {
-                pid,
+            generation: Some(process::ProcfsProcessGeneration {
                 pgid: pid,
                 starttime: u64::from(pid),
-                sandbox_id,
-                base_dir: None,
             }),
         };
         let replacement_fresh = process::DiscoveredProcesses {
@@ -2898,7 +2941,7 @@ printf '%s\n' \
             pid: 17,
             sandbox_id: "sbox-gone".into(),
             base_dir: PathBuf::from("/data/r1"),
-            identity: None,
+            generation: None,
         };
         assert_eq!(
             w.to_string(),
@@ -2914,8 +2957,9 @@ printf '%s\n' \
         let w = Warning::OrphanFirecracker {
             pid: 42,
             sandbox_id: "xyz".into(),
+            base_dir: None,
             ppid: Some(10),
-            identity: None,
+            generation: None,
         };
         assert_eq!(
             w.to_string(),
@@ -2925,8 +2969,9 @@ printf '%s\n' \
         let w = Warning::OrphanFirecracker {
             pid: 42,
             sandbox_id: "xyz".into(),
+            base_dir: None,
             ppid: None,
-            identity: None,
+            generation: None,
         };
         assert_eq!(
             w.to_string(),

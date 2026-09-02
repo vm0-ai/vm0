@@ -9,7 +9,7 @@ import { detach, Reason } from "../../../../../signals/utils.ts";
 import {
   captureNetworkBodiesRemaining$,
   updateCaptureNetworkBodies$,
-} from "../../../../../signals/okou-page/settings/preferences-page.ts";
+} from "../../../../../signals/okou-page/settings/debug-network-capture.ts";
 import { BuildInfoBlock } from "../build-info-block.tsx";
 import { ConnectionDiagnosticsBlock } from "../connection-diagnostics-block.tsx";
 import { ConnectorCatalogDiagnosticsBlock } from "../connector-catalog-diagnostics-block.tsx";

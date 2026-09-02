@@ -13,6 +13,7 @@
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use guest_contracts::workspace_mount::WORKSPACE_MOUNT_SCRIPT;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use shell_quote::quote_shell_arg;
 
@@ -24,7 +25,6 @@ const WORKSPACE_FREEZE_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_DEVICE: &str = "/dev/vdb";
 const WORKSPACE_MOUNTINFO_PATH: &str = "/proc/self/mountinfo";
 const WORKSPACE_FSFREEZE_PATH: &str = "/usr/sbin/fsfreeze";
-const WORKSPACE_MOUNT_SCRIPT: &str = include_str!("../scripts/mount-workspace-drive.sh");
 const WORKSPACE_FREEZE_SCRIPT: &str = include_str!("../scripts/freeze-workspace-drive.sh");
 
 #[derive(Debug)]
@@ -37,15 +37,27 @@ pub(crate) async fn ensure_workspace_drive_mounted(
     sandbox: &dyn Sandbox,
     diagnostic_id: impl std::fmt::Display,
 ) -> Result<Option<Duration>, WorkspaceDriveMountError> {
-    run_workspace_drive_command(
-        sandbox,
-        diagnostic_id,
-        &workspace_mount_command(),
-        "mount workspace drive",
-        "workspace-mount",
-        WORKSPACE_MOUNT_TIMEOUT,
-    )
-    .await
+    let result =
+        sandbox
+            .mount_workspace_drive()
+            .await
+            .map_err(|error| WorkspaceDriveMountError {
+                error: RunnerError::from(error),
+                guest_duration: None,
+            })?;
+    let guest_duration = result
+        .guest_duration_ms
+        .map(|duration_ms| Duration::from_millis(u64::from(duration_ms)));
+    if helper_exec_succeeded(&result) {
+        return Ok(guest_duration);
+    }
+
+    let mut message = format_helper_exec_failure("mount workspace drive", &result);
+    message.push_str(&format!("; diagnostic id: {diagnostic_id}"));
+    Err(WorkspaceDriveMountError {
+        error: RunnerError::Internal(message),
+        guest_duration,
+    })
 }
 
 pub(crate) async fn freeze_workspace_drive(
@@ -158,7 +170,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_drive_operations_use_bounded_privileged_exec() {
+    async fn workspace_drive_operations_use_typed_mount_and_bounded_privileged_freeze() {
         let sandbox = sandbox_mock::MockSandbox::new("workspace-boundary-test");
 
         ensure_workspace_drive_mounted(&sandbox, "mount-diagnostic")
@@ -168,16 +180,12 @@ mod tests {
             .await
             .unwrap();
 
+        assert_eq!(sandbox.workspace_drive_mount_calls(), 1);
         let calls = sandbox.exec_calls();
-        assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].timeout, WORKSPACE_MOUNT_TIMEOUT);
-        assert_eq!(calls[1].timeout, WORKSPACE_FREEZE_TIMEOUT);
-        assert!(calls.iter().all(|call| call.sudo));
-        assert!(
-            calls
-                .iter()
-                .all(|call| call.output_limits == EXEC_OUTPUT_LIMIT_64_KIB)
-        );
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].timeout, WORKSPACE_FREEZE_TIMEOUT);
+        assert!(calls[0].sudo);
+        assert_eq!(calls[0].output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
     }
 
     #[test]

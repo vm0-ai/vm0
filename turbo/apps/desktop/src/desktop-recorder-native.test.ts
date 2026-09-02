@@ -31,8 +31,11 @@ const SOURCES: HelperBehavior = {
         bundleId: "ai.vm0.okou",
       },
     ],
-    supportsMicrophone: true,
   },
+};
+
+const CAPABILITIES: HelperBehavior = {
+  result: { supportsMicrophone: true },
 };
 
 const PREPARE: HelperBehavior = {
@@ -240,18 +243,16 @@ describe("createRecorderNativeBackend", () => {
     });
     const backend = createBackend(helperPath);
 
-    await expect(backend.listSources()).resolves.toMatchObject({
-      sources: [
-        { id: "display:1", kind: "display", title: "Built-in Display" },
-        {
-          id: "window:42",
-          kind: "window",
-          title: "Okou",
-          appName: "Okou",
-          bundleId: "ai.vm0.okou",
-        },
-      ],
-    });
+    await expect(backend.listSources()).resolves.toMatchObject([
+      { id: "display:1", kind: "display", title: "Built-in Display" },
+      {
+        id: "window:42",
+        kind: "window",
+        title: "Okou",
+        appName: "Okou",
+        bundleId: "ai.vm0.okou",
+      },
+    ]);
 
     await expect(
       backend.prepare({
@@ -351,9 +352,7 @@ describe("createRecorderNativeBackend", () => {
     });
     const backend = createBackend(helperPath);
 
-    await expect(
-      backend.listSources().then((listed) => listed.sources),
-    ).resolves.toHaveLength(2);
+    await expect(backend.listSources()).resolves.toHaveLength(2);
   });
 
   it("rejects a response that is missing a required field", async () => {
@@ -368,19 +367,34 @@ describe("createRecorderNativeBackend", () => {
     });
   });
 
-  it("rejects a source list that omits the microphone capability", async () => {
+  it("rejects capabilities that omit the microphone answer", async () => {
     const { helperPath } = await createHelper({
-      "recorder.sources": { result: { sources: [] } },
+      "recorder.capabilities": { result: {} },
     });
     const backend = createBackend(helperPath);
 
     // The helper ships in the same bundle as this code, so a response without
     // the field is a broken helper rather than an older one. Failing here beats
     // silently recording without the narration the user asked for.
-    expect(await rejection(backend.listSources())).toMatchObject({
+    expect(await rejection(backend.getCapabilities())).toMatchObject({
       code: "capture_failed",
       message: "Screen recorder helper returned an invalid supportsMicrophone",
     });
+  });
+
+  it("answers what the system can record without reading the screen", async () => {
+    const { helperPath, requestLogPath } = await createHelper({
+      "recorder.capabilities": CAPABILITIES,
+    });
+    const backend = createBackend(helperPath);
+
+    await expect(backend.getCapabilities()).resolves.toEqual({
+      supportsMicrophone: true,
+    });
+    // Enumerating sources is what makes the system demand the recording grant,
+    // so the bar must be able to open without it.
+    const requested = await readFile(requestLogPath, "utf8");
+    expect(requested).not.toContain("recorder.sources");
   });
 
   it("reports a capture that lost its source", async () => {

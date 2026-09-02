@@ -1,5 +1,6 @@
 import type {
   ChangeEvent as ReactChangeEvent,
+  CSSProperties,
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
@@ -41,8 +42,8 @@ import type { ComposerSignals } from "../../signals/okou-page/composer-signals.t
 import {
   classifyIntroVideoSource,
   introVideoWizardSignals,
+  type IntroVideoPlacement,
   type IntroVideoSource,
-  type IntroVideoVisualBalance,
   type IntroVideoVoiceSelection,
   type IntroVideoWizardError,
   INTRO_VIDEO_ASPECT_RATIO_LABEL,
@@ -114,6 +115,25 @@ function formatDuration(seconds: number): string {
 function sourceFormat(source: IntroVideoSource): string {
   const extension = source.name.split(".").pop()?.toLocaleUpperCase();
   return extension || source.contentType;
+}
+
+function sourceSavedLabel(
+  t: TFunction<"common">,
+  source: IntroVideoSource,
+  persisted: boolean,
+): string {
+  if (source.origin === "uploaded") {
+    return t(($) => {
+      return $.chat.introVideo.sourceReview.inAccount;
+    });
+  }
+  return persisted
+    ? t(($) => {
+        return $.chat.introVideo.sourceReview.inBrowser;
+      })
+    : t(($) => {
+        return $.chat.introVideo.sourceReview.inTab;
+      });
 }
 
 function sourceKindLabel(
@@ -702,13 +722,7 @@ function SourceReviewPage({
               })}
             </dt>
             <dd className="text-right font-medium text-foreground">
-              {persisted
-                ? t(($) => {
-                    return $.chat.introVideo.sourceReview.inBrowser;
-                  })
-                : t(($) => {
-                    return $.chat.introVideo.sourceReview.inTab;
-                  })}
+              {sourceSavedLabel(t, source, persisted)}
             </dd>
           </div>
         </dl>
@@ -730,86 +744,153 @@ function SourceReviewPage({
   );
 }
 
-function VisualBalanceOption({
-  index,
+/**
+ * Preview geometry for one placement, as percentages of the 16:9 output frame.
+ *
+ * These mirror the composition rule the generator follows: the deck is
+ * letterboxed inside its rectangle and the presenter cutout is scaled
+ * proportionally to a fixed share of the frame width, with its bottom edge on
+ * the deck's bottom edge. The cutout is never cropped to a box or a circle, so
+ * only its width is pinned here and the height follows the artwork. A very
+ * tall cutout therefore runs past the top of the preview and is clipped there,
+ * which is what the rendered video does too.
+ */
+function placementPreview(placement: IntroVideoPlacement): {
+  readonly avatar: CSSProperties;
+  readonly slide: CSSProperties;
+} {
+  switch (placement) {
+    case "overlay": {
+      return {
+        avatar: { bottom: "6%", left: "75%", width: "14%" },
+        slide: { height: "88%", left: "6%", top: "6%", width: "88%" },
+      };
+    }
+    case "right": {
+      return {
+        avatar: { bottom: "11.5%", left: "83%", width: "14%" },
+        slide: { height: "77%", left: "3%", top: "11.5%", width: "77%" },
+      };
+    }
+    default: {
+      return {
+        avatar: { bottom: "11.5%", left: "3%", width: "14%" },
+        slide: { height: "77%", left: "20%", top: "11.5%", width: "77%" },
+      };
+    }
+  }
+}
+
+function PlacementOption({
+  cutoutUrl,
   label,
+  placement,
   selected,
   onSelect,
 }: {
-  readonly index: number;
+  readonly cutoutUrl: string | undefined;
   readonly label: string;
+  readonly placement: IntroVideoPlacement;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
+  const preview = placementPreview(placement);
   return (
     <button
       type="button"
       aria-pressed={selected}
+      data-intro-video-placement={placement}
       onClick={onSelect}
       className={cn(
-        "flex min-w-0 items-center gap-3 rounded-xl border bg-card p-3 text-left text-sm transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected ? "border-primary bg-primary/[0.04]" : "border-border",
+        "group flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected ? "border-primary" : "border-border",
       )}
     >
-      <span
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-lg border text-xs font-medium",
-          selected
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-background text-muted-foreground",
-        )}
-      >
-        {selected ? <Check size={14} /> : index}
-      </span>
-      <span className="leading-5 text-foreground">{label}</span>
+      <div className="relative aspect-video w-full overflow-hidden bg-gray-50">
+        <span
+          aria-hidden="true"
+          className="absolute rounded-[3px] border border-border bg-card"
+          style={preview.slide}
+        />
+        {cutoutUrl ? (
+          <img
+            src={cutoutUrl}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="absolute"
+            style={preview.avatar}
+          />
+        ) : null}
+      </div>
+      <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
+          {label}
+        </p>
+        {selected ? (
+          <span
+            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+            aria-hidden="true"
+          >
+            <Check size={13} />
+          </span>
+        ) : null}
+      </div>
     </button>
   );
 }
 
-function VisualBalanceSelector() {
+function PlacementSelector({
+  cutoutUrl,
+}: {
+  readonly cutoutUrl: string | undefined;
+}) {
   const { t } = useTranslation();
-  const visualBalance = useGet(introVideoWizardSignals.visualBalance$);
-  const setVisualBalance = useSet(introVideoWizardSignals.setVisualBalance$);
+  const placement = useGet(introVideoWizardSignals.placement$);
+  const setPlacement = useSet(introVideoWizardSignals.setPlacement$);
   const options: readonly {
     readonly label: string;
-    readonly value: IntroVideoVisualBalance;
+    readonly value: IntroVideoPlacement;
   }[] = [
     {
       label: t(($) => {
-        return $.chat.introVideo.avatar.visualBalanceAvatarLed;
+        return $.chat.introVideo.avatar.placementLeft;
       }),
-      value: "avatar-led",
+      value: "left",
     },
     {
       label: t(($) => {
-        return $.chat.introVideo.avatar.visualBalanceBRollLed;
+        return $.chat.introVideo.avatar.placementRight;
       }),
-      value: "b-roll-led",
+      value: "right",
     },
     {
       label: t(($) => {
-        return $.chat.introVideo.avatar.visualBalanceBalanced;
+        return $.chat.introVideo.avatar.placementOverlay;
       }),
-      value: "balanced",
+      value: "overlay",
     },
   ];
   return (
     <section className="mb-5 rounded-xl border border-border bg-background p-4">
       <h4 className="text-sm font-medium text-foreground">
         {t(($) => {
-          return $.chat.introVideo.avatar.visualBalanceHeading;
+          return $.chat.introVideo.avatar.placementHeading;
         })}
       </h4>
-      <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-3">
-        {options.map((option, index) => {
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {options.map((option) => {
           return (
-            <VisualBalanceOption
+            <PlacementOption
               key={option.value}
-              index={index + 1}
+              cutoutUrl={cutoutUrl}
               label={option.label}
-              selected={visualBalance === option.value}
+              placement={option.value}
+              selected={placement === option.value}
               onSelect={() => {
-                setVisualBalance(option.value);
+                setPlacement(option.value);
               }}
             />
           );
@@ -822,9 +903,13 @@ function VisualBalanceSelector() {
 function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
   const { t } = useTranslation();
   const avatar = useGet(introVideoWizardSignals.avatar$);
+  const source = useGet(introVideoWizardSignals.source$);
   const setAvatar = useSet(introVideoWizardSignals.setAvatar$);
   const selectAvatarForVoice = useSet(
     composer.template.selectAvatarTemplateForVoice$,
+  );
+  const clearAvatarForVoice = useSet(
+    composer.template.clearAvatarTemplateVoiceSelection$,
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -840,12 +925,18 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
           })}
         </p>
       </div>
-      {avatar ? <VisualBalanceSelector /> : null}
+      {avatar && source?.kind === "document" ? (
+        <PlacementSelector cutoutUrl={avatar.coverUrl} />
+      ) : null}
       <AvatarLibraryContent
         selectedAvatarId={avatar?.id}
         onSelect={(nextAvatar) => {
           setAvatar(nextAvatar);
           selectAvatarForVoice(nextAvatar);
+        }}
+        onClear={() => {
+          setAvatar(null);
+          clearAvatarForVoice();
         }}
       />
     </div>
@@ -1189,8 +1280,11 @@ function WizardErrorBanner({
   readonly onDownload: () => void;
 }) {
   const { t } = useTranslation();
+  // An uploaded source is already stored server-side, so there is no local copy
+  // to rescue when the send fails.
   const canDownload =
-    source && (error === "upload-failed" || error === "send-failed");
+    source?.origin === "local" &&
+    (error === "upload-failed" || error === "send-failed");
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
       <span>{errorCopy(t, error)}</span>

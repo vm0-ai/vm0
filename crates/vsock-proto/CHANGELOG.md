@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.47](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.46...vsock-proto-v0.18.47) (2026-09-02)
+
+
+### Performance Improvements
+
+* **runner:** specialize fresh workspace mount lifecycle ([#30939](https://github.com/vm0-ai/vm0/issues/30939)) ([c3f783c](https://github.com/vm0-ai/vm0/commit/c3f783cd17c8e732c5bb3edfcd6e0fb867ea3bd7))
+
 ## [0.18.46](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.45...vsock-proto-v0.18.46) (2026-09-01)
 
 

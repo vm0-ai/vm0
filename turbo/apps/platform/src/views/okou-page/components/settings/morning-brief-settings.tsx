@@ -12,7 +12,7 @@ import {
   retryMorningBriefPreference$,
   updateMorningBriefPreference$,
   type MorningBriefPreferenceState,
-} from "../../../../signals/okou-page/settings/preferences-page.ts";
+} from "../../../../signals/okou-page/settings/morning-brief-preference.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 

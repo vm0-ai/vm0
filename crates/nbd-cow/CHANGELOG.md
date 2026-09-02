@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.83](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.82...nbd-cow-v0.4.83) (2026-09-02)
+
+
+### Performance Improvements
+
+* **nbd-cow:** send read replies with vectored writes ([#30983](https://github.com/vm0-ai/vm0/issues/30983)) ([0f1970d](https://github.com/vm0-ai/vm0/commit/0f1970de83b0ffeec68a1cb8865524bddeec3e96))
+
 ## [0.4.82](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.81...nbd-cow-v0.4.82) (2026-08-28)
 
 

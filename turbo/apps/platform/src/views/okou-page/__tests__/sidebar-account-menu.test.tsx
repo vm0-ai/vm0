@@ -1220,6 +1220,13 @@ describe("zero sidebar account menu", () => {
       expect(
         within(dialog).getByText("alex.rivera@example.test"),
       ).toBeInTheDocument();
+      const morningBrief = within(dialog).getByTestId(
+        "morning-brief-preference",
+      );
+      expect(morningBrief.previousElementSibling).toContainElement(
+        within(dialog).getByText("Time zone"),
+      );
+      expect(within(dialog).queryByText("Send now")).not.toBeInTheDocument();
     });
 
     const openedSettingsDialog = screen.getByRole("dialog", {

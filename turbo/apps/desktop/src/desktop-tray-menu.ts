@@ -460,14 +460,6 @@ function buildScreenRecordingSubmenu(
       });
     }
   }
-  if (recorder.lastRecording) {
-    items.push(
-      separator(),
-      disabledLabel(
-        truncateMenuLabel(`Saved to ${recorder.lastRecording.videoPath}`),
-      ),
-    );
-  }
   return items;
 }
 

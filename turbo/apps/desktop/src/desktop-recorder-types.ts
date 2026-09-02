@@ -42,25 +42,62 @@ export interface DesktopRecorderArea {
   readonly height: number;
 }
 
-/**
- * What the recorder overlays ask to capture.
- *
- * Only a window names its source. A display or area capture is aimed at the
- * screen the overlays themselves were opened on, and the main process is what
- * knows which one that is, so the renderer cannot pair a region drawn on one
- * screen with another screen's id.
- */
-export type DesktopRecorderCaptureRequest = {
+/** The two audio tracks a capture can carry, as the bar has them set. */
+export interface DesktopRecorderAudioChoice {
   readonly systemAudio: boolean;
   readonly microphone: boolean;
-} & (
-  | { readonly sourceKind: "area"; readonly area: DesktopRecorderArea }
-  | { readonly sourceKind: "display" }
-  | { readonly sourceKind: "window"; readonly sourceId: string }
-);
+}
 
-export interface DesktopRecorderSourceList {
-  readonly sources: readonly DesktopRecorderSource[];
+/**
+ * What the bar asks to capture.
+ *
+ * Only a window names its source; a whole-display capture is aimed at the
+ * screen the bar itself is on, which only the main process knows. An area is
+ * not here at all: its selection ends in the overlay that drew it, so that
+ * request is assembled in the main process from the display the drag happened
+ * on.
+ */
+export type DesktopRecorderCaptureRequest = DesktopRecorderAudioChoice &
+  (
+    | { readonly sourceKind: "display" }
+    | { readonly sourceKind: "window"; readonly sourceId: string }
+  );
+
+/**
+ * A region drawn on one display, in that display's own coordinates.
+ *
+ * The overlay reports which display it covers, because a drag on a secondary
+ * screen means nothing until it is rebased onto that screen's origin.
+ */
+export interface DesktopRecorderAreaSelection {
+  readonly displayId: number;
+  readonly area: DesktopRecorderArea;
+}
+
+/** A window as it currently looks, captured for the picker. */
+export interface DesktopRecorderWindowPreview {
+  readonly id: string;
+  /** A PNG data URL. */
+  readonly previewDataUrl: string;
+}
+
+/** A window the picker offers, with the preview the user recognises it by. */
+export interface DesktopRecorderWindowOption {
+  readonly id: string;
+  readonly title: string;
+  readonly appName: string;
+  /** A PNG data URL of the window as it looks right now. */
+  readonly previewDataUrl: string;
+}
+
+/** What the picker hands back when the user chooses a window. */
+export interface DesktopRecorderWindowChoice {
+  readonly sourceId: string;
+  readonly title: string;
+}
+
+/** What this system can record, known without reading the screen. */
+export interface DesktopRecorderCapabilities {
   /** ScreenCaptureKit only reaches the microphone on macOS 15 and later. */
   readonly supportsMicrophone: boolean;
 }
@@ -143,7 +180,25 @@ export interface DesktopRecorderNativeStatus {
  */
 export interface RecorderNativeBackend {
   readonly dispose: () => void;
-  readonly listSources: () => Promise<DesktopRecorderSourceList>;
+  readonly getCapabilities: () => Promise<DesktopRecorderCapabilities>;
+  /**
+   * Asks the system for the screen recording grant and reports the answer.
+   *
+   * macOS only shows its prompt the first time; once answered it returns the
+   * standing answer without asking again, which is why this is safe to call
+   * before each capture and is the only path that can raise the prompt at all.
+   */
+  readonly requestScreenRecordingPermission: () => Promise<boolean>;
+  /**
+   * The windows and displays on screen. Reading this asks ScreenCaptureKit for
+   * the screen recording grant, so it is only called once the user is choosing
+   * what to record.
+   */
+  readonly listSources: () => Promise<readonly DesktopRecorderSource[]>;
+  /** One image per window, for the picker to show them by. */
+  readonly listWindowPreviews: () => Promise<
+    readonly DesktopRecorderWindowPreview[]
+  >;
   readonly prepare: (
     request: DesktopRecorderPrepareRequest,
   ) => Promise<DesktopRecorderPrepareResult>;

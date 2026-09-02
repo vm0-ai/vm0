@@ -27,6 +27,10 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
+import {
+  billingStatusContract,
+  type BillingStatusResponse,
+} from "@okouai/api-contracts/contracts/billing";
 import { userPreferencesContract } from "@okouai/api-contracts/contracts/user-preferences";
 import {
   workflowsCollectionContract,
@@ -116,6 +120,26 @@ function prepareDefaultAgent(): void {
       visibility: "public",
     },
   ]);
+}
+
+/** Top tier: the sidebar has no next plan to advertise, so it renders no card. */
+function teamBillingStatus(): BillingStatusResponse {
+  return {
+    tier: "team",
+    credits: 100,
+    onboardingPaymentPending: false,
+    subscriptionStatus: "active",
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: true,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+    creditBreakdown: [],
+    creditGrants: [],
+    concurrencyLimit: 1,
+    concurrencySubscriptions: [],
+  };
 }
 
 function prepareAgents(targetContext = context): AgentResponse[] {
@@ -3297,6 +3321,38 @@ describe("zero sidebar", () => {
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
+  });
+
+  it("collapses the upgrade slot when the chat list has no upgrade card", async () => {
+    prepareDefaultAgent();
+    mockChatThreadSnapshot(() => {
+      return [];
+    });
+    context.mocks.api(billingStatusContract.get, ({ respond }) => {
+      return respond(200, teamBillingStatus());
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const list = await screen.findByTestId("chat-list-column");
+    await waitFor(() => {
+      expect(
+        within(list).getByTestId("pinned-agents-horizontal"),
+      ).toBeInTheDocument();
+    });
+
+    // Boundary exception (docs/testing/testing-external-behavior.md): the
+    // regression is the slot's reserved height, which clips the last thread
+    // row above an empty strip. jsdom loads no stylesheet and computes no
+    // layout, so no page-visible surface can observe it. The state itself is
+    // still built the production way, from the billing response the page
+    // fetches. Visual proof lives on the PR preview walkthrough.
+    const upgradeSlot = list.lastElementChild;
+    expect(upgradeSlot).toBeEmptyDOMElement();
+    expect(upgradeSlot).toHaveClass("empty:hidden");
   });
 
   it("keeps the new-chat rail responsive across consecutive clicks", async () => {

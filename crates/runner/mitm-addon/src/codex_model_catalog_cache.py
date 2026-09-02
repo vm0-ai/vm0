@@ -757,7 +757,9 @@ def _response_headers_bypass_reason(
     if _single_usable_etag(headers) is None:
         return "response_etag"
     parsed_content_length = _parse_content_length(headers)
-    if parsed_content_length.kind not in ("missing", "valid"):
+    if parsed_content_length.kind not in ("missing", "valid") or (
+        parsed_content_length.kind == "valid" and headers.get_all("Transfer-Encoding")
+    ):
         return "response_size"
     return None
 
@@ -854,12 +856,6 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         return True
 
     compressed_content_length = _parse_content_length(flow.response.headers)
-    if compressed_content_length.kind not in ("missing", "valid") or (
-        compressed_content_length.kind == "valid"
-        and flow.response.headers.get_all("Transfer-Encoding")
-    ):
-        _bypass_response(flow, state, "response_size")
-        return True
     state.compressed_content_length = (
         compressed_content_length.value if compressed_content_length.kind == "valid" else None
     )

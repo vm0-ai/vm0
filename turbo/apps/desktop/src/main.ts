@@ -53,6 +53,13 @@ import { deliverRecording } from "./desktop-recorder-delivery";
 import { installDesktopRecorderIpc } from "./desktop-recorder-electron";
 import { DesktopRecorderWindows } from "./desktop-recorder-windows";
 import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
+import type {
+  DesktopRecorderArea,
+  DesktopRecorderAudioChoice,
+  DesktopRecorderPrepareRequest,
+} from "./desktop-recorder-types";
+import { buildWindowOptions } from "./desktop-recorder-window-options";
+import { areaToGlobal } from "./desktop-recorder-overlay-geometry";
 import {
   getComputerUsePermissionState,
   probeComputerUseAutomationPermission,
@@ -759,28 +766,87 @@ function getRecorderWindows(): DesktopRecorderWindows {
   return recorderWindows;
 }
 
+/**
+ * The audio choices made in the bar, held while the area overlays are open.
+ *
+ * An area capture starts from the overlay that drew the region, by which time
+ * the bar is no longer the one asking, so its toggles have to travel with the
+ * selection rather than be read back from a window that may already be gone.
+ */
+let pendingAreaAudio: DesktopRecorderAudioChoice | null = null;
+
+async function startRecorderCapture(
+  request: DesktopRecorderPrepareRequest,
+  captured: DesktopRecorderArea | null,
+): Promise<void> {
+  const windows = getRecorderWindows();
+  await screenRecorder.ensureScreenRecordingPermission();
+  await screenRecorder.prepare(request);
+  await screenRecorder.start();
+  // The bar has done its job; leaving it up would put it in the capture.
+  windows.hideBar();
+  windows.showController(captured);
+}
+
 function installDesktopRecorder(): void {
   installDesktopRecorderIpc(
     {
       getState: () => screenRecorder.getState(),
-      listSources: () => screenRecorder.listSources(),
+      getCapabilities: () => screenRecorder.getCapabilities(),
+      listWindowOptions: async () => {
+        await screenRecorder.ensureScreenRecordingPermission();
+        const [sources, previews] = await Promise.all([
+          screenRecorder.listSources(),
+          screenRecorder.listWindowPreviews(),
+        ]);
+        return buildWindowOptions(sources, previews);
+      },
       startCapture: async (request) => {
         const windows = getRecorderWindows();
-        const area = request.sourceKind === "area" ? request.area : null;
-        await screenRecorder.prepare({
-          sourceId:
-            request.sourceKind === "window"
-              ? request.sourceId
-              : windows.captureDisplaySourceId(),
-          sourceKind: request.sourceKind,
-          systemAudio: request.systemAudio,
-          microphone: request.microphone,
-          ...(area ? { area } : {}),
-        });
-        await screenRecorder.start();
-        // The bar has done its job; leaving it up would put it in the capture.
-        windows.hideBar();
-        windows.showController(area);
+        await startRecorderCapture(
+          {
+            sourceId:
+              request.sourceKind === "window"
+                ? request.sourceId
+                : windows.displaySourceId(windows.barDisplayId()),
+            sourceKind: request.sourceKind,
+            systemAudio: request.systemAudio,
+            microphone: request.microphone,
+          },
+          null,
+        );
+      },
+      beginAreaSelection: (audio) => {
+        pendingAreaAudio = audio;
+        getRecorderWindows().openAreaSelectors();
+      },
+      completeAreaSelection: async (selection) => {
+        const windows = getRecorderWindows();
+        const audio = pendingAreaAudio;
+        pendingAreaAudio = null;
+        windows.closeAreaSelectors();
+        if (!selection || !audio) {
+          return;
+        }
+        const display = windows.displayBounds(selection.displayId);
+        if (!display) {
+          throw new Error("The screen that region was drawn on is gone");
+        }
+        const area = areaToGlobal(selection.area, display);
+        await startRecorderCapture(
+          {
+            sourceId: windows.displaySourceId(selection.displayId),
+            sourceKind: "area",
+            systemAudio: audio.systemAudio,
+            microphone: audio.microphone,
+            area,
+          },
+          area,
+        );
+      },
+      selectWindow: () => getRecorderWindows().selectWindow(),
+      completeWindowSelection: (choice) => {
+        getRecorderWindows().completeWindowSelection(choice);
       },
       pause: () => screenRecorder.pause(),
       resume: () => screenRecorder.resume(),
@@ -788,12 +854,11 @@ function installDesktopRecorder(): void {
       stop: async () => {
         await screenRecorder.stop();
       },
-      selectArea: () => getRecorderWindows().selectArea(),
-      completeAreaSelection: (area) => {
-        getRecorderWindows().completeAreaSelection(area);
-      },
       cancel: () => {
         getRecorderWindows().hideBar();
+      },
+      openScreenRecordingSettings: () => {
+        openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
       },
     },
     { recorderUrl: localRecorderUrl },

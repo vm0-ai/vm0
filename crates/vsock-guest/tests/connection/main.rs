@@ -21,4 +21,5 @@ mod guest_storage_manifest;
 mod quiesce;
 mod reconnect;
 mod shutdown;
+mod workspace_drive_mount;
 mod write_file;
