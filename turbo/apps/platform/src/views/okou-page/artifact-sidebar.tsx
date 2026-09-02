@@ -70,6 +70,11 @@ import {
 } from "./artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
+import {
+  isOfficeDocumentPreview,
+  OfficeDocumentPreview,
+} from "./office-document-preview.tsx";
+import { officeDocumentPreviewEnabled$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — thread-owned pane for rendering kind-specific artifact
@@ -796,6 +801,7 @@ function ArtifactBody({
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
+  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   if (kind === "markdown") {
     return markdownTree$ ? (
       <ArtifactMarkdownBody tree$={markdownTree$} />
@@ -854,6 +860,15 @@ function ArtifactBody({
         filename={filename}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
+      />
+    );
+  }
+  if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
+    return (
+      <ArtifactOfficeDocumentBody
+        filename={filename}
+        fullscreen={fullscreen}
+        url={url}
       />
     );
   }
@@ -1437,6 +1452,30 @@ function ArtifactIframeBody({
           )}
           className="h-full min-h-0 w-full border-0 bg-background"
           data-testid={`artifact-sidebar-body-${kind}`}
+        />
+      </div>
+    </ArtifactStageShell>
+  );
+}
+
+function ArtifactOfficeDocumentBody({
+  filename,
+  fullscreen,
+  url,
+}: {
+  filename: string;
+  fullscreen: boolean;
+  url: string;
+}) {
+  return (
+    <ArtifactStageShell scrollable={false}>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <OfficeDocumentPreview
+          filename={filename}
+          focusKey={`${url}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusOnMount={fullscreen}
+          testId="artifact-sidebar-body-office"
+          url={url}
         />
       </div>
     </ArtifactStageShell>

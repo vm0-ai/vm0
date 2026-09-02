@@ -35,6 +35,8 @@ const OKOU_ROOT_DOMAINS = [
   OKOU_PAGES_DOMAIN,
 ] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
+const OFFICE_DOCUMENT_VIEWER_BASE_URL =
+  "https://view.officeapps.live.com/op/embed.aspx";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
@@ -252,6 +254,10 @@ export function resolvePublicArtifactsBaseUrl():
   | "https://cdn.vm0.io"
   | "https://cdn.vm7.io" {
   return resolvePlatformRuntimeConfig().publicArtifactsBaseUrl;
+}
+
+export function resolveOfficeDocumentViewerBaseUrl(): string {
+  return OFFICE_DOCUMENT_VIEWER_BASE_URL;
 }
 
 export function resolveHostedSiteDomains(): readonly (

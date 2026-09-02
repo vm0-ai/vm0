@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { modelProviderWriteTypeSchema } from "@okouai/api-contracts/contracts/model-providers";
-import { upsertBuiltInNoSecretModelProviderIdentity } from "@okouai/db/operations/model-provider-built-in-identity";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { upsertPreviousReleaseBuiltInNoSecretModelProviderIdentity } from "./previous-release-built-in-provider-identity-test-fixture";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, "../src/migrations");
@@ -20,7 +20,7 @@ interface ProviderRowSnapshot {
   readonly type: string | null;
 }
 
-interface NewAppNoSecretProviderRow {
+interface PreviousReleaseAppNoSecretProviderRow {
   readonly id: string;
   readonly selectedModel: string | null;
   readonly type: string;
@@ -119,7 +119,7 @@ function expectedCanonicalRows(
   });
 }
 
-async function executeNewAppNoSecretProviderWrite(
+async function executePreviousReleaseAppNoSecretProviderWrite(
   db: NodePgDatabase<Record<string, never>>,
   args: {
     readonly orgId: string;
@@ -129,20 +129,21 @@ async function executeNewAppNoSecretProviderWrite(
   },
 ): Promise<{
   readonly created: boolean;
-  readonly provider: NewAppNoSecretProviderRow;
+  readonly provider: PreviousReleaseAppNoSecretProviderRow;
 }> {
   const canonicalType = modelProviderWriteTypeSchema.parse(args.requestType);
   assert.equal(canonicalType, "built-in");
-  const result = await upsertBuiltInNoSecretModelProviderIdentity(
-    db,
-    {
-      orgId: args.orgId,
-      selectedModel: args.selectedModel,
-      updatedAt: new Date("2026-08-27T00:00:00.000Z"),
-      proposedId: args.proposedId,
-    },
-    new AbortController().signal,
-  );
+  const result =
+    await upsertPreviousReleaseBuiltInNoSecretModelProviderIdentity(
+      db,
+      {
+        orgId: args.orgId,
+        selectedModel: args.selectedModel,
+        updatedAt: new Date("2026-08-27T00:00:00.000Z"),
+        proposedId: args.proposedId,
+      },
+      new AbortController().signal,
+    );
   return {
     created: result.created,
     provider: {
@@ -289,7 +290,7 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
       await client.query("SET lock_timeout = '100ms'");
       try {
         await assert.rejects(
-          executeNewAppNoSecretProviderWrite(db, {
+          executePreviousReleaseAppNoSecretProviderWrite(db, {
             orgId: "provider-migration-org-prebridge-upsert",
             proposedId: ids.preBridgeLockProbeProvider,
             requestType: "built-in",
@@ -327,12 +328,13 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
       },
     ]);
 
-    const preBridgeUpsert = await executeNewAppNoSecretProviderWrite(db, {
-      orgId: "provider-migration-org-prebridge-upsert",
-      proposedId: ids.preBridgeProposedProvider,
-      requestType: "built-in",
-      selectedModel: "gpt-5.6-terra",
-    });
+    const preBridgeUpsert =
+      await executePreviousReleaseAppNoSecretProviderWrite(db, {
+        orgId: "provider-migration-org-prebridge-upsert",
+        proposedId: ids.preBridgeProposedProvider,
+        requestType: "built-in",
+        selectedModel: "gpt-5.6-terra",
+      });
     assert.deepEqual(preBridgeUpsert, {
       created: false,
       provider: {
@@ -341,15 +343,13 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
         type: "built-in",
       },
     });
-    const repeatedPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
-      db,
-      {
+    const repeatedPreBridgeUpsert =
+      await executePreviousReleaseAppNoSecretProviderWrite(db, {
         orgId: "provider-migration-org-prebridge-upsert",
         proposedId: ids.preBridgeSecondProposedProvider,
         requestType: "built-in",
         selectedModel: "gpt-5.6-luna",
-      },
-    );
+      });
     assert.deepEqual(repeatedPreBridgeUpsert, {
       created: false,
       provider: {
@@ -358,15 +358,13 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
         type: "built-in",
       },
     });
-    const createdPreBridgeUpsert = await executeNewAppNoSecretProviderWrite(
-      db,
-      {
+    const createdPreBridgeUpsert =
+      await executePreviousReleaseAppNoSecretProviderWrite(db, {
         orgId: "provider-migration-org-prebridge-new",
         proposedId: ids.preBridgeNewProvider,
         requestType: "built-in",
         selectedModel: "gpt-5.6-luna",
-      },
-    );
+      });
     assert.deepEqual(createdPreBridgeUpsert, {
       created: true,
       provider: {
@@ -434,12 +432,13 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
       assert.deepEqual(afterRows, expectedCanonicalRows(beforeRows));
     }
 
-    const postBridgeUpsert = await executeNewAppNoSecretProviderWrite(db, {
-      orgId: "provider-migration-org-prebridge-upsert",
-      proposedId: ids.postBridgeProposedProvider,
-      requestType: "built-in",
-      selectedModel: "gpt-5.6-sol",
-    });
+    const postBridgeUpsert =
+      await executePreviousReleaseAppNoSecretProviderWrite(db, {
+        orgId: "provider-migration-org-prebridge-upsert",
+        proposedId: ids.postBridgeProposedProvider,
+        requestType: "built-in",
+        selectedModel: "gpt-5.6-sol",
+      });
     assert.deepEqual(postBridgeUpsert, {
       created: false,
       provider: {
@@ -475,16 +474,16 @@ async function validateBridgeAndBackfill(baseUrl: string): Promise<void> {
     }
 
     console.log(
-      "   ✅ new-app/before-bridge built-in SQL is accepted by the expanded schema",
+      "   ✅ previous-release app/before-bridge built-in SQL is accepted by the expanded schema",
     );
     console.log(
-      "   ✅ canonical and repeated app upserts keep one pre-bridge row, its original id, and accurate created state",
+      "   ✅ previous-release canonical and repeated upserts keep one pre-bridge row, its original id, and accurate created state",
     );
     console.log(
-      "   ✅ canonical app writes take the built-in provider-state advisory lock",
+      "   ✅ previous-release app writes take the built-in provider-state advisory lock",
     );
     console.log(
-      "   ✅ the same new-app SQL remains one-row/id-preserving with the database bridge installed",
+      "   ✅ the same previous-release app SQL remains one-row/id-preserving with the database bridge installed",
     );
     console.log(
       "   ✅ 5,001-row input crosses the 5,000-row bounded backfill boundary",
@@ -536,7 +535,7 @@ async function validateCollisionAndDriftFailures(
     `);
 
     await assert.rejects(
-      executeNewAppNoSecretProviderWrite(db, {
+      executePreviousReleaseAppNoSecretProviderWrite(db, {
         orgId: "provider-collision-org",
         proposedId: "00000000-0000-4000-8000-000000299143",
         requestType: "built-in",
@@ -600,7 +599,7 @@ async function validateCollisionAndDriftFailures(
     );
 
     console.log(
-      "   ✅ app and migration alias-pair collisions abort without merging, deleting, or changing either row",
+      "   ✅ previous-release app and migration alias-pair collisions abort without changing either row",
     );
     console.log(
       "   ✅ provider-identity unique-index drift aborts before any backfill\n",
@@ -615,7 +614,7 @@ export async function validateBuiltInProviderDiscriminatorMigration(
   baseUrl: string,
 ): Promise<void> {
   console.log(
-    "=== Phase 1.31: Validate built-in provider writer/backfill boundary ===\n",
+    "=== Phase 1.31: Validate historical built-in provider writer/backfill boundary ===\n",
   );
   await validateBridgeAndBackfill(baseUrl);
   await validateCollisionAndDriftFailures(baseUrl);

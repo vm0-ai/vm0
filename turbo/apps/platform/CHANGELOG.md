@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.824.0](https://github.com/vm0-ai/vm0/compare/app-v0.823.0...app-v0.824.0) (2026-09-02)
+
+
+### Features
+
+* **chat:** persist structured image annotations ([#31046](https://github.com/vm0-ai/vm0/issues/31046)) ([8e4b621](https://github.com/vm0-ai/vm0/commit/8e4b62131457161a5c9ceb7ec4003339a4b58eb5))
+* gate morning brief behind an independent switch ([#31110](https://github.com/vm0-ai/vm0/issues/31110)) ([2b69ef6](https://github.com/vm0-ai/vm0/commit/2b69ef6331471d09f88cae0548e6dd4ba15e4283))
+* graduate custom connector no-auth ([#31075](https://github.com/vm0-ai/vm0/issues/31075)) ([5756edf](https://github.com/vm0-ai/vm0/commit/5756edf51498b88c6f06b0a43d02c7e632d6238c))
+* **platform:** generate ios pwa startup images ([#30926](https://github.com/vm0-ai/vm0/issues/30926)) ([66d375b](https://github.com/vm0-ai/vm0/commit/66d375b2921b40761e9334eae46e8a5993f9b387))
+* **platform:** preview docx and pptx files ([#30937](https://github.com/vm0-ai/vm0/issues/30937)) ([70e4b60](https://github.com/vm0-ai/vm0/commit/70e4b60bc195f23592c952cff1e15472eed227a4))
+* **platform:** simplify the intro video source step around slides and desktop recording ([#31093](https://github.com/vm0-ai/vm0/issues/31093)) ([edd444e](https://github.com/vm0-ai/vm0/commit/edd444e6fb04a295f637d8580c2a6181b275d338))
+* **ui:** gate the geist typeface behind a feature switch ([#31050](https://github.com/vm0-ai/vm0/issues/31050)) ([6a4c38d](https://github.com/vm0-ai/vm0/commit/6a4c38dd1d1dbb86347541d203a3261405c0dcf3))
+
+
+### Bug Fixes
+
+* **api:** use branded custom connector OAuth callbacks ([#31028](https://github.com/vm0-ai/vm0/issues/31028)) ([4546240](https://github.com/vm0-ai/vm0/commit/4546240924ce7db453f0fff19054da81eb09a8e0))
+* **platform:** inject prod clerk key into local env template ([#31101](https://github.com/vm0-ai/vm0/issues/31101)) ([34c5a43](https://github.com/vm0-ai/vm0/commit/34c5a4357d5f4130a4713e3bd5e3793fb027c755))
+* **platform:** replace Feishu review guide icon ([#31019](https://github.com/vm0-ai/vm0/issues/31019)) ([b99140a](https://github.com/vm0-ai/vm0/commit/b99140a76559e1750ca0e62e9baf802b2e5259f7))
+
+
+### Refactoring
+
+* rename internal feature switch keys ([#30955](https://github.com/vm0-ai/vm0/issues/30955)) ([b0670b4](https://github.com/vm0-ai/vm0/commit/b0670b464a105432aaa08b3bd340a07a5b32654e))
+
+
+### Performance Improvements
+
+* **platform:** unmount inactive sidebar layout ([#30988](https://github.com/vm0-ai/vm0/issues/30988)) ([45f384a](https://github.com/vm0-ai/vm0/commit/45f384a543a1f12e161e8fcc042c4a2cc3840adf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.392.0
+    * @okouai/connectors bumped to 3.3.0
+    * @okouai/core bumped to 8.610.0
+    * @okouai/ui bumped to 1.1.0
+
 ## [0.823.0](https://github.com/vm0-ai/vm0/compare/app-v0.822.4...app-v0.823.0) (2026-09-02)
 
 

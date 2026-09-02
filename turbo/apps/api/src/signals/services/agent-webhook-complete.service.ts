@@ -6,6 +6,7 @@ import {
   type RunResult,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
+import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -125,6 +126,7 @@ interface PreparedCompletion {
   readonly status: TerminalStatus;
   readonly result?: RunResult;
   readonly error?: string;
+  readonly failureReason?: RunFailureReason;
   readonly failureKind?: "missing-checkpoint" | "reported";
 }
 
@@ -243,6 +245,7 @@ async function prepareCompletion(
     return {
       status: "failed",
       error: input.body.error?.trim() || "Run failed without error message",
+      failureReason: input.body.failureReason,
       failureKind: "reported",
     };
   }
@@ -372,6 +375,7 @@ async function applyTerminalCompletion(
       status: prepared.status,
       completedAt: nowDate(),
       ...(prepared.error !== undefined ? { error: prepared.error } : {}),
+      failureReason: prepared.failureReason ?? null,
       ...(prepared.result !== undefined ? { result: prepared.result } : {}),
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,

@@ -9,25 +9,17 @@ import { testContext } from "./test-context";
 const c = initContract();
 const REQUEST_ORIGIN = "http://api.test";
 
-// `/api/slack/oauth/install` is a `MIGRATED_BRANDED_PATHS` key in
-// `route-entry.ts`, so a contract declaring it is registered on both branded
-// forms as well. The `__test` paths are named by no table, so they stand in for
-// the branded contract paths #28701 stopped deriving a legacy form for and
-// #30667 made unconditional.
+// The `__test` paths are named by no table, so they stand in for the branded
+// contract paths #28701 stopped deriving a legacy form for and #30667 made
+// unconditional.
 //
-// #30668 moved this subject off `/api/webhooks/slack/events`, whose row it
-// retired once the Slack app console stopped posting to the branded forms. The
-// install row is the opposite case and the reason it is the subject now: its
-// branded URL was handed to people rather than emitted per request, so no
-// deploy can drain it and the row outlives the ones a console held.
+// A third contract used to sit alongside them, declaring a branded
+// compatibility key so that a row's branded forms were driven through the app
+// factory too. #30668 made that subject `/api/slack/oauth/install`, whose
+// branded URL was handed to people rather than emitted per request; #31088
+// removed that row along with the rest of the table, and #31090 removed the
+// table, so no key is left for such a contract to declare.
 const namespaceContract = c.router({
-  migrated: {
-    method: "GET",
-    path: "/api/slack/oauth/install",
-    responses: {
-      200: z.object({ served: z.literal(true) }),
-    },
-  },
   unlisted: {
     method: "GET",
     path: "/api/okou/__test/namespace-alias",
@@ -50,7 +42,6 @@ const served$ = computed(() => {
 });
 
 const TEST_ROUTES: readonly RouteEntry[] = [
-  { route: namespaceContract.migrated, handler: served$ },
   { route: namespaceContract.unlisted, handler: served$ },
   { route: namespaceContract.unlistedById, handler: served$ },
 ];
@@ -65,25 +56,6 @@ describe("legacy API namespace paths", () => {
   function createTestApp() {
     return createAppWithRoutes({ signal: context.signal, routes: TEST_ROUTES });
   }
-
-  it("serves a migrated route's declared path and both branded paths", async () => {
-    const app = createTestApp();
-
-    const legacy = await app.request(
-      `${REQUEST_ORIGIN}/api/zero/slack/oauth/install`,
-    );
-    const canonical = await app.request(
-      `${REQUEST_ORIGIN}/api/okou/slack/oauth/install`,
-    );
-    const declared = await app.request(
-      `${REQUEST_ORIGIN}/api/slack/oauth/install`,
-    );
-
-    expect([legacy.status, canonical.status, declared.status]).toStrictEqual([
-      200, 200, 200,
-    ]);
-    await expect(legacy.json()).resolves.toStrictEqual({ served: true });
-  });
 
   // Before #28701 this path was served by the blanket expansion and reported
   // once per app instance. #28701 narrowed it to a table of six, and #30667

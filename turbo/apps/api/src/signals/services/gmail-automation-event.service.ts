@@ -1015,11 +1015,6 @@ async function reconcileActiveGmailStates(
     signal,
   );
   if (!access) {
-    log.warn("Workflow watch lifecycle reconciliation failed", {
-      provider: "gmail",
-      action: "renew",
-      result: "access_unavailable",
-    });
     return { kind: "failed" };
   }
   const watch = await watchGmailMailbox(
@@ -1102,11 +1097,6 @@ async function stopInactiveGmailStates(
   );
   if (!access) {
     await markGmailStatesForRetry(args.db, args.states);
-    log.warn("Workflow watch lifecycle reconciliation failed", {
-      provider: "gmail",
-      action: "stop",
-      result: "access_unavailable",
-    });
     return { kind: "failed" };
   }
 
@@ -2661,10 +2651,6 @@ async function dispatchGmailWatchState(
   );
   signal.throwIfAborted();
   if (access.kind !== "ok") {
-    log.warn("Gmail event skipped because connector access is unavailable", {
-      watchStateId: args.state.id,
-      message: access.message,
-    });
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
