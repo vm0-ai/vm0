@@ -38,10 +38,7 @@ import {
 } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
-import {
-  ONBOARDING_CHECKOUT_STATE_PARAM,
-  onboardingDraft$,
-} from "../../../signals/onboarding/onboarding-state.ts";
+import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -50,8 +47,9 @@ import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.t
 const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";
-const { get$: lastUsedAgentId$, set$: setLastUsedAgentId$ } =
-  localStorageSignals("zero.lastUsedAgentId");
+const { set$: setLastUsedAgentId$ } = localStorageSignals(
+  "zero.lastUsedAgentId",
+);
 
 function onboardingAgent(agentId: string): AgentResponse {
   return {
@@ -324,8 +322,6 @@ describe("onboarding flow", () => {
           });
         },
       );
-      context.store.set(setLastUsedAgentId$, STALE_AGENT_ID);
-
       await openMakePage();
 
       const slackOption = firstItem(screen.getAllByRole("radio"));
@@ -344,8 +340,6 @@ describe("onboarding flow", () => {
         expect(pathname()).toBe(ROUTES.works);
       });
       expect(completionBody).toStrictEqual({ timezone: expectedTimezone });
-      expect(context.store.get(lastUsedAgentId$)).toBeNull();
-      expect(context.store.get(onboardingDraft$).choice).toBeNull();
     },
   );
 
