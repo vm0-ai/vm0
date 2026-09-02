@@ -1486,7 +1486,9 @@ jobs:
 
   # Keep the standalone production Worker warm on canary domains while Pages
   # remains the live production path. This shadow deployment is deliberately
-  # non-blocking until the formal App routes move to the Worker.
+  # non-blocking until the formal App routes move to the Worker. Remove this
+  # Pages/Worker split under vm0-ai/vm0#31133 after canary browser verification,
+  # App hostname cutover, and retirement of Pages as a rollback target.
   promote-app-worker-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-

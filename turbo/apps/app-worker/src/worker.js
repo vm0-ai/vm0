@@ -428,6 +428,14 @@ function fetchShellAsset(request, env, embeddedShell) {
   if (embeddedResponse) {
     return Promise.resolve(embeddedResponse);
   }
+
+  // Frontend provider migration: Pages still supplies the shell through
+  // env.ASSETS while standalone Worker deployments embed it. Remove this
+  // compatibility branch in vm0-ai/vm0#31133 after both Worker canaries pass
+  // browser verification, the App hostnames move to the Worker, and Pages is
+  // no longer retained as a rollback target. Already-open App clients (up to
+  // about two days) keep using the Worker/R2 asset path and do not extend this
+  // gate.
   if (!env.ASSETS) {
     return Promise.resolve(gatewayResponse(503));
   }
