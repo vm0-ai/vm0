@@ -4,6 +4,7 @@ import type {
   GithubInstallationResponse,
 } from "@okouai/api-contracts/contracts/integrations-github";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
 import { connectors } from "@okouai/db/schema/connector";
 import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { githubUserLinks } from "@okouai/db/schema/github-user-link";
@@ -15,7 +16,8 @@ import { publicBrand$, request$ } from "../context/hono";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
-import { getOAuthWebOrigin } from "../../lib/oauth-origin";
+import { OFFICIAL_GITHUB_PUBLIC_BRAND } from "../../lib/github-official-app";
+import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 import {
   buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
@@ -30,13 +32,8 @@ function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
   return { status, body: { error: { message, code } } };
 }
 
-function githubConnectStartUrl(
-  origin: string,
-  publicBrand: PublicBrand,
-): string {
-  const url = new URL("/api/github/oauth/connect", origin);
-  url.searchParams.set("publicBrand", publicBrand);
-  return url.toString();
+function githubConnectStartUrl(origin: string): string {
+  return new URL("/api/github/oauth/connect", origin).toString();
 }
 
 async function githubInstallUrl(
@@ -44,7 +41,8 @@ async function githubInstallUrl(
     readonly db: ReadonlyDb;
     readonly userId: string;
     readonly orgId: string;
-    readonly origin: string;
+    readonly callbackOrigin: string;
+    readonly providerCallbackOrigin: string;
     readonly publicBrand: PublicBrand;
   },
   signal: AbortSignal,
@@ -62,7 +60,8 @@ async function githubInstallUrl(
     userId: args.userId,
     orgId: args.orgId,
     composeId: composeId ?? undefined,
-    origin: args.origin,
+    callbackOrigin: args.callbackOrigin,
+    providerCallbackOrigin: args.providerCallbackOrigin,
     publicBrand: args.publicBrand,
     secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
   });
@@ -237,7 +236,12 @@ export const getGithubInstallation$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const publicBrand = get(publicBrand$);
-    const origin = getOAuthWebOrigin(get(request$).raw);
+    const apiOrigin = getOAuthApiOrigin(get(request$).raw);
+    const callbackOrigin = apiUrlForPublicBrand(apiOrigin, publicBrand);
+    const providerCallbackOrigin = apiUrlForPublicBrand(
+      apiOrigin,
+      OFFICIAL_GITHUB_PUBLIC_BRAND,
+    );
     const db = set(writeDb$);
     const installation = await loadOrgGithubInstallation(db, auth.orgId);
     signal.throwIfAborted();
@@ -249,7 +253,8 @@ export const getGithubInstallation$ = command(
               db,
               userId: auth.userId,
               orgId: auth.orgId,
-              origin,
+              callbackOrigin,
+              providerCallbackOrigin,
               publicBrand,
             },
             signal,
@@ -302,15 +307,15 @@ export const getGithubInstallation$ = command(
               db,
               userId: auth.userId,
               orgId: auth.orgId,
-              origin,
+              origin: callbackOrigin,
               publicBrand,
               authMethodId: resolvedMethod.authMethodId,
               method: resolvedMethod.method,
               readEnv: optionalEnv,
             },
             signal,
-          )) ?? githubConnectStartUrl(origin, publicBrand))
-        : githubConnectStartUrl(origin, publicBrand);
+          )) ?? githubConnectStartUrl(callbackOrigin))
+        : githubConnectStartUrl(callbackOrigin);
     signal.throwIfAborted();
 
     const body: GithubInstallationResponse = {

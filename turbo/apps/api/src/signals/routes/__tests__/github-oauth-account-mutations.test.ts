@@ -4,6 +4,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
@@ -57,6 +58,63 @@ async function connectGithubAdd(
 }
 
 describe("GitHub OAuth account mutation selection", () => {
+  it("persists the setup brand for state-less GitHub App updates", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    await installApiTestConnectorCatalog();
+
+    const okouActor = bdd.user();
+    const okouAgent = await bdd.createAgent(okouActor, {
+      displayName: `Okou GitHub setup ${randomUUID()}`,
+    });
+    const okouInstallation = await github.installGithubApp(
+      okouActor,
+      okouAgent.agentId,
+      { publicBrand: "okou" },
+    );
+    const okouUpdate = await github.requestSetupCallback(
+      new URLSearchParams({
+        installation_id: okouInstallation.remoteInstallationId,
+        setup_action: "update",
+      }).toString(),
+      { origin: "https://api.okou.ai" },
+    );
+    expect(okouUpdate.status).toBe(307);
+    expect(new URL(okouUpdate.location ?? "").origin).toBe(
+      "https://app.okou.ai",
+    );
+
+    const vm0Actor = bdd.user();
+    const vm0Agent = await bdd.createAgent(vm0Actor, {
+      displayName: `VM0 GitHub setup ${randomUUID()}`,
+    });
+    const vm0Installation = await github.installGithubApp(
+      vm0Actor,
+      vm0Agent.agentId,
+      { publicBrand: "vm0" },
+    );
+    const vm0UpdateQuery = new URLSearchParams({
+      installation_id: vm0Installation.remoteInstallationId,
+      setup_action: "update",
+    }).toString();
+    const vm0Ingress = await github.requestSetupCallback(vm0UpdateQuery, {
+      origin: "https://api.okou.ai",
+    });
+    expect(vm0Ingress.status).toBe(307);
+    const vm0Replay = new URL(vm0Ingress.location ?? "");
+    expect(vm0Replay.origin).toBe("https://api.vm0.ai");
+    expect(vm0Replay.pathname).toBe("/api/github/app/setup/callback");
+    expect(vm0Replay.search.slice(1)).toBe(vm0UpdateQuery);
+
+    const vm0Update = await github.requestSetupCallback(
+      vm0Replay.search.slice(1),
+      { origin: vm0Replay.origin },
+    );
+    expect(vm0Update.status).toBe(307);
+    expect(new URL(vm0Update.location ?? "").origin).toBe("https://app.vm0.ai");
+  });
+
   it("adds a new identity and refreshes the exact existing sibling", async () => {
     await installApiTestConnectorCatalog();
     const actor = bdd.user();
