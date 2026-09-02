@@ -1366,7 +1366,23 @@ private func responseObject(for request: [String: Any]) -> [String: Any] {
     return response
 }
 
+/// Connects this process to the window server before any request is served.
+///
+/// CoreGraphics makes that connection lazily, on whichever thread first asks
+/// for it, and on current macOS it asserts (`CGS_REQUIRE_INIT`) rather than
+/// connecting when that first ask comes from a background thread. Every
+/// request here is served on one, so the picker's window enumeration and
+/// previews could abort the whole helper mid-session. The connection is made
+/// here, on the main thread, the way a non-AppKit process is expected to. The
+/// activation policy keeps the helper out of the Dock and off the app switcher.
+private func connectToWindowServer() {
+    let application = NSApplication.shared
+    application.setActivationPolicy(.prohibited)
+    _ = CGMainDisplayID()
+}
+
 private func runStdioSession() {
+    connectToWindowServer()
     let mainRunLoop = CFRunLoopGetCurrent()
     DispatchQueue.global(qos: .userInitiated).async {
         while let line = readLine(strippingNewline: true) {
