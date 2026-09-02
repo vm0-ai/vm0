@@ -69,6 +69,7 @@ jobs:
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
+      sandbox-fc-changed: ${{ steps.detect.outputs.sandbox-fc-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       vsock-test-changed: ${{ steps.detect.outputs.vsock-test-changed }}
       crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
@@ -111,6 +112,7 @@ jobs:
           check_crate ably-subscriber
           check_crate api-contracts
           check_crate runner
+          check_crate sandbox-fc
           check_crate nbd-cow
           check_crate vsock-test
           check_crate xtask
@@ -652,6 +654,7 @@ jobs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
       default-rootfs-hash: ${{ steps.manifest.outputs.selected-rootfs-hash }}
       default-snapshot-hash: ${{ steps.manifest.outputs.selected-snapshot-hash }}
+      target: ${{ steps.selected-host.outputs.target }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -913,6 +916,73 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-balloon-pressure.sh
 
+  host-cpu-fairness-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260825
+    needs:
+      - detect
+      - runner-build
+      - runner-behavior-lane-a
+      - runner-behavior-lane-b
+      - runner-behavior-lane-c
+      - runner-behavior-lane-d
+    if: |
+      !cancelled() &&
+      needs.runner-build.result == 'success' &&
+      needs.runner-behavior-lane-a.result == 'success' &&
+      needs.runner-behavior-lane-b.result == 'success' &&
+      needs.runner-behavior-lane-c.result == 'success' &&
+      needs.runner-behavior-lane-d.result == 'success' && (
+        needs.detect.outputs.sandbox-fc-changed == 'true' ||
+        needs.detect.outputs.ci-changed == 'true'
+      )
+    timeout-minutes: 15
+    env:
+      TARGET_TRIPLE: ${{ needs.runner-build.outputs.target }}
+      METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+      HOST: ${{ needs.runner-build.outputs.host }}
+      JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+      DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: ${{ needs.runner-build.outputs.target }}-host-cpu-fairness
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile host CPU fairness test
+        run: |
+          cd crates
+          cargo test --no-run --release --target "$TARGET_TRIPLE" \
+            -p sandbox-fc --test host_cpu_fairness
+          TEST_BIN=$(find "target/$TARGET_TRIPLE/release/deps" \
+            -name 'host_cpu_fairness-*' -executable -type f | head -1)
+          if [ -z "$TEST_BIN" ]; then
+            echo "::error::host CPU fairness test binary not found"
+            exit 1
+          fi
+          echo "TEST_BIN=crates/$TEST_BIN" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ env.METAL_USER }}
+          ssh-hosts: ${{ env.HOST }}
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Verify weighted host CPU service with real Firecracker Guests
+        run: .github/scripts/runner-behavior-host-cpu-fairness.sh
+
+      - name: Report peak memory
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/report-memory-peak
+
   ci-gate-crates:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -931,6 +1001,7 @@ jobs:
       - runner-behavior-lane-b
       - runner-behavior-lane-c
       - runner-behavior-lane-d
+      - host-cpu-fairness-test
       - nbd-cow-test
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
@@ -981,6 +1052,7 @@ jobs:
           check_result "runner-behavior-lane-b" "${{ needs.runner-behavior-lane-b.result }}" "true"
           check_result "runner-behavior-lane-c" "${{ needs.runner-behavior-lane-c.result }}" "true"
           check_result "runner-behavior-lane-d" "${{ needs.runner-behavior-lane-d.result }}" "true"
+          check_result "host-cpu-fairness-test" "${{ needs.host-cpu-fairness-test.result }}" "true"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
 
           echo "::endgroup::"
