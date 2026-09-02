@@ -10,7 +10,6 @@ interface ApiClientRuntimeBase {
 
 interface ApiClientRuntimeWithClerk extends ApiClientRuntimeBase {
   readonly clerk: Promise<ClerkTokenSource>;
-  readonly environment: "app" | "worker";
 }
 
 export type ApiClientRuntime = ApiClientRuntimeWithClerk;

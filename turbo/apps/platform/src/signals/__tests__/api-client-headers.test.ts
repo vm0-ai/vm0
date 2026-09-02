@@ -79,7 +79,6 @@ function setApiClientRuntimeForTest(): void {
   const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
   context.store.set(setApiClientRuntime$, {
     clerk: context.store.get(clerk$),
-    environment: "app",
     apiBaseUrl,
     oauthApiBaseUrl: resolveOAuthApiBase(),
     ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
@@ -205,7 +204,6 @@ describe("api client headers", () => {
     mockedClerk.sessionGetToken.mockResolvedValue("worker-token");
     context.store.set(setApiClientRuntime$, {
       clerk: Promise.resolve(mockedClerk),
-      environment: "worker",
       apiBaseUrl: resolveApiBaseForTarget("api"),
       oauthApiBaseUrl: resolveOAuthApiBase(),
     });

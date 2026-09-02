@@ -11,7 +11,6 @@ import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
 import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
 import type { ClerkTokenSource } from "../signals/clerk-token.ts";
-import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
 import {
   computerUseHosts$,
   reloadComputerUseHosts$,
@@ -30,7 +29,10 @@ import {
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
 import { settle } from "../signals/utils.ts";
 import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
-import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
+import {
+  chatThreadIndicators$,
+  reloadChatThreadIndicators$,
+} from "../signals/chat-page/chat-thread-indicators.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import {
   sharedDatabaseIdentitySchema,
@@ -129,7 +131,6 @@ export const initializeSharedDatabaseWorker$ = command(
     set(setRootSignal$, signal);
     set(setApiClientRuntime$, {
       clerk: options.clerk,
-      environment: "worker",
       apiBaseUrl: options.apiBaseUrl,
       oauthApiBaseUrl: options.oauthApiBaseUrl,
       ...(options.vercelProtectionBypass
@@ -242,7 +243,7 @@ export const handleSharedDatabaseRealtimeMessage$ = command(
 const reloadWorkerComputed$ = command(
   ({ set }, computedKey: ComputedKey): void => {
     if (computedKey === "chat-thread-indicators") {
-      set(reloadChatIndicators$);
+      set(reloadChatThreadIndicators$);
       return;
     }
     if (computedKey === "computer-use-hosts") {

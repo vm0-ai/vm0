@@ -11,7 +11,6 @@ import { IN_VITEST } from "../env.ts";
 import { createAblyRealtime, type AblyRealtime } from "../lib/ably-realtime.ts";
 import { now } from "../lib/time.ts";
 import { apiClient$ } from "./api-client.ts";
-import { apiClientRuntime$ } from "./api-client-runtime.ts";
 import { runtimeAuthenticatedIdentity$ } from "./auth-context.ts";
 import {
   requestForegroundCatchUp$,
@@ -26,9 +25,7 @@ import {
 } from "./connection-diagnostics.ts";
 import {
   createDeferredPromise,
-  onDomEventFn,
   onRejection,
-  resetSignal,
   settle,
   setLoop,
   throwIfAbort,
@@ -41,18 +38,6 @@ const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
   1000, 2000, 5000, 10_000, 30_000,
 ] as const;
 const MAX_TRANSIENT_RETRIES = 3;
-const REALTIME_BACKGROUND_CLOSE_GRACE_MS = 15_000;
-const realtimeBackgroundCloseDelayMs = IN_VITEST
-  ? 0
-  : REALTIME_BACKGROUND_CLOSE_GRACE_MS;
-
-function isDocumentVisible(): boolean {
-  return (
-    typeof document === "undefined" ||
-    globalThis.document.visibilityState === "visible"
-  );
-}
-
 export type RealtimeConnectionState = ConnectionStateChange["current"];
 type RealtimeChannelState = ChannelStateChange["current"];
 
@@ -1012,23 +997,13 @@ function connectedRealtimeChannels(
   };
 }
 
-function publishRealtimeDiagnostic(
-  enabled: boolean,
-  event: Parameters<typeof publishConnectionDiagnostic>[0],
-): void {
-  if (enabled) {
-    publishConnectionDiagnostic(event);
-  }
-}
-
 function observeRealtimeChannels(
   channels: ConnectedRealtimeChannels,
   onStateChange: () => void,
-  diagnosticsEnabled: boolean,
 ): () => void {
   const handleStateChange = (stateChange: ChannelStateChange): void => {
     onStateChange();
-    publishRealtimeDiagnostic(diagnosticsEnabled, {
+    publishConnectionDiagnostic({
       details: channelStateDetails(stateChange),
       event: "realtime.channel",
       phase: "instant",
@@ -1057,18 +1032,17 @@ const connectRealtimeClient$ = command(
   ): Promise<ConnectedRealtimeClient> => {
     const identity = await get(runtimeAuthenticatedIdentity$);
     signal.throwIfAborted();
-    const diagnosticsEnabled = get(apiClientRuntime$).environment === "app";
     const createClient = get(apiClient$);
     const client = createClient(platformRealtimeTokenContract);
     const ably = createAblyRealtime({
       // Ably TokenRequest is single-use — see lib/ably-auth.ts for why
       // every invocation must fetch a freshly-signed request.
-      authCallback: createAblyAuthCallback(client, signal, diagnosticsEnabled),
+      authCallback: createAblyAuthCallback(client, signal),
       autoConnect: true,
       disconnectedRetryTimeout: 5000,
       suspendedRetryTimeout: 15_000,
     });
-    publishRealtimeDiagnostic(diagnosticsEnabled, {
+    publishConnectionDiagnostic({
       details: { connectionState: ably.connection.state },
       event: "realtime.client",
       phase: "instant",
@@ -1085,12 +1059,12 @@ const connectRealtimeClient$ = command(
         return revision + 1;
       });
       set(notifyRealtimeConnectionState$, update);
-      publishRealtimeDiagnostic(diagnosticsEnabled, {
+      publishConnectionDiagnostic({
         details: connectionStateDetails(stateChange),
         event: "realtime.connection",
         phase: "instant",
       });
-      if (diagnosticsEnabled && update.reconnected) {
+      if (update.reconnected) {
         L.debug("reconnected, requesting foreground catch-up");
         set(requestForegroundCatchUp$);
       }
@@ -1127,7 +1101,7 @@ const connectRealtimeClient$ = command(
 
     const initialConnectionSpanId = createConnectionDiagnosticSpanId();
     const initialConnectionStartedAtMs = now();
-    publishRealtimeDiagnostic(diagnosticsEnabled, {
+    publishConnectionDiagnostic({
       details: { connectionState: ably.connection.state },
       event: "realtime.initial-connection",
       phase: "start",
@@ -1135,7 +1109,7 @@ const connectRealtimeClient$ = command(
     });
     const initialConnectionResult = await settle(deferred.promise, signal);
     if (!initialConnectionResult.ok) {
-      publishRealtimeDiagnostic(diagnosticsEnabled, {
+      publishConnectionDiagnostic({
         details: {
           ...connectionDiagnosticError(initialConnectionResult.error),
           connectionState: ably.connection.state,
@@ -1148,7 +1122,7 @@ const connectRealtimeClient$ = command(
       closeConnection();
       throw initialConnectionResult.error;
     }
-    publishRealtimeDiagnostic(diagnosticsEnabled, {
+    publishConnectionDiagnostic({
       details: { connectionState: ably.connection.state },
       durationMs: now() - initialConnectionStartedAtMs,
       event: "realtime.initial-connection",
@@ -1162,16 +1136,12 @@ const connectRealtimeClient$ = command(
       identity.userId,
       identity.orgId,
     );
-    const stopObservingChannels = observeRealtimeChannels(
-      channels,
-      () => {
-        set(realtimeStateRevision$, (revision) => {
-          return revision + 1;
-        });
-      },
-      diagnosticsEnabled,
-    );
-    publishRealtimeDiagnostic(diagnosticsEnabled, {
+    const stopObservingChannels = observeRealtimeChannels(channels, () => {
+      set(realtimeStateRevision$, (revision) => {
+        return revision + 1;
+      });
+    });
+    publishConnectionDiagnostic({
       details: { channelState: channels.user.state },
       event: "realtime.channel",
       phase: "instant",
@@ -1187,65 +1157,8 @@ const connectRealtimeClient$ = command(
   },
 );
 
-const resetRealtimeCloseSignal$ = resetSignal();
-const realtimeCloseDue$ = state(false);
-
-const cancelRealtimeClose$ = command(({ set }, signal: AbortSignal): void => {
-  set(resetRealtimeCloseSignal$, signal);
-  set(realtimeCloseDue$, false);
-});
-
-const closeRealtimeWhileHidden$ = command(({ get, set }) => {
-  if (isDocumentVisible()) {
-    return;
-  }
-  const session = get(internalRealtimeSession$);
-  if (!session) {
-    return;
-  }
-  L.debug("page hidden, closing realtime connection");
-  session.channels.credential.suspend();
-  session.channels.user.suspend();
-  session.channels.org.suspend();
-  session.close();
-  set(realtimeStateRevision$, (revision) => {
-    return revision + 1;
-  });
-});
-
-const updateRealtimeVisibility$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (isDocumentVisible()) {
-      set(cancelRealtimeClose$, signal);
-      return;
-    }
-
-    const session = get(internalRealtimeSession$);
-    if (!session) {
-      return;
-    }
-    L.debug("page hidden, pausing realtime subscriptions");
-    session.channels.credential.pauseSubscriptions();
-    session.channels.user.pauseSubscriptions();
-    session.channels.org.pauseSubscriptions();
-    set(realtimeCloseDue$, false);
-    const closeSignal = set(resetRealtimeCloseSignal$, signal);
-    await delay(realtimeBackgroundCloseDelayMs, { signal: closeSignal });
-    signal.throwIfAborted();
-    closeSignal.throwIfAborted();
-    if (isDocumentVisible()) {
-      return;
-    }
-    set(realtimeCloseDue$, true);
-    set(closeRealtimeWhileHidden$);
-  },
-);
-
 const foregroundRealtimeCatchUp$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    if (isDocumentVisible()) {
-      set(cancelRealtimeClose$, signal);
-    }
     const session = get(internalRealtimeSession$);
     const subscriberPokeTarget = get(subscriberPokeTarget$);
     if (!session) {
@@ -1346,16 +1259,6 @@ const foregroundRealtimeCatchUp$ = command(
       });
     }
 
-    if (!isDocumentVisible()) {
-      session.channels.credential.pauseSubscriptions();
-      session.channels.user.pauseSubscriptions();
-      session.channels.org.pauseSubscriptions();
-      if (get(realtimeCloseDue$)) {
-        set(closeRealtimeWhileHidden$);
-      }
-      return;
-    }
-
     await Promise.all([
       session.channels.credential.resumeSubscriptions(),
       session.channels.user.resumeSubscriptions(),
@@ -1375,7 +1278,6 @@ const foregroundRealtimeCatchUp$ = command(
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const isAppRuntime = get(apiClientRuntime$).environment === "app";
     const rejectPendingSubscriptions = (reason?: unknown) => {
       const pendingSubscriptions = get(pendingAblySubscriptions$);
       if (pendingSubscriptions.length === 0) {
@@ -1418,17 +1320,6 @@ export const setupRealtime$ = command(
       reconnected: false,
     });
     set(subscribeForegroundCatchUp$, foregroundRealtimeCatchUp$, signal);
-    if (isAppRuntime && typeof document !== "undefined") {
-      const handleVisibilityChange = onDomEventFn(async () => {
-        await set(updateRealtimeVisibility$, signal);
-      });
-      globalThis.document.addEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-        { signal },
-      );
-      handleVisibilityChange(new Event("visibilitychange"));
-    }
 
     const pendingSubscriptions = get(pendingAblySubscriptions$);
     if (pendingSubscriptions.length > 0) {

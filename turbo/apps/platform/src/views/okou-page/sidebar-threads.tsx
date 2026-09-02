@@ -75,7 +75,7 @@ import {
   chatThreadOnlyUnread$,
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   closeRenameChatThreadDialog$,

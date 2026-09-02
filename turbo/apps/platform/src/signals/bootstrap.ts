@@ -540,7 +540,6 @@ export const bootstrap$ = command(
       getCapturedPreviewBypassForTarget(apiBaseUrl);
     set(setApiClientRuntime$, {
       clerk: get(clerk$),
-      environment: "app",
       apiBaseUrl,
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),

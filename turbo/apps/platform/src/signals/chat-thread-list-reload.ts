@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { subscribeRealtimeReadyCatchUp$ } from "./realtime.ts";
 import { clearOptimisticReadMark$ } from "./chat-page/optimistic-chat-thread-read-marks.ts";
-import { apiClientRuntime$ } from "./api-client-runtime.ts";
 import { reloadSharedDatabaseComputed$ } from "./shared-database-bridge-state.ts";
 
 const internalReloadChatIndicators$ = state(0);
@@ -16,10 +15,9 @@ export const reloadChatIndicatorsLocally$ = command(({ set }) => {
   });
 });
 
-export const reloadChatIndicators$ = command(({ get, set }) => {
-  if (get(apiClientRuntime$).environment === "app") {
-    set(reloadSharedDatabaseComputed$, "chat-thread-indicators");
-  }
+/** Ask the Worker to recompute indicators, then re-read its value. */
+export const reloadChatIndicators$ = command(({ set }) => {
+  set(reloadSharedDatabaseComputed$, "chat-thread-indicators");
   set(reloadChatIndicatorsLocally$);
 });
 
