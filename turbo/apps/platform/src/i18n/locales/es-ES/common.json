@@ -4855,6 +4855,10 @@
       "title": "Datos de exportación"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Restablecer todo",
+        "resetting": "Restableciendo..."
+      },
       "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
       "groups": {

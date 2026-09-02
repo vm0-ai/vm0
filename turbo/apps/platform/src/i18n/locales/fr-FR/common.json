@@ -4855,6 +4855,10 @@
       "title": "Exporter les données"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Tout réinitialiser",
+        "resetting": "Réinitialisation…"
+      },
       "description": "Consultez les fonctionnalités par phase de déploiement.",
       "documentTitle": "Laboratoire",
       "groups": {

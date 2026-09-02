@@ -4792,6 +4792,10 @@
       "title": "데이터 내보내기"
     },
     "lab": {
+      "actions": {
+        "resetAll": "모두 재설정",
+        "resetting": "재설정 중…"
+      },
       "description": "출시 단계별 기능 스위치를 확인하세요.",
       "documentTitle": "랩",
       "groups": {
