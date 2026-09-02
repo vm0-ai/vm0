@@ -212,10 +212,10 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       fileInput,
@@ -310,10 +310,9 @@ describe("chat start cards", () => {
       expect(sentPrompt).toContain("<intro_video_workflow>");
       // A deck is turned into slides and narrated, so it carries the document
       // workflow rather than the recording camera pass.
-      expect(sentPrompt).toContain(
-        "decide whether it is a presentation: a paginated deck whose pages can be rendered as slides",
-      );
-      expect(sentPrompt).toContain("Render every page to an image in page");
+      expect(sentPrompt).toContain("- Source type: presentation");
+      expect(sentPrompt).toContain("confirm it really is a paginated deck");
+      expect(sentPrompt).toContain("okou presentation screenshot");
       expect(sentPrompt).not.toContain("okou video camera");
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
@@ -328,6 +327,74 @@ describe("chat start cards", () => {
         "is a presentation",
       );
     });
+  });
+
+  it("sends an upload of unknown kind through the generic source workflow", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.mov",
+      contentType: "video/quicktime",
+      size: 4,
+      url: "https://example.com/launch.mov",
+    });
+
+    setupChatStartCards();
+
+    await expect(
+      screen.findByPlaceholderText(PLACEHOLDER),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByTestId("intro-video-start-card"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    // The generic entry takes what the deck entry turns away, and says nothing
+    // about what the file is.
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-file-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video file input");
+    }
+    expect(fileInput).not.toHaveAttribute("accept");
+    await user.upload(
+      fileInput,
+      new File(["take"], "launch.mov", { type: "video/quicktime" }),
+    );
+
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose a voice"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Source type: file");
+      expect(sentPrompt).toContain("open it and identify it first");
+    });
+    // Neither of the workflows that assume they already know the source.
+    expect(sentPrompt).not.toContain("For an attached presentation source:");
+    expect(sentPrompt).not.toContain(
+      "For a screen recording with a synchronized",
+    );
   });
 
   it("keeps placement out of the no-avatar intro video prompt", async () => {
@@ -360,10 +427,10 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       fileInput,
@@ -424,10 +491,10 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       fileInput,
@@ -488,10 +555,10 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       fileInput,
@@ -530,10 +597,10 @@ describe("chat start cards", () => {
     expect(buttonWithText("Voice", reopened, false)).toBeDisabled();
 
     const reopenedInput = reopened.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!reopenedInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       reopenedInput,
@@ -562,10 +629,10 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       fileInput,
@@ -678,10 +745,10 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     const fileInput = dialog.querySelector<HTMLInputElement>(
-      '[data-intro-video-document-input=""]',
+      '[data-intro-video-presentation-input=""]',
     );
     if (!fileInput) {
-      throw new Error("Expected intro video document input");
+      throw new Error("Expected intro video presentation input");
     }
     await user.upload(
       fileInput,

@@ -1,6 +1,32 @@
 import { openDB, type DBSchema } from "idb";
 
-export type IntroVideoSourceKind = "document" | "recording";
+/**
+ * Which entry of the source step the user came in through, which is all the
+ * wizard knows about a source until an agent opens it.
+ */
+export type IntroVideoSourceKind = "file" | "presentation" | "video";
+
+/**
+ * The kind a stored draft names.
+ *
+ * A tab that was open across a deploy can have written a kind this build does
+ * not know, and the generic kind is the one that assumes nothing about the
+ * source, so an unrecognized name lands there rather than throwing the draft
+ * away.
+ */
+function knownKind(kind: string): IntroVideoSourceKind {
+  switch (kind) {
+    case "presentation": {
+      return "presentation";
+    }
+    case "video": {
+      return "video";
+    }
+    default: {
+      return "file";
+    }
+  }
+}
 
 export interface IntroVideoDraftRecord {
   readonly blob: Blob;
@@ -37,7 +63,10 @@ export async function readIntroVideoDraft(): Promise<IntroVideoDraftRecord | nul
   const database = await openIntroVideoDraftDatabase();
   const draft = await database.get("drafts", "latest");
   database.close();
-  return draft ?? null;
+  if (!draft) {
+    return null;
+  }
+  return { ...draft, kind: knownKind(draft.kind) };
 }
 
 export async function saveIntroVideoDraft(
