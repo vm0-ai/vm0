@@ -5091,6 +5091,9 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = requireOrgId(actor);
+    // External model admission depends on plan capabilities, not VM0 credits.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
       secret: "selected-deepseek-key",
@@ -5171,6 +5174,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
+    // Restore spendable credits before exercising the built-in branch.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
+
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
     // database: 503 when no vm0 execution key exists (no public provisioning
@@ -5185,11 +5191,8 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
-    if (!actor.orgId) {
-      throw new Error("Expected the built-in admission actor to have an org");
-    }
     await setOrgModelPolicyProviderTypeFixture({
-      orgId: actor.orgId,
+      orgId,
       model: "claude-sonnet-5",
       defaultProviderType: "built-in",
     });
