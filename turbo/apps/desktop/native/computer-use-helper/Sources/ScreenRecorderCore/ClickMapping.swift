@@ -192,3 +192,81 @@ public struct ClickTimeline: Equatable, Sendable {
         return Int((Double(nanoseconds - startNanoseconds) / 1_000_000).rounded())
     }
 }
+
+/// One pointer position observed while recording, in the plain values the
+/// sampler captured: a click without the button facts.
+public struct CapturedPointerSample: Equatable, Sendable {
+    /// Host-clock nanoseconds, the same clock `CGEvent.timestamp` uses.
+    public let nanoseconds: UInt64
+    public let screenX: Double
+    public let screenY: Double
+    /// See `CapturedClick.geometry`.
+    public let geometry: CaptureGeometry?
+
+    public init(
+        nanoseconds: UInt64,
+        screenX: Double,
+        screenY: Double,
+        geometry: CaptureGeometry? = nil
+    ) {
+        self.nanoseconds = nanoseconds
+        self.screenX = screenX
+        self.screenY = screenY
+        self.geometry = geometry
+    }
+}
+
+/// A pointer sample placed on the recording's timeline and geometry.
+public struct ProjectedPointerSample: Equatable, Sendable {
+    public let offsetMs: Int
+    public let point: MappedClickPoint
+}
+
+/// Places pointer samples onto the recording.
+///
+/// Samples from before the first frame and samples outside the captured
+/// region are dropped without being counted. A trail is only useful where the
+/// video can show it, and unlike a click, a pointer resting outside the region
+/// is not an event anyone downstream needs to hear about.
+public func projectPointerSamples(
+    _ samples: [CapturedPointerSample],
+    timeline: ClickTimeline,
+    geometry: CaptureGeometry,
+    outputSize: OutputSize
+) -> [ProjectedPointerSample] {
+    return samples.compactMap { sample -> ProjectedPointerSample? in
+        guard
+            let offsetMs = timeline.offsetMilliseconds(atNanoseconds: sample.nanoseconds),
+            let point = (sample.geometry ?? geometry).mapClick(
+                screenX: sample.screenX,
+                screenY: sample.screenY,
+                outputSize: outputSize
+            )
+        else {
+            return nil
+        }
+        return ProjectedPointerSample(offsetMs: offsetMs, point: point)
+    }
+}
+
+/// Decides which pointer positions are worth keeping.
+///
+/// The sampler asks at a fixed rate, and a pointer that has not moved since
+/// the last kept sample adds nothing but bytes to the track: a still pointer is
+/// already described by the previous sample lasting longer. The first sample
+/// is always kept.
+public struct PointerTrailPolicy: Equatable, Sendable {
+    public let minimumDistancePoints: Double
+
+    public init(minimumDistancePoints: Double = 0.5) {
+        self.minimumDistancePoints = minimumDistancePoints
+    }
+
+    public func shouldKeep(x: Double, y: Double, previous: CapturedPointerSample?) -> Bool {
+        guard let previous else {
+            return true
+        }
+        return abs(x - previous.screenX) >= minimumDistancePoints
+            || abs(y - previous.screenY) >= minimumDistancePoints
+    }
+}

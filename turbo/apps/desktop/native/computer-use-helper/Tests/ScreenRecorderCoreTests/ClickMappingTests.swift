@@ -257,3 +257,109 @@ struct ClickProjectionTests {
         #expect(projection.droppedOutOfFrame == 1)
     }
 }
+
+struct PointerTrailPolicyTests {
+    private let policy = PointerTrailPolicy()
+
+    @Test
+    func keepsTheFirstSample() {
+        #expect(policy.shouldKeep(x: 10, y: 10, previous: nil))
+    }
+
+    /// The sampler runs thirty times a second whether or not the mouse moved;
+    /// a resting pointer would otherwise fill the track with copies.
+    @Test
+    func skipsAPointerThatHasNotMoved() {
+        let previous = CapturedPointerSample(nanoseconds: 1, screenX: 10, screenY: 10)
+
+        #expect(!policy.shouldKeep(x: 10.2, y: 9.9, previous: previous))
+    }
+
+    @Test
+    func keepsAPointerThatMoved() {
+        let previous = CapturedPointerSample(nanoseconds: 1, screenX: 10, screenY: 10)
+
+        #expect(policy.shouldKeep(x: 11, y: 10, previous: previous))
+        #expect(policy.shouldKeep(x: 10, y: 9, previous: previous))
+    }
+}
+
+struct PointerSampleProjectionTests {
+    private let display = CaptureGeometry(
+        originX: 0,
+        originY: 0,
+        widthPoints: 1000,
+        heightPoints: 500,
+        scale: 2
+    )
+    private let outputSize = OutputSize(width: 1920, height: 960)
+    private let timeline = ClickTimeline(startNanoseconds: 24_000)
+
+    @Test
+    func placesASampleAtItsOffsetAndPosition() {
+        let trail = projectPointerSamples(
+            [CapturedPointerSample(nanoseconds: 2_024_000, screenX: 500, screenY: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.count == 1)
+        #expect(trail.first?.offsetMs == 2)
+        #expect(trail.first?.point.frameX == 960)
+        #expect(trail.first?.point.frameY == 480)
+        #expect(trail.first?.point.normalizedX == 0.5)
+    }
+
+    /// The sampler starts with the tap, before `SCStream` delivers a frame.
+    @Test
+    func dropsSamplesFromBeforeTheFirstFrame() {
+        let trail = projectPointerSamples(
+            [CapturedPointerSample(nanoseconds: 1_000, screenX: 500, screenY: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.isEmpty)
+    }
+
+    @Test
+    func dropsSamplesOutsideTheCapturedRegion() {
+        let trail = projectPointerSamples(
+            [CapturedPointerSample(nanoseconds: 2_024_000, screenX: 1_500, screenY: 250)],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.isEmpty)
+    }
+
+    @Test
+    func projectsASampleThroughTheGeometryOfItsOwnMoment() {
+        let moved = CaptureGeometry(
+            originX: 100,
+            originY: 100,
+            widthPoints: 1000,
+            heightPoints: 500,
+            scale: 2
+        )
+        let trail = projectPointerSamples(
+            [
+                CapturedPointerSample(
+                    nanoseconds: 2_024_000,
+                    screenX: 600,
+                    screenY: 350,
+                    geometry: moved
+                )
+            ],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(trail.first?.point.normalizedX == 0.5)
+        #expect(trail.first?.point.normalizedY == 0.5)
+    }
+}
