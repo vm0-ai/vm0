@@ -36,4 +36,4 @@ if [ -z "$workspace_dev" ] || [ "$target_dev" != "$workspace_dev" ]; then
   exit 64
 fi
 
-/usr/sbin/fsfreeze --freeze "$workspace_fd_path"
+"$workspace_fsfreeze_path" --freeze "$workspace_fd_path"

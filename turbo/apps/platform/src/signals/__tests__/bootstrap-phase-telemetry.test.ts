@@ -246,8 +246,10 @@ describe("bootstrap phase telemetry", () => {
   it("reports the bootstrap event only once", async () => {
     await setupPage({ context, path: ROUTES.error, withoutRender: true });
 
-    context.store.set(hideAppSkeleton$, context.signal);
-    context.store.set(hideAppSkeleton$, context.signal);
+    await Promise.all([
+      context.store.set(hideAppSkeleton$, context.signal),
+      context.store.set(hideAppSkeleton$, context.signal),
+    ]);
 
     expect(timingEvents()).toHaveLength(1);
     expect(

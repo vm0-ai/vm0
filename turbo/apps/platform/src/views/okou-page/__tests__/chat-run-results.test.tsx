@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
+import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   click,
@@ -1768,6 +1769,65 @@ describe("chat lifecycle", () => {
       ).toBeInTheDocument();
     },
   );
+
+  it("continues from an execution timeout without model-specific controls", async () => {
+    const threadId = "e7000000-0000-4000-a000-000000000032";
+    let retriedPrompt: string | undefined;
+    let retriedUserMessage: unknown;
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "gpt-5.6-sol",
+      chatEvents: [
+        {
+          id: "execution-timeout-user",
+          role: "user",
+          content: "Complete a long task",
+          runId: "execution-timeout-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "execution-timeout-failure",
+          role: "assistant",
+          content: null,
+          error: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+          runId: "execution-timeout-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T11:00:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        retriedPrompt = body.prompt;
+        retriedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+      path: `/chats/${threadId}`,
+    });
+
+    const card = await screen.findByTestId("assistant-error-recovery");
+    expect(within(card).getByText("Time limit reached")).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "This run reached its time limit. Continue to keep working.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(card).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(
+      within(card).queryByText("Reset and try again"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Continue", card));
+    await waitFor(() => {
+      expect(retriedPrompt).toBe("continue");
+      expect(retriedUserMessage).toMatchObject({
+        version: 1,
+        parts: [{ type: "text", text: "continue" }],
+      });
+    });
+  });
 
   it("shows limited-free recovery models with Pro gating", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000789";

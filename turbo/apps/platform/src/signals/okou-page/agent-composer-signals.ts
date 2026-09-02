@@ -20,10 +20,8 @@ import {
   createAgentDraftSignals,
   type EnsuredAgentDraft,
 } from "./agent-draft.ts";
-import {
-  computerUseHosts$,
-  selectedComputerUseHostId,
-} from "./computer-use-hosts.ts";
+import { selectedComputerUseHostId } from "./computer-use-hosts.ts";
+import { computerUseHostsFromWorker$ } from "../shared-database.ts";
 import {
   createComposerSignals,
   type ComposerSubmission,
@@ -198,7 +196,7 @@ function createAgentSubmitMessage(
       const access = get(newThreadComputerAccess$);
       const [hosts, imageModelPin, videoModelPin, connectorPreference] =
         await Promise.all([
-          get(computerUseHosts$),
+          get(computerUseHostsFromWorker$),
           get(chatPageImageModelPin$),
           get(chatPageVideoModelPin$),
           get(connector.accounts.preferenceState$),

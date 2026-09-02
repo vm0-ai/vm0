@@ -25,16 +25,15 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { ChatComposer } from "./chat-composer.tsx";
 import { StartCards } from "./start-cards.tsx";
 import { GrowthEntryHeader } from "./growth-entry.tsx";
-import { chatPageTaglineIndex$ } from "../../signals/okou-page/chat-page.ts";
+import {
+  chatPageTaglineDisplayed$,
+  chatPageTaglineIndex$,
+  chatPageTaglineTypewriterRef$,
+} from "../../signals/okou-page/chat-page.ts";
 import { agentChatComposerSignals$ } from "../../signals/okou-page/agent-composer-signals.ts";
-import { subscribeComputerUseHostsChangedRef$ } from "../../signals/okou-page/computer-use-hosts.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
-import {
-  typewriterDisplayed$,
-  typewriterRef$,
-} from "../../signals/view-component-state.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
@@ -207,10 +206,9 @@ function TypewriterText({
   text: string;
   speed?: number;
 }) {
-  const displayed = useGet(typewriterDisplayed$);
-  const typewriterRef = useSet(typewriterRef$);
+  const displayedText = useGet(chatPageTaglineDisplayed$);
+  const typewriterRef = useSet(chatPageTaglineTypewriterRef$);
   const typewriterKey = `${text}:${String(speed)}`;
-  const displayedText = displayed[typewriterKey] ?? "";
 
   return (
     <>
@@ -219,7 +217,6 @@ function TypewriterText({
         ref={typewriterRef}
         className="contents"
         data-typewriter-speed={String(speed)}
-        data-typewriter-key={typewriterKey}
         data-typewriter-text={text}
       >
         {displayedText}
@@ -336,9 +333,6 @@ export function AgentChatPage() {
   );
 
   const pageSignal = useGet(pageSignal$);
-  const subscribeComputerUseHostsChangedRef = useSet(
-    subscribeComputerUseHostsChangedRef$,
-  );
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
   const composerSignals = useGet(agentChatComposerSignals$);
@@ -358,7 +352,6 @@ export function AgentChatPage() {
 
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
-      <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <GrowthEntryHeader />
 
       <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">

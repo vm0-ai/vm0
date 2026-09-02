@@ -1,14 +1,7 @@
-import { command, computed, state } from "ccstate";
-import { desktopProductFromClientHeader } from "@okouai/api-contracts/contracts/client-headers";
-import {
-  computerUseHostsContract,
-  type ComputerUseHost,
-} from "@okouai/api-contracts/contracts/computer-use";
-import { accept } from "../../lib/accept.ts";
+import { computed } from "ccstate";
+import type { ComputerUseHost } from "@okouai/api-contracts/contracts/computer-use";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
-import { apiClient$ } from "../api-client.ts";
-import { setAblyLoop$ } from "../realtime.ts";
-import { onRef, tapError } from "../utils.ts";
+import { tapError } from "../utils.ts";
 
 const OKOU_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/desktop/updates/stable/darwin/arm64/dmg";
@@ -92,49 +85,6 @@ export const desktopDownloadSupportStatus$ = computed(
   },
 );
 
-const computerUseHostsReload$ = state(0);
-
-const reloadComputerUseHosts$ = command(({ set }) => {
-  set(computerUseHostsReload$, (n) => {
-    return n + 1;
-  });
-});
-
-export const subscribeComputerUseHostsChanged$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    const onChanged$ = command(({ set }) => {
-      set(reloadComputerUseHosts$);
-      return false;
-    });
-    await set(
-      setAblyLoop$,
-      {
-        topic: "computerUseHostsChanged",
-        loopCommand$: onChanged$,
-      },
-      signal,
-    );
-  },
-);
-
-const subscribeComputerUseHostsChangedOnRef$ = command(
-  async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-    await set(subscribeComputerUseHostsChanged$, signal);
-  },
-);
-
-export const subscribeComputerUseHostsChangedRef$ = onRef(
-  subscribeComputerUseHostsChangedOnRef$,
-);
-
-interface ListedComputerUseHost extends Pick<
-  ComputerUseHost,
-  "id" | "displayName" | "lastSeenAt" | "status"
-> {
-  readonly product: NonNullable<ComputerUseHost["product"]>;
-  readonly hostName: string;
-}
-
 type SelectableComputerUseHost = Pick<ComputerUseHost, "id" | "status">;
 
 export function selectedComputerUseHostId(
@@ -160,26 +110,3 @@ export function visibleComputerUseHosts<Host extends SelectableComputerUseHost>(
     return host.status === "online" || host.id === selected;
   });
 }
-
-export const computerUseHosts$ = computed(
-  async (get): Promise<ListedComputerUseHost[]> => {
-    get(computerUseHostsReload$);
-
-    const client = get(apiClient$)(computerUseHostsContract);
-    const result = await accept(client.list({}), [200, 403]);
-    if (result.status !== 200) {
-      return [];
-    }
-
-    return result.body.hosts.map((host) => {
-      return {
-        id: host.id,
-        product: desktopProductFromClientHeader(host.product),
-        hostName: host.hostName ?? host.displayName,
-        displayName: host.displayName,
-        lastSeenAt: host.lastSeenAt,
-        status: host.status,
-      };
-    });
-  },
-);

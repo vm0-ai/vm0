@@ -37,6 +37,9 @@ const BOX_OAUTH_TOKEN_URL = "https://api.box.com/oauth2/token";
 const BOX_CURRENT_USER_URL = "https://api.box.com/2.0/users/me";
 const CLOUDFLARE_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
 const CLOUDFLARE_USERINFO_URL = "https://dash.cloudflare.com/oauth2/userinfo";
+const GITHUB_OAUTH_TOKEN_URL = "https://github.com/login/oauth/access_token";
+const GITHUB_USER_URL = "https://api.github.com/user";
+const GITHUB_OAUTH_SCOPES = ["repo", "project", "workflow"] as const;
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_OPENID_USERINFO_URL =
   "https://openidconnect.googleapis.com/v1/userinfo";
@@ -899,6 +902,9 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     const callbackLocation = async (
       publicBrand: "vm0" | "okou",
       connectorSlug = "google-maps",
+      expectedCallbackAppOrigin = publicBrand === "okou"
+        ? "https://app.okou.ai"
+        : "https://app.vm0.ai",
     ): Promise<{ readonly state: string; readonly location: URL }> => {
       mockAuthenticatedSession();
       const response = await requestOauthStart(connectorSlug, {
@@ -909,9 +915,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
       expect(response.status).toBe(200);
       const authorizationUrl = await authorizationUrlFromResponse(response);
       expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-        connectorSlug === "github"
-          ? "https://app.vm0.ai/connectors/github/callback"
-          : `https://app.${publicBrand === "okou" ? "okou" : "vm0"}.ai/connectors/google-maps/callback`,
+        `${expectedCallbackAppOrigin}/connectors/${connectorSlug}/callback`,
       );
       const state = authorizationUrl.searchParams.get("state") ?? "";
 
@@ -940,7 +944,11 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(okou.location.origin).toBe("https://app.okou.ai");
     expect(okou.location.pathname).toBe("/connector/error");
 
-    const notDirectReady = await callbackLocation("okou", "github");
+    const notDirectReady = await callbackLocation(
+      "okou",
+      "test-oauth",
+      "https://app.vm0.ai",
+    );
     expect(notDirectReady.state).toMatch(/^okou\.[0-9a-f]{64}$/u);
     expect(notDirectReady.location.origin).toBe("https://app.okou.ai");
 
@@ -948,6 +956,129 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(vm0.state).toMatch(/^[0-9a-f]{64}$/u);
     expect(vm0.location.origin).toBe("https://app.vm0.ai");
     expect(vm0.location.pathname).toBe("/connector/error");
+  });
+
+  it("uses the direct Okou App callback for GitHub and reuses its exact redirect URI", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(GITHUB_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "github-test-token",
+          scope: GITHUB_OAUTH_SCOPES.join(","),
+        });
+      }),
+      http.get(GITHUB_USER_URL, () => {
+        return HttpResponse.json({
+          id: 4242,
+          login: "github-test-user",
+          email: "github@example.test",
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("github", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://github.com/login/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "test-client-id",
+    );
+    const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+    expect(redirectUri).toBe("https://app.okou.ai/connectors/github/callback");
+    expect(
+      authorizationUrl.searchParams.get("scope")?.split(" "),
+    ).toStrictEqual([...GITHUB_OAUTH_SCOPES]);
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
+    const callback = await app.request(
+      `${OKOU_API_ORIGIN}/api/connectors/github/callback?${new URLSearchParams({
+        code: "github-authorization-code",
+        state,
+      })}`,
+      { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+    );
+
+    expect(callback.status).toBe(307);
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.origin).toBe("https://app.okou.ai");
+    expect(callbackLocation.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+  });
+
+  it("keeps the VM0 App callback for GitHub", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("github", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.vm0.ai/connectors/github/callback",
+    );
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps GitHub denial redirects on the brand that started the flow", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+
+    const denialLocation = async (
+      publicBrand: "vm0" | "okou",
+    ): Promise<URL> => {
+      mockAuthenticatedSession();
+      const response = await requestOauthStart("github", {
+        callbackTarget: "app",
+        headers: authHeaders(),
+        origin: publicBrand === "okou" ? OKOU_API_ORIGIN : API_ORIGIN,
+      });
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      const state =
+        publicBrand === "okou"
+          ? expectOkouOauthState(authorizationUrl)
+          : expectOauthState(authorizationUrl);
+
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
+      const callback = await app.request(
+        `${OKOU_API_ORIGIN}/api/connectors/github/callback?${new URLSearchParams(
+          {
+            error: "access_denied",
+            state,
+          },
+        )}`,
+        { headers: { "x-vm0-web-origin": "https://okou.ai" } },
+      );
+      expect(callback.status).toBe(307);
+      return new URL(callback.headers.get("location") ?? "");
+    };
+
+    const okou = await denialLocation("okou");
+    expect(okou.origin).toBe("https://app.okou.ai");
+    expect(okou.pathname).toBe("/connector/error");
+
+    const vm0 = await denialLocation("vm0");
+    expect(vm0.origin).toBe("https://app.vm0.ai");
+    expect(vm0.pathname).toBe("/connector/error");
   });
 
   it("reuses the persisted exact redirect URI for a PKCE token exchange", async () => {

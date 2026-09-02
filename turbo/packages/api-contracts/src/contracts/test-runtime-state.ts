@@ -37,7 +37,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("resolve-vm0-built-in-model-route"),
     selected_model: z.string(),
-    fallback_enabled: z.boolean(),
   }),
   z.object({
     action: z.literal("set-vm0-built-in-candidate-cooldown"),
@@ -208,6 +207,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set-official-workflow-automation-admission-state"),
     automation_id: z.uuid(),
+    blueprint_key: z.string().min(1).optional(),
     reconciliation_status: z.enum([
       "current",
       "reconciling",

@@ -1,8 +1,14 @@
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  clearMockedAuthOnAbort,
+  mockedClerk,
+  mockOrganization,
+  mockUser,
+} from "../../__tests__/mock-auth.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
-import type { AuthRecovery } from "../auth-retry.ts";
+import { bridgeConnected$ } from "../shared-database-bridge-state.ts";
 import {
   prepareSharedDatabaseBridge$,
   setupSharedDatabaseBridge$,
@@ -13,30 +19,48 @@ const context = testContext();
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
   readonly heartbeatTokens: string[] = [];
+  readonly tokenUpdates: {
+    readonly recoveryId: string;
+    readonly token: string | null;
+  }[] = [];
   private listener: ((event: MessageEvent<unknown>) => void) | null = null;
 
   postMessage(value: unknown): void {
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      !("type" in value) ||
-      value.type !== "heartbeat" ||
-      !("requestId" in value) ||
-      typeof value.requestId !== "string"
-    ) {
+    if (typeof value !== "object" || value === null || !("type" in value)) {
       return;
     }
-    if ("token" in value && typeof value.token === "string") {
-      this.heartbeatTokens.push(value.token);
+    if (!("requestId" in value) || typeof value.requestId !== "string") {
+      return;
     }
     const requestId = value.requestId;
+    let result: unknown;
+    if (value.type === "heartbeat") {
+      if ("token" in value && typeof value.token === "string") {
+        this.heartbeatTokens.push(value.token);
+      }
+      result = { clientReconnected: false };
+    } else if (
+      value.type === "set-token" &&
+      "recoveryId" in value &&
+      typeof value.recoveryId === "string" &&
+      "token" in value &&
+      (typeof value.token === "string" || value.token === null)
+    ) {
+      this.tokenUpdates.push({
+        recoveryId: value.recoveryId,
+        token: value.token,
+      });
+      result = undefined;
+    } else {
+      return;
+    }
     queueMicrotask(() => {
       this.listener?.(
         new MessageEvent("message", {
           data: {
             type: "result",
             requestId,
-            value: { clientReconnected: false },
+            value: result,
           },
         }),
       );
@@ -45,14 +69,16 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
 
   start(): void {}
 
-  requireAuthentication(): void {
+  requireAuthentication(): string {
+    const recoveryId = crypto.randomUUID();
     queueMicrotask(() => {
       this.listener?.(
         new MessageEvent("message", {
-          data: { type: "authentication-required" },
+          data: { type: "authentication-required", recoveryId },
         }),
       );
     });
+    return recoveryId;
   }
 
   close(): void {
@@ -132,8 +158,8 @@ class TestSharedWorker {
     );
   }
 
-  requireAuthentication(): void {
-    this.port.requireAuthentication();
+  requireAuthentication(): string {
+    return this.port.requireAuthentication();
   }
 }
 
@@ -153,22 +179,30 @@ function installSharedWorkerMock(): {
   return { constructorCalls, workers };
 }
 
-function authRecovery(replacementToken = "replacement-token"): AuthRecovery {
-  return {
-    getToken: () => {
-      return Promise.resolve("shared-worker-token");
-    },
-    forceRefreshToken: () => {
-      return Promise.resolve(replacementToken);
-    },
-  };
-}
-
-async function setupBridge(recovery = authRecovery()): Promise<void> {
-  await context.store.set(setupSharedDatabaseBridge$, recovery, context.signal);
+async function setupBridge(): Promise<void> {
+  const daemon = context.store.set(setupSharedDatabaseBridge$, context.signal);
+  context.track(daemon);
+  await context.store.get(bridgeConnected$);
 }
 
 describe("shared database browser bridge", () => {
+  beforeEach(() => {
+    mockUser(
+      { id: "test-user-123", fullName: "Test User" },
+      { token: "shared-worker-token" },
+    );
+    mockOrganization({
+      activeOrg: { id: "test-org-123", name: "Test Organization" },
+      memberships: [{ id: "test-org-123" }],
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return Promise.resolve(
+        options?.skipCache ? "replacement-token" : "shared-worker-token",
+      );
+    });
+    clearMockedAuthOnAbort(context.signal);
+  });
+
   it("starts the shared worker before the authentication handshake", async () => {
     const { constructorCalls, workers } = installSharedWorkerMock();
 
@@ -178,17 +212,40 @@ describe("shared database browser bridge", () => {
     expect(workers[0]!.port.heartbeatTokens).toStrictEqual([]);
   });
 
-  it("forces an auth refresh when the worker rejects its credential", async () => {
+  it("returns a refreshed token through the dedicated worker message", async () => {
     const { workers } = installSharedWorkerMock();
     await setupBridge();
 
-    workers[0]!.requireAuthentication();
+    const recoveryId = workers[0]!.requireAuthentication();
 
     await vi.waitFor(() => {
-      expect(workers[0]!.port.heartbeatTokens).toStrictEqual([
-        "shared-worker-token",
-        "replacement-token",
+      expect(workers[0]!.port.tokenUpdates).toStrictEqual([
+        { recoveryId, token: "replacement-token" },
       ]);
+    });
+    expect(workers[0]!.port.heartbeatTokens).toStrictEqual([
+      "shared-worker-token",
+    ]);
+  });
+
+  it("returns a null token when the App refresh fails", async () => {
+    const { workers } = installSharedWorkerMock();
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      return options?.skipCache
+        ? Promise.reject(new Error("Clerk refresh failed"))
+        : Promise.resolve("shared-worker-token");
+    });
+    await setupBridge();
+
+    const recoveryId = workers[0]!.requireAuthentication();
+
+    await vi.waitFor(() => {
+      expect(workers[0]!.port.tokenUpdates).toStrictEqual([
+        { recoveryId, token: null },
+      ]);
+    });
+    expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith({
+      skipCache: true,
     });
   });
 

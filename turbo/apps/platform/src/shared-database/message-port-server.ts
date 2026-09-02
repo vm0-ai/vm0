@@ -3,7 +3,6 @@ import { authContract } from "@okouai/api-contracts/contracts/auth";
 import { accept } from "../lib/accept.ts";
 import { captureSentryLogError } from "../lib/sentry-config.ts";
 import { createAuthedContractClient } from "../signals/api-client-base.ts";
-import type { AuthRecovery } from "../signals/auth-retry.ts";
 import { logger } from "../signals/log.ts";
 import {
   createChildAbortController,
@@ -11,10 +10,7 @@ import {
   settle,
 } from "../signals/utils.ts";
 import type { SharedDatabasePortLike } from "./bridge.ts";
-import {
-  sharedDatabaseCredentialId,
-  type SharedDatabaseIdentity,
-} from "./data-key.ts";
+import type { SharedDatabaseIdentity } from "./data-key.ts";
 import {
   redactSharedDatabaseClientMessageForLog,
   sharedDatabaseClientMessageSchema,
@@ -28,10 +24,11 @@ import {
   type SharedDatabaseConnectionBinding,
 } from "./worker-host-context.ts";
 import {
+  getComputedStoreMessage$,
   heartbeatStoreMessage$,
-  indicatorsStoreMessage$,
   queryStoreMessage$,
-  reloadIndicatorsStoreMessage$,
+  reloadComputedStoreMessage$,
+  setTokenStoreMessage$,
 } from "./worker-signals.ts";
 
 type RequestMessage = Extract<
@@ -53,31 +50,18 @@ function serializedError(error: unknown): { name: string; message: string } {
   return { name: Error.name, message: String(error) };
 }
 
-function fixedTokenAuthRecovery(token: string): AuthRecovery {
-  return {
-    getToken: (signal) => {
-      signal.throwIfAborted();
-      return Promise.resolve(token);
-    },
-    forceRefreshToken: (signal) => {
-      signal.throwIfAborted();
-      return Promise.resolve(null);
-    },
-  };
-}
-
 async function authenticateHeartbeat(
   message: Extract<SharedDatabaseClientMessage, { readonly type: "heartbeat" }>,
   clientVersion: string,
   onForceUpgrade: () => void,
   signal: AbortSignal,
 ): Promise<SharedDatabaseIdentity> {
-  const authRecovery = fixedTokenAuthRecovery(message.token);
   const client = createAuthedContractClient(authContract, {
     baseUrl: message.apiBaseUrl,
     clientVersion,
-    getAuthRecovery: () => {
-      return Promise.resolve(authRecovery);
+    getToken: (requestSignal) => {
+      requestSignal.throwIfAborted();
+      return Promise.resolve(message.token);
     },
     getRootSignal: () => {
       return signal;
@@ -220,19 +204,27 @@ export class SharedDatabaseMessagePortServer {
           signal,
         );
       }
-      case "get-indicators": {
+      case "get-computed": {
         return store.set(
-          indicatorsStoreMessage$,
+          getComputedStoreMessage$,
           this.connectionId,
           message,
           signal,
         );
       }
-      case "reload-indicators": {
+      case "reload-computed": {
         return store.set(
-          reloadIndicatorsStoreMessage$,
+          reloadComputedStoreMessage$,
           this.connectionId,
           message,
+        );
+      }
+      case "set-token": {
+        return store.set(
+          setTokenStoreMessage$,
+          this.connectionId,
+          message,
+          signal,
         );
       }
     }
@@ -245,6 +237,10 @@ export class SharedDatabaseMessagePortServer {
     >,
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult> {
+    const currentBinding = this.binding;
+    if (currentBinding) {
+      return this.heartbeatBoundConnection(currentBinding, message, signal);
+    }
     const identity = await authenticateHeartbeat(
       message,
       this.context.appVersion,
@@ -255,19 +251,6 @@ export class SharedDatabaseMessagePortServer {
       signal,
     );
     signal.throwIfAborted();
-    const credentialId = sharedDatabaseCredentialId(identity);
-    const currentBinding = this.binding;
-    if (currentBinding) {
-      if (currentBinding.credentialId !== credentialId) {
-        return this.reloadAfterCredentialChange();
-      }
-      return this.heartbeatBoundConnection(
-        currentBinding,
-        message,
-        identity,
-        signal,
-      );
-    }
     const update = this.context.bindConnection({
       connectionId: this.connectionId,
       connectionController: this.connectionController,
@@ -278,7 +261,7 @@ export class SharedDatabaseMessagePortServer {
     });
     const { binding, signal: credentialConnectionSignal } = update;
     this.setCredentialBinding(binding, credentialConnectionSignal);
-    return this.heartbeatBoundConnection(binding, message, identity, signal);
+    return this.heartbeatBoundConnection(binding, message, signal);
   }
 
   private heartbeatBoundConnection(
@@ -287,7 +270,6 @@ export class SharedDatabaseMessagePortServer {
       SharedDatabaseClientMessage,
       { readonly type: "heartbeat" }
     >,
-    identity: SharedDatabaseIdentity,
     signal: AbortSignal,
   ): SharedDatabaseHeartbeatResult {
     const credentialConnectionSignal = this.credentialConnectionSignal;
@@ -298,7 +280,6 @@ export class SharedDatabaseMessagePortServer {
       heartbeatStoreMessage$,
       this.connectionId,
       message,
-      identity,
       credentialConnectionSignal,
     );
     this.context.startCredentialStoreDaemons(binding.credentialId);
@@ -306,25 +287,6 @@ export class SharedDatabaseMessagePortServer {
     credentialConnectionSignal.throwIfAborted();
     this.credentialReady = true;
     return result;
-  }
-
-  private reloadAfterCredentialChange(): never {
-    const reason = new DOMException(
-      "Shared database MessagePort credential changed",
-      "AbortError",
-    );
-    this.connectionSignal.removeEventListener(
-      "abort",
-      this.handleConnectionAbort,
-    );
-    this.credentialConnectionSignal?.removeEventListener(
-      "abort",
-      this.handleCredentialConnectionAbort,
-    );
-    this.connectionController.abort(reason);
-    this.emit({ type: "reload-required" });
-    this.disconnect("credential-changed");
-    throw reason;
   }
 
   private setCredentialBinding(
@@ -411,7 +373,7 @@ export class SharedDatabaseMessagePortServer {
         }
         return;
       }
-      if (message.type === "reload-indicators") {
+      if (message.type === "reload-computed") {
         this.routeStoreMessage(message, credentialConnectionSignal);
         return;
       }

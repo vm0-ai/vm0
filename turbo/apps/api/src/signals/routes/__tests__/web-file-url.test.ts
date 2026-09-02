@@ -203,6 +203,26 @@ describe("GET /api/web/file-url", () => {
     expect(signedOptions()).toStrictEqual([{ expiresIn: 7200 }]);
   });
 
+  it("reports the public artifacts url for the same object", async () => {
+    const fileId = randomUUID();
+    const { token, userId } = await mintFileReadToken();
+    const key = artifactKey(userId, fileId, "photo.png");
+    mockS3Objects([key]);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(PRESIGNED_URL);
+
+    const response = await accept(
+      client().fileUrl({
+        headers: authHeaders(token),
+        query: { file_id: fileId },
+      }),
+      [200],
+    );
+
+    // A shared link has to outlive the presigned window and carry no
+    // credential, so it addresses the object on the public artifacts domain.
+    expect(response.body.publicUrl).toBe(`https://cdn.vm7.io/${key}`);
+  });
+
   it("signs an inline URL without a download disposition", async () => {
     const fileId = randomUUID();
     const { token, userId } = await mintFileReadToken();

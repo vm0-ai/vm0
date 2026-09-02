@@ -9,9 +9,9 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
-import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 import { OFFICIAL_WORKFLOW_CATALOG_ACTIVATION_LOCK } from "./official-workflow-constants";
+import { purgeDeletedStoragePrefix$ } from "./storage-prefix-purge.service";
 
 interface DeleteWorkflowInput {
   readonly orgId: string;
@@ -33,7 +33,7 @@ interface DeleteOrphanedWorkflowVolumeInput {
  */
 export const deleteOrphanedWorkflowVolume$ = command(
   async (
-    { get, set },
+    { set },
     args: DeleteOrphanedWorkflowVolumeInput,
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -80,27 +80,21 @@ export const deleteOrphanedWorkflowVolume$ = command(
       return false;
     }
 
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const objects = await get(
-      listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+    await set(
+      purgeDeletedStoragePrefix$,
+      {
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+        s3Prefix: result.s3Prefix,
+      },
+      signal,
     );
-    signal.throwIfAborted();
-    await get(
-      deleteS3Objects(
-        bucket,
-        objects.map((object) => {
-          return object.key;
-        }),
-      ),
-    );
-    signal.throwIfAborted();
     return true;
   },
 );
 
 export const deleteWorkflow$ = command(
   async (
-    { get, set },
+    { set },
     args: DeleteWorkflowInput,
     signal: AbortSignal,
   ): Promise<boolean> => {
@@ -202,20 +196,14 @@ export const deleteWorkflow$ = command(
     signal.throwIfAborted();
 
     if (result.s3Prefix) {
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const objects = await get(
-        listS3ObjectsUnderPrefix(bucket, result.s3Prefix),
+      await set(
+        purgeDeletedStoragePrefix$,
+        {
+          bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+          s3Prefix: result.s3Prefix,
+        },
+        signal,
       );
-      signal.throwIfAborted();
-      await get(
-        deleteS3Objects(
-          bucket,
-          objects.map((object) => {
-            return object.key;
-          }),
-        ),
-      );
-      signal.throwIfAborted();
     }
 
     return true;

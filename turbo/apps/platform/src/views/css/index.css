@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "@okouai/ui/styles/globals.css";
 
-@plugin "@tailwindcss/typography";
 @custom-variant pointer-coarse (@media (pointer: coarse));
 
 /* Include @okouai/ui components in Tailwind's content scanning */
@@ -24,8 +23,6 @@
   /* Sidebar colors - using tokens for dark mode support */
   --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
-  --color-sidebar-active: hsl(var(--primary) / 0.95);
-  --color-sidebar-primary: hsl(var(--white));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
   --color-credit-free: #3eb7b8;
@@ -169,10 +166,6 @@ body {
   display: none;
 }
 
-.zero-workspace-titlebar-drag-region {
-  display: none;
-}
-
 .zero-desktop-no-drag {
   -webkit-app-region: no-drag;
 }
@@ -193,15 +186,6 @@ body {
     position: relative;
   }
 
-  .zero-app[data-desktop-shell] .zero-workspace-titlebar-drag-region {
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: 1;
-    display: block;
-    height: var(--zero-desktop-titlebar-height);
-    -webkit-app-region: drag;
-  }
-
   .zero-app[data-desktop-shell]
     .zero-workspace-bg
     :where(
@@ -219,70 +203,6 @@ body {
     z-index: 2;
     -webkit-app-region: no-drag;
   }
-}
-
-.speaker-notes-dot-1 {
-  animation: speaker-notes-dot-1 1.2s steps(1, end) infinite;
-}
-
-.speaker-notes-dot-2 {
-  animation: speaker-notes-dot-2 1.2s steps(1, end) infinite;
-}
-
-.speaker-notes-dot-3 {
-  animation: speaker-notes-dot-3 1.2s steps(1, end) infinite;
-}
-
-@keyframes speaker-notes-dot-1 {
-  0%,
-  74% {
-    opacity: 1;
-  }
-  75%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes speaker-notes-dot-2 {
-  0%,
-  24%,
-  75%,
-  100% {
-    opacity: 0;
-  }
-  25%,
-  74% {
-    opacity: 1;
-  }
-}
-
-@keyframes speaker-notes-dot-3 {
-  0%,
-  49%,
-  75%,
-  100% {
-    opacity: 0;
-  }
-  50%,
-  74% {
-    opacity: 1;
-  }
-}
-
-/* Landing tagline carousel: smooth vertical fade-in */
-@keyframes zero-tagline-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.75rem);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.zero-tagline-animate-in {
-  animation: zero-tagline-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* Shimmer text effect for active/thinking states */
@@ -619,7 +539,6 @@ body {
   --zero-card-radius: 1.25rem;
   /* The composer is the largest surface on the page and leads the radius scale. */
   --zero-composer-radius: 1.5rem;
-  --zero-card-border: hsl(var(--border));
   --zero-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
   /* Static focus veil for the composer. Fading this layer through opacity lets
@@ -658,24 +577,10 @@ body {
     [contenteditable]:not([contenteditable="false"]),
     [role="textbox"],
     .zero-chat-bubble-user,
-    .zero-chat-bubble-assistant,
-    .zero-desktop-selectable
+    .zero-chat-bubble-assistant
   ) {
   -webkit-user-select: text;
   user-select: text;
-}
-
-/* Search bar / text input (matches form inputs: white surface in light theme) */
-.zero-app .zero-search-input {
-  background-color: hsl(var(--input));
-  border-color: hsl(var(--border));
-}
-.zero-app .zero-search-input::placeholder {
-  color: hsl(var(--muted-foreground));
-}
-.zero-app .zero-search-input:focus-within {
-  border-color: hsl(var(--primary));
-  outline: none;
 }
 
 /* Pill/tag (e.g. status badge, "Super agent") */
@@ -696,14 +601,6 @@ body {
   background-color: hsl(var(--gray-400));
 }
 
-/* Form inputs: match card border, preserve focus ring */
-.zero-app .zero-form-border {
-  border: 0.7px solid hsl(var(--gray-400));
-}
-.zero-app .zero-form-border:focus {
-  border-color: hsl(var(--primary));
-}
-
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
 /* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
    glyphs render in color. Without this, dual-presentation codepoints fall back
@@ -720,12 +617,6 @@ body {
 }
 .zero-border-r {
   border-right: 0.7px solid hsl(var(--gray-300));
-}
-.zero-border-dashed {
-  border: 0.7px dashed hsl(var(--gray-400));
-}
-.zero-border-dashed-t {
-  border-top: 0.7px dashed hsl(var(--gray-400));
 }
 
 /* Avatar / logo thumbnails: a hairline lighter than zero-border, so the edge of
@@ -791,12 +682,10 @@ body {
 /* Zero left nav */
 .zero-nav {
   --color-sidebar: hsl(var(--gray-0));
-  --color-sidebar-active: hsl(var(--primary) / 0.95);
   --color-sidebar-border: hsl(var(--gray-200));
 }
 .zero-app[data-gradient-color-themes] .zero-nav {
   --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-active: hsl(var(--ring));
   --color-sidebar-border: hsl(var(--border) / 0.5);
 }
 .zero-app[data-gradient-color-themes] .zero-nav .zero-nav-copy {
@@ -813,7 +702,6 @@ body {
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
-  --color-sidebar-primary: #ffffff;
 }
 
 /* Morandi outline buttons */
@@ -828,21 +716,6 @@ body {
     var(--color-state-hover)
   );
   border-color: hsl(var(--gray-400));
-}
-
-/* Morandi cards (e.g. suggested prompts) */
-.zero-app .zero-card-morandi {
-  background-color: hsl(var(--card));
-  border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
-}
-.zero-app .zero-card-morandi:hover {
-  background-image: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
-  border-color: hsl(var(--gray-200));
 }
 
 /* White card: shared border, radius (all white cards except chat bubbles) */
@@ -862,34 +735,6 @@ body {
     var(--color-state-hover),
     var(--color-state-hover)
   );
-}
-
-/* Same as .zero-card but less rounded (more rectangular), e.g. account dropdown / profile card */
-.zero-app .zero-card-rectangle {
-  background-color: hsl(var(--card));
-  border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
-}
-
-/* Instructions/content card: uses .zero-card style */
-.zero-app .zero-card-white {
-  background-color: hsl(var(--card));
-  border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
-  box-shadow: var(--zero-card-shadow);
-}
-
-/* Instructions/feature cards: cool gray gradient */
-.zero-app .zero-card-cool {
-  background: linear-gradient(
-    to bottom right,
-    hsl(var(--gray-50) / 0.98),
-    hsl(var(--gray-0)),
-    hsl(var(--gray-50) / 0.95)
-  );
-  border-color: hsl(var(--divider));
-  box-shadow: 0 1px 3px hsl(var(--border) / 0.06);
 }
 
 /* Message bubble (e.g. Meet Zero tone samples) */
@@ -943,20 +788,6 @@ body {
   .zero-app .zero-composer::after {
     transition: none;
   }
-}
-
-/* Chat: outline buttons inside dialogue */
-.zero-app .zero-chat-btn {
-  background-color: hsl(var(--gray-50));
-  border: 0.7px solid hsl(var(--gray-400));
-  color: hsl(var(--foreground));
-}
-.zero-app .zero-chat-btn:hover {
-  background-image: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
-  border-color: hsl(var(--gray-400));
 }
 
 @layer base {
@@ -1403,8 +1234,7 @@ body {
    Letterboxed rather than stretched, since a single box can only hold diagrams
    of different aspect ratios undistorted by leaving margins. */
 .wmde-markdown .mermaid-diagram-image,
-.wmde-markdown .mermaid-diagram-pending,
-.wmde-markdown .mermaid-diagram-invalid {
+.wmde-markdown .mermaid-diagram-pending {
   /* Inset by the box's own padding: an absolutely positioned child is placed
      against the padding box, which the padding would otherwise not clear. */
   position: absolute;
@@ -1425,16 +1255,11 @@ body {
   background: none;
 }
 
-.wmde-markdown .mermaid-diagram-pending,
-.wmde-markdown .mermaid-diagram-invalid {
+.wmde-markdown .mermaid-diagram-pending {
   display: flex;
   align-items: center;
   justify-content: center;
   color: hsl(var(--muted-foreground));
-}
-
-.wmde-markdown .mermaid-diagram-invalid {
-  font-size: 0.875rem;
 }
 
 .wmde-markdown .mermaid-diagram-source > summary {
@@ -1493,43 +1318,6 @@ details > summary {
 
 /* Zero workspace: soft texture + gentle gradient — documents, records, thinking, meeting notes.
    Grid is on ::before with z-index: -1; container has z-index: 0 so the texture stays behind content only. */
-/* Document card body: serif for reading */
-/* Document card (gallery): same border, radius as .zero-card so it matches other white cards */
-.zero-app .zero-doc-card {
-  border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
-  background-color: hsl(var(--card));
-  box-shadow: var(--zero-card-shadow);
-}
-
-.zero-app .zero-doc-card-content {
-  font-family: Georgia, "Times New Roman", "SimSun", serif;
-  background-color: hsl(var(--gray-0));
-  border-top-color: hsl(var(--border));
-}
-
-/* Fade text to 30% opacity at bottom edge (no grey gradient overlay) */
-/* Only the last ~2 lines fade to 30% opacity */
-/* Activity table header divider */
-.zero-app .zero-activity-header {
-  border-bottom-color: hsl(var(--divider));
-}
-
-.zero-app .zero-doc-card-fade {
-  mask-image: linear-gradient(
-    to bottom,
-    black 0%,
-    black 88%,
-    rgba(0, 0, 0, 0.3) 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    black 0%,
-    black 88%,
-    rgba(0, 0, 0, 0.3) 100%
-  );
-}
-
 .zero-workspace-bg {
   position: relative;
   z-index: 0;
@@ -1614,17 +1402,6 @@ details > summary {
 
 .tiptap:focus {
   outline: none;
-}
-
-/* Dashed vertical connector line for tool-call timelines */
-.zero-dashed-line {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent 2px,
-    hsl(var(--border) / 0.6) 2px,
-    hsl(var(--border) / 0.6) 5px
-  );
 }
 
 /* Sheet / side drawer animations */
@@ -1729,7 +1506,6 @@ details > summary {
   --workflow-dot-size: 8px;
   --workflow-top-line-y: 81px;
   --workflow-source-icon-left: 107px;
-  --workflow-source-icon-top: 55px;
   --workflow-node-icon-size: 56px;
   --workflow-zero-left: 277px;
   --workflow-zero-size: 72px;
@@ -1737,10 +1513,6 @@ details > summary {
   --workflow-output-icon-top: 53px;
   --workflow-source-dot-x: calc(
     var(--workflow-source-icon-left) + var(--workflow-node-icon-size) + 3px
-  );
-  --workflow-zero-left-edge-x: var(--workflow-zero-left);
-  --workflow-zero-right-edge-x: calc(
-    var(--workflow-zero-left) + var(--workflow-zero-size)
   );
   --workflow-destination-in-dot-x: 455px;
   --workflow-destination-down-dot-x: calc(
@@ -2131,9 +1903,6 @@ details > summary {
    rendered inside the dialog keeps running. */
 html:has(.zero-dialog-overlay)
   :is(
-    .speaker-notes-dot-1,
-    .speaker-notes-dot-2,
-    .speaker-notes-dot-3,
     .zero-shimmer-window,
     .zero-shimmer-highlight,
     .zero-blocks span,

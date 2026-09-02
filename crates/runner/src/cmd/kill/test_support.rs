@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::process::{DiscoveredProcesses, FirecrackerProcessIdentity, FirecrackerProcessInfo};
+use crate::process::{DiscoveredProcesses, FirecrackerProcessInfo, ProcfsProcessGeneration};
 
 use super::target::KillTarget;
 
@@ -10,7 +10,7 @@ pub(super) fn make_fc(pid: u32, sandbox_id: &str) -> FirecrackerProcessInfo {
         ppid: None,
         sandbox_id: sandbox_id.into(),
         base_dir: Some(PathBuf::from("/data/r1")),
-        identity: None,
+        generation: None,
     }
 }
 
@@ -21,12 +21,9 @@ pub(super) fn make_target(pid: u32, sandbox_id: &str) -> KillTarget {
         run_id: None,
         sandbox_id: sandbox_id.into(),
         base_dir: Some(PathBuf::from("/data/r1")),
-        identity: Some(FirecrackerProcessIdentity {
-            pid,
+        generation: Some(ProcfsProcessGeneration {
             pgid: pid + 1000,
             starttime: 123456,
-            sandbox_id: sandbox_id.into(),
-            base_dir: Some(PathBuf::from("/data/r1")),
         }),
     }
 }
@@ -37,7 +34,7 @@ pub(super) fn make_fc_from_target(target: &KillTarget) -> FirecrackerProcessInfo
         ppid: target.ppid,
         sandbox_id: target.sandbox_id.clone(),
         base_dir: target.base_dir.clone(),
-        identity: target.identity.clone(),
+        generation: target.generation,
     }
 }
 

@@ -23,6 +23,7 @@ from body_limits import (
     STREAM_DECODE_EXPANSION_GRACE,
     STREAM_DECODE_MAX_EXPANSION_RATIO,
 )
+from zlib_decoding import decode_zlib_bounded
 from zlib_input import ZlibInputCursor
 
 # Brotli 1.2's output_buffer_limit is a soft allocation threshold, not a hard
@@ -652,35 +653,16 @@ def _decompress_zlib_json_usage_body(
         return b"", DECODED_BODY_LIMIT_EXCEEDED if data else None
 
     wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-    input_cursor = ZlibInputCursor(data)
-    out = bytearray()
-
-    while input_cursor:
-        remaining_output = max_output - len(out)
-        # One probe byte distinguishes exact completion from real overflow.
-        obj = zlib.decompressobj(wbits)
-
-        while input_cursor:
-            member_data = input_cursor.take()
-            try:
-                decoded = obj.decompress(member_data, max_length=remaining_output + 1)
-            except zlib.error:
-                return b"", INVALID_COMPRESSED_BODY
-
-            if len(decoded) > remaining_output:
-                out.extend(decoded[:remaining_output])
-                return bytes(out), DECODED_BODY_LIMIT_EXCEEDED
-            out.extend(decoded)
-            remaining_output -= len(decoded)
-            if obj.eof:
-                input_cursor.carry(obj.unused_data)
-                break
-            if obj.unconsumed_tail:
-                input_cursor.carry(obj.unconsumed_tail)
-        else:
-            return bytes(out), INCOMPLETE_COMPRESSED_BODY
-
-    return bytes(out), None
+    result = decode_zlib_bounded(data, wbits=wbits, max_output=max_output)
+    if result.status == "complete":
+        return result.body, None
+    if result.status == "incomplete":
+        return result.body, INCOMPLETE_COMPRESSED_BODY
+    if result.status == "output_limit_exceeded":
+        return result.body, DECODED_BODY_LIMIT_EXCEEDED
+    # Unlimited member traversal cannot produce ``trailing_data``. Treat it
+    # defensively like any other structurally invalid compressed body.
+    return b"", INVALID_COMPRESSED_BODY
 
 
 def _validate_complete_zstd_frames(data: bytes, max_output: int) -> str | None:

@@ -6,9 +6,9 @@ use ::sandbox::*;
 use tokio_util::sync::CancellationToken;
 
 use crate::call_records::{
-    CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall, ProcessCancelCall,
-    ProcessControlCall, SessionHistoryIdentityVerifyCall, StartAgentProcessCall, StartProcessCall,
-    StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
+    CodexSessionCleanupCall, CopyFileCall, ExecCall, ExecMatcher, GuestStateRestoreCall,
+    ProcessCancelCall, ProcessControlCall, SessionHistoryIdentityVerifyCall, StartAgentProcessCall,
+    StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{DestroyBehavior, LifecycleBehaviors, MockLifecycleGate};
 use crate::support::LockIgnoringPoison;
@@ -55,8 +55,19 @@ pub(crate) struct ExecOverrideState {
     pub(crate) calls: Mutex<Vec<ExecCall>>,
     /// Recorded fixed storage-manifest calls across all attached sandboxes.
     pub(crate) storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    /// FIFO results for fixed workspace-drive mount operations.
+    pub(crate) workspace_drive_mount_results: Mutex<VecDeque<Result<ExecResult>>>,
+    /// Total fixed workspace-drive mount calls across attached sandboxes.
+    pub(crate) workspace_drive_mount_calls: Mutex<u32>,
+    /// Wakes tests after a fixed workspace-drive mount call is recorded.
+    pub(crate) workspace_drive_mount_call_notify: tokio::sync::Notify,
+    /// Optional gate entered after every fixed workspace-drive mount call is
+    /// recorded but before its configured result is selected.
+    pub(crate) workspace_drive_mount_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// Recorded fixed live identity verifier calls across attached sandboxes.
     pub(crate) session_history_identity_verify_calls: Mutex<Vec<SessionHistoryIdentityVerifyCall>>,
+    /// Recorded fixed reused-Codex cleanup calls across attached sandboxes.
+    pub(crate) codex_session_cleanup_calls: Mutex<Vec<CodexSessionCleanupCall>>,
     /// Recorded fixed guest-state restore calls across all attached sandboxes.
     pub(crate) guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
     /// FIFO behaviors for fixed guest-state restore operations.
@@ -406,6 +417,15 @@ impl MockSandboxOverrides {
         *self.exec.lifecycle_gate.lock_ignoring_poison() = Some(gate);
     }
 
+    /// Block every fixed workspace-drive mount call with a durable lifecycle
+    /// gate after recording it.
+    pub fn set_workspace_drive_mount_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self
+            .exec
+            .workspace_drive_mount_lifecycle_gate
+            .lock_ignoring_poison() = Some(gate);
+    }
+
     /// Register a one-shot pattern matcher for an ordinary exited result.
     ///
     /// The first registered matcher whose pattern occurs in a command is
@@ -493,10 +513,32 @@ impl MockSandboxOverrides {
             .clone()
     }
 
+    /// Queue a fixed workspace-drive mount result across attached sandboxes.
+    pub fn push_workspace_drive_mount_result(&self, result: Result<ExecResult>) {
+        self.exec
+            .workspace_drive_mount_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Return the total fixed workspace-drive mount calls across attached
+    /// sandboxes.
+    pub fn workspace_drive_mount_calls(&self) -> u32 {
+        *self.exec.workspace_drive_mount_calls.lock_ignoring_poison()
+    }
+
     /// Return fixed live session-history identity verifier calls.
     pub fn session_history_identity_verify_calls(&self) -> Vec<SessionHistoryIdentityVerifyCall> {
         self.exec
             .session_history_identity_verify_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return fixed reused-Codex cleanup calls across all attached sandboxes.
+    pub fn codex_session_cleanup_calls(&self) -> Vec<CodexSessionCleanupCall> {
+        self.exec
+            .codex_session_cleanup_calls
             .lock_ignoring_poison()
             .clone()
     }
@@ -566,6 +608,33 @@ impl MockSandboxOverrides {
             notified.as_mut().enable();
 
             if self.exec.calls.lock_ignoring_poison().len() >= expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
+    }
+
+    /// Wait until at least `expected` fixed workspace-drive mount calls have
+    /// been recorded.
+    pub async fn wait_workspace_drive_mount_call_count(
+        &self,
+        expected: u32,
+        timeout: Duration,
+    ) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.exec.workspace_drive_mount_call_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self.workspace_drive_mount_calls() >= expected {
                 return true;
             }
 

@@ -14,7 +14,6 @@ export const ORG_SENTINEL_USER_ID = "__org__";
 
 const ORG_SCOPED_FEATURE_SWITCH_KEYS: readonly string[] = [
   FeatureSwitchKey.ChatErrorRecovery,
-  FeatureSwitchKey.BuiltInModelProviderFallback,
   FeatureSwitchKey.PiLoop,
   FeatureSwitchKey.PresentationTemplates,
 ];

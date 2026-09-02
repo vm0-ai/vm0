@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
-import { fill } from "../../../__tests__/page-helper.ts";
+import { click, fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -280,9 +280,11 @@ describe("chat lifecycle", () => {
 
   it("creates a new chat thread without Cloud browser after turning it off", async () => {
     const user = userEvent.setup({ delay: null });
+    let runCreated = false;
     let sentCloudBrowserEnabled: boolean | undefined;
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
+        runCreated = true;
         sentCloudBrowserEnabled = body.cloudBrowserEnabled;
       },
     });
@@ -296,20 +298,17 @@ describe("chat lifecycle", () => {
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await user.click(await composerConnectorsButton());
-    await user.click(
-      screen.getByRole("switch", { name: "Disable Cloud browser" }),
-    );
+    click(await composerConnectorsButton());
+    click(screen.getByRole("switch", { name: "Disable Cloud browser" }));
     await waitFor(() => {
       expect(
         screen.getByRole("switch", { name: "Enable Cloud browser" }),
       ).toHaveAttribute("aria-checked", "false");
     });
-    await user.keyboard("{Escape}");
-
     await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
 
     await waitFor(() => {
+      expect(runCreated).toBeTruthy();
       expect(sentCloudBrowserEnabled).toBeUndefined();
     });
   });
@@ -658,6 +657,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      sharedWorkerTestTransport: "message-port",
     });
 
     await waitFor(() => {

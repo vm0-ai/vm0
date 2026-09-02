@@ -4,7 +4,6 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { WorksPage } from "../../views/okou-page/works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { initSlackOrg$, watchSlackConnection$ } from "../okou-page/slack.ts";
 import { watchTeamsConnection$ } from "../okou-page/teams.ts";
 import { watchGithubIntegration$ } from "../okou-page/github.ts";
@@ -67,8 +66,5 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     "works realtime subscriptions",
   );
 
-  await Promise.all([
-    set(hideAppSkeleton$, signal),
-    set(onboardGuard$, signal),
-  ]);
+  await set(hideAppSkeleton$, signal);
 });

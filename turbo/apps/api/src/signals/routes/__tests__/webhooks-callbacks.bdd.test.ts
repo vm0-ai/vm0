@@ -2124,6 +2124,122 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     ).toBeFalsy();
   });
 
+  it("projects only present control-path metric fields", async () => {
+    const { actor, runId, headers } = await createEventWebhookRun(
+      `control-path metrics ${randomUUID()}`,
+    );
+    const oldTimestamp = "2026-09-01T00:00:00.000Z";
+    const fullTimestamp = "2026-09-01T00:00:05.000Z";
+    const partialTimestamp = "2026-09-01T00:00:10.000Z";
+    const metricIngests: unknown[][] = [];
+    mockOptionalEnv(
+      "AXIOM_TOKEN_TELEMETRY",
+      `xaat-control-path-metrics-${randomUUID()}`,
+    );
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-metrics/ingest",
+        async ({ request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom telemetry metric array");
+          }
+          metricIngests.push(events);
+          return HttpResponse.json(successfulAxiomIngestStatus(events.length));
+        },
+      ),
+    );
+
+    await api.requestAgentTelemetry(
+      {
+        runId,
+        metrics: [
+          {
+            ts: oldTimestamp,
+            cpu: 80,
+            mem_used: 100,
+            mem_total: 200,
+            disk_used: 300,
+            disk_total: 400,
+          },
+          {
+            ts: fullTimestamp,
+            cpu: 91.25,
+            cpu_steal_percent: 12.5,
+            scheduled_lag_ms: 17,
+            mem_used: 1024,
+            mem_total: 2048,
+            disk_used: 4096,
+            disk_total: 8192,
+            control_cpu_usage_usec: 101,
+            control_cpu_nr_throttled: 2,
+            control_cpu_throttled_usec: 3,
+            workload_cpu_usage_usec: 201,
+            workload_cpu_nr_throttled: 4,
+            workload_cpu_throttled_usec: 5,
+          },
+          {
+            ts: partialTimestamp,
+            cpu: 70,
+            scheduled_lag_ms: 29,
+            mem_used: 500,
+            mem_total: 600,
+            disk_used: 700,
+            disk_total: 800,
+            workload_cpu_usage_usec: 301,
+          },
+        ],
+      },
+      headers,
+      [200],
+    );
+
+    expect(metricIngests).toStrictEqual([
+      [
+        {
+          _time: oldTimestamp,
+          runId,
+          userId: actor.userId,
+          cpu: 80,
+          mem_used: 100,
+          mem_total: 200,
+          disk_used: 300,
+          disk_total: 400,
+        },
+        {
+          _time: fullTimestamp,
+          runId,
+          userId: actor.userId,
+          cpu: 91.25,
+          cpu_steal_percent: 12.5,
+          scheduled_lag_ms: 17,
+          mem_used: 1024,
+          mem_total: 2048,
+          disk_used: 4096,
+          disk_total: 8192,
+          control_cpu_usage_usec: 101,
+          control_cpu_nr_throttled: 2,
+          control_cpu_throttled_usec: 3,
+          workload_cpu_usage_usec: 201,
+          workload_cpu_nr_throttled: 4,
+          workload_cpu_throttled_usec: 5,
+        },
+        {
+          _time: partialTimestamp,
+          runId,
+          userId: actor.userId,
+          cpu: 70,
+          scheduled_lag_ms: 29,
+          mem_used: 500,
+          mem_total: 600,
+          disk_used: 700,
+          disk_total: 800,
+          workload_cpu_usage_usec: 301,
+        },
+      ],
+    ]);
+  });
+
   it("attributes sandbox operations to canonical runner dimensions across overlap", async () => {
     const { runId, headers } = await createEventWebhookRun(
       `runner-name telemetry ${randomUUID()}`,

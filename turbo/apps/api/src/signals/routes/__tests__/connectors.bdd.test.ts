@@ -9,6 +9,7 @@
  */
 
 import { randomInt, randomUUID } from "node:crypto";
+import { Buffer } from "node:buffer";
 
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
@@ -40,6 +41,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
   manualHttpCustomConnectorCreateBody,
+  mockAutomaticMcpOAuthProvider,
   mockBase44OAuthProvider,
   mockCustomConnectorOAuth2Provider,
   mockDatadogConnectorOAuth,
@@ -2115,6 +2117,197 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
+  it("connects HTTP and MCP no-auth definitions with local credential-free accounts", async () => {
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const httpDefinition = {
+      displayName: "BDD Public HTTP",
+      prefixTemplates: [
+        `https://{{variables.region}}.${randomUUID()}.public-http.test/v1/`,
+      ],
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable" as const,
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none" as const,
+    };
+    const disabledCreate = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      httpDefinition,
+      [403],
+    );
+    expectApiError(disabledCreate.body);
+    expect(disabledCreate.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorNoAuth]: true,
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const http = await connectorsApi.createCustomConnector(
+      admin,
+      httpDefinition,
+    );
+    expect(http).toMatchObject({
+      kind: "http",
+      authMode: "none",
+      connected: false,
+      missingRequiredFields: ["region"],
+    });
+    const connectedHttp = await connectorsApi.setCustomConnectorValues(
+      admin,
+      http.id,
+      [{ key: "region", kind: "variable", value: "us" }],
+    );
+    expect(connectedHttp).toMatchObject({
+      authMode: "none",
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["region"],
+    });
+    const httpStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: http.id,
+      },
+    );
+    expect(httpStorage.connector).toMatchObject({
+      auth_method: "none",
+      storage_version: 1,
+      external_id: null,
+      external_username: null,
+      external_email: null,
+      oauth_scopes: null,
+      oauth_granted_scopes: null,
+      token_expires_at: null,
+    });
+    expect(httpStorage.secrets).toStrictEqual([]);
+    expect(httpStorage.variables).toStrictEqual([
+      {
+        name: "region",
+        connector_id: httpStorage.connector?.id,
+        value: "us",
+      },
+    ]);
+
+    const mcp = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Public MCP",
+      endpoint: `https://${randomUUID()}.public-mcp.test/server`,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none",
+    });
+    expect(mcp).toMatchObject({
+      kind: "mcp",
+      authMode: "none",
+      connected: false,
+      missingRequiredFields: [],
+    });
+    const connectedMcp = await connectorsApi.setCustomConnectorValues(
+      admin,
+      mcp.id,
+      [],
+    );
+    expect(connectedMcp).toMatchObject({
+      authMode: "none",
+      connected: true,
+      configuredFieldKeys: [],
+    });
+    const mcpStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: mcp.id,
+      },
+    );
+    expect(mcpStorage.connector).toMatchObject({ auth_method: "none" });
+    expect(mcpStorage.secrets).toStrictEqual([]);
+    expect(mcpStorage.variables).toStrictEqual([]);
+
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD No Auth Agent",
+    });
+    await expect(
+      connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
+        http.id,
+        mcp.id,
+      ]),
+    ).resolves.toStrictEqual(expect.arrayContaining([http.id, mcp.id]));
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorNoAuth]: false,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, http.id),
+    ).resolves.toMatchObject({ authMode: "none", connected: true });
+    const blockedReconnect =
+      await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        http.id,
+        [{ key: "region", kind: "variable", value: "eu" }],
+        [403],
+      );
+    expectApiError(blockedReconnect.body);
+    expect(blockedReconnect.body.error.code).toBe("FORBIDDEN");
+
+    const manualHttp = await connectorsApi.updateCustomConnector(
+      admin,
+      http.id,
+      {
+        displayName: httpDefinition.displayName,
+        prefixTemplates: httpDefinition.prefixTemplates,
+        fields: [
+          ...httpDefinition.fields,
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+      },
+    );
+    expect(manualHttp).toMatchObject({
+      authMode: "manual",
+      connected: false,
+      storageVersion: 2,
+    });
+    const blockedNoneUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      http.id,
+      httpDefinition,
+      [403],
+    );
+    expectApiError(blockedNoneUpdate.body);
+    expect(blockedNoneUpdate.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.disconnectSingleCustomConnectorAccount(admin, http.id);
+    await connectorsApi.disconnectSingleCustomConnectorAccount(admin, mcp.id);
+    await connectorsApi.deleteCustomConnector(admin, http.id);
+    await connectorsApi.deleteCustomConnector(admin, mcp.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
   it("uses explicit single-account semantics for HTTP and MCP custom connectors", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
@@ -3033,7 +3226,530 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(member, agent.agentId);
   });
 
-  it("models Automatic OAuth without enabling incomplete production writes", async () => {
+  it("connects an Automatic MCP OAuth account through Okou CIMD", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+    });
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Automatic CIMD",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    });
+
+    const authorizationUrl = new URL(
+      await connectorsApi.startCustomConnectorOAuth2(admin, connector.id),
+    );
+    expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+      `${provider.issuer}/authorize`,
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "https://api.okou.ai/api/oauth/mcp/client-metadata/okou.json",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.okou.ai/connectors/custom/callback",
+    );
+    expect(authorizationUrl.searchParams.get("resource")).toBe(
+      provider.endpoint,
+    );
+    expect(authorizationUrl.searchParams.get("scope")).toBe("read write");
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
+      "S256",
+    );
+
+    const completed =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "automatic-cimd-code",
+        state: stateFromAuthorizationUrl(authorizationUrl.toString()),
+        iss: provider.issuer,
+      });
+    expect(completed.body).toStrictEqual({
+      status: "success",
+      username: null,
+    });
+    expect(provider.registrationBodies).toHaveLength(0);
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("resource")).toBe(provider.endpoint);
+    expect(provider.tokenBodies[0]?.get("client_id")).toBe(
+      "https://api.okou.ai/api/oauth/mcp/client-metadata/okou.json",
+    );
+    await expect(
+      connectorsApi.readCustomConnector(admin, connector.id),
+    ).resolves.toMatchObject({ connected: true, oauthSetup: "automatic" });
+    const accounts = await connectorsApi.listCustomConnectorAccounts(
+      admin,
+      connector.id,
+    );
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0]?.oauthScopes).toStrictEqual(["read", "write"]);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("rejects Automatic OAuth callback authority drift before token exchange", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+    });
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const definition = {
+      kind: "mcp" as const,
+      displayName: "BDD Automatic Callback Binding",
+      endpoint: provider.endpoint,
+      transport: "streamable-http" as const,
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthSetup: "automatic" as const,
+    };
+    const connector = await connectorsApi.createCustomConnector(
+      admin,
+      definition,
+    );
+
+    const missingIssuerAuthorization =
+      await connectorsApi.startCustomConnectorOAuth2(admin, connector.id);
+    const missingIssuer =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "automatic-missing-issuer-code",
+        state: stateFromAuthorizationUrl(missingIssuerAuthorization),
+      });
+    expect(missingIssuer.body).toStrictEqual({
+      status: "error",
+      message: "OAuth authorization issuer did not match - please try again",
+    });
+
+    const wrongIssuerAuthorization =
+      await connectorsApi.startCustomConnectorOAuth2(admin, connector.id);
+    const wrongIssuer =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "automatic-wrong-issuer-code",
+        state: stateFromAuthorizationUrl(wrongIssuerAuthorization),
+        iss: "https://other-issuer.example.test",
+      });
+    expect(wrongIssuer.body).toStrictEqual({
+      status: "error",
+      message: "OAuth authorization issuer did not match - please try again",
+    });
+
+    const changedEndpointAuthorization =
+      await connectorsApi.startCustomConnectorOAuth2(admin, connector.id);
+    await expect(
+      connectorsApi.updateCustomConnector(admin, connector.id, {
+        ...definition,
+        endpoint: "https://replacement-mcp.example.test/server",
+      }),
+    ).resolves.toMatchObject({ storageVersion: 2 });
+    const changedEndpoint =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "automatic-changed-endpoint-code",
+        state: stateFromAuthorizationUrl(changedEndpointAuthorization),
+        iss: provider.issuer,
+      });
+    expect(changedEndpoint.body).toStrictEqual({
+      status: "error",
+      message:
+        "Custom connector OAuth configuration changed - please try again",
+    });
+    expect(provider.tokenBodies).toHaveLength(0);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("reuses one DCR client across Automatic MCP OAuth accounts", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "dcr",
+    });
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Automatic DCR",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    });
+
+    const firstAuthorization = await connectorsApi.startCustomConnectorOAuth2(
+      admin,
+      connector.id,
+    );
+    expect(new URL(firstAuthorization).searchParams.get("client_id")).toBe(
+      "automatic-dcr-client",
+    );
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "automatic-dcr-first-code",
+      state: stateFromAuthorizationUrl(firstAuthorization),
+      iss: provider.issuer,
+    });
+    const secondAuthorization = await connectorsApi.startCustomConnectorOAuth2(
+      admin,
+      connector.id,
+      undefined,
+      { intent: "add", displayName: "Second" },
+    );
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "automatic-dcr-second-code",
+      state: stateFromAuthorizationUrl(secondAuthorization),
+      iss: provider.issuer,
+    });
+
+    expect(provider.registrationBodies).toHaveLength(1);
+    expect(provider.registrationBodies[0]).toMatchObject({
+      redirect_uris: ["https://app.okou.ai/connectors/custom/callback"],
+      scope: "read write",
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+    expect(provider.tokenAuthorizationHeaders).toStrictEqual([
+      `Basic ${Buffer.from(
+        "automatic-dcr-client:automatic-dcr-secret",
+        "utf8",
+      ).toString("base64")}`,
+      `Basic ${Buffer.from(
+        "automatic-dcr-client:automatic-dcr-secret",
+        "utf8",
+      ).toString("base64")}`,
+    ]);
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, connector.id),
+    ).resolves.toHaveLength(2);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it.each([
+    {
+      tokenEndpointAuthMethod: "none" as const,
+      expectedAuthorization: null,
+      expectedClientSecret: null,
+    },
+    {
+      tokenEndpointAuthMethod: "client_secret_post" as const,
+      expectedAuthorization: null,
+      expectedClientSecret: "automatic-dcr-secret",
+    },
+  ])(
+    "connects an Automatic DCR client using $tokenEndpointAuthMethod",
+    async ({
+      tokenEndpointAuthMethod,
+      expectedAuthorization,
+      expectedClientSecret,
+    }) => {
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      const provider = mockAutomaticMcpOAuthProvider(context, {
+        registration: "dcr",
+        dcrTokenEndpointAuthMethod: tokenEndpointAuthMethod,
+      });
+      const admin = createBddApi(context).user({ orgRole: "org:admin" });
+      await connectorsApi.updateFeatureSwitches(admin, {
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+      });
+      const connector = await connectorsApi.createCustomConnector(admin, {
+        kind: "mcp",
+        displayName: `BDD Automatic DCR ${tokenEndpointAuthMethod}`,
+        endpoint: provider.endpoint,
+        transport: "streamable-http",
+        fields: [],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{oauth.access_token}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "oauth",
+        oauthSetup: "automatic",
+      });
+
+      const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+        admin,
+        connector.id,
+      );
+      await connectorsApi.completeCustomConnectorOAuth2Callback({
+        code: `automatic-${tokenEndpointAuthMethod}-code`,
+        state: stateFromAuthorizationUrl(authorizationUrl),
+        iss: provider.issuer,
+      });
+
+      expect(provider.registrationBodies).toHaveLength(1);
+      expect(provider.tokenAuthorizationHeaders).toStrictEqual([
+        expectedAuthorization,
+      ]);
+      expect(provider.tokenBodies[0]?.get("client_id")).toBe(
+        "automatic-dcr-client",
+      );
+      expect(provider.tokenBodies[0]?.get("client_secret")).toBe(
+        expectedClientSecret,
+      );
+
+      await connectorsApi.deleteCustomConnector(admin, connector.id);
+    },
+  );
+
+  it("discovers Automatic OAuth through RFC 9728 and OIDC fallbacks", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      discovery: "well-known-oidc",
+      challengeScope: null,
+      metadataScopes: ["metadata-read", "metadata-write"],
+      issuerParameterSupported: false,
+    });
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Automatic Discovery Fallback",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    });
+
+    const authorizationUrl = new URL(
+      await connectorsApi.startCustomConnectorOAuth2(admin, connector.id),
+    );
+    expect(authorizationUrl.searchParams.get("scope")).toBe(
+      "metadata-read metadata-write",
+    );
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "automatic-discovery-fallback-code",
+      state: stateFromAuthorizationUrl(authorizationUrl.toString()),
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("serializes concurrent first Automatic DCR registrations", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "dcr",
+      synchronizeAuthorizationServerDiscovery: true,
+    });
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Concurrent Automatic DCR",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    });
+
+    const authorizationUrls = await Promise.all([
+      connectorsApi.startCustomConnectorOAuth2(admin, connector.id),
+      connectorsApi.startCustomConnectorOAuth2(admin, connector.id),
+    ]);
+    expect(authorizationUrls).toHaveLength(2);
+    expect(provider.authorizationServerDiscoveryCalls()).toBe(2);
+    expect(provider.registrationBodies).toHaveLength(1);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("maps temporary Automatic OAuth discovery and DCR failures to 502", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const connectorBody = {
+      kind: "mcp" as const,
+      displayName: "BDD Temporary Automatic OAuth",
+      endpoint: "https://automatic-mcp.example.test/server",
+      transport: "streamable-http" as const,
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthSetup: "automatic" as const,
+    };
+    const discoveryProvider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      resourceMetadataStatus: 503,
+    });
+    const discoveryConnector = await connectorsApi.createCustomConnector(
+      admin,
+      connectorBody,
+    );
+    const discoveryFailure =
+      await connectorsApi.requestStartCustomConnectorOAuth2(
+        admin,
+        discoveryConnector.id,
+        [502],
+      );
+    expectApiError(discoveryFailure.body);
+    expect(discoveryFailure.body.error).toMatchObject({
+      code: "UPSTREAM_UNAVAILABLE",
+    });
+    expect(discoveryProvider.registrationBodies).toHaveLength(0);
+    await connectorsApi.deleteCustomConnector(admin, discoveryConnector.id);
+
+    for (const status of [429, 503]) {
+      const dcrProvider = mockAutomaticMcpOAuthProvider(context, {
+        registration: "dcr",
+        dcrFailureStatus: status,
+      });
+      const dcrConnector = await connectorsApi.createCustomConnector(admin, {
+        ...connectorBody,
+        displayName: `BDD Temporary Automatic DCR ${status}`,
+      });
+      const dcrFailure = await connectorsApi.requestStartCustomConnectorOAuth2(
+        admin,
+        dcrConnector.id,
+        [502],
+      );
+      expectApiError(dcrFailure.body);
+      expect(dcrFailure.body.error).toMatchObject({
+        code: "UPSTREAM_UNAVAILABLE",
+      });
+      expect(dcrProvider.registrationBodies).toHaveLength(1);
+      await connectorsApi.deleteCustomConnector(admin, dcrConnector.id);
+    }
+  });
+
+  it.each([
+    {
+      boundary: "a mismatched protected resource",
+      providerOptions: {
+        registration: "cimd" as const,
+        resource: "https://automatic-mcp.example.test/other-resource",
+      },
+    },
+    {
+      boundary: "an unsafe authorization endpoint",
+      providerOptions: {
+        registration: "cimd" as const,
+        authorizationEndpoint: "https://localhost/authorize",
+      },
+    },
+    {
+      boundary: "a mismatched metadata issuer",
+      providerOptions: {
+        registration: "cimd" as const,
+        metadataIssuer: "https://other-issuer.example.test",
+      },
+    },
+  ])("rejects Automatic OAuth with $boundary", async ({ providerOptions }) => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, providerOptions);
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Rejected Automatic OAuth",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    });
+
+    const rejected = await connectorsApi.requestStartCustomConnectorOAuth2(
+      admin,
+      connector.id,
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("BAD_REQUEST");
+    expect(provider.registrationBodies).toHaveLength(0);
+    expect(provider.tokenBodies).toHaveLength(0);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
+  it("models Automatic OAuth definitions, bindings, and state", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
@@ -3057,31 +3773,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       oauthSetup: "automatic" as const,
     };
 
-    const before = await connectorsApi.listCustomConnectors(admin);
-    const rejected = await connectorsApi.requestCreateCustomConnector(
+    const createdDefinition = await connectorsApi.createCustomConnector(
       admin,
       definition,
-      [400],
     );
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      "Automatic OAuth connector setup is not enabled yet",
-    );
-    await expect(
-      connectorsApi.listCustomConnectors(admin),
-    ).resolves.toHaveLength(before.length);
+    expect(createdDefinition).toMatchObject({
+      authMode: "oauth",
+      oauthSetup: "automatic",
+    });
+    await connectorsApi.deleteCustomConnector(admin, createdDefinition.id);
 
     const customConnectorId = randomUUID();
     const connectorAccountId = randomUUID();
     const dcrRegistrationId = randomUUID();
     const encryptedClientSecret = "encrypted-dcr-client-secret";
+    const seededEndpoint = "https://mcp.example.test/";
     await seedAutomaticOAuthBindingState(context, {
       orgId: requiredOrgId(admin),
       userId: admin.userId,
       customConnectorId,
       connectorAccountId,
       issuer: "https://issuer.example.test",
-      resource: definition.endpoint,
+      resource: seededEndpoint,
       resourceMetadataUrl:
         "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
       tokenEndpoint: "https://issuer.example.test/token",
@@ -3187,10 +3900,12 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         connectorId: customConnectorId,
         storageVersion: 1,
         issuer: "https://issuer.example.test",
-        resource: definition.endpoint,
+        resource: seededEndpoint,
         resourceMetadataUrl:
           "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
+        authorizationEndpoint: "https://issuer.example.test/authorize",
         tokenEndpoint: "https://issuer.example.test/token",
+        authorizationResponseIssParameterSupported: true,
         clientId: "automatic-dcr-client",
         tokenEndpointAuthMethod: "client_secret_basic",
         registrationMethod: "dcr",
@@ -3209,11 +3924,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "automatic-oauth-code",
         state: validState,
+        iss: "https://issuer.example.test",
       });
     expect(callback.body).toStrictEqual({
       status: "error",
-      message:
-        "Custom connector OAuth configuration changed - please try again",
+      message: "OAuth token exchange failed - please try again",
     });
 
     const malformedState = `malformed-automatic-oauth-${randomUUID()}`;
@@ -3277,19 +3992,15 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       valid: false,
       registration_method: null,
     });
-    const rejectedUpdate = await connectorsApi.requestUpdateCustomConnector(
+    const automaticUpdate = await connectorsApi.updateCustomConnector(
       admin,
       customConnectorId,
       definition,
-      [400],
     );
-    expectApiError(rejectedUpdate.body);
-    expect(rejectedUpdate.body.error.message).toBe(
-      "Automatic OAuth connector setup is not enabled yet",
-    );
-    await expect(
-      connectorsApi.readCustomConnector(admin, customConnectorId),
-    ).resolves.toMatchObject({ oauthSetup: "custom", storageVersion: 2 });
+    expect(automaticUpdate).toMatchObject({
+      oauthSetup: "automatic",
+      storageVersion: 3,
+    });
     await connectorsApi.deleteCustomConnector(admin, customConnectorId);
 
     const invalidConnectorId = randomUUID();
@@ -6579,6 +7290,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
       connectorSlug: "test-oauth",
+      connectorId: supplemental.id,
       oauthScopes: ["read", "legacy-write"],
       oauthGrantedScopes: null,
     });

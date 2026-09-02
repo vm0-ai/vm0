@@ -1,4 +1,5 @@
 import { command, computed, state, type Command } from "ccstate";
+import type { QueueResponse } from "@okouai/api-contracts/contracts/runs";
 import type {
   ChatThreadIndicators,
   ChatEventDataKey,
@@ -7,9 +8,15 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../shared-database/data-key.ts";
+import type {
+  ComputedKey,
+  ListedComputerUseHost,
+} from "../shared-database/computed-key.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
-import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
-import { rootSignal$ } from "./root-signal.ts";
+import {
+  reloadChatIndicatorsCounter$,
+  reloadChatIndicatorsLocally$,
+} from "./chat-thread-list-reload.ts";
 import { installedSharedDatabaseBridge$ } from "./shared-database-bridge-state.ts";
 
 const sharedDatabaseConnectionStatusState$ =
@@ -25,12 +32,58 @@ export const setSharedDatabaseConnectionStatus$ = command(
   },
 );
 
-export const sharedDatabaseChatThreadIndicators$ = computed(
+const internalReloadComputerUseHostsFromWorker$ = state(0);
+
+const reloadComputerUseHostsFromWorker$ = command(({ set }): void => {
+  set(internalReloadComputerUseHostsFromWorker$, (value) => {
+    return value + 1;
+  });
+});
+
+const internalReloadQueueDataFromWorker$ = state(0);
+
+const reloadQueueDataFromWorker$ = command(({ set }): void => {
+  set(internalReloadQueueDataFromWorker$, (value) => {
+    return value + 1;
+  });
+});
+
+export const reloadComputedFromWorker$ = command(
+  ({ set }, computedKey: ComputedKey): void => {
+    if (computedKey === "chat-thread-indicators") {
+      set(reloadChatIndicatorsLocally$);
+      return;
+    }
+    if (computedKey === "computer-use-hosts") {
+      set(reloadComputerUseHostsFromWorker$);
+      return;
+    }
+    set(reloadQueueDataFromWorker$);
+  },
+);
+
+export const chatThreadIndicatorsFromWorker$ = computed(
   async (get): Promise<ChatThreadIndicators> => {
     get(reloadChatIndicatorsCounter$);
-    return await get(installedSharedDatabaseBridge$).indicators(
-      get(rootSignal$),
+    return await get(installedSharedDatabaseBridge$).getComputed(
+      "chat-thread-indicators",
     );
+  },
+);
+
+export const computerUseHostsFromWorker$ = computed(
+  async (get): Promise<ListedComputerUseHost[]> => {
+    get(internalReloadComputerUseHostsFromWorker$);
+    return await get(installedSharedDatabaseBridge$).getComputed(
+      "computer-use-hosts",
+    );
+  },
+);
+
+export const queueDataFromWorker$ = computed(
+  async (get): Promise<QueueResponse> => {
+    get(internalReloadQueueDataFromWorker$);
+    return await get(installedSharedDatabaseBridge$).getComputed("queue-data");
   },
 );
 

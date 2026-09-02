@@ -1,5 +1,133 @@
 # Changelog
 
+## [8.609.0](https://github.com/vm0-ai/vm0/compare/core-v8.608.3...core-v8.609.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.391.0
+
+## [8.608.3](https://github.com/vm0-ai/vm0/compare/core-v8.608.2...core-v8.608.3) (2026-09-02)
+
+
+### Refactoring
+
+* remove concurrency member usage feature switch ([#30934](https://github.com/vm0-ai/vm0/issues/30934)) ([e211986](https://github.com/vm0-ai/vm0/commit/e2119869809f7b50614d1367d2fbdc7c1517e4f6))
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.3
+
+## [8.608.2](https://github.com/vm0-ai/vm0/compare/core-v8.608.1...core-v8.608.2) (2026-09-02)
+
+
+### Refactoring
+
+* remove emoji rail and conversation locator feature switches ([#30981](https://github.com/vm0-ai/vm0/issues/30981)) ([fc04a10](https://github.com/vm0-ai/vm0/commit/fc04a10dd9147a16cc883414704bc3e11458627d))
+* remove Strapi integration feature switch ([#30965](https://github.com/vm0-ai/vm0/issues/30965)) ([603bbb7](https://github.com/vm0-ai/vm0/commit/603bbb7dafa7caa3619261d9b81047f96c763e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.2
+
+## [8.608.1](https://github.com/vm0-ai/vm0/compare/core-v8.608.0...core-v8.608.1) (2026-09-02)
+
+
+### Refactoring
+
+* remove connectorCatalogCount feature switch ([#30935](https://github.com/vm0-ai/vm0/issues/30935)) ([531a1cc](https://github.com/vm0-ai/vm0/commit/531a1ccf20b2f4c5e33adf143ec0284a8911e3f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+
+## [8.608.0](https://github.com/vm0-ai/vm0/compare/core-v8.607.1...core-v8.608.0) (2026-09-02)
+
+
+### Features
+
+* support no-auth custom connectors ([#30897](https://github.com/vm0-ai/vm0/issues/30897)) ([f6a4e7a](https://github.com/vm0-ai/vm0/commit/f6a4e7af74566f31c53c59035554aaf5f0c1076c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.0
+
+## [8.607.1](https://github.com/vm0-ai/vm0/compare/core-v8.607.0...core-v8.607.1) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.1
+
+## [8.607.0](https://github.com/vm0-ai/vm0/compare/core-v8.606.1...core-v8.607.0) (2026-09-01)
+
+
+### Features
+
+* **platform:** translate selected chat text ([#30818](https://github.com/vm0-ai/vm0/issues/30818)) ([37c2265](https://github.com/vm0-ai/vm0/commit/37c2265c1c600cbcc22b32224e376c5ae26cead3))
+* use transparent avatar cutouts in the intro video picker ([#30873](https://github.com/vm0-ai/vm0/issues/30873)) ([b176b5b](https://github.com/vm0-ai/vm0/commit/b176b5b46f223dd26d44e976e2299ed3f5bbfa8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.0
+
+## [8.606.1](https://github.com/vm0-ai/vm0/compare/core-v8.606.0...core-v8.606.1) (2026-09-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.388.0
+
+## [8.606.0](https://github.com/vm0-ai/vm0/compare/core-v8.605.10...core-v8.606.0) (2026-09-01)
+
+
+### Features
+
+* graduate built-in model provider fallback ([#30861](https://github.com/vm0-ai/vm0/issues/30861)) ([be446a6](https://github.com/vm0-ai/vm0/commit/be446a6678a6fe32d6df9788b2b17550ebddd8b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.387.0
+
+## [8.605.10](https://github.com/vm0-ai/vm0/compare/core-v8.605.9...core-v8.605.10) (2026-09-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.386.1
+
 ## [8.605.9](https://github.com/vm0-ai/vm0/compare/core-v8.605.8...core-v8.605.9) (2026-09-01)
 
 

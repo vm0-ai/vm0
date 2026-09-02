@@ -7,7 +7,6 @@ import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cr
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@okouai/api-contracts/contracts/model-provider-firewalls";
 import { runnersBuiltinFirewallsResolveContract } from "@okouai/api-contracts/contracts/runners";
-import { steamPlayerContract } from "@okouai/api-contracts/contracts/steam-player";
 import {
   testSystemStoragePresignedUrlCacheStateContract,
   type TestSystemStoragePresignedUrlCacheStateActionBody,
@@ -26,7 +25,6 @@ import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/us
 import {
   workflowAutomationsContract,
   workflowsCollectionContract,
-  workflowsDetailContract,
 } from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
@@ -112,7 +110,6 @@ import { connectorCatalogRoutes } from "../connector-catalog";
 import { connectorCheckRoutes } from "../connector-check";
 import { connectorsRoutes } from "../connectors";
 import { featureSwitchesRoutes } from "../feature-switches";
-import { steamPlayerRoutes } from "../steam-player";
 import { userPermissionGrantsRoutes } from "../user-permission-grants";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
@@ -126,7 +123,6 @@ const TEST_APP_ROUTES = Object.freeze([
   ...connectorCheckRoutes,
   ...connectorsRoutes,
   ...featureSwitchesRoutes,
-  ...steamPlayerRoutes,
   ...userPermissionGrantsRoutes,
   ...workflowAutomationsRoutes,
   ...workflowsRoutes,
@@ -1319,67 +1315,6 @@ function mockSteamOpenIdVerification(): void {
         );
       },
     ),
-  );
-}
-
-function mockSteamPlayerApisForCatalog(): void {
-  server.use(
-    http.get(/https:\/\/api\.steampowered\.com\/.*/u, ({ request }) => {
-      const url = new URL(request.url);
-      expect(url.searchParams.get("key")).toBe("catalog-steam-api-key");
-      expect(
-        url.searchParams.get("steamid") ?? url.searchParams.get("steamids"),
-      ).toBe(STEAM_TEST_ID);
-      switch (url.pathname) {
-        case "/ISteamUser/GetPlayerSummaries/v0002/": {
-          return HttpResponse.json({
-            response: {
-              players: [
-                {
-                  steamid: STEAM_TEST_ID,
-                  personaname: "catalog-player",
-                },
-              ],
-            },
-          });
-        }
-        case "/IPlayerService/GetOwnedGames/v0001/": {
-          return HttpResponse.json({
-            response: { game_count: 0, games: [] },
-          });
-        }
-        case "/IPlayerService/GetRecentlyPlayedGames/v0001/": {
-          return HttpResponse.json({
-            response: { total_count: 0, games: [] },
-          });
-        }
-        case "/IPlayerService/GetSteamLevel/v1/": {
-          return HttpResponse.json({ response: { player_level: 1 } });
-        }
-        case "/IPlayerService/GetBadges/v1/": {
-          return HttpResponse.json({ response: { badges: [] } });
-        }
-        case "/IWishlistService/GetWishlist/v1/": {
-          return HttpResponse.json({ response: { items: [] } });
-        }
-        case "/IWishlistService/GetWishlistItemCount/v1/": {
-          return HttpResponse.json({ response: { count: 0 } });
-        }
-        case "/IStoreService/GetGamesFollowed/v1/": {
-          return HttpResponse.json({ response: { appids: [] } });
-        }
-        case "/IStoreService/GetGamesFollowedCount/v1/": {
-          return HttpResponse.json({
-            response: { followed_game_count: 0 },
-          });
-        }
-        default: {
-          return HttpResponse.text("Unexpected Steam API path", {
-            status: 404,
-          });
-        }
-      }
-    }),
   );
 }
 
@@ -3959,7 +3894,6 @@ describe("connector catalog valid lifecycle", () => {
   it("executes an external OpenID grant with catalog-owned storage", async () => {
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
     configureSource();
     const release = buildRelease({
@@ -4009,17 +3943,6 @@ describe("connector catalog valid lifecycle", () => {
       }),
       [307],
     );
-    mockSteamPlayerApisForCatalog();
-    const player = await accept(
-      setupApp({ context, routes: steamPlayerRoutes })(
-        steamPlayerContract,
-      ).getPlayer({ headers }),
-      [200],
-    );
-    expect(player.body).toMatchObject({
-      steamId: STEAM_TEST_ID,
-      profile: { personaName: "catalog-player" },
-    });
     const storageState = await readConnectorCredentialStorageState(context, {
       orgId: actor.orgId ?? "",
       userId: actor.userId,
@@ -4340,278 +4263,6 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforeProviderResume,
     );
-  });
-
-  it("uses the active external release for workflow connector readiness", async () => {
-    mockGmailConnectorOAuth({ email: "readiness@example.test" });
-    configureSource();
-    const connectedRelease = buildRelease({
-      version: "2026-07-15.external-readiness",
-      connectorSlug: "gmail",
-      label: "Catalog Gmail",
-      mutateCatalog: (artifact) => {
-        setArtifactAuthMethods(artifact, [
-          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
-        ]);
-      },
-      mutateRuntime: (artifact) => {
-        const method = gmailPrivateAuthMethod();
-        recordValue(method.storage, "storage").version = 7;
-        setArtifactAuthMethods(artifact, [method]);
-      },
-    });
-    serveObjects(catalogObjects([connectedRelease], connectedRelease));
-    await syncCatalog();
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    mockOptionalEnv(
-      "GMAIL_PUBSUB_TOPIC_NAME",
-      "projects/vm0-ai-488909/topics/gmail-events",
-    );
-    server.use(
-      http.post(OPENROUTER_URL, () => {
-        return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "stop",
-              message: { content: JSON.stringify({ connectors: [] }) },
-            },
-          ],
-        });
-      }),
-      http.post(
-        "https://gmail.googleapis.com/gmail/v1/users/me/watch",
-        ({ request }) => {
-          expect(request.headers.get("authorization")).toBe(
-            "Bearer catalog-refreshed-gmail-token",
-          );
-          return HttpResponse.json({
-            historyId: "100",
-            expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
-          });
-        },
-      ),
-    );
-
-    const orgId = createUniqueStaffOrgIdFixture();
-    const actor = bdd.user({ orgId });
-    const created: { agentId?: string; workflowId?: string } = {};
-    const cleanupConnector = createConnectorCleanup(actor, "gmail");
-    onTestFinished(async () => {
-      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
-      await cleanupConnector();
-      if (created.workflowId) {
-        await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
-      }
-      if (created.agentId) {
-        await bdd.deleteAgent(actor, created.agentId);
-      }
-      await deleteOrgPlanEntitlementFixture(orgId);
-    });
-    await upsertOrgPlanEntitlementFixture({
-      orgId,
-      status: "active",
-      supportByok: true,
-      restrictedVm0Models: false,
-    });
-    const oauth = await connectorsApi.startOauth(actor, "gmail", "oauth");
-    const oauthState = new URL(oauth.authorizationUrl).searchParams.get(
-      "state",
-    );
-    if (!oauthState) {
-      throw new Error("Expected Gmail authorization state");
-    }
-    await connectorsApi.completeOauthCallback("gmail", {
-      code: "external-readiness",
-      state: oauthState,
-    });
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const headers = { authorization: "Bearer clerk-session" };
-    const initialSecrets = await readUserSecrets(context, {
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
-    const initialAccessTokenDescription = initialSecrets.find((secret) => {
-      return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
-    })?.description;
-    expect(initialAccessTokenDescription).toBe(
-      "Connector token output for gmail: CATALOG_GMAIL_ACCESS_TOKEN",
-    );
-    mockNow(new Date("2026-07-15T10:00:00.000Z"));
-    const refreshBodies: URLSearchParams[] = [];
-    server.use(
-      http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
-        const body = new URLSearchParams(await request.text());
-        refreshBodies.push(body);
-        return HttpResponse.json({
-          access_token: "catalog-refreshed-gmail-token",
-          expires_in: 3600,
-          token_type: "Bearer",
-          scope: "https://www.googleapis.com/auth/gmail.modify",
-        });
-      }),
-    );
-    bdd.acceptAgentStorageWrites();
-    const agent = await bdd.createAgent(actor, {
-      displayName: "External readiness agent",
-      visibility: "private",
-    });
-    created.agentId = agent.agentId;
-    const workflow = await accept(
-      setupApp({ context, routes: workflowsRoutes })(
-        workflowsCollectionContract,
-      ).create({
-        headers,
-        body: {
-          agentId: agent.agentId,
-          name: `external-readiness-${randomUUID().slice(0, 8)}`,
-          instruction: "Handle incoming Gmail messages.",
-        },
-      }),
-      [201],
-    );
-    created.workflowId = workflow.body.id;
-    await accept(
-      setupApp({ context, routes: workflowAutomationsRoutes })(
-        workflowAutomationsContract,
-      ).create({
-        headers,
-        params: { workflowId: workflow.body.id },
-        body: {
-          kind: "event",
-          eventType: "gmail-new-message",
-          eventConfig: {
-            provider: "gmail",
-            event: "new_message",
-          },
-        },
-      }),
-      [201],
-    );
-    expect(refreshBodies).toHaveLength(1);
-    expect(refreshBodies[0]?.get("grant_type")).toBe("refresh_token");
-    expect(refreshBodies[0]?.get("refresh_token")).toBe("gmail-refresh-token");
-    const refreshedSecrets = await readUserSecrets(context, {
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-    });
-    expect(
-      refreshedSecrets.find((secret) => {
-        return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
-      })?.description,
-    ).toBe(initialAccessTokenDescription);
-    const storageState = await readConnectorCredentialStorageState(context, {
-      orgId: actor.orgId ?? "",
-      userId: actor.userId,
-      connectorSlug: "gmail",
-      secretNames: [
-        "CATALOG_GMAIL_ACCESS_TOKEN",
-        "CATALOG_GMAIL_REFRESH_TOKEN",
-      ],
-    });
-    expect(storageState.connector?.storage_version).toBe(7);
-    expect(storageState.secrets).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "CATALOG_GMAIL_ACCESS_TOKEN",
-          connector_id: storageState.connector?.id,
-        }),
-        expect.objectContaining({
-          name: "CATALOG_GMAIL_REFRESH_TOKEN",
-          connector_id: storageState.connector?.id,
-        }),
-      ]),
-    );
-    const unavailableRelease = buildRelease({
-      version: "2026-07-15.external-readiness-unavailable",
-      connectorSlug: "gmail",
-      label: "Catalog Gmail",
-      mutateCatalog: (artifact) => {
-        const method = publicAuthMethod({
-          id: "oauth",
-          grantKind: "auth-code",
-        });
-        method.visible = false;
-        setArtifactAuthMethods(artifact, [method]);
-      },
-      mutateRuntime: (artifact) => {
-        setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
-      },
-    });
-    serveObjects(
-      catalogObjects(
-        [connectedRelease, unavailableRelease],
-        unavailableRelease,
-      ),
-    );
-    await syncCatalog();
-
-    const callsBeforeReadiness = context.mocks.s3.send.mock.calls.length;
-    const readiness = await accept(
-      setupApp({ context, routes: workflowsRoutes })(
-        workflowsDetailContract,
-      ).connectorReadiness({
-        headers,
-        params: { workflowId: workflow.body.id },
-      }),
-      [200],
-    );
-    expect(readiness.body.connectors).toStrictEqual([
-      {
-        connectorSlug: "gmail",
-        label: "Catalog Gmail",
-        icon: {
-          url: expect.stringMatching(
-            /^https:\/\/static\.vm0\.io\/platform\/views\/zero-page\/components\/settings\/icons\/gmail-[a-f0-9]{12}\.svg$/u,
-          ),
-          invertInDarkMode: false,
-        },
-        reason: "This workflow has a Gmail event automation.",
-        status: "unavailable",
-      },
-    ]);
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeReadiness);
-
-    const removedRelease = buildRelease({
-      version: "2026-07-15.external-readiness-removed",
-      connectorSlug: "external-readiness-replacement",
-      label: "External Readiness Replacement",
-    });
-    serveObjects(
-      catalogObjects(
-        [connectedRelease, unavailableRelease, removedRelease],
-        removedRelease,
-      ),
-    );
-    await syncCatalog();
-    const callsBeforeRemovedReadiness = context.mocks.s3.send.mock.calls.length;
-    const removedReadiness = await accept(
-      setupApp({ context, routes: workflowsRoutes })(
-        workflowsDetailContract,
-      ).connectorReadiness({
-        headers,
-        params: { workflowId: workflow.body.id },
-      }),
-      [200],
-    );
-    expect(removedReadiness.body.connectors).toStrictEqual([
-      {
-        connectorSlug: "gmail",
-        label: "gmail",
-        reason: "This workflow has a Gmail event automation.",
-        status: "unavailable",
-      },
-    ]);
-    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
-      callsBeforeRemovedReadiness,
-    );
-
-    serveObjects(
-      catalogObjects(
-        [connectedRelease, unavailableRelease, removedRelease],
-        connectedRelease,
-      ),
-    );
-    await syncCatalog();
   });
 
   it("does not persist an in-flight refresh after the connector is replaced", async () => {

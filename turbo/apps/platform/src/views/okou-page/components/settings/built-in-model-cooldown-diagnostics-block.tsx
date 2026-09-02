@@ -63,22 +63,6 @@ function CooldownDiagnosticsSummary({
           <span className="zero-badge rounded-md px-2 py-0.5">
             {t(($) => {
               return $.settings.preferences.debug.builtInModelCooldown
-                .workspaceFallback;
-            })}
-            :{" "}
-            {diagnostics.fallbackEnabled
-              ? t(($) => {
-                  return $.settings.preferences.debug.builtInModelCooldown
-                    .enabled;
-                })
-              : t(($) => {
-                  return $.settings.preferences.debug.builtInModelCooldown
-                    .disabled;
-                })}
-          </span>
-          <span className="zero-badge rounded-md px-2 py-0.5">
-            {t(($) => {
-              return $.settings.preferences.debug.builtInModelCooldown
                 .globalActive;
             })}
             : {formatLocalizedNumber(diagnostics.activeCooldowns.length)}
@@ -352,14 +336,6 @@ function CooldownDiagnosticsContent({
           })}
         </Button>
       </div>
-      {!diagnostics.fallbackEnabled && (
-        <div className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5 text-foreground">
-          {t(($) => {
-            return $.settings.preferences.debug.builtInModelCooldown
-              .disabledExplanation;
-          })}
-        </div>
-      )}
       <CooldownList diagnostics={diagnostics} loading={loading} />
     </div>
   );

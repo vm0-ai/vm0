@@ -27,7 +27,18 @@ export const initBootstrapSkeleton$ = command(({ set }) => {
   set(internalBootstrapSkeletonActive$, active);
 });
 
-export function hideBootstrapSkeleton(): void {
+export async function hideBootstrapSkeleton(
+  signal?: AbortSignal,
+): Promise<void> {
+  const mainStylesheetLoaded = window.__mainStylesheetLoaded;
+  if (mainStylesheetLoaded) {
+    const mainStylesheetStatus = await mainStylesheetLoaded;
+    if (mainStylesheetStatus === "failed") {
+      throw new Error("Failed to load the main application stylesheet");
+    }
+  }
+  signal?.throwIfAborted();
+
   const skeleton = document.getElementById(APP_BOOTSTRAP_SKELETON_ID);
   if (!skeleton) {
     return;
@@ -62,16 +73,18 @@ export const showAppSkeleton$ = command(({ get, set }) => {
   set(internalOverlayMounted$, !get(internalBootstrapSkeletonActive$));
 });
 
-export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
-  set(internalBootstrapSkeletonActive$, false);
-  set(internalVisible$, false);
-  hideBootstrapSkeleton();
-  set(captureFirstSkeletonHide$);
-  set(captureBootstrapPhaseTiming$);
-});
+export const hideAppSkeleton$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    await hideBootstrapSkeleton(signal);
+    set(internalBootstrapSkeletonActive$, false);
+    set(internalVisible$, false);
+    set(captureFirstSkeletonHide$);
+    set(captureBootstrapPhaseTiming$);
+  },
+);
 
 export const hideAppSkeletonOnContentReadyRef$ = onRef(
-  command(({ set }, _element: HTMLSpanElement, signal: AbortSignal) => {
-    set(hideAppSkeleton$, signal);
+  command(async ({ set }, _element: HTMLSpanElement, signal: AbortSignal) => {
+    await set(hideAppSkeleton$, signal);
   }),
 );

@@ -1,6 +1,6 @@
 import type { DesktopRecorderArea } from "./desktop-recorder-types";
 
-export interface OverlayDisplayBounds {
+interface OverlayDisplayBounds {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -8,12 +8,14 @@ export interface OverlayDisplayBounds {
 }
 
 /**
- * Size of the floating recorder bar, in points.
+ * Size of the floating recorder bar window, in points.
  *
- * The width matches what the controls actually occupy. A wider window would
- * leave the row padded out with dead space, since nothing in the bar stretches.
+ * The window is exactly the surface it draws. Anything larger shows through as
+ * the window's own backing colour, which is what a reserved strip under the bar
+ * looked like: a grey band nobody asked for. Failure messages are drawn inside
+ * the surface instead.
  */
-export const RECORDER_BAR_SIZE = Object.freeze({ width: 866, height: 116 });
+export const RECORDER_BAR_SIZE = Object.freeze({ width: 866, height: 92 });
 
 /** Gap between the bar and the bottom edge of the screen, in points. */
 const RECORDER_BAR_BOTTOM_MARGIN = 72;
@@ -78,11 +80,43 @@ export function areaToGlobal(
   };
 }
 
-/** Size of the controller shown while a recording is running, in points. */
+/** Size of the controller window shown while a recording is running. */
 export const RECORDER_CONTROLLER_SIZE = Object.freeze({
   width: 268,
   height: 60,
 });
+
+/** Size of the window picker, in points. Fits a three-column grid. */
+export const RECORDER_WINDOW_PICKER_SIZE = Object.freeze({
+  width: 900,
+  height: 620,
+});
+
+/** Centres a window inside a display's work area, in global coordinates. */
+export function centredBounds(
+  display: OverlayDisplayBounds,
+  size: { readonly width: number; readonly height: number },
+): { readonly x: number; readonly y: number } {
+  return {
+    x: Math.round(display.x + (display.width - size.width) / 2),
+    y: Math.round(display.y + (display.height - size.height) / 2),
+  };
+}
+
+/**
+ * Places an overlay along the bottom of a display, horizontally centred, which
+ * is where controls belong when there is no region to sit beside.
+ */
+export function bottomCentredBounds(
+  display: OverlayDisplayBounds,
+  size: { readonly width: number; readonly height: number },
+  margin: number,
+): { readonly x: number; readonly y: number } {
+  return {
+    x: Math.round(display.x + (display.width - size.width) / 2),
+    y: Math.round(display.y + display.height - size.height - margin),
+  };
+}
 
 /** Clearance kept between the controller and the region being recorded. */
 const CONTROLLER_CLEARANCE = 16;

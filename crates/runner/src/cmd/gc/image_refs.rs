@@ -31,14 +31,6 @@ impl ProtectedImageRefs {
     }
 
     #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        match self {
-            Self::Complete(refs) => refs.is_empty(),
-            Self::Incomplete => false,
-        }
-    }
-
-    #[cfg(test)]
     pub(super) const fn incomplete() -> Self {
         Self::Incomplete
     }
@@ -96,7 +88,9 @@ pub(super) async fn protected_image_refs_for_gc(
     }
 
     let mut refs = ProtectedImageRefs::new();
-    collect_retained_version_image_refs(home, version_analysis, &mut refs).await;
+    if !collect_retained_version_image_refs(home, version_analysis, &mut refs).await {
+        return ProtectedImageRefs::Incomplete;
+    }
     if !collect_enabled_service_image_refs(&mut refs).await {
         return ProtectedImageRefs::Incomplete;
     }
@@ -107,11 +101,14 @@ async fn collect_retained_version_image_refs(
     home: &HomePaths,
     version_analysis: &VersionGcAnalysis,
     refs: &mut ProtectedImageRefs,
-) {
+) -> bool {
     for name in version_analysis.retained_names() {
         let config_path = home.runners_dir().join(name).join("runner.yaml");
-        collect_config_image_refs(&config_path, "retained version", refs).await;
+        if !collect_config_image_refs(&config_path, "retained version", refs).await {
+            return false;
+        }
     }
+    true
 }
 
 async fn collect_enabled_service_image_refs(refs: &mut ProtectedImageRefs) -> bool {
@@ -123,10 +120,15 @@ async fn collect_enabled_service_image_refs_from_dir(
     refs: &mut ProtectedImageRefs,
 ) -> bool {
     let scan = enabled_runner_service_config_paths(system_dir).await;
-    for config_path in scan.paths {
-        collect_config_image_refs(&config_path, "enabled service", refs).await;
+    if !scan.inventory_complete {
+        return false;
     }
-    scan.inventory_complete
+    for config_path in scan.paths {
+        if !collect_config_image_refs(&config_path, "enabled service", refs).await {
+            return false;
+        }
+    }
+    true
 }
 
 struct EnabledRunnerServiceConfigPaths {
@@ -263,51 +265,52 @@ async fn collect_config_image_refs(
     config_path: &Path,
     source: &str,
     refs: &mut ProtectedImageRefs,
-) {
+) -> bool {
     let Some(content) = (match config::read_diagnostic_config_to_string(config_path).await {
         Ok(content) => content,
         Err(e) => {
             warn!(
-                "runner image refs: cannot read {source} config {} ({e}), skipping",
+                "runner image refs: cannot read {source} config {} ({e}), protection inventory incomplete",
                 config_path.display()
             );
-            return;
+            return false;
         }
     }) else {
         warn!(
-            "runner image refs: {source} config {} is missing, skipping",
+            "runner image refs: {source} config {} is missing, protection inventory incomplete",
             config_path.display()
         );
-        return;
+        return false;
     };
 
     let config = match serde_yaml_ng::from_str::<ConfigImageRefs>(&content) {
         Ok(config) => config,
         Err(_) => {
             warn!(
-                "runner image refs: cannot parse {source} config {}, skipping",
+                "runner image refs: cannot parse {source} config {}, protection inventory incomplete",
                 config_path.display()
             );
-            return;
+            return false;
         }
     };
     for (_, profile_ref) in config.profiles {
         if image_hash::validate_or_err(&profile_ref.rootfs_hash).is_err() {
             warn!(
-                "runner image refs: {source} config {} has a profile with an invalid rootfs hash, skipping profile",
+                "runner image refs: {source} config {} has a profile with an invalid rootfs hash, protection inventory incomplete",
                 config_path.display()
             );
-            continue;
+            return false;
         }
         if image_hash::validate_or_err(&profile_ref.snapshot_hash).is_err() {
             warn!(
-                "runner image refs: {source} config {} has a profile with an invalid snapshot hash, skipping profile",
+                "runner image refs: {source} config {} has a profile with an invalid snapshot hash, protection inventory incomplete",
                 config_path.display()
             );
-            continue;
+            return false;
         }
         insert_protected_image_ref(refs, profile_ref.rootfs_hash, profile_ref.snapshot_hash);
     }
+    true
 }
 
 #[cfg(test)]

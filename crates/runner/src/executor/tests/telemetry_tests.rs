@@ -116,7 +116,7 @@ fn api_startup_boundaries_record_the_effective_path_and_exact_reuse_result() {
             assert_eq!(operation.sandbox_reuse_result, Some(reuse_result));
             assert_eq!(
                 operation.runner_resource_budget_vcpu_utilization_bucket,
-                Some(RunnerResourceBudgetUtilizationBucket::TwentySixToFifty),
+                Some(RunnerResourceBudgetUtilizationBucket::FiftyOneToSeventyFive),
             );
             assert_eq!(
                 operation.runner_resource_budget_memory_utilization_bucket,
@@ -377,14 +377,7 @@ impl Sandbox for ObservedStartSandbox {
         request: &ExecRequest<'_>,
         label: &'static str,
     ) -> sandbox::Result<ExecResult> {
-        let mut result = self
-            .inner
-            .exec_with_diagnostic_label(request, label)
-            .await?;
-        if label == "workspace-mount" {
-            result.guest_duration_ms = Some(23);
-        }
-        Ok(result)
+        self.inner.exec_with_diagnostic_label(request, label).await
     }
 
     async fn apply_storage_manifest(
@@ -392,6 +385,12 @@ impl Sandbox for ObservedStartSandbox {
         request: &sandbox::StorageManifestRequest<'_>,
     ) -> sandbox::Result<ExecResult> {
         self.inner.apply_storage_manifest(request).await
+    }
+
+    async fn mount_workspace_drive(&self) -> sandbox::Result<ExecResult> {
+        let mut result = self.inner.mount_workspace_drive().await?;
+        result.guest_duration_ms = Some(23);
+        Ok(result)
     }
 
     async fn restore_guest_state(

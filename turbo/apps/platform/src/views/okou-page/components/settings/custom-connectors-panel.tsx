@@ -38,6 +38,7 @@ import {
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   customConnectorMcpEnabled$,
+  customConnectorNoAuthEnabled$,
   featureSwitch$,
 } from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -81,6 +82,7 @@ interface CustomConnectorRowProps {
   readonly connector: CustomConnectorResponse;
   readonly isAdmin: boolean;
   readonly mcpEnabled: boolean;
+  readonly noAuthEnabled: boolean;
   readonly onConnect: () => void;
   readonly onDisconnect: () => void;
   readonly onEdit: () => void;
@@ -385,6 +387,7 @@ function CustomConnectorRow({
   connector,
   isAdmin,
   mcpEnabled,
+  noAuthEnabled,
   onConnect,
   onDisconnect,
   onEdit,
@@ -397,12 +400,14 @@ function CustomConnectorRow({
 }: CustomConnectorRowProps) {
   const adminCanDelete = isAdmin;
   const mcpActionsEnabled = connector.kind === "http" || mcpEnabled;
+  const connectionActionsEnabled =
+    mcpActionsEnabled && (connector.authMode !== "none" || noAuthEnabled);
   const adminCanEdit = adminCanDelete && mcpActionsEnabled;
   const accountCount = accountSummary?.accountCount ?? 0;
   const canActivate = accountManagement
     ? accountSummaryStatus === "ready" &&
-      (accountCount > 0 || mcpActionsEnabled)
-    : mcpActionsEnabled && !connector.connected;
+      (accountCount > 0 || connectionActionsEnabled)
+    : connectionActionsEnabled && !connector.connected;
   const activate =
     accountManagement && accountCount > 0 ? onManageAccounts : onConnect;
   const managesAccounts = accountManagement && accountCount > 0;
@@ -412,7 +417,7 @@ function CustomConnectorRow({
       connector={connector}
       hasActions={hasActions}
       allowAccessIncrease={
-        mcpActionsEnabled && (!accountManagement || accountCount > 0)
+        connectionActionsEnabled && (!accountManagement || accountCount > 0)
       }
       onManageAccess={onManageAccess}
       accountSummary={accountSummary}
@@ -523,10 +528,12 @@ function CustomConnectorGrid({
   connectors,
   isAdmin,
   mcpEnabled,
+  noAuthEnabled,
 }: {
   readonly connectors: readonly CustomConnectorResponse[];
   readonly isAdmin: boolean;
   readonly mcpEnabled: boolean;
+  readonly noAuthEnabled: boolean;
 }) {
   const connectorAccountsEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
@@ -604,6 +611,7 @@ function CustomConnectorGrid({
             connector={connector}
             isAdmin={isAdmin}
             mcpEnabled={mcpEnabled}
+            noAuthEnabled={noAuthEnabled}
             onConnect={() => {
               return handleConnect(connector);
             }}
@@ -634,8 +642,10 @@ function CustomConnectorGrid({
 
 function CustomAccountDialogs({
   mcpEnabled,
+  noAuthEnabled,
 }: {
   readonly mcpEnabled: boolean;
+  readonly noAuthEnabled: boolean;
 }) {
   const managedAccounts = useGet(customAccountManager$);
   const accountConnect = useGet(customAccountConnectDialog$);
@@ -680,7 +690,8 @@ function CustomAccountDialogs({
             />
           }
           connectionActionsEnabled={
-            managedAccounts.kind === "http" || mcpEnabled
+            (managedAccounts.kind === "http" || mcpEnabled) &&
+            (managedAccounts.authMode !== "none" || noAuthEnabled)
           }
           onClose={closeAccountManager}
           onAdd={() => {
@@ -732,6 +743,7 @@ export function CustomConnectorsPanel() {
   });
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const noAuthEnabled = useGet(customConnectorNoAuthEnabled$);
 
   return (
     <section className="flex flex-col gap-3">
@@ -743,10 +755,14 @@ export function CustomConnectorsPanel() {
           connectors={userManagedConnectors}
           isAdmin={isAdmin}
           mcpEnabled={mcpEnabled}
+          noAuthEnabled={noAuthEnabled}
         />
       ) : null}
       <CustomConnectorDialogs mcpEnabled={mcpEnabled} />
-      <CustomAccountDialogs mcpEnabled={mcpEnabled} />
+      <CustomAccountDialogs
+        mcpEnabled={mcpEnabled}
+        noAuthEnabled={noAuthEnabled}
+      />
     </section>
   );
 }

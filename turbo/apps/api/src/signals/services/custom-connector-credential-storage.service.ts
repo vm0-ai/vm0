@@ -174,12 +174,16 @@ export async function deleteCustomConnectorMemberConnectionExact(
       readonly promotedDefaultConnectionId: string | null;
     }
 > {
-  const deletion = await prepareConnectorAccountDeletion(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    target: { kind: "custom", customConnectorId: args.connectorId },
-    connectionId: args.memberConnectorId,
-  });
+  const deletion = await prepareConnectorAccountDeletion(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "custom", customConnectorId: args.connectorId },
+      connectionId: args.memberConnectorId,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   if (deletion.kind !== "ready") {
     return deletion;

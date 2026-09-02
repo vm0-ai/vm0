@@ -107,6 +107,12 @@ pub const MSG_EXEC_AGENT_READY: u8 = 0x1C;
 /// Host-to-guest private multi-file write request.
 pub const MSG_WRITE_PRIVATE_FILES: u8 = 0x1D;
 
+/// Host-to-guest request to mount the fixed workspace drive.
+pub const MSG_WORKSPACE_DRIVE_MOUNT: u8 = 0x1E;
+
+/// Guest-to-host result of mounting the fixed workspace drive.
+pub const MSG_WORKSPACE_DRIVE_MOUNT_RESULT: u8 = 0x1F;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -190,6 +196,12 @@ mod tests {
             ),
             ("MSG_EXEC_AGENT_READY", MSG_EXEC_AGENT_READY, 0x1C),
             ("MSG_WRITE_PRIVATE_FILES", MSG_WRITE_PRIVATE_FILES, 0x1D),
+            ("MSG_WORKSPACE_DRIVE_MOUNT", MSG_WORKSPACE_DRIVE_MOUNT, 0x1E),
+            (
+                "MSG_WORKSPACE_DRIVE_MOUNT_RESULT",
+                MSG_WORKSPACE_DRIVE_MOUNT_RESULT,
+                0x1F,
+            ),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];
 

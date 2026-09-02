@@ -2,7 +2,8 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import {
   MORNING_BRIEF_PREFERENCES_FOCUS,
-  MORNING_BRIEF_PREFERENCES_TAB,
+  MORNING_BRIEF_PREFERENCES_ROUTE,
+  MORNING_BRIEF_PREFERENCES_SECTION,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
 
 import { i18n } from "../../i18n/index.ts";
@@ -15,10 +16,8 @@ import {
   isMorningBriefWorkflow,
   resetWorkflowDetailUiState$,
 } from "./workflows-signals.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import { setOfficialWorkflowConfigurationForm$ } from "./official-workflows-signals.ts";
 import { detachedNavigateTo$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
 
 export const setupWorkflowDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -28,10 +27,10 @@ export const setupWorkflowDetailPage$ = command(
     signal.throwIfAborted();
     if (detail && isMorningBriefWorkflow(detail)) {
       const searchParams = new URLSearchParams({
-        tab: MORNING_BRIEF_PREFERENCES_TAB,
+        settings: MORNING_BRIEF_PREFERENCES_SECTION,
         focus: MORNING_BRIEF_PREFERENCES_FOCUS,
       });
-      set(detachedNavigateTo$, ROUTES.settings, {
+      set(detachedNavigateTo$, MORNING_BRIEF_PREFERENCES_ROUTE, {
         searchParams,
         replace: true,
       });
@@ -45,7 +44,5 @@ export const setupWorkflowDetailPage$ = command(
       }),
     );
     await set(hideAppSkeleton$, signal);
-
-    await set(onboardGuard$, signal);
   },
 );

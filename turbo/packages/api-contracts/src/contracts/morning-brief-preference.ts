@@ -7,10 +7,10 @@ const c = initContract();
 
 export const MORNING_BRIEF_OFFICIAL_DEFINITION_NAME = "morning-brief";
 export const MORNING_BRIEF_OFFICIAL_BLUEPRINT_KEY = "daily-delivery";
-export const MORNING_BRIEF_PREFERENCES_TAB = "timezone";
+export const MORNING_BRIEF_PREFERENCES_ROUTE = "/agents";
+export const MORNING_BRIEF_PREFERENCES_SECTION = "preference";
 export const MORNING_BRIEF_PREFERENCES_FOCUS = "morning-brief";
-export const MORNING_BRIEF_PREFERENCES_PATH =
-  "/settings?tab=timezone&focus=morning-brief";
+export const MORNING_BRIEF_PREFERENCES_PATH = `${MORNING_BRIEF_PREFERENCES_ROUTE}?settings=${MORNING_BRIEF_PREFERENCES_SECTION}&focus=${MORNING_BRIEF_PREFERENCES_FOCUS}`;
 
 export const morningBriefUnavailableReasonSchema = z.enum([
   "missing-timezone",

@@ -203,13 +203,17 @@ export function readableAttachmentResourceUrl(url: string): string {
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const blobUrl = URL.createObjectURL(blob);
+  triggerAnchorDownload(blobUrl, filename);
+  URL.revokeObjectURL(blobUrl);
+}
+
+function triggerAnchorDownload(url: string, filename: string): void {
   const a = document.createElement("a");
-  a.href = blobUrl;
+  a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(blobUrl);
 }
 
 // Fetch the asset as a blob so downloads are delivered from a same-origin
@@ -236,11 +240,6 @@ async function fetchBlobForDownload(
   } catch (error) {
     throwIfAbort(error);
     log.warn("downloadUrl: fetch failed", error);
-    toast.error(
-      i18n.t(($) => {
-        return $.artifacts.toasts.downloadFailed;
-      }),
-    );
     return null;
   }
 }
@@ -249,11 +248,25 @@ export async function downloadAttachmentUrl(
   url: string,
   signal: AbortSignal = AbortSignal.any([]),
   filename = attachmentFilenameFromUrl(url),
+  mode: "blob" | "native" = "blob",
 ): Promise<void> {
+  if (mode === "native") {
+    signal.throwIfAborted();
+    // Generic files intentionally use native browser delivery. Previewable
+    // media keeps the blob path so a download cannot replace the chat page.
+    triggerAnchorDownload(publicAttachmentUrl(url), filename);
+    return;
+  }
   const blob = await fetchBlobForDownload(url, signal);
   if (blob !== null) {
     triggerBlobDownload(blob, filename);
+    return;
   }
+  toast.error(
+    i18n.t(($) => {
+      return $.artifacts.toasts.downloadFailed;
+    }),
+  );
 }
 
 export async function copyAttachmentLinkToClipboard(

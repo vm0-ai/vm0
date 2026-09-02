@@ -93,7 +93,21 @@ fi
 
 poll_seconds=${SUPERSEDED_RUN_POLL_SECONDS:-2}
 timeout_seconds=${SUPERSEDED_RUN_TIMEOUT_SECONDS:-180}
-if [[ ! "$poll_seconds" =~ ^[0-9]+$ || ! "$timeout_seconds" =~ ^[0-9]+$ ]]; then
+# Discovery and the terminal-state barrier wait for different things, so they
+# get different ceilings. Force-cancel only *requests* termination: when a
+# superseded job is wedged in a step that never returns, GitHub reaps it on its
+# own hard-kill schedule, bounded at five minutes from when cancellation began,
+# and force-cancel does not shorten that. Superseded runs that wind down
+# normally still clear this barrier in a couple of seconds, so the larger
+# ceiling only covers the wedged case instead of relaxing the healthy one.
+if [ "$owner_scope" = "superseded" ]; then
+  completion_timeout_seconds=${SUPERSEDED_RUN_COMPLETION_TIMEOUT_SECONDS:-420}
+else
+  completion_timeout_seconds=${SUPERSEDED_RUN_COMPLETION_TIMEOUT_SECONDS:-$timeout_seconds}
+fi
+if [[ ! "$poll_seconds" =~ ^[0-9]+$ ||
+  ! "$timeout_seconds" =~ ^[0-9]+$ ||
+  ! "$completion_timeout_seconds" =~ ^[0-9]+$ ]]; then
   echo "superseded run polling values must be non-negative integers" >&2
   exit 2
 fi
@@ -253,8 +267,8 @@ while true; do
     exit 0
   fi
 
-  if ((SECONDS - started_at >= timeout_seconds)); then
-    echo "::error::Timed out waiting for ${selected_runs_label} to complete: ${pending_runs[*]}" >&2
+  if ((SECONDS - started_at >= completion_timeout_seconds)); then
+    echo "::error::Timed out after ${completion_timeout_seconds}s waiting for ${selected_runs_label} to complete: ${pending_runs[*]}" >&2
     exit 1
   fi
 

@@ -29,7 +29,6 @@ import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
 } from "../user-permission-grants";
-import { workflowConnectorReadinessResponseSchema } from "../workflows";
 import { initClient } from "../trpc-contract";
 
 const AGENT_ID = "00000000-0000-4000-a000-000000000001";
@@ -219,19 +218,6 @@ describe("connector client response contracts", () => {
       }),
     ).toMatchObject({ connectorSlug: "github" });
     expect(
-      workflowConnectorReadinessResponseSchema.parse({
-        connectors: [
-          {
-            connectorSlug: "github",
-            label: "GitHub",
-            icon: catalogItem.icon,
-            reason: "Connect GitHub",
-            status: "not-connected",
-          },
-        ],
-      }),
-    ).toMatchObject({ connectors: [{ connectorSlug: "github" }] });
-    expect(
       connectorChangedPayloadSchema.parse({ connectorSlug: "github" }),
     ).toStrictEqual({ connectorSlug: "github" });
   });
@@ -355,8 +341,31 @@ describe("connector client request contracts", () => {
     kind: "mcp" as const,
     endpoint: "https://mcp.example.test",
     transport: "streamable-http" as const,
+  };
+  const oauthDefinition = {
+    ...definitionBase,
     fields: [],
-    headerInjections: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    queryInjections: [],
+  };
+  const manualDefinition = {
+    ...definitionBase,
+    fields: [
+      {
+        key: "token",
+        label: "Token",
+        kind: "secret" as const,
+        required: true,
+      },
+    ],
+    headerInjections: [
+      { name: "Authorization", valueTemplate: "Bearer {{token}}" },
+    ],
     queryInjections: [],
   };
 
@@ -375,14 +384,14 @@ describe("connector client request contracts", () => {
 
     expect(
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...oauthDefinition,
         authMode: "oauth",
         oauthConfig,
       }),
     ).toMatchObject({ authMode: "oauth", oauthConfig });
     expect(
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...oauthDefinition,
         authMode: "oauth",
         oauthSetup: "automatic",
       }),
@@ -392,7 +401,7 @@ describe("connector client request contracts", () => {
   it("keeps additive request fields forward-compatible", () => {
     expect(
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...manualDefinition,
         authMode: "manual",
         futureOption: true,
       }),
@@ -401,7 +410,7 @@ describe("connector client request contracts", () => {
 
   it("rejects ambiguous OAuth setup variants", () => {
     const automatic = {
-      ...definitionBase,
+      ...oauthDefinition,
       authMode: "oauth",
       oauthSetup: "automatic",
     } as const;
@@ -431,7 +440,7 @@ describe("connector client request contracts", () => {
     }).toThrow();
     expect(() => {
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...manualDefinition,
         authMode: "manual",
         oauthSetup: "custom",
       });

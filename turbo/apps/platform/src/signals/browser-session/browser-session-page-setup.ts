@@ -7,7 +7,6 @@ import { parseBrowserSessionUrl } from "../chat-page/browser-session-block.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
-import { onboardGuard$ } from "../okou-page/onboard-guard.ts";
 import {
   createBrowserSessionPageSignals,
   setBrowserSessionPageSignals$,
@@ -31,6 +30,5 @@ export const setupBrowserSessionPage$ = command(
     );
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
-    await set(onboardGuard$, signal);
   },
 );

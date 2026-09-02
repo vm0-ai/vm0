@@ -4,20 +4,26 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-canonical-write";
-import {
-  orgMetadata,
-  orgMetadataLegacyColumns,
-} from "@okouai/db/schema/org-metadata";
+import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { getTableConfig, pgTable } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  getTableConfig,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { Client } from "pg";
 
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import {
   ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
-  validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
+  validateTransitionOrgMetadataAcquisitionFirstPartySourceState,
 } from "./test-org-metadata-acquisition-first-party-source-permanent";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -33,10 +39,60 @@ const applicationRuntimePathspecs = [
   "crates",
   "e2e",
 ] as const;
+
+function previousReleaseOrgMetadataColumns() {
+  return {
+    orgId: text("org_id").primaryKey(),
+    credits: bigint("credits", { mode: "number" }).notNull().default(0),
+    tier: text("tier").notNull().default("limited-free-1"),
+    defaultAgentId: uuid("default_agent_id"),
+    onboardingPaymentPending: boolean("onboarding_payment_pending")
+      .notNull()
+      .default(false),
+    onboardingComplete: boolean("onboarding_complete").notNull().default(false),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    subscriptionStatus: varchar("subscription_status", { length: 20 }),
+    currentPeriodEnd: timestamp("current_period_end"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    pendingSubscriptionScheduleId: text("pending_subscription_schedule_id"),
+    pendingSubscriptionTargetTier: text("pending_subscription_target_tier"),
+    pendingSubscriptionChangeAt: timestamp("pending_subscription_change_at"),
+    lastProcessedInvoiceId: text("last_processed_invoice_id"),
+    acquisitionSourceType: text("acquisition_source_type"),
+    acquisitionVm0Source: text("acquisition_vm0_source"),
+    acquisitionCampaignId: text("acquisition_campaign_id"),
+    acquisitionAdGroupId: text("acquisition_ad_group_id"),
+    acquisitionCampaign: text("acquisition_campaign"),
+    acquisitionUtmSource: text("acquisition_utm_source"),
+    acquisitionUtmMedium: text("acquisition_utm_medium"),
+    acquisitionUtmContent: text("acquisition_utm_content"),
+    acquisitionUtmTerm: text("acquisition_utm_term"),
+    acquisitionGclid: text("acquisition_gclid"),
+    acquisitionGbraid: text("acquisition_gbraid"),
+    acquisitionWbraid: text("acquisition_wbraid"),
+    acquisitionGaClientId: text("acquisition_ga_client_id"),
+    acquisitionLandingHost: text("acquisition_landing_host"),
+    acquisitionLandingPath: text("acquisition_landing_path"),
+    acquisitionReferrerDomain: text("acquisition_referrer_domain"),
+    acquisitionRecordedAt: timestamp("acquisition_recorded_at"),
+    autoRechargeEnabled: boolean("auto_recharge_enabled")
+      .notNull()
+      .default(false),
+    autoRechargeThreshold: bigint("auto_recharge_threshold", {
+      mode: "number",
+    }),
+    autoRechargeAmount: bigint("auto_recharge_amount", { mode: "number" }),
+    autoRechargePendingAt: timestamp("auto_recharge_pending_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  };
+}
+
 // Test-only previous-release shape for immediate API rollback proof.
 const orgMetadataPreviousReleaseWrites = pgTable(
   "org_metadata",
-  orgMetadataLegacyColumns(),
+  previousReleaseOrgMetadataColumns(),
 );
 
 interface HistoricalRowSnapshot {
@@ -146,6 +202,7 @@ function validateApplicationCallerInventory(): void {
       "turbo/apps/platform/src/signals/auth-v2/platform-context.test.ts",
       "turbo/apps/platform/src/signals/auth.ts",
       "turbo/apps/platform/src/signals/bootstrap/ad-attribution.ts",
+      "turbo/apps/platform/src/views/okou-page/__tests__/home-route.test.tsx",
       "turbo/apps/platform/src/views/okou-page/__tests__/onboarding.test.tsx",
       "turbo/apps/platform/src/views/onboarding/__tests__/onboarding-flow.test.tsx",
       "turbo/packages/api-contracts/src/contracts/acquisition-attribution.ts",
@@ -252,8 +309,8 @@ function validateApplicationWriteProjections(): void {
   const currentColumns = getTableConfig(orgMetadata).columns.map((column) => {
     return column.name;
   });
-  assert.ok(currentColumns.includes("acquisition_vm0_source"));
   assert.ok(currentColumns.includes("acquisition_first_party_source"));
+  assert.equal(currentColumns.includes("acquisition_vm0_source"), false);
 
   const canonicalWriteColumns = getTableConfig(
     orgMetadataCanonicalWrites,
@@ -465,7 +522,7 @@ async function executePreviousReleaseWrites(
     .values({ orgId: updateOrgId, credits: 0 })
     .onConflictDoNothing({ target: orgMetadataPreviousReleaseWrites.orgId });
   const [updated] = await database
-    .update(orgMetadata)
+    .update(orgMetadataPreviousReleaseWrites)
     .set({
       acquisitionVm0Source: "presentation",
       acquisitionRecordedAt: recordedAt,
@@ -473,26 +530,26 @@ async function executePreviousReleaseWrites(
     })
     .where(
       and(
-        eq(orgMetadata.orgId, updateOrgId),
-        isNull(orgMetadata.acquisitionRecordedAt),
+        eq(orgMetadataPreviousReleaseWrites.orgId, updateOrgId),
+        isNull(orgMetadataPreviousReleaseWrites.acquisitionRecordedAt),
       ),
     )
-    .returning({ orgId: orgMetadata.orgId });
+    .returning({ orgId: orgMetadataPreviousReleaseWrites.orgId });
   assert.equal(updated?.orgId, updateOrgId);
 
   const [blockedOverwrite] = await database
-    .update(orgMetadata)
+    .update(orgMetadataPreviousReleaseWrites)
     .set({
       acquisitionVm0Source: "marketing",
       acquisitionRecordedAt: new Date("2031-01-02T03:04:05.000Z"),
     })
     .where(
       and(
-        eq(orgMetadata.orgId, updateOrgId),
-        isNull(orgMetadata.acquisitionRecordedAt),
+        eq(orgMetadataPreviousReleaseWrites.orgId, updateOrgId),
+        isNull(orgMetadataPreviousReleaseWrites.acquisitionRecordedAt),
       ),
     )
-    .returning({ orgId: orgMetadata.orgId });
+    .returning({ orgId: orgMetadataPreviousReleaseWrites.orgId });
   assert.equal(blockedOverwrite, undefined);
 }
 
@@ -847,7 +904,7 @@ export async function validateOrgMetadataAcquisitionFirstPartySourceExpansion(
       await client.end();
     }
 
-    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl);
+    await validateTransitionOrgMetadataAcquisitionFirstPartySourceState(dbUrl);
   } finally {
     await dropDatabase(baseDbUrl);
   }

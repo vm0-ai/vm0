@@ -105,11 +105,22 @@ async def test_ordinary_owner_rejects_unsolicited_encoded_response(real_flow, en
     catalog_cache.handle_error(retry)
 
 
-async def test_ordinary_identity_miss_without_length_streams_and_caches(real_flow):
-    flow = catalog_flow(real_flow, version="identity-without-length")
+@pytest.mark.parametrize(
+    "transfer_encoding",
+    [None, "chunked"],
+    ids=["close-delimited", "transfer-encoded"],
+)
+async def test_ordinary_identity_miss_without_length_streams_and_caches(
+    real_flow,
+    transfer_encoding: str | None,
+):
+    version = f"identity-without-length-{transfer_encoding or 'none'}"
+    flow = catalog_flow(real_flow, version=version)
     await prepare_miss(flow)
     flow.response = catalog_response()
     del flow.response.headers["Content-Length"]
+    if transfer_encoding is not None:
+        flow.response.headers["Transfer-Encoding"] = transfer_encoding
 
     telemetry = await finish_response(flow)
 
@@ -118,7 +129,7 @@ async def test_ordinary_identity_miss_without_length_streams_and_caches(real_flo
     assert "Content-Encoding" not in flow.response.headers
     assert "Content-Length" not in flow.response.headers
     assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
-    hit = catalog_flow(real_flow, version="identity-without-length")
+    hit = catalog_flow(real_flow, version=version)
     await catalog_cache.prepare_request(hit, request_end_stream=True)
     assert hit.response is not None
     assert hit.response.content == CATALOG_BODY
@@ -253,6 +264,11 @@ async def test_set_cookie_is_not_replayed_from_cached_brotli_response(real_flow)
             catalog_response(body=b'{"items":[]}'),
             "response_shape",
             id="wrong-shape",
+        ),
+        pytest.param(
+            catalog_response(headers={"Transfer-Encoding": "chunked"}),
+            "response_size",
+            id="ambiguous-framing",
         ),
         pytest.param(
             catalog_response(headers={"Content-Length": str(len(CATALOG_BODY) + 1)}),

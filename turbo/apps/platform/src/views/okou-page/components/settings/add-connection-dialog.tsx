@@ -49,7 +49,6 @@ import {
   runConnectorConnectSuccess$,
   submitManualGrant$,
   setManualGrantFormValue$,
-  clearManualGrantForm$,
   manualGrantFormValuesFor$,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
@@ -293,7 +292,6 @@ function ManualGrantForm({
 }) {
   const { t } = useTranslation();
   const setFormValue = useSet(setManualGrantFormValue$);
-  const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
   const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
   const fieldValues = manualGrantFormValuesFor(connectorSlug);
@@ -323,7 +321,6 @@ function ManualGrantForm({
       if (!connected) {
         return;
       }
-      clearForm(connectorSlug);
       await onSuccess(connected.connectionId);
     },
   );

@@ -6,11 +6,6 @@ import {
   workflowsDetailContract,
   workflowVisibilityContract,
 } from "@okouai/api-contracts/contracts/workflows";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import {
-  getAllFeatureStates,
-  isFeatureEnabled,
-} from "@okouai/core/feature-switch";
 import { SEED_SKILLS } from "@okouai/core/seed-skills";
 import { getCustomSkillStorageName } from "@okouai/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@okouai/core/skill-document";
@@ -28,21 +23,13 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { publicBrand$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { db$, writeDb$, type Db } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "../services/api-dispatch-timing.service";
-import {
-  autonomyBudgetExhausted,
-  conflict,
-  connectorReadinessTimeout,
-  notFound,
-  payloadTooLarge,
-  providerUnavailable,
-} from "../../lib/error";
-import { logger } from "../../lib/log";
+import { autonomyBudgetExhausted, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
@@ -56,7 +43,6 @@ import {
   loadWorkflowUserAutomationThreadId,
 } from "../services/workflow-user-automation-thread.service";
 import { updateWorkflow$ } from "../services/workflow-update.service";
-import { detectWorkflowConnectorReadiness$ } from "../services/workflow-connector-readiness.service";
 import { createUserMessageDocument } from "../services/chat-user-message.service";
 import { loadWorkflowVolumeFiles } from "../services/workflow-volume.service";
 import {
@@ -66,7 +52,6 @@ import {
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-automation.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   insertWorkflowAutomation,
   workflowAutomationColumns,
@@ -75,8 +60,13 @@ import {
   childAutonomyBudget,
   loadOwnedRunAutonomyBudget,
 } from "../services/autonomy-budget.service";
-import { bestEffort, onRejection, settle } from "../utils";
+import { bestEffort, onRejection } from "../utils";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
+import { reconcileGoogleCalendarWatchesForUser } from "../services/google-calendar-automation-event.service";
+import { lockConnectorAccountTarget } from "../services/auth-state-lock.service";
+import { reprojectWorkflowAutomationsForOwner } from "../services/workflow-automation-account-projection.service";
+import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
+import { reconcileGoogleMeetSubscriptionsForUser } from "../services/google-meet-automation-event.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -103,8 +93,6 @@ import {
   ensureVolumeStorage$,
   prepareVolumeServerSideWithDb$,
 } from "../services/storage-volume-publication.service";
-
-const log = logger("api:workflow-connector-readiness");
 
 const workflowReadAuth = {
   requireOrganization: true,
@@ -511,124 +499,6 @@ const getWorkflowDetailInner$ = computed(async (get) => {
   }
   return { status: 200 as const, body: result };
 });
-
-function isTimeoutError(error: unknown): boolean {
-  return (
-    (error instanceof Error || error instanceof DOMException) &&
-    error.name === "TimeoutError"
-  );
-}
-
-const connectorReadinessInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(
-      pathParamsOf(workflowsDetailContract.connectorReadiness),
-    );
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    const featureContext = {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    };
-    if (
-      !isFeatureEnabled(
-        FeatureSwitchKey.WorkflowConnectorReadiness,
-        featureContext,
-      )
-    ) {
-      return forbidden("Workflow connector readiness is disabled");
-    }
-
-    const visible = await loadVisibleWorkflowById(get(db$), {
-      orgId: auth.orgId,
-      member: memberFromAuth(auth),
-      workflowId: params.workflowId,
-    });
-    signal.throwIfAborted();
-    if (!visible) {
-      return workflowNotFound(params.workflowId);
-    }
-
-    const officialDefinition = visible.workflow.officialDefinitionName
-      ? await readAcceptedOfficialWorkflowDefinition(
-          get(db$),
-          visible.workflow.officialDefinitionName,
-          signal,
-        )
-      : null;
-    const officialRevision = officialDefinition
-      ? await readAcceptedOfficialWorkflowRevision(
-          get(db$),
-          {
-            name: officialDefinition.name,
-            revision: officialDefinition.revision,
-          },
-          signal,
-        )
-      : null;
-    if (
-      visible.workflow.officialDefinitionName !== null &&
-      officialRevision === null
-    ) {
-      return providerUnavailable(
-        "Official Workflow content is temporarily unavailable. Please retry.",
-      );
-    }
-
-    const detected = await settle(
-      set(
-        detectWorkflowConnectorReadiness$,
-        {
-          orgId: auth.orgId,
-          userId: auth.userId,
-          agentId: visible.workflow.agentId,
-          workflowId: visible.workflow.id,
-          workflow: officialRevision
-            ? {
-                name: officialRevision.definition.name,
-                description: officialRevision.definition.workflow.description,
-                instruction: officialRevision.definition.workflow.instruction,
-              }
-            : {
-                name: visible.workflow.name,
-                description: visible.workflow.description,
-                instruction: visible.workflow.instruction,
-              },
-          featureStates: getAllFeatureStates(featureContext),
-          publicBrand: get(publicBrand$),
-        },
-        signal,
-      ),
-      signal,
-    );
-    if (!detected.ok) {
-      if (isTimeoutError(detected.error)) {
-        return connectorReadinessTimeout(
-          "Connector readiness check timed out. Please retry.",
-        );
-      }
-      log.warn("Workflow connector readiness check failed", {
-        workflowId: visible.workflow.id,
-        error:
-          detected.error instanceof Error
-            ? detected.error.message
-            : String(detected.error),
-      });
-      return providerUnavailable(
-        "Connector readiness check failed. Please retry.",
-      );
-    }
-    const result = detected.value;
-    if (!result.ok) {
-      return payloadTooLarge(result.message);
-    }
-    return { status: 200 as const, body: result.response };
-  },
-);
 
 const updateWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -1043,7 +913,13 @@ async function copyWorkflowAutomationRow(
 async function copyWorkflowUserAutomations(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowAutomationRowsArgs,
-): Promise<boolean> {
+): Promise<{
+  readonly hasGmailAutomations: boolean;
+  readonly hasGoogleCalendarAutomations: boolean;
+  readonly hasGoogleFormsAutomations: boolean;
+  readonly hasGoogleMeetAutomations: boolean;
+  readonly hasStripeAutomations: boolean;
+}> {
   const rows =
     args.sourceAutomations ??
     (await tx
@@ -1057,7 +933,49 @@ async function copyWorkflowUserAutomations(
         ),
       ));
   if (rows.length === 0) {
-    return false;
+    return {
+      hasGmailAutomations: false,
+      hasGoogleCalendarAutomations: false,
+      hasGoogleFormsAutomations: false,
+      hasGoogleMeetAutomations: false,
+      hasStripeAutomations: false,
+    };
+  }
+  const hasGmailAutomations = rows.some((automation) => {
+    return (
+      automation.eventType === "gmail-new-message" ||
+      automation.eventType === "gmail-label-applied"
+    );
+  });
+  const hasGoogleCalendarAutomations = rows.some((automation) => {
+    return (
+      automation.eventType === "google-calendar-event-created" ||
+      automation.eventType === "google-calendar-event-updated" ||
+      automation.eventType === "google-calendar-event-cancelled"
+    );
+  });
+  const hasGoogleFormsAutomations = rows.some((automation) => {
+    return automation.eventType === "google-forms-response-submitted";
+  });
+  const hasGoogleMeetAutomations = rows.some((automation) => {
+    return automation.eventType === "google-meet-transcript-generated";
+  });
+  const hasStripeAutomations = rows.some((automation) => {
+    return automation.eventType === "stripe-invoice-paid";
+  });
+  const accountTargets = [
+    ...(hasGmailAutomations ? (["gmail"] as const) : []),
+    ...(hasGoogleCalendarAutomations ? (["google-calendar"] as const) : []),
+    ...(hasGoogleFormsAutomations ? (["google-forms"] as const) : []),
+    ...(hasGoogleMeetAutomations ? (["google-meet"] as const) : []),
+    ...(hasStripeAutomations ? (["stripe"] as const) : []),
+  ].sort();
+  for (const connectorSlug of accountTargets) {
+    await lockConnectorAccountTarget(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "builtin", connectorSlug },
+    });
   }
 
   await ensureWorkflowUserAutomationThread(tx, {
@@ -1071,12 +989,13 @@ async function copyWorkflowUserAutomations(
   for (const automation of rows) {
     await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
-  return rows.some((automation) => {
-    return (
-      automation.eventType === "gmail-new-message" ||
-      automation.eventType === "gmail-label-applied"
-    );
-  });
+  return {
+    hasGmailAutomations,
+    hasGoogleCalendarAutomations,
+    hasGoogleFormsAutomations,
+    hasGoogleMeetAutomations,
+    hasStripeAutomations,
+  };
 }
 
 async function copyWorkflowRuntimeConfiguration(
@@ -1086,6 +1005,10 @@ async function copyWorkflowRuntimeConfiguration(
   | {
       readonly workflow: { readonly id: string };
       readonly hasGmailAutomations: boolean;
+      readonly hasGoogleCalendarAutomations: boolean;
+      readonly hasGoogleFormsAutomations: boolean;
+      readonly hasGoogleMeetAutomations: boolean;
+      readonly hasStripeAutomations: boolean;
     }
   | undefined
 > {
@@ -1104,7 +1027,7 @@ async function copyWorkflowRuntimeConfiguration(
       ? {}
       : { inheritedAutonomyBudget: args.inheritedAutonomyBudget }),
   };
-  const hasGmailAutomations = await copyWorkflowUserAutomations(tx, {
+  const automationProviders = await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
     workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
@@ -1112,7 +1035,7 @@ async function copyWorkflowRuntimeConfiguration(
       ? { sourceAutomations: args.sourceAutomations }
       : {}),
   });
-  return { workflow, hasGmailAutomations };
+  return { workflow, ...automationProviders };
 }
 
 type CopyWorkflowDatabaseResult =
@@ -1121,6 +1044,10 @@ type CopyWorkflowDatabaseResult =
       readonly kind: "ok";
       readonly inserted: { readonly id: string };
       readonly hasGmailAutomations: boolean;
+      readonly hasGoogleCalendarAutomations: boolean;
+      readonly hasGoogleFormsAutomations: boolean;
+      readonly hasGoogleMeetAutomations: boolean;
+      readonly hasStripeAutomations: boolean;
     };
 
 async function copyWorkflowDatabaseRows(
@@ -1150,6 +1077,7 @@ async function copyWorkflowDatabaseRows(
         | null,
     ) => Promise<void>;
   },
+  signal: AbortSignal,
 ): Promise<CopyWorkflowDatabaseResult> {
   return await db.transaction(async (tx) => {
     const officialResolution = args.sourceWorkflow.officialDefinitionName
@@ -1182,6 +1110,28 @@ async function copyWorkflowDatabaseRows(
     if (!inserted) {
       throw new Error("Failed to copy workflow");
     }
+    const accountTargets = [
+      ...(inserted.hasGmailAutomations ? (["gmail"] as const) : []),
+      ...(inserted.hasGoogleCalendarAutomations
+        ? (["google-calendar"] as const)
+        : []),
+      ...(inserted.hasGoogleFormsAutomations
+        ? (["google-forms"] as const)
+        : []),
+      ...(inserted.hasGoogleMeetAutomations ? (["google-meet"] as const) : []),
+      ...(inserted.hasStripeAutomations ? (["stripe"] as const) : []),
+    ].sort();
+    for (const connectorSlug of accountTargets) {
+      await reprojectWorkflowAutomationsForOwner(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          target: { kind: "builtin", connectorSlug },
+        },
+        signal,
+      );
+    }
     await args.publishVolume(
       tx,
       sourceWorkflow,
@@ -1191,6 +1141,10 @@ async function copyWorkflowDatabaseRows(
       kind: "ok",
       inserted: inserted.workflow,
       hasGmailAutomations: inserted.hasGmailAutomations,
+      hasGoogleCalendarAutomations: inserted.hasGoogleCalendarAutomations,
+      hasGoogleFormsAutomations: inserted.hasGoogleFormsAutomations,
+      hasGoogleMeetAutomations: inserted.hasGoogleMeetAutomations,
+      hasStripeAutomations: inserted.hasStripeAutomations,
     };
   });
 }
@@ -1214,6 +1168,36 @@ function copiedWorkflowVolumeFiles(
       return { path: file.path, content: file.content };
     });
   return [{ path: "SKILL.md", content: skillMd }, ...attachedFiles];
+}
+
+async function reconcileCopiedWorkflowAutomationWatches(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly copied: Extract<CopyWorkflowDatabaseResult, { kind: "ok" }>;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const owner = { db: args.db, orgId: args.orgId, userId: args.userId };
+  if (args.copied.hasGmailAutomations) {
+    await bestEffort(reconcileGmailWatchesForUser(owner, signal), signal);
+  }
+  if (args.copied.hasGoogleCalendarAutomations) {
+    await bestEffort(
+      reconcileGoogleCalendarWatchesForUser(owner, signal),
+      signal,
+    );
+  }
+  if (args.copied.hasGoogleFormsAutomations) {
+    await bestEffort(reconcileGoogleFormsWatchesForUser(owner, signal), signal);
+  }
+  if (args.copied.hasGoogleMeetAutomations) {
+    await bestEffort(
+      reconcileGoogleMeetSubscriptionsForUser(owner, signal),
+      signal,
+    );
+  }
 }
 
 const publishCopiedWorkflow$ = command(
@@ -1252,39 +1236,43 @@ const publishCopiedWorkflow$ = command(
         );
         signal.throwIfAborted();
 
-        const copied = await copyWorkflowDatabaseRows(args.db, {
-          orgId: args.orgId,
-          userId: args.userId,
-          sourceWorkflow: args.sourceWorkflow,
-          sourceFiles: args.sourceFiles,
-          targetAgentId: args.targetAgentId,
-          targetWorkflowId,
-          currentTime: args.currentTime,
-          inheritedAutonomyBudget: args.inheritedAutonomyBudget,
-          publishVolume: async (
-            tx,
-            copiedSourceWorkflow,
-            copiedSourceFiles,
-          ) => {
-            const volume = await set(
-              prepareVolumeServerSideWithDb$,
-              {
-                db: tx,
-                input: {
-                  orgId: args.orgId,
-                  storageName: getCustomSkillStorageName(targetWorkflowId),
-                  files: copiedWorkflowVolumeFiles(
-                    copiedSourceWorkflow,
-                    copiedSourceFiles,
-                  ),
+        const copied = await copyWorkflowDatabaseRows(
+          args.db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            sourceWorkflow: args.sourceWorkflow,
+            sourceFiles: args.sourceFiles,
+            targetAgentId: args.targetAgentId,
+            targetWorkflowId,
+            currentTime: args.currentTime,
+            inheritedAutonomyBudget: args.inheritedAutonomyBudget,
+            publishVolume: async (
+              tx,
+              copiedSourceWorkflow,
+              copiedSourceFiles,
+            ) => {
+              const volume = await set(
+                prepareVolumeServerSideWithDb$,
+                {
+                  db: tx,
+                  input: {
+                    orgId: args.orgId,
+                    storageName: getCustomSkillStorageName(targetWorkflowId),
+                    files: copiedWorkflowVolumeFiles(
+                      copiedSourceWorkflow,
+                      copiedSourceFiles,
+                    ),
+                  },
                 },
-              },
-              signal,
-            );
-            await commitPreparedVolumeServerSide({ db: tx, volume }, signal);
-            signal.throwIfAborted();
+                signal,
+              );
+              await commitPreparedVolumeServerSide({ db: tx, volume }, signal);
+              signal.throwIfAborted();
+            },
           },
-        });
+          signal,
+        );
         signal.throwIfAborted();
         if (copied.kind === "conflict") {
           await set(
@@ -1294,15 +1282,15 @@ const publishCopiedWorkflow$ = command(
           );
           return conflict(copied.message);
         }
-        if (copied.hasGmailAutomations) {
-          await bestEffort(
-            reconcileGmailWatchesForUser(
-              { db: args.db, orgId: args.orgId, userId: args.userId },
-              signal,
-            ),
-            signal,
-          );
-        }
+        await reconcileCopiedWorkflowAutomationWatches(
+          {
+            db: args.db,
+            orgId: args.orgId,
+            userId: args.userId,
+            copied,
+          },
+          signal,
+        );
 
         const visible = await loadVisibleWorkflowById(args.db, {
           orgId: args.orgId,
@@ -1806,10 +1794,6 @@ export const workflowsRoutes: readonly RouteEntry[] = [
   {
     route: workflowsDetailContract.run,
     handler: authRoute(workflowWriteAuth, runWorkflowInner$),
-  },
-  {
-    route: workflowsDetailContract.connectorReadiness,
-    handler: authRoute(workflowReadAuth, connectorReadinessInner$),
   },
   {
     route: workflowVisibilityContract.publish,

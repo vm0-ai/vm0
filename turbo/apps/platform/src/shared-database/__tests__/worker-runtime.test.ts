@@ -34,9 +34,13 @@ import {
   connectionControllers$,
   connectionPorts$,
   type WorkerBroadcastMessage,
+  setWorkerToken$,
 } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
-import { createSharedDatabaseContractClientFactory } from "../worker-client.ts";
+import {
+  createSharedDatabaseContractClientFactory,
+  type SharedDatabaseAuthRecovery,
+} from "../worker-client.ts";
 import {
   createSharedDatabaseCredentialStore,
   disposeSharedDatabaseCredentialStore$,
@@ -165,6 +169,19 @@ interface RuntimeFixture {
   readonly runtime: SharedDatabaseWorkerRuntime;
 }
 
+function fixedAuthRecovery(token: string): SharedDatabaseAuthRecovery {
+  return {
+    getToken: (signal) => {
+      signal.throwIfAborted();
+      return Promise.resolve(token);
+    },
+    forceRefreshToken: (signal) => {
+      signal.throwIfAborted();
+      return Promise.resolve(null);
+    },
+  };
+}
+
 function startRuntime(
   currentIdentity: SharedDatabaseIdentity = identity(),
   vercelProtectionBypass?: string,
@@ -175,6 +192,7 @@ function startRuntime(
       identity: currentIdentity,
       apiBaseUrl: location.origin,
       vercelProtectionBypass,
+      authRecovery: fixedAuthRecovery(currentIdentity.token),
       emit: (event) => {
         events.push(event);
       },
@@ -183,7 +201,6 @@ function startRuntime(
     },
     context.signal,
   );
-  runtime.heartbeat(currentIdentity, location.origin, vercelProtectionBypass);
   return { events, runtime };
 }
 
@@ -413,6 +430,79 @@ describe("shared database worker runtime", () => {
     expect(networkRequests).toBe(0);
   });
 
+  it.each(["UnknownError", "TransactionInactiveError", "InvalidStateError"])(
+    "reopens IndexedDB and retries a %s transaction once",
+    async (errorName) => {
+      const { runtime } = startRuntime();
+      const dataKey = chatEventKey(crypto.randomUUID());
+      const cachedRow = chatEventRow(dataKey.threadId, 1);
+      context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      });
+      context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+        return respond(
+          200,
+          chatEventRowsResponse(
+            query.sinceSeqId === 0 ? [cachedRow] : [],
+            query,
+          ),
+        );
+      });
+      await queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      });
+      const close = vi.spyOn(IDBDatabase.prototype, "close");
+      const transaction = vi.spyOn(IDBDatabase.prototype, "transaction");
+      transaction.mockImplementationOnce(() => {
+        throw new DOMException("Injected transaction failure", errorName);
+      });
+
+      await expect(
+        queryRuntime(runtime, {
+          dataKey,
+          afterSeqId: null,
+          consistency: "cache-only",
+        }),
+      ).resolves.toStrictEqual([cachedRow]);
+      expect(transaction).toHaveBeenCalledTimes(2);
+      expect(close).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not retry a failing IndexedDB transaction more than once", async () => {
+    const { runtime } = startRuntime();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    await queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    });
+    const close = vi.spyOn(IDBDatabase.prototype, "close");
+    const transaction = vi.spyOn(IDBDatabase.prototype, "transaction");
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      transaction.mockImplementationOnce(() => {
+        throw new DOMException("Injected transaction failure", "UnknownError");
+      });
+    }
+
+    await expect(
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual([]);
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects missing and mismatched ChatEvent response schema versions", async () => {
     const missing = startRuntime().runtime;
     const missingKey = chatEventKey(crypto.randomUUID());
@@ -548,12 +638,7 @@ describe("shared database worker runtime", () => {
       new CollectingPort(),
       secondController.signal,
     );
-    store.set(
-      heartbeatSharedDatabaseWorker$,
-      "first-connection",
-      { identity: identity(), apiBaseUrl: location.origin },
-      firstSignal,
-    );
+    store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
     const dataKey = chatEventKey(crypto.randomUUID());
     const remoteRow = chatEventRow(dataKey.threadId, 1);
     const firstPage = context.mocks.deferred<void>();
@@ -652,15 +737,11 @@ describe("shared database worker runtime", () => {
       return respond(200, chatEventRowsResponse([], query));
     });
     const initialAttachment = context.mocks.ably.deferNextSubscribe();
-    store.set(
-      heartbeatSharedDatabaseWorker$,
-      "first-connection",
-      { identity: identity(), apiBaseUrl: location.origin },
-      firstSignal,
-    );
-    store.set(startCredentialStoreDaemons$, (daemon) => {
+    store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
+    const daemon = store.set(startCredentialStoreDaemons$);
+    if (daemon) {
       context.track(daemon);
-    });
+    }
     await initialAttachment.started;
     for (const port of [firstPort, secondPort]) {
       expect(
@@ -705,8 +786,12 @@ describe("shared database worker runtime", () => {
     await vi.waitFor(() => {
       for (const port of [firstPort, secondPort]) {
         expect(port.messages).toContainEqual({
-          type: "indicators-invalidated",
+          type: "chat-thread-read-cursor-updated",
           payload: readCursorPayload,
+        });
+        expect(port.messages).toContainEqual({
+          type: "reload-computed",
+          computedKey: "chat-thread-indicators",
         });
       }
     });
@@ -1013,7 +1098,7 @@ describe("shared database worker runtime", () => {
     ).resolves.toStrictEqual([]);
   });
 
-  it("blocks a credential on 401 until heartbeat supplies a new token", async () => {
+  it("shares one credential-scoped recovery and accepts a same-token result", async () => {
     const store = createSharedDatabaseCredentialStore(
       {
         appVersion: WORKER_APP_VERSION,
@@ -1041,14 +1126,13 @@ describe("shared database worker runtime", () => {
       secondPort,
       secondController.signal,
     );
-    store.set(
-      heartbeatSharedDatabaseWorker$,
-      "first-connection",
-      { identity: identity(), apiBaseUrl: location.origin },
-      firstSignal,
-    );
-    const dataKey = chatEventKey(crypto.randomUUID());
-    const recoveredRow = chatEventRow(dataKey.threadId, 1);
+    store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
+    const firstDataKey = chatEventKey(crypto.randomUUID());
+    const secondDataKey = chatEventKey(crypto.randomUUID());
+    const recoveredRows = new Map([
+      [firstDataKey.threadId, chatEventRow(firstDataKey.threadId, 1)],
+      [secondDataKey.threadId, chatEventRow(secondDataKey.threadId, 1)],
+    ]);
     let authorized = false;
     const authorizationHeaders: (string | null)[] = [];
     context.mocks.api(
@@ -1070,8 +1154,12 @@ describe("shared database worker runtime", () => {
     );
     context.mocks.api(
       chatThreadEventsContract.rows,
-      ({ query, request, respond }) => {
+      ({ params, query, request, respond }) => {
         authorizationHeaders.push(request.headers.get("authorization"));
+        const recoveredRow = recoveredRows.get(params.threadId);
+        if (!recoveredRow) {
+          throw new Error("Unexpected chat event thread");
+        }
         return respond(
           200,
           chatEventRowsResponse(
@@ -1081,21 +1169,64 @@ describe("shared database worker runtime", () => {
         );
       },
     );
-    const request = {
-      dataKey,
-      afterSeqId: null,
-      consistency: "catch-up" as const,
-    };
+    const firstQuery = store.set(
+      querySharedDatabaseWorker$,
+      "first-connection",
+      {
+        dataKey: firstDataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      },
+      firstSignal,
+    );
+    await vi.waitFor(() => {
+      expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
+      for (const port of [firstPort, secondPort]) {
+        expect(
+          port.messages.filter((event) => {
+            return event.type === "authentication-required";
+          }),
+        ).toHaveLength(1);
+      }
+    });
+    const authenticationRequired = firstPort.messages.find((event) => {
+      return event.type === "authentication-required";
+    });
+    if (authenticationRequired?.type !== "authentication-required") {
+      throw new Error("Expected a Worker authentication request");
+    }
+    expect(secondPort.messages).toContainEqual(authenticationRequired);
 
-    await expect(
-      store.set(
-        querySharedDatabaseWorker$,
-        "first-connection",
-        request,
-        firstSignal,
-      ),
-    ).rejects.toMatchObject({ name: "SharedDatabaseAuthBlockedError" });
-    expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
+    const secondQuery = store.set(
+      querySharedDatabaseWorker$,
+      "second-connection",
+      {
+        dataKey: secondDataKey,
+        afterSeqId: null,
+        consistency: "catch-up",
+      },
+      secondSignal,
+    );
+    store.set(
+      setWorkerToken$,
+      "first-connection",
+      authenticationRequired.recoveryId,
+      null,
+    );
+    authorized = true;
+    store.set(
+      setWorkerToken$,
+      "second-connection",
+      authenticationRequired.recoveryId,
+      identity().token,
+    );
+
+    await expect(firstQuery).resolves.toStrictEqual([
+      recoveredRows.get(firstDataKey.threadId),
+    ]);
+    await expect(secondQuery).resolves.toStrictEqual([
+      recoveredRows.get(secondDataKey.threadId),
+    ]);
     for (const port of [firstPort, secondPort]) {
       expect(
         port.messages.filter((event) => {
@@ -1103,41 +1234,83 @@ describe("shared database worker runtime", () => {
         }),
       ).toHaveLength(1);
     }
-
-    store.set(
-      heartbeatSharedDatabaseWorker$,
-      "second-connection",
-      { identity: identity(), apiBaseUrl: location.origin },
-      secondSignal,
+    expect(new Set(authorizationHeaders)).toStrictEqual(
+      new Set(["Bearer initial-token"]),
     );
-    await expect(
-      store.set(
-        querySharedDatabaseWorker$,
-        "second-connection",
-        request,
-        secondSignal,
-      ),
-    ).rejects.toMatchObject({ name: "SharedDatabaseAuthBlockedError" });
-    expect(authorizationHeaders).toStrictEqual(["Bearer initial-token"]);
+  });
 
-    authorized = true;
-    store.set(
-      heartbeatSharedDatabaseWorker$,
-      "first-connection",
+  it("ends an unsuccessful recovery without caching the rejected token", async () => {
+    const store = createSharedDatabaseCredentialStore(
       {
-        identity: identity({ token: "replacement-token" }),
+        appVersion: WORKER_APP_VERSION,
+        identity: identity(),
         apiBaseUrl: location.origin,
+        vercelProtectionBypass: undefined,
       },
-      firstSignal,
+      context.signal,
     );
-    await expect(
-      store.set(
-        querySharedDatabaseWorker$,
-        "first-connection",
-        request,
-        firstSignal,
-      ),
-    ).resolves.toStrictEqual([recoveredRow]);
-    expect(authorizationHeaders).toContain("Bearer replacement-token");
+    const port = new CollectingPort();
+    const controller = createChildAbortController(context.signal);
+    const connectionSignal = store.set(
+      registerConnection$,
+      "connection",
+      controller,
+      port,
+      controller.signal,
+    );
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(401, {
+        error: { code: "UNAUTHORIZED", message: "token expired" },
+      });
+    });
+    const request = {
+      dataKey: chatEventKey(crypto.randomUUID()),
+      afterSeqId: null,
+      consistency: "catch-up" as const,
+    };
+
+    const firstQuery = store.set(
+      querySharedDatabaseWorker$,
+      "connection",
+      request,
+      connectionSignal,
+    );
+    await vi.waitFor(() => {
+      expect(
+        port.messages.filter((event) => {
+          return event.type === "authentication-required";
+        }),
+      ).toHaveLength(1);
+    });
+    const firstRecovery = port.messages.at(-1);
+    if (firstRecovery?.type !== "authentication-required") {
+      throw new Error("Expected the first Worker authentication request");
+    }
+    store.set(setWorkerToken$, "connection", firstRecovery.recoveryId, null);
+    await expect(firstQuery).rejects.toMatchObject({
+      name: "SharedDatabaseHttpError",
+    });
+
+    const secondQuery = store.set(
+      querySharedDatabaseWorker$,
+      "connection",
+      request,
+      connectionSignal,
+    );
+    await vi.waitFor(() => {
+      expect(
+        port.messages.filter((event) => {
+          return event.type === "authentication-required";
+        }),
+      ).toHaveLength(2);
+    });
+    const secondRecovery = port.messages.at(-1);
+    if (secondRecovery?.type !== "authentication-required") {
+      throw new Error("Expected the second Worker authentication request");
+    }
+    store.set(setWorkerToken$, "connection", secondRecovery.recoveryId, null);
+    await expect(secondQuery).rejects.toMatchObject({
+      name: "SharedDatabaseHttpError",
+    });
   });
 });

@@ -868,14 +868,6 @@ describe("artifact catalog page", () => {
         nextCursor: null,
       });
     });
-    context.mocks.http.get(
-      "https://artifacts.example.com/release-bundle.zip",
-      () => {
-        return HttpResponse.text("archive bytes", {
-          headers: { "Content-Type": "application/zip" },
-        });
-      },
-    );
     context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
       return respond(200, {
         ...artifact({ title: "release-bundle.zip" }),
@@ -898,8 +890,9 @@ describe("artifact catalog page", () => {
       expect(browser.downloads).toHaveLength(1);
     });
     expect(browser.downloads[0]).toMatchObject({
+      url: "https://artifacts.example.com/release-bundle.zip",
       filename: "release-bundle.zip",
-      blob: expect.any(Blob),
+      blob: null,
     });
   });
 

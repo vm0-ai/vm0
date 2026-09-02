@@ -10083,6 +10083,108 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
+  it("runs connected no-auth HTTP and MCP custom connectors without credentials", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replaceAll("-", "").slice(0, 8);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.CustomConnectorNoAuth]: true,
+    });
+    const httpConnector = await connectors.createCustomConnector(actor, {
+      kind: "http",
+      displayName: "BDD No Auth HTTP Runtime",
+      prefixTemplates: [
+        `https://{{variables.region}}.${rand}.no-auth.example.test/v1/`,
+      ],
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none",
+    });
+    await connectors.setCustomConnectorValues(actor, httpConnector.id, [
+      { key: "region", kind: "variable", value: "us-east" },
+    ]);
+    const mcpConnector = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      displayName: "BDD No Auth MCP Runtime",
+      endpoint: `https://${rand}.no-auth-mcp.example.test/mcp`,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none",
+    });
+    await connectors.setCustomConnectorValues(actor, mcpConnector.id, []);
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      httpConnector.id,
+      mcpConnector.id,
+    ]);
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorNoAuth]: false,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the no-auth HTTP and MCP connectors",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const httpInternalName = `custom_connector_${httpConnector.id.replaceAll("-", "")}`;
+    const mcpInternalName = `custom_connector_${mcpConnector.id.replaceAll("-", "")}`;
+    expect(inlineFirewallApis(claim.firewalls, httpInternalName)).toMatchObject(
+      [
+        {
+          base: `https://us-east.${rand}.no-auth.example.test/v1/`,
+          auth: { headers: {}, query: {} },
+        },
+      ],
+    );
+    expect(inlineFirewallApis(claim.firewalls, mcpInternalName)).toMatchObject([
+      {
+        base: `https://${rand}.no-auth-mcp.example.test/mcp`,
+        auth: { headers: {}, query: {} },
+      },
+    ]);
+    expect(
+      customConnectorRuntimeRegistration(claim, httpConnector.id),
+    ).toMatchObject({ baseUrlVars: { region: "us-east" } });
+    expect(
+      customConnectorRuntimeRegistration(claim, mcpConnector.id),
+    ).toMatchObject({ baseUrlVars: {} });
+
+    const runtimeResults = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        customConnectorRuntimeRegistration(claim, httpConnector.id),
+        customConnectorRuntimeRegistration(claim, mcpConnector.id),
+      ],
+    });
+    expect(
+      runtimeResults.map((result) => {
+        const runtime = availableCustomConnectorRuntime(result);
+        return {
+          customConnectorId: runtime.target.customConnectorId,
+          auth: runtime.firewall.firewall.apis[0]?.auth,
+        };
+      }),
+    ).toStrictEqual([
+      { customConnectorId: httpConnector.id, auth: { headers: {}, query: {} } },
+      { customConnectorId: mcpConnector.id, auth: { headers: {}, query: {} } },
+    ]);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("admits an explicitly connected custom connector without stored values", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);

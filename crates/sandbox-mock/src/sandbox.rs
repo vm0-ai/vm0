@@ -10,10 +10,10 @@ use ::sandbox::*;
 use async_trait::async_trait;
 
 use crate::call_records::{
-    CopyFileCall, ExecCall, GuestStateRestoreCall, GuestStateRestoreTimezoneCall,
-    ProcessCancelCall, ProcessControlCall, ReadFileCall, SessionHistoryIdentityVerifyCall,
-    StartAgentProcessCall, StartProcessCall, StorageManifestCall, WaitProcessCall, WriteFileCall,
-    WriteFilesCall,
+    CodexSessionCleanupCall, CopyFileCall, ExecCall, GuestStateRestoreCall,
+    GuestStateRestoreTimezoneCall, ProcessCancelCall, ProcessControlCall, ReadFileCall,
+    SessionHistoryIdentityVerifyCall, StartAgentProcessCall, StartProcessCall, StorageManifestCall,
+    WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 use crate::lifecycle::{MockLifecycleGate, wait_lifecycle_gate};
 use crate::overrides::{ExecMatcherOutcome, GuestStateRestoreBehavior, MockSandboxOverrides};
@@ -38,7 +38,10 @@ pub struct MockSandbox {
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     exec_calls: Mutex<Vec<ExecCall>>,
     storage_manifest_calls: Mutex<Vec<StorageManifestCall>>,
+    workspace_drive_mount_results: Mutex<VecDeque<Result<ExecResult>>>,
+    workspace_drive_mount_calls: Mutex<u32>,
     session_history_identity_verify_calls: Mutex<Vec<SessionHistoryIdentityVerifyCall>>,
+    codex_session_cleanup_calls: Mutex<Vec<CodexSessionCleanupCall>>,
     guest_state_restore_calls: Mutex<Vec<GuestStateRestoreCall>>,
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     read_file_calls: Mutex<Vec<ReadFileCall>>,
@@ -84,7 +87,10 @@ impl MockSandbox {
             exec_results: Mutex::new(VecDeque::new()),
             exec_calls: Mutex::new(Vec::new()),
             storage_manifest_calls: Mutex::new(Vec::new()),
+            workspace_drive_mount_results: Mutex::new(VecDeque::new()),
+            workspace_drive_mount_calls: Mutex::new(0),
             session_history_identity_verify_calls: Mutex::new(Vec::new()),
+            codex_session_cleanup_calls: Mutex::new(Vec::new()),
             guest_state_restore_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             read_file_calls: Mutex::new(Vec::new()),
@@ -241,9 +247,28 @@ impl MockSandbox {
         self.storage_manifest_calls.lock_ignoring_poison().clone()
     }
 
+    /// Queue a fixed workspace-drive mount result. Results are consumed in FIFO order.
+    pub fn push_workspace_drive_mount_result(&self, result: Result<ExecResult>) {
+        self.workspace_drive_mount_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Return the total fixed workspace-drive mount calls.
+    pub fn workspace_drive_mount_calls(&self) -> u32 {
+        *self.workspace_drive_mount_calls.lock_ignoring_poison()
+    }
+
     /// Return this sandbox's recorded fixed live identity verifier calls.
     pub fn session_history_identity_verify_calls(&self) -> Vec<SessionHistoryIdentityVerifyCall> {
         self.session_history_identity_verify_calls
+            .lock_ignoring_poison()
+            .clone()
+    }
+
+    /// Return this sandbox's recorded fixed reused-Codex cleanup calls.
+    pub fn codex_session_cleanup_calls(&self) -> Vec<CodexSessionCleanupCall> {
+        self.codex_session_cleanup_calls
             .lock_ignoring_poison()
             .clone()
     }
@@ -819,6 +844,36 @@ impl Sandbox for MockSandbox {
         Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_1_MIB))
     }
 
+    async fn mount_workspace_drive(&self) -> Result<ExecResult> {
+        *self.workspace_drive_mount_calls.lock_ignoring_poison() += 1;
+        if let Some(overrides) = &self.overrides {
+            *overrides
+                .exec
+                .workspace_drive_mount_calls
+                .lock_ignoring_poison() += 1;
+            overrides
+                .exec
+                .workspace_drive_mount_call_notify
+                .notify_waiters();
+            wait_lifecycle_gate(&overrides.exec.workspace_drive_mount_lifecycle_gate).await;
+        }
+        let local_result = self
+            .workspace_drive_mount_results
+            .lock_ignoring_poison()
+            .pop_front();
+        let shared_result = self.overrides.as_ref().and_then(|overrides| {
+            overrides
+                .exec
+                .workspace_drive_mount_results
+                .lock_ignoring_poison()
+                .pop_front()
+        });
+        let result = local_result
+            .or(shared_result)
+            .unwrap_or_else(|| Ok(default_exec_result()))?;
+        Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_64_KIB))
+    }
+
     async fn verify_session_history_identity(
         &self,
         request: &SessionHistoryIdentityVerifyRequest<'_>,
@@ -840,6 +895,33 @@ impl Sandbox for MockSandbox {
             overrides
                 .exec
                 .session_history_identity_verify_calls
+                .lock_ignoring_poison()
+                .push(call);
+        }
+        let result = self
+            .exec_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or_else(|| Ok(default_exec_result()))?;
+        Ok(apply_exec_output_limits(result, EXEC_OUTPUT_LIMIT_64_KIB))
+    }
+
+    async fn cleanup_codex_session(
+        &self,
+        request: &CodexSessionCleanupRequest<'_>,
+    ) -> Result<ExecResult> {
+        let call = CodexSessionCleanupCall {
+            session_id: request.session_id.to_owned(),
+            fallback_relative_path: request.fallback_relative_path.to_owned(),
+            timeout: request.timeout,
+        };
+        self.codex_session_cleanup_calls
+            .lock_ignoring_poison()
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .exec
+                .codex_session_cleanup_calls
                 .lock_ignoring_poison()
                 .push(call);
         }

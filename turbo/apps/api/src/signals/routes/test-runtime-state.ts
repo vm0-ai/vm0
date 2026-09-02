@@ -678,7 +678,6 @@ async function vm0BuiltInModelActionResponse(
       const route = await resolveBuiltInModelRuntimeRoute(
         db,
         body.selected_model,
-        body.fallback_enabled,
       );
       signal.throwIfAborted();
       return {
@@ -2326,6 +2325,16 @@ async function setOfficialWorkflowAutomationAdmissionStateActionResponse(
   const updated = await db
     .update(workflowAutomations)
     .set({
+      ...(body.blueprint_key === undefined
+        ? {}
+        : {
+            officialBlueprintKey: body.blueprint_key,
+            officialAppliedFingerprint:
+              body.applied_fingerprint ?? "0".repeat(64),
+            officialParameterBindings: [],
+            officialIntendedEnabled: true,
+            officialResultEmailEnabled: false,
+          }),
       officialReconciliationStatus: body.reconciliation_status,
       ...(body.applied_fingerprint
         ? { officialAppliedFingerprint: body.applied_fingerprint }

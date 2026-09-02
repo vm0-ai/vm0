@@ -13,10 +13,10 @@ pub struct ProcessStat {
 }
 
 /// Stable generation of a process observed through procfs.
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct ProcfsProcessGeneration {
-    pgid: u32,
-    starttime: u64,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcfsProcessGeneration {
+    pub pgid: u32,
+    pub starttime: u64,
 }
 
 impl ProcessStat {
@@ -37,25 +37,6 @@ pub(crate) fn process_stat_is_live(stat: &ProcessStat) -> bool {
     !matches!(stat.state, 'Z' | 'X' | 'x')
 }
 
-/// Firecracker process identity captured during discovery.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FirecrackerProcessIdentity {
-    pub pid: u32,
-    pub pgid: u32,
-    pub starttime: u64,
-    pub sandbox_id: String,
-    pub base_dir: Option<PathBuf>,
-}
-
-impl FirecrackerProcessIdentity {
-    pub(crate) fn procfs_generation(&self) -> ProcfsProcessGeneration {
-        ProcfsProcessGeneration {
-            pgid: self.pgid,
-            starttime: self.starttime,
-        }
-    }
-}
-
 /// Info extracted from a firecracker process cmdline.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FirecrackerProcessInfo {
@@ -66,7 +47,7 @@ pub struct FirecrackerProcessInfo {
     /// sandbox reuse this is stable across successive run_ids.
     pub sandbox_id: String,
     pub base_dir: Option<PathBuf>,
-    pub identity: Option<FirecrackerProcessIdentity>,
+    pub generation: Option<ProcfsProcessGeneration>,
 }
 
 impl FirecrackerProcessInfo {

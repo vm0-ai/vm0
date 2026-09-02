@@ -148,6 +148,13 @@ async function readCustomParent(
       .select({
         id: connectors.id,
         storageVersion: connectors.storageVersion,
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        oauthGrantedScopes: connectors.oauthGrantedScopes,
+        tokenExpiresAt: connectors.tokenExpiresAt,
       })
       .from(connectors)
       .where(
@@ -201,6 +208,13 @@ async function readCustomParent(
       ? {
           id: connector.id,
           storage_version: connector.storageVersion,
+          auth_method: connector.authMethod,
+          external_id: connector.externalId,
+          external_username: connector.externalUsername,
+          external_email: connector.externalEmail,
+          oauth_scopes: connector.oauthScopes,
+          oauth_granted_scopes: connector.oauthGrantedScopes,
+          token_expires_at: connector.tokenExpiresAt?.toISOString() ?? null,
         }
       : null,
     secrets: secretRows.map((row) => {
@@ -740,6 +754,7 @@ async function setBuiltinOAuthScopeFacts(
         eq(connectors.orgId, body.org_id),
         eq(connectors.userId, body.user_id),
         eq(connectors.connectorSlug, body.connector_slug),
+        eq(connectors.id, body.connector_id),
       ),
     )
     .returning({ id: connectors.id });

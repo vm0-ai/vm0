@@ -8,6 +8,13 @@ const c = initContract();
 const connectorStateSchema = z.object({
   id: z.uuid(),
   storage_version: z.number().int().positive(),
+  auth_method: z.string().optional(),
+  external_id: z.string().nullable().optional(),
+  external_username: z.string().nullable().optional(),
+  external_email: z.string().nullable().optional(),
+  oauth_scopes: z.string().nullable().optional(),
+  oauth_granted_scopes: z.string().nullable().optional(),
+  token_expires_at: z.string().nullable().optional(),
 });
 
 const feishuMemberConnectionStateSchema = z.object({
@@ -197,6 +204,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       org_id: z.string(),
       user_id: z.string(),
       connector_slug: z.string(),
+      connector_id: z.uuid(),
       oauth_scopes: z.array(z.string()),
       oauth_granted_scopes: z.array(z.string()).nullable(),
     }),

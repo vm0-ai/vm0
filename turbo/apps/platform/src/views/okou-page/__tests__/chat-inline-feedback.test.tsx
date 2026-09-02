@@ -2,10 +2,17 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { UserMessageDocument } from "@okouai/api-contracts/contracts/chat-threads";
+import { chatTranslationContract } from "@okouai/api-contracts/contracts/chat-translation";
 import type { OrgModelPolicy } from "@okouai/api-contracts/contracts/model-providers";
 import { modelPoliciesMainContract } from "@okouai/api-contracts/contracts/model-policies";
 import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
+import {
+  SUPPORTED_USER_LOCALES,
+  type UserPreferencesResponse,
+  userPreferencesContract,
+} from "@okouai/api-contracts/contracts/user-preferences";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -203,7 +210,9 @@ function buttonByText(text: string): HTMLElement {
       label === `${text}F` ||
       label === `${text} F` ||
       label === `${text}Q` ||
-      label === `${text} Q`
+      label === `${text} Q` ||
+      label === `${text}T` ||
+      label === `${text} T`
     );
   });
   if (!button) {
@@ -720,6 +729,145 @@ describe("chat inline feedback", () => {
     expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
   });
 
+  it("translates selected text with a remembered language without changing existing shortcuts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const selectedContent = "Keep the launch checklist short and actionable.";
+    const translationRequests: unknown[] = [];
+    const preferenceUpdates: unknown[] = [];
+    const translationResponse = context.mocks.deferred<void>();
+    let preferences: UserPreferencesResponse = {
+      timezone: "UTC",
+      locale: "en-US",
+      translationLanguage: "fr",
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
+      pinnedAgentIds: [],
+      sendMode: "enter",
+      theme: "system",
+      colorTheme: "blue-horizon",
+      captureNetworkBodiesRemaining: 0,
+    };
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, preferences);
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      preferenceUpdates.push(body);
+      preferences = { ...preferences, ...body };
+      return respond(200, preferences);
+    });
+    context.mocks.api(
+      chatTranslationContract.translate,
+      async ({ body, respond }) => {
+        translationRequests.push(body);
+        await translationResponse.promise;
+        return respond(200, {
+          text:
+            body.targetLanguage === "fr"
+              ? "Gardez la liste de lancement courte et exploitable."
+              : "保持发布清单简短且可执行。",
+          metadata: { creditsCharged: 1 },
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Translation source",
+      chatEvents: [
+        {
+          id: "msg-translation-user",
+          role: "user",
+          content: "Review launch readiness",
+          runId: "run-translation",
+          createdAt: "2026-08-31T10:00:00Z",
+        },
+        {
+          id: "msg-translation-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: "run-translation",
+          createdAt: "2026-08-31T10:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTranslation]: true },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await screen.findByText("Translate");
+    expect(buttonByText("Copy")).toHaveAttribute("aria-keyshortcuts", "c");
+    expect(buttonByText("Quote")).toHaveAttribute("aria-keyshortcuts", "q");
+    expect(buttonByText("Forward")).toHaveAttribute("aria-keyshortcuts", "f");
+    expect(buttonByText("Translate")).toHaveAttribute("aria-keyshortcuts", "t");
+    expect(
+      buttonByText("Translate").querySelector(".lucide-languages"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "Translation language" }),
+    ).not.toBeInTheDocument();
+
+    const translateShortcut = dispatchDocumentShortcut("t");
+    expect(translateShortcut.defaultPrevented).toBeTruthy();
+
+    await waitFor(() => {
+      expect(translationRequests).toStrictEqual([
+        { text: selectedContent, targetLanguage: "fr" },
+      ]);
+      expect(buttonByText("Translate")).toBeDisabled();
+    });
+    translationResponse.resolve();
+    await expect(
+      screen.findByText("Gardez la liste de lancement courte et exploitable."),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Translation language" }),
+    ).toHaveTextContent("Français");
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Translation language" }),
+    );
+    const languageListbox = await screen.findByRole("listbox");
+    const languageMenu = languageListbox.closest(
+      "[data-chat-selection-interaction]",
+    );
+    if (!(languageMenu instanceof HTMLElement)) {
+      throw new Error("Translation language menu is not available");
+    }
+    fireEvent.scroll(languageMenu);
+    expect(
+      screen.getByText("Gardez la liste de lancement courte et exploitable."),
+    ).toBeInTheDocument();
+    expect(languageListbox).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("option", { name: "简体中文" }));
+    await waitFor(() => {
+      expect(preferenceUpdates).toContainEqual({
+        translationLanguage: "zh-CN",
+      });
+    });
+
+    await waitFor(() => {
+      expect(translationRequests).toStrictEqual([
+        { text: selectedContent, targetLanguage: "fr" },
+        { text: selectedContent, targetLanguage: "zh-CN" },
+      ]);
+    });
+    await expect(
+      screen.findByText("保持发布清单简短且可执行。"),
+    ).resolves.toBeInTheDocument();
+    selectTextRangeForInlineFeedback(screen.getByText(selectedContent));
+    document.dispatchEvent(new Event("selectionchange"));
+    await waitForDeferredSelectionCapture();
+    expect(screen.getByText("保持发布清单简短且可执行。")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.getAttribute("aria-label") === "Copy translation";
+      }),
+    ).toBeTruthy();
+  });
+
   it("inserts a template node inside a feedback note", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The illustration direction is too generic.";
@@ -1094,6 +1242,7 @@ describe("chat inline feedback", () => {
           createdAt: "2026-07-17T00:00:00.000Z",
           canManage: true,
           canPublish: false,
+          official: null,
         },
       ]);
     });

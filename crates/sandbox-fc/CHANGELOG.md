@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.37.283](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.282...sandbox-fc-v0.37.283) (2026-09-02)
+
+## [0.37.282](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.281...sandbox-fc-v0.37.282) (2026-09-02)
+
+## [0.37.281](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.280...sandbox-fc-v0.37.281) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
+## [0.37.280](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.279...sandbox-fc-v0.37.280) (2026-09-01)
+
 ## [0.37.279](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.278...sandbox-fc-v0.37.279) (2026-09-01)
 
 ## [0.37.278](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.277...sandbox-fc-v0.37.278) (2026-09-01)

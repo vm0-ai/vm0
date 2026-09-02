@@ -5,7 +5,6 @@ import {
 } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
 
-import indexHtml from "../../../index.html?raw";
 import { setupBootstrap, setupPage } from "../../__tests__/page-helper.ts";
 import {
   dateFromIso,
@@ -13,6 +12,7 @@ import {
   mockNow,
   nowDate,
 } from "../../__tests__/time.ts";
+import { initGoogleAds } from "../../lib/google-ads.ts";
 import { recordSignupAttribution$ } from "../bootstrap/signup-attribution.ts";
 import { sessionStorageSignals } from "../external/session-storage.ts";
 import { testContext } from "./test-helpers.ts";
@@ -33,33 +33,11 @@ type WindowWithMarketingQueue = WindowWithGtag & {
   dataLayer?: IArguments[];
 };
 
-type MarketingEntrypointScript = (
-  windowObject: Window,
-  documentObject: Document,
-) => void;
-
-function marketingEntrypointSource(): string {
-  const source = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi)]
-    .map((match) => {
-      return match[1];
-    })
-    .find((script) => {
-      return script?.includes('window.gtag("config", "AW-18407336975")');
-    });
-  if (source === undefined) {
-    throw new Error("Unable to locate the marketing loader in index.html");
-  }
-  return source;
-}
-
 function executeMarketingEntrypoint(): WindowWithMarketingQueue {
   const marketingWindow = window as WindowWithMarketingQueue;
   const originalDataLayer = marketingWindow.dataLayer;
   const originalGtag = marketingWindow.gtag;
   context.mocks.browser.url("https://app.vm0.ai/");
-  const timeout = vi.spyOn(window, "setTimeout").mockImplementation(() => {
-    return 1;
-  });
   context.signal.addEventListener(
     "abort",
     () => {
@@ -79,15 +57,13 @@ function executeMarketingEntrypoint(): WindowWithMarketingQueue {
   Reflect.deleteProperty(marketingWindow, "dataLayer");
   Reflect.deleteProperty(marketingWindow, "gtag");
 
-  const executeEntrypointScript = new Function(
-    "window",
-    "document",
-    `${marketingEntrypointSource()}\n//# sourceURL=platform-marketing-entrypoint-test.js`,
-  ) as MarketingEntrypointScript;
-  executeEntrypointScript(window, document);
-  // The marketing entrypoint has already attempted to schedule its external
-  // script load. Restore real timers before bootstrapping Clerk and routes.
-  timeout.mockRestore();
+  const appendChild = vi
+    .spyOn(document.head, "appendChild")
+    .mockImplementation(<T extends Node>(node: T): T => {
+      return node;
+    });
+  initGoogleAds();
+  appendChild.mockRestore();
   return marketingWindow;
 }
 
@@ -256,7 +232,7 @@ describe("signup attribution Google Ads conversion", () => {
     expect(gtag).toHaveBeenCalledTimes(2);
   });
 
-  it("completes route setup after a final attribution failure and allows a later retry", async () => {
+  it("completes route setup without retrying a 401 and leaves later retries to callers", async () => {
     let attributionRequests = 0;
     storePaidSignupAttribution();
     context.mocks.api(
@@ -283,9 +259,13 @@ describe("signup attribution Google Ads conversion", () => {
       }),
     ).resolves.toBeUndefined();
 
+    expect(attributionRequests).toBe(1);
+
+    await expect(
+      context.store.set(recordSignupAttribution$, context.signal),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
     expect(attributionRequests).toBe(2);
 
-    await context.store.set(recordSignupAttribution$, context.signal);
     await context.store.set(recordSignupAttribution$, context.signal);
 
     expect(attributionRequests).toBe(3);

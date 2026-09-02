@@ -210,12 +210,12 @@ import {
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
 import {
-  computerUseHosts$,
   selectedComputerUseHostId,
   visibleComputerUseHosts,
   OKOU_DESKTOP_DOWNLOAD_URL,
   desktopDownloadSupportStatus$,
 } from "../../signals/okou-page/computer-use-hosts.ts";
+import { computerUseHostsFromWorker$ } from "../../signals/shared-database.ts";
 import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerConnectorAuthorizationState } from "../../signals/okou-page/connectors.ts";
 import {
@@ -10588,8 +10588,9 @@ function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   const setCloudBrowserEnabled = useSet(
     signals.computer.setCloudBrowserEnabled$,
   );
-  const computerUseHostsState = useLastLoadable(computerUseHosts$);
-  const lastComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
+  const computerUseHostsState = useLastLoadable(computerUseHostsFromWorker$);
+  const lastComputerUseHosts =
+    useLastResolved(computerUseHostsFromWorker$) ?? [];
   const computerUseHosts =
     computerUseHostsState.state === "hasData"
       ? computerUseHostsState.data

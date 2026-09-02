@@ -2006,8 +2006,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000704",
-        model: "claude-fable-5",
-        modelLabel: "Claude Fable 5",
+        model: "claude-fable-5-1",
+        modelLabel: "Claude Fable 5.1",
         defaultProviderType: "built-in",
         credentialScope: "org",
       }),
@@ -2033,7 +2033,7 @@ describe("chat composer models", () => {
     ).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
+      screen.getByRole("option", { name: /Claude Fable 5\.1.*Pro/u }),
     );
     await expect(
       screen.findByRole("heading", { name: "Choose a plan" }),

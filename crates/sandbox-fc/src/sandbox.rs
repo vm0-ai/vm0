@@ -6,9 +6,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use guest_contracts::workspace_mount::WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
-    GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
+    CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, ExecRequest, ExecResult,
+    GuestAgentProcessHandle, GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, GuestStateRestoreRequest,
     GuestStateRestoreTimezone, ProcessControlAck, ProcessControlFailureKind,
     ProcessControlGuestStatus, ProcessControlOutcome, ProcessControlWriteState, ProcessExit,
@@ -29,6 +30,7 @@ use vsock_host::{
     ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver, GuestStateRestoreResult,
     GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
     SupervisedExecControl, SupervisedExecRequest, SupervisedExecStartTiming, VsockHost,
+    WorkspaceDriveMountResult,
 };
 use vsock_proto::{
     ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
@@ -2491,6 +2493,18 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn mount_workspace_drive(&self) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::MountWorkspaceDrive;
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest
+                .mount_workspace_drive(WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE)
+                .await
+                .map(workspace_drive_mount_exec_result)
+        })
+        .await
+    }
+
     async fn verify_session_history_identity(
         &self,
         request: &SessionHistoryIdentityVerifyRequest<'_>,
@@ -2509,6 +2523,28 @@ impl Sandbox for FirecrackerSandbox {
                     history_ref_kind: request.history_ref_kind,
                     history_hash: request.history_hash,
                     history_size_bytes: request.history_size_bytes,
+                    timeout_ms,
+                    wait_timeout: Duration::from_millis(u64::from(timeout_ms) + 5_000),
+                })
+                .await
+                .and_then(exec_result_from_operation_result)
+        })
+        .await
+    }
+
+    async fn cleanup_codex_session(
+        &self,
+        request: &CodexSessionCleanupRequest<'_>,
+    ) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::CleanupCodexSession;
+        let timeout_ms = request.timeout_ms();
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            validate_exec_capture_timeout(timeout_ms)?;
+            guest
+                .cleanup_codex_session(vsock_host::CodexSessionCleanupRequest {
+                    session_id: request.session_id,
+                    fallback_relative_path: request.fallback_relative_path,
                     timeout_ms,
                     wait_timeout: Duration::from_millis(u64::from(timeout_ms) + 5_000),
                 })
@@ -2744,6 +2780,18 @@ impl Sandbox for FirecrackerSandbox {
 }
 
 fn storage_manifest_exec_result(result: GuestStorageManifestResult) -> ExecResult {
+    ExecResult {
+        termination: exec_termination_from_vsock_termination(result.termination),
+        guest_duration_ms: Some(result.duration_ms),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        diagnostic: result.diagnostic,
+        stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
+    }
+}
+
+fn workspace_drive_mount_exec_result(result: WorkspaceDriveMountResult) -> ExecResult {
     ExecResult {
         termination: exec_termination_from_vsock_termination(result.termination),
         guest_duration_ms: Some(result.duration_ms),

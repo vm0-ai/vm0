@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",
+        "timeoutDescription": "この実行は時間制限に達しました。続行して作業を続けてください。",
+        "timeoutTitle": "時間制限に達しました",
         "tryAgain": "もう一度試す",
         "unavailableDescription": "このモデルは接続中の ChatGPT アカウントではサポートされていません。続行するには別のモデルに切り替えてください。",
         "unavailableTitle": "選択したモデルは利用できません",
@@ -1988,10 +1990,10 @@
         "heading": "アバターを選択",
         "help": "プレゼンターを選ぶか、アバターなしで続行します",
         "none": "アバターなし",
-        "visualBalanceAvatarLed": "アバター中心 — ナレーターをほとんどの時間画面に表示",
-        "visualBalanceBalanced": "バランス型 — 両方を同じくらい表示",
-        "visualBalanceBRollLed": "映像素材中心 — スライドやビジュアルを重視",
-        "visualBalanceHeading": "映像のバランスをどうしますか？"
+        "placementHeading": "発表者をどこに配置しますか？",
+        "placementLeft": "左 — スライドは右側に配置",
+        "placementOverlay": "スライドの上 — スライドが画面全体に広がる",
+        "placementRight": "右 — スライドは左側に配置"
       },
       "cardDescription": "ファイルや画面録画を完成した動画に変換",
       "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
@@ -2054,6 +2056,7 @@
         "format": "形式",
         "heading": "素材の準備ができました",
         "help": "続行する前にファイルを確認してください",
+        "inAccount": "アカウント内",
         "inBrowser": "このブラウザ内",
         "inTab": "このタブを閉じるまで",
         "replace": "素材を置き換える",
@@ -2382,6 +2385,27 @@
       "copied": "コピーされました",
       "deleted": "チャットが削除されました"
     },
+    "translation": {
+      "action": "翻訳",
+      "close": "翻訳を閉じる",
+      "copy": "翻訳をコピー",
+      "languages": {
+        "de": "Deutsch",
+        "en": "English",
+        "es": "Español",
+        "fr": "Français",
+        "hi": "हिन्दी",
+        "id": "Bahasa Indonesia",
+        "it": "Italiano",
+        "ja": "日本語",
+        "ko": "한국어",
+        "ptBR": "Português",
+        "zhCN": "简体中文",
+        "zhTW": "繁體中文"
+      },
+      "result": "翻訳",
+      "targetLanguage": "翻訳先の言語"
+    },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
       "input": "音声入力",
@@ -2650,6 +2674,7 @@
     "custom": {
       "connect": {
         "configured": "設定済み",
+        "connect": "接続",
         "connecting": "接続中…",
         "continue": "続ける",
         "continueToProvider": "プロバイダーに進み、アクセスを承認します。",
@@ -2682,6 +2707,8 @@
         "mcpEndpointHint": "(Streamable HTTP、HTTPS のみ)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "新しいクライアントシークレット",
+        "noAuthentication": "認証なし",
+        "noAuthenticationDescription": "認証情報や認証データを送信せずに接続します。",
         "none": "なし",
         "oauthChangesDisconnect": "OAuth 設定またはクライアント認証情報を変更すると、既存の OAuth 接続が切断されます。",
         "oauthDescription": "メンバーが承認できるように 1 つの OAuth アプリを構成します。",
@@ -2698,6 +2725,7 @@
         "redirectHint": "(この URL をプロバイダーの OAuth アプリケーションに登録します。)",
         "redirectUrl": "リダイレクトURL",
         "removeApiAuthentication": "API認証を削除する",
+        "removeNoAuthentication": "「認証なし」を削除",
         "removeOauth": "OAuth 2.0 を削除する",
         "scopes": "スコープ",
         "scopesHint": "(1 行に 1 つ)",
@@ -3113,45 +3141,6 @@
         "uninstallDescription": "これにより、ワークスペースから {{bot}} がアンインストールされ、それを使用しているすべての {{brandName}} アカウントが切断されます。この操作は元に戻すことができません。",
         "uninstallTargetFallback": "このボット",
         "uninstallTitle": "Feishu ボットをアンインストールしますか?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "キャンセル",
-          "checkTest": "チェックテスト",
-          "copy": "コピー",
-          "create": "統合の作成",
-          "remove": "削除",
-          "revealAuthorization": "認可ヘッダーを明らかにする"
-        },
-        "addDescription": "1 つの統合で複数のワークフローオートメーションに対応できます。",
-        "addTitle": "Strapi インスタンスを追加します",
-        "adminRequired": "Strapi 統合を追加または更新するように組織管理者に依頼します。",
-        "authorizationHeader": "認可ヘッダー",
-        "copied": "{{label}} がコピーされました",
-        "description": "{{assistantName}} が公開された Strapi エントリに反応し、ダウンストリーム作業を自動化できるようにします。",
-        "documentTitle": "Strapi",
-        "empty": "Strapi インスタンスはまだ接続されていません。",
-        "form": {
-          "name": "名前",
-          "namePlaceholder": "企業CMS",
-          "url": "Strapi URL"
-        },
-        "instructions": "Strapi で、[設定] → [Webhook] を開き、この URL と認証ヘッダーを追加し、entry.publish を選択して、[トリガー] をクリックして Strapi テスト Webhook を送信します。",
-        "lastPublish": "最終公開日: {{date}}",
-        "lastTest": "最後のテスト: {{date}}",
-        "notReceived": "未受信",
-        "removeDescription": "まずワークフローのオートメーションを削除します。 Strapi この URL への Webhook リクエストは機能しなくなります。",
-        "removeTitle": "Strapi 統合を削除しますか?",
-        "tested": "Webhook テスト済み",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi 統合が作成されました",
-          "noTestReceived": "Strapi テスト Webhook をまだ受信していません",
-          "removed": "Strapi 統合が削除されました",
-          "testReceived": "Strapi テスト Webhook を受信しました"
-        },
-        "webhookUrl": "Webhook URL",
-        "whereAssistantWorks": "{{assistantName}} が機能する場所"
       },
       "telegram": {
         "addBot": "ボットの追加",
@@ -4650,10 +4639,6 @@
     },
     "redirecting": "リダイレクト中...",
     "status": {
-      "atLimit_one": "一度に実行できるのは {{limit}} タスクのみです。新しい実行は、終了するまでキューで待機します。",
-      "atLimit_other": "一度に実行できるタスクは {{limit}} のみです。新しい実行は、終了するまでキューで待機します。",
-      "available_one": "{{count}} スロットが使用可能です",
-      "available_other": "{{count}} スロットが利用可能",
       "availableNow": "現在利用可能",
       "inUse_one": "{{limit}} スロットの {{active}} が使用中です",
       "inUse_other": "{{limit}} スロット中 {{active}} が使用中です"
@@ -5097,17 +5082,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "クールダウンを解除",
-          "cancelDescription": "このグローバルクールダウンを解除すると、内蔵モデルのフォールバックが有効なすべてのワークスペースで、このルートが直ちに利用可能になります。",
+          "cancelDescription": "このグローバルクールダウンを解除すると、このルートがすべてのワークスペースで直ちに利用可能になります。",
           "cancelling": "解除しています...",
           "cancelTitle": "グローバルクールダウンを解除しますか？",
           "cancelWarning": "後で対象となる障害が発生すると、このルートは再びクールダウンに入ることがあります。",
           "description": "フォールバック選択から一時的に除外されている内蔵モデルルートを確認します。",
-          "disabled": "無効",
-          "disabledExplanation": "このワークスペースでは内蔵モデルのフォールバックが無効なため、これらのグローバルクールダウンは現在ここでは無視されます。",
           "empty": "現在、グローバルクールダウン中の内蔵モデルルートはありません。",
-          "enabled": "有効",
           "globalActive": "有効なグローバルクールダウン",
-          "globalExplanation": "クールダウンはグローバルな運用状態です。このワークスペースで内蔵モデルのフォールバックが有効な場合にのみ影響します。",
+          "globalExplanation": "クールダウンはグローバルな運用状態であり、内蔵モデルを使用するすべてのワークスペースに影響します。",
           "keepCooldown": "クールダウンを維持",
           "loading": "内蔵モデルのクールダウン診断を読み込んでいます...",
           "providerType": "プロバイダータイプ",
@@ -5116,11 +5098,9 @@
           "title": "内蔵モデルのフォールバック",
           "unavailable": "内蔵モデルのクールダウン診断は利用できません。",
           "unavailableUntil": "利用不可期限",
-          "upstreamModel": "アップストリームモデル",
-          "workspaceFallback": "ワークスペースのフォールバック"
+          "upstreamModel": "アップストリームモデル"
         },
         "capture": {
-          "description": "デバッグのために、HTTP ヘッダー名、選択された安全なヘッダー値、および本文をネットワーク ログにキャプチャします。",
           "disabled": "障害者",
           "enabled_one": "次回の {{count}} の実行で有効になります",
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
@@ -5143,10 +5123,8 @@
           "recovery": "復旧",
           "title": "リアルタイム接続診断",
           "unavailable": "利用不可"
-        },
-        "tab": "デバッグ"
+        }
       },
-      "documentTitle": "設定",
       "language": {
         "description": "{{brandName}}のインターフェースで使用する言語を選択します",
         "label": "言語",
@@ -5176,8 +5154,6 @@
         "retryMessage": "Morning Brief の設定を読み込むか更新できませんでした。再試行してください。",
         "title": "モーニングブリーフ"
       },
-      "pageDescription": "外観とエージェントの実行時の設定を管理する",
-      "pageTitle": "設定",
       "send": {
         "cmdEnter": "⌘ 入力してください",
         "cmdEnterDescription": "⌘/Ctrl+Enter を押して送信し、Enter を押して改行します",
@@ -5186,11 +5162,6 @@
         "enterDescription": "Enter を押して送信し、Shift+Enter を押して改行します",
         "sectionTitle": "入力してください",
         "title": "メッセージを送信する"
-      },
-      "tabs": {
-        "appearance": "外観",
-        "models": "パーソナルモデル",
-        "timezone": "タイムゾーン"
       },
       "timezone": {
         "description": "表示され、オートメーションの実行に使用される時間。",
@@ -5855,26 +5826,6 @@
         "time": "時間 ({{timezone}})",
         "updateScheduleAria": "更新スケジュールのオートメーション"
       },
-      "strapi": {
-        "addAction": "Strapi オートメーションを追加",
-        "addAria": "Strapi エントリ公開オートメーションを追加",
-        "addDescription": "ローカライズされたパブリッシュ イベントの一致が解決したら、このワークフローを実行します。",
-        "addTitle": "Strapi オートメーションを追加",
-        "configure": "Strapi を構成する",
-        "connectFirst": "このオートメーションを作成する前に、Strapi インスタンスを接続してください。",
-        "contentType": "コンテンツタイプ UID (オプション)",
-        "contentTypeAny": "あらゆるコンテンツタイプ",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "一致する Strapi エントリが公開された後に実行します。",
-        "entryPublishedTitle": "Strapi エントリが公開されました",
-        "instance": "Strapi インスタンス",
-        "locale": "ロケール (オプション)",
-        "localeAny": "任意のロケール",
-        "localeHint": "同じドキュメントのすべてのローカライズされたパブリッシュ イベントを 1 つのワークフロー実行に結合するには、ロケールを空白のままにします。",
-        "localePlaceholder": "jp",
-        "localeSummary": "ロケール {{locale}}",
-        "rule": "一致する Strapi エントリが公開されたとき"
-      },
       "stripe": {
         "addAction": "Stripe オートメーションを追加",
         "addAria": "Stripe の請求書支払い済みオートメーションを追加",
@@ -5920,7 +5871,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google 会う",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -5987,35 +5937,6 @@
       "noWorkflows": "ワークフローはまだありません。続行するには、チャットで作成してください。"
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "接続する",
-          "enable": "エージェントに対して有効にする",
-          "reconnect": "再接続",
-          "reviewPermissions": "権限の確認"
-        },
-        "aria": "コネクタの準備状況",
-        "check": "コネクタを確認してください",
-        "checkAgain": "もう一度確認してください",
-        "checking": "確認中...",
-        "description": "このワークフローに必要な組み込みコネクタとその準備が整っているかどうかを確認します。",
-        "empty": "必要なコネクタが検出されませんでした",
-        "error": {
-          "inputTooLong": "このワークフローは長すぎるため確認できません。名前、説明、指示を100,000文字以内にしてください。",
-          "retry": "コネクターを確認できませんでした。もう一度やり直してください。",
-          "timeout": "コネクタのチェックがタイムアウトしました。もう一度やり直してください。"
-        },
-        "saveFirst": "コネクタをチェックする前に変更を保存してください。",
-        "status": {
-          "connected": "接続済み",
-          "notConnected": "接続されていません",
-          "notEnabled": "このエージェントに対して有効ではありません",
-          "reconnect": "再接続が必要です",
-          "scopeMismatch": "権限の更新",
-          "unavailable": "現在利用不可"
-        },
-        "title": "コネクタの準備状況"
-      },
       "copy": {
         "agentFallback": "エージェント",
         "copied": "{{agent}} にコピーされました",
@@ -6241,10 +6162,6 @@
       "title": "Slack",
       "uninstallDescription": "これにより、ワークスペース全体の Slack 統合が削除されます。接続されているすべてのユーザーは切断され、{{displayName}} は Slack のメッセージやメンションに応答しなくなります。この操作は元に戻すことができません。",
       "uninstallTitle": "Slack 統合をアンインストールしますか?"
-    },
-    "strapi": {
-      "description": "エントリー公開時の作業を自動化する",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Microsoft Teams 統合をインストールするように管理者に依頼してください",

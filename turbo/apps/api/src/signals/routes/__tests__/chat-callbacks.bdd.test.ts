@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { WebPushError } from "web-push";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE } from "@okouai/api-contracts/contracts/errors";
 import {
   resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,
@@ -90,7 +91,6 @@ const GOAL_SCHEDULER_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
 ] as const;
 const GOAL_DRAIN_BUILT_IN_MODEL_CONTEXT_TIMING_ACTION_TYPES = [
-  "api_dispatch_pre_create_zero_goal_drain_model_context_reload_fallback_feature_switches",
   "api_dispatch_pre_create_zero_goal_drain_model_context_resolve_built_in_route",
 ] as const;
 const GOAL_DRAIN_SUCCESS_TIMING_ACTION_TYPES = [
@@ -4406,7 +4406,7 @@ describe("CHAT-02: drain-time admission failure", () => {
     90_000,
   );
 
-  it("terminalizes a queued Web message with neutral built-in model copy when the key is unavailable", async () => {
+  it("terminalizes a queued Web message with neutral copy when every built-in route is unavailable", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -4454,13 +4454,13 @@ describe("CHAT-02: drain-time admission failure", () => {
             return (
               event.eventType === "input.rejected" &&
               event.revokesEventId === queuedEventId &&
-              event.error === "provider_unavailable"
+              event.error === "model_provider_unavailable"
             );
           }) &&
           assistantMessages(events).some((event) => {
             return (
               event.eventType === "output.error" &&
-              event.error === "provider_unavailable"
+              event.error === "model_provider_unavailable"
             );
           })
         );
@@ -4475,16 +4475,16 @@ describe("CHAT-02: drain-time admission failure", () => {
     if (rejected?.eventType !== "input.rejected") {
       throw new Error("Expected the queued Web message to be rejected");
     }
-    expect(rejected.error).toBe("provider_unavailable");
+    expect(rejected.error).toBe("model_provider_unavailable");
     const errors = assistantMessages(terminal.events).filter((event) => {
       return (
         event.eventType === "output.error" &&
-        event.error === "provider_unavailable"
+        event.error === "model_provider_unavailable"
       );
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]?.content).toBe(
-      "No model provider configured: no built-in model key is configured",
+      "Oops, something went wrong. Please try again later.",
     );
     expect(errors[0]?.content).not.toContain("VM0");
     expect(
@@ -4506,11 +4506,14 @@ describe("CHAT-02: failed chat callbacks", () => {
       "No model provider configured. Configure one in Settings → Models in the vm0 web app, or add environment variables to your vm0.yaml.";
     const usageLimitError =
       "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.";
+    const executionTimeoutError =
+      "Agent execution timed out after 7200 seconds";
     const rounds = [
       { prompt: "round one", error: actionableError },
       { prompt: "round two", error: "First runner failure" },
       { prompt: "round three", error: "Second runner failure" },
       { prompt: "round four", error: usageLimitError },
+      { prompt: "round five", error: executionTimeoutError },
     ];
 
     let threadId: string | undefined;
@@ -4538,7 +4541,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       );
     }
     if (!threadId) {
-      throw new Error("Expected four failed chat rounds");
+      throw new Error("Expected five failed chat rounds");
     }
 
     const messages = await waitForThreadMessages(actor, threadId, (items) => {
@@ -4558,8 +4561,8 @@ describe("CHAT-02: failed chat callbacks", () => {
     const replacements = users.filter((message) => {
       return message.runId !== undefined;
     });
-    expect(originals).toHaveLength(4);
-    expect(replacements).toHaveLength(4);
+    expect(originals).toHaveLength(5);
+    expect(replacements).toHaveLength(5);
     expect(
       replacements.every((replacement) => {
         return originals.some((original) => {
@@ -4581,6 +4584,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       "Oops, something went wrong. Please try again later.",
       "Oops, something went wrong. Please try again later.",
       usageLimitError,
+      CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
     ]);
     expect(
       failed.find((message) => {
@@ -4592,13 +4596,25 @@ describe("CHAT-02: failed chat callbacks", () => {
         return message.runId === runIds[3];
       })?.content,
     ).toBe(usageLimitError);
+    expect(
+      failed.find((message) => {
+        return message.runId === runIds[4];
+      })?.content,
+    ).toBe(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE);
 
-    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(4);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(5);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[1]),
     ).toMatchObject({
       title: "round two",
       body: "Task failed: Oops, something went wrong. Please try again later.",
+      url: `http://localhost:3002/chats/${threadId}`,
+    });
+    expect(
+      pushPayload(context.mocks.webpush.sendNotification.mock.calls[4]),
+    ).toMatchObject({
+      title: "round five",
+      body: `Task failed: ${CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE}`,
       url: `http://localhost:3002/chats/${threadId}`,
     });
   }, 90_000);

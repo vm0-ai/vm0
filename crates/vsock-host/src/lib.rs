@@ -76,6 +76,7 @@ mod guest_storage_manifest;
 mod operation_tracker;
 #[cfg(test)]
 mod tests;
+mod workspace_drive_mount;
 
 use std::fmt;
 use std::io;
@@ -95,9 +96,9 @@ use connection::{RequestWriteGuard, write_request_frame_with_builder};
 use operation_tracker::NormalOperationFenceRejection as TrackerNormalOperationFenceRejection;
 
 pub use exec_operation::{
-    ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
-    ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
-    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest,
+    CodexSessionCleanupRequest, ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus,
+    ExecControlHandle, ExecControlOutcome, ExecOperationHandle, ExecOperationRequest,
+    ExecOperationResult, ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest,
     SessionHistoryIdentityVerifyRequest, SupervisedExecCancelHandle, SupervisedExecControl,
     SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
@@ -105,6 +106,7 @@ pub use file::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult, Writ
 pub use guest_dns_readiness::GuestDnsReadinessResult;
 pub use guest_state_restore::GuestStateRestoreResult;
 pub use guest_storage_manifest::GuestStorageManifestResult;
+pub use workspace_drive_mount::WorkspaceDriveMountResult;
 
 /// Host-observed stage at which a request deadline expired.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -421,6 +423,14 @@ impl VsockHost {
         request: SessionHistoryIdentityVerifyRequest<'_>,
     ) -> io::Result<ExecOperationResult> {
         exec_operation::session_history_identity_verify_on_shared(&self.shared, request).await
+    }
+
+    /// Run the fixed reused-Codex session cleanup helper.
+    pub async fn cleanup_codex_session(
+        &self,
+        request: CodexSessionCleanupRequest<'_>,
+    ) -> io::Result<ExecOperationResult> {
+        exec_operation::codex_session_cleanup_on_shared(&self.shared, request).await
     }
 
     /// Run a capture-only exec operation with a synchronous admission check at

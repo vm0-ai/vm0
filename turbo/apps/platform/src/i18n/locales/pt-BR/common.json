@@ -1983,6 +1983,8 @@
         "resetAndTryAgain": "Redefinir e tentar novamente",
         "resetsAt": "Redefine {{time}}",
         "selectModel": "Trocar modelo",
+        "timeoutDescription": "Esta execução atingiu o limite de tempo. Continue para seguir trabalhando.",
+        "timeoutTitle": "Limite de tempo atingido",
         "tryAgain": "Tentar novamente",
         "unavailableDescription": "Este modelo não é compatível com a conta do ChatGPT conectada. Troque para outro modelo para continuar.",
         "unavailableTitle": "O modelo selecionado não está disponível",
@@ -2024,10 +2026,10 @@
         "heading": "Escolha um avatar",
         "help": "Escolha um apresentador ou continue sem um",
         "none": "Sem avatar",
-        "visualBalanceAvatarLed": "Foco no avatar — o narrador fica na tela na maior parte do tempo",
-        "visualBalanceBalanced": "Mix equilibrado — o mesmo tempo para ambos",
-        "visualBalanceBRollLed": "Foco nos recursos visuais — prioridade para slides e imagens",
-        "visualBalanceHeading": "Como você prefere o equilíbrio visual?"
+        "placementHeading": "Onde o apresentador deve ficar?",
+        "placementLeft": "À esquerda — o slide fica à direita",
+        "placementOverlay": "Sobre o slide — o slide preenche o quadro",
+        "placementRight": "À direita — o slide fica à esquerda"
       },
       "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
       "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",
@@ -2090,6 +2092,7 @@
         "format": "Formato",
         "heading": "Sua fonte está pronta",
         "help": "Confira o arquivo antes de continuar",
+        "inAccount": "Na sua conta",
         "inBrowser": "Neste navegador",
         "inTab": "Até esta guia ser fechada",
         "replace": "Substituir fonte",
@@ -2430,6 +2433,27 @@
       "copied": "Copiado",
       "deleted": "Conversa excluída"
     },
+    "translation": {
+      "action": "Traduzir",
+      "close": "Fechar tradução",
+      "copy": "Copiar tradução",
+      "languages": {
+        "de": "Deutsch",
+        "en": "English",
+        "es": "Español",
+        "fr": "Français",
+        "hi": "हिन्दी",
+        "id": "Bahasa Indonesia",
+        "it": "Italiano",
+        "ja": "日本語",
+        "ko": "한국어",
+        "ptBR": "Português",
+        "zhCN": "简体中文",
+        "zhTW": "繁體中文"
+      },
+      "result": "Tradução",
+      "targetLanguage": "Idioma da tradução"
+    },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
       "input": "Entrada de voz",
@@ -2706,6 +2730,7 @@
     "custom": {
       "connect": {
         "configured": "Configurado",
+        "connect": "Conectar",
         "connecting": "Conectando…",
         "continue": "Continuar",
         "continueToProvider": "Continue no provedor para autorizar o acesso.",
@@ -2738,6 +2763,8 @@
         "mcpEndpointHint": "(Streamable HTTP, somente HTTPS)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Novo segredo do cliente",
+        "noAuthentication": "Sem autenticação",
+        "noAuthenticationDescription": "Conecte sem enviar credenciais ou dados de autenticação.",
         "none": "Nenhum",
         "oauthChangesDisconnect": "Alterar as configurações OAuth ou as credenciais do cliente desconecta as conexões OAuth existentes.",
         "oauthDescription": "Configure um app OAuth para os membros autorizarem.",
@@ -2754,6 +2781,7 @@
         "redirectHint": "(Cadastre esta URL no app OAuth do provedor.)",
         "redirectUrl": "URL de redirecionamento",
         "removeApiAuthentication": "Remover autenticação por API",
+        "removeNoAuthentication": "Remover opção sem autenticação",
         "removeOauth": "Remover OAuth 2.0",
         "scopes": "Escopos",
         "scopesHint": "(um por linha)",
@@ -3172,45 +3200,6 @@
         "uninstallDescription": "Isso desinstala {{bot}} do workspace e desconecta todas as contas do {{brandName}} que o utilizam. Esta ação não pode ser desfeita.",
         "uninstallTargetFallback": "este bot",
         "uninstallTitle": "Desinstalar o bot do Feishu?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "Cancelar",
-          "checkTest": "Verificar teste",
-          "copy": "Copiar",
-          "create": "Criar integração",
-          "remove": "Remover",
-          "revealAuthorization": "Revelar header de autorização"
-        },
-        "addDescription": "Uma integração pode atender a várias automações de fluxos de trabalho.",
-        "addTitle": "Adicionar instância do Strapi",
-        "adminRequired": "Peça a um administrador da organização para adicionar ou atualizar integrações do Strapi.",
-        "authorizationHeader": "Header de autorização",
-        "copied": "{{label}} copiado",
-        "description": "Permita que o {{assistantName}} reaja a entradas publicadas no Strapi e automatize o trabalho subsequente.",
-        "documentTitle": "Strapi",
-        "empty": "Ainda não há instâncias do Strapi conectadas.",
-        "form": {
-          "name": "Nome",
-          "namePlaceholder": "CMS da empresa",
-          "url": "URL do Strapi"
-        },
-        "instructions": "No Strapi, abra Settings → Webhooks, adicione esta URL e o header Authorization, selecione entry.publish e clique em Trigger para enviar um webhook de teste do Strapi.",
-        "lastPublish": "Última publicação: {{date}}",
-        "lastTest": "Último teste: {{date}}",
-        "notReceived": "Não recebido",
-        "removeDescription": "Remova primeiro as automações de fluxos de trabalho. As solicitações de webhook do Strapi para esta URL deixarão de funcionar.",
-        "removeTitle": "Remover a integração do Strapi?",
-        "tested": "Webhook testado",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Integração do Strapi criada",
-          "noTestReceived": "Nenhum webhook de teste do Strapi foi recebido ainda",
-          "removed": "Integração do Strapi removida",
-          "testReceived": "Webhook de teste do Strapi recebido"
-        },
-        "webhookUrl": "URL do webhook",
-        "whereAssistantWorks": "Onde o {{assistantName}} funciona"
       },
       "telegram": {
         "addBot": "Adicionar bot",
@@ -4711,12 +4700,6 @@
     },
     "redirecting": "Redirecionando...",
     "status": {
-      "atLimit_one": "Você atingiu o limite de {{limit}} execução simultânea. Novas execuções aguardarão na fila.",
-      "atLimit_many": "Você atingiu o limite de {{limit}} execuções simultâneas. Novas execuções aguardarão na fila.",
-      "atLimit_other": "Você atingiu o limite de {{limit}} execuções simultâneas. Novas execuções aguardarão na fila.",
-      "available_one": "{{count}} slot disponível",
-      "available_many": "{{count}} slots disponíveis",
-      "available_other": "{{count}} slots disponíveis",
       "availableNow": "Disponível agora",
       "inUse_one": "{{active}} de {{limit}} slot em uso",
       "inUse_many": "{{active}} de {{limit}} slots em uso",
@@ -5163,17 +5146,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancelar cooldown",
-          "cancelDescription": "Cancelar este cooldown global torna a rota imediatamente disponível para todos os workspaces com fallback de modelos integrados ativado.",
+          "cancelDescription": "Cancelar este cooldown global torna a rota imediatamente disponível para todos os workspaces.",
           "cancelling": "Cancelando...",
           "cancelTitle": "Cancelar o cooldown global?",
           "cancelWarning": "Uma falha posterior qualificada pode colocar esta rota novamente em cooldown.",
           "description": "Inspecione as rotas de modelos integrados temporariamente excluídas da seleção de fallback.",
-          "disabled": "desativado",
-          "disabledExplanation": "O fallback de modelos integrados está desativado neste workspace, então estes cooldowns globais são ignorados aqui no momento.",
           "empty": "Nenhuma rota de modelo integrado está em cooldown global no momento.",
-          "enabled": "ativado",
           "globalActive": "cooldowns globais ativos",
-          "globalExplanation": "Cooldowns são um estado operacional global. Eles só podem afetar este workspace enquanto o fallback de modelos integrados estiver ativado aqui.",
+          "globalExplanation": "Cooldowns são um estado operacional global e afetam todos os workspaces que usam modelos integrados.",
           "keepCooldown": "Manter cooldown",
           "loading": "Carregando diagnósticos de cooldown de modelos integrados...",
           "providerType": "Tipo de provedor",
@@ -5182,11 +5162,9 @@
           "title": "Fallback de modelos integrados",
           "unavailable": "Os diagnósticos de cooldown de modelos integrados estão indisponíveis.",
           "unavailableUntil": "Indisponível até",
-          "upstreamModel": "Modelo upstream",
-          "workspaceFallback": "fallback do workspace"
+          "upstreamModel": "Modelo upstream"
         },
         "capture": {
-          "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",
           "disabled": "Desativado",
           "enabled_one": "Ativado por mais {{count}} execução",
           "enabled_many": "Ativado por mais {{count}} execuções",
@@ -5210,10 +5188,8 @@
           "recovery": "recuperação",
           "title": "Diagnóstico de conexão em tempo real",
           "unavailable": "indisponível"
-        },
-        "tab": "Depuração"
+        }
       },
-      "documentTitle": "Preferências",
       "language": {
         "description": "Escolha seu idioma preferido para a interface do {{brandName}}",
         "label": "Idioma",
@@ -5243,8 +5219,6 @@
         "retryMessage": "Não foi possível carregar ou atualizar as configurações do Morning Brief. Tente novamente para continuar.",
         "title": "Resumo matinal"
       },
-      "pageDescription": "Gerencie suas preferências de aparência e de execução dos agentes",
-      "pageTitle": "Preferências",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Pressione ⌘/Ctrl+Enter para enviar e Enter para criar uma nova linha",
@@ -5253,11 +5227,6 @@
         "enterDescription": "Pressione Enter para enviar e Shift+Enter para criar uma nova linha",
         "sectionTitle": "Enter",
         "title": "Enviar mensagem com"
-      },
-      "tabs": {
-        "appearance": "Aparência",
-        "models": "Modelos pessoais",
-        "timezone": "Fuso horário"
       },
       "timezone": {
         "description": "Horários exibidos para você e usados nas execuções de automações.",
@@ -5927,26 +5896,6 @@
         "time": "Horário ({{timezone}})",
         "updateScheduleAria": "Atualizar automação agendada"
       },
-      "strapi": {
-        "addAction": "Adicionar automação do Strapi",
-        "addAria": "Adicionar automação de entrada publicada no Strapi",
-        "addDescription": "Execute este fluxo de trabalho depois que os eventos de publicação localizados correspondentes forem concluídos.",
-        "addTitle": "Adicionar automação do Strapi",
-        "configure": "Configurar Strapi",
-        "connectFirst": "Conecte uma instância do Strapi antes de criar esta automação.",
-        "contentType": "UID do tipo de conteúdo (opcional)",
-        "contentTypeAny": "Qualquer tipo de conteúdo",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Execute depois que uma entrada correspondente do Strapi for publicada.",
-        "entryPublishedTitle": "Entrada do Strapi publicada",
-        "instance": "Instância do Strapi",
-        "locale": "Localidade (opcional)",
-        "localeAny": "Qualquer localidade",
-        "localeHint": "Deixe a localidade em branco para combinar todos os eventos de publicação localizados do mesmo documento em uma única execução do fluxo de trabalho.",
-        "localePlaceholder": "en",
-        "localeSummary": "Localidade {{locale}}",
-        "rule": "Quando uma entrada correspondente for publicada no Strapi"
-      },
       "stripe": {
         "addAction": "Adicionar automação do Stripe",
         "addAria": "Adicionar automação de fatura paga do Stripe",
@@ -5992,7 +5941,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6059,35 +6007,6 @@
       "noWorkflows": "Nenhum fluxo de trabalho ainda. Crie um no chat para continuar."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Conectar",
-          "enable": "Ativar para o agente",
-          "reconnect": "Reconectar",
-          "reviewPermissions": "Revisar permissões"
-        },
-        "aria": "Prontidão dos conectores",
-        "check": "Verificar conectores",
-        "checkAgain": "Verificar novamente",
-        "checking": "Verificando...",
-        "description": "Veja quais conectores integrados este fluxo de trabalho pode precisar e se estão prontos.",
-        "empty": "Nenhum conector obrigatório detectado",
-        "error": {
-          "inputTooLong": "Este fluxo de trabalho é longo demais para verificar. Mantenha o nome, a descrição e as instruções dentro do limite de 100.000 caracteres.",
-          "retry": "Não foi possível verificar os conectores. Tente novamente.",
-          "timeout": "A verificação dos conectores expirou. Tente novamente."
-        },
-        "saveFirst": "Salve suas alterações antes de verificar os conectores.",
-        "status": {
-          "connected": "Conectado",
-          "notConnected": "Não conectado",
-          "notEnabled": "Não ativado para este agente",
-          "reconnect": "Reconexão necessária",
-          "scopeMismatch": "Atualizar permissões",
-          "unavailable": "Indisponível no momento"
-        },
-        "title": "Prontidão dos conectores"
-      },
       "copy": {
         "agentFallback": "o agente",
         "copied": "Copiado para {{agent}}",
@@ -6316,10 +6235,6 @@
       "title": "Slack",
       "uninstallDescription": "Isso removerá a integração com o Slack de todo o espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens ou menções no Slack. Essa ação não pode ser desfeita.",
       "uninstallTitle": "Desinstalar a integração com o Slack?"
-    },
-    "strapi": {
-      "description": "Automatize o trabalho quando entradas forem publicadas",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Peça ao administrador para instalar a integração com o Microsoft Teams",

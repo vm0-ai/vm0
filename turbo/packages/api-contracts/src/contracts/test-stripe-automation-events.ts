@@ -9,6 +9,7 @@ export const testStripeAutomationEventFixtureActionSchema = z.enum([
   "hold-latest-claim",
   "expire-latest-retry-window",
   "make-latest-due",
+  "clear-automation-account-projection",
   "fail-next-ingress-for-automation",
   "fail-next-queue-admission-for-automation",
   "clear-forced-failures",

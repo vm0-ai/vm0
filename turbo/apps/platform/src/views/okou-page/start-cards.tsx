@@ -452,11 +452,6 @@ export function StartCards({
   const introVideoEnabled =
     featureSwitches?.[FeatureSwitchKey.IntroVideo] ?? false;
   const pageSignal = useGet(pageSignal$);
-  const introVideoAspectRatio = useGet(introVideoWizardSignals.aspectRatio$);
-  const avatarFilters = useGet(composerSignals.template.avatarTemplateFilters$);
-  const setAvatarFilters = useSet(
-    composerSignals.template.setAvatarTemplateFilters$,
-  );
   const openIntroVideoWizard = useSet(introVideoWizardSignals.openWizard$);
   const setTemplateCategory = useSet(
     composerSignals.template.setTemplatePickerCategory$,
@@ -521,10 +516,6 @@ export function StartCards({
   };
 
   const openIntroVideo = () => {
-    const aspectRatio = introVideoAspectRatio;
-    if (avatarFilters.aspectRatio !== aspectRatio) {
-      setAvatarFilters({ ...avatarFilters, aspectRatio });
-    }
     detach(
       openIntroVideoWizard(pageSignal),
       Reason.DomCallback,

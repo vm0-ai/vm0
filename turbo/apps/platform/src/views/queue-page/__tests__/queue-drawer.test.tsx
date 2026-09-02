@@ -16,13 +16,12 @@ import type {
   QueueEntry,
   QueueResponse,
 } from "@okouai/api-contracts/contracts/runs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
   queryAllByRoleFast,
+  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
 import {
   testContext,
@@ -225,14 +224,17 @@ function getButtonByLabel(label: string): HTMLElement {
   return button;
 }
 
-async function openDrawer(memberUsageEnabled = false): Promise<void> {
+async function openDrawer(
+  sharedWorkerTestTransport: "direct" | "message-port" = "direct",
+): Promise<void> {
   mockQueuedThread();
-  detachedSetupPage({
+  // Settle the app bootstrap on its own observable signal before polling for
+  // the queue button, so the button's `waitFor` budget covers only the queue
+  // marker rendering instead of the whole page startup.
+  await setupPageAndWaitForContent({
     context,
     path: `/chats/${THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.ConcurrencyMemberUsage]: memberUsageEnabled,
-    },
+    sharedWorkerTestTransport,
   });
   const queueButton = await waitFor(() => {
     return getButtonByText("queue...");
@@ -249,7 +251,7 @@ describe("queue drawer", () => {
       );
     });
 
-    await openDrawer(true);
+    await openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("17 of 80 slots in use")).toBeInTheDocument();
@@ -264,23 +266,6 @@ describe("queue drawer", () => {
       expect(screen.getByText("Available now")).toBeInTheDocument();
       expect(screen.getByText("63 slots")).toBeInTheDocument();
     });
-  });
-
-  it("keeps the existing availability summary when member usage is disabled", async () => {
-    context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
-      return respond(
-        200,
-        queueResponse({ concurrency: concurrencyWithMemberUsage() }),
-      );
-    });
-
-    await openDrawer();
-
-    await waitFor(() => {
-      expect(screen.getByText("63 slots available")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Bingjie Zang")).not.toBeInTheDocument();
-    expect(screen.queryByText("Available now")).not.toBeInTheDocument();
   });
 
   it("shows the free tier limit and upgrade path", async () => {
@@ -306,7 +291,9 @@ describe("queue drawer", () => {
         screen.getByRole("heading", { name: /waiting in line/ }),
       ).toBeInTheDocument();
       expect(screen.getByText("Free")).toBeInTheDocument();
-      expect(screen.getByText(/only run 1 task/)).toBeInTheDocument();
+      expect(screen.getByText("1 of 1 slot in use")).toBeInTheDocument();
+      expect(screen.getByText("Available now")).toBeInTheDocument();
+      expect(screen.getByText("0 slots")).toBeInTheDocument();
       expect(screen.getByText("Upgrade to Pro")).toBeInTheDocument();
     });
   });
@@ -364,7 +351,7 @@ describe("queue drawer", () => {
     expect(screen.getByText("Buy $42/month")).toBeInTheDocument();
   });
 
-  it("refreshes the concurrency limit when billing changes in realtime", async () => {
+  it("refreshes the concurrency limit through the shared worker when billing changes in realtime", async () => {
     let concurrencyLimit = 5;
     mockConcurrencyCapability(true);
     context.mocks.api(runsQueueContract.getQueue, ({ respond }) => {
@@ -382,7 +369,7 @@ describe("queue drawer", () => {
       );
     });
 
-    await openDrawer();
+    await openDrawer("message-port");
 
     await waitFor(() => {
       expect(screen.getByText(/3 of 5 slots/)).toBeInTheDocument();
@@ -396,7 +383,8 @@ describe("queue drawer", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/3 of 6 slots/)).toBeInTheDocument();
-      expect(screen.getByText("3 slots available")).toBeInTheDocument();
+      expect(screen.getByText("Available now")).toBeInTheDocument();
+      expect(screen.getByText("3 slots")).toBeInTheDocument();
     });
   });
 

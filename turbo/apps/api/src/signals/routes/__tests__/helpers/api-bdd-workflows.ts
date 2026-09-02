@@ -29,6 +29,7 @@ const NOTION_OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 interface GoogleCalendarConnectorOAuthOptions {
   readonly accessToken?: string;
   readonly email?: string;
+  readonly subject?: string;
 }
 
 /**
@@ -66,7 +67,7 @@ export function mockGoogleCalendarConnectorOAuth(
     }),
     http.get(GOOGLE_USERINFO_URL, () => {
       return HttpResponse.json({
-        id: "bdd-calendar-user-id",
+        id: options.subject ?? "bdd-calendar-user-id",
         email: options.email ?? "calendar-user@example.com",
         name: "BDD Calendar User",
       });
@@ -76,6 +77,8 @@ export function mockGoogleCalendarConnectorOAuth(
 
 interface NotionConnectorOAuthOptions {
   readonly accessToken?: string;
+  readonly ownerId?: string;
+  readonly ownerName?: string;
 }
 
 /**
@@ -97,7 +100,10 @@ export function mockNotionConnectorOAuth(
         refresh_token: "notion-refresh-token",
         expires_in: 3600,
         owner: {
-          user: { id: "notion-user-1", name: "Notion User" },
+          user: {
+            id: options.ownerId ?? "notion-user-1",
+            name: options.ownerName ?? "Notion User",
+          },
         },
       });
     }),

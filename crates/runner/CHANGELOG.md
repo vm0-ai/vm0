@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.183.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.3...runner-rs-v0.183.4) (2026-09-02)
+
+## [0.183.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.2...runner-rs-v0.183.3) (2026-09-02)
+
+
+### Documentation
+
+* **runner:** document job discovery admission ownership ([#31029](https://github.com/vm0-ai/vm0/issues/31029)) ([29e82e5](https://github.com/vm0-ai/vm0/commit/29e82e53a22e3a8b41ea7c5600c3c90c6f063ecb))
+* **runner:** document the run cancellation protocol ([#31035](https://github.com/vm0-ai/vm0/issues/31035)) ([1e27593](https://github.com/vm0-ai/vm0/commit/1e27593c4c9cc849989e11378207fbd45d718d8a))
+
+
+### Refactoring
+
+* **runner:** make firecracker process identity canonical ([#31024](https://github.com/vm0-ai/vm0/issues/31024)) ([36e5fdc](https://github.com/vm0-ai/vm0/commit/36e5fdcb8ec4ad9d853150071953a85d3eba4887))
+
+## [0.183.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.1...runner-rs-v0.183.2) (2026-09-02)
+
+## [0.183.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.0...runner-rs-v0.183.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **python:** reject invalid utf-8 catalog versions ([#30979](https://github.com/vm0-ai/vm0/issues/30979)) ([c76170d](https://github.com/vm0-ai/vm0/commit/c76170d52b7f96015d8b6c7223c8d54ab0f6764f))
+
+
+### Documentation
+
+* **python:** correct the connector parser Brotli contract ([#30977](https://github.com/vm0-ai/vm0/issues/30977)) ([8d3e0e2](https://github.com/vm0-ai/vm0/commit/8d3e0e23123386fc0f0772812870d92fda931408))
+
+## [0.183.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.13...runner-rs-v0.183.0) (2026-09-02)
+
+
+### Features
+
+* **runner:** reserve cpu admission headroom ([#30905](https://github.com/vm0-ai/vm0/issues/30905)) ([59a9cd5](https://github.com/vm0-ai/vm0/commit/59a9cd534c1ab122b6c6332c8db9f4e0462a76a2))
+
+
+### Bug Fixes
+
+* **runner:** fail closed on unavailable mountinfo ([#30904](https://github.com/vm0-ai/vm0/issues/30904)) ([0296ae5](https://github.com/vm0-ai/vm0/commit/0296ae5067276d4c37d1a4c0076c403a576f338d))
+
+## [0.182.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.12...runner-rs-v0.182.13) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
+## [0.182.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.11...runner-rs-v0.182.12) (2026-09-01)
+
+
+### Bug Fixes
+
+* **runner:** fail closed on incomplete config image refs ([#30864](https://github.com/vm0-ai/vm0/issues/30864)) ([12c40b1](https://github.com/vm0-ai/vm0/commit/12c40b1007d66e3dd7fc0584a82091fa1f754c03))
+
+## [0.182.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.10...runner-rs-v0.182.11) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
+
+### Refactoring
+
+* **python:** share bounded zlib member decoding ([#30859](https://github.com/vm0-ai/vm0/issues/30859)) ([77c59e3](https://github.com/vm0-ai/vm0/commit/77c59e30ff45033fbc7e537a55dc491ca3f25d6d))
+
+## [0.182.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.9...runner-rs-v0.182.10) (2026-09-01)
+
+
+### Bug Fixes
+
+* **runner:** recheck firecracker warnings by stable identity ([#30844](https://github.com/vm0-ai/vm0/issues/30844)) ([77ab680](https://github.com/vm0-ai/vm0/commit/77ab6800c311aef9d3b207346ce987be7ff8b02b))
+
+
+### Documentation
+
+* **mitm-addon:** document flow metadata key linter ([#30836](https://github.com/vm0-ai/vm0/issues/30836)) ([4193c47](https://github.com/vm0-ai/vm0/commit/4193c4773e5088d795bc8281ffa975ff940c5b1d))
+
 ## [0.182.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.8...runner-rs-v0.182.9) (2026-09-01)
 
 

@@ -13,6 +13,7 @@ import {
 import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
 import { agents } from "@okouai/db/schema/agent";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
+import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { connectors } from "@okouai/db/schema/connector";
 import { mailDrafts } from "@okouai/db/schema/mail-draft";
 import { userConnectors } from "@okouai/db/schema/user-connector";
@@ -385,16 +386,31 @@ async function loadMailConnections(args: {
   });
 }
 
-async function ownedThreadAgentId(args: {
+interface OwnedMailThreadContext {
+  readonly agentId: string;
+  readonly gmailConnectorId: string | null;
+}
+
+async function loadOwnedMailThreadContext(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
-}): Promise<string | null> {
+}): Promise<OwnedMailThreadContext | null> {
   const [row] = await args.db
-    .select({ agentId: agents.id })
+    .select({
+      agentId: agents.id,
+      gmailConnectorId: chatThreadConnectorSelections.connectorId,
+    })
     .from(chatThreads)
     .innerJoin(agents, eq(agents.id, chatThreads.agentId))
+    .leftJoin(
+      chatThreadConnectorSelections,
+      and(
+        eq(chatThreadConnectorSelections.chatThreadId, chatThreads.id),
+        eq(chatThreadConnectorSelections.connectorSlug, "gmail"),
+      ),
+    )
     .where(
       and(
         eq(chatThreads.id, args.threadId),
@@ -403,7 +419,7 @@ async function ownedThreadAgentId(args: {
       ),
     )
     .limit(1);
-  return row?.agentId ?? null;
+  return row ?? null;
 }
 
 async function loadOwnedMailDraft(args: {
@@ -1531,9 +1547,9 @@ export const linkMailDraft$ = command(
     const db = get(db$);
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const threadAgentId = await ownedThreadAgentId({ db, ...args });
+    const thread = await loadOwnedMailThreadContext({ db, ...args });
     signal.throwIfAborted();
-    if (!threadAgentId || (args.agentId && threadAgentId !== args.agentId)) {
+    if (!thread || (args.agentId && thread.agentId !== args.agentId)) {
       return { kind: "not_found", message: "Chat thread not found" };
     }
     const connections = (
@@ -1542,7 +1558,8 @@ export const linkMailDraft$ = command(
         snapshot,
         orgId: args.orgId,
         userId: args.userId,
-        agentId: threadAgentId,
+        agentId: thread.agentId,
+        sourceId: thread.gmailConnectorId ?? undefined,
       })
     ).filter((connection) => {
       return !connection.needsReconnect && connection.scopesReady;

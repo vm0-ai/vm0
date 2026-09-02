@@ -394,6 +394,14 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.cache_creation", usd(6.25), 1_000_000],
   ]),
+  // Anthropic pricing retrieved 2026-09-01 from:
+  // https://www.anthropic.com/claude-fable-and-mythos-5-1
+  ...usageGroup("model", "claude-fable-5-1", [
+    ["tokens.input", usd(10), 1_000_000],
+    ["tokens.output", usd(50), 1_000_000],
+    ["tokens.cache_read", usd(0.25), 1_000_000],
+    ["tokens.cache_creation", usd(12.5), 1_000_000],
+  ]),
   ...usageGroup("model", "claude-fable-5", [
     ["tokens.input", usd(10), 1_000_000],
     ["tokens.output", usd(50), 1_000_000],
@@ -455,6 +463,13 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.input", usd(1.5), 1_000_000],
     ["tokens.cache_read", usd(0.15), 1_000_000],
     ["tokens.output", usd(9), 1_000_000],
+  ]),
+  // OpenRouter Qwen2.5 7B pricing retrieved 2026-08-06 from:
+  // https://openrouter.ai/qwen/qwen-2.5-7b-instruct
+  ...usageGroup("translation", "qwen/qwen-2.5-7b-instruct", [
+    ["tokens.input", usd(0.1), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.output", usd(0.2), 1_000_000],
   ]),
   // X connector — https://docs.x.com/x-api/getting-started/pricing
   ...usageGroup("connector", "x", [

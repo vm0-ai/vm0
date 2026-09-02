@@ -43,10 +43,20 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
+  mockGoogleFormsConnectorOAuth,
+  mockStripeConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
+import {
+  seedBuiltinThreadConnectorSelection,
+  seedConnectorStorageRow,
+  setBuiltinOAuthScopeFacts,
+  setConnectorAccountState,
+  setConnectorDefaultState,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -61,7 +71,6 @@ const mocks = createRouteMocks(context);
 const api = createRunsApi(context);
 const connectorApi = createConnectorBddApi(context);
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 type StaffFixture =
   | {
@@ -271,32 +280,6 @@ function installVolumeS3Fixture() {
   };
 }
 
-function mockConnectorReadinessModel(
-  detected: readonly {
-    readonly connectorSlug: ConnectorSlug;
-    readonly reason: string;
-  }[],
-): readonly unknown[] {
-  const requests: unknown[] = [];
-  mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-  server.use(
-    http.post(OPENROUTER_URL, async ({ request }) => {
-      requests.push(await request.json());
-      return HttpResponse.json({
-        choices: [
-          {
-            finish_reason: "stop",
-            message: {
-              content: JSON.stringify({ connectors: detected }),
-            },
-          },
-        ],
-      });
-    }),
-  );
-  return requests;
-}
-
 function visibilityClient() {
   return setupApp({ context, routes: workflowsRoutes })(
     workflowVisibilityContract,
@@ -369,6 +352,92 @@ async function connectManualGrant(
     });
   }
   return connector;
+}
+
+async function connectGmailAccount(
+  actor: ApiTestUser,
+  agentId: string,
+  args: {
+    readonly accessToken: string;
+    readonly email: string;
+    readonly subject: string;
+    readonly account?: { readonly intent: "add"; readonly displayName: string };
+  },
+) {
+  mockGmailConnectorOAuth({
+    accessToken: args.accessToken,
+    email: args.email,
+    subject: args.subject,
+  });
+  const start = await connectorApi.startOauth(
+    actor,
+    "gmail",
+    "oauth",
+    agentId,
+    args.account,
+  );
+  const state = new URL(start.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Gmail OAuth state");
+  }
+  await connectorApi.completeOauthCallback("gmail", {
+    code: `gmail-readiness-${randomUUID()}`,
+    state,
+  });
+  const accounts = await connectorApi.listBuiltinConnectorAccounts(
+    actor,
+    "gmail",
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.externalEmail === args.email;
+  });
+  if (!account) {
+    throw new Error(`Expected Gmail account ${args.email}`);
+  }
+  return account;
+}
+
+async function connectGoogleCalendarAccount(
+  actor: ApiTestUser,
+  agentId: string,
+  args: {
+    readonly accessToken: string;
+    readonly email: string;
+    readonly subject: string;
+    readonly account?: { readonly intent: "add"; readonly displayName: string };
+  },
+) {
+  mockGoogleCalendarConnectorOAuth({
+    accessToken: args.accessToken,
+    email: args.email,
+    subject: args.subject,
+  });
+  const start = await connectorApi.startOauth(
+    actor,
+    "google-calendar",
+    "oauth",
+    agentId,
+    args.account,
+  );
+  const state = new URL(start.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Google Calendar OAuth state");
+  }
+  await connectorApi.completeOauthCallback("google-calendar", {
+    code: `google-calendar-copy-${randomUUID()}`,
+    state,
+  });
+  const accounts = await connectorApi.listBuiltinConnectorAccounts(
+    actor,
+    "google-calendar",
+  );
+  const account = accounts.find((candidate) => {
+    return candidate.externalEmail === args.email;
+  });
+  if (!account) {
+    throw new Error(`Expected Google Calendar account ${args.email}`);
+  }
+  return account;
 }
 
 async function requestCreateWorkflow<
@@ -457,231 +526,6 @@ function expectAgentRunPreCreateSource(runId: string, source: string): void {
 }
 
 describe("workflows", () => {
-  it("lets any public workflow viewer detect connector readiness", async () => {
-    const owner = user({ orgId: STAFF_ORG_ID });
-    const viewer = user({
-      orgId: STAFF_ORG_ID,
-      orgRole: "org:member",
-    });
-    const agent = await createAgent(owner, {
-      displayName: "Readiness Agent",
-      visibility: "public",
-    });
-    const workflow = await createWorkflow(owner, {
-      agentId: agent.agentId,
-      name: `readiness-${randomUUID().slice(0, 8)}`,
-      visibility: "public",
-      instruction: "Read GitLab projects and Runtime jobs.",
-      description: "Coordinate engineering work.",
-    });
-
-    await connectManualGrant(viewer, "runtime", "api-token", {
-      apiKey: "runtime-readiness-test",
-    });
-    await connectManualGrant(viewer, "gitlab", "api-token", {
-      accessToken: "gitlab-readiness-test",
-    });
-    await api.enableAgentConnectors(viewer, agent.agentId, ["gitlab"]);
-
-    const modelRequests = mockConnectorReadinessModel([
-      {
-        connectorSlug: "gmail",
-        reason: "The workflow reads Gmail messages.",
-      },
-      {
-        connectorSlug: "gmail",
-        reason: "This duplicate Gmail selection should be ignored.",
-      },
-      {
-        connectorSlug: "runtime",
-        reason: "The workflow reads Runtime jobs.",
-      },
-      {
-        connectorSlug: "gitlab",
-        reason: "The workflow reads GitLab projects.",
-      },
-    ]);
-
-    const response = await accept(
-      detailClient().connectorReadiness({
-        headers: authHeaders(viewer),
-        params: { workflowId: workflow.body.id },
-      }),
-      [200],
-    );
-
-    expect(modelRequests).toHaveLength(1);
-    const [modelRequest] = modelRequests;
-    if (!isRecord(modelRequest) || !Array.isArray(modelRequest.messages)) {
-      throw new Error("Expected OpenRouter request messages");
-    }
-    const messages: readonly unknown[] = modelRequest.messages;
-    const systemMessage = messages.find((message) => {
-      return isRecord(message) && message.role === "system";
-    });
-    if (!isRecord(systemMessage) || typeof systemMessage.content !== "string") {
-      throw new Error("Expected OpenRouter system message");
-    }
-    expect(systemMessage.content).toContain(
-      "Select only connectorSlug values from the supplied catalog.",
-    );
-    expect(systemMessage.content).toContain(
-      '{"connectors":[{"connectorSlug":"...","reason":"..."}]}',
-    );
-
-    const userMessage = messages.find((message) => {
-      return isRecord(message) && message.role === "user";
-    });
-    if (!isRecord(userMessage) || typeof userMessage.content !== "string") {
-      throw new Error("Expected OpenRouter user message");
-    }
-    const userPayload: unknown = JSON.parse(userMessage.content);
-    if (
-      !isRecord(userPayload) ||
-      !Array.isArray(userPayload.connectorCatalog)
-    ) {
-      throw new Error("Expected OpenRouter connector catalog");
-    }
-    const connectorCatalog: readonly unknown[] = userPayload.connectorCatalog;
-    expect(connectorCatalog.length).toBeGreaterThan(0);
-    for (const connector of connectorCatalog) {
-      expect(connector).toStrictEqual({
-        connectorSlug: expect.any(String),
-        label: expect.any(String),
-        description: expect.any(String),
-      });
-    }
-
-    expect(response.body.connectors).toStrictEqual([
-      {
-        connectorSlug: "gmail",
-        label: "Gmail",
-        icon: {
-          url: "https://static.vm0.io/test-fixtures/connectors/gmail.svg",
-          invertInDarkMode: false,
-        },
-        reason: "The workflow reads Gmail messages.",
-        status: "not-connected",
-      },
-      {
-        connectorSlug: "runtime",
-        label: "Runtime",
-        icon: {
-          url: "https://static.vm0.io/test-fixtures/connectors/runtime.svg",
-          invertInDarkMode: false,
-        },
-        reason: "The workflow reads Runtime jobs.",
-        status: "not-enabled-for-agent",
-      },
-      {
-        connectorSlug: "gitlab",
-        label: "GitLab",
-        icon: {
-          url: "https://static.vm0.io/test-fixtures/connectors/gitlab.svg",
-          invertInDarkMode: false,
-        },
-        reason: "The workflow reads GitLab projects.",
-        status: "connected",
-      },
-    ]);
-  });
-
-  it("returns no readiness entries when the model detects no connectors", async () => {
-    const actor = user({ orgId: STAFF_ORG_ID });
-    const agent = await createAgent(actor, { visibility: "private" });
-    const workflow = await createWorkflow(actor, {
-      agentId: agent.agentId,
-      name: `readiness-empty-${randomUUID().slice(0, 8)}`,
-      instruction: "Summarize the provided text.",
-    });
-    mockConnectorReadinessModel([]);
-
-    const response = await accept(
-      detailClient().connectorReadiness({
-        headers: authHeaders(actor),
-        params: { workflowId: workflow.body.id },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ connectors: [] });
-  });
-
-  it("rejects readiness checks when the feature switch is disabled", async () => {
-    const actor = user();
-    const agent = await createAgent(actor, { visibility: "private" });
-    const workflow = await createWorkflow(actor, {
-      agentId: agent.agentId,
-      name: `readiness-disabled-${randomUUID().slice(0, 8)}`,
-      instruction: "Read GitHub issues.",
-    });
-
-    const response = await accept(
-      detailClient().connectorReadiness({
-        headers: authHeaders(actor),
-        params: { workflowId: workflow.body.id },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.code).toBe("FORBIDDEN");
-  });
-
-  it("returns payload too large before calling the model", async () => {
-    const actor = user({ orgId: STAFF_ORG_ID });
-    const agent = await createAgent(actor, { visibility: "private" });
-    const workflow = await createWorkflow(actor, {
-      agentId: agent.agentId,
-      name: `readiness-large-${randomUUID().slice(0, 8)}`,
-      instruction: "x".repeat(100_000),
-    });
-
-    const response = await accept(
-      detailClient().connectorReadiness({
-        headers: authHeaders(actor),
-        params: { workflowId: workflow.body.id },
-      }),
-      [413],
-    );
-
-    expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
-  });
-
-  it("fails the whole readiness check when any model slug is unavailable", async () => {
-    const actor = user({ orgId: STAFF_ORG_ID });
-    const agent = await createAgent(actor, { visibility: "private" });
-    const workflow = await createWorkflow(actor, {
-      agentId: agent.agentId,
-      name: `readiness-invalid-${randomUUID().slice(0, 8)}`,
-      instruction: "Read an external service.",
-    });
-    mockConnectorReadinessModel([
-      {
-        connectorSlug: "gmail",
-        reason: "The workflow reads Gmail messages.",
-      },
-      {
-        connectorSlug: "missing-connector",
-        reason: "The workflow reads an unavailable connector.",
-      },
-    ]);
-
-    const response = await accept(
-      detailClient().connectorReadiness({
-        headers: authHeaders(actor),
-        params: { workflowId: workflow.body.id },
-      }),
-      [503],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "PROVIDER_UNAVAILABLE",
-        message: "Connector readiness check failed. Please retry.",
-      },
-    });
-  });
-
   it("creates private workflows by default and hides them from other org members", async () => {
     const owner = user();
     const otherMember = user({ orgId: owner.orgId, orgRole: "org:member" });
@@ -1706,6 +1550,492 @@ describe("workflows", () => {
       "Bearer gmail-copy-second-token",
       "Bearer gmail-copy-first-token",
     ]);
+  });
+
+  it("rebinds copied Calendar automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Calendar workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ConnectorAccounts]: true },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Calendar Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Calendar Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `calendar-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Calendar copy source",
+    });
+
+    const watchedTokens: string[] = [];
+    server.use(
+      http.get(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+        () => {
+          return HttpResponse.json({
+            items: [],
+            nextSyncToken: `calendar-copy-sync-${watchedTokens.length}`,
+          });
+        },
+      ),
+      http.post(
+        "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+        async ({ request }) => {
+          const authorization = request.headers.get("authorization");
+          if (!authorization) {
+            throw new Error("Expected Calendar watch authorization");
+          }
+          watchedTokens.push(authorization);
+          const body = (await request.json()) as { readonly id?: string };
+          if (!body.id) {
+            throw new Error("Expected Calendar watch channel id");
+          }
+          return HttpResponse.json({
+            id: body.id,
+            resourceId: `calendar-copy-resource-${watchedTokens.length}`,
+            resourceUri:
+              "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            expiration: "4102444800000",
+          });
+        },
+      ),
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await connectGoogleCalendarAccount(actor, sourceAgent.agentId, {
+      accessToken: "calendar-copy-first-token",
+      email: `calendar-copy-first-${randomUUID()}@example.test`,
+      subject: `calendar-copy-first-${randomUUID()}`,
+    });
+    const secondAccount = await connectGoogleCalendarAccount(
+      actor,
+      sourceAgent.agentId,
+      {
+        accessToken: "calendar-copy-second-token",
+        email: `calendar-copy-second-${randomUUID()}@example.test`,
+        subject: `calendar-copy-second-${randomUUID()}`,
+        account: { intent: "add", displayName: "Calendar Copy Second" },
+      },
+    );
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    if (automation.body.kind !== "event" || !automation.body.chatThreadId) {
+      throw new Error("Expected Calendar automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: automation.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "google-calendar" },
+        },
+      }),
+      [200],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer calendar-copy-first-token",
+      "Bearer calendar-copy-second-token",
+    ]);
+
+    await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer calendar-copy-first-token",
+      "Bearer calendar-copy-second-token",
+      "Bearer calendar-copy-first-token",
+    ]);
+  });
+
+  it("rebinds copied Stripe automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Stripe workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+      },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Stripe Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Stripe Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `stripe-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Stripe copy source",
+    });
+
+    const defaultAccountId = `acct_stripe_copy_default_${randomUUID()}`;
+    mockStripeConnectorOAuth({ accountId: defaultAccountId, livemode: true });
+    const defaultStart = await connectorApi.startOauth(
+      actor,
+      "stripe",
+      "oauth",
+      sourceAgent.agentId,
+    );
+    const defaultState = new URL(
+      defaultStart.authorizationUrl,
+    ).searchParams.get("state");
+    if (!defaultState) {
+      throw new Error("Expected default Stripe OAuth state");
+    }
+    await connectorApi.completeOauthCallback("stripe", {
+      code: "stripe-copy-default-code",
+      state: defaultState,
+    });
+    const defaultAccount = await connectorApi.readConnectorBySlug(
+      actor,
+      "stripe",
+    );
+
+    const selectedAccountId = `acct_stripe_copy_selected_${randomUUID()}`;
+    mockStripeConnectorOAuth({ accountId: selectedAccountId, livemode: true });
+    const selectedStart = await connectorApi.startOauth(
+      actor,
+      "stripe",
+      "oauth",
+      sourceAgent.agentId,
+      { intent: "add", displayName: "Stripe Copy Selected" },
+    );
+    const selectedState = new URL(
+      selectedStart.authorizationUrl,
+    ).searchParams.get("state");
+    if (!selectedState) {
+      throw new Error("Expected selected Stripe OAuth state");
+    }
+    await connectorApi.completeOauthCallback("stripe", {
+      code: "stripe-copy-selected-code",
+      state: selectedState,
+    });
+    const accounts = await connectorApi.listBuiltinConnectorAccounts(
+      actor,
+      "stripe",
+    );
+    const selectedAccount = accounts.find((account) => {
+      return account.externalId === selectedAccountId;
+    });
+    if (!selectedAccount) {
+      throw new Error("Expected selected Stripe account");
+    }
+
+    const sourceAutomation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "stripe-invoice-paid",
+          eventConfig: { provider: "stripe", event: "invoice_paid" },
+        },
+      }),
+      [201],
+    );
+    if (
+      sourceAutomation.body.kind !== "event" ||
+      sourceAutomation.body.eventType !== "stripe-invoice-paid" ||
+      !sourceAutomation.body.chatThreadId
+    ) {
+      throw new Error("Expected source Stripe automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: sourceAutomation.body.chatThreadId },
+        body: {
+          connectionId: selectedAccount.id,
+          target: { kind: "builtin", connectorSlug: "stripe" },
+        },
+      }),
+      [200],
+    );
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    expect(copiedAutomations.body).toContainEqual(
+      expect.objectContaining({
+        eventType: "stripe-invoice-paid",
+        eventConfig: expect.objectContaining({
+          connectorId: defaultAccount.id,
+          stripeAccountId: defaultAccountId,
+          mode: "live",
+        }),
+      }),
+    );
+  });
+
+  it("rebinds copied Google Forms automations to the target thread default account", async () => {
+    const actor = user();
+    if (!actor.orgId) {
+      throw new Error(
+        "Expected Google Forms workflow copy actor to belong to an org",
+      );
+    }
+    await api.grantProEntitlement(actor, { tier: "team" });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+        [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+      },
+    );
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Google Forms Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Google Forms Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `google-forms-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# Google Forms copy source",
+    });
+    const formId = `googleFormsCopy${randomUUID().replaceAll("-", "")}`;
+    const topicName = "projects/vm0-ai-488909/topics/forms-copy-events";
+    mockOptionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME", topicName);
+    mockOptionalEnv(
+      "GOOGLE_FORMS_PUBSUB_PUSH_AUDIENCE",
+      "https://api.vm0.ai/api/webhooks/google-forms",
+    );
+    mockOptionalEnv(
+      "GOOGLE_FORMS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",
+      "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com",
+    );
+    const watchedTokens: string[] = [];
+    server.use(
+      http.get(
+        "https://forms.googleapis.com/v1/forms/:formId",
+        ({ params }) => {
+          expect(params.formId).toBe(formId);
+          return HttpResponse.json({
+            formId,
+            info: { title: "Copy form" },
+            publishSettings: {
+              publishState: {
+                isPublished: true,
+                isAcceptingResponses: true,
+              },
+            },
+          });
+        },
+      ),
+      http.get(
+        "https://forms.googleapis.com/v1/forms/:formId/responses",
+        ({ params }) => {
+          expect(params.formId).toBe(formId);
+          return HttpResponse.json({ responses: [] });
+        },
+      ),
+      http.post(
+        "https://forms.googleapis.com/v1/forms/:formId/watches",
+        ({ request, params }) => {
+          expect(params.formId).toBe(formId);
+          const authorization = request.headers.get("authorization");
+          if (!authorization) {
+            throw new Error("Expected Google Forms watch authorization");
+          }
+          watchedTokens.push(authorization);
+          return HttpResponse.json({
+            id: `forms-copy-watch-${randomUUID()}`,
+            createTime: "2026-09-01T10:00:00Z",
+            expireTime: "2099-09-01T10:00:00Z",
+            eventType: "RESPONSES",
+            target: { topic: { topicName } },
+          });
+        },
+      ),
+      http.delete(
+        "https://forms.googleapis.com/v1/forms/:formId/watches/:watchId",
+        () => {
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+
+    mockGoogleFormsConnectorOAuth({
+      accessToken: "google-forms-copy-first-token",
+      email: "google-forms-copy-first@example.test",
+      subject: `google-forms-copy-first-${randomUUID()}`,
+    });
+    const firstStart = await connectorApi.startOauth(
+      actor,
+      "google-forms",
+      "oauth",
+      sourceAgent.agentId,
+    );
+    const firstState = new URL(firstStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!firstState) {
+      throw new Error("Expected first Google Forms OAuth state");
+    }
+    await connectorApi.completeOauthCallback("google-forms", {
+      code: "google-forms-copy-first-code",
+      state: firstState,
+    });
+    const firstAccount = await connectorApi.readConnectorBySlug(
+      actor,
+      "google-forms",
+    );
+
+    mockGoogleFormsConnectorOAuth({
+      accessToken: "google-forms-copy-second-token",
+      email: "google-forms-copy-second@example.test",
+      subject: `google-forms-copy-second-${randomUUID()}`,
+    });
+    const secondStart = await connectorApi.startOauth(
+      actor,
+      "google-forms",
+      "oauth",
+      sourceAgent.agentId,
+      { intent: "add", displayName: "Google Forms Copy Second" },
+    );
+    const secondState = new URL(secondStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!secondState) {
+      throw new Error("Expected second Google Forms OAuth state");
+    }
+    await connectorApi.completeOauthCallback("google-forms", {
+      code: "google-forms-copy-second-code",
+      state: secondState,
+    });
+    const accounts = await connectorApi.listBuiltinConnectorAccounts(
+      actor,
+      "google-forms",
+    );
+    const secondAccount = accounts.find((account) => {
+      return account.externalEmail === "google-forms-copy-second@example.test";
+    });
+    if (!secondAccount) {
+      throw new Error("Expected second Google Forms account");
+    }
+
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "google-forms-response-submitted",
+          eventConfig: {
+            provider: "google-forms",
+            event: "response_submitted",
+            formUrl: `https://docs.google.com/forms/d/${formId}/edit`,
+          },
+        },
+      }),
+      [201],
+    );
+    if (automation.body.kind !== "event" || !automation.body.chatThreadId) {
+      throw new Error("Expected Google Forms automation thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(actor),
+        params: { id: automation.body.chatThreadId },
+        body: {
+          connectionId: secondAccount.id,
+          target: { kind: "builtin", connectorSlug: "google-forms" },
+        },
+      }),
+      [200],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer google-forms-copy-first-token",
+      "Bearer google-forms-copy-second-token",
+    ]);
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    expect(watchedTokens).toStrictEqual([
+      "Bearer google-forms-copy-first-token",
+      "Bearer google-forms-copy-second-token",
+      "Bearer google-forms-copy-first-token",
+    ]);
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    const copiedAutomation = copiedAutomations.body.find((candidate) => {
+      return (
+        candidate.kind === "event" &&
+        candidate.eventType === "google-forms-response-submitted"
+      );
+    });
+    if (
+      !copiedAutomation ||
+      copiedAutomation.kind !== "event" ||
+      copiedAutomation.eventType !== "google-forms-response-submitted"
+    ) {
+      throw new Error("Expected copied Google Forms automation");
+    }
+    expect(copiedAutomation.eventConfig.connectorId).toBe(firstAccount.id);
   });
 
   it("inherits copied automation budgets from agent callers and rejects exhausted runs", async () => {

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.63](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.62...sandbox-v0.19.63) (2026-09-02)
+
+
+### Performance Improvements
+
+* **runner:** specialize fresh workspace mount lifecycle ([#30939](https://github.com/vm0-ai/vm0/issues/30939)) ([c3f783c](https://github.com/vm0-ai/vm0/commit/c3f783cd17c8e732c5bb3edfcd6e0fb867ea3bd7))
+
+## [0.19.62](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.61...sandbox-v0.19.62) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
 ## [0.19.61](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.60...sandbox-v0.19.61) (2026-09-01)
 
 

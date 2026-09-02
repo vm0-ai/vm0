@@ -1,24 +1,17 @@
 import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { clerk$, watchOrgSwitch$ } from "./auth.ts";
 import {
-  initAuthRecovery$,
-  initClerkRuntime$,
-  watchOrgSwitch$,
-} from "./auth.ts";
-import {
-  type AuthenticatedDaemonOwner,
-  runAuthenticatedDaemons$,
+  runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
-  setupAuthenticatedDaemons$,
 } from "./authenticated-daemons.ts";
 import { initTheme$, syncThemePreferences$ } from "./theme.ts";
 import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
-import { setAuthenticatedServicesReady$ } from "./auth-context.ts";
-import { prepareSharedDatabaseBridge$ } from "./shared-database-browser.ts";
+import { setupSharedDatabaseBridge$ } from "./shared-database-browser.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
@@ -44,7 +37,6 @@ import { setupTeamsConnectPage$ } from "./okou-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./okou-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./okou-page/telegram-settings-page.ts";
 import { setupFeishuSettingsPage$ } from "./okou-page/feishu-settings-page.ts";
-import { setupStrapiSettingsPage$ } from "./okou-page/strapi-settings-page.ts";
 import { setupFeishuOAuthCallbackPage$ } from "./okou-page/feishu-oauth-callback-page.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -55,7 +47,6 @@ import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
 import { setupOfficialWorkflowsPage$ } from "./workflows-page/official-workflows-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
-import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupAgentChatPage$ } from "./okou-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./okou-page/home-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
@@ -95,10 +86,12 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { hideAppSkeleton$, initBootstrapSkeleton$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
+import { setupLegacySettingsRedirect$ } from "./okou-page/settings/legacy-settings-redirect.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./okou-page/nav.ts";
+import { bootstrapOnboardingGuard$ } from "./okou-page/onboard-guard.ts";
 import {
   featureSwitch$,
   reloadFeatureSwitch$,
@@ -316,10 +309,6 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupFeishuSettingsPage$),
   },
   {
-    path: ROUTES.settingsStrapi,
-    setup: setupAuthSidebarPageWrapper(setupStrapiSettingsPage$),
-  },
-  {
     path: ROUTES.settingsTelegram,
     setup: setupAuthSidebarPageWrapper(setupTelegramSettingsPage$),
   },
@@ -349,7 +338,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.settings,
-    setup: setupAuthSidebarPageWrapper(setupPreferencesPage$),
+    setup: setupAuthPageWrapper(setupLegacySettingsRedirect$),
   },
   {
     path: ROUTES.lab,
@@ -443,7 +432,10 @@ const ROUTE_CONFIG = [
     setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
-  { path: "/preferences", setup: redirectTo(ROUTES.settings) },
+  {
+    path: "/preferences",
+    setup: setupAuthPageWrapper(setupLegacySettingsRedirect$),
+  },
 
   {
     // Catch-all: keep unknown paths in place and show the not-found surface.
@@ -455,22 +447,6 @@ const ROUTE_CONFIG = [
 const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
   await set(initRoutes$, ROUTE_CONFIG, signal);
 });
-
-const setupAuthenticatedBootstrap$ = command(
-  async (
-    { set },
-    ownDaemon: AuthenticatedDaemonOwner,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const servicesReady = set(setupAuthenticatedDaemons$, ownDaemon, signal);
-    set(setAuthenticatedServicesReady$, servicesReady);
-    await servicesReady;
-    signal.throwIfAborted();
-    ownDaemon(set(runAuthenticatedDaemons$, signal));
-    await set(setupAuthenticatedBootstrapData$, signal);
-    signal.throwIfAborted();
-  },
-);
 
 const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(reloadFeatureSwitch$, signal);
@@ -516,37 +492,63 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   );
 });
 
-export const bootstrap$ = command(
-  async (
-    { get, set },
-    appVersion: string,
-    render: () => void,
-    ownDaemon: AuthenticatedDaemonOwner,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    set(initializeAppVersion$, appVersion);
-    set(initBootstrapPhaseTiming$, signal);
-    set(captureInvitationRedirect$);
-    set(markBootstrapLocaleInitStarted$);
+const completeBootstrap$ = command(
+  async ({ set }, render: () => void, signal: AbortSignal): Promise<void> => {
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
     set(initTheme$);
+
+    render();
+
+    set(handleSlackRedirect$);
+
+    await Promise.all([
+      set(setupAuthenticatedBootstrapData$, signal),
+      set(setupRoutes$, signal),
+      set(bootstrapOnboardingGuard$, signal),
+      set(setupGlobalMethod$, signal),
+      set(registerServiceWorker$, signal),
+      set(setupNotificationListener$, signal),
+
+      set(setupGlobalKeyboardShortcuts$, signal),
+      set(watchOrgSwitch$, signal),
+      set(setupFeatureSwitches$, signal),
+    ]);
+
+    signal.throwIfAborted();
+  },
+);
+
+export interface BootstrapRuntime {
+  readonly authenticatedRealtimeDaemon: Promise<void>;
+  readonly ready: Promise<void>;
+  readonly sharedDatabaseDaemon: Promise<void>;
+}
+
+export const bootstrap$ = command(
+  (
+    { get, set },
+    appVersion: string,
+    render: () => void,
+    signal: AbortSignal,
+  ): BootstrapRuntime => {
+    set(initializeAppVersion$, appVersion);
+    set(initBootstrapPhaseTiming$, signal);
+    set(captureInvitationRedirect$);
+    set(markBootstrapLocaleInitStarted$);
     set(setRootSignal$, signal);
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const vercelProtectionBypass =
       getCapturedPreviewBypassForTarget(apiBaseUrl);
     set(setApiClientRuntime$, {
+      clerk: get(clerk$),
       environment: "app",
       apiBaseUrl,
       oauthApiBaseUrl: resolveOAuthApiBase(),
       ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
     });
-    ownDaemon(set(prepareSharedDatabaseBridge$, signal));
-    set(initClerkRuntime$, signal);
-    set(initAuthRecovery$, signal);
     set(initBootstrapSkeleton$);
-
     set(setupLoggers$);
 
     // The cached effective switches already drive the first rendered frame.
@@ -559,22 +561,14 @@ export const bootstrap$ = command(
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
-    render();
+    const sharedDatabaseDaemon = set(setupSharedDatabaseBridge$, signal);
+    const authenticatedRealtimeDaemon = set(runAuthenticatedRealtime$, signal);
+    const ready = set(completeBootstrap$, render, signal);
 
-    set(handleSlackRedirect$);
-
-    await Promise.all([
-      set(setupAuthenticatedBootstrap$, ownDaemon, signal),
-      set(setupRoutes$, signal),
-      set(setupGlobalMethod$, signal),
-      set(registerServiceWorker$, signal),
-      set(setupNotificationListener$, signal),
-
-      set(setupGlobalKeyboardShortcuts$, signal),
-      set(watchOrgSwitch$, signal),
-      set(setupFeatureSwitches$, signal),
-    ]);
-
-    signal.throwIfAborted();
+    return {
+      authenticatedRealtimeDaemon,
+      ready,
+      sharedDatabaseDaemon,
+    };
   },
 );

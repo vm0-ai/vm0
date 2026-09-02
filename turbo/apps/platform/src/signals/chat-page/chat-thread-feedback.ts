@@ -9,7 +9,10 @@ import {
 import { delay } from "signal-timers";
 import { isEditableTarget, matchShortcut } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
+import type { ChatTranslationLanguage } from "@okouai/api-contracts/contracts/user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
   FeedbackRange,
@@ -22,6 +25,11 @@ import type {
   ChatForwardComposerState,
   ChatForwardSelection,
 } from "./chat-forward.ts";
+import {
+  persistChatTranslationLanguage$,
+  requestChatTranslation$,
+  savedChatTranslationLanguage$,
+} from "./chat-translation.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Quote interaction.
@@ -32,6 +40,7 @@ const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 const RUN_GROUP_SELECTOR = "[data-chat-run-id]";
+const SELECTION_INTERACTION_SELECTOR = "[data-chat-selection-interaction]";
 
 export interface ChatThreadFeedbackSelection {
   readonly rect: {
@@ -48,6 +57,11 @@ export interface ChatThreadFeedbackSelection {
   readonly source?: FeedbackSource;
 }
 
+export interface ChatThreadTranslationResult {
+  readonly text: string;
+  readonly targetLanguage: ChatTranslationLanguage;
+}
+
 interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
@@ -58,11 +72,53 @@ interface CapturedFeedbackSelection {
   readonly source?: FeedbackSource;
 }
 
+function isSameFeedbackRange(
+  current: FeedbackRange | undefined,
+  next: FeedbackRange | undefined,
+): boolean {
+  return current?.start === next?.start && current?.end === next?.end;
+}
+
+function isSameFeedbackSource(
+  current: FeedbackSource | undefined,
+  next: FeedbackSource | undefined,
+): boolean {
+  return (
+    current?.type === next?.type &&
+    current?.id === next?.id &&
+    current?.status === next?.status &&
+    current?.sentId === next?.sentId
+  );
+}
+
+function isSameFeedbackSelection(
+  current: CapturedFeedbackSelection,
+  next: CapturedFeedbackSelection,
+): boolean {
+  return (
+    current.text === next.text &&
+    current.threadId === next.threadId &&
+    current.runId === next.runId &&
+    current.eventId === next.eventId &&
+    isSameFeedbackRange(current.range, next.range) &&
+    isSameFeedbackSource(current.source, next.source)
+  );
+}
+
 export interface ChatThreadFeedbackSignals {
   readonly selection$: Computed<ChatThreadFeedbackSelection | null>;
   readonly start$: Command<void, []>;
   readonly close$: Command<void, []>;
   readonly copy$: Command<Promise<void>, [AbortSignal]>;
+  readonly translationLanguage$: Computed<Promise<ChatTranslationLanguage>>;
+  readonly translationPromise$: Computed<Promise<void> | null>;
+  readonly translationResult$: Computed<ChatThreadTranslationResult | null>;
+  readonly setTranslationLanguage$: Command<
+    Promise<void>,
+    [ChatTranslationLanguage, AbortSignal]
+  >;
+  readonly translate$: Command<Promise<void>, [AbortSignal]>;
+  readonly copyTranslation$: Command<Promise<void>, [AbortSignal]>;
   readonly forwardSelection$: Computed<ChatForwardSelection | null>;
   readonly forwardComposerState$: Computed<ChatForwardComposerState | null>;
   readonly startForward$: Command<boolean, []>;
@@ -267,9 +323,21 @@ function shouldDismissSelectionForInteractionTarget(
   );
 }
 
+function isSelectionInteractionTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(SELECTION_INTERACTION_SELECTOR) !== null
+  );
+}
+
 function createSelectionState(threadId: string) {
   const internalSelection$ = state<CapturedFeedbackSelection | null>(null);
+  const internalTranslationPromise$ = state<Promise<void> | null>(null);
+  const internalTranslationResult$ = state<ChatThreadTranslationResult | null>(
+    null,
+  );
   const resetToolbarSignal$ = resetSignal();
+  const resetTranslationSignal$ = resetSignal();
   const selection$ = computed((get): ChatThreadFeedbackSelection | null => {
     const selection = get(internalSelection$);
     return selection
@@ -287,14 +355,27 @@ function createSelectionState(threadId: string) {
   });
   const close$ = command(({ set }) => {
     set(resetToolbarSignal$);
+    set(resetTranslationSignal$);
     set(internalSelection$, null);
+    set(internalTranslationPromise$, null);
+    set(internalTranslationResult$, null);
   });
-  const capture$ = command(({ set }) => {
+  const capture$ = command(({ get, set }) => {
     const selection = readFeedbackSelection();
     if (!selection || selection.threadId !== threadId) {
       set(close$);
       return;
     }
+    const currentSelection = get(internalSelection$);
+    if (
+      currentSelection &&
+      isSameFeedbackSelection(currentSelection, selection)
+    ) {
+      return;
+    }
+    set(resetTranslationSignal$);
+    set(internalTranslationPromise$, null);
+    set(internalTranslationResult$, null);
     set(internalSelection$, selection);
   });
   const dismissOnScroll$ = command(({ get, set }) => {
@@ -321,12 +402,113 @@ function createSelectionState(threadId: string) {
   });
   return {
     internalSelection$,
+    internalTranslationPromise$,
+    internalTranslationResult$,
     resetToolbarSignal$,
+    resetTranslationSignal$,
     selection$,
     close$,
     capture$,
     dismissOnScroll$,
     copy$,
+  };
+}
+
+function createTranslationState({
+  selection$,
+  promise$,
+  result$,
+  resetTranslationSignal$,
+}: {
+  selection$: State<CapturedFeedbackSelection | null>;
+  promise$: State<Promise<void> | null>;
+  result$: State<ChatThreadTranslationResult | null>;
+  resetTranslationSignal$: ReturnType<typeof resetSignal>;
+}) {
+  const internalLanguage$ = state<ChatTranslationLanguage | null>(null);
+  const translationLanguage$ = computed(
+    async (get): Promise<ChatTranslationLanguage> => {
+      return (
+        get(internalLanguage$) ?? (await get(savedChatTranslationLanguage$))
+      );
+    },
+  );
+  const translationResult$ = computed((get) => {
+    return get(result$);
+  });
+  const translationPromise$ = computed((get) => {
+    return get(promise$);
+  });
+  const setTranslationLanguage$ = command(
+    async (
+      { set },
+      language: ChatTranslationLanguage,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      set(resetTranslationSignal$);
+      set(internalLanguage$, language);
+      await set(persistChatTranslationLanguage$, language, signal);
+      signal.throwIfAborted();
+    },
+  );
+  const performTranslation$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const selection = get(selection$);
+      if (!selection) {
+        return;
+      }
+      const requestSignal = set(resetTranslationSignal$, signal);
+      const targetLanguage = await get(translationLanguage$);
+      signal.throwIfAborted();
+      requestSignal.throwIfAborted();
+      const response = await set(
+        requestChatTranslation$,
+        selection.text,
+        targetLanguage,
+        requestSignal,
+      );
+      signal.throwIfAborted();
+      requestSignal.throwIfAborted();
+      const currentSelection = get(selection$);
+      if (
+        !currentSelection ||
+        !isSameFeedbackSelection(currentSelection, selection)
+      ) {
+        return;
+      }
+      set(result$, { text: response.text, targetLanguage });
+    },
+  );
+  const translate$ = command(({ set }, signal: AbortSignal): Promise<void> => {
+    const promise = set(performTranslation$, signal);
+    set(promise$, promise);
+    return promise;
+  });
+  const copyTranslation$ = command(
+    async ({ get }, signal: AbortSignal): Promise<void> => {
+      const result = get(result$);
+      if (!result) {
+        return;
+      }
+      signal.throwIfAborted();
+      const copied = await writeToClipboard(result.text);
+      signal.throwIfAborted();
+      if (copied) {
+        toast.success(
+          i18n.t(($) => {
+            return $.chat.toasts.copied;
+          }),
+        );
+      }
+    },
+  );
+  return {
+    translationLanguage$,
+    translationPromise$,
+    translationResult$,
+    setTranslationLanguage$,
+    translate$,
+    copyTranslation$,
   };
 }
 
@@ -417,15 +599,17 @@ function createToolbarRef({
   copy$,
   start$,
   startForward$,
+  translate$,
 }: {
   resetToolbarSignal$: ReturnType<typeof resetSignal>;
   close$: Command<void, []>;
   copy$: Command<Promise<void>, [AbortSignal]>;
   start$: Command<void, []>;
   startForward$: Command<boolean, []>;
+  translate$: Command<Promise<void>, [AbortSignal]>;
 }) {
   return onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const toolbarSignal = set(resetToolbarSignal$, signal);
       el.ownerDocument.addEventListener(
         "keydown",
@@ -461,6 +645,14 @@ function createToolbarRef({
           }
           if (matchShortcut("f", event) && set(startForward$)) {
             event.preventDefault();
+            return;
+          }
+          if (
+            get(featureSwitch$)[FeatureSwitchKey.ChatTranslation] &&
+            matchShortcut("t", event)
+          ) {
+            event.preventDefault();
+            await set(translate$, signal);
           }
         }),
         { signal: toolbarSignal },
@@ -485,6 +677,7 @@ function createListenersRef({
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
       const doc = el.ownerDocument;
       let mouseSelectionInProgress = false;
+      let selectionInteractionInProgress = false;
       const captureDeferred = async () => {
         await delay(0, { signal: set(deferredCaptureSignal$, signal) });
         set(capture$);
@@ -492,12 +685,33 @@ function createListenersRef({
       doc.addEventListener(
         "pointerdown",
         (event) => {
+          selectionInteractionInProgress = isSelectionInteractionTarget(
+            event.target,
+          );
           if (
             get(selection$) !== null &&
             shouldDismissSelectionForInteractionTarget(event.target)
           ) {
             set(close$);
           }
+        },
+        { capture: true, signal },
+      );
+      doc.addEventListener(
+        "pointerup",
+        onDomEventFn(async () => {
+          if (!selectionInteractionInProgress) {
+            return;
+          }
+          await delay(0, { signal });
+          selectionInteractionInProgress = false;
+        }),
+        { capture: true, signal },
+      );
+      doc.addEventListener(
+        "pointercancel",
+        () => {
+          selectionInteractionInProgress = false;
         },
         { capture: true, signal },
       );
@@ -533,7 +747,7 @@ function createListenersRef({
       doc.addEventListener(
         "selectionchange",
         onDomEventFn(async () => {
-          if (!mouseSelectionInProgress) {
+          if (!mouseSelectionInProgress && !selectionInteractionInProgress) {
             await captureDeferred();
           }
         }),
@@ -541,7 +755,10 @@ function createListenersRef({
       );
       doc.addEventListener(
         "scroll",
-        () => {
+        (event) => {
+          if (isSelectionInteractionTarget(event.target)) {
+            return;
+          }
           set(dismissOnScroll$);
         },
         { capture: true, passive: true, signal },
@@ -555,6 +772,12 @@ export function createChatThreadFeedbackSignals(
   feedback: ComposerFeedbackSignals,
 ): ChatThreadFeedbackSignals {
   const selection = createSelectionState(threadId);
+  const translation = createTranslationState({
+    selection$: selection.internalSelection$,
+    promise$: selection.internalTranslationPromise$,
+    result$: selection.internalTranslationResult$,
+    resetTranslationSignal$: selection.resetTranslationSignal$,
+  });
   const forward = createForwardState(selection.close$);
   const start$ = createStartFeedback(
     selection.internalSelection$,
@@ -571,6 +794,7 @@ export function createChatThreadFeedbackSignals(
     copy$: selection.copy$,
     start$,
     startForward$,
+    translate$: translation.translate$,
   });
   const setListenersRef$ = createListenersRef({
     selection$: selection.internalSelection$,
@@ -583,6 +807,12 @@ export function createChatThreadFeedbackSignals(
     start$,
     close$: selection.close$,
     copy$: selection.copy$,
+    translationLanguage$: translation.translationLanguage$,
+    translationPromise$: translation.translationPromise$,
+    translationResult$: translation.translationResult$,
+    setTranslationLanguage$: translation.setTranslationLanguage$,
+    translate$: translation.translate$,
+    copyTranslation$: translation.copyTranslation$,
     forwardSelection$: forward.forwardSelection$,
     forwardComposerState$: forward.forwardComposerState$,
     startForward$,

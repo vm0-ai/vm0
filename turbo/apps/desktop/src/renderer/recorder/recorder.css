@@ -1,9 +1,34 @@
+/* Every overlay window is transparent, so the document behind the overlay must
+   paint nothing at all. A background anywhere in this chain — including the
+   root element — becomes an opaque sheet over the screen the user is choosing
+   from. */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+/* The selection rectangle takes its width and height from the drag and draws a
+   border on top of them, so under the default `content-box` it would paint
+   wider than the region that gets recorded. */
+* {
+  box-sizing: border-box;
+}
+
 .recorder-body {
   margin: 0;
-  background: transparent;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Controls do not inherit type by default, and every overlay sets its font on
+   the surface the controls sit in. */
+button,
+select {
+  font: inherit;
 }
 
 /* The bar is draggable by its background so it can be moved off whatever it
@@ -13,12 +38,12 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 0 22px 0 64px;
-  border-radius: 18px;
+  padding: 0 18px 0 56px;
+  border-radius: 16px;
   background: rgb(38 38 42 / 96%);
   color: #f5f5f7;
   box-shadow: 0 18px 48px rgb(0 0 0 / 38%);
@@ -34,7 +59,7 @@
 .recorder-bar__close {
   position: absolute;
   top: 50%;
-  left: 18px;
+  left: 16px;
   display: grid;
   place-items: center;
   width: 24px;
@@ -65,10 +90,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 5px;
   box-sizing: border-box;
-  width: 92px;
-  height: 76px;
+  width: 88px;
+  height: 64px;
   padding: 0 6px;
   border: 1px solid transparent;
   border-radius: 12px;
@@ -96,22 +121,9 @@
   text-overflow: ellipsis;
 }
 
-/* Invisible but still the real control, so the native menu opens on click and
-   the tile keeps the same shape as its neighbours. */
-.recorder-bar__window-picker {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  opacity: 0%;
-  cursor: pointer;
-  appearance: none;
-}
-
 .recorder-bar__divider {
   width: 1px;
-  height: 44px;
+  height: 36px;
   background: rgb(255 255 255 / 14%);
 }
 
@@ -120,7 +132,7 @@
   flex-shrink: 0;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px;
+  padding: 8px 13px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -143,7 +155,7 @@
 
 .recorder-bar__start {
   flex-shrink: 0;
-  padding: 12px 22px;
+  padding: 10px 20px;
   border: 0;
   border-radius: 10px;
   background: #e8590c;
@@ -163,17 +175,23 @@
   cursor: default;
 }
 
+/* Inside the surface, not below it: the window is the size of the surface, so
+   anything drawn outside is clipped away and the failure goes unseen. */
 .recorder-bar__error {
   position: absolute;
-  right: 20px;
-  bottom: -24px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   margin: 0;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: rgb(38 38 42 / 96%);
+  padding: 5px 22px;
+  border-radius: 0 0 16px 16px;
+  background: rgb(74 26 20 / 96%);
   color: #ffb4a2;
   font-size: 12px;
+  text-align: center;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .area-selector {
@@ -321,13 +339,182 @@
 
 .recording-controller__error {
   position: absolute;
-  right: 14px;
-  bottom: -24px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   margin: 0;
-  padding: 4px 10px;
+  padding: 4px 14px;
+  border-radius: 0 0 14px 14px;
+  background: rgb(74 26 20 / 96%);
+  color: #ffb4a2;
+  font-size: 11px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.area-selector__error {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  margin: 0;
+  padding: 6px 12px;
   border-radius: 8px;
   background: rgb(38 38 42 / 96%);
   color: #ffb4a2;
-  font-size: 12px;
+  font-size: 13px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.window-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 18px 20px 20px;
+  border-radius: 18px;
+  background: rgb(28 28 32 / 97%);
+  color: #f5f5f7;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.window-picker__header {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.window-picker__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.window-picker__close {
+  -webkit-app-region: no-drag;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 12%);
+  color: inherit;
+  cursor: pointer;
+}
+
+.window-picker__close:hover {
+  background: rgb(255 255 255 / 20%);
+}
+
+.window-picker__grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.window-picker__option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 6%);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.window-picker__option:hover {
+  border-color: #e8590c;
+  background: rgb(255 255 255 / 12%);
+}
+
+/* A fixed preview box keeps the grid even whatever shape the windows are. */
+.window-picker__preview {
+  width: 100%;
+  height: 132px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 30%);
+  object-fit: contain;
+}
+
+.window-picker__app {
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.window-picker__window {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgb(245 245 247 / 62%);
+  font-size: 12px;
+}
+
+.window-picker__empty,
+.window-picker__error {
+  margin: 0;
+  font-size: 13px;
+}
+
+.window-picker__error {
+  color: #ffb4a2;
+}
+
+.recorder-bar__error-action {
+  margin-left: 10px;
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 16%);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.recorder-bar__error-action:hover {
+  background: rgb(255 255 255 / 26%);
+}
+
+.window-picker__error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.window-picker__error-text {
+  margin: 0;
+  color: #ffb4a2;
+  font-size: 13px;
+}
+
+.window-picker__settings {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #e8590c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.window-picker__settings:hover {
+  background: #f76707;
 }

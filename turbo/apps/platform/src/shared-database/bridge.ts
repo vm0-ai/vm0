@@ -3,8 +3,8 @@ import type {
   SharedDatabaseIdentity,
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
-  ChatThreadIndicators,
 } from "./data-key.ts";
+import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import type {
   SharedDatabaseConnectionStatus,
   SharedDatabaseHeartbeatResult,
@@ -20,8 +20,15 @@ export interface SharedDatabaseBridge {
     heartbeat: SharedDatabaseHeartbeat,
     signal: AbortSignal,
   ): Promise<SharedDatabaseHeartbeatResult>;
-  indicators(signal: AbortSignal): Promise<ChatThreadIndicators>;
-  reloadIndicators(): void;
+  getComputed<TKey extends ComputedKey>(
+    computedKey: TKey,
+  ): Promise<ComputedValue<TKey>>;
+  reloadComputed(computedKey: ComputedKey): void;
+  setToken(
+    recoveryId: string,
+    token: string | null,
+    signal: AbortSignal,
+  ): Promise<void>;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
@@ -29,13 +36,14 @@ export interface SharedDatabaseBridge {
 }
 
 export interface SharedDatabaseBridgeEvents {
-  readonly authenticationRequired: () => void;
+  readonly authenticationRequired: (recoveryId: string) => void | Promise<void>;
   readonly databaseInvalidated: (
     dataKey: SharedDatabaseDataKey,
   ) => void | Promise<void>;
   readonly databaseReconnected: () => void | Promise<void>;
   readonly reloadRequired: () => void;
-  readonly indicatorsInvalidated: (payload: unknown) => void;
+  readonly computedReloaded: (computedKey: ComputedKey) => void;
+  readonly chatThreadReadCursorUpdated: (payload: unknown) => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }
 

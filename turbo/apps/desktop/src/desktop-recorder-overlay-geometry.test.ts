@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   RECORDER_BAR_SIZE,
@@ -171,5 +172,40 @@ describe("recorderControllerBounds", () => {
     // Nowhere is outside the region, so overlapping is accepted rather than
     // leaving the user with no way to stop.
     expect(bounds.y + height).toBeLessThanOrEqual(display.y + display.height);
+  });
+});
+
+describe("overlay failure messages", () => {
+  const css = readFileSync(
+    new URL("./renderer/recorder/recorder.css", import.meta.url),
+    "utf8",
+  );
+
+  /** How far an overlay's failure message sits from its bottom edge. */
+  function messageBottom(selector: string): number {
+    const start = css.indexOf(`${selector} {`);
+    const end = css.indexOf("}", start);
+    if (start === -1 || end === -1) {
+      throw new Error(`No rule found for ${selector}`);
+    }
+    const bottom = /bottom:\s*(-?\d+)(?:px)?/.exec(css.slice(start, end));
+    if (!bottom?.[1]) {
+      throw new Error(`No bottom offset found for ${selector}`);
+    }
+    return Number(bottom[1]);
+  }
+
+  // The window is exactly the surface, and the system clips to the window, so a
+  // message placed below the surface is not dimmed or cut off: it is never on
+  // screen, and the failure looks like a button that did nothing. Reserving a
+  // strip for it instead exposed the window's backing as a grey band.
+  it("draws the bar's message inside the window", () => {
+    expect(messageBottom(".recorder-bar__error")).toBeGreaterThanOrEqual(0);
+  });
+
+  it("draws the controller's message inside the window", () => {
+    expect(
+      messageBottom(".recording-controller__error"),
+    ).toBeGreaterThanOrEqual(0);
   });
 });

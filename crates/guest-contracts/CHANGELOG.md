@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.12.20](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.19...guest-contracts-v0.12.20) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** centralize cli stderr diagnostic policy ([#30984](https://github.com/vm0-ai/vm0/issues/30984)) ([7f3d97c](https://github.com/vm0-ai/vm0/commit/7f3d97cc84f939ba04be5d9242349fdccfaf368b))
+
+## [0.12.19](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.18...guest-contracts-v0.12.19) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
+## [0.12.18](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.17...guest-contracts-v0.12.18) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
 ## [0.12.17](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.16...guest-contracts-v0.12.17) (2026-09-01)
 
 

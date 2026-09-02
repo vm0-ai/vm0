@@ -328,6 +328,8 @@ def _catalog_url(original_url: str) -> str | None:
             raw_query,
             keep_blank_values=True,
             strict_parsing=True,
+            encoding="utf-8",
+            errors="strict",
             max_num_fields=MAX_CATALOG_QUERY_FIELDS,
         )
     except ValueError:
@@ -335,13 +337,15 @@ def _catalog_url(original_url: str) -> str | None:
     if len(query) != MAX_CATALOG_QUERY_FIELDS or query[0][0] != _CLIENT_VERSION_QUERY_NAME:
         return None
     client_version = query[0][1]
-    if (
-        not client_version
-        or len(client_version.encode()) > _MAX_CLIENT_VERSION_BYTES
-        or any(
-            ord(character) < _ASCII_CONTROL_BOUNDARY or ord(character) == _ASCII_DELETE
-            for character in client_version
-        )
+    if not client_version:
+        return None
+    try:
+        encoded_client_version = client_version.encode()
+    except UnicodeEncodeError:
+        return None
+    if len(encoded_client_version) > _MAX_CLIENT_VERSION_BYTES or any(
+        ord(character) < _ASCII_CONTROL_BOUNDARY or ord(character) == _ASCII_DELETE
+        for character in client_version
     ):
         return None
     encoded_version = urllib.parse.quote(client_version, safe="")
@@ -753,7 +757,9 @@ def _response_headers_bypass_reason(
     if _single_usable_etag(headers) is None:
         return "response_etag"
     parsed_content_length = _parse_content_length(headers)
-    if parsed_content_length.kind not in ("missing", "valid"):
+    if parsed_content_length.kind not in ("missing", "valid") or (
+        parsed_content_length.kind == "valid" and headers.get_all("Transfer-Encoding")
+    ):
         return "response_size"
     return None
 
@@ -850,12 +856,6 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         return True
 
     compressed_content_length = _parse_content_length(flow.response.headers)
-    if compressed_content_length.kind not in ("missing", "valid") or (
-        compressed_content_length.kind == "valid"
-        and flow.response.headers.get_all("Transfer-Encoding")
-    ):
-        _bypass_response(flow, state, "response_size")
-        return True
     state.compressed_content_length = (
         compressed_content_length.value if compressed_content_length.kind == "valid" else None
     )

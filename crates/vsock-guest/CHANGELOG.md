@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.139](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.138...vsock-guest-v0.19.139) (2026-09-02)
+
+## [0.19.138](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.137...vsock-guest-v0.19.138) (2026-09-02)
+
+## [0.19.137](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.136...vsock-guest-v0.19.137) (2026-09-01)
+
+
+### Performance Improvements
+
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
+## [0.19.136](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.135...vsock-guest-v0.19.136) (2026-09-01)
+
 ## [0.19.135](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.134...vsock-guest-v0.19.135) (2026-09-01)
 
 ## [0.19.134](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.133...vsock-guest-v0.19.134) (2026-09-01)

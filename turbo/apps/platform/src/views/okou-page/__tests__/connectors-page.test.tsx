@@ -66,7 +66,10 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { submitManualGrant$ } from "../../../signals/okou-page/settings/connectors.ts";
+import {
+  manualGrantFormValuesFor$,
+  submitManualGrant$,
+} from "../../../signals/okou-page/settings/connectors.ts";
 import { customConnectorCreateForm$ } from "../../../signals/okou-page/settings/custom-connectors.ts";
 
 const context = testContext();
@@ -718,9 +721,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorCatalogCount]: true,
-      },
     });
 
     await expect(
@@ -760,7 +760,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCatalogCount]: true },
     });
 
     await expect(
@@ -793,9 +792,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorCatalogCount]: true,
-      },
     });
 
     await expect(
@@ -813,35 +809,6 @@ describe("connectors page", () => {
     await expect(
       screen.findByText("Connect 1,234 services for your agents to use."),
     ).resolves.toBeInTheDocument();
-  });
-
-  it("keeps the existing catalog description when the count switch is disabled", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorSlug: "github",
-        label: "GitHub",
-        authMethods: [],
-      }),
-      publicStatusItem({
-        connectorSlug: "slack",
-        label: "Slack",
-        authMethods: [],
-      }),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorCatalogCount]: false },
-    });
-
-    await expect(
-      screen.findByText("Connect third-party services for your agents to use."),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByText("Connect 2 services for your agents to use."),
-    ).not.toBeInTheDocument();
   });
 
   it("shows only the update dialog when the client requires an upgrade", async () => {
@@ -4450,6 +4417,62 @@ describe("connectors page", () => {
     });
   });
 
+  it("resets manual grant values when the connection dialog opens", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorSlug: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const connectButton = await screen.findByLabelText("Connect Public Axiom");
+    click(connectButton);
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(firstDialog).getByPlaceholderText("public-xaat"),
+      "stale-manual-token",
+    );
+    click(within(firstDialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(firstDialog).not.toBeInTheDocument();
+    });
+    expect(context.store.get(manualGrantFormValuesFor$)("axiom")).toStrictEqual(
+      { apiToken: "stale-manual-token" },
+    );
+
+    click(connectButton);
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    expect(
+      within(reopenedDialog).getByPlaceholderText("public-xaat"),
+    ).toHaveValue("");
+  });
+
   it("connects manual-grant connectors without permission dialogs", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -4552,6 +4575,9 @@ describe("connectors page", () => {
     expect(
       screen.queryByText("You've successfully connected with Public Axiom!"),
     ).not.toBeInTheDocument();
+    expect(context.store.get(manualGrantFormValuesFor$)("axiom")).toStrictEqual(
+      { apiToken: "xaat-test" },
+    );
 
     await fill(screen.getByPlaceholderText("Find connectors"), "stripe");
     click(await screen.findByLabelText("Connect Public Stripe"));
@@ -5484,6 +5510,300 @@ describe("connectors page", () => {
       expect(dialog).toBeInTheDocument();
     },
   );
+
+  it("hides no authentication while its feature switch is disabled", async () => {
+    mockCustomConnectorStory();
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    click(await screen.findByText("New connector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    click(buttonByText("Add authentication", createDialog));
+    expect(queryMenuItemByText("No authentication")).not.toBeInTheDocument();
+  });
+
+  it("initializes the custom connector create form on every open", async () => {
+    mockCustomConnectorStory();
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    click(await screen.findByText("New connector"));
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    click(buttonByText("Add authentication", firstDialog));
+    click(menuItemByText("OAuth 2.0"));
+    await fill(
+      within(firstDialog).getByLabelText("Client secret"),
+      "stale-client-secret",
+    );
+    click(buttonByText("Cancel", firstDialog));
+
+    await waitFor(() => {
+      expect(firstDialog).not.toBeInTheDocument();
+    });
+    expect(
+      context.store.get(customConnectorCreateForm$).oauthClientSecret,
+    ).toBe("stale-client-secret");
+
+    click(screen.getByText("New connector"));
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual([]);
+    click(buttonByText("Add authentication", reopenedDialog));
+    click(menuItemByText("OAuth 2.0"));
+    expect(within(reopenedDialog).getByLabelText("Client secret")).toHaveValue(
+      "",
+    );
+  });
+
+  it.each([
+    { kind: "http" as const, displayName: "Public HTTP" },
+    { kind: "mcp" as const, displayName: "Public MCP" },
+  ])(
+    "creates and connects a no-auth $kind custom connector",
+    async ({ kind, displayName }) => {
+      const agentId = "c0000000-0000-4000-a000-000000000063";
+      const createBodies: CreateCustomConnectorBody[] = [];
+      const valueBodies: {
+        readonly values: readonly {
+          readonly key: string;
+          readonly kind: "secret" | "variable";
+          readonly value: string;
+        }[];
+      }[] = [];
+      const authorizationBodies: AgentCustomConnectorUpdate[] = [];
+      let connector: CustomConnectorResponse | null = null;
+      context.mocks.data.org({
+        id: "org_1",
+        name: "Test Org",
+        role: "admin",
+      });
+      context.mocks.data.agents([listAgent(agentId, "Research")]);
+      context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+        return respond(200, { connectors: connector ? [connector] : [] });
+      });
+      context.mocks.api(
+        customConnectorsContract.create,
+        ({ body, respond }) => {
+          createBodies.push(body);
+          connector =
+            body.kind === "mcp"
+              ? mcpCustomConnector({
+                  displayName: body.displayName,
+                  endpoint: body.endpoint,
+                  fields: [],
+                  headerInjections: [],
+                  queryInjections: [],
+                  authMode: "none",
+                  connected: false,
+                  missingRequiredFields: [],
+                  configuredFieldKeys: [],
+                })
+              : customConnector({
+                  displayName: body.displayName,
+                  prefixTemplates: body.prefixTemplates,
+                  fields: [],
+                  headerInjections: [],
+                  queryInjections: [],
+                  authMode: "none",
+                  connected: false,
+                  missingRequiredFields: [],
+                  configuredFieldKeys: [],
+                });
+          return respond(201, connector);
+        },
+      );
+      context.mocks.api(
+        customConnectorValuesContract.set,
+        ({ body, respond }) => {
+          if (!connector) {
+            throw new Error("Expected a no-auth custom connector");
+          }
+          expect(body.account).toStrictEqual({ intent: "single-account" });
+          valueBodies.push(body);
+          connector = { ...connector, connected: true };
+          return respond(200, connector);
+        },
+      );
+      context.mocks.api(agentCustomConnectorsContract.get, ({ respond }) => {
+        return respond(200, { grants: [] });
+      });
+      context.mocks.api(
+        agentCustomConnectorsContract.update,
+        ({ body, respond }) => {
+          authorizationBodies.push(body);
+          return respond(200, { grants: body.grants });
+        },
+      );
+
+      detachedSetupPage({
+        context,
+        path: "/connectors?tab=custom",
+        featureSwitches: {
+          [FeatureSwitchKey.CustomConnectorMcp]: true,
+          [FeatureSwitchKey.CustomConnectorNoAuth]: true,
+        },
+      });
+
+      click(await screen.findByText("New connector"));
+      const createDialog = await screen.findByRole("dialog", {
+        name: "New custom connector",
+      });
+      if (kind === "mcp") {
+        click(within(createDialog).getByLabelText("Connector type"));
+        click(
+          await screen.findByRole("option", {
+            name: "MCP · Streamable HTTP",
+          }),
+        );
+      }
+      fireEvent.change(within(createDialog).getByLabelText("Display name"), {
+        target: { value: displayName },
+      });
+      if (kind === "mcp") {
+        fireEvent.change(within(createDialog).getByLabelText(/MCP endpoint/u), {
+          target: { value: "https://public.example.test/mcp" },
+        });
+      } else {
+        fireEvent.change(within(createDialog).getByLabelText(/Prefixes/u), {
+          target: { value: "https://public.example.test/v1/" },
+        });
+      }
+      click(buttonByText("Add authentication", createDialog));
+      click(menuItemByText("No authentication"));
+      click(buttonByText("Create", createDialog));
+
+      await waitFor(() => {
+        expect(connectorCardByLabel(displayName)).toBeInTheDocument();
+      });
+      expect(createBodies).toStrictEqual([
+        kind === "mcp"
+          ? {
+              kind: "mcp",
+              displayName,
+              endpoint: "https://public.example.test/mcp",
+              transport: "streamable-http",
+              fields: [],
+              headerInjections: [],
+              queryInjections: [],
+              authMode: "none",
+              storageVersion: 1,
+            }
+          : {
+              displayName,
+              prefixTemplates: ["https://public.example.test/v1/"],
+              fields: [],
+              headerInjections: [],
+              queryInjections: [],
+              authMode: "none",
+              storageVersion: 1,
+            },
+      ]);
+
+      click(buttonByAriaLabel(`Connect ${displayName}`));
+      const connectDialog = await screen.findByRole("dialog", {
+        name: `Connect ${displayName}`,
+      });
+      expect(within(connectDialog).queryAllByRole("textbox")).toHaveLength(0);
+      const connect = buttonByText("Connect", connectDialog);
+      expect(connect).toBeEnabled();
+      click(connect);
+
+      await waitFor(() => {
+        expect(valueBodies).toStrictEqual([
+          { values: [], account: { intent: "single-account" } },
+        ]);
+        expect(authorizationBodies).toStrictEqual([
+          {
+            operation: "add",
+            grants: [
+              {
+                customConnectorId: connector?.id,
+                permissionNames: [],
+              },
+            ],
+          },
+        ]);
+        expect(
+          within(connectorCardByLabel(displayName)).getByText("Connected"),
+        ).toBeInTheDocument();
+      });
+    },
+  );
+
+  it("preserves HTTP destination variables when editing a no-auth custom connector", async () => {
+    const connector = customConnector({
+      displayName: "Regional public API",
+      prefixTemplates: ["https://{{variables.region}}.public.example.test/"],
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none",
+      connected: false,
+      missingRequiredFields: ["region"],
+      configuredFieldKeys: [],
+    });
+    const updateBodies: UpdateCustomConnectorBody[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      customConnectorByIdContract.update,
+      ({ body, respond }) => {
+        updateBodies.push(body);
+        return respond(200, connector);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorNoAuth]: true,
+      },
+    });
+
+    await screen.findByText(connector.displayName);
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    click(buttonByText("Save", editDialog));
+
+    await waitFor(() => {
+      expect(updateBodies).toStrictEqual([
+        {
+          displayName: connector.displayName,
+          prefixTemplates: connector.prefixTemplates,
+          fields: connector.fields,
+          headerInjections: [],
+          queryInjections: [],
+          authMode: "none",
+          storageVersion: connector.storageVersion,
+        },
+      ]);
+    });
+  });
 
   it("manages a manual MCP custom connector through the settings lifecycle", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000061";
@@ -6515,6 +6835,9 @@ describe("connectors page", () => {
       expect(screen.getByText("Acme API")).toBeInTheDocument();
     });
     expect(createdBodies).toHaveLength(1);
+    expect(
+      context.store.get(customConnectorCreateForm$).oauthClientSecret,
+    ).toBe("connector-oauth-client-secret");
     expect(createdBodies[0]).toMatchObject({
       displayName: "Acme API",
       storageVersion: 1,

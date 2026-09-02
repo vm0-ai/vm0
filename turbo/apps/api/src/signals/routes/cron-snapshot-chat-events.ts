@@ -12,9 +12,18 @@ const CHAT_EVENT_SNAPSHOT_COMPLETION_DATASET = "web-logs";
 const CHAT_EVENT_SNAPSHOT_COMPLETION_CONTEXT = "api:cron:snapshot-chat-events";
 
 interface ChatEventSnapshotCompletionCounters {
+  readonly snapshots: number;
+  readonly archivedEvents: number;
+  readonly selectedCandidates: number;
+  readonly processedCandidates: number;
+  readonly deferredCandidates: number;
   readonly skippedUnreadableHeads: number;
   readonly skippedUndecodableHeads: number;
   readonly skippedIncompleteHeads: number;
+  readonly skippedFailedHeads: number;
+  readonly skippedTimedOutHeads: number;
+  readonly scanCursorAdvanced: boolean;
+  readonly scanWrapped: boolean;
   readonly duplicateEventIdConflictThreads: number;
   readonly duplicateEventIdConflicts: number;
   readonly duplicateEventIdsRemapped: number;
@@ -34,9 +43,18 @@ export function recordChatEventSnapshotCompleted(
       type: "chat_event_snapshot_completed",
       context: CHAT_EVENT_SNAPSHOT_COMPLETION_CONTEXT,
       ...(traceId ? { trace_id: traceId } : {}),
+      snapshots: counters.snapshots,
+      archivedEvents: counters.archivedEvents,
+      selectedCandidates: counters.selectedCandidates,
+      processedCandidates: counters.processedCandidates,
+      deferredCandidates: counters.deferredCandidates,
       skippedUnreadableHeads: counters.skippedUnreadableHeads,
       skippedUndecodableHeads: counters.skippedUndecodableHeads,
       skippedIncompleteHeads: counters.skippedIncompleteHeads,
+      skippedFailedHeads: counters.skippedFailedHeads,
+      skippedTimedOutHeads: counters.skippedTimedOutHeads,
+      scanCursorAdvanced: counters.scanCursorAdvanced,
+      scanWrapped: counters.scanWrapped,
       duplicateEventIdConflictThreads: counters.duplicateEventIdConflictThreads,
       duplicateEventIdConflicts: counters.duplicateEventIdConflicts,
       duplicateEventIdsRemapped: counters.duplicateEventIdsRemapped,

@@ -33,6 +33,9 @@ import {
 } from "../services/custom-connector.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { reconcileGmailWatchesForUser } from "../services/gmail-automation-event.service";
+import { reconcileGoogleCalendarWatchesForUser } from "../services/google-calendar-automation-event.service";
+import { reconcileGoogleFormsWatchesForUser } from "../services/google-forms-automation-event.service";
+import { reconcileGoogleMeetSubscriptionsForUser } from "../services/google-meet-automation-event.service";
 
 const log = logger("api:connector-account-mutation");
 
@@ -224,7 +227,7 @@ const setDefaultInner$ = command(
     }
     const writeDb = set(writeDb$);
     const updatedAt = await commitConnectorRuntimeMutation(
-      setDefaultConnectorAccount(writeDb, request),
+      setDefaultConnectorAccount(writeDb, request, signal),
       (changed) => {
         return changed
           ? {
@@ -241,13 +244,31 @@ const setDefaultInner$ = command(
     }
     if (
       body.data.target.kind === "builtin" &&
-      body.data.target.connectorSlug === "gmail"
+      (body.data.target.connectorSlug === "gmail" ||
+        body.data.target.connectorSlug === "google-calendar" ||
+        body.data.target.connectorSlug === "google-forms" ||
+        body.data.target.connectorSlug === "google-meet")
     ) {
       await bestEffort(
-        reconcileGmailWatchesForUser(
-          { db: writeDb, orgId: auth.orgId, userId: auth.userId },
-          signal,
-        ),
+        body.data.target.connectorSlug === "gmail"
+          ? reconcileGmailWatchesForUser(
+              { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+              signal,
+            )
+          : body.data.target.connectorSlug === "google-calendar"
+            ? reconcileGoogleCalendarWatchesForUser(
+                { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+                signal,
+              )
+            : body.data.target.connectorSlug === "google-forms"
+              ? reconcileGoogleFormsWatchesForUser(
+                  { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+                  signal,
+                )
+              : reconcileGoogleMeetSubscriptionsForUser(
+                  { db: writeDb, orgId: auth.orgId, userId: auth.userId },
+                  signal,
+                ),
         signal,
       );
     }

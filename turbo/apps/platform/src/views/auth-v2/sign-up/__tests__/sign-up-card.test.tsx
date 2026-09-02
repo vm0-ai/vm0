@@ -537,7 +537,7 @@ describe("auth v2 sign-up flow", () => {
       session: "session_recovered_transfer",
     });
     expect(location.origin).toBe("https://app.vm0.ai");
-    expect(location.pathname).toBe("/");
+    expect(location.pathname).toBe("/onboarding");
   });
 
   it("replaces an unrelated sign-in resource before transferring an existing Google identity", async () => {

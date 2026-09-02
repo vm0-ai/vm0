@@ -43,6 +43,7 @@ function summary(workflow: WorkflowDetailResponse): WorkflowSummary {
     createdAt: workflow.createdAt,
     canManage: workflow.canManage,
     canPublish: workflow.canPublish,
+    official: workflow.official,
   };
 }
 
@@ -54,6 +55,7 @@ function automationSummaryBase(automation: ChatThreadWorkflowAutomation) {
     chatThreadId: automation.chatThreadId,
     nextRunAt: automation.nextRunAt,
     lastRunAt: automation.lastRunAt,
+    official: null,
   };
 }
 
@@ -124,6 +126,7 @@ export const apiWorkflowsHandlers = [
       ownerUserId: "test-user-123",
       canManage: true,
       canPublish: true,
+      official: null,
       createdByUserId: "test-user-123",
       updatedByUserId: "test-user-123",
       createdAt: now,
@@ -190,16 +193,6 @@ export const apiWorkflowsHandlers = [
     };
     mockWorkflows[index] = updated;
     return respond(200, updated);
-  }),
-
-  mockApi(workflowsDetailContract.connectorReadiness, ({ params, respond }) => {
-    const workflow = mockWorkflows.find((item) => {
-      return item.id === params.workflowId;
-    });
-    if (!workflow) {
-      return respond(404, notFound(params.workflowId));
-    }
-    return respond(200, { connectors: [] });
   }),
 
   mockApi(workflowsDetailContract.delete, ({ params, respond }) => {
@@ -446,6 +439,7 @@ type WorkflowAutomationCreateBase = {
   readonly chatThreadId: string;
   readonly nextRunAt: string | null;
   readonly lastRunAt: string | null;
+  readonly official: null;
 };
 
 function createNotionChildPageAutomationSummary(
@@ -548,7 +542,6 @@ function passthroughEventAutomationSummaryForRequest(
         | "google-calendar-event-updated"
         | "google-calendar-event-cancelled"
         | "google-meet-transcript-generated"
-        | "strapi-entry-published"
         | "chat-run-finished";
     }
   >,
@@ -723,6 +716,7 @@ function workflowAutomationCreateHandlers() {
         chatThreadId: "00000000-0000-4000-a000-000000000301",
         nextRunAt: null,
         lastRunAt: null,
+        official: null,
       };
       const automation = createWorkflowAutomationSummaryForRequest(base, body);
       workflow.automations = [...workflow.automations, automation];

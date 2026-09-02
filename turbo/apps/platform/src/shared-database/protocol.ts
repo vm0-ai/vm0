@@ -1,14 +1,12 @@
 import { z } from "zod";
+import { computedKeySchema } from "./computed-key.ts";
 import {
-  chatThreadIndicatorsSchema,
   sharedDatabaseDataKeySchema,
   sharedDatabaseQuerySchema,
 } from "./data-key.ts";
 
 export const SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME =
   "SharedDatabaseClientNotConnectedError";
-export const SHARED_DATABASE_AUTH_BLOCKED_ERROR_NAME =
-  "SharedDatabaseAuthBlockedError";
 
 export const sharedDatabaseHeartbeatResultSchema = z
   .object({ clientReconnected: z.boolean() })
@@ -38,15 +36,28 @@ const queryRequestSchema = z
   })
   .strict();
 
-const indicatorsRequestSchema = z
+const getComputedRequestSchema = z
   .object({
-    type: z.literal("get-indicators"),
+    type: z.literal("get-computed"),
     requestId: requestIdSchema,
+    computedKey: computedKeySchema,
   })
   .strict();
 
-const reloadIndicatorsRequestSchema = z
-  .object({ type: z.literal("reload-indicators") })
+const reloadComputedMessageSchema = z
+  .object({
+    type: z.literal("reload-computed"),
+    computedKey: computedKeySchema,
+  })
+  .strict();
+
+const setTokenRequestSchema = z
+  .object({
+    type: z.literal("set-token"),
+    requestId: requestIdSchema,
+    recoveryId: requestIdSchema,
+    token: z.string().min(1).nullable(),
+  })
   .strict();
 
 const disconnectRequestSchema = z
@@ -56,8 +67,9 @@ const disconnectRequestSchema = z
 export const sharedDatabaseClientMessageSchema = z.discriminatedUnion("type", [
   heartbeatRequestSchema,
   queryRequestSchema,
-  indicatorsRequestSchema,
-  reloadIndicatorsRequestSchema,
+  getComputedRequestSchema,
+  reloadComputedMessageSchema,
+  setTokenRequestSchema,
   disconnectRequestSchema,
 ]);
 
@@ -68,6 +80,12 @@ export type SharedDatabaseClientMessage = z.infer<
 export function redactSharedDatabaseClientMessageForLog(
   message: SharedDatabaseClientMessage,
 ): SharedDatabaseClientMessage {
+  if (message.type === "set-token") {
+    return {
+      ...message,
+      token: message.token === null ? null : "[redacted]",
+    };
+  }
   if (message.type !== "heartbeat") {
     return message;
   }
@@ -117,12 +135,15 @@ const reloadRequiredMessageSchema = z
   .strict();
 
 const authenticationRequiredMessageSchema = z
-  .object({ type: z.literal("authentication-required") })
+  .object({
+    type: z.literal("authentication-required"),
+    recoveryId: requestIdSchema,
+  })
   .strict();
 
-const indicatorsInvalidatedMessageSchema = z
+const chatThreadReadCursorUpdatedMessageSchema = z
   .object({
-    type: z.literal("indicators-invalidated"),
+    type: z.literal("chat-thread-read-cursor-updated"),
     payload: z.unknown(),
   })
   .strict();
@@ -151,11 +172,10 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   reconnectMessageSchema,
   reloadRequiredMessageSchema,
   authenticationRequiredMessageSchema,
-  indicatorsInvalidatedMessageSchema,
+  reloadComputedMessageSchema,
+  chatThreadReadCursorUpdatedMessageSchema,
   statusMessageSchema,
 ]);
-
-export { chatThreadIndicatorsSchema };
 
 export type SharedDatabaseWorkerMessage = z.infer<
   typeof sharedDatabaseWorkerMessageSchema

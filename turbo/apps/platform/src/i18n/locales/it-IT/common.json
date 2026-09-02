@@ -1983,6 +1983,8 @@
         "resetAndTryAgain": "Reimposta e riprova",
         "resetsAt": "Ripristino alle {{time}}",
         "selectModel": "Cambia modello",
+        "timeoutDescription": "Questa esecuzione ha raggiunto il limite di tempo. Continua per proseguire il lavoro.",
+        "timeoutTitle": "Limite di tempo raggiunto",
         "tryAgain": "Riprova",
         "unavailableDescription": "Questo modello non è supportato dall'account ChatGPT collegato. Passa a un altro modello per continuare.",
         "unavailableTitle": "Il modello selezionato non è disponibile",
@@ -2024,10 +2026,10 @@
         "heading": "Scegli un avatar",
         "help": "Scegli un presentatore o continua senza avatar",
         "none": "Nessun avatar",
-        "visualBalanceAvatarLed": "Incentrato sull'avatar — il narratore resta sullo schermo per la maggior parte del tempo",
-        "visualBalanceBalanced": "Mix equilibrato — stesso tempo per entrambi",
-        "visualBalanceBRollLed": "Incentrato sui contenuti visivi — priorità a slide e immagini",
-        "visualBalanceHeading": "Come preferisci bilanciare gli elementi visivi?"
+        "placementHeading": "Dove deve stare il presentatore?",
+        "placementLeft": "A sinistra — la slide sta a destra",
+        "placementOverlay": "Sopra la slide — la slide riempie l'inquadratura",
+        "placementRight": "A destra — la slide sta a sinistra"
       },
       "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
       "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
@@ -2090,6 +2092,7 @@
         "format": "Formato",
         "heading": "La fonte è pronta",
         "help": "Controlla il file prima di continuare",
+        "inAccount": "Nel tuo account",
         "inBrowser": "In questo browser",
         "inTab": "Finché non chiudi questa scheda",
         "replace": "Sostituisci fonte",
@@ -2430,6 +2433,27 @@
       "copied": "Copiato",
       "deleted": "Chat eliminata"
     },
+    "translation": {
+      "action": "Traduci",
+      "close": "Chiudi traduzione",
+      "copy": "Copia traduzione",
+      "languages": {
+        "de": "Deutsch",
+        "en": "English",
+        "es": "Español",
+        "fr": "Français",
+        "hi": "हिन्दी",
+        "id": "Bahasa Indonesia",
+        "it": "Italiano",
+        "ja": "日本語",
+        "ko": "한국어",
+        "ptBR": "Português",
+        "zhCN": "简体中文",
+        "zhTW": "繁體中文"
+      },
+      "result": "Traduzione",
+      "targetLanguage": "Lingua di traduzione"
+    },
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
       "input": "Ingresso vocale",
@@ -2706,6 +2730,7 @@
     "custom": {
       "connect": {
         "configured": "Configurato",
+        "connect": "Connetti",
         "connecting": "Connessione…",
         "continue": "Continua",
         "continueToProvider": "Proseguire presso il provider per autorizzare l'accesso.",
@@ -2738,6 +2763,8 @@
         "mcpEndpointHint": "(Streamable HTTP, solo HTTPS)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Nuovo segreto del cliente",
+        "noAuthentication": "Nessuna autenticazione",
+        "noAuthenticationDescription": "Connettiti senza inviare credenziali o dati di autenticazione.",
         "none": "Nessuno",
         "oauthChangesDisconnect": "La modifica delle impostazioni OAuth o delle credenziali del client disconnette le connessioni OAuth esistenti.",
         "oauthDescription": "Configura un'app OAuth che i membri possono autorizzare.",
@@ -2754,6 +2781,7 @@
         "redirectHint": "(Registra questo URL nell'applicazione OAuth del provider.)",
         "redirectUrl": "Reindirizza URL",
         "removeApiAuthentication": "Rimuovi l'autenticazione API",
+        "removeNoAuthentication": "Rimuovi \"Nessuna autenticazione\"",
         "removeOauth": "Rimuovi OAuth 2.0",
         "scopes": "Ambiti",
         "scopesHint": "(uno per riga)",
@@ -3172,45 +3200,6 @@
         "uninstallDescription": "Questa operazione disinstalla {{bot}} dall'area di lavoro e disconnette ogni account {{brandName}} che lo utilizza. Non può essere annullata.",
         "uninstallTargetFallback": "questo bot",
         "uninstallTitle": "Disinstallare Feishu bot?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "Annulla",
-          "checkTest": "Prova di controllo",
-          "copy": "Copia",
-          "create": "Creare integrazione",
-          "remove": "Rimuovi",
-          "revealAuthorization": "Rivela l'intestazione dell'autorizzazione"
-        },
-        "addDescription": "Un'integrazione può servire più automazioni del flusso di lavoro.",
-        "addTitle": "Aggiungi Strapi istanza",
-        "adminRequired": "Chiedi a un amministratore dell'organizzazione di aggiungere o aggiornare le integrazioni Strapi.",
-        "authorizationHeader": "Intestazione dell'autorizzazione",
-        "copied": "{{label}} copiato",
-        "description": "Lascia che {{assistantName}} reagisca alle voci Strapi pubblicate e automatizzi il lavoro a valle.",
-        "documentTitle": "Strapi",
-        "empty": "Nessuna istanza Strapi ancora connessa.",
-        "form": {
-          "name": "Nome",
-          "namePlaceholder": "CMS aziendale",
-          "url": "Strapi URL"
-        },
-        "instructions": "In Strapi, apri Impostazioni → Webhooks, aggiungi questo URL e l'intestazione di autorizzazione, seleziona entry.publish, quindi fai clic su Trigger per inviare un webhook di prova Strapi.",
-        "lastPublish": "Ultima pubblicazione: {{date}}",
-        "lastTest": "Ultimo test: {{date}}",
-        "notReceived": "Non ricevuto",
-        "removeDescription": "Rimuovi prima le automazioni del flusso di lavoro. Le richieste webhook Strapi a questo URL smetteranno di funzionare.",
-        "removeTitle": "Rimuovere l'integrazione Strapi?",
-        "tested": "Webhook testato",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi integrazione creata",
-          "noTestReceived": "Nessun webhook di prova Strapi ancora ricevuto",
-          "removed": "Integrazione Strapi rimossa",
-          "testReceived": "Strapi webhook di prova ricevuto"
-        },
-        "webhookUrl": "Webhook URL",
-        "whereAssistantWorks": "Dove lavora {{assistantName}}"
       },
       "telegram": {
         "addBot": "Aggiungi bot",
@@ -4711,12 +4700,6 @@
     },
     "redirecting": "Reindirizzamento...",
     "status": {
-      "atLimit_one": "Puoi eseguire solo {{limit}} attività alla volta. Le nuove esecuzioni resteranno in coda finché una non termina.",
-      "atLimit_many": "Puoi eseguire solo {{limit}} attività alla volta. Le nuove esecuzioni resteranno in coda finché una non termina.",
-      "atLimit_other": "Puoi eseguire solo {{limit}} attività alla volta. Le nuove esecuzioni resteranno in coda finché una non termina.",
-      "available_one": "{{count}} slot disponibile",
-      "available_many": "{{count}} slot disponibili",
-      "available_other": "{{count}} slot disponibili",
       "availableNow": "Disponibili ora",
       "inUse_one": "{{active}} di {{limit}} slot in uso",
       "inUse_many": "{{active}} di {{limit}} slot in uso",
@@ -5163,17 +5146,14 @@
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Annulla cooldown",
-          "cancelDescription": "L'annullamento di questo cooldown globale rende immediatamente disponibile la route per tutti i workspace in cui è attivo il fallback dei modelli integrati.",
+          "cancelDescription": "L'annullamento di questo cooldown globale rende immediatamente disponibile la route per tutti i workspace.",
           "cancelling": "Annullamento...",
           "cancelTitle": "Annullare il cooldown globale?",
           "cancelWarning": "Un errore successivo idoneo può riportare questa route in cooldown.",
           "description": "Esamina le route dei modelli integrati temporaneamente escluse dalla selezione di fallback.",
-          "disabled": "disattivato",
-          "disabledExplanation": "Il fallback dei modelli integrati è disattivato per questo workspace, quindi questi cooldown globali vengono attualmente ignorati qui.",
           "empty": "Al momento nessuna route di modello integrato è in cooldown globale.",
-          "enabled": "attivato",
           "globalActive": "cooldown globali attivi",
-          "globalExplanation": "I cooldown sono uno stato operativo globale. Possono influire su questo workspace solo quando il fallback dei modelli integrati è attivato qui.",
+          "globalExplanation": "I cooldown sono uno stato operativo globale e influiscono su tutti i workspace che utilizzano modelli integrati.",
           "keepCooldown": "Mantieni cooldown",
           "loading": "Caricamento della diagnostica dei cooldown dei modelli integrati...",
           "providerType": "Tipo di provider",
@@ -5182,11 +5162,9 @@
           "title": "Fallback dei modelli integrati",
           "unavailable": "La diagnostica dei cooldown dei modelli integrati non è disponibile.",
           "unavailableUntil": "Non disponibile fino a",
-          "upstreamModel": "Modello upstream",
-          "workspaceFallback": "fallback del workspace"
+          "upstreamModel": "Modello upstream"
         },
         "capture": {
-          "description": "Cattura i nomi delle intestazioni HTTP, i valori delle intestazioni sicure selezionate e i corpi nei log di rete per il debug.",
           "disabled": "Disabilitato",
           "enabled_one": "Abilitato per la prossima esecuzione {{count}}",
           "enabled_many": "Abilitato per le prossime {{count}} esecuzioni",
@@ -5210,10 +5188,8 @@
           "recovery": "recupero",
           "title": "Diagnostica della connessione in tempo reale",
           "unavailable": "non disponibile"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferenze",
       "language": {
         "description": "Scegli la tua lingua preferita per l'interfaccia {{brandName}}",
         "label": "Lingua",
@@ -5243,8 +5219,6 @@
         "retryMessage": "Non è stato possibile caricare o aggiornare le impostazioni di Morning Brief. Riprova per continuare.",
         "title": "Riepilogo mattutino"
       },
-      "pageDescription": "Gestisci l'aspetto e le preferenze di esecuzione degli agenti",
-      "pageTitle": "Preferenze",
       "send": {
         "cmdEnter": "⌘ Invio",
         "cmdEnterDescription": "Premi ⌘/Ctrl+Invio per inviare, Invio per una nuova riga",
@@ -5253,11 +5227,6 @@
         "enterDescription": "Premi Invio per inviare, Maiusc+Invio per una nuova riga",
         "sectionTitle": "Invio",
         "title": "Invia messaggio con"
-      },
-      "tabs": {
-        "appearance": "Aspetto",
-        "models": "Modelli personali",
-        "timezone": "Fuso orario"
       },
       "timezone": {
         "description": "Orari mostrati e usati per le esecuzioni delle automazioni.",
@@ -5927,26 +5896,6 @@
         "time": "Ora ({{timezone}})",
         "updateScheduleAria": "Aggiorna l'automazione della pianificazione"
       },
-      "strapi": {
-        "addAction": "Aggiungi l'automazione Strapi",
-        "addAria": "Aggiungi l'automazione pubblicata Strapi voce",
-        "addDescription": "Esegui questo flusso di lavoro dopo aver stabilito la corrispondenza degli eventi di pubblicazione localizzati.",
-        "addTitle": "Aggiungi l'automazione Strapi",
-        "configure": "Configura Strapi",
-        "connectFirst": "Connetti un'istanza Strapi prima di creare questa automazione.",
-        "contentType": "Tipo di contenuto UID (facoltativo)",
-        "contentTypeAny": "Qualsiasi tipo di contenuto",
-        "contentTypePlaceholder": "api::articolo.articolo",
-        "entryPublishedDescription": "Esegui dopo la pubblicazione di una voce Strapi corrispondente.",
-        "entryPublishedTitle": "Strapi voce pubblicata",
-        "instance": "Strapi istanza",
-        "locale": "Impostazioni internazionali (facoltativo)",
-        "localeAny": "Qualsiasi locale",
-        "localeHint": "Lascia il campo vuoto per combinare tutti gli eventi di pubblicazione localizzati per lo stesso documento in un'unica esecuzione del flusso di lavoro.",
-        "localePlaceholder": "en",
-        "localeSummary": "Impostazioni internazionali {{locale}}",
-        "rule": "Quando viene pubblicata una voce Strapi corrispondente"
-      },
       "stripe": {
         "addAction": "Aggiungi automazione Stripe",
         "addAria": "Aggiungi automazione per fattura Stripe pagata",
@@ -5992,7 +5941,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6059,35 +6007,6 @@
       "noWorkflows": "Nessun flusso di lavoro ancora. Creane uno in chat per continuare."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Connettiti",
-          "enable": "Abilita per l'agente",
-          "reconnect": "Riconnettiti",
-          "reviewPermissions": "Esaminare le autorizzazioni"
-        },
-        "aria": "Disponibilità del connettore",
-        "check": "Controllare i connettori",
-        "checkAgain": "Controlla di nuovo",
-        "checking": "Controllo...",
-        "description": "Scopri di quali connettori integrati potrebbe aver bisogno questo flusso di lavoro e se sono pronti.",
-        "empty": "Nessun connettore richiesto rilevato",
-        "error": {
-          "inputTooLong": "Questo flusso di lavoro è troppo lungo per essere controllato. Mantieni il nome, la descrizione e le istruzioni entro 100.000 caratteri.",
-          "retry": "Non è stato possibile controllare i connettori. Riprova.",
-          "timeout": "Il controllo del connettore è scaduto. Riprova."
-        },
-        "saveFirst": "Salva le modifiche prima di controllare i connettori.",
-        "status": {
-          "connected": "Connesso",
-          "notConnected": "Non connesso",
-          "notEnabled": "Non abilitato per questo agente",
-          "reconnect": "Riconnessione necessaria",
-          "scopeMismatch": "Aggiorna autorizzazioni",
-          "unavailable": "Attualmente non disponibile"
-        },
-        "title": "Disponibilità del connettore"
-      },
       "copy": {
         "agentFallback": "l'agente",
         "copied": "Copiato in {{agent}}",
@@ -6316,10 +6235,6 @@
       "title": "Slack",
       "uninstallDescription": "Questa operazione rimuoverà l'integrazione Slack dall'intera area di lavoro. Tutti gli utenti connessi verranno disconnessi e {{displayName}} non risponderà più ai messaggi o alle menzioni in Slack. Non può essere annullata.",
       "uninstallTitle": "Disinstallare l'integrazione Slack?"
-    },
-    "strapi": {
-      "description": "Automatizza il lavoro quando le voci vengono pubblicate",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Chiedi al tuo amministratore di installare l'integrazione di Microsoft Teams",

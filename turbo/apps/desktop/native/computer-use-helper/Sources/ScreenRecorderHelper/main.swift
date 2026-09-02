@@ -87,6 +87,16 @@ private func resolveDisplay(
 // MARK: - Source discovery
 
 private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableContent {
+    // Asking ScreenCaptureKit without the grant makes the system put its own
+    // prompt on screen, every single time. Once the answer is already no, say
+    // so instead: the app can then offer Settings rather than the user being
+    // asked the same question again on the next click.
+    guard CGPreflightScreenCaptureAccess() else {
+        throw HelperFailure(
+            code: "permission_denied",
+            message: "Okou needs Screen Recording permission in System Settings"
+        )
+    }
     let semaphore = DispatchSemaphore(value: 0)
     let box = ResultBox<SCShareableContent>()
     SCShareableContent.getExcludingDesktopWindows(
@@ -166,6 +176,25 @@ private func microphoneSupported() -> Bool {
     return false
 }
 
+/// What this system can record, without asking what is on screen.
+///
+/// Kept apart from `recorder.sources` because reading the window list makes
+/// ScreenCaptureKit demand the screen recording grant, and the bar only wants
+/// to know whether the microphone toggle is usable. Prompting for a permission
+/// the moment the bar opens, before anything is being recorded, is not a thing
+/// to do to someone.
+private func handleCapabilities() -> [String: Any] {
+    return ["supportsMicrophone": microphoneSupported()]
+}
+
+/// Asks the system for the screen recording grant, once, on purpose.
+///
+/// This is the only place that may raise the system prompt, and it runs when
+/// the user asked for it rather than as a side effect of listing windows.
+private func handleRequestPermission() -> [String: Any] {
+    return ["granted": CGRequestScreenCaptureAccess()]
+}
+
 private func handleSources() throws -> [String: Any] {
     let content = try shareableContent()
     var sources: [[String: Any]] = []
@@ -194,10 +223,94 @@ private func handleSources() throws -> [String: Any] {
         sources.append(source)
     }
 
-    return [
-        "sources": sources,
-        "supportsMicrophone": microphoneSupported(),
-    ]
+    return ["sources": sources]
+}
+
+/// Largest preview the picker shows, in pixels. Big enough to recognise a
+/// window by, small enough that capturing a screenful of them stays quick.
+private let windowPreviewMaxWidth = 400.0
+private let windowPreviewMaxHeight = 250.0
+/// Upper bound on how many windows are captured for one picker opening.
+private let windowPreviewLimit = 24
+/// Budget for the whole command. The client gives every request 15 seconds, so
+/// a per-capture wait alone is not a bound: 24 slow windows would blow past it
+/// and the picker would report a timeout while this is still working.
+private let windowPreviewBudget: TimeInterval = 8
+
+/// Captures one window as a PNG data URL, or `nil` when the system declines.
+///
+/// ScreenCaptureKit is used rather than Electron's capturer because this is the
+/// process that already holds the screen recording grant the recording itself
+/// depends on; asking through a second API means a second thing that can be
+/// refused.
+@available(macOS 14.0, *)
+private func windowPreview(_ window: SCWindow) -> String? {
+    let frame = window.frame
+    guard frame.width > 1, frame.height > 1 else {
+        return nil
+    }
+    let scale = min(
+        windowPreviewMaxWidth / frame.width,
+        windowPreviewMaxHeight / frame.height,
+        1
+    )
+    let configuration = SCStreamConfiguration()
+    configuration.width = max(Int(frame.width * scale), 1)
+    configuration.height = max(Int(frame.height * scale), 1)
+    configuration.showsCursor = false
+
+    let box = ResultBox<CGImage>()
+    let semaphore = DispatchSemaphore(value: 0)
+    SCScreenshotManager.captureImage(
+        contentFilter: SCContentFilter(desktopIndependentWindow: window),
+        configuration: configuration
+    ) { image, error in
+        box.set(value: image, error: error)
+        semaphore.signal()
+    }
+    guard semaphore.wait(timeout: .now() + 2) == .success, let image = box.value
+    else {
+        return nil
+    }
+
+    let representation = NSBitmapImageRep(cgImage: image)
+    guard let png = representation.representation(using: .png, properties: [:])
+    else {
+        return nil
+    }
+    return "data:image/png;base64,\(png.base64EncodedString())"
+}
+
+/// Previews for the windows the picker can offer.
+///
+/// Windows without a title are skipped the same way `recorder.sources` skips
+/// them, so the two lists line up by window id.
+private func handleWindowPreviews() throws -> [String: Any] {
+    guard #available(macOS 14.0, *) else {
+        throw HelperFailure(
+            code: "capture_failed",
+            message: "Window previews need macOS 14 or later"
+        )
+    }
+    let content = try shareableContent()
+    let deadline = Date().addingTimeInterval(windowPreviewBudget)
+    var previews: [[String: Any]] = []
+    for window in content.windows {
+        guard previews.count < windowPreviewLimit, Date() < deadline else {
+            break
+        }
+        guard let title = window.title, !title.isEmpty else {
+            continue
+        }
+        guard let dataUrl = windowPreview(window) else {
+            continue
+        }
+        previews.append([
+            "id": "window:\(window.windowID)",
+            "previewDataUrl": dataUrl,
+        ])
+    }
+    return ["previews": previews]
 }
 
 /// Capture rate for the stream, and the rate the click track reports so a
@@ -992,8 +1105,14 @@ private func handle(_ request: [String: Any]) throws -> [String: Any] {
     }
     let payload = isRecord(request["payload"] ?? [:]) ?? [:]
     switch kind {
+    case "recorder.capabilities":
+        return handleCapabilities()
+    case "recorder.requestPermission":
+        return handleRequestPermission()
     case "recorder.sources":
         return try handleSources()
+    case "recorder.windowPreviews":
+        return try handleWindowPreviews()
     case "recorder.prepare":
         return try handlePrepare(payload)
     case "recorder.start":

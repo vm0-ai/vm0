@@ -335,7 +335,10 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     assert!(freeze_command.contains("mountpoint -q -- \"$workspace_dir\""));
     assert!(freeze_command.contains("exec 3< \"$workspace_dir\""));
     assert!(freeze_command.contains("mountpoint -d -- \"$workspace_fd_path\""));
-    assert!(freeze_command.contains("fsfreeze --freeze \"$workspace_fd_path\""));
+    assert!(freeze_command.contains("workspace_fsfreeze_path='/usr/sbin/fsfreeze'"));
+    assert!(
+        freeze_command.contains("\"$workspace_fsfreeze_path\" --freeze \"$workspace_fd_path\"")
+    );
     assert!(!freeze_command.contains("--unfreeze"));
     assert!(!freeze_command.contains("umount"));
     assert!(!freeze_command.contains("kill "));
@@ -951,7 +954,7 @@ async fn session_history_sidecar_staging_cleans_source_and_unlocks_after_freeze_
     let cache = fixture.cache.clone();
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.add_exec_matcher(ExecMatcher {
-        pattern: "fsfreeze --freeze".into(),
+        pattern: "\"$workspace_fsfreeze_path\" --freeze".into(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"not mounted".to_vec(),
@@ -1115,7 +1118,7 @@ async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
     let fixture = WorkspacePromotionFixture::new("sess-parked-freeze-fail").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.add_exec_matcher(ExecMatcher {
-        pattern: "fsfreeze --freeze".into(),
+        pattern: "\"$workspace_fsfreeze_path\" --freeze".into(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"not mounted".to_vec(),

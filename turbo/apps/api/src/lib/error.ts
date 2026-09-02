@@ -22,6 +22,10 @@ export function conflict(message: string) {
   return httpError(409, "CONFLICT", message);
 }
 
+export function badGateway(message: string) {
+  return httpError(502, "UPSTREAM_UNAVAILABLE", message);
+}
+
 export const AUTONOMY_BUDGET_EXHAUSTED_MESSAGE =
   "Maximum autonomous delegation depth reached. Send a new human message or confirm a permission request to continue.";
 
@@ -49,16 +53,8 @@ export function notConfigured(message: string) {
   return httpError(503, "NOT_CONFIGURED", message);
 }
 
-export function connectorReadinessTimeout(message: string) {
-  return httpError(503, "CONNECTOR_READINESS_TIMEOUT", message);
-}
-
 export function eventDeliveryUnavailable(message: string) {
   return httpError(503, "EVENT_DELIVERY_UNAVAILABLE", message);
-}
-
-export function payloadTooLarge(message: string) {
-  return httpError(413, "PAYLOAD_TOO_LARGE", message);
 }
 
 export function insufficientCredits() {

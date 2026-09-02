@@ -75,6 +75,7 @@ import { billingUsagePackCreditsRoutes } from "./routes/billing-usage-pack-credi
 import { bankingRoutes } from "./routes/banking";
 import { chatThreadRoutes } from "./routes/chat-threads";
 import { chatEventsRoutes } from "./routes/chat-events";
+import { chatTranslationRoutes } from "./routes/chat-translation";
 import { sharedThreadRoutes } from "./routes/shared-threads";
 import { claudeCodeDeviceAuthRoutes } from "./routes/claude-code-device-auth";
 import { computerUseAuthorizationRoutes } from "./routes/computer-use-authorization";
@@ -95,7 +96,6 @@ import { goalsRoutes } from "./routes/goals";
 import { hostRoutes } from "./routes/host";
 import { builtInGenerationRoutes } from "./routes/built-in-generation";
 import { imageIoGenerateRoutes } from "./routes/image-io-generate";
-import { imageShareXRoutes } from "./routes/image-share-x";
 import { logsRoutes } from "./routes/logs";
 import { mailRoutes } from "./routes/mail";
 import { mapsRoutes } from "./routes/maps";
@@ -135,8 +135,6 @@ import { workflowsRoutes } from "./routes/workflows";
 import { officialWorkflowRoutes } from "./routes/official-workflows";
 import { morningBriefPreferenceRoutes } from "./routes/morning-brief-preference";
 import { workflowAutomationsRoutes } from "./routes/workflow-automations";
-import { strapiIntegrationsRoutes } from "./routes/strapi-integrations";
-import { strapiEventsRoutes } from "./routes/strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { integrationsAgentPhoneRoutes } from "./routes/integrations-agentphone";
 import { integrationsPhoneDownloadFileRoutes } from "./routes/integrations-phone-download-file";
@@ -171,7 +169,6 @@ import { feishuBrowserConnectRoutes } from "./routes/feishu-browser-connect";
 import { feishuConnectRoutes } from "./routes/feishu-connect";
 import { feishuEventsRoutes } from "./routes/feishu-events";
 import { feishuOauthRoutes } from "./routes/feishu-oauth";
-import { steamPlayerRoutes } from "./routes/steam-player";
 import { teamsBrowserConnectRoutes } from "./routes/teams-browser-connect";
 import { teamsBotRoutes } from "./routes/teams-bot";
 import { teamsConnectRoutes } from "./routes/teams-connect";
@@ -212,7 +209,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksNotionRoutes,
   ...webhooksWorkflowAutomationsRoutes,
-  ...strapiEventsRoutes,
   ...webhooksStripeRoutes,
   ...webhooksStripeAutomationEventsRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
@@ -269,6 +265,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...bankingRoutes,
   ...chatThreadRoutes,
   ...chatEventsRoutes,
+  ...chatTranslationRoutes,
   ...sharedThreadRoutes,
   ...claudeCodeDeviceAuthRoutes,
   ...computerUseAuthorizationRoutes,
@@ -289,7 +286,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...hostRoutes,
   ...builtInGenerationRoutes,
   ...imageIoGenerateRoutes,
-  ...imageShareXRoutes,
   ...avatarVideoRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
@@ -339,7 +335,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...workflowsRoutes,
   ...officialWorkflowRoutes,
   ...workflowAutomationsRoutes,
-  ...strapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...slackConnectRoutes,
   ...slackOauthRoutes,
@@ -374,7 +369,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTeamsUploadCompleteRoutes,
   ...integrationsTeamsUploadInitRoutes,
   ...slackChannelsRoutes,
-  ...steamPlayerRoutes,
   ...integrationsTelegramRoutes,
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,

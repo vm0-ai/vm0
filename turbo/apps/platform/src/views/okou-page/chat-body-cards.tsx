@@ -66,6 +66,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 
 import type { MarkdownCardRef } from "../../signals/chat-page/markdown-card-ref.ts";
 import {
+  openFileLightbox$ as openAttachmentFileLightbox$,
   openImageLightbox$ as openAttachmentImageLightbox$,
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/okou-page/attachment-chips.ts";
@@ -322,6 +323,7 @@ function ArtifactCardView({
   threadId: string;
 }) {
   const { t } = useTranslation();
+  const openFileLightbox = useSet(openAttachmentFileLightbox$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
   const openLightbox = (url: string): void => {
@@ -394,6 +396,12 @@ function ArtifactCardView({
         contentType: contentTypeForBodyPreviewKind(signals.kind),
         ...(previewImagePending ? { previewImagePending: true } : {}),
         ...(previewImageUrl ? { previewImageUrl } : {}),
+      }}
+      onPreviewFile={() => {
+        openFileLightbox({
+          filename: signals.filename,
+          url: signals.url,
+        });
       }}
       previewImageLoad={signals.previewImageLoad}
       text$={signals.text$}

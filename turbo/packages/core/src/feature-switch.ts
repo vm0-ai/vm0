@@ -299,10 +299,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
-  [FeatureSwitchKey.ChatConversationLocator]: {
-    maintainer: "tongx@vm0.ai",
+  [FeatureSwitchKey.ChatTranslation]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
+      "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
@@ -325,12 +325,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.BuiltInModelProviderFallback]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Select healthy fallback routes for built-in platform models.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -339,13 +333,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
-    maintainer: "tongx@vm0.ai",
-    description:
-      "Add a category icon rail, pinned section titles, jump-to-category scrolling, and a hovered-emoji name bar to the thread emoji picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
@@ -361,12 +348,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
-  },
-  [FeatureSwitchKey.ConnectorCatalogCount]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Show the exact effective connector catalog size.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
@@ -396,31 +377,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ConcurrencyMemberUsage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show active concurrency slot usage grouped by workspace member in the queue drawer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.StrapiIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable Strapi integration settings and Strapi entry-published workflow automations.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowConnectorReadiness]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show the manual connector readiness check on workflow settings pages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -430,6 +390,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.CustomConnectorNoAuth]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable credential-free authentication for organization Custom Connectors.",
+    enabled: false,
   },
 };
 

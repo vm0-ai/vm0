@@ -460,7 +460,6 @@ interface NormalSendFeatureSwitches {
    * switches this request already read.
    */
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly builtInModelProviderFallbackEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -963,7 +962,6 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
 async function withBuiltInModelRuntimeRoute(
   db: Db,
   configuration: ResolvedRunConfiguration,
-  fallbackEnabled: boolean,
 ): Promise<ResolvedRunConfiguration | NormalSendFailure> {
   if (
     configuration.providerAdmission.error ||
@@ -982,17 +980,12 @@ async function withBuiltInModelRuntimeRoute(
   const builtInModelRuntimeRoute = await resolveBuiltInModelRuntimeRoute(
     db,
     selectedModel,
-    fallbackEnabled,
   );
   return builtInModelRuntimeRoute
     ? { ...configuration, builtInModelRuntimeRoute }
-    : fallbackEnabled
-      ? modelProviderUnavailable(
-          "Every built-in model route for this model is temporarily unavailable",
-        )
-      : providerUnavailable(
-          "No model provider configured: no built-in model key is configured",
-        );
+    : modelProviderUnavailable(
+        "Every built-in model route for this model is temporarily unavailable",
+      );
 }
 
 async function resolveExplicitRunConfiguration(params: {
@@ -1001,7 +994,6 @@ async function resolveExplicitRunConfiguration(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
-  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedRunConfiguration | NormalSendFailure | undefined> {
   const modelSelection = params.body.modelSelection;
@@ -1056,19 +1048,15 @@ async function resolveExplicitRunConfiguration(params: {
   if (codexServiceTierError) {
     return codexServiceTierError;
   }
-  return await withBuiltInModelRuntimeRoute(
-    params.db,
-    {
+  return await withBuiltInModelRuntimeRoute(params.db, {
+    modelPin,
+    providerAdmission,
+    codexServiceTier: codexServiceTierForRun({
+      body: params.body,
       modelPin,
-      providerAdmission,
-      codexServiceTier: codexServiceTierForRun({
-        body: params.body,
-        modelPin,
-        codexFastModeEnabled: params.codexFastModeEnabled,
-      }),
-    },
-    params.builtInModelProviderFallbackEnabled,
-  );
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    }),
+  });
 }
 
 async function resolveNormalSendFeatureSwitches(
@@ -1087,10 +1075,6 @@ async function resolveNormalSendFeatureSwitches(
       context,
     ),
     featureSwitchContext: context,
-    builtInModelProviderFallbackEnabled: isFeatureEnabled(
-      FeatureSwitchKey.BuiltInModelProviderFallback,
-      context,
-    ),
   };
 }
 
@@ -1596,7 +1580,6 @@ async function resolveThread(params: {
   readonly requestedCodexServiceTier: CodexServiceTier | undefined;
   readonly persistRequestedCodexServiceTier: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly builtInModelProviderFallbackEnabled: boolean;
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<ResolvedThreadAndRunConfiguration | NormalSendFailure> {
   if (!params.existingThreadId) {
@@ -1675,7 +1658,6 @@ async function resolveThread(params: {
         providerAdmission: persisted.providerAdmission,
         codexServiceTier: persisted.runCodexServiceTier,
       },
-      params.builtInModelProviderFallbackEnabled,
     );
     if ("status" in resolvedRunConfiguration) {
       return resolvedRunConfiguration;
@@ -2434,8 +2416,6 @@ function resolveTimedExplicitRunConfiguration(
         userId: args.userId,
         body: args.body,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        builtInModelProviderFallbackEnabled:
-          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
     },
@@ -2501,8 +2481,6 @@ function resolveTimedThread(
           args.body.modelSelection !== undefined ||
           args.body.runOptions !== undefined,
         codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-        builtInModelProviderFallbackEnabled:
-          featureSwitches.builtInModelProviderFallbackEnabled,
         timing: args.timing,
       });
       if (!("status" in resolved)) {

@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.84.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.8...guest-agent-v0.84.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+
+## [0.83.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.7...guest-agent-v0.83.8) (2026-09-02)
+
+## [0.83.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.6...guest-agent-v0.83.7) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** centralize cli stderr diagnostic policy ([#30984](https://github.com/vm0-ai/vm0/issues/30984)) ([7f3d97c](https://github.com/vm0-ai/vm0/commit/7f3d97cc84f939ba04be5d9242349fdccfaf368b))
+
+## [0.83.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.5...guest-agent-v0.83.6) (2026-09-01)
+
+
+### Performance Improvements
+
+* **guest-agent:** expose control-path scheduling metrics ([#30890](https://github.com/vm0-ai/vm0/issues/30890)) ([1e7a196](https://github.com/vm0-ai/vm0/commit/1e7a1966f15351fb5f8019ebd29c2ee5ad2b4f96))
+* **runner:** specialize reused codex cleanup lifecycle ([#30888](https://github.com/vm0-ai/vm0/issues/30888)) ([5941c94](https://github.com/vm0-ai/vm0/commit/5941c9474fb6f1389a6ca9d3c92e99a3af59b98a))
+
+## [0.83.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.4...guest-agent-v0.83.5) (2026-09-01)
+
+
+### Bug Fixes
+
+* retain heartbeat control-path diagnostics ([#30849](https://github.com/vm0-ai/vm0/issues/30849)) ([8ee4d2d](https://github.com/vm0-ai/vm0/commit/8ee4d2d6043a5e15173ace032347366645c254b1))
+
 ## [0.83.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.3...guest-agent-v0.83.4) (2026-09-01)
 
 
