@@ -213,6 +213,15 @@ impl VersionGcAnalysis {
     }
 }
 
+#[cfg(test)]
+pub(super) fn empty_complete_version_gc_analysis() -> VersionGcAnalysis {
+    VersionGcAnalysis {
+        entries: Vec::new(),
+        binary_scan_complete: true,
+        config_scan_complete: true,
+    }
+}
+
 pub(super) async fn analyze_version_gc(
     home: &HomePaths,
     protect: Option<&str>,
