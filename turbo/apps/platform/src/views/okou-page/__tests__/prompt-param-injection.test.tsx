@@ -202,6 +202,53 @@ describe("prompt query parameter injection", () => {
     expect(fileUrlRequests).toBe(2);
   });
 
+  it("keeps a desktop recording when the wizard steps back off the presenter", async () => {
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
+      const id = new URL(request.url).searchParams.get("file_id");
+      return HttpResponse.json({
+        url: `https://resolved.example/${id ?? "missing"}`,
+      });
+    });
+    mockChatLifecycle(context);
+
+    detachedSetupPage({
+      context,
+      path: `/?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
+      featureSwitches: DESKTOP_HANDOFF_SWITCHES,
+    });
+
+    const dialog = await introVideoDialog();
+    await expect(
+      within(dialog).findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+
+    click(buttonWithText("Back", dialog, false));
+
+    // Unlike a deck, the take is not thrown away: the browser never held its
+    // bytes and the handoff params are already gone, so stepping back lands on
+    // its review page with the recording intact.
+    await expect(
+      within(dialog).findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    expect(within(dialog).getByText("demo.mp4")).toBeInTheDocument();
+
+    // Replacing the source opens the picker without spending the take either,
+    // so the Source tab can still bring it back.
+    click(buttonWithText("Replace source", dialog, false));
+    await expect(
+      screen.findByText("How do you want to start?"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Source", dialog, false));
+    await expect(
+      within(dialog).findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    expect(within(dialog).getByText("demo.mp4")).toBeInTheDocument();
+  });
+
   it("sends a desktop recording handoff without uploading it again", async () => {
     const user = userEvent.setup({ delay: null });
     let sentPrompt: string | undefined;

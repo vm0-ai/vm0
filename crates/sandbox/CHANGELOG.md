@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.63...sandbox-v0.20.0) (2026-09-02)
+
+
+### Features
+
+* **runner:** isolate firecracker guests in weighted cgroups ([#31057](https://github.com/vm0-ai/vm0/issues/31057)) ([615235d](https://github.com/vm0-ai/vm0/commit/615235d8dd5475cdaafec5eead7209bb28ba18fc))
+
 ## [0.19.63](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.62...sandbox-v0.19.63) (2026-09-02)
 
 

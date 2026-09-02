@@ -65,10 +65,11 @@ const getDesktopMigrationPolicy$ = command(({ set }) => {
  *
  * These two routes used to read the line off the request namespace, so the
  * `/api/zero/**` compatibility alias kept resolving to the Zero line its
- * callers reached before the move. #31088 removed the
- * `MIGRATED_BRANDED_PATHS` rows that registered that alias and nothing else
- * registers a branded path, so no request can arrive on one and the Zero
- * branch had no reachable input left. The Zero line is still reachable through
+ * callers reached before the move. #31088 removed the branded compatibility
+ * rows that registered that alias, #31090 removed the mechanism behind them,
+ * and nothing else registers a branded path, so no request can arrive on one
+ * and the Zero branch had no reachable input left. The Zero line is still
+ * reachable through
  * `productFeed`, `productReleasePage` and `productDmgDownload`, which name it
  * in the path.
  */

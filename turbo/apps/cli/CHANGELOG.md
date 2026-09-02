@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.305.3](https://github.com/vm0-ai/vm0/compare/cli-v9.305.2...cli-v9.305.3) (2026-09-02)
+
+
+### Refactoring
+
+* **pi:** make ownership transfer v3-only ([#31045](https://github.com/vm0-ai/vm0/issues/31045)) ([1e99242](https://github.com/vm0-ai/vm0/commit/1e99242eabe418b4981216c0f6eb62e21edc015a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.392.0
+    * @okouai/connectors bumped to 3.3.0
+    * @okouai/core bumped to 8.610.0
+
 ## [9.305.2](https://github.com/vm0-ai/vm0/compare/cli-v9.305.1...cli-v9.305.2) (2026-09-02)
 
 

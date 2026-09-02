@@ -2443,7 +2443,25 @@ async function markRefreshFailure(
 async function markRefreshTokenMissing(
   args: RefreshAccessTokenArgs,
   context: RefreshTokenContext,
+  missingInputNames: readonly string[],
+  shouldLogWarning: boolean,
 ): Promise<RefreshAccessTokenResult> {
+  if (shouldLogWarning) {
+    L.warn(
+      `${args.accessSourceKey} token refresh failed: required input missing`,
+      {
+        accessSourceKey: args.accessSourceKey,
+        orgId: args.orgId,
+        userId: args.userId,
+        ...(args.sourceType === "model-provider" && args.sourceId
+          ? { modelProviderAccountId: args.sourceId }
+          : {}),
+        errorCode: null,
+        failureReason: "reconnect_required",
+        missingInputNames,
+      },
+    );
+  }
   await markRefreshFailure(args, context, null, "reconnect_required", null);
   return refreshTokenMissingResult();
 }
@@ -2453,20 +2471,23 @@ async function markAndReturnRefreshFailure(
   context: RefreshTokenContext,
   error: unknown,
   signal: AbortSignal,
+  shouldLogWarning: boolean,
 ): Promise<RefreshAccessTokenResult> {
   const message = error instanceof Error ? error.message : "Unknown error";
   const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
-  L.warn(`${args.accessSourceKey} token refresh failed: ${message}`, {
-    accessSourceKey: args.accessSourceKey,
-    orgId: args.orgId,
-    userId: args.userId,
-    ...(args.sourceType === "model-provider" && args.sourceId
-      ? { modelProviderAccountId: args.sourceId }
-      : {}),
-    errorCode,
-    failureReason,
-    ...oauthRefreshFailureLogFields(error),
-  });
+  if (shouldLogWarning) {
+    L.warn(`${args.accessSourceKey} token refresh failed: ${message}`, {
+      accessSourceKey: args.accessSourceKey,
+      orgId: args.orgId,
+      userId: args.userId,
+      ...(args.sourceType === "model-provider" && args.sourceId
+        ? { modelProviderAccountId: args.sourceId }
+        : {}),
+      errorCode,
+      failureReason,
+      ...oauthRefreshFailureLogFields(error),
+    });
+  }
   await markRefreshFailure(
     args,
     context,
@@ -2584,12 +2605,6 @@ function currentPreparedRefreshState(args: {
   readonly state: RefreshState | null;
 }): RefreshState | null {
   if (!args.state) {
-    L.warn(`${args.refreshArgs.accessSourceKey} token refresh source missing`, {
-      accessSourceKey: args.refreshArgs.accessSourceKey,
-      orgId: args.refreshArgs.orgId,
-      userId: args.refreshArgs.userId,
-      sourceType: args.refreshArgs.sourceType,
-    });
     return null;
   }
   return preparedRefreshSourceMatchesState(
@@ -2763,16 +2778,35 @@ async function refreshLockedAccessToken(args: {
       `No ${args.refreshArgs.accessSourceKey} refresh inputs available, skipping`,
       { missingInputNames },
     );
-    return markRefreshTokenMissing(args.refreshArgs, args.prepared.context);
+    return markRefreshTokenMissing(
+      args.refreshArgs,
+      args.prepared.context,
+      missingInputNames,
+      !lockedState.needsReconnect,
+    );
   }
+
+  return refreshPreparedLockedAccessToken({
+    refreshArgs: args.refreshArgs,
+    prepared: args.prepared,
+    lockedState,
+  });
+}
+
+async function refreshPreparedLockedAccessToken(args: {
+  readonly refreshArgs: RefreshAccessTokenArgs;
+  readonly prepared: PreparedRefreshTokenContext;
+  readonly lockedState: RefreshState;
+}): Promise<RefreshAccessTokenResult> {
+  const { refreshArgs, prepared, lockedState } = args;
 
   const refreshSignal = firewallAuthRefreshTimeoutSignal();
   const refreshResult = await settle(
     refreshPreparedAccessToken(
       {
-        prepared: args.prepared,
+        prepared,
         inputs: refreshInputsFromLockedState({
-          accessSourceKey: args.refreshArgs.accessSourceKey,
+          accessSourceKey: refreshArgs.accessSourceKey,
           state: lockedState,
         }),
       },
@@ -2781,28 +2815,31 @@ async function refreshLockedAccessToken(args: {
   );
   if (!refreshResult.ok) {
     return markAndReturnRefreshFailure(
-      args.refreshArgs,
-      args.prepared.context,
+      refreshArgs,
+      prepared.context,
       refreshResult.error,
       refreshSignal,
+      !lockedState.needsReconnect,
     );
   }
 
   const outputValidation = validateRefreshResultOutputs({
-    accessSourceKey: args.refreshArgs.accessSourceKey,
-    context: args.prepared.context,
+    accessSourceKey: refreshArgs.accessSourceKey,
+    context: prepared.context,
     result: refreshResult.value,
   });
   if (!outputValidation.ok) {
-    L.warn(outputValidation.message, {
-      accessSourceKey: args.refreshArgs.accessSourceKey,
-      orgId: args.refreshArgs.orgId,
-      userId: args.refreshArgs.userId,
-      sourceType: args.refreshArgs.sourceType,
-    });
+    if (!lockedState.needsReconnect) {
+      L.warn(outputValidation.message, {
+        accessSourceKey: refreshArgs.accessSourceKey,
+        orgId: refreshArgs.orgId,
+        userId: refreshArgs.userId,
+        sourceType: refreshArgs.sourceType,
+      });
+    }
     await markRefreshFailure(
-      args.refreshArgs,
-      args.prepared.context,
+      refreshArgs,
+      prepared.context,
       null,
       "upstream_provider",
       null,
@@ -2811,25 +2848,23 @@ async function refreshLockedAccessToken(args: {
   }
 
   const returnedSecretValues = await markRefreshSuccess(
-    args.refreshArgs,
-    args.prepared,
-    args.prepared.context,
+    refreshArgs,
+    prepared,
+    prepared.context,
     outputValidation.outputs,
     refreshResult.value,
   );
   const refreshedSecrets = runtimeSecretsFromRefreshResult({
-    accessSourceKey: args.refreshArgs.accessSourceKey,
-    context: args.prepared.context,
+    accessSourceKey: refreshArgs.accessSourceKey,
+    context: prepared.context,
     returnedSecretValues,
   });
   Object.assign(
-    args.refreshArgs.connectorSecrets,
+    refreshArgs.connectorSecrets,
     returnedSecretValues,
     refreshedSecrets,
   );
-  L.debug(
-    `${args.refreshArgs.accessSourceKey} access token refreshed successfully`,
-  );
+  L.debug(`${refreshArgs.accessSourceKey} access token refreshed successfully`);
   return {
     ok: true,
     status: "refreshed",
@@ -4408,17 +4443,6 @@ async function refreshSelectedTokens(
         featureSwitchContext: context.featureSwitchContext,
       });
       if (!refreshResult.ok) {
-        if (refreshResult.reason !== "refresh-failed") {
-          L.warn(
-            `[${context.auth.runId}] Failed to refresh ${accessSourceKey} token`,
-            {
-              sourceType: metadata.sourceType,
-              sourceUserId: metadata.sourceUserId,
-              metadataKey: metadata.metadataKey,
-              reason: refreshResult.reason,
-            },
-          );
-        }
         if (refreshResult.reason === "source-missing") {
           return {
             accessSourceKey,
@@ -4497,9 +4521,6 @@ async function syncSkippedTokens(
     sourceMissing,
   } of currentTokens) {
     if (sourceMissing) {
-      L.warn(
-        `[${context.auth.runId}] Skipped access source ${accessSourceKey}: source missing`,
-      );
       for (const envVar of context.envVarsByAccessSource.get(accessSourceKey) ??
         []) {
         delete context.secrets[envVar];
@@ -4511,9 +4532,6 @@ async function syncSkippedTokens(
       continue;
     }
     if (failureReason) {
-      L.warn(
-        `[${context.auth.runId}] Skipped access source ${accessSourceKey}: reconnect still required`,
-      );
       for (const envVar of context.envVarsByAccessSource.get(accessSourceKey) ??
         []) {
         delete context.secrets[envVar];
