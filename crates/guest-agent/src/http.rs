@@ -81,6 +81,70 @@ pub(crate) enum HttpAttemptFailureKind {
     Transport,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RetryableFailure {
+    HttpStatus(u16),
+    Timeout { connect_observed: bool },
+    Connect,
+    Transport,
+}
+
+impl RetryableFailure {
+    fn from_status(status: reqwest::StatusCode) -> Self {
+        Self::HttpStatus(status.as_u16())
+    }
+
+    fn from_transport(error: &reqwest::Error) -> Self {
+        let timeout_observed = error.is_timeout();
+        let connect_observed = error.is_connect();
+        if timeout_observed {
+            Self::Timeout { connect_observed }
+        } else if connect_observed {
+            Self::Connect
+        } else {
+            Self::Transport
+        }
+    }
+
+    fn attempt_outcome(self) -> HttpAttemptOutcome {
+        match self {
+            Self::HttpStatus(status) => HttpAttemptOutcome::Failure {
+                kind: HttpAttemptFailureKind::HttpStatus,
+                http_status: Some(status),
+                timeout_observed: None,
+                connect_observed: None,
+            },
+            Self::Timeout { connect_observed } => HttpAttemptOutcome::Failure {
+                kind: HttpAttemptFailureKind::Timeout,
+                http_status: None,
+                timeout_observed: Some(true),
+                connect_observed: Some(connect_observed),
+            },
+            Self::Connect => HttpAttemptOutcome::Failure {
+                kind: HttpAttemptFailureKind::Connect,
+                http_status: None,
+                timeout_observed: Some(false),
+                connect_observed: Some(true),
+            },
+            Self::Transport => HttpAttemptOutcome::Failure {
+                kind: HttpAttemptFailureKind::Transport,
+                http_status: None,
+                timeout_observed: Some(false),
+                connect_observed: Some(false),
+            },
+        }
+    }
+
+    fn terminal_cause(self) -> String {
+        match self {
+            Self::HttpStatus(status) => format!("HTTP {status}"),
+            Self::Timeout { .. } => "timeout".to_string(),
+            Self::Connect => "connect".to_string(),
+            Self::Transport => "transport".to_string(),
+        }
+    }
+}
+
 /// Synchronous observer for selected control and event request paths.
 pub(crate) trait HttpAttemptObserver: Send + Sync {
     fn attempt_started(&self, attempt: HttpAttemptStarted) -> Result<(), AgentError>;
@@ -405,11 +469,17 @@ impl RetryRequest {
     }
 }
 
-async fn send_with_retry<BuildRequest, BuildRequestFuture, BuildClientError, ClientErrorFuture>(
+async fn send_with_retry<
+    BuildRequest,
+    BuildRequestFuture,
+    BuildClientError,
+    ClientErrorFuture,
+    BuildFinalError,
+>(
     label: &str,
     max_attempts: u32,
     retry_delay: Duration,
-    final_error: String,
+    build_final_error: BuildFinalError,
     mut build_request: BuildRequest,
     mut build_client_error: BuildClientError,
     observer: Option<&dyn HttpAttemptObserver>,
@@ -419,7 +489,9 @@ where
     BuildRequestFuture: Future<Output = Result<RetryRequest, AgentError>>,
     BuildClientError: FnMut(Response, u32, u32) -> ClientErrorFuture,
     ClientErrorFuture: Future<Output = AgentError>,
+    BuildFinalError: FnOnce(Option<RetryableFailure>) -> AgentError,
 {
+    let mut last_retryable_failure = None;
     for attempt in 1..=max_attempts {
         let request = build_request().await?;
         let active_attempt =
@@ -445,45 +517,22 @@ where
             }
             Ok(resp) => {
                 let status = resp.status();
-                observe_attempt_finished(
-                    observer,
-                    active_attempt,
-                    HttpAttemptOutcome::Failure {
-                        kind: HttpAttemptFailureKind::HttpStatus,
-                        http_status: Some(status.as_u16()),
-                        timeout_observed: None,
-                        connect_observed: None,
-                    },
-                )?;
+                let failure = RetryableFailure::from_status(status);
+                observe_attempt_finished(observer, active_attempt, failure.attempt_outcome())?;
                 // 4xx errors are deterministic except for rate limits.
                 if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
                     return Err(build_client_error(resp, attempt, max_attempts).await);
                 }
+                last_retryable_failure = Some(failure);
                 log_warn!(
                     LOG_TAG,
                     "HTTP {label} failed (attempt {attempt}/{max_attempts}): HTTP {status}",
                 );
             }
             Err(error) => {
-                let timeout_observed = error.is_timeout();
-                let connect_observed = error.is_connect();
-                let failure_kind = if timeout_observed {
-                    HttpAttemptFailureKind::Timeout
-                } else if connect_observed {
-                    HttpAttemptFailureKind::Connect
-                } else {
-                    HttpAttemptFailureKind::Transport
-                };
-                observe_attempt_finished(
-                    observer,
-                    active_attempt,
-                    HttpAttemptOutcome::Failure {
-                        kind: failure_kind,
-                        http_status: None,
-                        timeout_observed: Some(timeout_observed),
-                        connect_observed: Some(connect_observed),
-                    },
-                )?;
+                let failure = RetryableFailure::from_transport(&error);
+                observe_attempt_finished(observer, active_attempt, failure.attempt_outcome())?;
+                last_retryable_failure = Some(failure);
                 let error = format_reqwest_error(error);
                 log_warn!(
                     LOG_TAG,
@@ -497,7 +546,21 @@ where
         }
     }
 
-    Err(AgentError::Http(final_error))
+    Err(build_final_error(last_retryable_failure))
+}
+
+fn presigned_retry_exhausted_error(
+    max_attempts: u32,
+    last_failure: Option<RetryableFailure>,
+) -> AgentError {
+    let message = match last_failure {
+        Some(failure) => format!(
+            "PUT presigned failed after {max_attempts} attempts; last failure: {}",
+            failure.terminal_cause()
+        ),
+        None => format!("PUT presigned failed after {max_attempts} attempts"),
+    };
+    AgentError::Http(message)
 }
 
 fn observe_attempt_finished(
@@ -674,7 +737,10 @@ impl HttpClient {
             "POST",
             max_attempts,
             self.retry_delay,
-            format!("POST failed after {max_attempts} attempts to {url}"),
+            {
+                let final_error = format!("POST failed after {max_attempts} attempts to {url}");
+                move |_| AgentError::Http(final_error)
+            },
             || {
                 let request_id = Uuid::new_v4().to_string();
                 let mut req = client
@@ -775,7 +841,7 @@ impl HttpClient {
             "PUT presigned",
             max_attempts,
             self.retry_delay,
-            format!("PUT presigned failed after {max_attempts} attempts"),
+            move |last_failure| presigned_retry_exhausted_error(max_attempts, last_failure),
             move || {
                 let data = data.clone();
                 std::future::ready(Ok(RetryRequest::unobserved(
@@ -923,7 +989,7 @@ impl HttpClient {
             "PUT presigned",
             max_attempts,
             self.retry_delay,
-            format!("PUT presigned failed after {max_attempts} attempts"),
+            move |last_failure| presigned_retry_exhausted_error(max_attempts, last_failure),
             move || {
                 let source_file = Arc::clone(&source_file);
                 async move {
