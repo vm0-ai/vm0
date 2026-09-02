@@ -10,14 +10,14 @@ import { and, eq } from "drizzle-orm";
 
 import { writeDb$ } from "../signals/external/db";
 
-export async function readStorageS3PrefixFixture(values: {
+export async function readStorageIdentityFixture(values: {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
-}): Promise<string> {
+}): Promise<{ readonly id: string; readonly s3Prefix: string }> {
   const db = createStore().set(writeDb$);
   const [row] = await db
-    .select({ s3Prefix: storages.s3Prefix })
+    .select({ id: storages.id, s3Prefix: storages.s3Prefix })
     .from(storages)
     .where(
       and(
@@ -32,5 +32,13 @@ export async function readStorageS3PrefixFixture(values: {
       `No storage row for ${values.orgId}/${values.userId}/${values.name}`,
     );
   }
-  return row.s3Prefix;
+  return row;
+}
+
+export async function readStorageS3PrefixFixture(values: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}): Promise<string> {
+  return (await readStorageIdentityFixture(values)).s3Prefix;
 }
