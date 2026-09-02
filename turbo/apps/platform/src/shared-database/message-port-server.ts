@@ -18,6 +18,7 @@ import { registerConnection$ } from "./worker-context.ts";
 import {
   getComputedStoreMessage$,
   queryStoreMessage$,
+  reloadComputedStoreMessage$,
 } from "./worker-signals.ts";
 
 type RequestMessage = Extract<
@@ -26,7 +27,7 @@ type RequestMessage = Extract<
 >;
 type RoutedMessage = Extract<
   SharedDatabaseClientMessage,
-  { readonly type: "get-computed" | "query" }
+  { readonly type: "get-computed" | "query" | "reload-computed" }
 >;
 
 const L = logger("SharedDatabaseWorker");
@@ -155,6 +156,13 @@ export class SharedDatabaseMessagePortServer {
           signal,
         );
       }
+      case "reload-computed": {
+        return this.store.set(
+          reloadComputedStoreMessage$,
+          this.connectionId,
+          message,
+        );
+      }
     }
   }
 
@@ -234,6 +242,10 @@ export class SharedDatabaseMessagePortServer {
             throw new SharedDatabaseClientNotConnectedError();
           });
         }
+        return;
+      }
+      if (message.type === "reload-computed") {
+        this.routeStoreMessage(message, registeredSignal);
         return;
       }
       await this.startRequest(message, registeredSignal, () => {

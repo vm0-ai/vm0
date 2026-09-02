@@ -11,6 +11,7 @@ export interface SharedDatabaseBridge {
   getComputed<TKey extends ComputedKey>(
     computedKey: TKey,
   ): Promise<ComputedValue<TKey>>;
+  reloadComputed(computedKey: ComputedKey): void;
   query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,

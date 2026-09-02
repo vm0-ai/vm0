@@ -119,7 +119,7 @@ function getInternalAllowedLiterals() {
       "internal run event payload; the rendered cancellation message uses typed i18n",
     ],
     [
-      "src/signals/shared-database-browser.ts\u0000okou_{…}_{…}",
+      "src/signals/shared-database-browser.ts\u0000okou_{…}_{…}{…}",
       "SharedWorker browser identifier, not user-visible UI copy",
     ],
     [

@@ -107,6 +107,13 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return parseComputedValue(computedKey, value);
   }
 
+  reloadComputed(computedKey: ComputedKey): void {
+    if (this.closed) {
+      throw this.closeReason;
+    }
+    this.emit({ type: "reload-computed", computedKey });
+  }
+
   async query<TKey extends SharedDatabaseDataKey>(
     query: SharedDatabaseQuery<TKey>,
     signal: AbortSignal,
