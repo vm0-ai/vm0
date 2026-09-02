@@ -945,9 +945,9 @@ jobs:
       JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
       DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         with:
           workspaces: crates -> target
           shared-key: ${{ needs.runner-build.outputs.target }}-host-cpu-fairness
