@@ -35,7 +35,7 @@ overrides:
   "@opentelemetry/instrumentation": ">=0.213.0"
   "@protobufjs/utf8@1.1.0": 1.1.1
   "@sentry/webpack-plugin": 5.3.0
-  "@tiptap/core": 3.21.0
+  "@tiptap/core": 3.30.4
   "@tiptap/extension-blockquote": 3.21.0
   "@tiptap/extension-bold": 3.21.0
   "@tiptap/extension-bullet-list": 3.21.0
@@ -58,7 +58,7 @@ overrides:
   "@tiptap/extension-underline": 3.21.0
   "@tiptap/extensions": 3.21.0
   "@tiptap/markdown": 3.21.0
-  "@tiptap/pm": 3.21.0
+  "@tiptap/pm": 3.30.4
   "@tiptap/react": 3.21.0
   "@tiptap/suggestion": 3.21.0
   "@types/node": 24.3.0
