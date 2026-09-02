@@ -1944,11 +1944,10 @@
       "providerIncompatibleAction": "Start a new session",
       "providerIncompatiblePrefix": "This session was started with a different model provider and can't be continued with the current one.",
       "recovery": {
-        "capacityDescription": "This model is temporarily at capacity. Try again in a few minutes, or switch models now.",
-        "capacityTitle": "{{framework}} model is busy",
+        "capacityDescription": "Try again shortly, or switch models.",
+        "capacityTitle": "This model is busy right now",
         "claudeCode": "Claude Code",
         "codex": "Codex",
-        "continue": "Continue",
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",

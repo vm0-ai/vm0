@@ -1941,11 +1941,10 @@
       "providerIncompatibleAction": "新しいセッションを開始する",
       "providerIncompatiblePrefix": "このセッションは別のモデル プロバイダーで開始されたため、現在のモデル プロバイダーでは続行できません。",
       "recovery": {
-        "capacityDescription": "このモデルは一時的に混雑しています。数分後にもう一度試すか、今すぐ別のモデルに切り替えてください。",
-        "capacityTitle": "{{framework}} モデルは混雑しています",
+        "capacityDescription": "少ししてからもう一度試すか、別のモデルに切り替えてください。",
+        "capacityTitle": "このモデルは現在混雑しています",
         "claudeCode": "Claude Code",
         "codex": "Codex",
-        "continue": "続ける",
         "resetAndTryAgain": "リセットして再試行",
         "resetsAt": "{{time}} にリセット",
         "selectModel": "モデルを切り替える",

@@ -1944,11 +1944,10 @@
       "providerIncompatibleAction": "नया सत्र प्रारंभ करें",
       "providerIncompatiblePrefix": "यह सत्र एक अलग मॉडल प्रोवाइडर के साथ शुरू किया गया था और इसे वर्तमान के साथ जारी नहीं रखा जा सकता है।",
       "recovery": {
-        "capacityDescription": "यह मॉडल अस्थायी रूप से व्यस्त है। कुछ मिनट बाद फिर कोशिश करें, या अभी मॉडल बदलें।",
-        "capacityTitle": "{{framework}} मॉडल व्यस्त है",
+        "capacityDescription": "थोड़ी देर बाद फिर कोशिश करें, या मॉडल बदलें।",
+        "capacityTitle": "यह मॉडल अभी व्यस्त है",
         "claudeCode": "Claude Code",
         "codex": "Codex",
-        "continue": "जारी रखें",
         "resetAndTryAgain": "रीसेट करके फिर कोशिश करें",
         "resetsAt": "{{time}} पर रीसेट होगा",
         "selectModel": "मॉडल बदलें",

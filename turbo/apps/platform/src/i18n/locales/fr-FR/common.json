@@ -1975,11 +1975,10 @@
       "providerIncompatibleAction": "Commencer une nouvelle session",
       "providerIncompatiblePrefix": "Cette session a été commencée avec un fournisseur de modèle différent et ne peut pas être continuée avec le fournisseur actuel.",
       "recovery": {
-        "capacityDescription": "Ce modèle est temporairement saturé. Réessayez dans quelques minutes ou changez de modèle maintenant.",
-        "capacityTitle": "Le modèle {{framework}} est occupé",
+        "capacityDescription": "Réessayez dans quelques instants ou changez de modèle.",
+        "capacityTitle": "Ce modèle est saturé pour le moment",
         "claudeCode": "Claude Code",
         "codex": "Codex",
-        "continue": "Continuer",
         "resetAndTryAgain": "Réinitialiser et réessayer",
         "resetsAt": "Réinitialisation à {{time}}",
         "selectModel": "Changer de modèle",

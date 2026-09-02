@@ -1975,11 +1975,10 @@
       "providerIncompatibleAction": "Empieza una nueva sesión",
       "providerIncompatiblePrefix": "Esta sesión se inició con un modelo diferente y no se puede continuar con el actual.",
       "recovery": {
-        "capacityDescription": "Este modelo está temporalmente al límite de capacidad. Inténtalo de nuevo en unos minutos o cambia de modelo ahora.",
-        "capacityTitle": "El modelo de {{framework}} está ocupado",
+        "capacityDescription": "Inténtalo de nuevo en unos minutos o cambia de modelo.",
+        "capacityTitle": "Este modelo está ocupado ahora mismo",
         "claudeCode": "Claude Code",
         "codex": "Codex",
-        "continue": "Continuar",
         "resetAndTryAgain": "Restablecer e intentar de nuevo",
         "resetsAt": "Se restablece {{time}}",
         "selectModel": "Cambiar de modelo",
