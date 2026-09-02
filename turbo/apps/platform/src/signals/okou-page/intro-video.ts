@@ -557,6 +557,10 @@ function createOpenWizardCommand(
     set(internal.voice$, null);
     const source = get(internal.source$);
     set(internal.step$, source ? "source-review" : "source");
+    // Navigating away only hides the wizard; it deliberately does not run
+    // closeWizard$. Dismissing the dialog is "discard this", while leaving the
+    // page is "come back to it", so the source survives a route change and the
+    // user keeps an upload they never asked to throw away.
     signal.addEventListener(
       "abort",
       () => {

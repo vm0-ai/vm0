@@ -1254,9 +1254,9 @@ export function AvatarTemplatePickerToolbar({
  * The opt-out card that opens the intro-video presenter grid.
  *
  * Selecting a presenter is optional, but the grid is a set of avatars with no
- * empty state, so without this card a user who picks one can never get back to
- * a deck with no presenter: the wizard deliberately keeps its draft across
- * close and reopen, and the cards do not toggle off.
+ * empty state and the cards do not toggle off, so without this card a user who
+ * picks one can only get back to a deck with no presenter by closing the whole
+ * wizard and starting over.
  */
 function NoAvatarCard({
   selected,
