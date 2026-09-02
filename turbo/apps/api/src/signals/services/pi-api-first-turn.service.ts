@@ -161,11 +161,16 @@ function providerRejectionDiagnostic(error: unknown): {
   readonly errorMessageLength?: number;
   readonly errorMessageSha256?: string;
   readonly errorName?: string;
+  readonly errorStackFrames?: string;
   readonly missingApiKey?: boolean;
   readonly piModelTurnStage?: string;
   readonly providerStatus?: number;
 } {
   const message = error instanceof Error ? error.message : undefined;
+  const errorStackFrames =
+    error instanceof Error && error.stack
+      ? error.stack.split("\n").slice(1, 6).join(" | ")
+      : undefined;
   const record =
     typeof error === "object" && error !== null
       ? (error as Record<string, unknown>)
@@ -180,6 +185,7 @@ function providerRejectionDiagnostic(error: unknown): {
       : undefined;
   return {
     ...(error instanceof Error ? { errorName: error.name } : {}),
+    ...(errorStackFrames === undefined ? {} : { errorStackFrames }),
     ...(message === undefined
       ? {}
       : {
