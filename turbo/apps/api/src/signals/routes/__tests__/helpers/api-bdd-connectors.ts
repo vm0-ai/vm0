@@ -159,6 +159,10 @@ type CallbackQuery = {
   readonly iss?: string;
 };
 
+interface RequestBaseUrlOptions {
+  readonly baseUrl?: string;
+}
+
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const DATADOG_US3_TOKEN_URL = "https://api.us3.datadoghq.com/oauth2/v1/token";
@@ -1962,8 +1966,13 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async completeOauthCallback(connectorSlug: string, query: CallbackQuery) {
+    async completeOauthCallback(
+      connectorSlug: string,
+      query: CallbackQuery,
+      options: { readonly baseUrl?: string } = {},
+    ) {
       const client = setupApp({
+        baseUrl: options.baseUrl,
         context,
         routes: connectorsSlugCallbackRoutes,
       })(connectorsSlugCallbackContract);
@@ -2050,19 +2059,44 @@ export function createConnectorBddApi(context: TestContext) {
         throw new Error("Expected the GitHub install redirect to carry state");
       }
 
-      const callback = await accept(
-        client.setupCallback({
-          query: {
-            installation_id: installationId,
-            setup_action: "install",
-            state,
-          },
-        }),
-        [307],
+      const providerCallbackUri = installUrl.searchParams.get("redirect_uri");
+      if (!providerCallbackUri) {
+        throw new Error(
+          "Expected the GitHub install redirect to carry a callback URI",
+        );
+      }
+      const callbackQuery = {
+        installation_id: installationId,
+        setup_action: "install" as const,
+        state,
+      };
+      const requestSetupCallback = async (baseUrl: string) => {
+        const callbackClient = setupApp({
+          baseUrl,
+          context,
+          routes: githubOauthRoutes,
+        })(githubOauthContract);
+        return await accept(
+          callbackClient.setupCallback({ query: callbackQuery }),
+          [307],
+        );
+      };
+      let callback = await requestSetupCallback(
+        new URL(providerCallbackUri).origin,
       );
-      const callbackLocation = callback.headers.get("location");
+      let callbackLocation = callback.headers.get("location");
       if (!callbackLocation) {
         throw new Error("Expected a GitHub setup callback redirect location");
+      }
+      const firstCallbackLocation = new URL(callbackLocation);
+      if (firstCallbackLocation.pathname === "/api/github/app/setup/callback") {
+        callback = await requestSetupCallback(firstCallbackLocation.origin);
+        callbackLocation = callback.headers.get("location");
+        if (!callbackLocation) {
+          throw new Error(
+            "Expected the branded GitHub setup callback to redirect",
+          );
+        }
       }
       const callbackError = new URL(callbackLocation).searchParams.get("error");
       if (callbackError) {
@@ -2645,16 +2679,46 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.authorizationUrl;
     },
 
-    async completeCustomConnectorOAuth2Callback(query: CallbackQuery) {
+    async startCustomConnectorOAuth2AtBaseUrl(
+      actor: ApiTestUser,
+      connectorId: string,
+      baseUrl: string,
+      account: ConnectorAccountMutationIntent = { intent: "single-account" },
+    ): Promise<string> {
       const client = setupApp({
+        baseUrl,
+        context,
+        routes: customConnectorOAuth2Routes,
+      })(customConnectorOAuth2Contract);
+      const response = await accept(
+        client.start({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: { account },
+        }),
+        [200],
+      );
+      return response.body.authorizationUrl;
+    },
+
+    async completeCustomConnectorOAuth2Callback(
+      query: CallbackQuery,
+      options: RequestBaseUrlOptions = {},
+    ) {
+      const client = setupApp({
+        ...options,
         context,
         routes: customConnectorOAuth2Routes,
       })(customConnectorOAuth2Contract);
       return await accept(client.callback({ query }), [307]);
     },
 
-    async completeCustomConnectorOAuth2CallbackResult(query: CallbackQuery) {
+    async completeCustomConnectorOAuth2CallbackResult(
+      query: CallbackQuery,
+      options: RequestBaseUrlOptions = {},
+    ) {
       const client = setupApp({
+        ...options,
         context,
         routes: customConnectorOAuth2Routes,
       })(customConnectorOAuth2Contract);

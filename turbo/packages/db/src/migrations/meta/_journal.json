@@ -1709,6 +1709,20 @@
       "when": 1788326111286,
       "tag": "1051_add_claude_fable_5_1_support",
       "breakpoints": true
+    },
+    {
+      "idx": 1052,
+      "version": "7",
+      "when": 1788334500283,
+      "tag": "1052_fast_nighthawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 1053,
+      "version": "7",
+      "when": 1788341885276,
+      "tag": "1053_new_kronos",
+      "breakpoints": true
     }
   ]
 }

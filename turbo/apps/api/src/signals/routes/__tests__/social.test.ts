@@ -21,6 +21,7 @@ import {
   type SocialKitRequest,
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -50,6 +51,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { reconcileSocialKitDownloadsForTest } from "./helpers/runtime-state";
 
@@ -2276,6 +2278,212 @@ describe("managed SocialKit route", () => {
         return command instanceof UploadPartCommand;
       }),
     ).toHaveLength(1);
+  });
+
+  // An ID3v2 header followed by an MPEG audio frame, which is what an upstream
+  // audio-only fallback returns for a `format=mp4` request.
+  const AUDIO_ONLY_PAYLOAD = new Uint8Array([
+    0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0xff, 0xfb,
+    0x90, 0x00,
+  ]);
+
+  // A bare MPEG frame sync with no ID3 tag in front of it.
+  const MPEG_FRAME_PAYLOAD = new Uint8Array([
+    0xff, 0xfb, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00,
+  ]);
+
+  // A minimal ISO base media header: a box length, `ftyp`, then the brand.
+  function isoBaseMediaPayload(brand: string): Uint8Array {
+    const payload = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00,
+    ]);
+    payload.set(
+      [...brand].map((character) => {
+        return character.charCodeAt(0);
+      }),
+      8,
+    );
+    return payload;
+  }
+
+  async function completeDownloadWithPayload(
+    actor: ApiTestUser,
+    pricing: UsagePricingFixture,
+    payload: Uint8Array,
+  ) {
+    const providerJobId = `provider-audio-only-${randomUUID()}`;
+    const downloadPath = `/download-${providerJobId}`;
+    context.mocks.dns.lookupOverrides.set("media.socialkit.test", [
+      { address: "8.8.8.8", family: 4 },
+    ]);
+    server.use(
+      http.post(`${SOCIALKIT_BASE}/v2/youtube/download`, () => {
+        return HttpResponse.json({ jobId: providerJobId, status: "queued" });
+      }),
+      http.get(`${SOCIALKIT_BASE}/v2/downloads/${providerJobId}`, () => {
+        return HttpResponse.json({
+          jobId: providerJobId,
+          status: "ready",
+          platform: "youtube",
+          downloadUrl: `https://media.socialkit.test${downloadPath}`,
+          durationSeconds: 61,
+          fileSizeMB: 1,
+          creditsCost: 2,
+          quality: "720p",
+          format: "mp4",
+          title: "Public clip",
+        });
+      }),
+      http.get(`https://media.socialkit.test${downloadPath}`, () => {
+        return new HttpResponse(payload, {
+          headers: { "content-length": String(payload.byteLength) },
+        });
+      }),
+    );
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command instanceof ListObjectsV2Command) {
+        return Promise.resolve({ Contents: [] });
+      }
+      if (command instanceof CreateMultipartUploadCommand) {
+        return Promise.resolve({ UploadId: "socialkit-audio-only" });
+      }
+      if (command instanceof UploadPartCommand) {
+        return Promise.resolve({ ETag: '"socialkit-audio-only-etag"' });
+      }
+      return Promise.resolve({});
+    });
+    const socialClient = client(pricing.resolution)(socialContract);
+
+    const created = await accept(
+      socialClient.createDownload({
+        headers: authenticate(actor),
+        body: {
+          platform: "youtube",
+          url: "https://youtu.be/public-video",
+          maxDuration: 120,
+          quality: "720p",
+          format: "mp4",
+        },
+      }),
+      [202],
+    );
+    await flushWaitUntilForTest();
+    const completed = await accept(
+      socialClient.getDownload({
+        headers: authenticate(actor),
+        params: { downloadId: created.body.downloadId },
+      }),
+      [200],
+    );
+    return completed.body;
+  }
+
+  it.each([
+    {
+      caseName: "an ID3-tagged MPEG stream",
+      payload: AUDIO_ONLY_PAYLOAD,
+      filename: "Public clip.mp3",
+      contentType: "audio/mpeg",
+    },
+    {
+      caseName: "a bare MPEG frame sync",
+      payload: MPEG_FRAME_PAYLOAD,
+      filename: "Public clip.mp3",
+      contentType: "audio/mpeg",
+    },
+    {
+      caseName: "an M4A-branded ISO container",
+      payload: isoBaseMediaPayload("M4A "),
+      filename: "Public clip.m4a",
+      contentType: "audio/mp4",
+    },
+    {
+      caseName: "an mp42-branded ISO container",
+      payload: isoBaseMediaPayload("mp42"),
+      filename: "Public clip.mp4",
+      contentType: "video/mp4",
+    },
+  ])(
+    "files $caseName by its detected container once the switch is on",
+    async ({ payload, filename, contentType }) => {
+      const actor = createBddApi(context).user();
+      if (!actor.orgId) {
+        throw new Error("Expected the download actor to have an organization");
+      }
+      configureProvider();
+      const pricing = await setupConfiguredPricing();
+      await fundActor(actor);
+      await updateFeatureSwitchesForUser(
+        context,
+        { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+        { [FeatureSwitchKey.SocialDownloadDetectedMediaType]: true },
+      );
+
+      const body = await completeDownloadWithPayload(actor, pricing, payload);
+
+      expect(body).toMatchObject({
+        status: "completed",
+        artifact: {
+          filename,
+          contentType,
+          sizeBytes: payload.byteLength,
+        },
+      });
+    },
+  );
+
+  it("keeps the requested format for an unrecognized container", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Expected the download actor to have an organization");
+    }
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.SocialDownloadDetectedMediaType]: true },
+    );
+    const payload = new Uint8Array([
+      0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00,
+    ]);
+
+    const body = await completeDownloadWithPayload(actor, pricing, payload);
+
+    expect(body).toMatchObject({
+      status: "completed",
+      artifact: {
+        filename: "Public clip.mp4",
+        contentType: "video/mp4",
+        sizeBytes: payload.byteLength,
+      },
+    });
+  });
+
+  it("keeps the requested format for the same artifact while the switch is off", async () => {
+    const actor = createBddApi(context).user();
+    configureProvider();
+    const pricing = await setupConfiguredPricing();
+    await fundActor(actor);
+
+    const body = await completeDownloadWithPayload(
+      actor,
+      pricing,
+      AUDIO_ONLY_PAYLOAD,
+    );
+
+    expect(body).toMatchObject({
+      status: "completed",
+      artifact: {
+        filename: "Public clip.mp4",
+        contentType: "video/mp4",
+        sizeBytes: AUDIO_ONLY_PAYLOAD.byteLength,
+      },
+    });
   });
 
   it.each([

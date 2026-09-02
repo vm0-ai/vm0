@@ -2033,12 +2033,21 @@
       },
       "cardDescription": "Trasforma un file o una registrazione dello schermo in un video completo",
       "description": "Aggiungi una fonte, scegli facoltativamente avatar e voce, quindi crea il video in una chat.",
+      "desktop": {
+        "checkingCompatibility": "Verifica compatibilità",
+        "description": "La registrazione dello schermo avviene nell'app desktop {{desktopProductName}}, che cattura qualsiasi finestra e registra dove fai clic.",
+        "download": "Scarica per macOS",
+        "handoffDetail": "La registrazione si apre qui, pronta per un presentatore e una voce.",
+        "handoffTitle": "Torna automaticamente a questa procedura",
+        "heading": "Registra con {{desktopProductName}} Desktop",
+        "illustration": "La registrazione avviene in {{desktopProductName}} Desktop",
+        "installDetail": "Richiede un Mac Apple Silicon con macOS 14 o successivo. I Mac Intel non sono supportati.",
+        "installTitle": "Scarica e installa {{desktopProductName}} Desktop",
+        "recordDetail": "Interrompila dallo stesso menu quando hai finito.",
+        "recordTitle": "Avvia una registrazione dalla barra dei menu",
+        "unsupportedIntelMac": "Richiede un Mac Apple Silicon"
+      },
       "errors": {
-        "recordingEmpty": "La registrazione è vuota. Riprova.",
-        "recordingFailed": "Impossibile avviare la registrazione dello schermo. Riprova in una versione recente di Chrome.",
-        "recordingPermission": "Non è stato condiviso nulla. Scegli una scheda, una finestra o uno schermo quando sei pronto.",
-        "recordingShareEnded": "La condivisione dello schermo è terminata prima dell'inizio della registrazione.",
-        "recordingUnsupported": "Questo browser non supporta la registrazione dello schermo.",
         "sendFailed": "Impossibile creare la chat. La fonte è ancora salvata in locale ed è stata scaricata come backup.",
         "uploadFailed": "Impossibile caricare la fonte. È ancora salvata in locale ed è stata scaricata come backup."
       },
@@ -2046,21 +2055,7 @@
         "back": "Indietro",
         "createInChat": "Crea nella chat",
         "download": "Scarica fonte",
-        "next": "Avanti",
-        "startRecording": "Scegli lo schermo e avvia",
-        "stopRecording": "Interrompi registrazione"
-      },
-      "recording": {
-        "chooseSurface": "Scegli una scheda, una finestra o uno schermo",
-        "countdown": "La registrazione inizia dopo il conto alla rovescia",
-        "description": "Chrome chiederà cosa condividere. La registrazione inizia solo dopo il conto alla rovescia di tre secondi.",
-        "heading": "Registra lo schermo",
-        "localNote": "Puoi interrompere dalla barra di condivisione di Chrome o tornare qui. La registrazione resta in locale finché non viene creata la chat.",
-        "microphone": "Microfono",
-        "microphoneHelp": "Aggiungi una narrazione durante la dimostrazione",
-        "recordingLocally": "Registrazione locale in corso",
-        "systemAudio": "Audio di sistema",
-        "systemAudioHelp": "Le fonti disponibili dipendono da Chrome e dal sistema"
+        "next": "Avanti"
       },
       "review": {
         "avatar": "Avatar",
@@ -2071,30 +2066,22 @@
         "voice": "Voce"
       },
       "source": {
-        "chatDescription": "Apri subito una chat e sviluppa il video con Zero",
-        "chatDetail": "Aggiungi fonte, avatar o voce più tardi nella chat",
-        "chatTitle": "Inizia nella chat",
-        "documentDescription": "Trasforma i contenuti in un video introduttivo narrato",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Carica slide o documento",
-        "dropDescription": "Slide, documenti o registrazioni",
-        "dropTitle": "Rilascia qui una fonte",
+        "documentDescription": "Trasforma le tue slide in un video introduttivo narrato",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Carica le slide",
         "heading": "Come vuoi iniziare?",
-        "help": "Aggiungi materiale che hai già, registra lo schermo o descrivi il video con parole tue",
-        "recordDescription": "Scegli una scheda, una finestra o l'intero schermo",
-        "recordDetail": "Inizia dopo un conto alla rovescia di tre secondi",
+        "help": "Carica le slide che hai già oppure registra lo schermo con {{desktopProductName}} Desktop",
+        "recordDescription": "Cattura una demo con l'app desktop",
+        "recordDetail": "Richiede {{desktopProductName}} Desktop su macOS",
         "recordTitle": "Registra lo schermo",
-        "videoDescription": "Lascia che l'IA migliori ritmo, inquadratura e narrazione",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Carica una registrazione"
+        "uploadDescription": "Scegli un file dal tuo computer",
+        "uploadTitle": "Carica sorgente"
       },
       "sourceReview": {
         "format": "Formato",
         "heading": "La fonte è pronta",
         "help": "Controlla il file prima di continuare",
         "inAccount": "Nel tuo account",
-        "inBrowser": "In questo browser",
-        "inTab": "Finché non chiudi questa scheda",
         "replace": "Sostituisci fonte",
         "saved": "Salvata",
         "source": "Fonte"
@@ -2778,7 +2765,7 @@
         "prefixes": "Prefissi",
         "prefixesHint": "(uno per riga, solo https)",
         "redirectCopy": "Copia reindirizzamento URL",
-        "redirectHint": "(Registra questo URL nell'applicazione OAuth del provider.)",
+        "redirectHint": "(Registra questo URL nell'applicazione OAuth del provider. Mantieni registrati anche gli eventuali URL di reindirizzamento VM0 o Okou esistenti.)",
         "redirectUrl": "Reindirizza URL",
         "removeApiAuthentication": "Rimuovi l'autenticazione API",
         "removeNoAuthentication": "Rimuovi \"Nessuna autenticazione\"",

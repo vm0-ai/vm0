@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import type { ConnectorRuntimeTargetRegistration } from "@okouai/api-contracts/contracts/runners";
 import type {
   TestRuntimeStateActionBody,
@@ -278,6 +279,20 @@ export async function readRunAutonomyBudgetFixture(
   return response.autonomy_budget ?? null;
 }
 
+export async function readRunFailureReasonFixture(
+  context: TestContext,
+  runId: string,
+): Promise<RunFailureReason | null> {
+  const response = await postAction(context, {
+    action: "read-run-failure-reason",
+    run_id: runId,
+  });
+  if (!("failure_reason" in response)) {
+    throw new Error("readRunFailureReasonFixture missing failure_reason");
+  }
+  return response.failure_reason ?? null;
+}
+
 /**
  * Launch snapshots are intentionally writer-only in Stage 2, so persistence
  * cannot be observed through a production API. Keep this test-only exception
@@ -315,6 +330,7 @@ export async function readWorkflowAutomationAutonomyFixture(
 ): Promise<{
   readonly autonomyBudget: number;
   readonly enabled: boolean;
+  readonly eventConnectorId: string | null;
   readonly lastRunId: string | null;
   readonly officialBlueprintKey: string | null;
   readonly officialResultEmailEnabled: boolean | null;
@@ -333,6 +349,7 @@ export async function readWorkflowAutomationAutonomyFixture(
     ? {
         autonomyBudget: state.autonomy_budget,
         enabled: state.enabled,
+        eventConnectorId: state.event_connector_id,
         lastRunId: state.last_run_id,
         officialBlueprintKey: state.official_blueprint_key,
         officialResultEmailEnabled: state.official_result_email_enabled,
@@ -651,6 +668,16 @@ export async function setRunnerJobContextProfileAsPreviousApi(
     action: "set-runner-job-context-profile-as-previous-api",
     run_id: runId,
     profile,
+  });
+}
+
+export async function setRunnerJobPiOwnershipTransferAsPreviousApi(
+  context: TestContext,
+  runId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-pi-ownership-transfer-as-previous-api",
+    run_id: runId,
   });
 }
 

@@ -5693,7 +5693,7 @@ function SelectablePagedGroupRow({
     if (phase !== "selecting") {
       return;
     }
-    const result = toggle(events);
+    const result = toggle(group.beginEventId, events);
     if (result === "too-large") {
       toast.error(
         t(($) => {
@@ -5859,7 +5859,17 @@ function clipboardAttachmentsFromUserMessage(
       return [];
     }
     const attachment = attachmentById.get(part.fileId);
-    return attachment ? [attachment] : [];
+    return attachment
+      ? [
+          {
+            id: attachment.id,
+            url: attachment.url,
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+            size: attachment.size,
+          },
+        ]
+      : [];
   });
 }
 

@@ -175,6 +175,11 @@
         border-radius: 9999px;
         animation: app-bootstrap-skeleton-avatar-pulse 2s
           cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        animation-play-state: paused;
+      }
+
+      .app-bootstrap-skeleton__avatar--animated {
+        animation-play-state: running;
       }
 
       .app-bootstrap-skeleton__avatar-layers {
@@ -294,7 +299,7 @@
     </script>
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"
       media="print"
       onload="this.media = 'all'"
     />

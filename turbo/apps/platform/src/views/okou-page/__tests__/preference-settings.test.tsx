@@ -105,6 +105,64 @@ describe("unified preference settings", () => {
     expect(new URLSearchParams(search()).get("settings")).toBe("debug");
   });
 
+  it.each([
+    {
+      morningBrief: false,
+      officialWorkflows: false,
+      visible: false,
+    },
+    {
+      morningBrief: true,
+      officialWorkflows: false,
+      visible: true,
+    },
+    {
+      morningBrief: false,
+      officialWorkflows: true,
+      visible: false,
+    },
+    {
+      morningBrief: true,
+      officialWorkflows: true,
+      visible: true,
+    },
+  ])(
+    "gates Morning Brief loading with morningBrief=$morningBrief independently from officialWorkflows=$officialWorkflows",
+    async ({ morningBrief, officialWorkflows, visible }) => {
+      let preferenceReads = 0;
+      context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
+        preferenceReads += 1;
+        return respond(200, {
+          enabled: false,
+          nextRunAt: null,
+          timezone: "Asia/Shanghai",
+          unavailableReason: null,
+        });
+      });
+
+      detachedSetupPage({
+        context,
+        path: "/agents?settings=preference",
+        featureSwitches: {
+          [FeatureSwitchKey.MorningBrief]: morningBrief,
+          [FeatureSwitchKey.OfficialWorkflows]: officialWorkflows,
+        },
+      });
+
+      const dialog = await screen.findByRole("dialog", { name: "Settings" });
+      await waitFor(() => {
+        expect({
+          cardVisible:
+            within(dialog).queryByTestId("morning-brief-preference") !== null,
+          preferenceLoaded: preferenceReads > 0,
+        }).toStrictEqual({
+          cardVisible: visible,
+          preferenceLoaded: visible,
+        });
+      });
+    },
+  );
+
   it("preserves the legacy Morning Brief focus and displays its authoritative next email", async () => {
     const scrollIntoView = mockScrollIntoView();
     const nextRunAt = "2030-01-02T23:30:00.000Z";
@@ -120,6 +178,10 @@ describe("unified preference settings", () => {
     detachedSetupPage({
       context,
       path: "/settings?tab=timezone&focus=morning-brief",
+      featureSwitches: {
+        [FeatureSwitchKey.MorningBrief]: true,
+        [FeatureSwitchKey.OfficialWorkflows]: false,
+      },
     });
 
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
@@ -191,6 +253,10 @@ describe("unified preference settings", () => {
     detachedSetupPage({
       context,
       path: "/agents?settings=preference",
+      featureSwitches: {
+        [FeatureSwitchKey.MorningBrief]: true,
+        [FeatureSwitchKey.OfficialWorkflows]: false,
+      },
     });
     const toggle = await screen.findByRole("switch", {
       name: "Morning Brief",

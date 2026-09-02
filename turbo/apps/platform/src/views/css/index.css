@@ -377,6 +377,18 @@ body {
   }
 }
 
+/* Geist rollout, gated by the geistTypeface switch. The app shell sets the
+   attribute on the document root so portaled dialogs, popovers, and toasts
+   swap with it. Both families ship in the stylesheet request in index.html;
+   their woff2 files only download once an element actually resolves to them. */
+:root[data-typeface="geist"] {
+  --font-family-sans:
+    "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-family-mono:
+    "Geist Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
+}
+
 /* Palette colors are kept as the exact source values. Each named theme pairs
    one anchor with one companion; the same pair drives the picker swatch and
    the low-concentration workspace ambience below. */

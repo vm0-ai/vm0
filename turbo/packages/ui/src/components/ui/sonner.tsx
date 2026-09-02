@@ -76,8 +76,7 @@ function Toaster({ onReady, ...props }: ToasterProps) {
               "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
           },
           style: {
-            fontFamily:
-              '"Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontFamily: "var(--font-family-sans)",
           },
         }}
         {...rest}

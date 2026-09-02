@@ -25,42 +25,10 @@ import { cn } from "@okouai/ui";
 import type { ImageAnnotationMark } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   ANNOTATION_INKS,
-  addAnnotationMark$,
-  annotationCanRedo$,
-  annotationCanUndo$,
-  annotationDraft$,
-  annotationDirty$,
-  annotationDrag$,
-  annotationInk$,
-  annotationSelectedMarkId$,
-  annotationSelectedNoteId$,
-  annotationSessionTarget$,
-  annotationStroke$,
-  annotationSurface$,
-  annotationTool$,
-  annotationZoom$,
-  bindAnnotationSurface$,
-  closeAnnotationEditor$,
-  commitAnnotation$,
-  redoAnnotation$,
-  removeAnnotationMark$,
-  removeSelectedAnnotationMark$,
-  selectAnnotationMark$,
-  selectAnnotationNote$,
-  setAnnotationInk$,
-  setAnnotationMarkNote$,
-  setAnnotationStroke$,
-  setAnnotationDrag$,
-  setAnnotationTool$,
   ANNOTATION_RESIZE_EDGES,
   markOrdinal,
-  moveAnnotationMarkRect$,
-  moveAnnotationNoteBox$,
   noteOnImage,
   nextMarkOrdinal,
-  resetAnnotationZoom$,
-  undoAnnotation$,
-  zoomAnnotation$,
   type AnnotationDrag,
   type AnnotationInk,
   type AnnotationPoint,
@@ -68,7 +36,10 @@ import {
   type AnnotationStroke,
   type AnnotationTarget,
   type AnnotationTool,
+  type ImageAnnotationSignals,
 } from "../../signals/okou-page/image-annotation.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   markInk,
@@ -200,10 +171,14 @@ function useToolLabel(): (tool: AnnotationTool) => string {
   };
 }
 
-function InkSwatches() {
+function InkSwatches({
+  signals,
+}: {
+  readonly signals: ImageAnnotationSignals;
+}) {
   const { t } = useTranslation();
-  const ink = useGet(annotationInk$);
-  const setInk = useSet(setAnnotationInk$);
+  const ink = useGet(signals.annotationInk$);
+  const setInk = useSet(signals.setAnnotationInk$);
 
   return (
     <div className="flex items-center gap-0.5 px-1">
@@ -255,11 +230,15 @@ function InkSwatches() {
   );
 }
 
-function ZoomControls() {
+function ZoomControls({
+  signals,
+}: {
+  readonly signals: ImageAnnotationSignals;
+}) {
   const { t } = useTranslation();
-  const zoom = useGet(annotationZoom$);
-  const zoomBy = useSet(zoomAnnotation$);
-  const resetZoom = useSet(resetAnnotationZoom$);
+  const zoom = useGet(signals.annotationZoom$);
+  const zoomBy = useSet(signals.zoomAnnotation$);
+  const resetZoom = useSet(signals.resetAnnotationZoom$);
 
   return (
     <div className="absolute right-4 top-4 z-20 flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-1 shadow-sm">
@@ -302,9 +281,9 @@ function ZoomControls() {
   );
 }
 
-function ToolPill() {
-  const tool = useGet(annotationTool$);
-  const setTool = useSet(setAnnotationTool$);
+function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
+  const tool = useGet(signals.annotationTool$);
+  const setTool = useSet(signals.setAnnotationTool$);
   const toolLabel = useToolLabel();
 
   return (
@@ -337,7 +316,7 @@ function ToolPill() {
         );
       })}
       <span className="mx-1 h-[18px] w-px bg-border" />
-      <InkSwatches />
+      <InkSwatches signals={signals} />
     </div>
   );
 }
@@ -348,11 +327,17 @@ function ToolPill() {
  * clue which mark is being edited, and text marks were being typed twice —
  * once on the image and once underneath it.
  */
-function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
+function MarkNotePopover({
+  mark,
+  signals,
+}: {
+  readonly mark: ImageAnnotationMark;
+  readonly signals: ImageAnnotationSignals;
+}) {
   const { t } = useTranslation();
-  const setNote = useSet(setAnnotationMarkNote$);
-  const removeMark = useSet(removeAnnotationMark$);
-  const deselect = useSet(selectAnnotationMark$);
+  const setNote = useSet(signals.setAnnotationMarkNote$);
+  const removeMark = useSet(signals.removeAnnotationMark$);
+  const deselect = useSet(signals.selectAnnotationMark$);
   const anchor = markAnchor(mark);
 
   return (
@@ -425,14 +410,20 @@ function MarkNotePopover({ mark }: { mark: ImageAnnotationMark }) {
   );
 }
 
-function EditorHeader({ filename }: { filename: string }) {
+function EditorHeader({
+  filename,
+  signals,
+}: {
+  readonly filename: string;
+  readonly signals: ImageAnnotationSignals;
+}) {
   const { t } = useTranslation();
-  const annotation = useGet(annotationDraft$);
-  const canUndo = useGet(annotationCanUndo$);
-  const canRedo = useGet(annotationCanRedo$);
-  const undo = useSet(undoAnnotation$);
-  const redo = useSet(redoAnnotation$);
-  const close = useSet(closeAnnotationEditor$);
+  const annotation = useGet(signals.annotationDraft$);
+  const canUndo = useGet(signals.annotationCanUndo$);
+  const canRedo = useGet(signals.annotationCanRedo$);
+  const undo = useSet(signals.undoAnnotation$);
+  const redo = useSet(signals.redoAnnotation$);
+  const close = useSet(signals.closeAnnotationEditor$);
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 pl-4 pr-3">
@@ -509,13 +500,18 @@ function EditorHeader({ filename }: { filename: string }) {
   );
 }
 
-function EditorFooter() {
+function EditorFooter({
+  signals,
+}: {
+  readonly signals: ImageAnnotationSignals;
+}) {
   const { t } = useTranslation();
-  const close = useSet(closeAnnotationEditor$);
-  const commit = useSet(commitAnnotation$);
+  const close = useSet(signals.closeAnnotationEditor$);
+  const commit = useSet(signals.commitAnnotation$);
+  const pageSignal = useGet(pageSignal$);
   // Nothing drawn, nothing to attach — an enabled button here promises an edit
   // the session does not have.
-  const dirty = useGet(annotationDirty$);
+  const dirty = useGet(signals.annotationDirty$);
 
   return (
     <div className="flex h-14 shrink-0 items-center gap-3 border-t border-border bg-card px-4">
@@ -530,7 +526,14 @@ function EditorFooter() {
           return $.chat.actions.cancel;
         })}
       </Button>
-      <Button type="button" size="sm" disabled={!dirty} onClick={commit}>
+      <Button
+        type="button"
+        size="sm"
+        disabled={!dirty}
+        onClick={() => {
+          detach(commit(pageSignal), Reason.DomCallback);
+        }}
+      >
         {t(($) => {
           return $.artifacts.annotation.attach;
         })}
@@ -543,15 +546,20 @@ function EditorFooter() {
  * The editor's keyboard surface. Every binding steps aside while a field has
  * focus, so typing a note never triggers a shortcut.
  */
-function KeyboardShortcuts() {
-  const removeSelected = useSet(removeSelectedAnnotationMark$);
-  const selectMark = useSet(selectAnnotationMark$);
-  const setTool = useSet(setAnnotationTool$);
-  const undo = useSet(undoAnnotation$);
-  const redo = useSet(redoAnnotation$);
-  const close = useSet(closeAnnotationEditor$);
-  const commit = useSet(commitAnnotation$);
-  const selectedId = useGet(annotationSelectedMarkId$);
+function KeyboardShortcuts({
+  signals,
+}: {
+  readonly signals: ImageAnnotationSignals;
+}) {
+  const removeSelected = useSet(signals.removeSelectedAnnotationMark$);
+  const selectMark = useSet(signals.selectAnnotationMark$);
+  const setTool = useSet(signals.setAnnotationTool$);
+  const undo = useSet(signals.undoAnnotation$);
+  const redo = useSet(signals.redoAnnotation$);
+  const close = useSet(signals.closeAnnotationEditor$);
+  const commit = useSet(signals.commitAnnotation$);
+  const selectedId = useGet(signals.annotationSelectedMarkId$);
+  const pageSignal = useGet(pageSignal$);
   let cleanup: (() => void) | null = null;
 
   return (
@@ -583,7 +591,7 @@ function KeyboardShortcuts() {
           }
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
-            commit();
+            detach(commit(pageSignal), Reason.DomCallback);
             return;
           }
           if (event.key === "Escape") {
@@ -685,17 +693,17 @@ function draggedRect(drag: AnnotationDrag, point: AnnotationPoint) {
   };
 }
 
-function useStrokeHandlers(): StrokeHandlers {
-  const tool = useGet(annotationTool$);
-  const ink = useGet(annotationInk$);
-  const stroke = useGet(annotationStroke$);
-  const drag = useGet(annotationDrag$);
-  const surface = useGet(annotationSurface$);
-  const setStroke = useSet(setAnnotationStroke$);
-  const setDrag = useSet(setAnnotationDrag$);
-  const addMark = useSet(addAnnotationMark$);
-  const selectMark = useSet(selectAnnotationMark$);
-  const selectNote = useSet(selectAnnotationNote$);
+function useStrokeHandlers(signals: ImageAnnotationSignals): StrokeHandlers {
+  const tool = useGet(signals.annotationTool$);
+  const ink = useGet(signals.annotationInk$);
+  const stroke = useGet(signals.annotationStroke$);
+  const drag = useGet(signals.annotationDrag$);
+  const surface = useGet(signals.annotationSurface$);
+  const setStroke = useSet(signals.setAnnotationStroke$);
+  const setDrag = useSet(signals.setAnnotationDrag$);
+  const addMark = useSet(signals.addAnnotationMark$);
+  const selectMark = useSet(signals.selectAnnotationMark$);
+  const selectNote = useSet(signals.selectAnnotationNote$);
 
   const pointAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = surface?.getBoundingClientRect();
@@ -899,11 +907,17 @@ function ResizeHandles({
  * It owns its own selection and drag so that moving a sentence into clear space
  * never disturbs the mark it explains — the two are edited independently.
  */
-function NoteLayer({ marks }: { marks: readonly ImageAnnotationMark[] }) {
-  const selectedNoteId = useGet(annotationSelectedNoteId$);
-  const selectNote = useSet(selectAnnotationNote$);
-  const surface = useGet(annotationSurface$);
-  const beginDrag = useSet(setAnnotationDrag$);
+function NoteLayer({
+  marks,
+  signals,
+}: {
+  readonly marks: readonly ImageAnnotationMark[];
+  readonly signals: ImageAnnotationSignals;
+}) {
+  const selectedNoteId = useGet(signals.annotationSelectedNoteId$);
+  const selectNote = useSet(signals.selectAnnotationNote$);
+  const surface = useGet(signals.annotationSurface$);
+  const beginDrag = useSet(signals.setAnnotationDrag$);
 
   const selectedNote = marks.find((mark) => {
     return mark.id === selectedNoteId && noteOnImage(mark) !== null;
@@ -964,10 +978,11 @@ function NoteLayer({ marks }: { marks: readonly ImageAnnotationMark[] }) {
 
 /** Starts a resize from whichever grip was grabbed on the selected mark. */
 function useGrabHandle(
+  signals: ImageAnnotationSignals,
   selectedMark: ImageAnnotationMark | undefined,
 ): (corner: ResizeCorner, event: ReactPointerEvent<HTMLElement>) => void {
-  const surface = useGet(annotationSurface$);
-  const beginDrag = useSet(setAnnotationDrag$);
+  const surface = useGet(signals.annotationSurface$);
+  const beginDrag = useSet(signals.setAnnotationDrag$);
 
   return (corner, event) => {
     // The handle sits on the drawing surface, so without this the grab also
@@ -994,18 +1009,26 @@ function useGrabHandle(
   };
 }
 
-function EditorStage({ filename, url }: { filename: string; url: string }) {
-  const annotation = useGet(annotationDraft$);
-  const ink = useGet(annotationInk$);
-  const stroke = useGet(annotationStroke$);
-  const zoom = useGet(annotationZoom$);
-  const surface = useGet(annotationSurface$);
-  const selectedId = useGet(annotationSelectedMarkId$);
-  const selectMark = useSet(selectAnnotationMark$);
-  const bindSurface = useSet(bindAnnotationSurface$);
-  const moveRect = useSet(moveAnnotationMarkRect$);
-  const moveNoteBox = useSet(moveAnnotationNoteBox$);
-  const handlers = useStrokeHandlers();
+function EditorStage({
+  filename,
+  signals,
+  url,
+}: {
+  readonly filename: string;
+  readonly signals: ImageAnnotationSignals;
+  readonly url: string;
+}) {
+  const annotation = useGet(signals.annotationDraft$);
+  const ink = useGet(signals.annotationInk$);
+  const stroke = useGet(signals.annotationStroke$);
+  const zoom = useGet(signals.annotationZoom$);
+  const surface = useGet(signals.annotationSurface$);
+  const selectedId = useGet(signals.annotationSelectedMarkId$);
+  const selectMark = useSet(signals.selectAnnotationMark$);
+  const bindSurface = useSet(signals.bindAnnotationSurface$);
+  const moveRect = useSet(signals.moveAnnotationMarkRect$);
+  const moveNoteBox = useSet(signals.moveAnnotationNoteBox$);
+  const handlers = useStrokeHandlers(signals);
 
   const box = surface?.getBoundingClientRect();
   const aspect = box && box.height > 0 ? box.width / box.height : 1;
@@ -1016,7 +1039,7 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
   const selectedMark = annotation.marks.find((mark) => {
     return mark.id === selectedId;
   });
-  const grabHandle = useGrabHandle(selectedMark);
+  const grabHandle = useGrabHandle(signals, selectedMark);
 
   // One pointer move, two things it might be dragging.
   const applyDrag = (
@@ -1094,11 +1117,13 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
               />
             );
           })}
-          <NoteLayer marks={annotation.marks} />
+          <NoteLayer marks={annotation.marks} signals={signals} />
           {selectedMark && (
             <ResizeHandles mark={selectedMark} onGrab={grabHandle} />
           )}
-          {selectedMark && <MarkNotePopover mark={selectedMark} />}
+          {selectedMark && (
+            <MarkNotePopover mark={selectedMark} signals={signals} />
+          )}
           {preview && (
             <MarkShape
               mark={preview}
@@ -1108,28 +1133,32 @@ function EditorStage({ filename, url }: { filename: string; url: string }) {
           )}
         </div>
       </div>
-      <ZoomControls />
-      <ToolPill />
+      <ZoomControls signals={signals} />
+      <ToolPill signals={signals} />
     </div>
   );
 }
 
-/**
- * Mounted at the app root, so it must not touch page-scoped state until a
- * session actually exists — `useResolvedAttachmentUrl` reads the resolver that
- * belongs to the current page, and reaching for it before any page is set up
- * throws. Splitting the surface into its own component keeps that read behind
- * the session check.
- */
-export function ImageAnnotationEditor() {
-  const target = useGet(annotationSessionTarget$);
+/** The editor belongs to one composer and can only edit that draft's files. */
+export function ImageAnnotationEditor({
+  signals,
+}: {
+  readonly signals: ImageAnnotationSignals;
+}) {
+  const target = useGet(signals.annotationSessionTarget$);
   if (!target) {
     return null;
   }
-  return <AnnotationSurface target={target} />;
+  return <AnnotationSurface signals={signals} target={target} />;
 }
 
-function AnnotationSurface({ target }: { target: AnnotationTarget }) {
+function AnnotationSurface({
+  signals,
+  target,
+}: {
+  readonly signals: ImageAnnotationSignals;
+  readonly target: AnnotationTarget;
+}) {
   const resolvedUrl = useResolvedAttachmentUrl(target.url);
 
   if (resolvedUrl === null) {
@@ -1142,14 +1171,18 @@ function AnnotationSurface({ target }: { target: AnnotationTarget }) {
         className="zero-app fixed inset-0 z-50 flex items-center justify-center bg-gray-900/45 p-6"
         data-testid="image-annotation-editor"
       >
-        <KeyboardShortcuts />
+        <KeyboardShortcuts signals={signals} />
         <div
           className="flex h-[min(700px,90vh)] w-[min(980px,94vw)] min-h-0 flex-col overflow-hidden rounded-xl bg-background text-foreground shadow-[0_24px_70px_hsl(var(--overlay)/0.30)]"
           data-testid="image-annotation-panel"
         >
-          <EditorHeader filename={target.filename} />
-          <EditorStage filename={target.filename} url={resolvedUrl} />
-          <EditorFooter />
+          <EditorHeader filename={target.filename} signals={signals} />
+          <EditorStage
+            filename={target.filename}
+            signals={signals}
+            url={resolvedUrl}
+          />
+          <EditorFooter signals={signals} />
         </div>
       </div>
     </TooltipProvider>

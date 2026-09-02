@@ -19,6 +19,7 @@ import { createDeferredPromise } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   agentPhoneBddWebhookSecret,
@@ -48,6 +49,7 @@ const context = testContext();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const connectors = createConnectorBddApi(context);
 const integrations = createBddIntegrationApi(context);
 const misc = createMiscRoutesApi(context);
 const runs = createRunsApi(context);
@@ -64,6 +66,14 @@ interface SlackEphemeralBody {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function decodeSignedSlackOAuthState(state: string): unknown {
+  const [encodedPayload, signature, extra] = state.split(".");
+  if (!encodedPayload || !signature || extra) {
+    throw new Error("Expected signed Slack OAuth state");
+  }
+  return JSON.parse(Buffer.from(encodedPayload, "base64url").toString());
 }
 
 function requireCanonicalSlackInputAssetId(
@@ -1114,9 +1124,9 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expect(installUrl.searchParams.get("client_id")).toBe(
       "slack-bdd-client-id",
     );
-    expect(installUrl.searchParams.get("state") ?? "").toContain(
-      '"reinstall":true',
-    );
+    expect(
+      decodeSignedSlackOAuthState(installUrl.searchParams.get("state") ?? ""),
+    ).toMatchObject({ reinstall: true });
 
     const missingConnectParams = await integrations.requestSlackOauthConnect(
       {},
@@ -1283,7 +1293,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     );
     expect(connectStartUrl.searchParams.get("team")).toBe(workspaceId);
     const connectStateText = connectStartUrl.searchParams.get("state") ?? "";
-    const connectState: unknown = JSON.parse(connectStateText);
+    const connectState = decodeSignedSlackOAuthState(connectStateText);
     if (!isRecord(connectState)) {
       throw new Error("Expected Slack connect state object");
     }
@@ -1303,13 +1313,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const connected = await integrations.requestSlackOauthCallback(
       {
         code: "member-connect-code",
-        state: JSON.stringify({
-          orgId,
-          userId: member.userId,
-          flow: "connect",
-          prompt: "member prompt",
-          publicBrand: "vm0",
-        }),
+        state: connectStateText,
       },
       [307],
     );
@@ -5689,7 +5693,8 @@ describe("INT-02: Telegram integration", () => {
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
 
@@ -5707,11 +5712,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(installLocation).toContain(
       "https://github.com/apps/bdd-github-app/installations/new",
     );
-    expect(
-      new URL(installLocation).searchParams
-        .get("redirect_uri")
-        ?.endsWith("/api/github/app/setup/callback"),
-    ).toBeTruthy();
+    expect(new URL(installLocation).searchParams.get("redirect_uri")).toBe(
+      "https://api.okou.ai/api/github/app/setup/callback",
+    );
     expect(install.headers.get("Cache-Control")).toBe("no-store");
 
     const admin = integrations.user();
@@ -5754,23 +5757,26 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     }
     expect(new URL(redirectUrl).pathname).toBe("/api/github/oauth/connect");
 
-    const fixedOriginOkouConnect = await integrations.requestGithubOauthConnect(
+    const untrustedOkouConnect = await integrations.requestGithubOauthConnect(
       null,
       { publicBrand: "okou" },
       [307],
     );
-    const fixedOriginOkouUrl = new URL(
-      fixedOriginOkouConnect.headers.get("location") ?? "",
+    const untrustedOkouUrl = new URL(
+      untrustedOkouConnect.headers.get("location") ?? "",
     );
-    expect(fixedOriginOkouUrl.origin).toBe("https://app.okou.ai");
-    const fixedOriginRedirect =
-      fixedOriginOkouUrl.searchParams.get("redirect_url");
-    if (!fixedOriginRedirect) {
-      throw new Error("Expected branded GitHub connect redirect_url");
-    }
-    expect(new URL(fixedOriginRedirect).searchParams.get("publicBrand")).toBe(
+    expect(untrustedOkouUrl.origin).toBe("https://app.vm0.ai");
+
+    const trustedOkouConnect = await integrations.requestGithubOauthConnect(
+      null,
+      { publicBrand: "vm0" },
+      [307],
       "okou",
     );
+    const trustedOkouUrl = new URL(
+      trustedOkouConnect.headers.get("location") ?? "",
+    );
+    expect(trustedOkouUrl.origin).toBe("https://app.okou.ai");
 
     const actor = integrations.user();
     const invalidSignedConnect = await integrations.requestGithubOauthConnect(
@@ -5818,8 +5824,30 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("starts configured GitHub user OAuth with connector state", async () => {
-    mockEnv("APP_URL", "https://app.vm0.test");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+    const tokenRedirectUris: string[] = [];
+    server.use(
+      http.post(
+        "https://github.com/login/oauth/access_token",
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          tokenRedirectUris.push(body.get("redirect_uri") ?? "");
+          return HttpResponse.json({
+            access_token: "bdd-github-user-token",
+            scope: "repo,project,workflow",
+          });
+        },
+      ),
+      http.get("https://api.github.com/user", () => {
+        return HttpResponse.json({
+          id: 4242,
+          login: "bdd-github-user",
+          email: null,
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     integrations.clearGithubAppProvider();
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "bdd-github-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "bdd-github-client-secret");
@@ -5843,7 +5871,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       "bdd-github-client-id",
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://www.vm0.test/api/connectors/github/callback",
+      "https://api.vm0.ai/api/connectors/github/callback",
     );
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toMatch(/^[0-9a-f]{64}$/u);
@@ -5856,21 +5884,55 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       account_mutation: { intent: "add" },
     });
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    const vm0Callback = await connectors.completeOauthCallback(
+      "github",
+      { code: "bdd-vm0-github-code", state },
+      { baseUrl: "https://api.vm0.ai" },
+    );
+    const vm0CallbackLocation = new URL(
+      vm0Callback.headers.get("location") ?? "",
+    );
+    expect(vm0CallbackLocation.origin).toBe("https://app.vm0.ai");
+    expect(vm0CallbackLocation.searchParams.get("message")).toBeNull();
+    expect(vm0CallbackLocation.pathname).toBe("/connector/success");
 
     const okouResponse = await integrations.requestGithubOauthConnect(
       actor,
-      { publicBrand: "okou" },
+      { publicBrand: "vm0" },
       [307],
+      "okou",
     );
-    const okouState = new URL(
+    const okouAuthorizationUrl = new URL(
       okouResponse.headers.get("location") ?? "",
-    ).searchParams.get("state");
+    );
+    expect(okouAuthorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://api.okou.ai/api/connectors/github/callback",
+    );
+    const okouState = okouAuthorizationUrl.searchParams.get("state");
     expect(okouState).toMatch(/^okou\.[0-9a-f]{64}$/u);
+    if (!okouState) {
+      throw new Error("Expected Okou GitHub authorization state");
+    }
+    const okouCallback = await connectors.completeOauthCallback(
+      "github",
+      { code: "bdd-okou-github-code", state: okouState },
+      { baseUrl: "https://api.okou.ai" },
+    );
+    const okouCallbackLocation = new URL(
+      okouCallback.headers.get("location") ?? "",
+    );
+    expect(okouCallbackLocation.origin).toBe("https://app.okou.ai");
+    expect(okouCallbackLocation.pathname).toBe("/connector/success");
+    expect(tokenRedirectUris).toStrictEqual([
+      "https://api.vm0.ai/api/connectors/github/callback",
+      "https://api.okou.ai/api/connectors/github/callback",
+    ]);
   });
 
   it("preserves signed GitHub install brand across provider callbacks", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.test");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     integrations.clearGithubAppProvider();
     integrations.configureGithubAppInstallProvider();
 
@@ -5892,6 +5954,8 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(okouState).toMatchObject({
       publicBrand: "okou",
       publicBrandSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      callbackRedirectUri: "https://api.okou.ai/api/github/app/setup/callback",
+      callbackRedirectUriSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
       sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
 
@@ -5905,8 +5969,13 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       ) ?? "";
     expect(vm0StateString).not.toBe("");
     const vm0State: unknown = JSON.parse(vm0StateString);
-    expect(vm0State).not.toHaveProperty("publicBrand");
-    expect(vm0State).not.toHaveProperty("publicBrandSig");
+    expect(vm0State).toMatchObject({
+      publicBrand: "vm0",
+      publicBrandSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      callbackRedirectUri: "https://api.vm0.ai/api/github/app/setup/callback",
+      callbackRedirectUriSig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      sig: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
 
     integrations.configureGithubAppCallbackProvider();
     const okouError = await integrations.requestGithubAppSetupCallback(
@@ -5916,19 +5985,40 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         state: okouStateString,
       },
       [307],
+      "okou",
     );
     expect(new URL(okouError.headers.get("location") ?? "").origin).toBe(
       "https://app.okou.ai",
     );
 
-    const vm0Error = await integrations.requestGithubAppSetupCallback(
-      {
-        error: "access_denied",
-        error_description: "Provider denied access",
-        state: vm0StateString,
-      },
+    const vm0CallbackQuery = {
+      code: "exact-code",
+      error: "access_denied",
+      error_description: "Provider denied access",
+      installation_id: "12345",
+      setup_action: "install" as const,
+      state: vm0StateString,
+    };
+    const vm0Ingress = await integrations.requestGithubAppSetupCallback(
+      vm0CallbackQuery,
       [307],
       "okou",
+    );
+    const vm0ReplayUrl = new URL(vm0Ingress.headers.get("location") ?? "");
+    expect(vm0ReplayUrl.origin).toBe("https://api.vm0.ai");
+    expect(vm0ReplayUrl.pathname).toBe("/api/github/app/setup/callback");
+    expect(Object.fromEntries(vm0ReplayUrl.searchParams)).toStrictEqual({
+      code: "exact-code",
+      error: "access_denied",
+      error_description: "Provider denied access",
+      installation_id: "12345",
+      setup_action: "install",
+      state: vm0StateString,
+    });
+
+    const vm0Error = await integrations.requestGithubAppSetupCallback(
+      vm0CallbackQuery,
+      [307],
     );
     expect(new URL(vm0Error.headers.get("location") ?? "").origin).toBe(
       "https://app.vm0.ai",
@@ -5937,6 +6027,32 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     if (!isRecord(vm0State)) {
       throw new Error("Expected VM0 GitHub OAuth state to be an object");
     }
+    const legacyState = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(vm0State).filter(([key]) => {
+          return ![
+            "publicBrand",
+            "publicBrandSig",
+            "callbackRedirectUri",
+            "callbackRedirectUriSig",
+          ].includes(key);
+        }),
+      ),
+    );
+    const legacyError = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: legacyState,
+      },
+      [307],
+      "vm0",
+      "https://www.vm0.ai",
+    );
+    expect(new URL(legacyError.headers.get("location") ?? "").origin).toBe(
+      "https://app.vm0.ai",
+    );
+
     const tamperedState = JSON.stringify({
       ...vm0State,
       publicBrand: "okou",
@@ -5954,9 +6070,29 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(new URL(tamperedError.headers.get("location") ?? "").origin).toBe(
       "https://app.vm0.ai",
     );
+
+    const tamperedCallbackState = JSON.stringify({
+      ...vm0State,
+      callbackRedirectUri: "https://attacker.example/callback",
+    });
+    const tamperedCallback = await integrations.requestGithubAppSetupCallback(
+      {
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: tamperedCallbackState,
+      },
+      [307],
+      "okou",
+    );
+    expect(new URL(tamperedCallback.headers.get("location") ?? "").origin).toBe(
+      "https://app.vm0.ai",
+    );
   });
 
   it("keeps GitHub app setup callback errors visible through redirects", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     integrations.clearGithubAppProvider();
     const unconfiguredSetup = await integrations.requestGithubAppSetupCallback(
       {},
@@ -6090,6 +6226,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
@@ -6109,11 +6248,9 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     expect(adminInstallUrl).toContain(
       "https://github.com/apps/bdd-github-app/installations/new",
     );
-    expect(
-      new URL(adminInstallUrl).searchParams
-        .get("redirect_uri")
-        ?.endsWith("/api/github/app/setup/callback"),
-    ).toBeTruthy();
+    expect(new URL(adminInstallUrl).searchParams.get("redirect_uri")).toBe(
+      "https://api.okou.ai/api/github/app/setup/callback",
+    );
 
     const orgId = actor.orgId;
     if (!orgId) {

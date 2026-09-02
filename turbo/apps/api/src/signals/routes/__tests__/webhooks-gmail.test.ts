@@ -412,6 +412,7 @@ function gmailPushBody(args: {
 
 async function postGmailWebhook(
   rawBody: string,
+  googleIdToken = signedGoogleIdToken(),
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const response = await createApp({
     signal: context.signal,
@@ -419,7 +420,7 @@ async function postGmailWebhook(
   }).request("/api/webhooks/gmail", {
     method: "POST",
     headers: {
-      authorization: `Bearer ${signedGoogleIdToken()}`,
+      authorization: `Bearer ${googleIdToken}`,
       "Content-Type": "application/json",
     },
     body: rawBody,
@@ -1090,6 +1091,99 @@ describe("POST /api/webhooks/gmail", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
+  it("silently acknowledges events after Gmail access becomes unavailable", async () => {
+    const startedAt = now();
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    configureGmailWatchMock();
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, gmailEmail);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      }),
+    );
+    const googleIdToken = signedGoogleIdToken();
+    mockNow(startedAt + 2 * 60 * 60 * 1000);
+    context.mocks.axiomLogging.warn.mockClear();
+
+    for (const messageId of [
+      "pubsub-gmail-access-unavailable-first",
+      "pubsub-gmail-access-unavailable-repeat",
+    ]) {
+      const response = await postGmailWebhook(
+        gmailPushBody({
+          emailAddress: gmailEmail,
+          historyId: 101,
+          messageId,
+        }),
+        googleIdToken,
+      );
+      expectResponseStatus(response, 200);
+      expect(response.body).toStrictEqual({
+        success: true,
+        watchStates: 1,
+        dispatched: 0,
+        duplicates: 0,
+      });
+    }
+
+    expect(refreshCalls).toBe(1);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+        return message === "Connector credential refresh failed";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Gmail event skipped because connector access is unavailable",
+      expect.anything(),
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Workflow watch lifecycle reconciliation failed",
+      expect.objectContaining({
+        provider: "gmail",
+        result: "access_unavailable",
+      }),
+    );
+
+    mockNow(startedAt);
+    server.use(
+      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await connectGmail(actor, gmailEmail);
     await accept(
       automationsClient().delete({
         headers: authHeaders(actor),

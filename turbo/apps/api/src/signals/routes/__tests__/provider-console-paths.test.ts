@@ -33,16 +33,18 @@ interface ResponseSnapshot {
 // every provider console and producer that held a branded form has moved. Each
 // request used to be replayed on both branded forms as well, so the assertion
 // was that all three answered identically rather than merely that the neutral
-// path was routed; a dropped `MIGRATED_BRANDED_PATHS` row showed up here as one
-// of the three answering differently.
+// path was routed; a dropped branded compatibility row showed up here as one of
+// the three answering differently.
 //
 // #28600 put the Slack OAuth callback and the three inbound webhooks on neutral
 // paths with rows for both branded forms, and #30668 retired those four rows
 // once the Slack app console was repointed at `/api/webhooks/slack/*` and
 // `routes/slack-oauth.ts` began emitting the neutral `redirect_uri`. The Feishu
 // OAuth callback was narrowed the same way by #28709 and the Teams OAuth
-// callback by #30812, which leaves nothing in this file holding a branded form.
-// What each block still pins is that the console flow reaches its handler.
+// callback by #30812, which left nothing in this file holding a branded form.
+// #31088 then emptied the table outright and #31090 removed it, so no path
+// anywhere has one. What each block still pins is that the console flow reaches
+// its handler.
 
 async function snapshot(response: Response): Promise<ResponseSnapshot> {
   return {
@@ -213,12 +215,13 @@ describe("provider console paths", () => {
     });
   });
 
-  // #28544 moved this contract to the neutral path and gave it a
-  // `MIGRATED_BRANDED_PATHS` row; #28709 removed that row, because the only
-  // thing holding the branded form was an already-loaded platform tab
-  // forwarding a code, a window that closed well before the retained request
-  // log begins. The case stays because the callback is still reached from a
-  // Feishu console flow, narrowed to the path that serves it.
+  // #28544 moved this contract to the neutral path and gave it a branded
+  // compatibility row; #28709 removed that row, because the only thing holding
+  // the branded form was an already-loaded platform tab forwarding a code, a
+  // window that closed well before the retained request log begins, and #31088
+  // emptied the table itself before #31090 removed it. The case stays because the
+  // callback is still reached from a Feishu console flow, narrowed to the path
+  // that serves it.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
     it("rejects a callback without connect state", async () => {
       const snapshots = await snapshotEachPath(

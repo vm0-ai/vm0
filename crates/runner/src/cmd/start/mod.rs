@@ -586,6 +586,9 @@ async fn run_start_with_home(
         concurrency_factor,
         max_concurrent,
     ));
+    let host_cpu_placement = host_cpu_placement_config(&budget, args.local)?;
+    let control_cpu_weight = host_cpu_placement.control_weight();
+    let guests_cpu_weight = host_cpu_placement.guests_weight();
     info!(
         host_cpus,
         host_memory_mb,
@@ -595,6 +598,9 @@ async fn run_start_with_home(
         max_concurrent,
         host_cpu_admission_reservation = budget.host_cpu_admission_reservation(),
         guest_cpu_admission_capacity = budget.guest_cpu_admission_capacity(),
+        control_cpu_weight,
+        guests_cpu_weight,
+        host_cpu_placement_mode = ?host_cpu_placement.mode(),
         vcpu_admission_limit = budget.vcpu_admission_limit(),
         effective_vcpu = budget.effective_vcpu(),
         effective_memory_mb = budget.effective_memory_mb(),
@@ -742,6 +748,7 @@ async fn run_start_with_home(
             .create_runtime(sandbox::RuntimeConfig {
                 proxy_port: Some(mitm.port()),
                 dns_port: Some(dns_port),
+                host_cpu_placement: Some(host_cpu_placement),
             })
             .await
             .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
@@ -972,6 +979,23 @@ async fn run_start_with_home(
         tracing::warn!(error = %e, "failed to remove live runner instance record");
     }
     run_result
+}
+
+fn host_cpu_placement_config(
+    budget: &ResourceBudget,
+    local: bool,
+) -> RunnerResult<sandbox::HostCpuPlacementConfig> {
+    let (control_weight, guests_weight) = budget.host_cpu_cgroup_weights();
+    sandbox::HostCpuPlacementConfig::new(
+        control_weight,
+        guests_weight,
+        if local {
+            sandbox::HostCpuPlacementMode::PreferManaged
+        } else {
+            sandbox::HostCpuPlacementMode::Required
+        },
+    )
+    .map_err(|message| RunnerError::Internal(format!("host CPU placement policy: {message}")))
 }
 
 fn validate_server_config_for_start(

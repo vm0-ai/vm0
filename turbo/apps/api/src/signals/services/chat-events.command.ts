@@ -101,7 +101,7 @@ import {
   agentRunSourceTitleSnapshot,
   hasAgentRunSourceAnnotation,
   projectUserMessage,
-  userMessageFileParts,
+  userMessagePhysicalFiles,
   withAgentRunSourceAnnotation,
   type ChatAgentRunSourceAnnotation,
 } from "./chat-user-message.service";
@@ -815,7 +815,7 @@ const resolveIncomingAttachFileMetadata$ = command(
     },
     signal: AbortSignal,
   ): Promise<ChatEventAttachFileMetadata[] | null> => {
-    const files = userMessageFileParts(args.userMessage);
+    const files = userMessagePhysicalFiles(args.userMessage);
     return await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_attachment_metadata",

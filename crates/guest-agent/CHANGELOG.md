@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.84.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.0...guest-agent-v0.84.1) (2026-09-02)
+
+
+### Documentation
+
+* **rust:** include Codex cleanup helper protocol ([#31051](https://github.com/vm0-ai/vm0/issues/31051)) ([f1b8e23](https://github.com/vm0-ai/vm0/commit/f1b8e23419a459b8632d343c5faa60f2678f2b22))
+
+
+### Refactoring
+
+* **pi:** make ownership transfer v3-only ([#31045](https://github.com/vm0-ai/vm0/issues/31045)) ([1e99242](https://github.com/vm0-ai/vm0/commit/1e99242eabe418b4981216c0f6eb62e21edc015a))
+
 ## [0.84.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.8...guest-agent-v0.84.0) (2026-09-02)
 
 

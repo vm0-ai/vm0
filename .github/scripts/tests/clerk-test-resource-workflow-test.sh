@@ -243,6 +243,9 @@ if playwright_cleanup
 end
 
 playwright_finalizer = turbo_jobs.fetch("cli-e2e-02-playwright-finalize")
+unless playwright_finalizer["continue-on-error"] == true
+  raise "Playwright finalization must not fail the workflow"
+end
 unless Array(playwright_finalizer["needs"]).include?("cli-e2e-02-playwright")
   raise "Playwright finalizer must wait for every matrix lane"
 end
@@ -268,6 +271,9 @@ unless playwright_finalizer_steps.last == playwright_cleanup
 end
 
 runner_cleanup = turbo_jobs.fetch("cli-e2e-03-runner-cleanup")
+unless runner_cleanup["continue-on-error"] == true
+  raise "runner E2E cleanup must not fail the workflow"
+end
 runner_condition = runner_cleanup.fetch("if")
 unless runner_condition.include?("always()") &&
     !runner_condition.include?("!= 'cancelled'")

@@ -2000,12 +2000,21 @@
       },
       "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
       "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",
+      "desktop": {
+        "checkingCompatibility": "Kompatibilität prüfen",
+        "description": "Die Bildschirmaufnahme läuft in der {{desktopProductName}}-Desktop-App, die jedes Fenster aufnimmt und deine Klicks mitschneidet.",
+        "download": "Für macOS herunterladen",
+        "handoffDetail": "Deine Aufnahme öffnet sich hier, bereit für Avatar und Stimme.",
+        "handoffTitle": "Automatisch zu diesem Assistenten zurückkehren",
+        "heading": "Mit {{desktopProductName}} Desktop aufnehmen",
+        "illustration": "Die Aufnahme läuft in {{desktopProductName}} Desktop",
+        "installDetail": "Erfordert einen Apple Silicon Mac mit macOS 14 oder neuer. Intel-Macs werden nicht unterstützt.",
+        "installTitle": "{{desktopProductName}} Desktop herunterladen und installieren",
+        "recordDetail": "Beende sie über dasselbe Menü, wenn du fertig bist.",
+        "recordTitle": "Aufnahme über die Menüleiste starten",
+        "unsupportedIntelMac": "Erfordert einen Apple Silicon Mac"
+      },
       "errors": {
-        "recordingEmpty": "Die Aufnahme ist leer. Bitte versuche es erneut.",
-        "recordingFailed": "Die Bildschirmaufnahme konnte nicht gestartet werden. Versuche es erneut in einer aktuellen Chrome-Version.",
-        "recordingPermission": "Es wurde nichts geteilt. Wähle einen Tab, ein Fenster oder einen Bildschirm, wenn du bereit bist.",
-        "recordingShareEnded": "Die Bildschirmfreigabe wurde beendet, bevor die Aufnahme begann.",
-        "recordingUnsupported": "Dieser Browser unterstützt keine Bildschirmaufnahme.",
         "sendFailed": "Der Chat-Thread konnte nicht erstellt werden. Deine Quelle ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen.",
         "uploadFailed": "Die Quelle konnte nicht hochgeladen werden. Sie ist weiterhin lokal gespeichert und wurde als Sicherung heruntergeladen."
       },
@@ -2013,21 +2022,7 @@
         "back": "Zurück",
         "createInChat": "Im Chat erstellen",
         "download": "Quelle herunterladen",
-        "next": "Weiter",
-        "startRecording": "Bildschirm wählen und starten",
-        "stopRecording": "Aufnahme stoppen"
-      },
-      "recording": {
-        "chooseSurface": "Tab, Fenster oder Bildschirm auswählen",
-        "countdown": "Die Aufnahme startet nach dem Countdown",
-        "description": "Chrome fragt, was du teilen möchtest. Die Aufnahme beginnt erst nach dem dreisekündigen Countdown.",
-        "heading": "Bildschirm aufnehmen",
-        "localNote": "Du kannst über die Freigabeleiste von Chrome oder hier stoppen. Die Aufnahme bleibt lokal, bis der Chat-Thread erstellt wird.",
-        "microphone": "Mikrofon",
-        "microphoneHelp": "Füge während der Demonstration einen Kommentar hinzu",
-        "recordingLocally": "Lokale Aufnahme läuft",
-        "systemAudio": "Systemaudio",
-        "systemAudioHelp": "Verfügbare Quellen hängen von Chrome und deinem System ab"
+        "next": "Weiter"
       },
       "review": {
         "avatar": "Avatar",
@@ -2038,30 +2033,22 @@
         "voice": "Stimme"
       },
       "source": {
-        "chatDescription": "Öffne jetzt einen Thread und entwickle das Video mit Zero",
-        "chatDetail": "Quelle, Avatar oder Stimme später im Chat hinzufügen",
-        "chatTitle": "Im Chat beginnen",
-        "documentDescription": "Verwandle deine Inhalte in ein vertontes Intro-Video",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Folien oder Dokument hochladen",
-        "dropDescription": "Folien, Dokumente oder Aufnahmen",
-        "dropTitle": "Quelle hier ablegen",
+        "documentDescription": "Verwandle deine Folien in ein vertontes Intro-Video",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Folien hochladen",
         "heading": "Wie möchtest du beginnen?",
-        "help": "Füge vorhandenes Material hinzu, nimm deinen Bildschirm auf oder beschreibe das Video mit eigenen Worten",
-        "recordDescription": "Wähle einen Tab, ein Fenster oder den gesamten Bildschirm",
-        "recordDetail": "Startet nach einem dreisekündigen Countdown",
+        "help": "Lade vorhandene Folien hoch oder nimm deinen Bildschirm mit {{desktopProductName}} Desktop auf",
+        "recordDescription": "Nimm eine Demo mit der Desktop-App auf",
+        "recordDetail": "Benötigt {{desktopProductName}} Desktop für macOS",
         "recordTitle": "Bildschirm aufnehmen",
-        "videoDescription": "Lass die KI Tempo, Bildausschnitt und Vertonung verbessern",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Aufnahme hochladen"
+        "uploadDescription": "Wähle eine Datei von deinem Computer",
+        "uploadTitle": "Quelle hochladen"
       },
       "sourceReview": {
         "format": "Format",
         "heading": "Deine Quelle ist bereit",
         "help": "Prüfe die Datei, bevor du fortfährst",
         "inAccount": "In deinem Konto",
-        "inBrowser": "In diesem Browser",
-        "inTab": "Bis dieser Tab geschlossen wird",
         "replace": "Quelle ersetzen",
         "saved": "Gespeichert",
         "source": "Quelle"
@@ -2730,7 +2717,7 @@
         "prefixes": "Präfixe",
         "prefixesHint": "(eine pro Zeile, nur https)",
         "redirectCopy": "Kopieren Sie die Weiterleitungs-URL",
-        "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters.)",
+        "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters. Lassen Sie vorhandene VM0- oder Okou-Weiterleitungs-URLs ebenfalls registriert.)",
         "redirectUrl": "Weiterleitungs-URL",
         "removeApiAuthentication": "Entfernen Sie die API-Authentifizierung",
         "removeNoAuthentication": "„Keine Authentifizierung“ entfernen",
