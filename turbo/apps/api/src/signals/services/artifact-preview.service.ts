@@ -78,6 +78,13 @@ function isVideoContentType(contentType: string | null): boolean {
   return contentType?.startsWith("video/") ?? false;
 }
 
+// Cloudflare Media Transformations only decodes MP4 input, so a WebM artifact
+// can never yield a poster frame. Recognizing that up front avoids a request
+// that always fails and a warning nobody can act on.
+function canExtractVideoPoster(contentType: string | null): boolean {
+  return !(contentType?.startsWith("video/webm") ?? false);
+}
+
 // Extract a poster frame from a video via Cloudflare Media Transformations.
 // This is a public transform URL on the artifacts CDN (no auth), the video
 // sibling of the `/cdn-cgi/image/` resizing already used for images.
@@ -191,8 +198,9 @@ async function renderArtifactSnapshot(
  * Render a static preview image for a single hosted-site/HTML artifact row,
  * upload it to the user-artifacts R2 bucket next to the artifact, and persist
  * the CDN URL on the row. Returns false (no-op) when the browser-rendering
- * token is unset. Keyed by the row id so it always targets the exact artifact
- * of that run.
+ * token is unset, or when the video container has no poster frame we can
+ * extract. Keyed by the row id so it always targets the exact artifact of that
+ * run.
  */
 const renderAndStoreArtifactPreview$ = command(
   async (
@@ -205,6 +213,9 @@ const renderAndStoreArtifactPreview$ = command(
     let filename: string;
     let contentType: string;
     if (isVideo) {
+      if (!canExtractVideoPoster(args.contentType)) {
+        return false;
+      }
       image = await extractVideoPoster(args.url, args.publicBrand, signal);
       filename = VIDEO_POSTER_FILENAME;
       contentType = VIDEO_POSTER_CONTENT_TYPE;
