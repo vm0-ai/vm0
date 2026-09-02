@@ -173,6 +173,36 @@ pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 /// are no artifact mounts.
 pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 
+/// One artifact mount in the runner-to-guest run payload.
+///
+/// The complete artifact list is serialized as a JSON array inside
+/// [`RunPayload::artifacts`].
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunArtifact {
+    /// VAS storage name reported in artifact checkpoint snapshots.
+    pub name: String,
+    /// Absolute guest path containing the mounted artifact.
+    pub mount_path: String,
+    /// VAS storage identifier used to recompute the artifact content hash.
+    pub storage_id: String,
+    /// VAS version identifier mounted at startup.
+    pub version_id: String,
+    /// Behavior when the artifact root is absent during checkpointing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_root_policy: Option<RunArtifactMissingRootPolicy>,
+}
+
+/// Runner-to-guest policy for an artifact root missing during checkpointing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RunArtifactMissingRootPolicy {
+    /// Treat the missing artifact root as a checkpoint error.
+    Fail,
+    /// Preserve the artifact version mounted at startup.
+    PreserveParentVersion,
+}
+
 /// Logical run-payload field name for the JSON map of feature flag names to
 /// enabled states.
 ///
@@ -553,6 +583,68 @@ pub fn sanitize_env_key_for_diagnostic(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_artifacts_round_trip_with_and_without_missing_root_policy() {
+        let artifacts = vec![
+            RunArtifact {
+                name: "plain".to_string(),
+                mount_path: "/plain".to_string(),
+                storage_id: "storage-plain".to_string(),
+                version_id: "version-plain".to_string(),
+                missing_root_policy: None,
+            },
+            RunArtifact {
+                name: "memory".to_string(),
+                mount_path: "/memory".to_string(),
+                storage_id: "storage-memory".to_string(),
+                version_id: "version-memory".to_string(),
+                missing_root_policy: Some(RunArtifactMissingRootPolicy::PreserveParentVersion),
+            },
+        ];
+
+        let json = serde_json::to_value(&artifacts).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!([
+                {
+                    "name": "plain",
+                    "mountPath": "/plain",
+                    "storageId": "storage-plain",
+                    "versionId": "version-plain"
+                },
+                {
+                    "name": "memory",
+                    "mountPath": "/memory",
+                    "storageId": "storage-memory",
+                    "versionId": "version-memory",
+                    "missingRootPolicy": "preserveParentVersion"
+                }
+            ])
+        );
+        assert_eq!(
+            serde_json::from_value::<Vec<RunArtifact>>(json).unwrap(),
+            artifacts
+        );
+    }
+
+    #[test]
+    fn run_artifact_requires_all_string_fields() {
+        let artifact = serde_json::json!({
+            "name": "artifact",
+            "mountPath": "/artifact",
+            "storageId": "storage",
+            "versionId": "version"
+        });
+
+        for field in ["name", "mountPath", "storageId", "versionId"] {
+            let mut missing = artifact.clone();
+            missing.as_object_mut().unwrap().remove(field);
+
+            assert!(serde_json::from_value::<RunArtifact>(missing).is_err());
+        }
+    }
 
     #[test]
     fn contract_names_match_wire_values() {
