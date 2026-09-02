@@ -506,9 +506,7 @@ assert.equal(clerkCoreScript(okouPreview.html), expectedClerkCoreScript);
 assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
 
 const serviceWorker = await worker.fetch(
-  new Request(
-    "https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js",
-  ),
+  new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
   assetEnvironment(previewOrigin, "okou"),
 );
 assert.equal(
@@ -574,10 +572,7 @@ assert.equal(observedR2Options?.range.get("authorization"), null);
 assert.equal(observedR2Options?.range.get("cookie"), null);
 assert.equal(await proxiedAsset.text(), "export const worker = true;");
 assert.equal(proxiedAsset.status, 206);
-assert.equal(
-  proxiedAsset.headers.get("content-range"),
-  "bytes 0-26/27",
-);
+assert.equal(proxiedAsset.headers.get("content-range"), "bytes 0-26/27");
 assert.equal(
   proxiedAsset.headers.get("cache-control"),
   "public, max-age=31536000, immutable",
@@ -592,14 +587,20 @@ globalThis.fetch = (input) => {
     }),
   );
 };
-const pagesEnvironment = assetEnvironment();
-delete pagesEnvironment.STATIC_ASSETS_BUCKET;
-const pagesProxiedAsset = await worker.fetch(
+const publicOriginEnvironment = assetEnvironment();
+delete publicOriginEnvironment.STATIC_ASSETS_BUCKET;
+const publicOriginProxiedAsset = await worker.fetch(
   new Request(
     "https://app.okou.ai/okou-app/assets/shared-database-worker-Legacy123.js",
-    { headers: { Authorization: "Bearer secret", Cookie: "secret=true" } },
+    {
+      headers: {
+        Authorization: "Bearer secret",
+        Cookie: "secret=true",
+        Range: "bytes=0-1023",
+      },
+    },
   ),
-  pagesEnvironment,
+  publicOriginEnvironment,
 );
 assert.equal(
   publicAssetRequest?.url,
@@ -607,7 +608,11 @@ assert.equal(
 );
 assert.equal(publicAssetRequest?.headers.get("authorization"), null);
 assert.equal(publicAssetRequest?.headers.get("cookie"), null);
-assert.equal(await pagesProxiedAsset.text(), "export const publicWorker = true;");
+assert.equal(publicAssetRequest?.headers.get("range"), "bytes=0-1023");
+assert.equal(
+  await publicOriginProxiedAsset.text(),
+  "export const publicWorker = true;",
+);
 
 async function requestSharedPage({
   appOrigin,

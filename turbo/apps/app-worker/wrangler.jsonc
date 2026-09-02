@@ -12,12 +12,9 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true,
   },
-  "r2_buckets": [
-    {
-      "binding": "STATIC_ASSETS_BUCKET",
-      "bucket_name": "vm0-static-prod",
-    },
-  ],
+  // Phase-one previews read hashed app assets through the existing public
+  // static.okou.io R2 origin. The Worker source also supports a native
+  // STATIC_ASSETS_BUCKET binding once a dedicated deploy token is provisioned.
   "env": {
     "preview": {
       "name": "okou-app-preview",
@@ -26,23 +23,11 @@
       "vars": {
         "PUBLIC_BRAND": "okou",
       },
-      "r2_buckets": [
-        {
-          "binding": "STATIC_ASSETS_BUCKET",
-          "bucket_name": "vm0-static-prod",
-        },
-      ],
     },
     "production": {
       "name": "okou-app-production",
       "workers_dev": false,
       "preview_urls": false,
-      "r2_buckets": [
-        {
-          "binding": "STATIC_ASSETS_BUCKET",
-          "bucket_name": "vm0-static-prod",
-        },
-      ],
     },
   },
 }
