@@ -12,6 +12,7 @@ import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
 import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
 import {
+  connectionDiagnostics$,
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "../signals/connection-diagnostics.ts";
@@ -253,15 +254,25 @@ export const handleSharedDatabaseRealtimeMessage$ = command(
 
 const reloadWorkerComputed$ = command(
   ({ set }, computedKey: ComputedKey): void => {
-    if (computedKey === "chat-thread-indicators") {
-      set(reloadChatThreadIndicators$);
-      return;
+    switch (computedKey) {
+      case "chat-thread-indicators": {
+        set(reloadChatThreadIndicators$);
+        return;
+      }
+      case "computer-use-hosts": {
+        set(reloadComputerUseHosts$);
+        return;
+      }
+      case "connection-diagnostics": {
+        // Diagnostics derive from Worker Store state, so there is no fetch to
+        // repeat: the next read already observes every recorded event.
+        return;
+      }
+      case "queue-data": {
+        set(reloadQueueData$);
+        return;
+      }
     }
-    if (computedKey === "computer-use-hosts") {
-      set(reloadComputerUseHosts$);
-      return;
-    }
-    set(reloadQueueData$);
   },
 );
 
@@ -484,6 +495,9 @@ export const getComputedStoreMessage$ = command(
     signal: AbortSignal,
   ): Promise<ComputedValue<ComputedKey>> => {
     set(requireConnectionSignal$, connectionId, signal);
+    if (message.computedKey === "connection-diagnostics") {
+      return get(connectionDiagnostics$);
+    }
     const value =
       message.computedKey === "chat-thread-indicators"
         ? await get(workerChatThreadIndicators$)

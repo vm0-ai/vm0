@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -8,6 +8,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { writeConnectionDiagnostic$ } from "../../../signals/connection-diagnostics.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -40,8 +41,50 @@ async function findDiagnosticsSummary(): Promise<HTMLElement> {
   return summary;
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function panelOf(summary: HTMLElement): HTMLElement {
+  const panel = summary.closest("details");
+  if (!panel) {
+    throw new Error("Connection diagnostics panel not found");
+  }
+  return panel;
+}
+
+/** The Worker block only becomes a panel once its capture has been read. */
+async function findWorkerDiagnosticsSummary(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const title = screen.getByText("Shared worker connection diagnostics");
+    const summary = title.closest("summary");
+    if (!summary) {
+      throw new Error("Shared worker diagnostics summary not found");
+    }
+    return summary;
+  });
+}
+
+/**
+ * Seeds the Worker capture from the Worker Store instead of through the page.
+ * The Worker records diagnostics from its own realtime activity inside the
+ * SharedWorker, and the test bootstrap never starts that: only the real Worker
+ * entry (`bootstrapWorker$`) subscribes the capture and enables it, while
+ * `setupSharedWorkerTestBootstrap$` stops at `initializeSharedDatabaseWorker$`.
+ * No page interaction can therefore put an event into the Worker's recording,
+ * so the test stands in for that separate process. Everything the test asserts
+ * still comes from the rendered page.
+ */
+function appendWorkerDiagnostic(errorMessage: string): void {
+  context.workerStore.set(writeConnectionDiagnostic$, {
+    action: "append",
+    event: {
+      details: { errorMessage },
+      event: "realtime.client-rebuild",
+      phase: "instant",
+    },
+  });
+}
+
+/** Both panels render a Copy JSON button, so the panel has to be explicit. */
+function buttonByText(panel: HTMLElement, text: string): HTMLElement {
+  const button = queryAllByRoleFast("button", panel).find((candidate) => {
     return candidate.textContent?.includes(text) ?? false;
   });
   if (!button) {
@@ -141,7 +184,8 @@ describe("connection diagnostics settings", () => {
       ).toBeGreaterThan(0);
     });
 
-    await user.click(buttonByText("Copy JSON"));
+    const tabPanel = panelOf(diagnosticsSummary);
+    await user.click(buttonByText(tabPanel, "Copy JSON"));
     await waitFor(() => {
       expect(clipboard.writes).toHaveLength(1);
     });
@@ -156,11 +200,11 @@ describe("connection diagnostics settings", () => {
     expect(exported).not.toContain("realtime.example.test");
     expect(exported).not.toContain("123e4567-e89b-42d3-a456-426614174000");
 
-    await user.click(buttonByText("Clear"));
+    await user.click(buttonByText(tabPanel, "Clear"));
     expect(
-      screen.getByText("No diagnostic events recorded."),
+      within(tabPanel).getByText("No diagnostic events recorded."),
     ).toBeInTheDocument();
-    expect(screen.getByText("events: 0 / 500")).toBeInTheDocument();
+    expect(within(tabPanel).getByText("events: 0 / 500")).toBeInTheDocument();
   });
 
   it("keeps only the latest 500 diagnostic events", async () => {
@@ -183,8 +227,9 @@ describe("connection diagnostics settings", () => {
     });
 
     await user.click(diagnosticsSummary);
-    expect(screen.getByText("events: 500 / 500")).toBeInTheDocument();
-    await user.click(buttonByText("Copy JSON"));
+    const tabPanel = panelOf(diagnosticsSummary);
+    expect(within(tabPanel).getByText("events: 500 / 500")).toBeInTheDocument();
+    await user.click(buttonByText(tabPanel, "Copy JSON"));
     await waitFor(() => {
       expect(clipboard.writes).toHaveLength(1);
     });
@@ -201,5 +246,38 @@ describe("connection diagnostics settings", () => {
       throw new Error("Connection diagnostics export is missing events");
     }
     expect(exported.events).toHaveLength(500);
+  });
+
+  it("shows the shared worker capture apart from this tab's", async () => {
+    const user = userEvent.setup();
+    context.workerStore.set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: true,
+    });
+    appendWorkerDiagnostic("worker-capture-marker");
+    setupDiagnosticsPage();
+
+    const workerSummary = await findWorkerDiagnosticsSummary();
+    await user.click(workerSummary);
+    const workerPanel = panelOf(workerSummary);
+    await expect(
+      within(workerPanel).findByText(/worker-capture-marker/),
+    ).resolves.toBeInTheDocument();
+
+    const tabSummary = await findDiagnosticsSummary();
+    await user.click(tabSummary);
+    expect(
+      within(panelOf(tabSummary)).queryByText(/worker-capture-marker/),
+    ).toBeNull();
+
+    appendWorkerDiagnostic("worker-refresh-marker");
+    await user.click(buttonByText(workerPanel, "Refresh"));
+
+    await expect(
+      within(workerPanel).findByText(/worker-refresh-marker/),
+    ).resolves.toBeInTheDocument();
+    expect(
+      within(workerPanel).getByText(/worker-capture-marker/),
+    ).toBeInTheDocument();
   });
 });

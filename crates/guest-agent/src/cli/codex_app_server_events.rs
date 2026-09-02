@@ -1872,7 +1872,7 @@ mod tests {
             Some(events::CodexFailureDiagnostic {
                 event_type: "turn.completed",
                 message: "Rate limit exceeded.".to_string(),
-                failure_reason: Some(FailureReason::ProviderOverloaded),
+                failure_reason: Some(FailureReason::ProviderRateLimited),
             })
         );
     }

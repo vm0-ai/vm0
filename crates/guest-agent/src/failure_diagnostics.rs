@@ -269,6 +269,18 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::SafetyPolicyRefusal);
     }
+    if matches!(framework, AgentFramework::Codex)
+        && source == FailureDetailSource::CodexJsonl
+        && failure_patterns::is_codex_rate_limit_retry_exhausted_message(failure_message)
+    {
+        return Some(FailureReason::ProviderRateLimited);
+    }
+    if matches!(framework, AgentFramework::Codex)
+        && source == FailureDetailSource::Stderr
+        && is_codex_chatgpt_account_unsupported_model_run_error(failure_message)
+    {
+        return Some(FailureReason::UnsupportedModel);
+    }
 
     let normalized = failure_message.to_ascii_lowercase();
     if is_insufficient_credits_error(&normalized) {
@@ -548,6 +560,26 @@ fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
             .as_ref()
             .is_some_and(is_codex_oauth_reconnect_required_value)
         {
+            return true;
+        }
+        search_start = end_index;
+    }
+    false
+}
+
+fn is_codex_chatgpt_account_unsupported_model_run_error(error_message: &str) -> bool {
+    let mut search_start = 0;
+    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
+        if value.as_ref().is_some_and(|value| {
+            value.get("type").and_then(Value::as_str) == Some("error")
+                && value.get("status").and_then(Value::as_u64) == Some(400)
+                && value.get("error").is_some_and(|error| {
+                    error.get("type").and_then(Value::as_str) == Some("invalid_request_error")
+                        && error.get("message").and_then(Value::as_str).is_some_and(
+                            failure_patterns::is_codex_chatgpt_account_unsupported_model_message,
+                        )
+                })
+        }) {
             return true;
         }
         search_start = end_index;

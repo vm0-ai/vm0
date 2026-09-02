@@ -95,6 +95,7 @@ async fn pi_checkpoint_reports_full_combined_completion_payload() {
         &runtime,
         0,
         None,
+        None,
         Some(42),
         &active_input_delivery_ids,
         checkpoint,
