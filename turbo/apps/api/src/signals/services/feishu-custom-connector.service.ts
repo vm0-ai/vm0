@@ -311,7 +311,6 @@ async function repairFeishuCustomConnector(
 ): Promise<ReconciledFeishuCustomConnector> {
   const credentialContractChanged =
     existing.connector.authMode !== "oauth" ||
-    existing.connector.oauthSetup === "automatic" ||
     !isDeepStrictEqual(existing.connector.fields, []) ||
     !oauthConfigMatches(existing.oauthConfig, installation);
   await tx

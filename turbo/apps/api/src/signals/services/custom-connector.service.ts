@@ -38,7 +38,10 @@ import {
 } from "@okouai/db/schema/org-custom-connector-oauth-config";
 import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { orgCustomConnectorDcrRegistrations } from "@okouai/db/schema/org-custom-connector-dcr-registration";
-import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
+import {
+  orgCustomConnectors,
+  type OrgCustomConnectorOAuthSetup,
+} from "@okouai/db/schema/org-custom-connector";
 
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -160,12 +163,17 @@ type ForbiddenResponse = {
 type DbTransaction = Tx;
 
 function persistedOAuthSetup(
-  oauthSetup: CustomConnectorOAuthSetup | null,
-): CustomConnectorOAuthSetup | null {
+  authMode: CustomConnectorAuthMode,
+): OrgCustomConnectorOAuthSetup | null {
+  if (authMode === "automatic") {
+    // Retain the physical compatibility mirror until #30891. Domain logic
+    // classifies Automatic from authMode only.
+    return "automatic";
+  }
   // Keep Custom OAuth in the legacy NULL form while the API release preceding
   // #30487 can still serve or be a rollback target. That writer does not know
   // to clear oauth_setup when changing a connector from OAuth to manual.
-  return oauthSetup === "custom" ? null : oauthSetup;
+  return null;
 }
 
 function forbidden(message: string): ForbiddenResponse {
@@ -443,7 +451,8 @@ function isValidPersistedHttpDefinition(
         }) &&
         headerInjections.length === 0 &&
         queryInjections.length === 0
-      : headerInjections.length > 0 || queryInjections.length > 0)
+      : (row.authMode === "manual" || row.authMode === "oauth") &&
+        (headerInjections.length > 0 || queryInjections.length > 0))
   );
 }
 
@@ -459,11 +468,12 @@ function isValidPersistedMcpDefinition(
     row.mcpEndpoint.trim().length > 0 &&
     row.mcpTransport === "streamable-http" &&
     prefixTemplates.length === 0 &&
-    (row.authMode === "none"
+    (row.authMode === "none" || row.authMode === "automatic"
       ? fields.length === 0 &&
         headerInjections.length === 0 &&
         queryInjections.length === 0
-      : headerInjections.length > 0 || queryInjections.length > 0) &&
+      : (row.authMode === "manual" || row.authMode === "oauth") &&
+        (headerInjections.length > 0 || queryInjections.length > 0)) &&
     row.permissionBundleRef === null
   );
 }
@@ -486,15 +496,14 @@ export function normaliseCustomConnectorRow(
       }
       return null;
     }
-    if (row.oauthSetup === "automatic") {
+    if (row.authMode === "automatic") {
       if (isHttp || oauthConfig !== null) {
-        throw new Error(
-          "Invalid persisted Automatic OAuth Custom Connector setup",
-        );
+        throw new Error("Invalid persisted Automatic Custom Connector setup");
       }
-      return "automatic" as const;
+      return null;
     }
     if (
+      row.authMode === "oauth" &&
       (row.oauthSetup === null || row.oauthSetup === "custom") &&
       oauthConfig !== null
     ) {
@@ -653,8 +662,8 @@ function credentialContractChanged(args: {
   const automaticMcpEndpointChanged =
     args.existing.kind === "mcp" &&
     args.definition.kind === "mcp" &&
-    args.existing.oauthSetup === "automatic" &&
-    args.definition.oauthSetup === "automatic" &&
+    args.existing.authMode === "automatic" &&
+    args.definition.authMode === "automatic" &&
     args.existing.endpoint !== args.definition.endpoint;
   return (
     automaticMcpEndpointChanged ||
@@ -835,17 +844,14 @@ export function serialiseCustomConnector(args: {
     if (args.row.authMode === "manual") {
       return { authMode: "manual" as const };
     }
+    if (args.row.authMode === "automatic") {
+      return { authMode: "automatic" as const };
+    }
     if (args.row.oauthSetup === "custom" && args.row.oauthConfig) {
       return {
         authMode: "oauth" as const,
         oauthSetup: "custom" as const,
         oauthConfig: serialiseOAuthConfig(args.row.oauthConfig),
-      };
-    }
-    if (args.row.oauthSetup === "automatic" && !args.row.oauthConfig) {
-      return {
-        authMode: "oauth" as const,
-        oauthSetup: "automatic" as const,
       };
     }
     throw new Error("Invalid normalized Custom Connector OAuth setup");
@@ -889,8 +895,8 @@ export function serialiseCustomConnector(args: {
     } satisfies CustomConnectorMcpResponse;
   }
 
-  if (auth.authMode === "oauth" && auth.oauthSetup === "automatic") {
-    throw new Error("HTTP Custom Connectors cannot use Automatic OAuth");
+  if (auth.authMode === "automatic") {
+    throw new Error("HTTP Custom Connectors cannot use Automatic auth");
   }
 
   return {
@@ -1421,18 +1427,16 @@ function validateOAuthConfigUpdate(args: {
   readonly input: CustomConnectorOAuthConfigInput | undefined;
   readonly existingConfig: CustomConnectorOAuthConfigRow | null;
 }): ValidatedOAuthConfigUpdate | BadRequestResponse {
-  if (args.authMode === "manual" || args.authMode === "none") {
+  if (
+    args.authMode === "manual" ||
+    args.authMode === "none" ||
+    args.authMode === "automatic"
+  ) {
     if (args.input !== undefined) {
       return badRequestMessage(
-        "OAuth configuration requires OAuth authentication mode",
-      );
-    }
-    return { kind: "none" };
-  }
-  if (args.oauthSetup === "automatic") {
-    if (args.input !== undefined) {
-      return badRequestMessage(
-        "Automatic OAuth does not accept a static OAuth configuration",
+        args.authMode === "automatic"
+          ? "Automatic authentication does not accept a static OAuth configuration"
+          : "OAuth configuration requires OAuth authentication mode",
       );
     }
     return { kind: "none" };
@@ -1463,6 +1467,24 @@ function validateAuthInjectionReferences(args: {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
 }): BadRequestResponse | null {
+  const hasAuthInjections =
+    args.headerInjections.length > 0 || args.queryInjections.length > 0;
+  if (
+    (args.authMode === "none" || args.authMode === "automatic") &&
+    hasAuthInjections
+  ) {
+    return badRequestMessage(
+      `${args.authMode === "none" ? "No-auth" : "Automatic"} custom connectors cannot include authentication injections`,
+    );
+  }
+  if (
+    (args.authMode === "manual" || args.authMode === "oauth") &&
+    !hasAuthInjections
+  ) {
+    return badRequestMessage(
+      "At least one header or query injection is required",
+    );
+  }
   if (
     args.authMode === "manual" &&
     !customConnectorManualAuthReferencesMemberField(args)
@@ -1503,9 +1525,9 @@ function validateDefinitionAuth(
   const authMode = input.authMode ?? "manual";
   const oauthSetup =
     authMode === "oauth" ? (input.oauthSetup ?? "custom") : null;
-  if (oauthSetup === "automatic" && input.kind !== "mcp") {
+  if (authMode === "automatic" && input.kind !== "mcp") {
     return badRequestMessage(
-      "Automatic OAuth is available only for MCP Streamable HTTP connectors",
+      "Automatic authentication is available only for MCP Streamable HTTP connectors",
     );
   }
   if (
@@ -1515,11 +1537,17 @@ function validateDefinitionAuth(
     })
   ) {
     return badRequestMessage(
-      `${authMode === "none" ? "No-auth" : "OAuth"} custom connector fields must be variables`,
+      `${authMode === "none" ? "No-auth" : authMode === "automatic" ? "Automatic" : "OAuth"} custom connector fields must be variables`,
     );
   }
-  if (authMode === "none" && input.kind === "mcp" && fields.length > 0) {
-    return badRequestMessage("No-auth MCP connectors cannot include fields");
+  if (
+    (authMode === "none" || authMode === "automatic") &&
+    input.kind === "mcp" &&
+    fields.length > 0
+  ) {
+    return badRequestMessage(
+      `${authMode === "none" ? "No-auth" : "Automatic"} MCP connectors cannot include fields`,
+    );
   }
   return { authMode, oauthSetup };
 }
@@ -1557,18 +1585,6 @@ function validateDefinition(
   });
   if (isBadRequest(queryInjections)) {
     return queryInjections;
-  }
-  const hasAuthInjections =
-    headerInjections.length > 0 || queryInjections.length > 0;
-  if (authMode === "none" && hasAuthInjections) {
-    return badRequestMessage(
-      "No-auth custom connectors cannot include authentication injections",
-    );
-  }
-  if (authMode !== "none" && !hasAuthInjections) {
-    return badRequestMessage(
-      "At least one header or query injection is required",
-    );
   }
   const authInjectionError = validateAuthInjectionReferences({
     authMode,
@@ -1692,7 +1708,10 @@ function definitionFromUpdateInput(
   existing?: CustomConnectorRow,
 ): DefinitionInput {
   const authMode = input.authMode ?? existing?.authMode ?? "manual";
-  const oauthSetup = input.oauthSetup ?? existing?.oauthSetup ?? undefined;
+  const oauthSetup =
+    authMode === "oauth"
+      ? (input.oauthSetup ?? existing?.oauthSetup ?? undefined)
+      : undefined;
   const skillMarkdown =
     input.skillMarkdown !== undefined
       ? input.skillMarkdown
@@ -1882,7 +1901,7 @@ async function persistCustomConnectorCreate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
-        oauthSetup: persistedOAuthSetup(args.definition.oauthSetup),
+        oauthSetup: persistedOAuthSetup(args.definition.authMode),
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
@@ -2108,8 +2127,8 @@ async function deleteReplacedAutomaticOAuthData(
   >,
 ): Promise<void> {
   if (
-    args.existing.oauthSetup !== "automatic" ||
-    args.definition.oauthSetup === "automatic"
+    args.existing.authMode !== "automatic" ||
+    args.definition.authMode === "automatic"
   ) {
     return;
   }
@@ -2200,7 +2219,7 @@ async function persistCustomConnectorUpdate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
-        oauthSetup: persistedOAuthSetup(args.definition.oauthSetup),
+        oauthSetup: persistedOAuthSetup(args.definition.authMode),
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
@@ -2907,9 +2926,9 @@ async function prepareCustomConnectorValueWrite(args: {
     return notFound("Custom connector not found");
   }
   const connector = normaliseCustomConnectorRow(lockedDefinition);
-  if (connector.authMode === "oauth") {
+  if (connector.authMode === "oauth" || connector.authMode === "automatic") {
     return badRequestMessage(
-      "OAuth custom connectors must be connected through OAuth",
+      "OAuth and Automatic custom connectors must be connected through authentication discovery",
     );
   }
   const currentValues = validateValueInputs({
@@ -3101,9 +3120,9 @@ export const setCustomConnectorValues$ = command(
     if (isIntegrationManagedCustomConnector(connector)) {
       return integrationManagedCustomConnectorMutationForbidden();
     }
-    if (connector.authMode === "oauth") {
+    if (connector.authMode === "oauth" || connector.authMode === "automatic") {
       return badRequestMessage(
-        "OAuth custom connectors must be connected through OAuth",
+        "OAuth and Automatic custom connectors must be connected through authentication discovery",
       );
     }
     const featureSwitchContext = await get(

@@ -280,6 +280,7 @@ export function mockCustomConnectorOAuth2Provider(
 
 interface AutomaticMcpOAuthProviderOptions {
   readonly registration: "cimd" | "dcr";
+  readonly authentication?: "none" | "oauth";
   readonly issuerParameterSupported?: boolean;
   readonly dcrTokenEndpointAuthMethod?:
     | "none"
@@ -392,7 +393,29 @@ export function mockAutomaticMcpOAuthProvider(
     }
   };
   server.use(
-    http.post(endpoint, () => {
+    http.post(endpoint, async ({ request }) => {
+      if (options.authentication === "none") {
+        const body = z
+          .object({
+            jsonrpc: z.literal("2.0"),
+            id: z.union([z.string(), z.number()]).optional(),
+            method: z.string(),
+          })
+          .passthrough()
+          .parse(await request.json());
+        if (body.method !== "initialize" || body.id === undefined) {
+          return new HttpResponse(null, { status: 202 });
+        }
+        return HttpResponse.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            serverInfo: { name: "BDD no-auth MCP", version: "1.0.0" },
+          },
+        });
+      }
       const challengeScope =
         options.challengeScope === undefined
           ? "read write"
@@ -2676,6 +2699,9 @@ export function createConnectorBddApi(context: TestContext) {
         account,
       );
       expectStatus(response, 200);
+      if (response.body.result !== "authorization") {
+        throw new Error("Expected Custom Connector OAuth authorization");
+      }
       return response.body.authorizationUrl;
     },
 
@@ -2698,6 +2724,9 @@ export function createConnectorBddApi(context: TestContext) {
         }),
         [200],
       );
+      if (response.body.result !== "authorization") {
+        throw new Error("Expected Custom Connector OAuth authorization");
+      }
       return response.body.authorizationUrl;
     },
 

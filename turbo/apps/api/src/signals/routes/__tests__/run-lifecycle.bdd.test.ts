@@ -102,6 +102,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
   manualHttpCustomConnectorCreateBody,
+  mockAutomaticMcpOAuthProvider,
   mockCustomConnectorOAuth2Provider,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
@@ -10221,6 +10222,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const rand = randomUUID().replaceAll("-", "").slice(0, 8);
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      authentication: "none",
+    });
 
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
@@ -10257,9 +10265,32 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       authMode: "none",
     });
     await connectors.setCustomConnectorValues(actor, mcpConnector.id, []);
+    const automaticConnector = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      displayName: "BDD Automatic No Auth MCP Runtime",
+      endpoint: "https://automatic-mcp.example.test/server",
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+    });
+    const automaticConnection =
+      await connectors.requestStartCustomConnectorOAuth2(
+        actor,
+        automaticConnector.id,
+        [200],
+      );
+    if (
+      "error" in automaticConnection.body ||
+      automaticConnection.body.result !== "connected"
+    ) {
+      throw new Error("Expected Automatic MCP no-auth connection");
+    }
     await connectors.updateAgentCustomConnectors(actor, agentId, [
       httpConnector.id,
       mcpConnector.id,
+      automaticConnector.id,
     ]);
     const run = await api.createRun(actor, {
       agentId,
@@ -10270,6 +10301,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const claim = await api.claimRunnerJob(run.runId);
     const httpInternalName = `custom_connector_${httpConnector.id.replaceAll("-", "")}`;
     const mcpInternalName = `custom_connector_${mcpConnector.id.replaceAll("-", "")}`;
+    const automaticInternalName = `custom_connector_${automaticConnector.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, httpInternalName)).toMatchObject(
       [
         {
@@ -10285,16 +10317,31 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
     ]);
     expect(
+      inlineFirewallApis(claim.firewalls, automaticInternalName),
+    ).toMatchObject([
+      {
+        base: "https://automatic-mcp.example.test/server",
+        auth: { headers: {}, query: {} },
+      },
+    ]);
+    expect(
       customConnectorRuntimeRegistration(claim, httpConnector.id),
     ).toMatchObject({ baseUrlVars: { region: "us-east" } });
     expect(
       customConnectorRuntimeRegistration(claim, mcpConnector.id),
     ).toMatchObject({ baseUrlVars: {} });
+    expect(
+      customConnectorRuntimeRegistration(claim, automaticConnector.id),
+    ).toMatchObject({
+      baseUrlVars: {},
+      sourceId: automaticConnection.body.connectedAccountId,
+    });
 
     const runtimeResults = await api.syncConnectorRuntime(run.runId, {
       targets: [
         customConnectorRuntimeRegistration(claim, httpConnector.id),
         customConnectorRuntimeRegistration(claim, mcpConnector.id),
+        customConnectorRuntimeRegistration(claim, automaticConnector.id),
       ],
     });
     expect(
@@ -10308,6 +10355,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     ).toStrictEqual([
       { customConnectorId: httpConnector.id, auth: { headers: {}, query: {} } },
       { customConnectorId: mcpConnector.id, auth: { headers: {}, query: {} } },
+      {
+        customConnectorId: automaticConnector.id,
+        auth: { headers: {}, query: {} },
+      },
     ]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -12568,6 +12619,104 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("synthesizes bearer auth for Automatic MCP accounts resolved to OAuth", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      initialExpiresIn: 3600,
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const mcp = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      displayName: "BDD Automatic OAuth MCP Runtime",
+      endpoint: provider.endpoint,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      mcp.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Automatic MCP OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "automatic-mcp-runtime-code",
+      state,
+      iss: provider.issuer,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [mcp.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the Automatic OAuth MCP connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S___OAUTH_ACCESS_TOKEN`;
+    expect(
+      inlineFirewallApis(claim.firewalls, internalName)[0]?.auth.headers
+        ?.Authorization,
+    ).toBe(`Bearer \${{ secrets.${secretKey} }}`);
+    const target = customConnectorRuntimeRegistration(claim, mcp.id);
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: authBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      authBody,
+      [200],
+    );
+    expect(resolved.body).toMatchObject({
+      headers: { Authorization: "Bearer automatic-initial-access-token" },
+    });
+
+    if (!actor.orgId) {
+      throw new Error("Expected an Automatic MCP actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: mcp.id,
+      authMethod: "none",
+      storageVersion: 1,
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const partialRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject a partial Automatic OAuth account",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const partialClaim = await api.claimRunnerJob(partialRun.runId);
+    expect(partialClaim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: mcp.id,
+      }),
+    );
+    await api.requestCancelRun(actor, partialRun.runId, [200]);
   });
 
   it("injects proposed custom connector fields into headers, query, and host templates", async () => {

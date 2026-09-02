@@ -455,6 +455,7 @@ async function persistFeishuOAuthConnection(
       orgId: args.state.orgId,
       connectorId: args.connector.id,
       storageVersion: args.connector.storageVersion,
+      authMode: "oauth",
     });
     signal.throwIfAborted();
     const connection = await upsertFeishuConnection(
@@ -701,6 +702,9 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if ("status" in result) {
     return jsonErrorResponse(result.body.error.message);
+  }
+  if (result.result !== "authorization") {
+    throw new Error("Feishu Custom OAuth unexpectedly completed without OAuth");
   }
   return redirectResponse(result.authorizationUrl);
 });

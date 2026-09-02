@@ -52,6 +52,7 @@ import {
   getCustomConnectorById,
   integrationManagedCustomConnectorMutationForbidden,
   normaliseCustomConnectorRow,
+  serialiseCustomConnector,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
 } from "./custom-connector.service";
@@ -71,6 +72,12 @@ import {
 } from "./connector-connection-write.service";
 import { connectorAccountSiblingWritesEnabled } from "./connector-account-mutation.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { addUserCustomConnector } from "./user-connectors.service";
+import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
+import {
+  publishCustomConnectorUserInvalidationAfterCommit,
+  type CapturedConnectorClientInvalidationAbort,
+} from "./connector-client-invalidation.service";
 import { mcpOAuthSafeFetch } from "./mcp-oauth-safe-fetch.service";
 import {
   CustomConnectorAutomaticOAuthError,
@@ -527,14 +534,14 @@ function isAutomaticOAuthConnector(
   connector: CustomConnectorRow,
 ): connector is CustomConnectorRow & {
   readonly kind: "mcp";
-  readonly authMode: "oauth";
-  readonly oauthSetup: "automatic";
+  readonly authMode: "automatic";
+  readonly oauthSetup: null;
   readonly oauthConfig: null;
 } {
   return (
     connector.kind === "mcp" &&
-    connector.authMode === "oauth" &&
-    connector.oauthSetup === "automatic" &&
+    connector.authMode === "automatic" &&
+    connector.oauthSetup === null &&
     connector.oauthConfig === null
   );
 }
@@ -636,8 +643,8 @@ async function prepareAutomaticOAuthStart(
     readonly db: Db;
     readonly connector: CustomConnectorRow & {
       readonly kind: "mcp";
-      readonly authMode: "oauth";
-      readonly oauthSetup: "automatic";
+      readonly authMode: "automatic";
+      readonly oauthSetup: null;
       readonly oauthConfig: null;
     };
     readonly args: StartCustomConnectorOAuth2Args;
@@ -653,7 +660,7 @@ async function prepareAutomaticOAuthStart(
       orgId: args.orgId,
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
     return await resolveConnectorConnectionMutation(tx, {
       orgId: args.orgId,
@@ -705,18 +712,24 @@ async function prepareAutomaticOAuthStart(
     return { ok: false as const, response };
   }
   const prepared = automatic.value;
+  if (prepared.kind === "none") {
+    return { ok: true as const, result: prepared };
+  }
   return {
     ok: true as const,
-    value: {
-      oauthSetup: "automatic",
-      redirectUri: client.redirectUri,
-      state,
-      authorizationUrl: prepared.authorizationUrl,
-      codeVerifier: prepared.codeVerifier,
-      oauthRequestedScopes: prepared.requestedScope,
-      context:
-        prepared.context satisfies PreparedCustomConnectorAutomaticOAuthStateContext,
-    } satisfies PreparedOAuthStart,
+    result: {
+      kind: "oauth" as const,
+      prepared: {
+        oauthSetup: "automatic",
+        redirectUri: client.redirectUri,
+        state,
+        authorizationUrl: prepared.authorizationUrl,
+        codeVerifier: prepared.codeVerifier,
+        oauthRequestedScopes: prepared.requestedScope,
+        context:
+          prepared.context satisfies PreparedCustomConnectorAutomaticOAuthStateContext,
+      } satisfies PreparedOAuthStart,
+    },
   };
 }
 
@@ -737,7 +750,7 @@ async function persistCustomConnectorOAuthStart(
       orgId: args.orgId,
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
-      oauthSetup: prepared.oauthSetup,
+      authMode: prepared.oauthSetup === "automatic" ? "automatic" : "oauth",
     });
     const resolution = await resolveConnectorConnectionMutation(tx, {
       orgId: args.orgId,
@@ -775,6 +788,155 @@ async function persistCustomConnectorOAuthStart(
   });
   signal.throwIfAborted();
   return result;
+}
+
+function automaticNoAuthAgentAuthorizationFailure(
+  authorization: Awaited<ReturnType<typeof addUserCustomConnector>>,
+): ReturnType<typeof badRequestMessage> | null {
+  switch (authorization.status) {
+    case "added": {
+      return null;
+    }
+    case "agentNotFound": {
+      return badRequestMessage(
+        "Authentication connected, but the requested agent was not found",
+      );
+    }
+    case "customConnectorsNotFound": {
+      return badRequestMessage(
+        "Authentication connected, but the custom connector was not found",
+      );
+    }
+    case "customConnectorPermissionSelectionRequired": {
+      return badRequestMessage(
+        "Authentication connected, but connector permissions must be selected before authorizing the agent",
+      );
+    }
+    case "invalidCustomConnectorPermissions": {
+      return badRequestMessage(
+        `Authentication connected, but agent authorization failed: ${authorization.message}`,
+      );
+    }
+    case "mcpFeatureDisabled": {
+      return badRequestMessage(
+        "Authentication connected, but MCP custom connector management is not enabled",
+      );
+    }
+  }
+}
+
+async function persistAutomaticNoAuthConnection(
+  context: {
+    readonly db: Db;
+    readonly connector: CustomConnectorRow & {
+      readonly kind: "mcp";
+      readonly authMode: "automatic";
+      readonly oauthSetup: null;
+      readonly oauthConfig: null;
+    };
+    readonly args: StartCustomConnectorOAuth2Args;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+) {
+  const { db, connector, args, featureContext } = context;
+  const transaction = db.transaction(async (tx) => {
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.orgId,
+      connectorId: connector.id,
+      storageVersion: connector.storageVersion,
+      authMode: "automatic",
+    });
+    const resolution = await resolveConnectorConnectionMutation(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      target: { kind: "custom", customConnectorId: connector.id },
+      mutation: args.account,
+      allowSiblings: connectorAccountSiblingWritesEnabled(featureContext),
+    });
+    if (resolution.kind !== "ready") {
+      return { resolution, connection: null };
+    }
+    const connection = await replaceConnectorConnection(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        authMethod: "none",
+        storageVersion: connector.storageVersion,
+        tokenExpiresAt: null,
+        target: {
+          kind: "custom",
+          customConnectorId: connector.id,
+          oauthScopes: null,
+        },
+        resolution: resolution.mutation,
+        writeCredentials: async ({ db: credentialDb, connectorId }) => {
+          await credentialDb
+            .delete(customConnectorAccountOauthBindings)
+            .where(
+              eq(
+                customConnectorAccountOauthBindings.connectorAccountId,
+                connectorId,
+              ),
+            );
+        },
+      },
+      signal,
+    );
+    return { resolution, connection };
+  });
+  let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
+  const result = await commitConnectorRuntimeMutation(transaction, (value) => {
+    return value.connection
+      ? {
+          db,
+          scope: { orgId: args.orgId, userId: args.userId },
+          targets: [{ kind: "custom", customConnectorId: connector.id }],
+        }
+      : undefined;
+  });
+  if (signal.aborted) {
+    postCommitAbort = { reason: signal.reason };
+  }
+  const failure = connectorConnectionMutationFailure(result.resolution);
+  if (failure) {
+    signal.throwIfAborted();
+    return failure;
+  }
+  if (!result.connection) {
+    throw new Error("Ready connector mutation did not return a connection");
+  }
+  await publishCustomConnectorUserInvalidationAfterCommit(
+    args.userId,
+    signal,
+    postCommitAbort,
+  );
+  if (args.agentId) {
+    const authorization = await addUserCustomConnector(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agentId,
+      customConnectorId: connector.id,
+    });
+    signal.throwIfAborted();
+    const authorizationFailure =
+      automaticNoAuthAgentAuthorizationFailure(authorization);
+    if (authorizationFailure) {
+      return authorizationFailure;
+    }
+  }
+  return {
+    result: "connected" as const,
+    connector: serialiseCustomConnector({
+      row: connector,
+      valueMarkers: [],
+      connectedAccountId: result.connection.id,
+      connectedAccountUpdatedAt: result.connection.updatedAt,
+    }),
+    connectedAccountId: result.connection.id,
+  };
 }
 
 export const startCustomConnectorOAuth2$ = command(
@@ -832,7 +994,18 @@ export const startCustomConnectorOAuth2$ = command(
       if (!automatic.ok) {
         return automatic.response;
       }
-      prepared = automatic.value;
+      if (automatic.result.kind === "none") {
+        return await persistAutomaticNoAuthConnection(
+          {
+            db: set(writeDb$),
+            connector,
+            args,
+            featureContext,
+          },
+          signal,
+        );
+      }
+      prepared = automatic.result.prepared;
     } else {
       throw new Error("OAuth connector mode changed during authorization");
     }
@@ -853,6 +1026,7 @@ export const startCustomConnectorOAuth2$ = command(
       return mutationFailure;
     }
     return {
+      result: "authorization" as const,
       authorizationUrl: prepared.authorizationUrl,
       connectionId: mutationStart.connectionId ?? undefined,
     };
@@ -1029,14 +1203,13 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
   readonly orgId: string;
   readonly connectorId: string;
   readonly storageVersion: number;
-  readonly oauthSetup?: "custom" | "automatic";
+  readonly authMode: "oauth" | "automatic";
 }): Promise<{
   readonly providerAdapter: CustomConnectorOAuthProviderAdapter | null;
 }> {
   const [definition] = await args.db
     .select({
       authMode: orgCustomConnectors.authMode,
-      oauthSetup: orgCustomConnectors.oauthSetup,
       storageVersion: orgCustomConnectors.storageVersion,
       providerAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
     })
@@ -1058,10 +1231,7 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
     .limit(1);
   if (
     !definition ||
-    definition.authMode !== "oauth" ||
-    (args.oauthSetup === "automatic"
-      ? definition.oauthSetup !== "automatic"
-      : definition.oauthSetup !== null && definition.oauthSetup !== "custom") ||
+    definition.authMode !== args.authMode ||
     definition.storageVersion !== args.storageVersion
   ) {
     throw new Error(
@@ -1109,7 +1279,7 @@ export async function storeCustomConnectorOAuth2Connection(
       orgId: args.orgId,
       connectorId: args.connectorId,
       storageVersion: args.storageVersion,
-      oauthSetup: args.automaticOAuthBinding ? "automatic" : "custom",
+      authMode: args.automaticOAuthBinding ? "automatic" : "oauth",
     });
     signal.throwIfAborted();
     const resolution = await resolveConnectorConnectionMutation(tx, {
@@ -1188,6 +1358,7 @@ async function loadConnection(args: {
   readonly customConnectorId: string;
   readonly memberConnectorId: string;
   readonly storageVersion: number;
+  readonly definitionAuthMode: "oauth" | "automatic";
   readonly lockRow?: boolean;
 }): Promise<StoredConnection | null> {
   const query = args.db
@@ -1213,7 +1384,7 @@ async function loadConnection(args: {
               and(
                 eq(orgCustomConnectors.id, args.customConnectorId),
                 eq(orgCustomConnectors.orgId, args.orgId),
-                eq(orgCustomConnectors.authMode, "oauth"),
+                eq(orgCustomConnectors.authMode, args.definitionAuthMode),
                 eq(orgCustomConnectors.storageVersion, args.storageVersion),
               ),
             ),
@@ -1241,7 +1412,7 @@ async function loadConnection(args: {
       and(
         eq(orgCustomConnectors.id, connectors.customConnectorId),
         eq(orgCustomConnectors.orgId, connectors.orgId),
-        eq(orgCustomConnectors.authMode, "oauth"),
+        eq(orgCustomConnectors.authMode, args.definitionAuthMode),
         eq(orgCustomConnectors.storageVersion, args.storageVersion),
       ),
     )
@@ -1344,6 +1515,22 @@ interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly forceRefresh?: boolean;
 }
 
+async function loadCustomOAuthConnection(
+  args: ResolveCustomConnectorOAuth2AccessTokenArgs,
+  lockRow = false,
+): Promise<StoredConnection | null> {
+  return await loadConnection({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    customConnectorId: args.connector.id,
+    memberConnectorId: args.memberConnectorId,
+    storageVersion: args.connector.storageVersion,
+    definitionAuthMode: "oauth",
+    lockRow,
+  });
+}
+
 async function resolveCustomConnectorOAuth2AccessToken(
   args: ResolveCustomConnectorOAuth2AccessTokenArgs,
   signal: AbortSignal,
@@ -1356,14 +1543,7 @@ async function resolveCustomConnectorOAuth2AccessToken(
     return { kind: "unavailable" };
   }
   const oauthConfig = args.connector.oauthConfig;
-  const connection = await loadConnection({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    customConnectorId: args.connector.id,
-    memberConnectorId: args.memberConnectorId,
-    storageVersion: args.connector.storageVersion,
-  });
+  const connection = await loadCustomOAuthConnection(args);
   signal.throwIfAborted();
   if (!connection) {
     return { kind: "unavailable" };
@@ -1378,15 +1558,10 @@ async function resolveCustomConnectorOAuth2AccessToken(
     return accessToken;
   }
   return await args.db.transaction(async (tx) => {
-    const lockedConnection = await loadConnection({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      customConnectorId: args.connector.id,
-      memberConnectorId: args.memberConnectorId,
-      storageVersion: args.connector.storageVersion,
-      lockRow: true,
-    });
+    const lockedConnection = await loadCustomOAuthConnection(
+      { ...args, db: tx },
+      true,
+    );
     signal.throwIfAborted();
     if (!lockedConnection) {
       return { kind: "unavailable" };
@@ -1517,8 +1692,8 @@ async function refreshLockedAutomaticOAuthAccessToken(
     readonly args: ResolveCustomConnectorOAuth2AccessTokenArgs;
     readonly connector: CustomConnectorRow & {
       readonly kind: "mcp";
-      readonly authMode: "oauth";
-      readonly oauthSetup: "automatic";
+      readonly authMode: "automatic";
+      readonly oauthSetup: null;
     };
     readonly initialConnection: StoredConnection;
     readonly initialAccessToken: ReturnType<typeof storedConnectionAccessToken>;
@@ -1534,6 +1709,7 @@ async function refreshLockedAutomaticOAuthAccessToken(
     customConnectorId: connector.id,
     memberConnectorId: args.memberConnectorId,
     storageVersion: connector.storageVersion,
+    definitionAuthMode: "automatic",
     lockRow: true,
   });
   signal.throwIfAborted();
@@ -1651,6 +1827,7 @@ async function resolveAutomaticCustomConnectorOAuth2AccessToken(
     customConnectorId: connector.id,
     memberConnectorId: args.memberConnectorId,
     storageVersion: connector.storageVersion,
+    definitionAuthMode: "automatic",
   });
   signal.throwIfAborted();
   if (!connection) {
@@ -1724,11 +1901,14 @@ export async function resolveCurrentCustomConnectorOAuth2AccessToken(
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   const connector = await loadLiveCustomConnector(args);
   signal.throwIfAborted();
-  if (!connector || connector.authMode !== "oauth") {
+  if (
+    !connector ||
+    (connector.authMode !== "oauth" && connector.authMode !== "automatic")
+  ) {
     return { kind: "unavailable" };
   }
   const resolve =
-    connector.oauthSetup === "automatic"
+    connector.authMode === "automatic"
       ? resolveAutomaticCustomConnectorOAuth2AccessToken
       : resolveCustomConnectorOAuth2AccessToken;
   return await resolve(
