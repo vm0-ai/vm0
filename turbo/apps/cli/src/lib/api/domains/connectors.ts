@@ -307,6 +307,7 @@ export async function listRunMcpConnectors(): Promise<McpConnector[]> {
 export async function reauthorizeRunMcpConnectorOAuth(
   connectorId: string,
   scopes: readonly string[],
+  signal: AbortSignal,
 ): Promise<McpConnectorOAuthReauthorizationResponse | null> {
   const config = await getClientConfig();
   const client = initClient(mcpConnectorsContract, config);
@@ -314,6 +315,7 @@ export async function reauthorizeRunMcpConnectorOAuth(
     headers: {},
     params: { id: connectorId },
     body: { scopes: [...scopes] },
+    fetchOptions: { signal },
   });
   if (result.status === 200) {
     return mcpConnectorOAuthReauthorizationResponseSchema.parse(result.body);

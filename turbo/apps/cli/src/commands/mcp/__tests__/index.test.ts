@@ -658,6 +658,49 @@ describe("okou mcp command", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps scope reauthorization inside the command deadline", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      listResponse: () => {
+        return insufficientScopeResponse("admin");
+      },
+    });
+    server.use(
+      http.post(
+        `http://localhost:3000/api/mcp-connectors/${CONNECTOR_ID}/oauth2/reauthorize`,
+        async () => {
+          await delay(2_000);
+          return HttpResponse.json({
+            authorizationUrl: "https://authorize.example.test/consent",
+            expiresAt: "2026-09-03T12:15:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await expect(
+      mcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "{}",
+        "--timeout",
+        "1s",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("timed out after 1s");
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/list";
+      }),
+    ).toHaveLength(1);
+  });
+
   it("keeps an oversized insufficient-scope challenge generic", async () => {
     stubConnectorList();
     stubMcpServer({

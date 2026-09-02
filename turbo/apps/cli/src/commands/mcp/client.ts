@@ -180,6 +180,7 @@ function parseRequiredScopes(error: InsufficientScopeError): string[] | null {
 async function insufficientScopeError(
   connector: McpConnector,
   error: InsufficientScopeError,
+  deadlineSignal: AbortSignal,
 ): Promise<Error> {
   const scopes = parseRequiredScopes(error);
   if (!scopes) {
@@ -189,6 +190,7 @@ async function insufficientScopeError(
     const authorization = await reauthorizeRunMcpConnectorOAuth(
       connector.id,
       scopes,
+      deadlineSignal,
     );
     if (!authorization) {
       return new Error(
@@ -228,7 +230,14 @@ async function safeMcpError(
     return new Error(`MCP command timed out after ${timeoutSeconds}s`);
   }
   if (error instanceof InsufficientScopeError) {
-    return await insufficientScopeError(connector, error);
+    const reauthorizationError = await insufficientScopeError(
+      connector,
+      error,
+      deadlineSignal,
+    );
+    return deadlineSignal.aborted || Date.now() >= deadlineAt
+      ? new Error(`MCP command timed out after ${timeoutSeconds}s`)
+      : reauthorizationError;
   }
   if (error instanceof McpCommandError) {
     return new Error(error.message);
