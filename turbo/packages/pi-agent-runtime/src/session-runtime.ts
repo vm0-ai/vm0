@@ -13,18 +13,21 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiPreheatedResourceSnapshot } from "./api-types";
-import { piAgentStream, resolvePiAgentModel } from "./model";
+import { piAgentRegisteredStream, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
 
 function requestScopedPiAgentStream(
   serviceTier: PiAgentServiceTier | undefined,
-): typeof piAgentStream {
+): typeof piAgentRegisteredStream {
   if (serviceTier === undefined) {
-    return piAgentStream;
+    return piAgentRegisteredStream;
   }
   return (model, context, options) => {
-    return piAgentStream(model, context, { ...options, serviceTier });
+    return piAgentRegisteredStream(model, context, {
+      ...options,
+      serviceTier,
+    });
   };
 }
 
@@ -51,7 +54,6 @@ function registeredModelConfig(
         cost: model.cost,
         contextWindow: model.contextWindow,
         maxTokens: model.maxTokens,
-        samplingParams: model.samplingParams,
         headers: model.headers,
         compat: model.compat,
       },

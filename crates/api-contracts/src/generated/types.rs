@@ -183,7 +183,7 @@ pub mod runners {
             pub base_url: String,
             /// Provider model identifier.
             pub model: String,
-            /// Explicit Pi transport. Legacy payloads omit this field and retain the previous adapter behavior.
+            /// Compatibility transport input. Current writers emit OpenAI Responses, and the current Pi runtime normalizes legacy values to Responses.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub api: Option<PiModelConfigApi>,
             /// Explicit Pi thinking level. Legacy payloads omit this field and retain Pi's medium default.

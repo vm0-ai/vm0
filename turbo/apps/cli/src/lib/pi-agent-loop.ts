@@ -92,6 +92,7 @@ export async function piSandboxAgentConfigFromEnv(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
   const {
+    api: _legacyApi,
     apiKeyEnv,
     credentialSecretName: _credentialSecretName,
     ...model
@@ -101,7 +102,7 @@ export async function piSandboxAgentConfigFromEnv(
     runId,
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     launchPayload: await readLaunchPayload(env),
-    model: { ...model, apiKey },
+    model: { ...model, api: "openai-responses", apiKey },
   };
 }
 

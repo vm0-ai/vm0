@@ -890,9 +890,9 @@ export const piModelConfigSchema = z
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
-    // Optional additions keep stored legacy launch contexts readable. When
-    // absent, readers preserve the previous adapter transport and Pi's medium
-    // thinking default.
+    // Keep legacy transport values decodable until old stored launch contexts
+    // drain. Current writers emit openai-responses, and the current Pi runtime
+    // normalizes every accepted value to that adapter.
     api: z.enum(MODEL_PROVIDER_PI_APIS).optional(),
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
