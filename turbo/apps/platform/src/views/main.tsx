@@ -17,7 +17,6 @@ import {
   isStandalonePwa,
   setupKeyboardDismissGesture,
 } from "../lib/keyboard-dismiss-gesture.ts";
-import { ImageAnnotationEditor } from "./okou-page/image-annotation-editor.tsx";
 import { InstatusStatusNotice } from "./components/instatus-status-notice.tsx";
 import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
@@ -81,10 +80,6 @@ export const setupRouter = (
           <InspectLogFileInput />
           <ForceUpgradeDialog />
           <InstatusStatusNotice />
-          {/* The lightbox is mounted by three different pages, and opening the
-              editor closes it — so the editor lives at the root instead, or it
-              would only exist on whichever page happened to mount it. */}
-          <ImageAnnotationEditor />
         </ErrorBoundary>
         <AppToaster />
       </StoreProvider>

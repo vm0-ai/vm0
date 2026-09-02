@@ -4,7 +4,9 @@ import { useTranslation } from "react-i18next";
 import { Sun, Moon, Monitor, Keyboard, Loader2, Palette } from "lucide-react";
 import { cn } from "@okouai/ui";
 import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
+import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import {
   themePreference$,
@@ -196,6 +198,7 @@ function EnterBlock() {
 
 export function PreferenceSection() {
   const { t } = useTranslation();
+  const featureSwitches = useGet(featureSwitch$);
 
   return (
     <div className="flex flex-col gap-8">
@@ -244,7 +247,9 @@ export function PreferenceSection() {
           })}
         />
         <TimezoneSettings />
-        <MorningBriefSettings />
+        {featureSwitches[FeatureSwitchKey.MorningBrief] ? (
+          <MorningBriefSettings />
+        ) : null}
       </section>
     </div>
   );

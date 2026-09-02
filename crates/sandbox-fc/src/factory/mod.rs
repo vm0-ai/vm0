@@ -5,6 +5,7 @@ mod invariant;
 mod leak_cleaner;
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -24,6 +25,7 @@ use crate::factory::create_transaction::{
     rollback_create_transaction,
 };
 use crate::factory::leak_cleaner::LeakCleaner;
+use crate::host_cpu_cgroup::HostCpuCgroupManager;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
@@ -42,6 +44,7 @@ pub(crate) struct FirecrackerFactory {
     resources: Option<StartedFactoryResources>,
     /// Best-effort release authority for sandboxes destroyed after shutdown.
     shutdown_netns_pool: Option<NetnsPoolHandle>,
+    host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
 }
 
 struct StartedFactoryResources {
@@ -68,6 +71,7 @@ impl FirecrackerFactory {
         config: FirecrackerConfig,
         netns_pool: Option<NetnsPoolHandle>,
         device_pool: nbd_cow::pool::DevicePoolHandle,
+        host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         let mode = match config.snapshot.as_ref() {
@@ -169,6 +173,7 @@ impl FirecrackerFactory {
                 leak_cleaner,
             }),
             shutdown_netns_pool: None,
+            host_cpu_cgroup,
         })
     }
 
@@ -367,6 +372,7 @@ impl FirecrackerFactory {
             cow_device,
             device_rate_limits,
             leak_tx,
+            host_cpu_cgroup: self.host_cpu_cgroup.clone(),
         });
         Ok(Box::new(sandbox))
     }
@@ -627,6 +633,7 @@ mod tests {
             cleanup_group: FactoryCleanupGroup::new(),
             resources: None,
             shutdown_netns_pool: None,
+            host_cpu_cgroup: None,
         }
     }
 
@@ -666,6 +673,7 @@ mod tests {
                 leak_cleaner,
             }),
             shutdown_netns_pool: None,
+            host_cpu_cgroup: None,
         }
     }
 

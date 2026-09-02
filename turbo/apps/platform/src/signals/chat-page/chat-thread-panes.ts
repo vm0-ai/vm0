@@ -15,7 +15,10 @@ import {
 } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
-import { createRestoredAttachment } from "../okou-page/chat-draft.ts";
+import {
+  createRestoredAttachment,
+  type RestorableAttachment,
+} from "../okou-page/chat-draft.ts";
 import {
   messageDocumentToEditorDoc,
   messageDocumentToPrompt,
@@ -84,13 +87,13 @@ interface PaneSpec {
 interface RestoredDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
-  readonly attachments: PersistedAttachment[];
+  readonly attachments: RestorableAttachment[];
 }
 
 function userMessageDraftAttachments(
   document: UserMessageDocument,
   attachments: readonly PersistedAttachment[],
-): PersistedAttachment[] {
+): RestorableAttachment[] {
   const attachmentById = new Map(
     attachments.map((attachment) => {
       return [attachment.id, attachment] as const;
@@ -101,7 +104,17 @@ function userMessageDraftAttachments(
       return [];
     }
     const attachment = attachmentById.get(part.fileId);
-    return attachment ? [attachment] : [];
+    return attachment
+      ? [
+          {
+            ...attachment,
+            ...(part.annotatedFileId
+              ? { annotatedFileId: part.annotatedFileId }
+              : {}),
+            ...(part.annotations ? { annotations: part.annotations } : {}),
+          },
+        ]
+      : [];
   });
 }
 

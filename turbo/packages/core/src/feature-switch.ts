@@ -222,6 +222,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MorningBrief]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable the first-class Morning Brief experience in Preferences.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -270,9 +277,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.PiLoop]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "lancy@vm0.ai",
     description:
       "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PiMemoryRecall]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Mount the canonical user memory Storage for Pi runs without enabling memory generation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -335,16 +349,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
-      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
+      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
     // Scoped to the maintainer rather than the whole staff org while the
-    // flatten and two-file send are still unexercised outside tests.
+    // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.OfficeDocumentPreview]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Preview DOCX and PPTX attachments with the Microsoft Office viewer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -355,6 +376,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
+  },
+  [FeatureSwitchKey.GeistTypeface]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Set the interface typeface to Geist and Geist Mono instead of Noto Sans and JetBrains Mono.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",

@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { CodexServiceTier } from "@okouai/api-contracts/contracts/chat-threads";
+import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { agents } from "./agent";
 import { registerAgentRunReferences } from "./agent-run-reference";
 import { chatThreads } from "./chat-thread";
@@ -78,6 +79,7 @@ export const agentRuns = pgTable(
     cancellationRecoveryCompleted: boolean("cancellation_recovery_completed"),
     result: jsonb("result").$type<AgentRunResult>(),
     error: text("error"),
+    failureReason: text("failure_reason").$type<RunFailureReason>(),
     lastEventSequence: integer("last_event_sequence"),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

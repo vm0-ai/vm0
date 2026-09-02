@@ -86,3 +86,6 @@ vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy_for_unit_tests");
 vi.stubEnv("ATOM_URL", "https://atom.example.test");
 vi.stubEnv("OKOU_MACHINE_SECRET_KEY", "msk_test_dummy_for_unit_tests");
 vi.stubEnv("ABLY_API_KEY", "test-ably-key");
+// The Vercel connector builds its authorization URL from the Integration slug
+// read straight from the process environment, outside the API env contract.
+vi.stubEnv("VERCEL_INTEGRATION_SLUG", "okou-test-integration");
