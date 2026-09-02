@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.822.4](https://github.com/vm0-ai/vm0/compare/app-v0.822.3...app-v0.822.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **platform:** make settings the only preferences surface ([#31039](https://github.com/vm0-ai/vm0/issues/31039)) ([1e2692c](https://github.com/vm0-ai/vm0/commit/1e2692cd5fd7173f3b691a180d4430bceab4ea6c))
+
+
+### Refactoring
+
+* remove concurrency member usage feature switch ([#30934](https://github.com/vm0-ai/vm0/issues/30934)) ([e211986](https://github.com/vm0-ai/vm0/commit/e2119869809f7b50614d1367d2fbdc7c1517e4f6))
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.3
+    * @okouai/core bumped to 8.608.3
+
 ## [0.822.3](https://github.com/vm0-ai/vm0/compare/app-v0.822.2...app-v0.822.3) (2026-09-02)
 
 
