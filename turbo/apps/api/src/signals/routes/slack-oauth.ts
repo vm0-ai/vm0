@@ -33,7 +33,11 @@ import {
 } from "../services/slack-connect.service";
 import { SLACK_BOT_SCOPES } from "../services/slack-data.service";
 import type { RouteEntry } from "../route-entry";
-import { getOAuthApiOrigin, getOAuthWebOrigin } from "../../lib/oauth-origin";
+import {
+  getOAuthApiOrigin,
+  getOAuthWebOrigin,
+  getTrustedOAuthWebOrigin,
+} from "../../lib/oauth-origin";
 import { OFFICIAL_SLACK_PUBLIC_BRAND } from "../../lib/slack-official-app";
 
 const L = logger("SlackOAuth");
@@ -258,10 +262,12 @@ function oauthStartPublicBrand(
   // Surface: old web/app clients can retain shared-origin start links for
   // about two days, while a retained old API can still emit them. Remove under
   // #26720 once the pre-domain client is below the version floor and that API
-  // is no longer serving or rollback-capable. An API hostname always wins.
-  return new URL(request.url).origin === getOAuthWebOrigin(request)
-    ? (queryBrand ?? trustedBrand)
-    : trustedBrand;
+  // is no longer serving or rollback-capable. A direct API hostname always
+  // wins; the trusted header identifies an API request created by a web rewrite.
+  const isSharedWebStart =
+    new URL(request.url).origin === getOAuthWebOrigin(request) ||
+    getTrustedOAuthWebOrigin(request) !== null;
+  return isSharedWebStart ? (queryBrand ?? trustedBrand) : trustedBrand;
 }
 
 function slackCredentials(): {

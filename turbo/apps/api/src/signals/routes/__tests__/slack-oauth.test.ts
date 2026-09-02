@@ -206,7 +206,10 @@ describe("Slack OAuth API routes", () => {
     it("preserves an Okou brand carried through the shared web origin", async () => {
       const response = await appRequest(
         "/api/slack/oauth/install?publicBrand=okou",
-        { origin: WEB_ORIGIN },
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": WEB_ORIGIN },
+        },
       );
 
       expect(response.status).toBe(307);
@@ -322,10 +325,13 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("does not accept a callback host from request headers", async () => {
-      const response = await appRequest("/api/zero/slack/oauth/install", {
-        origin: API_ORIGIN,
-        headers: { "x-vm0-web-origin": "https://evil.example" },
-      });
+      const response = await appRequest(
+        "/api/slack/oauth/install?publicBrand=okou",
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": "https://evil.example" },
+        },
+      );
 
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
@@ -382,7 +388,10 @@ describe("Slack OAuth API routes", () => {
 
       const response = await appRequest(
         `/api/slack/oauth/connect?orgId=${fixture.orgId}&userId=${fixture.userId}&publicBrand=okou`,
-        { origin: WEB_ORIGIN },
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": WEB_ORIGIN },
+        },
       );
 
       expect(response.status).toBe(307);
