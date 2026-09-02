@@ -15833,12 +15833,19 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     async function completeFailure(
       modelProvider: ModelProviderType,
       failureReason?: string,
+      persistedModelProvider?: ModelProviderType | null,
     ): Promise<{ readonly runId: string; readonly error: string }> {
       const run = await api.createRun(actor, {
         agentId,
         prompt: `fail ${modelProvider} with ${failureReason ?? "no reason"}`,
         modelProvider,
       });
+      if (persistedModelProvider !== undefined) {
+        await setRunModelProviderFixture({
+          runId: run.runId,
+          modelProvider: persistedModelProvider,
+        });
+      }
       const error = `provider failure for ${run.runId}`;
       await webhooks.requestAgentComplete(
         {
@@ -15903,6 +15910,18 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       matchingRunFailedCalls(
         context.mocks.axiomLogging.warn,
         unrecognizedReasonFailure.runId,
+      ),
+    ).toHaveLength(1);
+
+    const missingProviderFailure = await completeFailure(
+      "anthropic-api-key",
+      "provider_rate_limited",
+      null,
+    );
+    expect(
+      matchingRunFailedCalls(
+        context.mocks.axiomLogging.warn,
+        missingProviderFailure.runId,
       ),
     ).toHaveLength(1);
   });
