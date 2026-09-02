@@ -126,6 +126,28 @@ exit 64
 }
 
 #[test]
+fn workspace_drive_mount_reports_start_failure() {
+    let missing_program = unique_tmp_path("workspace-mount-missing-program", ".sh");
+    let (handle, mut host_stream) = start_guest_connection_with_workspace_drive_mount_program(
+        PathBuf::from(missing_program.as_str()),
+        1_000,
+    );
+
+    send_request(&mut host_stream, 512);
+    let result = read_result(&mut host_stream, 512);
+
+    assert_eq!(result.termination, ExecTermination::StartFailed);
+    assert!(result.stdout.is_empty());
+    assert!(result.stderr.is_empty());
+    assert!(
+        result
+            .diagnostic
+            .contains("Failed to start workspace mount helper")
+    );
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn workspace_drive_mount_bounds_both_output_streams() {
     let output_bytes = WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES + 1_024;
     let (_directory, program) = create_program(&format!(
