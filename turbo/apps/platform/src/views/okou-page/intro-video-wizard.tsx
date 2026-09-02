@@ -101,22 +101,25 @@ function stepForStage(
 }
 
 /**
- * Navigate to a step, restarting the wizard when that step is the empty source
- * page.
+ * Navigate to a step.
  *
- * A deck skips the review page, so its only way back to step one is to give the
- * deck up; `startOver$` is what makes leaving the presenter mean that.
+ * Reaching the source step goes through `returnToSourceStep$`, which owns the
+ * rule about what happens to the source the wizard is leaving behind: a deck
+ * skips the review page, so giving it up is the only way back to step one,
+ * while a desktop take the browser cannot recreate is kept.
  */
 function useGoToStep(): (step: IntroVideoWizardStep) => void {
   const pageSignal = useGet(pageSignal$);
   const setStep = useSet(introVideoWizardSignals.setStep$);
-  const startOver = useSet(introVideoWizardSignals.startOver$);
+  const returnToSourceStep = useSet(
+    introVideoWizardSignals.returnToSourceStep$,
+  );
   return (step) => {
     if (step === "source") {
       detach(
-        startOver(pageSignal),
+        returnToSourceStep(pageSignal),
         Reason.DomCallback,
-        "restart the intro video wizard",
+        "return to the intro video source step",
       );
       return;
     }

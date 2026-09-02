@@ -106,10 +106,7 @@ function sourceFromDraft(draft: IntroVideoDraftRecord): LocalIntroVideoSource {
     blob: draft.blob,
     contentType: draft.contentType,
     durationSeconds: draft.durationSeconds,
-    // A draft written before uploads were narrowed to decks can still name a
-    // kind this build no longer produces, so anything that is not a deck is
-    // read back as a recording rather than trusted as a third kind.
-    kind: draft.kind === "document" ? "document" : "recording",
+    kind: draft.kind,
     name: draft.name,
     origin: "local",
     previewUrl:
@@ -301,8 +298,8 @@ function stepAfterSource(source: IntroVideoSource): IntroVideoWizardStep {
  * presenter and the header's Source tab both lead.
  *
  * A deck has no review page of its own, so its first stage is the empty source
- * step — reaching it therefore discards the deck, which is what `startOver$`
- * exists for.
+ * step — reaching it therefore discards the deck, which is what
+ * `returnToSourceStep$` exists for.
  */
 export function introVideoSourceStep(
   source: IntroVideoSource | null,
@@ -443,23 +440,33 @@ function createSourceCommands(
     },
   );
   /**
-   * Throw the current source away and start the wizard from its first step.
+   * Go back to the first step, dropping a deck on the way.
    *
    * A deck has no review page to step back to, so leaving the presenter is the
-   * user saying they picked the wrong source. Keeping it would silently reuse a
-   * file they already walked away from.
+   * user saying they picked the wrong file. Keeping it would silently reuse a
+   * source they already walked away from.
+   *
+   * A desktop take survives instead. The browser never held its bytes, the
+   * handoff params are already stripped from the URL, and the draft store has
+   * nothing to restore, so dropping it here would cost a recording that only
+   * another desktop session can replace. Its review page stays reachable from
+   * the Source tab.
    */
-  const startOver$ = command(
+  const returnToSourceStep$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      releasePreviewUrl(get(internal.source$));
+      set(internal.error$, null);
+      set(internal.step$, "source");
+      const source = get(internal.source$);
+      if (source?.origin === "uploaded") {
+        return;
+      }
+      releasePreviewUrl(source);
       set(internal.source$, null);
       set(internal.sourcePersisted$, false);
       set(internal.sourceUploaded$, false);
       set(internal.avatar$, null);
       set(internal.voice$, null);
       set(internal.placement$, "left");
-      set(internal.error$, null);
-      set(internal.step$, "source");
       await settle(deleteIntroVideoDraft(), signal);
     },
   );
@@ -508,9 +515,9 @@ function createSourceCommands(
     adoptUploadedRecording$,
     closeWizard$,
     openWizard$,
+    returnToSourceStep$,
     setSourceFile$,
     setStep$,
-    startOver$,
   };
 }
 
