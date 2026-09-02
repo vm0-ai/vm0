@@ -75,6 +75,12 @@ fn binary_empty_artifact_preparation_failure_preserves_prior_work() {
     assert_does_not_contain_any("sandbox ops log", &ops_log, &forbidden);
 
     let ops = fixture.ops_entries().unwrap();
+    assert!(
+        ops.iter().any(|entry| {
+            entry["action_type"] == "guest_download_target_prepare" && entry["success"] == true
+        }),
+        "staged instruction target should be prepared before the artifact failure: {ops:?}"
+    );
     let mut empty_artifact_ops = ops
         .iter()
         .filter(|entry| entry["action_type"] == "artifact_empty_prepare");
