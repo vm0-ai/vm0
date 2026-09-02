@@ -556,11 +556,6 @@ export function gmailAutomationTitle(
       return $.workflows.automations.notion.contentUpdatedTitle;
     });
   }
-  if (automation.eventType === "strapi-entry-published") {
-    return i18n.t(($) => {
-      return $.workflows.automations.strapi.entryPublishedTitle;
-    });
-  }
   return i18n.t(($) => {
     return $.workflows.automations.common.webhookAutomation;
   });

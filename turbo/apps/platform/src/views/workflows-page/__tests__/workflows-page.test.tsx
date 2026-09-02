@@ -26,7 +26,6 @@ import {
   type OfficialWorkflowCatalogDetail,
 } from "@okouai/api-contracts/contracts/official-workflows";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
-import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
@@ -1268,7 +1267,6 @@ function mockCreateWorkflowAutomation(
       body.eventConfig.provider === "github" ||
       body.eventConfig.provider === "google-forms" ||
       body.eventConfig.provider === "stripe" ||
-      body.eventConfig.provider === "strapi" ||
       body.eventConfig.provider === "chat"
     ) {
       return respond(201, mockConfiguredEventAutomation(body));
@@ -4148,73 +4146,6 @@ describe("workflow detail page", () => {
       "href",
       "/connectors",
     );
-  });
-
-  it("hides Strapi automation creation when the feature is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.StrapiIntegration]: false,
-    });
-
-    click(await screen.findByText("Add automation"));
-    const picker = await screen.findByRole("dialog");
-    click(buttonByText("Integrations", picker));
-    expect(
-      screen.queryByText("Strapi entry published"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("creates a Strapi entry-published automation behind the feature switch", async () => {
-    const integrationId = "00000000-0000-4000-8000-000000000092";
-    const createBodies: WorkflowAutomationCreateRequest[] = [];
-    mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowAutomation((body) => {
-      createBodies.push(body);
-    });
-    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          id: integrationId,
-          name: "Marketing CMS",
-          baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
-          secretLastFour: "abcd",
-          lastTestedAt: "2026-07-28T04:00:00.000Z",
-          lastReceivedAt: null,
-          createdAt: "2026-07-28T03:00:00.000Z",
-        },
-      ]);
-    });
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.StrapiIntegration]: true,
-    });
-
-    click(await screen.findByText("Add automation"));
-    await screen.findByRole("dialog");
-    pickAutomation("Integrations", /^Strapi entry published/);
-    const form = await screen.findByRole("form", {
-      name: "Add Strapi entry published automation",
-    });
-    await fill(
-      within(form).getByLabelText("Content type UID (optional)"),
-      "api::article.article",
-    );
-    await fill(within(form).getByLabelText("Locale (optional)"), "en");
-    fireEvent.submit(form);
-
-    await waitFor(() => {
-      expect(createBodies.at(-1)).toStrictEqual({
-        kind: "event",
-        eventType: "strapi-entry-published",
-        eventConfig: {
-          provider: "strapi",
-          event: "entry_published",
-          integrationId,
-          contentTypeUid: "api::article.article",
-          locale: "en",
-        },
-      });
-    });
   });
 
   it("creates a webhook automation and shows one-time signing details", async () => {

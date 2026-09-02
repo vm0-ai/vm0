@@ -23,7 +23,6 @@ import {
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
   type StripeInvoiceBillingReason,
-  type StrapiEntryPublishedEventConfig,
   type WorkflowDetailResponse,
   type WorkflowSchedule,
   type WorkflowWebhookSecretResponse,
@@ -116,7 +115,6 @@ export type WorkflowAutomationCreateDialog =
   | "notion-database-item"
   | "notion-page-content-updated"
   | "stripe-invoice-paid"
-  | "strapi-entry-published"
   | "webhook"
   | null;
 export type NotionPageContentUpdatedScopeMode = "page" | "database";
@@ -254,7 +252,6 @@ type WorkflowWebhookUpgradeDialogSource =
   | { readonly action: "menu" };
 const internalWorkflowWebhookUpgradeDialogSource$ =
   state<WorkflowWebhookUpgradeDialogSource | null>(null);
-const internalCreateStrapiIntegrationId$ = state<string | null>(null);
 const internalWorkflowAutomationPickerCategory$ =
   state<WorkflowAutomationCategoryKey>("schedule");
 const internalCreateNotionPageContentUpdatedScope$ =
@@ -605,16 +602,6 @@ export const setWorkflowAutomationPickerCategory$ = command(
 export const createNotionPageContentUpdatedScope$ = computed((get) => {
   return get(internalCreateNotionPageContentUpdatedScope$);
 });
-
-export const createStrapiIntegrationId$ = computed((get) => {
-  return get(internalCreateStrapiIntegrationId$);
-});
-
-export const setCreateStrapiIntegrationId$ = command(
-  ({ set }, integrationId: string | null) => {
-    set(internalCreateStrapiIntegrationId$, integrationId);
-  },
-);
 
 export const setCreateNotionPageContentUpdatedScope$ = command(
   ({ set }, scope: NotionPageContentUpdatedScopeMode) => {
@@ -1363,33 +1350,6 @@ export const createWorkflowNotionPageContentUpdatedAutomation$ = command(
         body: {
           kind: "event",
           eventType: "notion-page-content-updated",
-          eventConfig: input.eventConfig,
-        },
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const createWorkflowStrapiEntryPublishedAutomation$ = command(
-  async (
-    { get, set },
-    input: {
-      readonly workflowId: string;
-      readonly eventConfig: StrapiEntryPublishedEventConfig;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(apiClient$)(workflowAutomationsContract);
-    await accept(
-      client.create({
-        params: { workflowId: input.workflowId },
-        body: {
-          kind: "event",
-          eventType: "strapi-entry-published",
           eventConfig: input.eventConfig,
         },
         fetchOptions: { signal },

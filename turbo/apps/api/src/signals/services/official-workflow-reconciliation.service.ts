@@ -12,7 +12,6 @@ import {
   type StripeInvoicePaidEventConfig,
 } from "@okouai/api-contracts/contracts/workflows";
 import { googleFormsAutomationCursors } from "@okouai/db/schema/google-forms-event";
-import { strapiWorkflowAutomations } from "@okouai/db/schema/strapi-integration";
 import {
   officialWorkflowAutomationIdentities,
   workflowAutomations,
@@ -629,17 +628,6 @@ async function persistReconfigurationPatch(
     if (!updated) {
       throw new Error("Official Workflow automation disappeared");
     }
-    const strapiIntegrationId = args.preparation?.strapiIntegrationId;
-    if (strapiIntegrationId !== undefined) {
-      const [binding] = await tx
-        .update(strapiWorkflowAutomations)
-        .set({ integrationId: strapiIntegrationId })
-        .where(eq(strapiWorkflowAutomations.automationId, current.id))
-        .returning({ automationId: strapiWorkflowAutomations.automationId });
-      if (!binding) {
-        throw new Error("Official Strapi automation binding disappeared");
-      }
-    }
     await upsertActiveIdentity(tx, updated, currentTime);
     return {
       previous: current,
@@ -647,21 +635,6 @@ async function persistReconfigurationPatch(
       googleFormsCursor: formsCursor?.cursor,
     };
   });
-}
-
-function strapiIntegrationId(
-  automation: OfficialAutomationRow,
-): string | undefined {
-  if (
-    automation.eventType !== "strapi-entry-published" ||
-    typeof automation.eventConfig !== "object" ||
-    automation.eventConfig === null ||
-    Array.isArray(automation.eventConfig)
-  ) {
-    return undefined;
-  }
-  const integrationId = automation.eventConfig["integrationId"];
-  return typeof integrationId === "string" ? integrationId : undefined;
 }
 
 async function restoreFailedReconfiguration(
@@ -760,13 +733,6 @@ async function restoreFailedReconfiguration(
       .returning();
     if (!row) {
       return null;
-    }
-    const integrationId = strapiIntegrationId(args.persisted.previous);
-    if (integrationId !== undefined) {
-      await tx
-        .update(strapiWorkflowAutomations)
-        .set({ integrationId })
-        .where(eq(strapiWorkflowAutomations.automationId, row.id));
     }
     await upsertActiveIdentity(tx, row, currentTime);
     return row;
