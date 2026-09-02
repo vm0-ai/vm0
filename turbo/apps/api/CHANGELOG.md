@@ -1,5 +1,63 @@
 # Changelog
 
+## [1.527.1](https://github.com/vm0-ai/vm0/compare/api-v1.527.0...api-v1.527.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **api:** bind calendar triggers to thread account ([#30907](https://github.com/vm0-ai/vm0/issues/30907)) ([5fe9278](https://github.com/vm0-ai/vm0/commit/5fe92783e9dd836989628fd8c651f2c96bdce076))
+* **platform:** make settings the only preferences surface ([#31039](https://github.com/vm0-ai/vm0/issues/31039)) ([1e2692c](https://github.com/vm0-ai/vm0/commit/1e2692cd5fd7173f3b691a180d4430bceab4ea6c))
+
+
+### Refactoring
+
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.3
+    * @okouai/core bumped to 8.608.3
+    * @okouai/db bumped to 1.231.4
+
+## [1.527.0](https://github.com/vm0-ai/vm0/compare/api-v1.526.2...api-v1.527.0) (2026-09-02)
+
+
+### Features
+
+* **pi:** align openrouter codex routes on responses api ([#31032](https://github.com/vm0-ai/vm0/issues/31032)) ([eff60e8](https://github.com/vm0-ai/vm0/commit/eff60e8be002ff2150fdd7da4281e5f5b10abe66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.231.3
+    * @okouai/pi-agent-runtime bumped to 1.11.0
+
+## [1.526.2](https://github.com/vm0-ai/vm0/compare/api-v1.526.1...api-v1.526.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **api:** report no-auth connector accounts as connected ([#30972](https://github.com/vm0-ai/vm0/issues/30972)) ([dd4996f](https://github.com/vm0-ai/vm0/commit/dd4996f30ac06f0fa2b527a8837f78b09a944202))
+
+
+### Refactoring
+
+* remove Strapi integration feature switch ([#30965](https://github.com/vm0-ai/vm0/issues/30965)) ([603bbb7](https://github.com/vm0-ai/vm0/commit/603bbb7dafa7caa3619261d9b81047f96c763e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.2
+    * @okouai/core bumped to 8.608.2
+    * @okouai/db bumped to 1.231.2
+
 ## [1.526.1](https://github.com/vm0-ai/vm0/compare/api-v1.526.0...api-v1.526.1) (2026-09-02)
 
 

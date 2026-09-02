@@ -60,6 +60,19 @@ export type ChatTranslationLanguage = z.infer<
   typeof chatTranslationLanguageSchema
 >;
 
+export const CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE = {
+  "en-US": "en",
+  "pt-BR": "pt-BR",
+  "ja-JP": "ja",
+  "ko-KR": "ko",
+  "id-ID": "id",
+  "de-DE": "de",
+  "es-ES": "es",
+  "it-IT": "it",
+  "fr-FR": "fr",
+  "hi-IN": "hi",
+} as const satisfies Record<UserLocale, ChatTranslationLanguage>;
+
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   locale: userLocaleSchema.nullable(),

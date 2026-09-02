@@ -3,9 +3,11 @@ import {
   chatTranslationContract,
   type ChatTranslationResponse,
 } from "@okouai/api-contracts/contracts/chat-translation";
-import type {
-  ChatTranslationLanguage,
-  UserLocale,
+import {
+  CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE,
+  userLocaleSchema,
+  type ChatTranslationLanguage,
+  type UserLocale,
 } from "@okouai/api-contracts/contracts/user-preferences";
 
 import { accept } from "../../lib/accept.ts";
@@ -19,6 +21,11 @@ import {
 function languageFromLocale(
   locale: UserLocale | string | null | undefined,
 ): ChatTranslationLanguage {
+  const userLocale = userLocaleSchema.safeParse(locale);
+  if (userLocale.success) {
+    return CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE[userLocale.data];
+  }
+
   if (locale?.startsWith("zh-TW") || locale?.startsWith("zh-HK")) {
     return "zh-TW";
   }

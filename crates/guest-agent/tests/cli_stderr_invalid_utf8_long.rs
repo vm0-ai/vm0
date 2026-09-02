@@ -6,6 +6,7 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::cli_stderr_diagnostics::CLI_STDERR_OMITTED_LONG_LINE;
 use std::time::Duration;
 
 #[tokio::test]
@@ -29,10 +30,7 @@ async fn cli_failure_omits_invalid_stderr_when_lossy_decode_exceeds_limit()
     .expect("execute_cli should return promptly")?;
 
     assert_eq!(cli_result.exit_code, 1);
-    assert_eq!(
-        cli_result.stderr_lines,
-        vec![common::CLI_STDERR_OMITTED_LONG_LINE]
-    );
+    assert_eq!(cli_result.stderr_lines, vec![CLI_STDERR_OMITTED_LONG_LINE]);
 
     Ok(())
 }

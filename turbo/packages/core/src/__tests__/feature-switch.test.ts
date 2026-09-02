@@ -124,12 +124,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
@@ -149,12 +144,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );

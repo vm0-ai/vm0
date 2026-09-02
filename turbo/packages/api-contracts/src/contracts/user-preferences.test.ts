@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE,
   SUPPORTED_USER_LOCALES,
+  chatTranslationLanguageSchema,
   updateUserPreferencesRequestSchema,
   userLocaleSchema,
   userPreferencesResponseSchema,
@@ -144,5 +146,18 @@ describe("user preferences contract", () => {
     expect(preferences.supportedLocales).toStrictEqual([
       ...SUPPORTED_USER_LOCALES,
     ]);
+  });
+
+  it("supports chat translation for every current user locale", () => {
+    expect(Object.keys(CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE)).toStrictEqual(
+      [...SUPPORTED_USER_LOCALES],
+    );
+    expect(
+      Object.values(CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE).every(
+        (language) => {
+          return chatTranslationLanguageSchema.safeParse(language).success;
+        },
+      ),
+    ).toBe(true);
   });
 });

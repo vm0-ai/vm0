@@ -8,6 +8,7 @@
 pub mod active_input;
 pub mod active_input_receipts;
 pub mod cli_agent_session_id;
+pub mod cli_stderr_diagnostics;
 pub mod codex_session_cleanup;
 pub mod codex_session_path;
 pub mod codex_thread_id;
@@ -26,3 +27,4 @@ pub mod session_history;
 pub mod session_history_identity;
 pub mod stdout_framing;
 pub mod storage_manifest;
+pub mod workspace_mount;

@@ -14,12 +14,9 @@ import { cn } from "@okouai/ui";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
-  resetZoomableImageCanvasZoom$,
-  setZoomableImageCanvasGeometry$,
-  setZoomableImageCanvasZoom$,
-  zoomableImageCanvasGeometryByKey$,
-  zoomableImageCanvasZoomByKey$,
-} from "../../signals/view-component-state.ts";
+  type ZoomableImageCanvasGeometry,
+  type ZoomableImageCanvasSignals,
+} from "../../signals/zoomable-image-canvas.ts";
 
 const IMAGE_ZOOM_STEP = 0.15;
 const IMAGE_DOUBLE_CLICK_ZOOM_STEP = 1;
@@ -76,20 +73,7 @@ function proportionalImageWheelHandler(instance: ReactZoomPanPinchContext) {
   };
 }
 
-type ZoomableArtifactImageSurface =
-  | "attachment-lightbox"
-  | "artifact-dialog"
-  | "artifact-sidebar";
-
-export function zoomableArtifactImageKey(
-  surface: ZoomableArtifactImageSurface,
-  url: string,
-  mode = "default",
-) {
-  return `${surface}:${mode}:${url}`;
-}
-
-type SetZoomHandler = (key: string, zoom: number) => void;
+type SetZoomHandler = (zoom: number) => void;
 
 export type ZoomableImageControls = {
   canZoomIn: boolean;
@@ -116,8 +100,8 @@ type ZoomableArtifactImageCanvasProps = {
   imageTestId: string;
   onError?: () => void;
   onLoad?: () => void;
+  signals: ZoomableImageCanvasSignals;
   src: string;
-  zoomKey?: string;
 };
 
 type ZoomableArtifactImageElementProps = {
@@ -138,7 +122,6 @@ function controlsFromTransformState({
   resetTransform,
   zoomIn,
   zoomOut,
-  zoomKey,
 }: {
   displayZoom: number;
   maxZoom: number;
@@ -146,7 +129,6 @@ function controlsFromTransformState({
   resetTransform: (animationTime?: number) => void;
   zoomIn: (step?: number, animationTime?: number) => void;
   zoomOut: (step?: number, animationTime?: number) => void;
-  zoomKey: string;
 }): ZoomableImageControls {
   const zoom = displayZoom;
 
@@ -155,7 +137,7 @@ function controlsFromTransformState({
     canZoomOut: zoom > IMAGE_LIGHTBOX_MIN_ZOOM,
     resetZoom: () => {
       resetTransform(0);
-      setDisplayZoom(zoomKey, 1);
+      setDisplayZoom(1);
     },
     zoom,
     zoomIn: () => {
@@ -172,16 +154,11 @@ function cssPixelValue(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-type ImageCanvasGeometry = {
-  fitWidth: number;
-  maxZoom: number;
-};
-
 function imageCanvasGeometry(
   fitWidth: number,
   naturalWidth: number,
   availableWidth: number,
-): ImageCanvasGeometry {
+): ZoomableImageCanvasGeometry {
   const maxRenderedWidth = Math.max(
     fitWidth * IMAGE_LIGHTBOX_MAX_ZOOM,
     naturalWidth,
@@ -195,7 +172,7 @@ function imageCanvasGeometry(
 
 function calculateImageCanvasGeometry(
   image: HTMLImageElement,
-): ImageCanvasGeometry | null {
+): ZoomableImageCanvasGeometry | null {
   const content = image.parentElement;
   const scrollContainer = image.closest<HTMLElement>(
     "[data-zoomable-image-canvas='true']",
@@ -355,32 +332,25 @@ export function ZoomableArtifactImageCanvas({
   imageTestId,
   onError,
   onLoad,
+  signals,
   src,
-  zoomKey = src,
 }: ZoomableArtifactImageCanvasProps) {
-  const zoomByKey = useGet(zoomableImageCanvasZoomByKey$);
-  const geometryByKey = useGet(zoomableImageCanvasGeometryByKey$);
-  const setDisplayZoom = useSet(setZoomableImageCanvasZoom$);
-  const setGeometry = useSet(setZoomableImageCanvasGeometry$);
-  const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
-  const displayZoom = zoomByKey[zoomKey] ?? 1;
-  const imageGeometry = geometryByKey[zoomKey];
+  const displayZoom = useGet(signals.zoom$);
+  const imageGeometry = useGet(signals.geometry$);
+  const setDisplayZoom = useSet(signals.setZoom$);
+  const imageLoaded = useSet(signals.loaded$);
   const fitWidth = imageGeometry?.fitWidth;
   const maxZoom = imageGeometry?.maxZoom ?? IMAGE_LIGHTBOX_MAX_ZOOM;
   const imageWidth =
     fitWidth !== undefined ? `${Math.round(fitWidth)}px` : "100%";
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const geometry = calculateImageCanvasGeometry(event.currentTarget);
-    if (geometry !== null) {
-      setGeometry(zoomKey, geometry.fitWidth, geometry.maxZoom);
-    }
-    resetDisplayZoom(zoomKey);
+    imageLoaded(geometry);
     onLoad?.();
   };
 
   return (
     <TransformWrapper
-      key={zoomKey}
       centerZoomedOut
       disablePadding
       doubleClick={{
@@ -392,10 +362,10 @@ export function ZoomableArtifactImageCanvas({
       minScale={IMAGE_LIGHTBOX_MIN_ZOOM}
       autoAlignment={{ disabled: true }}
       onInit={(transformRef) => {
-        setDisplayZoom(zoomKey, transformRef.state.scale);
+        setDisplayZoom(transformRef.state.scale);
       }}
       onTransform={(_transformRef, transformState) => {
-        setDisplayZoom(zoomKey, transformState.scale);
+        setDisplayZoom(transformState.scale);
       }}
       panning={{
         allowMiddleClickPan: false,
@@ -417,7 +387,6 @@ export function ZoomableArtifactImageCanvas({
           resetTransform,
           setDisplayZoom,
           zoomIn,
-          zoomKey,
           zoomOut,
         });
 

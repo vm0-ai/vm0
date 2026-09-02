@@ -1688,6 +1688,27 @@
       "when": 1788315128901,
       "tag": "1048_shocking_unus",
       "breakpoints": true
+    },
+    {
+      "idx": 1049,
+      "version": "7",
+      "when": 1788317979906,
+      "tag": "1049_mushy_deadpool",
+      "breakpoints": true
+    },
+    {
+      "idx": 1050,
+      "version": "7",
+      "when": 1788323238631,
+      "tag": "1050_watery_the_renegades",
+      "breakpoints": true
+    },
+    {
+      "idx": 1051,
+      "version": "7",
+      "when": 1788326111286,
+      "tag": "1051_add_claude_fable_5_1_support",
+      "breakpoints": true
     }
   ]
 }

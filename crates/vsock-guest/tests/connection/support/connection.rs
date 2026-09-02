@@ -14,6 +14,7 @@ use vsock_guest::{
     handle_connection_with_test_process_containment,
     handle_connection_with_test_process_containment_and_exec_drain_deadline,
     handle_connection_with_test_storage_manifest_program,
+    handle_connection_with_test_workspace_drive_mount_program,
 };
 
 use super::protocol::read_message_with_context;
@@ -65,6 +66,15 @@ pub(crate) fn start_guest_connection_with_storage_manifest_program(
 ) -> (GuestConnectionHandle, UnixStream) {
     start_guest_connection_with_handler(move |stream| {
         handle_connection_with_test_storage_manifest_program(stream, program)
+    })
+}
+
+pub(crate) fn start_guest_connection_with_workspace_drive_mount_program(
+    program: std::path::PathBuf,
+    timeout_ms: u32,
+) -> (GuestConnectionHandle, UnixStream) {
+    start_guest_connection_with_handler(move |stream| {
+        handle_connection_with_test_workspace_drive_mount_program(stream, program, timeout_ms)
     })
 }
 

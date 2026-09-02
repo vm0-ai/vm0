@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
+        "timeoutDescription": "Proses ini mencapai batas waktunya. Lanjutkan untuk meneruskan pekerjaan.",
+        "timeoutTitle": "Batas waktu tercapai",
         "tryAgain": "Coba lagi",
         "unavailableDescription": "Model ini tidak didukung oleh akun ChatGPT yang terhubung. Ganti ke model lain untuk melanjutkan.",
         "unavailableTitle": "Model yang dipilih tidak tersedia",
@@ -1988,10 +1990,10 @@
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
         "none": "Tanpa avatar",
-        "visualBalanceAvatarLed": "Fokus pada avatar — narator tampil di layar hampir sepanjang waktu",
-        "visualBalanceBalanced": "Campuran seimbang — waktu yang sama untuk keduanya",
-        "visualBalanceBRollLed": "Fokus pada visual — utamakan slide dan materi visual",
-        "visualBalanceHeading": "Bagaimana keseimbangan visual yang Anda inginkan?"
+        "placementHeading": "Di mana presenter sebaiknya berdiri?",
+        "placementLeft": "Kiri — slide berada di kanan",
+        "placementOverlay": "Di atas slide — slide memenuhi bingkai",
+        "placementRight": "Kanan — slide berada di kiri"
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
@@ -2054,6 +2056,7 @@
         "format": "Format",
         "heading": "Sumber Anda sudah siap",
         "help": "Periksa file sebelum melanjutkan",
+        "inAccount": "Di akun Anda",
         "inBrowser": "Di browser ini",
         "inTab": "Sampai tab ini ditutup",
         "replace": "Ganti sumber",
@@ -3138,45 +3141,6 @@
         "uninstallDescription": "Ini akan meng-uninstall {{bot}} dari ruang kerja dan memutus semua akun {{brandName}} yang menggunakannya. Tindakan ini tidak dapat dibatalkan.",
         "uninstallTargetFallback": "bot ini",
         "uninstallTitle": "Uninstall bot Feishu?"
-      },
-      "strapi": {
-        "actions": {
-          "cancel": "Batal",
-          "checkTest": "Cek tes",
-          "copy": "Salin",
-          "create": "Buat integrasi",
-          "remove": "Hapus",
-          "revealAuthorization": "Tampilkan authorization header"
-        },
-        "addDescription": "Satu integrasi dapat digunakan untuk beberapa otomatisasi alur kerja.",
-        "addTitle": "Tambahkan instance Strapi",
-        "adminRequired": "Minta admin organisasi untuk menambahkan atau memperbarui integrasi Strapi.",
-        "authorizationHeader": "Header otorisasi",
-        "copied": "{{label}} disalin",
-        "description": "Biarkan {{assistantName}} bereaksi terhadap entri Strapi yang dipublikasikan dan mengotomatiskan pekerjaan lanjutan.",
-        "documentTitle": "Strapi",
-        "empty": "Belum ada instance Strapi yang terhubung.",
-        "form": {
-          "name": "Nama",
-          "namePlaceholder": "CMS perusahaan",
-          "url": "URL Strapi"
-        },
-        "instructions": "Di Strapi, buka Settings → Webhooks, tambahkan URL dan Authorization header ini, pilih entry.publish, lalu klik Trigger untuk mengirim webhook tes Strapi.",
-        "lastPublish": "Publikasi terakhir: {{date}}",
-        "lastTest": "Tes terakhir: {{date}}",
-        "notReceived": "Belum diterima",
-        "removeDescription": "Hapus dulu otomatisasi alur kerjanya. Permintaan webhook Strapi ke URL ini akan berhenti berfungsi.",
-        "removeTitle": "Hapus integrasi Strapi?",
-        "tested": "Webhook dites",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Integrasi Strapi dibuat",
-          "noTestReceived": "Belum menerima webhook tes Strapi",
-          "removed": "Integrasi Strapi dihapus",
-          "testReceived": "Webhook tes Strapi diterima"
-        },
-        "webhookUrl": "Webhook URL",
-        "whereAssistantWorks": "Tempat {{assistantName}} bekerja"
       },
       "telegram": {
         "addBot": "Tambahkan bot",
@@ -4675,10 +4639,6 @@
     },
     "redirecting": "Mengalihkan...",
     "status": {
-      "atLimit_one": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "atLimit_other": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "available_one": "{{count}} slot tersedia",
-      "available_other": "{{count}} slot tersedia",
       "availableNow": "Tersedia sekarang",
       "inUse_one": "{{active}} dari {{limit}} slot digunakan",
       "inUse_other": "{{active}} dari {{limit}} slot digunakan"
@@ -5127,7 +5087,6 @@
           "upstreamModel": "Model upstream"
         },
         "capture": {
-          "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
           "enabled_one": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "enabled_other": "Diaktifkan untuk {{count}} eksekusi berikutnya",
@@ -5150,10 +5109,8 @@
           "recovery": "pemulihan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferensi",
       "language": {
         "description": "Pilih bahasa pilihan Anda untuk antarmuka {{brandName}}",
         "label": "Bahasa",
@@ -5183,8 +5140,6 @@
         "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
         "title": "Brief Pagi"
       },
-      "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
-      "pageTitle": "Preferensi",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Tekan ⌘/Ctrl+Enter untuk mengirim, Enter untuk baris baru",
@@ -5193,11 +5148,6 @@
         "enterDescription": "Tekan Enter untuk mengirim, Shift+Enter untuk baris baru",
         "sectionTitle": "Enter",
         "title": "Kirim pesan dengan"
-      },
-      "tabs": {
-        "appearance": "Tampilan",
-        "models": "Model Pribadi",
-        "timezone": "Zona Waktu"
       },
       "timezone": {
         "description": "Waktu ditampilkan kepada Anda dan digunakan untuk eksekusi otomatis.",
@@ -5862,26 +5812,6 @@
         "time": "Waktu ({{timezone}})",
         "updateScheduleAria": "Perbarui otomatisasi jadwal"
       },
-      "strapi": {
-        "addAction": "Tambahkan otomatisasi Strapi",
-        "addAria": "Tambahkan otomatisasi saat entri Strapi dipublikasikan",
-        "addDescription": "Jalankan alur kerja ini setelah peristiwa publikasi lokal yang cocok selesai.",
-        "addTitle": "Tambahkan otomatisasi Strapi",
-        "configure": "Konfigurasikan Strapi",
-        "connectFirst": "Hubungkan instance Strapi sebelum membuat otomatisasi ini.",
-        "contentType": "UID tipe konten (opsional)",
-        "contentTypeAny": "Semua tipe konten",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "Jalankan setelah entri Strapi yang cocok dipublikasikan.",
-        "entryPublishedTitle": "Entri Strapi dipublikasikan",
-        "instance": "Instance Strapi",
-        "locale": "Locale (opsional)",
-        "localeAny": "Semua locale",
-        "localeHint": "Biarkan locale kosong untuk menggabungkan semua peristiwa publikasi lokal untuk dokumen yang sama menjadi satu eksekusi alur kerja.",
-        "localePlaceholder": "en",
-        "localeSummary": "Locale {{locale}}",
-        "rule": "Saat entri Strapi yang cocok dipublikasikan"
-      },
       "stripe": {
         "addAction": "Tambahkan otomatisasi Stripe",
         "addAria": "Tambahkan otomatisasi faktur Stripe dibayar",
@@ -5927,7 +5857,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -5994,35 +5923,6 @@
       "noWorkflows": "Belum ada alur kerja. Buat satu di chat untuk melanjutkan."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Hubungkan",
-          "enable": "Aktifkan untuk agen",
-          "reconnect": "Sambungkan ulang",
-          "reviewPermissions": "Tinjau izin"
-        },
-        "aria": "Kesiapan konektor",
-        "check": "Periksa konektor",
-        "checkAgain": "Periksa lagi",
-        "checking": "Memeriksa...",
-        "description": "Lihat konektor bawaan yang mungkin diperlukan alur kerja ini dan apakah semuanya siap.",
-        "empty": "Tidak ada konektor yang diperlukan terdeteksi",
-        "error": {
-          "inputTooLong": "Alur kerja ini terlalu panjang untuk diperiksa. Simpan nama, deskripsi, dan instruksi di bawah 100.000 karakter.",
-          "retry": "Kami tidak dapat memeriksa konektor. Coba lagi.",
-          "timeout": "Pemeriksaan konektor habis waktu. Coba lagi."
-        },
-        "saveFirst": "Simpan perubahan Anda sebelum memeriksa konektor.",
-        "status": {
-          "connected": "Terhubung",
-          "notConnected": "Tidak terhubung",
-          "notEnabled": "Belum diaktifkan untuk agen ini",
-          "reconnect": "Perlu sambungkan ulang",
-          "scopeMismatch": "Perbarui izin",
-          "unavailable": "Saat ini tidak tersedia"
-        },
-        "title": "Kesiapan konektor"
-      },
       "copy": {
         "agentFallback": "agen tersebut",
         "copied": "Disalin ke {{agent}}",
@@ -6248,10 +6148,6 @@
       "title": "Slack",
       "uninstallDescription": "Ini akan menghapus integrasi Slack untuk seluruh ruang kerja Anda. Semua pengguna yang terhubung akan diputus dan {{displayName}} tidak akan lagi merespons pesan atau mention di Slack. Tindakan ini tidak dapat dibatalkan.",
       "uninstallTitle": "Copot pemasangan integrasi Slack?"
-    },
-    "strapi": {
-      "description": "Otomatiskan pekerjaan saat entri dipublikasikan",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Minta admin Anda untuk memasang integrasi Microsoft Teams",

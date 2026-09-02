@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
   getCodexChatGptAccountUnsupportedModel,
   INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE,
   isActionableRunError,
+  isAgentExecutionTimeoutRunError,
   isCodexChatGptAccountUnsupportedModelRunError,
   isGenericRunErrorForDisplay,
 } from "../errors";
@@ -27,6 +29,51 @@ describe("formatRunErrorForExternalSurface", () => {
         message: "Cannot continue session with this provider",
       }),
     ).toBe("Cannot continue session with this provider");
+  });
+
+  it.each([
+    "Agent execution timed out after 7200 seconds",
+    "Agent execution timed out after 1 seconds",
+  ])("shows controlled execution timeout errors safely: %s", (error) => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: error,
+      }),
+    ).toBe(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE);
+    expect(isAgentExecutionTimeoutRunError(error)).toBe(true);
+    expect(isActionableRunError(error)).toBe(true);
+    expect(isGenericRunErrorForDisplay(error)).toBe(false);
+  });
+
+  it("keeps the canonical execution timeout message stable", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+      }),
+    ).toBe(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE);
+    expect(
+      isAgentExecutionTimeoutRunError(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE),
+    ).toBe(true);
+  });
+
+  it.each([
+    "Agent execution timed out",
+    "Agent execution timed out after 0 seconds",
+    "Agent execution timed out after 7200 milliseconds",
+    "Agent execution timed out after 7200 seconds while finalizing",
+    "Sandbox execution timed out after 7200 seconds",
+  ])("keeps unrelated execution timeout text generic: %s", (error) => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: error,
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    expect(isAgentExecutionTimeoutRunError(error)).toBe(false);
+    expect(isActionableRunError(error)).toBe(false);
+    expect(isGenericRunErrorForDisplay(error)).toBe(true);
   });
 
   it("appends Add credits link for admins on insufficient credits", () => {

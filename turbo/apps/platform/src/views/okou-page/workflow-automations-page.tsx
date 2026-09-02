@@ -497,11 +497,6 @@ export function humanReadableAutomationRuleLabel(
       return $.workflows.automations.rules.inboundWebhook;
     });
   }
-  if (automation.eventType === "strapi-entry-published") {
-    return i18n.t(($) => {
-      return $.workflows.automations.strapi.rule;
-    });
-  }
   if (automation.eventType === "stripe-invoice-paid") {
     return i18n.t(($) => {
       return $.workflows.automations.stripe.rule;
@@ -584,11 +579,6 @@ export function automationTypeLabel(
   if (automation.eventType === "webhook-received") {
     return i18n.t(($) => {
       return $.workflows.automations.types.webhook;
-    });
-  }
-  if (automation.eventType === "strapi-entry-published") {
-    return i18n.t(($) => {
-      return $.workflows.automations.types.strapi;
     });
   }
   if (automation.eventType === "stripe-invoice-paid") {

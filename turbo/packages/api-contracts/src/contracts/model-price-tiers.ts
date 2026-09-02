@@ -8,6 +8,7 @@
 // from newest/highest capability to oldest/lowest. This order is load-bearing:
 // it drives the model dropdown and all model-related UI via sortRowsByCatalog.
 export const SUPPORTED_RUN_MODELS = [
+  "claude-fable-5-1",
   "claude-fable-5",
   "claude-opus-5",
   "claude-opus-4-8",
@@ -33,6 +34,7 @@ export type ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
 export const VM0_MODEL_PRICE_TIER = Object.freeze<
   Record<SupportedRunModel, ModelPriceTier>
 >({
+  "claude-fable-5-1": "$$$$",
   "claude-fable-5": "$$$$",
   "claude-opus-5": "$$$",
   "gpt-5.6-sol": "$$$",

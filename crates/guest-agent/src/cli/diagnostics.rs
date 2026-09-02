@@ -3,16 +3,16 @@
 //! This module keeps stderr collection bounded and intentionally leaves final
 //! secret masking to the `execute_cli` caller.
 
+use guest_contracts::cli_stderr_diagnostics::{
+    CLI_STDERR_OMITTED_LONG_LINE, CLI_STDERR_RESULT_MAX_LINE_BYTES, CLI_STDERR_RESULT_MAX_LINES,
+};
 use std::collections::VecDeque;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-const STDERR_RESULT_MAX_LINES: usize = 200;
-const STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 const STDERR_READ_BUFFER_BYTES: usize = 8 * 1024;
-const STDERR_OMITTED_LONG_LINE: &str = "[stderr line omitted: exceeded diagnostic size limit]";
 
 fn push_stderr_result_line(lines: &mut VecDeque<String>, line: String) {
-    if lines.len() == STDERR_RESULT_MAX_LINES {
+    if lines.len() == CLI_STDERR_RESULT_MAX_LINES {
         lines.pop_front();
     }
     lines.push_back(line);
@@ -20,8 +20,8 @@ fn push_stderr_result_line(lines: &mut VecDeque<String>, line: String) {
 
 fn push_decoded_stderr_result_line(lines: &mut VecDeque<String>, line: &[u8]) {
     let line = String::from_utf8_lossy(line);
-    if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
-        push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
+    if line.len() > CLI_STDERR_RESULT_MAX_LINE_BYTES {
+        push_stderr_result_line(lines, CLI_STDERR_OMITTED_LONG_LINE.to_string());
     } else {
         push_stderr_result_line(lines, line.into_owned());
     }
@@ -34,13 +34,13 @@ fn finish_stderr_result_line(
     strip_trailing_cr: bool,
 ) {
     if *line_omitted {
-        push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
+        push_stderr_result_line(lines, CLI_STDERR_OMITTED_LONG_LINE.to_string());
     } else {
         if strip_trailing_cr && line.last() == Some(&b'\r') {
             line.pop();
         }
-        if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
-            push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
+        if line.len() > CLI_STDERR_RESULT_MAX_LINE_BYTES {
+            push_stderr_result_line(lines, CLI_STDERR_OMITTED_LONG_LINE.to_string());
         } else {
             push_decoded_stderr_result_line(lines, line);
         }
@@ -53,8 +53,8 @@ pub(super) async fn collect_stderr_result_tail<R>(mut stderr: R) -> Vec<String>
 where
     R: AsyncRead + Unpin,
 {
-    let mut lines = VecDeque::with_capacity(STDERR_RESULT_MAX_LINES);
-    let mut line = Vec::with_capacity(STDERR_RESULT_MAX_LINE_BYTES.min(1024));
+    let mut lines = VecDeque::with_capacity(CLI_STDERR_RESULT_MAX_LINES);
+    let mut line = Vec::with_capacity(CLI_STDERR_RESULT_MAX_LINE_BYTES.min(1024));
     let mut line_omitted = false;
     let mut buffer = [0u8; STDERR_READ_BUFFER_BYTES];
 
@@ -75,8 +75,8 @@ where
                 continue;
             }
 
-            if line.len() < STDERR_RESULT_MAX_LINE_BYTES
-                || (byte == b'\r' && line.len() == STDERR_RESULT_MAX_LINE_BYTES)
+            if line.len() < CLI_STDERR_RESULT_MAX_LINE_BYTES
+                || (byte == b'\r' && line.len() == CLI_STDERR_RESULT_MAX_LINE_BYTES)
             {
                 line.push(byte);
             } else {

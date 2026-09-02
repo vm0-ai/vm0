@@ -13,6 +13,7 @@ export {
 } from "./errors";
 export type {
   PiApiFirstTurnResult,
+  PiObservedServiceTier,
   PiPreheatedAgentsFile,
   PiPreheatedResourceSnapshot,
   PiPreheatedSkill,

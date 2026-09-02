@@ -64,11 +64,12 @@ async fn setup_observed_dispatch(
 
     let shutdown_clone = shutdown.clone();
     let task = tokio::spawn(async move {
-        dispatch_with_read_observer(
+        dispatch_with_observers(
             server_fd,
             cow,
             shutdown_clone,
             DispatchReadObserver::new(event_sender),
+            DispatchWriteLimit::none(),
         )
         .await
     });
@@ -289,6 +290,108 @@ async fn dispatch_large_then_small_requests_keep_stream_aligned() {
     };
     must(
         writer.write_all(&serialize_request(&disc)).await,
+        "write disconnect request",
+    );
+    wait_for_dispatch(task).await;
+}
+
+#[tokio::test]
+async fn dispatch_forced_partial_vectored_reads_keep_stream_aligned() {
+    let base_data: Vec<u8> = (0..3 * crate::BLOCK_SIZE)
+        .map(|index| (index % 251) as u8)
+        .collect();
+    let (_base, _cow_file, cow) = create_test_cow(&base_data);
+    let cow = CowIo::new(cow);
+
+    let shutdown = CancellationToken::new();
+    let (mut reader, mut writer, server_fd) = setup_dispatch_socket();
+    let shutdown_clone = shutdown.clone();
+    let write_limit = NonZeroUsize::new(7).expect("write limit must be non-zero");
+    let task = tokio::spawn(async move {
+        dispatch_with_observers(
+            server_fd,
+            cow,
+            shutdown_clone,
+            DispatchReadObserver::none(),
+            DispatchWriteLimit::new(write_limit),
+        )
+        .await
+    });
+
+    let small_read = NbdRequest {
+        command: Command::Read,
+        handle: 10,
+        offset: 17,
+        length: 23,
+    };
+    let large_read = NbdRequest {
+        command: Command::Read,
+        handle: 11,
+        offset: 512,
+        length: (2 * crate::BLOCK_SIZE + 5) as u32,
+    };
+    let zero_read = NbdRequest {
+        command: Command::Read,
+        handle: 12,
+        offset: 0,
+        length: 0,
+    };
+    let trailing_read = NbdRequest {
+        command: Command::Read,
+        handle: 13,
+        offset: (3 * crate::BLOCK_SIZE - 31) as u64,
+        length: 31,
+    };
+
+    for request in [&small_read, &large_read, &zero_read, &trailing_read] {
+        must(
+            writer.write_all(&serialize_request(request)).await,
+            "write read request",
+        );
+    }
+
+    let small_reply = read_reply(&mut reader).await;
+    assert_eq!(small_reply.error, 0);
+    assert_eq!(small_reply.handle, small_read.handle);
+    let small_payload = read_payload(&mut reader, small_read.length as usize).await;
+    assert_eq!(
+        small_payload,
+        base_data
+            [small_read.offset as usize..small_read.offset as usize + small_read.length as usize]
+    );
+
+    let large_reply = read_reply(&mut reader).await;
+    assert_eq!(large_reply.error, 0);
+    assert_eq!(large_reply.handle, large_read.handle);
+    let large_payload = read_payload(&mut reader, large_read.length as usize).await;
+    assert_eq!(
+        large_payload,
+        base_data
+            [large_read.offset as usize..large_read.offset as usize + large_read.length as usize]
+    );
+
+    let zero_reply = read_reply(&mut reader).await;
+    assert_eq!(zero_reply.error, 0);
+    assert_eq!(zero_reply.handle, zero_read.handle);
+
+    let trailing_reply = read_reply(&mut reader).await;
+    assert_eq!(trailing_reply.error, 0);
+    assert_eq!(trailing_reply.handle, trailing_read.handle);
+    let trailing_payload = read_payload(&mut reader, trailing_read.length as usize).await;
+    assert_eq!(
+        trailing_payload,
+        base_data[trailing_read.offset as usize
+            ..trailing_read.offset as usize + trailing_read.length as usize]
+    );
+
+    let disconnect = NbdRequest {
+        command: Command::Disconnect,
+        handle: 14,
+        offset: 0,
+        length: 0,
+    };
+    must(
+        writer.write_all(&serialize_request(&disconnect)).await,
         "write disconnect request",
     );
     wait_for_dispatch(task).await;

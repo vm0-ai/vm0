@@ -1,6 +1,8 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { HttpResponse } from "msw";
+import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -14,10 +16,48 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { searchParams$ } from "../../../signals/route.ts";
 import { talkDraft$ } from "../../../signals/okou-page/chat-draft.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+const DESKTOP_HANDOFF_PARAMS = {
+  "intro-video-recording": "video-upload-id",
+  "intro-video-recording-name": "demo.mp4",
+  "intro-video-recording-size": "1024",
+  "intro-video-clicks": "events-upload-id",
+  "intro-video-clicks-name": "demo.clicks.json",
+  "intro-video-clicks-size": "512",
+  "intro-video-user": "test-user-123",
+} as const;
+
+const DESKTOP_HANDOFF_SWITCHES = {
+  [FeatureSwitchKey.IntroVideo]: true,
+  [FeatureSwitchKey.DesktopScreenRecording]: true,
+} as const;
+
+function introVideoDialog(): Promise<HTMLElement> {
+  return screen.findByRole("dialog", { name: "Create an intro video" });
+}
+
+function buttonWithText(
+  text: string,
+  container: ParentNode,
+  exact = true,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((element) => {
+    const content = element.textContent?.trim() ?? "";
+    return exact ? content === text : content.includes(text);
+  });
+  if (!button) {
+    throw new Error(`Expected button with text: ${text}`);
+  }
+  return button;
+}
 
 function templateFromUserMessage(document: UserMessageDocument | undefined) {
   const part = document?.parts.find((candidate) => {
@@ -81,23 +121,12 @@ describe("prompt query parameter injection", () => {
         url: `https://resolved.example/${id ?? "missing"}`,
       });
     });
-    const params = new URLSearchParams({
-      "intro-video-recording": "video-upload-id",
-      "intro-video-recording-name": "demo.mp4",
-      "intro-video-recording-size": "1024",
-      "intro-video-clicks": "events-upload-id",
-      "intro-video-clicks-name": "demo.clicks.json",
-      "intro-video-clicks-size": "512",
-      "intro-video-user": "test-user-123",
-    });
+    const params = new URLSearchParams(DESKTOP_HANDOFF_PARAMS);
 
     detachedSetupPage({
       context,
       path: `/?${params.toString()}`,
-      featureSwitches: {
-        [FeatureSwitchKey.IntroVideo]: true,
-        [FeatureSwitchKey.DesktopScreenRecording]: true,
-      },
+      featureSwitches: DESKTOP_HANDOFF_SWITCHES,
     });
 
     const textarea = await waitFor(() => {
@@ -149,7 +178,107 @@ describe("prompt query parameter injection", () => {
     expect(context.store.get(draft.agentInstructions$)).toContain(
       "okou video camera",
     );
+
+    // The desktop already collected the source, so the handoff lands where an
+    // in-browser recording lands: reviewing the take, one step from the avatar.
+    const dialog = await introVideoDialog();
+    expect(
+      within(dialog).getByText("Your source is ready"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("demo.mp4")).toBeInTheDocument();
+    // Adopted from the upload, not from bytes this browser never had.
+    expect(within(dialog).getByText("In your account")).toBeInTheDocument();
+    expect(dialog.querySelector("video")).toHaveAttribute(
+      "src",
+      "https://resolved.example/video-upload-id",
+    );
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+
+    // Both files resolve once each, and adopting the recording reuses that
+    // resolution instead of signing the preview a second time.
     expect(fileUrlRequests).toBe(2);
+  });
+
+  it("sends a desktop recording handoff without uploading it again", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
+    context.mocks.http.get("/api/web/file-url", ({ request }) => {
+      const id = new URL(request.url).searchParams.get("file_id");
+      return HttpResponse.json({
+        url: `https://resolved.example/${id ?? "missing"}`,
+      });
+    });
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt, userMessage }) => {
+        sentPrompt = prompt;
+        sentUserMessage = userMessage;
+      },
+      onRunCreate: ({ prompt, userMessage }) => {
+        sentPrompt = prompt;
+        sentUserMessage = userMessage;
+      },
+    });
+    context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [],
+        hasMore: false,
+        filterOptions: { languages: [], useCases: [] },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
+      featureSwitches: DESKTOP_HANDOFF_SWITCHES,
+    });
+
+    const dialog = await introVideoDialog();
+    await expect(
+      within(dialog).findByText("Your source is ready"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose an avatar"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Choose a voice"),
+    ).resolves.toBeInTheDocument();
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await expect(
+      screen.findByText("Review your intro video"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Source: demo.mp4");
+      expect(sentPrompt).toContain("- Source type: recording");
+    });
+    // The recording and its click track ride along as the uploads the desktop
+    // already made: no second copy of either file.
+    expect(
+      sentUserMessage?.parts.filter((part) => {
+        return part.type === "file";
+      }),
+    ).toStrictEqual([
+      {
+        type: "file",
+        fileId: "video-upload-id",
+        filenameSnapshot: "demo.mp4",
+        contentType: "video/mp4",
+      },
+      {
+        type: "file",
+        fileId: "events-upload-id",
+        filenameSnapshot: "demo.clicks.json",
+        contentType: "application/json",
+      },
+    ]);
   });
 
   it("reports a desktop recording owned by another account as unavailable", async () => {
@@ -198,6 +327,11 @@ describe("prompt query parameter injection", () => {
     expect(
       context.store.get(searchParams$).has("intro-video-recording"),
     ).toBeFalsy();
+    // Nothing to review, so the wizard stays shut and the composer banner is
+    // the only thing that speaks.
+    expect(
+      screen.queryByRole("dialog", { name: "Create an intro video" }),
+    ).not.toBeInTheDocument();
   });
 
   it("ignores a desktop recording handoff that omits the file metadata", async () => {

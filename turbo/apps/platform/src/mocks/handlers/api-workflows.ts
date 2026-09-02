@@ -195,16 +195,6 @@ export const apiWorkflowsHandlers = [
     return respond(200, updated);
   }),
 
-  mockApi(workflowsDetailContract.connectorReadiness, ({ params, respond }) => {
-    const workflow = mockWorkflows.find((item) => {
-      return item.id === params.workflowId;
-    });
-    if (!workflow) {
-      return respond(404, notFound(params.workflowId));
-    }
-    return respond(200, { connectors: [] });
-  }),
-
   mockApi(workflowsDetailContract.delete, ({ params, respond }) => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === params.workflowId;
@@ -552,7 +542,6 @@ function passthroughEventAutomationSummaryForRequest(
         | "google-calendar-event-updated"
         | "google-calendar-event-cancelled"
         | "google-meet-transcript-generated"
-        | "strapi-entry-published"
         | "chat-run-finished";
     }
   >,

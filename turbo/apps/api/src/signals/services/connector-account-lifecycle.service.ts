@@ -11,7 +11,10 @@ import {
   connectorReconnectReasonSchema,
   type ConnectorReconnectReason,
 } from "@okouai/api-contracts/contracts/connector-schemas";
-import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/custom-connectors";
+import {
+  isIntegrationManagedCustomConnectorProviderAdapter,
+  type CustomConnectorAuthMode,
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
@@ -142,6 +145,21 @@ function parseReconnectReason(
 
 function parseOauthScopes(value: string | null): string[] | null {
   return value === null ? null : oauthScopesSchema.parse(JSON.parse(value));
+}
+
+function customConnectorHasRequiredCredentialMaterial(
+  authMode: CustomConnectorAuthMode,
+  hasAccessToken: boolean,
+): boolean {
+  switch (authMode) {
+    case "none":
+    case "manual": {
+      return true;
+    }
+    case "oauth": {
+      return hasAccessToken;
+    }
+  }
 }
 
 function encodeCursor(row: ConnectorAccountRow): string {
@@ -446,10 +464,15 @@ function customConnection(
     now,
     isRefreshable: row.refreshTokenId !== null,
   });
-  const hasRequiredToken =
-    row.definitionAuthMode === "manual" || row.accessTokenId !== null;
+  const hasRequiredCredentialMaterial =
+    customConnectorHasRequiredCredentialMaterial(
+      row.definitionAuthMode,
+      row.accessTokenId !== null,
+    );
   const connectionStatus =
-    contractCurrent && credentialStatus === "available" && hasRequiredToken
+    contractCurrent &&
+    credentialStatus === "available" &&
+    hasRequiredCredentialMaterial
       ? "connected"
       : "reconnect-required";
   return {
@@ -554,14 +577,17 @@ function projectSummaryGroup(
     now,
     isRefreshable: row.hasRefreshToken,
   });
-  const hasRequiredToken =
-    row.definitionAuthMode === "manual" || row.hasAccessToken;
+  const hasRequiredCredentialMaterial =
+    customConnectorHasRequiredCredentialMaterial(
+      row.definitionAuthMode,
+      row.hasAccessToken,
+    );
   return {
     target: { kind: "custom", customConnectorId: row.customConnectorId },
     needsAttention:
       !contractCurrent ||
       credentialStatus === "reconnect-required" ||
-      !hasRequiredToken,
+      !hasRequiredCredentialMaterial,
   };
 }
 
