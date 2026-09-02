@@ -4847,6 +4847,50 @@ mod tests {
         drop(lock_guard);
     }
 
+    #[tokio::test]
+    async fn queue_full_warning_is_primary_and_retry_detail_stays_local() {
+        let server = MockServer::start();
+        let (core, _requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        let active = active_run_connector_runtime_state(registry);
+        let registration_cancel = active.cancel.clone();
+        core.inner.active_runs.lock().await.insert(run_id, active);
+        let request = SyncRequest {
+            cancel: registration_cancel,
+            ..sync_request(run_id, "slack")
+        };
+
+        let (_, events) =
+            capture_sync_events(core.handle_scheduled_enqueue_error(Full(request))).await;
+
+        let warning = captured_event(
+            &events,
+            "connector runtime sync queue full; retaining last-known-good state",
+        );
+        assert_eq!(warning.level, tracing::Level::WARN);
+        assert_connector_field(warning, "connector_count", "1");
+        assert_connector_field(warning, "scheduled_target_count", "1");
+        assert_connector_field(warning, "targets", "[\"builtin:slack\"]");
+        let retry = captured_event(
+            &events,
+            "retained last-known-good connector runtime state; scheduled sync retry",
+        );
+        assert_eq!(retry.level, tracing::Level::INFO);
+        assert_connector_field(retry, "reason", "queue_full");
+        assert_eq!(
+            captured_event(&events, "connector runtime sync retry state updated").level,
+            tracing::Level::INFO,
+        );
+        assert_eq!(warning_count(&events), 1, "events={events:#?}");
+        assert_retry_scheduled(&core, run_id, "slack", 1).await;
+        core.unregister_run(run_id).await;
+    }
+
     #[tokio::test(start_paused = true)]
     async fn scheduled_sync_task_clears_itself_after_firing() {
         let server = MockServer::start();
