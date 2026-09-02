@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.822.3](https://github.com/vm0-ai/vm0/compare/app-v0.822.2...app-v0.822.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **platform:** update app icons ([#31026](https://github.com/vm0-ai/vm0/issues/31026)) ([a5c3746](https://github.com/vm0-ai/vm0/commit/a5c374658d889ec6af7a13f3f888d280b55259d0))
+
 ## [0.822.2](https://github.com/vm0-ai/vm0/compare/app-v0.822.1...app-v0.822.2) (2026-09-02)
 
 
