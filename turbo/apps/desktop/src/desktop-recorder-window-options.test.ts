@@ -12,8 +12,8 @@ function source(
   };
 }
 
-function preview(id: string, isEmpty = false) {
-  return { id, previewDataUrl: `data:image/png;base64,${id}`, isEmpty };
+function preview(id: string) {
+  return { id, previewDataUrl: `data:image/png;base64,${id}` };
 }
 
 describe("buildWindowOptions", () => {
@@ -27,7 +27,7 @@ describe("buildWindowOptions", () => {
           bundleId: "com.apple.iWork.Pages",
         }),
       ],
-      [preview("window:42:0")],
+      [preview("window:42")],
     );
 
     expect(options).toEqual([
@@ -35,7 +35,7 @@ describe("buildWindowOptions", () => {
         id: "window:42",
         title: "Quarterly plan",
         appName: "Pages",
-        previewDataUrl: "data:image/png;base64,window:42:0",
+        previewDataUrl: "data:image/png;base64,window:42",
       },
     ]);
   });
@@ -70,23 +70,23 @@ describe("buildWindowOptions", () => {
         }),
       ],
       [
-        preview("window:1:0"),
-        preview("window:2:0"),
-        preview("window:3:0"),
-        preview("window:4:0"),
+        preview("window:1"),
+        preview("window:2"),
+        preview("window:3"),
+        preview("window:4"),
       ],
     );
 
     expect(options.map((option) => option.title)).toEqual(["Inbox"]);
   });
 
-  it("drops a window the capturer could not preview", () => {
+  it("drops a window the helper could not preview", () => {
     const options = buildWindowOptions(
       [
         source({ id: "window:7", title: "Offscreen", appName: "Safari" }),
         source({ id: "window:8", title: "Visible", appName: "Safari" }),
       ],
-      [preview("window:7:0", true), preview("window:8:0")],
+      [preview("window:8")],
     );
 
     // A blank tile is worse than one fewer choice: the picker exists so the
@@ -97,7 +97,7 @@ describe("buildWindowOptions", () => {
   it("ignores displays, which the picker does not offer", () => {
     const options = buildWindowOptions(
       [source({ id: "display:1", kind: "display", title: "Display 1" })],
-      [preview("screen:1:0")],
+      [preview("display:1")],
     );
 
     expect(options).toEqual([]);
@@ -110,7 +110,7 @@ describe("buildWindowOptions", () => {
         source({ id: "window:2", title: "Inbox", appName: "Mail" }),
         source({ id: "window:3", title: "Archive", appName: "Mail" }),
       ],
-      [preview("window:1:0"), preview("window:2:0"), preview("window:3:0")],
+      [preview("window:1"), preview("window:2"), preview("window:3")],
     );
 
     expect(

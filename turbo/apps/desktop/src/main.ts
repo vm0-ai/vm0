@@ -6,7 +6,6 @@ import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
-  desktopCapturer,
   dialog,
   globalShortcut,
   ipcMain,
@@ -161,8 +160,6 @@ const DESKTOP_SIGN_OUT_STORAGES = [
   "cachestorage",
 ] as const;
 const SCREEN_RECORDING_POLL_INTERVAL_MS = 1000;
-/** Preview size for the window picker: legible as a tile, cheap to capture. */
-const RECORDER_WINDOW_PREVIEW_SIZE = { width: 400, height: 250 };
 const MAC_ACCESSIBILITY_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 const MAC_SCREEN_RECORDING_SETTINGS_URL =
@@ -798,19 +795,9 @@ function installDesktopRecorder(): void {
       listWindowOptions: async () => {
         const [sources, previews] = await Promise.all([
           screenRecorder.listSources(),
-          desktopCapturer.getSources({
-            types: ["window"],
-            thumbnailSize: RECORDER_WINDOW_PREVIEW_SIZE,
-          }),
+          screenRecorder.listWindowPreviews(),
         ]);
-        return buildWindowOptions(
-          sources.sources,
-          previews.map((preview) => ({
-            id: preview.id,
-            previewDataUrl: preview.thumbnail.toDataURL(),
-            isEmpty: preview.thumbnail.isEmpty(),
-          })),
-        );
+        return buildWindowOptions(sources.sources, previews);
       },
       startCapture: async (request) => {
         const windows = getRecorderWindows();

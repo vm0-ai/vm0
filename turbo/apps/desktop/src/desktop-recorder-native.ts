@@ -9,6 +9,7 @@ import type {
   DesktopRecorderRecording,
   DesktopRecorderSourceKind,
   DesktopRecorderSourceList,
+  DesktopRecorderWindowPreview,
   RecorderNativeBackend,
 } from "./desktop-recorder-types";
 
@@ -414,6 +415,28 @@ export function createRecorderNativeBackend(
           scale: requiredNumber(geometry, "scale"),
         },
       };
+    },
+    listWindowPreviews: async () => {
+      const result = await client.request("recorder.windowPreviews");
+      const value = result.previews;
+      if (!Array.isArray(value)) {
+        throw new DesktopRecorderHelperError(
+          "capture_failed",
+          "Screen recorder helper returned invalid window previews",
+        );
+      }
+      return value.map((entry): DesktopRecorderWindowPreview => {
+        if (!isRecord(entry)) {
+          throw new DesktopRecorderHelperError(
+            "capture_failed",
+            "Screen recorder helper returned an invalid window preview",
+          );
+        }
+        return {
+          id: requiredString(entry, "id"),
+          previewDataUrl: requiredString(entry, "previewDataUrl"),
+        };
+      });
     },
     start: async (sessionId: string, outputPath: string) => {
       await client.request("recorder.start", { sessionId, outputPath });

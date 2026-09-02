@@ -74,6 +74,13 @@ export interface DesktopRecorderAreaSelection {
   readonly area: DesktopRecorderArea;
 }
 
+/** A window as it currently looks, captured for the picker. */
+export interface DesktopRecorderWindowPreview {
+  readonly id: string;
+  /** A PNG data URL. */
+  readonly previewDataUrl: string;
+}
+
 /** A window the picker offers, with the preview the user recognises it by. */
 export interface DesktopRecorderWindowOption {
   readonly id: string;
@@ -174,6 +181,10 @@ export interface DesktopRecorderNativeStatus {
 export interface RecorderNativeBackend {
   readonly dispose: () => void;
   readonly listSources: () => Promise<DesktopRecorderSourceList>;
+  /** One image per window, for the picker to show them by. */
+  readonly listWindowPreviews: () => Promise<
+    readonly DesktopRecorderWindowPreview[]
+  >;
   readonly prepare: (
     request: DesktopRecorderPrepareRequest,
   ) => Promise<DesktopRecorderPrepareResult>;

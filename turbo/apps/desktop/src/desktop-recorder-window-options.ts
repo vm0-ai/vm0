@@ -1,15 +1,8 @@
 import type {
   DesktopRecorderSource,
   DesktopRecorderWindowOption,
+  DesktopRecorderWindowPreview,
 } from "./desktop-recorder-types";
-
-/** A window preview as the Electron capturer reports it. */
-interface DesktopRecorderWindowPreview {
-  /** `window:<CoreGraphics window id>:<display>`, as Electron names it. */
-  readonly id: string;
-  readonly previewDataUrl: string;
-  readonly isEmpty: boolean;
-}
 
 /**
  * Applications whose windows are system chrome rather than something a user
@@ -29,13 +22,7 @@ const CHROME_BUNDLE_IDS: ReadonlySet<string> = new Set([
   "com.apple.wifi.WiFiAgent",
 ]);
 
-/**
- * The CoreGraphics window id shared by both sides.
- *
- * The helper names a window `window:<id>` and Electron names the same window
- * `window:<id>:<display>`, so the numeric part is the only thing that can join
- * a preview to the source that will actually be recorded.
- */
+/** The CoreGraphics window id that joins a preview to its source. */
 function windowId(id: string): string | null {
   const parts = id.split(":");
   return parts[0] === "window" && parts[1] ? parts[1] : null;
@@ -55,7 +42,7 @@ export function buildWindowOptions(
   const previewById = new Map<string, DesktopRecorderWindowPreview>();
   for (const preview of previews) {
     const id = windowId(preview.id);
-    if (id && !preview.isEmpty) {
+    if (id) {
       previewById.set(id, preview);
     }
   }

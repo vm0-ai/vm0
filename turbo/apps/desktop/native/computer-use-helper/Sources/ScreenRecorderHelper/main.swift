@@ -200,6 +200,88 @@ private func handleSources() throws -> [String: Any] {
     ]
 }
 
+/// Largest preview the picker shows, in pixels. Big enough to recognise a
+/// window by, small enough that capturing a screenful of them stays quick.
+private let windowPreviewMaxWidth = 400.0
+private let windowPreviewMaxHeight = 250.0
+/// Upper bound on how many windows are captured for one picker opening.
+private let windowPreviewLimit = 24
+
+/// Captures one window as a PNG data URL, or `nil` when the system declines.
+///
+/// ScreenCaptureKit is used rather than Electron's capturer because this is the
+/// process that already holds the screen recording grant the recording itself
+/// depends on; asking through a second API means a second thing that can be
+/// refused.
+@available(macOS 14.0, *)
+private func windowPreview(_ window: SCWindow) -> String? {
+    let frame = window.frame
+    guard frame.width > 1, frame.height > 1 else {
+        return nil
+    }
+    let scale = min(
+        windowPreviewMaxWidth / frame.width,
+        windowPreviewMaxHeight / frame.height,
+        1
+    )
+    let configuration = SCStreamConfiguration()
+    configuration.width = max(Int(frame.width * scale), 1)
+    configuration.height = max(Int(frame.height * scale), 1)
+    configuration.showsCursor = false
+
+    let box = ResultBox<CGImage>()
+    let semaphore = DispatchSemaphore(value: 0)
+    SCScreenshotManager.captureImage(
+        contentFilter: SCContentFilter(desktopIndependentWindow: window),
+        configuration: configuration
+    ) { image, error in
+        box.set(value: image, error: error)
+        semaphore.signal()
+    }
+    guard semaphore.wait(timeout: .now() + 2) == .success, let image = box.value
+    else {
+        return nil
+    }
+
+    let representation = NSBitmapImageRep(cgImage: image)
+    guard let png = representation.representation(using: .png, properties: [:])
+    else {
+        return nil
+    }
+    return "data:image/png;base64,\(png.base64EncodedString())"
+}
+
+/// Previews for the windows the picker can offer.
+///
+/// Windows without a title are skipped the same way `recorder.sources` skips
+/// them, so the two lists line up by window id.
+private func handleWindowPreviews() throws -> [String: Any] {
+    guard #available(macOS 14.0, *) else {
+        throw HelperFailure(
+            code: "capture_failed",
+            message: "Window previews need macOS 14 or later"
+        )
+    }
+    let content = try shareableContent()
+    var previews: [[String: Any]] = []
+    for window in content.windows {
+        guard previews.count < windowPreviewLimit else {
+            break
+        }
+        guard let title = window.title, !title.isEmpty else {
+            continue
+        }
+        guard let dataUrl = windowPreview(window) else {
+            continue
+        }
+        previews.append([
+            "id": "window:\(window.windowID)",
+            "previewDataUrl": dataUrl,
+        ])
+    }
+    return ["previews": previews]
+}
+
 /// Capture rate for the stream, and the rate the click track reports so a
 /// downstream editor can convert `tMs` into a frame index. One value so the two
 /// cannot drift.
@@ -994,6 +1076,8 @@ private func handle(_ request: [String: Any]) throws -> [String: Any] {
     switch kind {
     case "recorder.sources":
         return try handleSources()
+    case "recorder.windowPreviews":
+        return try handleWindowPreviews()
     case "recorder.prepare":
         return try handlePrepare(payload)
     case "recorder.start":

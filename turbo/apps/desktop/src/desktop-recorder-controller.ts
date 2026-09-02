@@ -5,6 +5,7 @@ import {
   type DesktopRecorderPrepareRequest,
   type DesktopRecorderRecording,
   type DesktopRecorderSourceList,
+  type DesktopRecorderWindowPreview,
   type DesktopRecorderState,
   type DesktopRecorderStatus,
   type RecorderNativeBackend,
@@ -109,6 +110,10 @@ export class DesktopRecorderController {
 
   async listSources(): Promise<DesktopRecorderSourceList> {
     return await this.requireBackend().listSources();
+  }
+
+  async listWindowPreviews(): Promise<readonly DesktopRecorderWindowPreview[]> {
+    return await this.requireBackend().listWindowPreviews();
   }
 
   async prepare(request: DesktopRecorderPrepareRequest): Promise<void> {

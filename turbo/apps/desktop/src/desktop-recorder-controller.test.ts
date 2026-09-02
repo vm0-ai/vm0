@@ -45,6 +45,7 @@ function createBackendFake(
       ],
       supportsMicrophone: true,
     })),
+    listWindowPreviews: vi.fn(async () => []),
     prepare: vi.fn(async () => PREPARED),
     start: vi.fn(async () => {}),
     pause: vi.fn(async () => {}),
