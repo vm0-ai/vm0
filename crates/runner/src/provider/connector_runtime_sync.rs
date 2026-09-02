@@ -71,6 +71,7 @@ const SYNC_RETRY_INITIAL_DELAY: Duration = Duration::from_secs(1);
 const SYNC_RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 const SYNC_RETRY_JITTER_MIN_PER_MILLE: u64 = 800;
 const SYNC_RETRY_JITTER_SPAN_PER_MILLE: u64 = 201;
+const SYNC_RETRY_LOG_TARGET_SAMPLE_MAX: usize = 16;
 
 #[derive(Clone)]
 pub(crate) struct ConnectorRuntimeSyncHandle {
@@ -159,6 +160,185 @@ struct PreparedConnectorRuntimePublication {
     target: ConnectorSyncTarget,
     deadline: Option<tokio::time::Instant>,
     update: ConnectorRuntimeRegistryUpdate,
+}
+
+#[derive(Default)]
+struct SyncRetrySummary {
+    scheduled_target_count: usize,
+    scheduled_targets: Vec<String>,
+    newly_degraded_target_count: usize,
+    newly_degraded_targets: Vec<String>,
+    already_degraded_target_count: usize,
+    already_degraded_targets: Vec<String>,
+    min_attempt: Option<u32>,
+    max_attempt: Option<u32>,
+    min_retry_delay_ms: Option<u64>,
+    max_retry_delay_ms: Option<u64>,
+}
+
+impl SyncRetrySummary {
+    fn record(
+        &mut self,
+        target: &ConnectorRuntimeTarget,
+        attempt: u32,
+        delay: Duration,
+        newly_degraded: bool,
+    ) {
+        let identity = target.log_identity();
+        Self::record_target(
+            &mut self.scheduled_targets,
+            &mut self.scheduled_target_count,
+            &identity,
+        );
+        if newly_degraded {
+            Self::record_target(
+                &mut self.newly_degraded_targets,
+                &mut self.newly_degraded_target_count,
+                &identity,
+            );
+        } else {
+            Self::record_target(
+                &mut self.already_degraded_targets,
+                &mut self.already_degraded_target_count,
+                &identity,
+            );
+        }
+        self.min_attempt = Some(self.min_attempt.map_or(attempt, |value| value.min(attempt)));
+        self.max_attempt = Some(self.max_attempt.map_or(attempt, |value| value.max(attempt)));
+        let delay_ms = delay.as_millis() as u64;
+        self.min_retry_delay_ms = Some(
+            self.min_retry_delay_ms
+                .map_or(delay_ms, |value| value.min(delay_ms)),
+        );
+        self.max_retry_delay_ms = Some(
+            self.max_retry_delay_ms
+                .map_or(delay_ms, |value| value.max(delay_ms)),
+        );
+    }
+
+    fn record_target(sample: &mut Vec<String>, count: &mut usize, identity: &str) {
+        *count += 1;
+        if sample.len() < SYNC_RETRY_LOG_TARGET_SAMPLE_MAX {
+            sample.push(identity.to_string());
+        }
+    }
+
+    fn scheduled_targets_omitted_count(&self) -> usize {
+        self.scheduled_target_count - self.scheduled_targets.len()
+    }
+
+    fn newly_degraded_targets_omitted_count(&self) -> usize {
+        self.newly_degraded_target_count - self.newly_degraded_targets.len()
+    }
+
+    fn already_degraded_targets_omitted_count(&self) -> usize {
+        self.already_degraded_target_count - self.already_degraded_targets.len()
+    }
+
+    fn will_retry(&self) -> bool {
+        self.scheduled_target_count > 0
+    }
+}
+
+macro_rules! emit_sync_retry_event {
+    ($emit:ident, $run_id:ident, $summary:ident, $message:literal, $($extra:tt)*) => {
+        $emit!(
+            run_id = %$run_id,
+            $($extra)*
+            targets = ?$summary.scheduled_targets,
+            targets_omitted_count = $summary.scheduled_targets_omitted_count(),
+            scheduled_target_count = $summary.scheduled_target_count,
+            newly_degraded_targets = ?$summary.newly_degraded_targets,
+            newly_degraded_targets_omitted_count = $summary.newly_degraded_targets_omitted_count(),
+            newly_degraded_target_count = $summary.newly_degraded_target_count,
+            already_degraded_targets = ?$summary.already_degraded_targets,
+            already_degraded_targets_omitted_count = $summary.already_degraded_targets_omitted_count(),
+            already_degraded_target_count = $summary.already_degraded_target_count,
+            min_attempt = $summary.min_attempt.unwrap_or_default(),
+            max_attempt = $summary.max_attempt.unwrap_or_default(),
+            min_retry_delay_ms = $summary.min_retry_delay_ms.unwrap_or_default(),
+            max_retry_delay_ms = $summary.max_retry_delay_ms.unwrap_or_default(),
+            will_retry = $summary.will_retry(),
+            $message
+        );
+    };
+}
+
+fn log_sync_retry_summary_info(run_id: RunId, reason: &'static str, summary: &SyncRetrySummary) {
+    if summary.will_retry() {
+        emit_sync_retry_event!(
+            info,
+            run_id,
+            summary,
+            "connector runtime sync retry state updated",
+            reason,
+        );
+    }
+}
+
+fn log_connector_runtime_sync_api_failure(
+    run_id: RunId,
+    error: &RunnerError,
+    transport_retry_attempted: bool,
+    summary: &SyncRetrySummary,
+) {
+    match error {
+        RunnerError::ApiTransport(api_error) => {
+            let request = &api_error.request;
+            macro_rules! emit_transport_failure {
+                ($emit:ident) => {
+                    emit_sync_retry_event!(
+                        $emit,
+                        run_id,
+                        summary,
+                        "connector runtime sync failed; retaining last-known-good state",
+                        error = %error,
+                        endpoint = request.endpoint_label,
+                        method = %request.method,
+                        host = %request.host,
+                        path = %request.path,
+                        client_request_id = %request.client_request_id,
+                        client_session_id = %request.client_session_id,
+                        client_version = %request.client_version,
+                        failure_kind = api_error.failure_kind.as_str(),
+                        error_summary = %api_error.summary,
+                        transport_retry_attempted,
+                        reason = "api_error",
+                    );
+                };
+            }
+            if summary.newly_degraded_target_count > 0 {
+                emit_transport_failure!(warn);
+            } else {
+                emit_transport_failure!(info);
+            }
+        }
+        RunnerError::ApiStatus(api_error) => {
+            emit_sync_retry_event!(
+                warn,
+                run_id,
+                summary,
+                "connector runtime sync failed; retaining last-known-good state",
+                endpoint = api_error.endpoint_label,
+                status = %api_error.status,
+                failure_kind = "http_status",
+                transport_retry_attempted,
+                reason = "api_error",
+            );
+        }
+        _ => {
+            emit_sync_retry_event!(
+                warn,
+                run_id,
+                summary,
+                "connector runtime sync failed; retaining last-known-good state",
+                failure_kind = "response_or_local",
+                error_summary = %error,
+                transport_retry_attempted,
+                reason = "api_error",
+            );
+        }
+    }
 }
 
 impl ConnectorRuntimeSyncHandle {
@@ -343,13 +523,19 @@ impl ConnectorRuntimeSyncCore {
                     Err(()) => invalid_targets.push(target),
                 }
             }
-            self.schedule_sync_retries_for_registration(
+            let retry_summary = self
+                .schedule_sync_retries_for_registration(
+                    registration.run_id,
+                    &invalid_targets,
+                    &run_cancel,
+                    "invalid_initial_deadline",
+                )
+                .await;
+            log_sync_retry_summary_info(
                 registration.run_id,
-                &invalid_targets,
-                &run_cancel,
                 "invalid_initial_deadline",
-            )
-            .await;
+                &retry_summary,
+            );
         }
     }
 
@@ -451,20 +637,24 @@ impl ConnectorRuntimeSyncCore {
     async fn handle_scheduled_enqueue_error(&self, error: TrySendError<SyncRequest>) {
         match error {
             Full(request) => {
-                let targets = target_identities(&request.targets);
+                let requested_target_count = request.targets.len();
+                let retry_summary = self
+                    .schedule_sync_retries_for_registration(
+                        request.run_id,
+                        &request.targets,
+                        &request.cancel,
+                        "queue_full",
+                    )
+                    .await;
                 warn!(
                     run_id = %request.run_id,
-                    connector_count = request.targets.len(),
-                    targets = ?targets,
+                    connector_count = requested_target_count,
+                    targets = ?retry_summary.scheduled_targets,
+                    targets_omitted_count = retry_summary.scheduled_targets_omitted_count(),
+                    scheduled_target_count = retry_summary.scheduled_target_count,
                     "connector runtime sync queue full; retaining last-known-good state"
                 );
-                self.schedule_sync_retries_for_registration(
-                    request.run_id,
-                    &request.targets,
-                    &request.cancel,
-                    "queue_full",
-                )
-                .await;
+                log_sync_retry_summary_info(request.run_id, "queue_full", &retry_summary);
             }
             Closed(error) => {
                 let targets = target_identities(&error.targets);
@@ -572,7 +762,7 @@ impl ConnectorRuntimeSyncCore {
                 }
                 transport_retry_attempted = true;
                 let request = &error.request;
-                warn!(
+                info!(
                     run_id = %run_id,
                     targets = ?target_identities(&active_targets),
                     error = %error,
@@ -603,40 +793,20 @@ impl ConnectorRuntimeSyncCore {
                 return false;
             }
             Err(error) => {
-                if let RunnerError::ApiTransport(api_error) = &error {
-                    let request = &api_error.request;
-                    warn!(
-                        run_id = %run_id,
-                        targets = ?target_identities(&active_targets),
-                        error = %error,
-                        endpoint = request.endpoint_label,
-                        method = %request.method,
-                        host = %request.host,
-                        path = %request.path,
-                        client_request_id = %request.client_request_id,
-                        client_session_id = %request.client_session_id,
-                        client_version = %request.client_version,
-                        failure_kind = api_error.failure_kind.as_str(),
-                        error_summary = %api_error.summary,
-                        transport_retry_attempted,
-                        "connector runtime sync failed; retaining last-known-good state"
-                    );
-                } else {
-                    warn!(
-                        run_id = %run_id,
-                        targets = ?target_identities(&active_targets),
-                        error = %error,
-                        transport_retry_attempted,
-                        "connector runtime sync failed; retaining last-known-good state"
-                    );
-                }
-                self.schedule_sync_retries_for_registration(
+                let retry_summary = self
+                    .schedule_sync_retries_for_registration(
+                        run_id,
+                        &active_targets,
+                        registration_cancel,
+                        "api_error",
+                    )
+                    .await;
+                log_connector_runtime_sync_api_failure(
                     run_id,
-                    &active_targets,
-                    registration_cancel,
-                    "api_error",
-                )
-                .await;
+                    &error,
+                    transport_retry_attempted,
+                    &retry_summary,
+                );
                 return true;
             }
         };
@@ -946,10 +1116,15 @@ impl ConnectorRuntimeSyncCore {
                 Ok(Some(outcomes)) => {
                     for (prepared, published) in prepared_publications.into_iter().zip(outcomes) {
                         if !published {
+                            warn!(
+                                run_id = %run_id,
+                                target = %prepared.target.target.log_identity(),
+                                "proxy registry rejected connector runtime target; retaining last-known-good state"
+                            );
                             retry_targets.push(prepared.target);
                             continue;
                         }
-                        if self
+                        if let Some(recovered_after_failures) = self
                             .complete_successful_sync(
                                 run_id,
                                 &prepared.target,
@@ -958,12 +1133,22 @@ impl ConnectorRuntimeSyncCore {
                             )
                             .await
                         {
-                            info!(
-                                run_id = %run_id,
-                                target = %prepared.target.target.log_identity(),
-                                generation = prepared.target.generation,
-                                "synced connector runtime target"
-                            );
+                            if recovered_after_failures == 0 {
+                                info!(
+                                    run_id = %run_id,
+                                    target = %prepared.target.target.log_identity(),
+                                    generation = prepared.target.generation,
+                                    "synced connector runtime target"
+                                );
+                            } else {
+                                info!(
+                                    run_id = %run_id,
+                                    target = %prepared.target.target.log_identity(),
+                                    generation = prepared.target.generation,
+                                    recovered_after_failures,
+                                    "recovered connector runtime target"
+                                );
+                            }
                         }
                     }
                 }
@@ -991,13 +1176,15 @@ impl ConnectorRuntimeSyncCore {
                 }
             }
         }
-        self.schedule_sync_retries_for_registration(
-            run_id,
-            &retry_targets,
-            registration_cancel,
-            "invalid_or_unpublished_response",
-        )
-        .await;
+        let retry_summary = self
+            .schedule_sync_retries_for_registration(
+                run_id,
+                &retry_targets,
+                registration_cancel,
+                "invalid_or_unpublished_response",
+            )
+            .await;
+        log_sync_retry_summary_info(run_id, "invalid_or_unpublished_response", &retry_summary);
         true
     }
 
@@ -1298,20 +1485,17 @@ impl ConnectorRuntimeSyncCore {
         target: &ConnectorSyncTarget,
         deadline: Option<tokio::time::Instant>,
         registration_cancel: &CancellationToken,
-    ) -> bool {
+    ) -> Option<u32> {
         let mut active_runs = self.inner.active_runs.lock().await;
-        let Some(active) = active_runs.get_mut(&run_id) else {
-            return false;
-        };
+        let active = active_runs.get_mut(&run_id)?;
         if &active.cancel != registration_cancel {
-            return false;
+            return None;
         }
-        let Some(connector) = active.connectors.get_mut(&target.target) else {
-            return false;
-        };
+        let connector = active.connectors.get_mut(&target.target)?;
         if connector.generation != target.generation {
-            return false;
+            return None;
         }
+        let recovered_after_failures = connector.consecutive_failures;
         connector.consecutive_failures = 0;
         let completed = self.replace_schedule_locked(active, run_id, target, deadline);
         #[cfg(test)]
@@ -1323,7 +1507,7 @@ impl ConnectorRuntimeSyncCore {
                 .successful_generation
                 .send_replace(Some(target.generation));
         }
-        completed
+        completed.then_some(recovered_after_failures)
     }
 
     async fn schedule_sync_retries_for_registration(
@@ -1332,19 +1516,19 @@ impl ConnectorRuntimeSyncCore {
         targets: &[ConnectorSyncTarget],
         registration_cancel: &CancellationToken,
         reason: &'static str,
-    ) {
+    ) -> SyncRetrySummary {
         if targets.is_empty() {
-            return;
+            return SyncRetrySummary::default();
         }
 
         let scheduling_base = tokio::time::Instant::now();
         let mut scheduled = Vec::new();
         let mut active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get_mut(&run_id) else {
-            return;
+            return SyncRetrySummary::default();
         };
         if &active.cancel != registration_cancel {
-            return;
+            return SyncRetrySummary::default();
         }
 
         let mut seen = HashSet::new();
@@ -1358,18 +1542,20 @@ impl ConnectorRuntimeSyncCore {
             if connector.generation != target.generation {
                 continue;
             }
+            let newly_degraded = connector.consecutive_failures == 0;
             connector.consecutive_failures = connector.consecutive_failures.saturating_add(1);
             let attempt = connector.consecutive_failures;
             let delay = sync_retry_delay(run_id, attempt);
             let deadline = scheduling_base + delay;
             if self.replace_schedule_locked(active, run_id, target, Some(deadline)) {
-                scheduled.push((target.clone(), attempt, delay));
+                scheduled.push((target.clone(), attempt, delay, newly_degraded));
             }
         }
         drop(active_runs);
 
-        for (target, attempt, delay) in scheduled {
-            warn!(
+        let mut summary = SyncRetrySummary::default();
+        for (target, attempt, delay, newly_degraded) in scheduled {
+            info!(
                 run_id = %run_id,
                 target = %target.target.log_identity(),
                 generation = target.generation,
@@ -1379,7 +1565,9 @@ impl ConnectorRuntimeSyncCore {
                 reason,
                 "retained last-known-good connector runtime state; scheduled sync retry"
             );
+            summary.record(&target.target, attempt, delay, newly_degraded);
         }
+        summary
     }
 
     #[cfg(test)]
@@ -2288,6 +2476,25 @@ mod tests {
                     .is_some_and(|actual| actual == message)
             })
             .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn captured_events<'a>(events: &'a [CapturedEvent], message: &str) -> Vec<&'a CapturedEvent> {
+        events
+            .iter()
+            .filter(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .collect()
+    }
+
+    fn warning_count(events: &[CapturedEvent]) -> usize {
+        events
+            .iter()
+            .filter(|event| event.level == tracing::Level::WARN)
+            .count()
     }
 
     fn assert_connector_field(event: &CapturedEvent, field: &str, expected: &str) {
@@ -4896,6 +5103,16 @@ mod tests {
             "retained last-known-good connector runtime state; scheduled sync retry",
         );
         assert_connector_field(retry, "reason", "invalid_or_unpublished_response");
+        assert_eq!(retry.level, tracing::Level::INFO);
+        assert_eq!(
+            captured_event(&events, "connector runtime sync retry state updated").level,
+            tracing::Level::INFO,
+        );
+        assert_eq!(
+            warning_count(&events),
+            2,
+            "response contract warnings should remain primary: {events:#?}"
+        );
     }
 
     #[tokio::test]
@@ -4904,21 +5121,28 @@ mod tests {
             capture_sync_events(assert_failed_connector_runtime_sync_retains_last_known_good())
                 .await;
 
-        assert_connector_field(
-            captured_event(
-                &events,
-                "connector runtime sync failed; retaining last-known-good state",
-            ),
-            "targets",
-            "[\"builtin:slack\"]",
+        let failure = captured_event(
+            &events,
+            "connector runtime sync failed; retaining last-known-good state",
         );
-        assert_connector_field(
-            captured_event(
-                &events,
-                "retained last-known-good connector runtime state; scheduled sync retry",
-            ),
-            "reason",
-            "api_error",
+        assert_eq!(failure.level, tracing::Level::WARN);
+        assert_connector_field(failure, "targets", "[\"builtin:slack\"]");
+        assert_connector_field(failure, "status", "500 Internal Server Error");
+        assert_connector_field(failure, "failure_kind", "http_status");
+        assert_connector_field(failure, "scheduled_target_count", "1");
+        assert_connector_field(failure, "newly_degraded_target_count", "1");
+        let retry = captured_event(
+            &events,
+            "retained last-known-good connector runtime state; scheduled sync retry",
+        );
+        assert_connector_field(retry, "reason", "api_error");
+        assert_eq!(retry.level, tracing::Level::INFO);
+        assert_eq!(warning_count(&events), 1, "events={events:#?}");
+        let event_debug = format!("{events:#?}");
+        assert!(
+            !event_debug.contains("refresh failed")
+                && !event_debug.contains("INTERNAL_SERVER_ERROR"),
+            "status response body should not be logged: {event_debug}"
         );
     }
 
@@ -5337,6 +5561,12 @@ mod tests {
         assert_connector_field(retry, "max_attempts", "2");
         assert_connector_field(retry, "will_retry", "true");
         assert_connector_transport_fields(retry, &api_url, run_id);
+        assert_eq!(retry.level, tracing::Level::INFO, "event={retry:#?}");
+        assert_eq!(
+            warning_count(&events),
+            0,
+            "an immediately recovered transport failure should stay local: {events:#?}"
+        );
         for message in [
             "connector runtime sync failed; retaining last-known-good state",
             "retained last-known-good connector runtime state; scheduled sync retry",
@@ -5355,7 +5585,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persistent_transport_failure_retains_policy_and_scheduled_retry_recovers() {
+    async fn persistent_transport_failure_warns_once_per_recovery_episode() {
         let run_id = RunId::nil();
         let response_body = connector_runtime_sync_response(json!({
             "kind": "builtin",
@@ -5365,7 +5595,11 @@ mod tests {
         let server = RawHttpTestServer::spawn(vec![
             RawHttpAction::Disconnect,
             RawHttpAction::Disconnect,
+            RawHttpAction::Disconnect,
+            RawHttpAction::Disconnect,
             RawHttpAction::Respond(json_response("200 OK", &response_body)),
+            RawHttpAction::Disconnect,
+            RawHttpAction::Disconnect,
         ])
         .await;
         let api_url = server.url();
@@ -5377,93 +5611,191 @@ mod tests {
         .await;
 
         let (_, events) = tokio::time::timeout(
-            Duration::from_secs(1),
-            capture_sync_events(harness.sync_slack()),
+            Duration::from_secs(2),
+            capture_sync_events(async {
+                harness.sync_slack().await;
+                assert_retry_scheduled(&harness.handle.core, run_id, "slack", 1).await;
+
+                harness.sync_slack().await;
+                assert_retry_scheduled(&harness.handle.core, run_id, "slack", 2).await;
+
+                harness.sync_slack().await;
+                let active_runs = harness.handle.core.inner.active_runs.lock().await;
+                let active = active_runs
+                    .get(&run_id)
+                    .expect("run should remain active after recovery");
+                assert_eq!(
+                    active.connectors[&builtin_target("slack")].consecutive_failures,
+                    0
+                );
+                assert!(
+                    !active.sync_tasks.contains_key(&builtin_target("slack")),
+                    "successful recovery without nextSyncAt should clear the retry schedule"
+                );
+                drop(active_runs);
+
+                harness.sync_slack().await;
+                assert_retry_scheduled(&harness.handle.core, run_id, "slack", 1).await;
+            }),
         )
         .await
-        .expect("persistent connector runtime sync failure should complete");
+        .expect("connector runtime sync recovery episodes should complete");
 
-        assert_last_known_good_policy(&harness.slack_policy().await);
         assert_retry_scheduled(&harness.handle.core, run_id, "slack", 1).await;
-        let retry_deadline = harness.handle.core.inner.active_runs.lock().await[&run_id].sync_tasks
-            [&builtin_target("slack")]
-            .deadline;
+        let immediate_retries =
+            captured_events(&events, "connector runtime sync transport failed, retrying");
         assert_eq!(
-            events
-                .iter()
-                .filter(|event| {
-                    event.fields.get("message").is_some_and(|message| {
-                        message == "connector runtime sync transport failed, retrying"
-                    })
-                })
-                .count(),
-            1,
-            "persistent failure should retry immediately exactly once: {events:#?}"
+            immediate_retries.len(),
+            3,
+            "each persistent failure should retry immediately exactly once: {events:#?}"
         );
+        assert!(
+            immediate_retries
+                .iter()
+                .all(|event| event.level == tracing::Level::INFO),
+            "immediate retry details should remain local: {events:#?}"
+        );
+
+        let failures = captured_events(
+            &events,
+            "connector runtime sync failed; retaining last-known-good state",
+        );
+        assert_eq!(failures.len(), 3, "events={events:#?}");
+        assert_eq!(failures[0].level, tracing::Level::WARN);
+        assert_eq!(failures[1].level, tracing::Level::INFO);
+        assert_eq!(failures[2].level, tracing::Level::WARN);
+        for failure in &failures {
+            assert_connector_field(failure, "transport_retry_attempted", "true");
+            assert_connector_field(failure, "scheduled_target_count", "1");
+            assert_connector_field(failure, "targets_omitted_count", "0");
+            assert_connector_field(failure, "will_retry", "true");
+            assert_connector_field(failure, "reason", "api_error");
+            assert_connector_transport_fields(failure, &api_url, run_id);
+            assert_eq!(
+                failure.fields["min_retry_delay_ms"], failure.fields["max_retry_delay_ms"],
+                "one target should have one retry delay: {failure:#?}"
+            );
+            assert!(
+                failure.fields["min_retry_delay_ms"]
+                    .parse::<u64>()
+                    .is_ok_and(|delay| delay > 0),
+                "retry delay should be positive: {failure:#?}"
+            );
+        }
+        assert_connector_field(failures[0], "newly_degraded_target_count", "1");
+        assert_connector_field(failures[0], "already_degraded_target_count", "0");
+        assert_connector_field(failures[0], "min_attempt", "1");
+        assert_connector_field(failures[0], "max_attempt", "1");
+        assert_connector_field(failures[1], "newly_degraded_target_count", "0");
+        assert_connector_field(failures[1], "already_degraded_target_count", "1");
+        assert_connector_field(failures[1], "min_attempt", "2");
+        assert_connector_field(failures[1], "max_attempt", "2");
+        assert_connector_field(failures[2], "newly_degraded_target_count", "1");
+        assert_connector_field(failures[2], "already_degraded_target_count", "0");
+        assert_eq!(warning_count(&events), 2, "events={events:#?}");
+
+        let scheduled_retries = captured_events(
+            &events,
+            "retained last-known-good connector runtime state; scheduled sync retry",
+        );
+        assert_eq!(scheduled_retries.len(), 3, "events={events:#?}");
+        assert!(
+            scheduled_retries
+                .iter()
+                .all(|event| event.level == tracing::Level::INFO),
+            "per-target retry details should remain local: {events:#?}"
+        );
+        assert_eq!(scheduled_retries[0].fields["attempt"], "1");
+        assert_eq!(scheduled_retries[1].fields["attempt"], "2");
+        assert_eq!(scheduled_retries[2].fields["attempt"], "1");
+
+        let recovery = captured_event(&events, "recovered connector runtime target");
+        assert_eq!(recovery.level, tracing::Level::INFO);
+        assert_connector_field(recovery, "target", "builtin:slack");
+        assert_connector_field(recovery, "recovered_after_failures", "2");
+
+        let requests = server.assert_finished_with_requests().await;
+        assert_eq!(requests.len(), 7);
+        for request in &requests {
+            assert_connector_runtime_sync_request(request, &run_id);
+        }
+        assert_eq!(
+            harness.slack_policy().await,
+            json!({
+                "allow": ["chat:write", "files:write"],
+                "deny": [],
+                "ask": ["channels:read"],
+                "unknownPolicy": "allow",
+            })
+        );
+        harness.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn mixed_transport_failure_warns_for_newly_degraded_targets_once() {
+        let run_id = RunId::nil();
+        let server =
+            RawHttpTestServer::spawn(vec![RawHttpAction::Disconnect, RawHttpAction::Disconnect])
+                .await;
+        let harness = ConnectorRuntimeSyncHarness::new_with_api(
+            api_client_for_url(server.url()),
+            run_id,
+            &["slack", "github"],
+        )
+        .await;
+        let targets = harness
+            .handle
+            .core
+            .current_sync_targets(run_id, vec!["slack".to_string()])
+            .await;
+        let registration_cancel = harness
+            .handle
+            .core
+            .current_registration_cancel(run_id)
+            .await
+            .expect("test registration should remain active");
+        harness
+            .handle
+            .core
+            .schedule_sync_retries_for_registration(
+                run_id,
+                &targets,
+                &registration_cancel,
+                "test_setup",
+            )
+            .await;
+
+        let (_, events) =
+            capture_sync_events(harness.handle.core.sync_builtin_connector_runtime_now(
+                run_id,
+                vec!["slack".to_string(), "github".to_string()],
+            ))
+            .await;
+
         let failure = captured_event(
             &events,
             "connector runtime sync failed; retaining last-known-good state",
         );
-        assert_connector_field(failure, "transport_retry_attempted", "true");
-        assert_connector_transport_fields(failure, &api_url, run_id);
-        assert_connector_field(
-            captured_event(
+        assert_eq!(failure.level, tracing::Level::WARN);
+        assert_connector_field(failure, "scheduled_target_count", "2");
+        assert_connector_field(failure, "newly_degraded_target_count", "1");
+        assert_connector_field(failure, "newly_degraded_targets", "[\"builtin:github\"]");
+        assert_connector_field(failure, "already_degraded_target_count", "1");
+        assert_connector_field(failure, "already_degraded_targets", "[\"builtin:slack\"]");
+        assert_connector_field(failure, "min_attempt", "1");
+        assert_connector_field(failure, "max_attempt", "2");
+        assert_eq!(warning_count(&events), 1, "events={events:#?}");
+        assert!(
+            captured_events(
                 &events,
                 "retained last-known-good connector runtime state; scheduled sync retry",
-            ),
-            "reason",
-            "api_error",
+            )
+            .iter()
+            .all(|event| event.level == tracing::Level::INFO),
+            "per-target retry detail should remain local: {events:#?}"
         );
 
-        tokio::time::sleep_until(retry_deadline).await;
-        let recovered_policy = wait_until_slack_policy(&harness.registry_path, |policy| {
-            policy["allow"] == json!(["chat:write", "files:write"])
-        })
-        .await;
-        assert_eq!(recovered_policy["unknownPolicy"], json!("allow"));
-        let [first_request, second_request, third_request] = server
-            .assert_finished_with_requests()
-            .await
-            .try_into()
-            .expect("connector runtime sync server should capture three requests");
-        for request in [&first_request, &second_request, &third_request] {
-            assert_connector_runtime_sync_request(request, &run_id);
-        }
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if harness
-                    .handle
-                    .core
-                    .inner
-                    .active_runs
-                    .lock()
-                    .await
-                    .get(&run_id)
-                    .is_some_and(|active| {
-                        active.connectors[&builtin_target("slack")].consecutive_failures == 0
-                            && !active.sync_tasks.contains_key(&builtin_target("slack"))
-                    })
-                {
-                    return;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("successful recovery should reset retry state");
-        let active_runs = harness.handle.core.inner.active_runs.lock().await;
-        let active = active_runs
-            .get(&run_id)
-            .expect("run should remain active after recovery");
-        assert_eq!(
-            active.connectors[&builtin_target("slack")].consecutive_failures,
-            0
-        );
-        assert!(
-            !active.sync_tasks.contains_key(&builtin_target("slack")),
-            "missing nextSyncAt should clear the retry schedule"
-        );
-        drop(active_runs);
+        assert_eq!(server.assert_finished_with_requests().await.len(), 2);
         harness.shutdown().await;
     }
 
@@ -5767,6 +6099,61 @@ mod tests {
             &registry_json["sandboxes"]["10.200.0.2"]["networkPolicies"]["slack"],
         );
         assert_retry_scheduled(&core, run_id, "slack", 1).await;
+    }
+
+    #[tokio::test]
+    async fn initial_retry_summary_bounds_target_identity_samples() {
+        let server = MockServer::start();
+        let (core, _requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let dir = tempfile::tempdir().expect("tempdir should be created");
+        let registry = ProxyRegistryHandle::new(
+            dir.path().join("proxy-registry.json"),
+            dir.path().join("proxy-registry.lock"),
+        );
+        let target_count = SYNC_RETRY_LOG_TARGET_SAMPLE_MAX + 2;
+        let connector_slugs = (0..target_count)
+            .map(|index| format!("connector-{index}"))
+            .collect::<Vec<_>>();
+        let targets = connector_slugs
+            .iter()
+            .map(|connector_slug| builtin_runtime_target_registration(connector_slug))
+            .collect::<Vec<_>>();
+        let refreshes = connector_slugs
+            .iter()
+            .map(|connector_slug| {
+                (
+                    connector_slug.clone(),
+                    NetworkPolicyRefresh {
+                        next_refresh_at: "not-a-date".to_string(),
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        let (_, events) =
+            capture_sync_events(core.register_run(ConnectorRuntimeSyncRegistration {
+                run_id,
+                source_ip: "10.200.0.2",
+                registry,
+                targets: &targets,
+                refreshes: Some(&refreshes),
+            }))
+            .await;
+
+        let summary = captured_event(&events, "connector runtime sync retry state updated");
+        assert_eq!(summary.level, tracing::Level::INFO);
+        assert_connector_field(summary, "scheduled_target_count", &target_count.to_string());
+        assert_connector_field(summary, "targets_omitted_count", "2");
+        assert_connector_field(
+            summary,
+            "newly_degraded_target_count",
+            &target_count.to_string(),
+        );
+        assert_connector_field(summary, "newly_degraded_targets_omitted_count", "2");
+        assert_connector_field(summary, "already_degraded_target_count", "0");
+        assert_connector_field(summary, "already_degraded_targets_omitted_count", "0");
+        core.unregister_run(run_id).await;
     }
 
     #[tokio::test]
