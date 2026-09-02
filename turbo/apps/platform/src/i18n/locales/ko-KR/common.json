@@ -1990,10 +1990,10 @@
         "heading": "아바타 선택",
         "help": "발표자를 선택하거나 아바타 없이 계속하세요",
         "none": "아바타 없음",
-        "visualBalanceAvatarLed": "아바타 중심 — 내레이터가 대부분 화면에 표시됨",
-        "visualBalanceBalanced": "균형 있는 구성 — 둘 다 같은 비중으로 표시",
-        "visualBalanceBRollLed": "시각 자료 중심 — 슬라이드와 비주얼에 집중",
-        "visualBalanceHeading": "화면 구성을 어떻게 배분할까요?"
+        "placementHeading": "발표자를 어디에 배치할까요?",
+        "placementLeft": "왼쪽 — 슬라이드는 오른쪽에 배치",
+        "placementOverlay": "슬라이드 위 — 슬라이드가 화면을 가득 채움",
+        "placementRight": "오른쪽 — 슬라이드는 왼쪽에 배치"
       },
       "cardDescription": "파일이나 화면 녹화를 완성된 영상으로 변환",
       "description": "소스를 추가하고 선택적으로 아바타와 음성을 고른 뒤 채팅 스레드에서 영상을 만드세요.",

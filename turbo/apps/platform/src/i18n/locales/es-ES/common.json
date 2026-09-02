@@ -2026,10 +2026,10 @@
         "heading": "Elige un avatar",
         "help": "Elige un presentador o continúa sin avatar",
         "none": "Sin avatar",
-        "visualBalanceAvatarLed": "Centrado en el avatar — el narrador aparece en pantalla la mayor parte del tiempo",
-        "visualBalanceBalanced": "Mezcla equilibrada — el mismo tiempo para ambos",
-        "visualBalanceBRollLed": "Centrado en recursos visuales — prioridad para diapositivas e imágenes",
-        "visualBalanceHeading": "¿Qué equilibrio visual prefieres?"
+        "placementHeading": "¿Dónde debe situarse el presentador?",
+        "placementLeft": "A la izquierda — la diapositiva queda a la derecha",
+        "placementOverlay": "Sobre la diapositiva — la diapositiva ocupa el encuadre",
+        "placementRight": "A la derecha — la diapositiva queda a la izquierda"
       },
       "cardDescription": "Convierte un archivo o una grabación de pantalla en un vídeo terminado",
       "description": "Añade una fuente, elige un avatar y una voz opcionales y crea el vídeo en un hilo de chat.",
