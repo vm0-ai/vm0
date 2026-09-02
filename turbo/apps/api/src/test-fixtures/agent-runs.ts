@@ -569,10 +569,10 @@ export async function setRunModelRuntimeRouteFixture(args: {
 }
 
 /**
- * Simulate a persisted discriminator written by a later release. The current
- * production API intentionally cannot construct this canonical row because
- * its write fence still rejects `built-in`; compatibility reads still require
- * permanent coverage before that later writer exists.
+ * Simulate provider ownership metadata that current production APIs cannot
+ * construct. The direct-run write fence still rejects `built-in`, while
+ * current writers never produce the historical unknown (`null`) state; both
+ * remain valid compatibility-read cases.
  */
 export async function setRunModelProviderFixture(args: {
   readonly runId: string;
