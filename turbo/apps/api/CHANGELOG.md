@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.531.0](https://github.com/vm0-ai/vm0/compare/api-v1.530.0...api-v1.531.0) (2026-09-02)
+
+
+### Features
+
+* **api:** add Morning Brief default onboarding foundation ([#31183](https://github.com/vm0-ai/vm0/issues/31183)) ([2ca9dee](https://github.com/vm0-ai/vm0/commit/2ca9dee54342bc1556e1042b5a48ab8baee56923))
+* **api:** resolve automatic mcp auth as none or oauth ([#31135](https://github.com/vm0-ai/vm0/issues/31135)) ([d84a7e0](https://github.com/vm0-ai/vm0/commit/d84a7e0cd556e91916858ea18cd5256efde6ed03))
+
+
+### Refactoring
+
+* **api:** rename model provider gateway runtime secret ([#31193](https://github.com/vm0-ai/vm0/issues/31193)) ([dfdbaf6](https://github.com/vm0-ai/vm0/commit/dfdbaf65f12ee9679403a6488efcf47c3e2f2729))
+
+
+### Performance Improvements
+
+* **api:** skip redundant drains for admitted goals ([#31171](https://github.com/vm0-ai/vm0/issues/31171)) ([bbb111a](https://github.com/vm0-ai/vm0/commit/bbb111ac83d53579633fc2f3826b34372b015b97))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+    * @okouai/db bumped to 1.235.0
+    * @okouai/pi-agent-runtime bumped to 1.11.1
+
 ## [1.530.0](https://github.com/vm0-ai/vm0/compare/api-v1.529.0...api-v1.530.0) (2026-09-02)
 
 

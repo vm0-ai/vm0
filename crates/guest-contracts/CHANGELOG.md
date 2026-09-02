@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.21](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.20...guest-contracts-v0.12.21) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** share run artifact payload contract ([#31153](https://github.com/vm0-ai/vm0/issues/31153)) ([16c79bb](https://github.com/vm0-ai/vm0/commit/16c79bb75648f4b2def7b28ae0b1aadff326941c))
+
 ## [0.12.20](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.19...guest-contracts-v0.12.20) (2026-09-02)
 
 
