@@ -2876,36 +2876,34 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("emits the final path and still serves the branded ones", async () => {
+  it("emits the final path and serves it", async () => {
     const fixture = await setupFeishuRunFixture();
     // #28278 step 3 switched this producer: the URL the connect service hands
     // the operator now carries the final path on the unchanged callback origin.
     // Installation ids are UUIDs, so percent-encoding leaves the id verbatim.
+    // #31068 retired this route's `MIGRATED_BRANDED_PATHS` row, so the branded
+    // forms this case used to replay alongside it are no longer registered.
     expect(fixture.callbackUrl).toBe(
       `${FEISHU_CALLBACK_ORIGIN}/api/webhooks/feishu/events/${fixture.installationId}`,
     );
     const event = v2Event(fixture.appId, "unknown.event", {});
-    const eventPaths = [
-      `/api/okou/feishu/events/${fixture.installationId}`,
-      `/api/zero/feishu/events/${fixture.installationId}`,
+    const url = new URL(
       `/api/webhooks/feishu/events/${fixture.installationId}`,
-    ];
+      fixture.callbackUrl,
+    ).toString();
 
-    for (const path of eventPaths) {
-      const url = new URL(path, fixture.callbackUrl).toString();
-      const accepted = await postEvent(url, event, { encrypted: true });
-      expect(accepted.status).toBe(200);
-      await expect(accepted.text()).resolves.toBe("OK");
+    const accepted = await postEvent(url, event, { encrypted: true });
+    expect(accepted.status).toBe(200);
+    await expect(accepted.text()).resolves.toBe("OK");
 
-      const rejected = await postEvent(url, event, {
-        encrypted: true,
-        validSignature: false,
-      });
-      expect(rejected.status).toBe(401);
-      await expect(rejected.json()).resolves.toStrictEqual({
-        error: "Invalid Feishu signature",
-      });
-    }
+    const rejected = await postEvent(url, event, {
+      encrypted: true,
+      validSignature: false,
+    });
+    expect(rejected.status).toBe(401);
+    await expect(rejected.json()).resolves.toStrictEqual({
+      error: "Invalid Feishu signature",
+    });
   });
 
   it("retries a durably admitted Feishu event after dispatch fails", async () => {
