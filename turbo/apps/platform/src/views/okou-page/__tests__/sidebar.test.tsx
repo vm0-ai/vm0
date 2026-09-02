@@ -3343,14 +3343,29 @@ describe("zero sidebar", () => {
     const list = screen.getByTestId("chat-list-column");
     expect(within(list).getByText("Chat")).toBeInTheDocument();
     const searchButton = within(list).getByLabelText("Search workspace");
-    const newChatButton = within(list).getByLabelText("New chat");
     const chatThreadsTitle = within(list).getByText("Chats with Zero");
+    if (!searchButton.parentElement || !chatThreadsTitle.parentElement) {
+      throw new Error("Chat action headers not found");
+    }
+    const headerNewChatButton = within(
+      searchButton.parentElement,
+    ).getByLabelText("New chat");
+    const threadNewChatButton = within(
+      chatThreadsTitle.parentElement,
+    ).getByLabelText("New chat");
     expect(searchButton).toHaveAttribute(
       "aria-keyshortcuts",
       "Meta+K Control+K",
     );
-    expect(chatThreadsTitle.parentElement).toContainElement(newChatButton);
-    expect(newChatButton.querySelector(".lucide-plus")).toBeInTheDocument();
+    expect(
+      headerNewChatButton.querySelector(".lucide-square-pen"),
+    ).toBeInTheDocument();
+    expect(chatThreadsTitle.parentElement).toContainElement(
+      threadNewChatButton,
+    );
+    expect(
+      threadNewChatButton.querySelector(".lucide-plus"),
+    ).toBeInTheDocument();
     expect(
       within(list).getByTestId("pinned-agents-horizontal"),
     ).toBeInTheDocument();
@@ -3388,25 +3403,44 @@ describe("zero sidebar", () => {
     expect(upgradeSlot).toHaveClass("empty:hidden");
   });
 
-  it("keeps the chat rail responsive across consecutive clicks", async () => {
-    prepareDefaultAgent();
+  it("routes new chat to the current agent and chat rail to the default agent", async () => {
+    prepareAgents();
     mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Existing conversation"),
+      createThread(RESEARCH_THREAD_ID, "Research conversation", {
+        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      }),
     ]);
 
     setupSidebarPage({
       context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
+      path: `/chats/${RESEARCH_THREAD_ID}`,
     });
 
     const rail = await screen.findByTestId("labeled-nav-rail");
     await screen.findByPlaceholderText(PLACEHOLDER);
     expect(
       within(screen.getByTestId("chat-list-column")).getByText(
-        "Existing conversation",
+        "Research conversation",
       ),
     ).toBeInTheDocument();
+    await screen.findByText("Chats with Research Agent");
+
+    const list = screen.getByTestId("chat-list-column");
+    const searchButton = within(list).getByLabelText("Search workspace");
+    if (!searchButton.parentElement) {
+      throw new Error("Chat header not found");
+    }
+    const newChatButton = within(searchButton.parentElement).getByLabelText(
+      "New chat",
+    );
+    click(newChatButton);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+    });
+
     const chatLink = within(rail).getByLabelText("Chat");
+    expect(chatLink).toHaveAttribute("href", `/agents/${AGENT_ID}/chat`);
     click(chatLink);
 
     await waitFor(() => {
@@ -4149,7 +4183,13 @@ describe("zero sidebar", () => {
     });
 
     const list = await screen.findByTestId("chat-list-column");
-    const newChatButton = within(list).getByLabelText("New chat");
+    const chatThreadsTitle = await within(list).findByText("Chats with Zero");
+    if (!chatThreadsTitle.parentElement) {
+      throw new Error("Chat threads header not found");
+    }
+    const newChatButton = within(chatThreadsTitle.parentElement).getByLabelText(
+      "New chat",
+    );
     await waitFor(() => {
       expect(newChatButton).toBeEnabled();
     });
@@ -4209,7 +4249,13 @@ describe("zero sidebar", () => {
     context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
 
     const list = await screen.findByTestId("chat-list-column");
-    const newChatButton = within(list).getByLabelText("New chat");
+    const chatThreadsTitle = await within(list).findByText("Chats with Zero");
+    if (!chatThreadsTitle.parentElement) {
+      throw new Error("Chat threads header not found");
+    }
+    const newChatButton = within(chatThreadsTitle.parentElement).getByLabelText(
+      "New chat",
+    );
     await waitFor(() => {
       expect(newChatButton).toBeEnabled();
     });
