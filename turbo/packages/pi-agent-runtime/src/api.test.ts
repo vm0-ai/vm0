@@ -296,7 +296,6 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "deepseek-v4-flash",
           api: "openai-completions",
-          thinkingLevel: "low",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
         ownership: createPiApiFirstTurnOwnership(),
@@ -307,7 +306,6 @@ describe("Pi API facade", () => {
         url: "/responses",
         body: {
           model: "deepseek-v4-flash",
-          reasoning: { effort: "high" },
           stream: true,
           store: false,
         },

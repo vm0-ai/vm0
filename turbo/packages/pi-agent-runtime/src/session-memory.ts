@@ -298,21 +298,6 @@ async function consumeAssistantMessage(
   return await stream.result();
 }
 
-function rethrowPiModelTurnStage(error: unknown, stage: string): never {
-  if (typeof error === "object" && error !== null) {
-    try {
-      Object.defineProperty(error, "piModelTurnStage", {
-        configurable: true,
-        enumerable: true,
-        value: stage,
-      });
-    } catch {
-      // Keep the original provider failure if it cannot be annotated.
-    }
-  }
-  throw error;
-}
-
 function piAssistantRequiresHandoff(message: AssistantMessage): boolean {
   return message.content.some((content) => {
     return content.type === "toolCall";
@@ -346,34 +331,16 @@ export async function runPiFirstModelTurn<TApi extends Api>(
   } else {
     options.ownership.markProviderRequestMayHaveStarted();
   }
-  let responseStream: AssistantMessageEventStream;
-  try {
-    responseStream = options.stream(options.model, context, {
-      ...options.streamOptions,
-      reasoning:
-        options.streamOptions?.reasoning ?? piReasoningLevel(sessionContext),
-      sessionId: options.session.getSessionId(),
-    });
-  } catch (error) {
-    rethrowPiModelTurnStage(error, "stream-invocation");
-  }
-  let assistantMessage: AssistantMessage;
-  try {
-    assistantMessage = await consumeAssistantMessage(responseStream);
-  } catch (error) {
-    rethrowPiModelTurnStage(error, "stream-consumption");
-  }
-  try {
-    options.session.appendMessage(assistantMessage);
-  } catch (error) {
-    rethrowPiModelTurnStage(error, "session-append");
-  }
-  try {
-    return {
-      assistantMessage,
-      handoffRequired: piAssistantRequiresHandoff(assistantMessage),
-    };
-  } catch (error) {
-    rethrowPiModelTurnStage(error, "handoff-projection");
-  }
+  const responseStream = options.stream(options.model, context, {
+    ...options.streamOptions,
+    reasoning:
+      options.streamOptions?.reasoning ?? piReasoningLevel(sessionContext),
+    sessionId: options.session.getSessionId(),
+  });
+  const assistantMessage = await consumeAssistantMessage(responseStream);
+  options.session.appendMessage(assistantMessage);
+  return {
+    assistantMessage,
+    handoffRequired: piAssistantRequiresHandoff(assistantMessage),
+  };
 }

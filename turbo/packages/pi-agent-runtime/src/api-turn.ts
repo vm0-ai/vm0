@@ -14,21 +14,6 @@ import type {
 } from "./api-types";
 import { UnsupportedPiResourceSnapshotError } from "./errors";
 
-function rethrowPiApiFirstTurnStage(error: unknown, stage: string): never {
-  if (typeof error === "object" && error !== null) {
-    try {
-      Object.defineProperty(error, "piModelTurnStage", {
-        configurable: true,
-        enumerable: true,
-        value: stage,
-      });
-    } catch {
-      // Keep the original provider failure if it cannot be annotated.
-    }
-  }
-  throw error;
-}
-
 function projectAssistantContent(
   message: AssistantMessage,
 ): PiApiAssistantContent[] {
@@ -56,20 +41,6 @@ function projectAssistantContent(
       }
     }
   });
-}
-
-function providerErrorStatus(message: AssistantMessage): number | undefined {
-  if (message.stopReason !== "error" || !message.errorMessage) {
-    return undefined;
-  }
-  const match = /(?:API error \()?(\d{3})(?:\)|\s|:)/.exec(
-    message.errorMessage,
-  );
-  if (!match?.[1]) {
-    return undefined;
-  }
-  const status = Number(match[1]);
-  return status >= 400 && status <= 599 ? status : undefined;
 }
 
 export function projectPiApiAssistantMessage(
@@ -154,25 +125,13 @@ export async function runPiApiFirstTurn(
       ownership: args.ownership,
       providerRequestBoundary: args.providerRequestBoundary,
     });
-    try {
-      const errorStatus = providerErrorStatus(turn.assistantMessage);
-      return {
-        assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
-        handoffRequired: turn.handoffRequired,
-        observedServiceTier,
-        ...(errorStatus === undefined
-          ? {}
-          : { providerErrorStatus: errorStatus }),
-        sessionJsonl: memorySession.toJsonl(),
-      };
-    } catch (error) {
-      return rethrowPiApiFirstTurnStage(error, "result-projection");
-    }
+    return {
+      assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
+      handoffRequired: turn.handoffRequired,
+      observedServiceTier,
+      sessionJsonl: memorySession.toJsonl(),
+    };
   } finally {
-    try {
-      shell.session.dispose();
-    } catch (error) {
-      rethrowPiApiFirstTurnStage(error, "session-disposal");
-    }
+    shell.session.dispose();
   }
 }

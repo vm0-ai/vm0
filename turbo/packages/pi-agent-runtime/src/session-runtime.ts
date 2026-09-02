@@ -1,5 +1,6 @@
 import {
   InMemoryCredentialStore,
+  registerSessionResourceCleanup,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
@@ -16,6 +17,17 @@ import type { PiPreheatedResourceSnapshot } from "./api-types";
 import { piAgentRegisteredStream, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
+
+function initializePiSessionResourceRegistry(): void {
+  // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
+  // Codex adapter initializer, while AgentSession.dispose() remains eager.
+  // Registering and immediately removing a no-op makes the shared registry's
+  // initialization explicit without changing its cleanup policy.
+  const unregister = registerSessionResourceCleanup(() => {
+    return undefined;
+  });
+  unregister();
+}
 
 function requestScopedPiAgentStream(
   serviceTier: PiAgentServiceTier | undefined,
@@ -97,6 +109,7 @@ export async function createPiAgentSessionForRuntime(args: {
   readonly resourceSnapshot?: PiPreheatedResourceSnapshot;
   readonly sessionStartEvent?: CreateAgentSessionFromServicesOptions["sessionStartEvent"];
 }) {
+  initializePiSessionResourceRegistry();
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
