@@ -1255,7 +1255,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "guest-agent"
-version = "0.83.7"
+version = "0.83.8"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.219"
+version = "0.16.220"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.119"
+version = "0.1.120"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2071,7 +2071,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.82"
+version = "0.4.83"
 dependencies = [
  "bitvec",
  "libc",
@@ -2608,7 +2608,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.183.1"
+version = "0.183.2"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2801,7 +2801,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.62"
+version = "0.19.63"
 dependencies = [
  "async-trait",
  "serde",
@@ -2814,7 +2814,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.282"
+version = "0.37.283"
 dependencies = [
  "async-trait",
  "clap",
@@ -2846,7 +2846,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.9.60"
+version = "0.9.61"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3827,7 +3827,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.138"
+version = "0.19.139"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3840,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.123"
+version = "0.17.124"
 dependencies = [
  "guest-contracts",
  "nix",
@@ -3857,14 +3857,14 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.46"
+version = "0.18.47"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "vsock-test"
-version = "0.9.269"
+version = "0.9.270"
 dependencies = [
  "guest-write-file",
  "libc",
