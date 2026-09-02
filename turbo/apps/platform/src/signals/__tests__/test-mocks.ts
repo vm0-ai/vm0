@@ -74,6 +74,15 @@ interface BrowserScreenOptions {
 }
 
 interface CanvasRender {
+  readonly avatar: {
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly clipRadius: number;
+    readonly height: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+  };
   readonly background: string;
   readonly height: number;
   readonly width: number;
@@ -1079,14 +1088,36 @@ function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
   const renders: CanvasRender[] = [];
+  let avatarCenterX = 0;
+  let avatarCenterY = 0;
+  let avatarClipRadius = 0;
+  let avatarHeight = 0;
+  let avatarWidth = 0;
+  let avatarX = 0;
+  let avatarY = 0;
   const context = {
     fillStyle: "",
     imageSmoothingEnabled: false,
     imageSmoothingQuality: "low",
-    arc() {},
+    arc(centerX: number, centerY: number, radius: number) {
+      avatarCenterX = centerX;
+      avatarCenterY = centerY;
+      avatarClipRadius = radius;
+    },
     beginPath() {},
     clip() {},
-    drawImage() {},
+    drawImage(
+      _image: CanvasImageSource,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ) {
+      avatarX = x;
+      avatarY = y;
+      avatarWidth = width;
+      avatarHeight = height;
+    },
     fillRect() {},
     restore() {},
     save() {},
@@ -1101,6 +1132,15 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
     .spyOn(HTMLCanvasElement.prototype, "toDataURL")
     .mockImplementation(function toDataURL(this: HTMLCanvasElement) {
       renders.push({
+        avatar: {
+          centerX: avatarCenterX,
+          centerY: avatarCenterY,
+          clipRadius: avatarClipRadius,
+          height: avatarHeight,
+          width: avatarWidth,
+          x: avatarX,
+          y: avatarY,
+        },
         background: String(context.fillStyle),
         height: this.height,
         width: this.width,
