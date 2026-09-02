@@ -517,7 +517,7 @@ describe("composer image annotation", () => {
    * at. A sentence that only exists in the prompt leaves the model matching
    * words to regions by position, so it has to be printed on the image too.
    */
-  it("prints a mark's note on the image and lets it be placed", async () => {
+  it("prints a mark's note and opens it for editing when clicked", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context);
     mockAgentChatPage();
@@ -552,13 +552,31 @@ describe("composer image annotation", () => {
     });
     expect(label).toHaveTextContent("Tighten this spacing");
 
-    // Selecting the note hands over its own grip, not the mark's.
-    fireEvent.pointerDown(label, { clientX: 60, clientY: 140, pointerId: 2 });
-    const widthHandle = await screen.findByTestId(
-      "annotation-note-width-handle",
+    // The label is words, so clicking it edits those words. It used to start a
+    // drag instead, and a note could be moved anywhere on the image.
+    await user.click(await screen.findByTestId("annotation-mark-1"));
+    await user.click(label);
+    const field = await screen.findByPlaceholderText(
+      "Say what should change here",
     );
-    expect(widthHandle).toBeInTheDocument();
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue("Tighten this spacing");
+
+    // Nothing on a note is draggable any more: no width grip of its own, and
+    // no resize grips borrowed from the mark it explains.
+    expect(screen.queryByTestId("annotation-note-width-handle")).toBeNull();
     expect(screen.queryByTestId("annotation-handle-tl")).toBeNull();
+
+    // And a press on the label leaves it exactly where the placement put it.
+    const before = { top: label.style.top, left: label.style.left };
+    fireEvent.pointerDown(label, { clientX: 60, clientY: 140, pointerId: 2 });
+    fireEvent.pointerMove(
+      await screen.findByTestId("image-annotation-surface"),
+      { clientX: 320, clientY: 280, pointerId: 2 },
+    );
+    fireEvent.pointerUp(label, { clientX: 320, clientY: 280, pointerId: 2 });
+    expect(label.style.top).toBe(before.top);
+    expect(label.style.left).toBe(before.left);
   });
 
   /**

@@ -192,7 +192,7 @@ export type AnnotationResizeEdge = (typeof ANNOTATION_RESIZE_EDGES)[number];
  */
 export interface AnnotationDrag {
   readonly markId: string;
-  readonly mode: "move" | "resize" | "note-move" | "note-resize";
+  readonly mode: "move" | "resize";
   readonly corner?: AnnotationResizeEdge;
   readonly origin: AnnotationPoint;
   readonly startRect: {
@@ -300,6 +300,9 @@ export function noteOnImage(mark: ImageAnnotationMark): {
   if (!text) {
     return null;
   }
+  // `noteBox` is only ever read now: nothing writes one since notes stopped
+  // being draggable. Drafts saved while they were keep the placement they were
+  // given rather than jumping the next time they are opened.
   return { text, ink: mark.ink, box: mark.noteBox ?? defaultNoteBox(mark) };
 }
 
@@ -307,6 +310,13 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 
+/**
+ * What the editor currently has open. `note` is not a second draggable object:
+ * it means the mark's sentence is open for editing, which is what clicking the
+ * printed label does. Notes used to be moved and resized independently and are
+ * now placed by `defaultNoteBox` alone — Tong: *"mark 标注的文字还是不要让用户
+ * 随便拖动了 … 标注文字点击也可以进行文本编辑，现在是拖动"*.
+ */
 interface AnnotationSelection {
   readonly kind: "mark" | "note";
   readonly id: string;
@@ -529,26 +539,6 @@ function createAnnotationContentSignals(
   session: AnnotationSessionSignals,
   history: AnnotationHistorySignals,
 ) {
-  const moveAnnotationNoteBox$ = command(
-    ({ set }, id: string, box: { x: number; y: number; width: number }) => {
-      set(history.pushAnnotation$, (current) => {
-        return {
-          ...current,
-          marks: current.marks.map((mark) => {
-            if (
-              mark.id !== id ||
-              mark.shape === "text" ||
-              mark.shape === "redact" ||
-              mark.shape === "highlight"
-            ) {
-              return mark;
-            }
-            return { ...mark, noteBox: clampNoteBox(box) };
-          }),
-        };
-      });
-    },
-  );
   const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
     set(session.internal.ink$, ink);
     const selectedId = get(session.signals.annotationSelectedMarkId$);
@@ -592,7 +582,7 @@ function createAnnotationContentSignals(
       });
     },
   );
-  return { moveAnnotationNoteBox$, setAnnotationInk$, setAnnotationMarkNote$ };
+  return { setAnnotationInk$, setAnnotationMarkNote$ };
 }
 
 function createAnnotationGeometrySignals(
