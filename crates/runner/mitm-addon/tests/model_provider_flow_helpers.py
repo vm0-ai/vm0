@@ -144,7 +144,7 @@ def make_model_provider_usage_reporting_flow(
     run_id: str = "run-abc-123",
     network_log_path: Path | str | None = None,
     proxy_log_path: Path | str | None = None,
-    firewall_billable: object = True,
+    firewall_billable: bool = True,
     sandbox_token: str | None = None,
     model_usage_provider: str | None = "claude-sonnet-4-6",
     usage: dict | None = None,
