@@ -75,7 +75,8 @@ extension CaptureGeometry {
 /// Kept free of CoreGraphics types so the projection below can be exercised
 /// without a capture device or an event tap.
 public struct CapturedClick: Equatable, Sendable {
-    public let ticks: UInt64
+    /// `CGEvent.timestamp`: nanoseconds since boot on the host clock.
+    public let nanoseconds: UInt64
     public let screenX: Double
     public let screenY: Double
     public let button: String
@@ -89,7 +90,7 @@ public struct CapturedClick: Equatable, Sendable {
     public let geometry: CaptureGeometry?
 
     public init(
-        ticks: UInt64,
+        nanoseconds: UInt64,
         screenX: Double,
         screenY: Double,
         button: String,
@@ -97,7 +98,7 @@ public struct CapturedClick: Equatable, Sendable {
         modifiers: [String],
         geometry: CaptureGeometry? = nil
     ) {
-        self.ticks = ticks
+        self.nanoseconds = nanoseconds
         self.screenX = screenX
         self.screenY = screenY
         self.button = button
@@ -138,7 +139,8 @@ public func projectClicks(
     var droppedOutOfFrame = 0
 
     for click in clicks {
-        guard let offsetMs = timeline.offsetMilliseconds(atTicks: click.ticks) else {
+        guard let offsetMs = timeline.offsetMilliseconds(atNanoseconds: click.nanoseconds)
+        else {
             continue
         }
         guard
@@ -165,35 +167,28 @@ public func projectClicks(
     return (projected, droppedOutOfFrame)
 }
 
-/// Converts `CGEvent` timestamps onto the recording's timeline.
+/// Places `CGEvent` timestamps on the recording's timeline.
 ///
-/// `CGEvent.timestamp` is mach absolute time in raw tick units, which are not
-/// nanoseconds on every machine; the timebase ratio has to be applied or every
-/// click lands at the wrong moment in the video.
+/// `CGEvent.timestamp` is nanoseconds since boot on the same host clock that
+/// stamps the captured frames. It is not raw `mach_absolute_time` ticks: the
+/// system has already applied the timebase. Applying it a second time here
+/// multiplied every offset by 125/3 on Apple silicon, which reported a click
+/// two seconds into a recording as 97 days into it, and looked fine on Intel
+/// machines only because their ratio is 1/1.
 public struct ClickTimeline: Equatable, Sendable {
-    public let startTicks: UInt64
-    public let timebaseNumerator: UInt32
-    public let timebaseDenominator: UInt32
+    /// Host-clock time of the first captured frame, in nanoseconds.
+    public let startNanoseconds: UInt64
 
-    public init(
-        startTicks: UInt64,
-        timebaseNumerator: UInt32,
-        timebaseDenominator: UInt32
-    ) {
-        self.startTicks = startTicks
-        self.timebaseNumerator = timebaseNumerator
-        self.timebaseDenominator = max(1, timebaseDenominator)
+    public init(startNanoseconds: UInt64) {
+        self.startNanoseconds = startNanoseconds
     }
 
     /// Milliseconds from the start of the recording, or `nil` for an event that
     /// predates it.
-    public func offsetMilliseconds(atTicks ticks: UInt64) -> Int? {
-        guard ticks >= startTicks else {
+    public func offsetMilliseconds(atNanoseconds nanoseconds: UInt64) -> Int? {
+        guard nanoseconds >= startNanoseconds else {
             return nil
         }
-        let elapsedTicks = Double(ticks - startTicks)
-        let nanoseconds =
-            elapsedTicks * Double(timebaseNumerator) / Double(timebaseDenominator)
-        return Int((nanoseconds / 1_000_000).rounded())
+        return Int((Double(nanoseconds - startNanoseconds) / 1_000_000).rounded())
     }
 }
