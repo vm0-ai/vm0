@@ -1983,6 +1983,8 @@
         "resetAndTryAgain": "Redefinir e tentar novamente",
         "resetsAt": "Redefine {{time}}",
         "selectModel": "Trocar modelo",
+        "timeoutDescription": "Esta execução atingiu o limite de tempo. Continue para seguir trabalhando.",
+        "timeoutTitle": "Limite de tempo atingido",
         "tryAgain": "Tentar novamente",
         "unavailableDescription": "Este modelo não é compatível com a conta do ChatGPT conectada. Troque para outro modelo para continuar.",
         "unavailableTitle": "O modelo selecionado não está disponível",
@@ -2024,10 +2026,10 @@
         "heading": "Escolha um avatar",
         "help": "Escolha um apresentador ou continue sem um",
         "none": "Sem avatar",
-        "visualBalanceAvatarLed": "Foco no avatar — o narrador fica na tela na maior parte do tempo",
-        "visualBalanceBalanced": "Mix equilibrado — o mesmo tempo para ambos",
-        "visualBalanceBRollLed": "Foco nos recursos visuais — prioridade para slides e imagens",
-        "visualBalanceHeading": "Como você prefere o equilíbrio visual?"
+        "placementHeading": "Onde o apresentador deve ficar?",
+        "placementLeft": "À esquerda — o slide fica à direita",
+        "placementOverlay": "Sobre o slide — o slide preenche o quadro",
+        "placementRight": "À direita — o slide fica à esquerda"
       },
       "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
       "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",

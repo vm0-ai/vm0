@@ -20,6 +20,7 @@ import {
 } from "../object-url-resource.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import type { ImageAnnotation } from "@okouai/api-contracts/contracts/chat-threads";
+import { createZoomableImageCanvasSignals } from "../zoomable-image-canvas.ts";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -132,6 +133,8 @@ const internalLightboxDialogCloseToken$ = state(0);
 const internalLightboxDialogMountToken$ = state(0);
 const resetLightboxDialogCloseSignal$ = resetSignal();
 const resetLightboxPreviewSignal$ = resetSignal();
+export const attachmentLightboxImageCanvasSignals =
+  createZoomableImageCanvasSignals();
 const internalLightboxObjectUrlResources$ = state<readonly ObjectUrlResource[]>(
   [],
 );
@@ -150,6 +153,7 @@ const disposeLightboxSession$ = command(({ set }) => {
   set(internalLightboxDialogVisible$, false);
   set(internalLightboxDialogFullscreen$, false);
   set(internalLightboxState$, null);
+  set(attachmentLightboxImageCanvasSignals.reset$);
   set(resetLightboxPreviewSignal$);
   set(releaseLightboxObjectUrlResources$);
 });
@@ -185,6 +189,7 @@ export const lightboxDialogFullscreen$ = computed((get) => {
 });
 
 export const toggleLightboxDialogFullscreen$ = command(({ get, set }) => {
+  set(attachmentLightboxImageCanvasSignals.reset$);
   set(
     internalLightboxDialogFullscreen$,
     !get(internalLightboxDialogFullscreen$),
@@ -199,6 +204,7 @@ const closeLightboxForDialogExitToken$ = command(
     set(internalLightboxDialogVisible$, false);
     set(internalLightboxDialogFullscreen$, false);
     set(internalLightboxState$, null);
+    set(attachmentLightboxImageCanvasSignals.reset$);
     set(resetLightboxPreviewSignal$);
     set(releaseLightboxObjectUrlResources$);
   },
@@ -296,6 +302,7 @@ export const openImageLightbox$ = command(
     if (set(routeToOpenArtifactSidebar$, input)) {
       return;
     }
+    set(attachmentLightboxImageCanvasSignals.reset$);
     const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
     const resource = input.file
       ? createObjectUrlResource(input.file, previewSignal)
@@ -336,6 +343,7 @@ export const navigateImageLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
+    set(attachmentLightboxImageCanvasSignals.reset$);
     set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxState$, { kind: "image", ...value });
   },

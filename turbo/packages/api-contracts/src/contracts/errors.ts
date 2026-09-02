@@ -195,6 +195,12 @@ export const RUN_ERROR_GUIDANCE: Record<
 export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
   "Oops, something went wrong. Please try again later.";
 
+export const CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE =
+  "This run reached its execution time limit.";
+
+const AGENT_EXECUTION_TIMEOUT_RUN_ERROR =
+  /^Agent execution timed out after [1-9]\d* seconds$/u;
+
 const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
   "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
 
@@ -568,11 +574,20 @@ function isClaudeCodeTermsAcceptanceRequiredError(
 
 export function isActionableRunError(errorMessage: string): boolean {
   return (
+    isAgentExecutionTimeoutRunError(errorMessage) ||
     isCodexOAuthReconnectRequiredRunError(errorMessage) ||
     isCodexChatGptAccountUnsupportedModelRunError(errorMessage) ||
     isClaudeCodeLimitError(errorMessage) ||
     isClaudeCodeTermsAcceptanceRequiredError(errorMessage) ||
     hasActionableRunErrorSnippet(errorMessage)
+  );
+}
+
+export function isAgentExecutionTimeoutRunError(errorMessage: string): boolean {
+  const normalized = errorMessage.trim();
+  return (
+    normalized === CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE ||
+    AGENT_EXECUTION_TIMEOUT_RUN_ERROR.test(normalized)
   );
 }
 
@@ -645,6 +660,10 @@ export function formatRunErrorForExternalSurface(params: {
       };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
+
+  if (isAgentExecutionTimeoutRunError(errorMessage)) {
+    return CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE;
+  }
 
   const claudeOverloadedMessage = formatClaudeProviderOverloadedRunError({
     message: errorMessage,

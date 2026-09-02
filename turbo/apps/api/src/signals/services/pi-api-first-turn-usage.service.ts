@@ -2,18 +2,15 @@ import { createHash } from "node:crypto";
 
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
 import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
-import { modelUsageObservation } from "@okouai/db/schema/model-usage-observation";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import type { PiApiFirstTurnResult } from "@okouai/pi-agent-runtime/api";
-import { and, eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 
 import type { Db } from "../external/db";
 
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";
-const PI_API_FIRST_TURN_OBSERVATION_NAMESPACE =
-  "670e6ebc-79c3-4f44-b322-e26d1be7cf2e";
 const TERRA_MODEL = "gpt-5.6-terra";
 
 function terraLongContextMinimumInputTokens(): number {
@@ -120,24 +117,11 @@ function isFastPiApiFirstTurn(args: RecordPiApiFirstTurnUsageArgs): boolean {
   return args.requestedServiceTier === "priority";
 }
 
-function sameObservation(
-  row: typeof modelUsageObservation.$inferSelect,
-  expected: typeof modelUsageObservation.$inferInsert,
-): boolean {
-  return (
-    row.model === expected.model &&
-    row.inputTokens === expected.inputTokens &&
-    row.outputTokens === expected.outputTokens &&
-    row.cacheReadInputTokens === expected.cacheReadInputTokens &&
-    row.cacheCreationInputTokens === expected.cacheCreationInputTokens
-  );
-}
-
 /**
- * Persist API-owned Terra usage before any lifecycle commit. The response
- * identity owns both billing and public model observation rows, so retries and
- * late cancellation observers converge on the same immutable records. Sandbox
- * provider calls keep their independent MITM-owned delivery identities.
+ * Persist API-owned Terra billing usage before any lifecycle commit. The
+ * response identity keeps retries and late cancellation observers converged on
+ * the same immutable ledger rows. Sandbox provider calls keep their independent
+ * MITM-owned delivery identities.
  */
 export async function recordPiApiFirstTurnUsage(
   db: Db,
@@ -167,95 +151,57 @@ export async function recordPiApiFirstTurnUsage(
       quantity: entry.quantity,
     } as const;
   });
-  const usage = args.turn.assistantMessage.usage;
-  const observationRow = {
-    idempotencyKey: idempotencyKey(PI_API_FIRST_TURN_OBSERVATION_NAMESPACE, [
-      args.runId,
-      responseSourceId,
-    ]),
-    model: TERRA_MODEL,
-    inputTokens: usageQuantity(usage.input, "input"),
-    outputTokens: usageQuantity(usage.output, "output"),
-    cacheReadInputTokens: usageQuantity(usage.cacheRead, "cache-read"),
-    cacheCreationInputTokens: usageQuantity(usage.cacheWrite, "cache-creation"),
-  } as const;
-
+  if (usageRows.length === 0) {
+    return;
+  }
   await db.transaction(async (tx) => {
-    if (usageRows.length > 0) {
-      await tx
-        .insert(usageEvent)
-        .values(usageRows)
-        .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
-      const storedUsageRows = await tx
-        .select({
-          idempotencyKey: usageEvent.idempotencyKey,
-          runId: usageEvent.runId,
-          orgId: usageEvent.orgId,
-          userId: usageEvent.userId,
-          kind: usageEvent.kind,
-          provider: usageEvent.provider,
-          category: usageEvent.category,
-          quantity: usageEvent.quantity,
-        })
-        .from(usageEvent)
-        .where(
-          inArray(
-            usageEvent.idempotencyKey,
-            usageRows.map((row) => {
-              return row.idempotencyKey;
-            }),
-          ),
-        );
-      const expectedByKey = new Map(
-        usageRows.map((row) => {
-          return [row.idempotencyKey, row] as const;
-        }),
-      );
-      for (const row of storedUsageRows) {
-        const expected = expectedByKey.get(row.idempotencyKey);
-        if (
-          !expected ||
-          row.runId !== expected.runId ||
-          row.orgId !== expected.orgId ||
-          row.userId !== expected.userId ||
-          row.kind !== expected.kind ||
-          row.provider !== expected.provider ||
-          row.category !== expected.category ||
-          row.quantity !== expected.quantity
-        ) {
-          throw new Error("Pi API first-turn usage identity collision");
-        }
-        expectedByKey.delete(row.idempotencyKey);
-      }
-      if (expectedByKey.size > 0) {
-        throw new Error("Pi API first-turn usage persistence is incomplete");
-      }
-    }
-
     await tx
-      .insert(modelUsageObservation)
-      .values(observationRow)
-      .onConflictDoNothing({
-        target: [modelUsageObservation.idempotencyKey],
-      });
-    const [storedObservation] = await tx
-      .select()
-      .from(modelUsageObservation)
+      .insert(usageEvent)
+      .values(usageRows)
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+    const storedUsageRows = await tx
+      .select({
+        idempotencyKey: usageEvent.idempotencyKey,
+        runId: usageEvent.runId,
+        orgId: usageEvent.orgId,
+        userId: usageEvent.userId,
+        kind: usageEvent.kind,
+        provider: usageEvent.provider,
+        category: usageEvent.category,
+        quantity: usageEvent.quantity,
+      })
+      .from(usageEvent)
       .where(
-        and(
-          eq(
-            modelUsageObservation.idempotencyKey,
-            observationRow.idempotencyKey,
-          ),
-          eq(modelUsageObservation.model, TERRA_MODEL),
+        inArray(
+          usageEvent.idempotencyKey,
+          usageRows.map((row) => {
+            return row.idempotencyKey;
+          }),
         ),
-      )
-      .limit(1);
-    if (
-      !storedObservation ||
-      !sameObservation(storedObservation, observationRow)
-    ) {
-      throw new Error("Pi API first-turn observation identity collision");
+      );
+    const expectedByKey = new Map(
+      usageRows.map((row) => {
+        return [row.idempotencyKey, row] as const;
+      }),
+    );
+    for (const row of storedUsageRows) {
+      const expected = expectedByKey.get(row.idempotencyKey);
+      if (
+        !expected ||
+        row.runId !== expected.runId ||
+        row.orgId !== expected.orgId ||
+        row.userId !== expected.userId ||
+        row.kind !== expected.kind ||
+        row.provider !== expected.provider ||
+        row.category !== expected.category ||
+        row.quantity !== expected.quantity
+      ) {
+        throw new Error("Pi API first-turn usage identity collision");
+      }
+      expectedByKey.delete(row.idempotencyKey);
+    }
+    if (expectedByKey.size > 0) {
+      throw new Error("Pi API first-turn usage persistence is incomplete");
     }
   });
 }
