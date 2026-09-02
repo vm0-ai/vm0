@@ -5097,7 +5097,6 @@
           "upstreamModel": "Upstream-Modell"
         },
         "capture": {
-          "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textinhalte in Netzwerkprotokollen zum Debuggen.",
           "disabled": "Deaktiviert",
           "enabled_one": "Für {{count}} kommende Ausführung aktiviert",
           "enabled_other": "Für {{count}} kommende Ausführungen aktiviert",
@@ -5120,10 +5119,8 @@
           "recovery": "Wiederherstellung",
           "title": "Echtzeit-Verbindungsdiagnose",
           "unavailable": "nicht verfügbar"
-        },
-        "tab": "Debuggen"
+        }
       },
-      "documentTitle": "Präferenzen",
       "language": {
         "description": "Wählen Sie Ihre bevorzugte Sprache für die Benutzeroberfläche von {{brandName}}",
         "label": "Sprache",
@@ -5153,8 +5150,6 @@
         "retryMessage": "Die Morning-Brief-Einstellungen konnten nicht geladen oder aktualisiert werden. Versuchen Sie es erneut.",
         "title": "Morgenbrief"
       },
-      "pageDescription": "Verwalten Sie Ihr Erscheinungsbild und die Laufzeiteinstellungen Ihres Agenten",
-      "pageTitle": "Präferenzen",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Drücken Sie zum Senden ⌘/Strg+Eingabetaste und für eine neue Zeile die Eingabetaste",
@@ -5163,11 +5158,6 @@
         "enterDescription": "Drücken Sie die Eingabetaste zum Senden, Umschalt+Eingabetaste für eine neue Zeile",
         "sectionTitle": "Enter",
         "title": "Nachricht senden mit"
-      },
-      "tabs": {
-        "appearance": "Aussehen",
-        "models": "Persönliche Modelle",
-        "timezone": "Zeitzone"
       },
       "timezone": {
         "description": "Zeiten, die Ihnen angezeigt und für Automatisierungsausführungen verwendet werden.",

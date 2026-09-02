@@ -5155,7 +5155,6 @@
           "upstreamModel": "Modèle en amont"
         },
         "capture": {
-          "description": "Capturer les noms d'en-têtes HTTP, les valeurs d'en-têtes sûres sélectionnées et les corps dans les journaux réseau pour le débogage.",
           "disabled": "Désactivé",
           "enabled_one": "Activé pour la prochaine exécution de {{count}}",
           "enabled_many": "Activé pour les prochaines exécutions de {{count}}",
@@ -5179,10 +5178,8 @@
           "recovery": "récupération",
           "title": "Diagnostic de connexion en temps réel",
           "unavailable": "indisponible"
-        },
-        "tab": "Débogage"
+        }
       },
-      "documentTitle": "Préférences",
       "language": {
         "description": "Choisissez votre langue préférée pour l'interface {{brandName}}",
         "label": "Langue",
@@ -5212,8 +5209,6 @@
         "retryMessage": "Les paramètres de Morning Brief n'ont pas pu être chargés ou mis à jour. Réessayez pour continuer.",
         "title": "Résumé du matin"
       },
-      "pageDescription": "Gérez vos préférences d'apparence et d'exécution de l'agent",
-      "pageTitle": "Préférences",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Appuyez sur ⌘/Ctrl+Entrée pour envoyer, Entrée pour une nouvelle ligne",
@@ -5222,11 +5217,6 @@
         "enterDescription": "Appuyez sur Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne",
         "sectionTitle": "Enter",
         "title": "Envoyer un message avec"
-      },
-      "tabs": {
-        "appearance": "Apparence",
-        "models": "Modèles personnels",
-        "timezone": "Fuseau horaire"
       },
       "timezone": {
         "description": "Heures affichées pour vous et utilisées pour les exécutions automatisées.",

@@ -5155,7 +5155,6 @@
           "upstreamModel": "Modelo upstream"
         },
         "capture": {
-          "description": "Capture nomes de cabeçalhos HTTP, valores seguros selecionados e corpos nos logs de rede para depuração.",
           "disabled": "Desativado",
           "enabled_one": "Ativado por mais {{count}} execução",
           "enabled_many": "Ativado por mais {{count}} execuções",
@@ -5179,10 +5178,8 @@
           "recovery": "recuperação",
           "title": "Diagnóstico de conexão em tempo real",
           "unavailable": "indisponível"
-        },
-        "tab": "Depuração"
+        }
       },
-      "documentTitle": "Preferências",
       "language": {
         "description": "Escolha seu idioma preferido para a interface do {{brandName}}",
         "label": "Idioma",
@@ -5212,8 +5209,6 @@
         "retryMessage": "Não foi possível carregar ou atualizar as configurações do Morning Brief. Tente novamente para continuar.",
         "title": "Resumo matinal"
       },
-      "pageDescription": "Gerencie suas preferências de aparência e de execução dos agentes",
-      "pageTitle": "Preferências",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Pressione ⌘/Ctrl+Enter para enviar e Enter para criar uma nova linha",
@@ -5222,11 +5217,6 @@
         "enterDescription": "Pressione Enter para enviar e Shift+Enter para criar uma nova linha",
         "sectionTitle": "Enter",
         "title": "Enviar mensagem com"
-      },
-      "tabs": {
-        "appearance": "Aparência",
-        "models": "Modelos pessoais",
-        "timezone": "Fuso horário"
       },
       "timezone": {
         "description": "Horários exibidos para você e usados nas execuções de automações.",

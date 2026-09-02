@@ -5089,7 +5089,6 @@
           "upstreamModel": "アップストリームモデル"
         },
         "capture": {
-          "description": "デバッグのために、HTTP ヘッダー名、選択された安全なヘッダー値、および本文をネットワーク ログにキャプチャします。",
           "disabled": "障害者",
           "enabled_one": "次回の {{count}} の実行で有効になります",
           "enabled_other": "次回の {{count}} の実行に対して有効になります",
@@ -5112,10 +5111,8 @@
           "recovery": "復旧",
           "title": "リアルタイム接続診断",
           "unavailable": "利用不可"
-        },
-        "tab": "デバッグ"
+        }
       },
-      "documentTitle": "設定",
       "language": {
         "description": "{{brandName}}のインターフェースで使用する言語を選択します",
         "label": "言語",
@@ -5145,8 +5142,6 @@
         "retryMessage": "Morning Brief の設定を読み込むか更新できませんでした。再試行してください。",
         "title": "モーニングブリーフ"
       },
-      "pageDescription": "外観とエージェントの実行時の設定を管理する",
-      "pageTitle": "設定",
       "send": {
         "cmdEnter": "⌘ 入力してください",
         "cmdEnterDescription": "⌘/Ctrl+Enter を押して送信し、Enter を押して改行します",
@@ -5155,11 +5150,6 @@
         "enterDescription": "Enter を押して送信し、Shift+Enter を押して改行します",
         "sectionTitle": "入力してください",
         "title": "メッセージを送信する"
-      },
-      "tabs": {
-        "appearance": "外観",
-        "models": "パーソナルモデル",
-        "timezone": "タイムゾーン"
       },
       "timezone": {
         "description": "表示され、オートメーションの実行に使用される時間。",

@@ -1577,8 +1577,8 @@ describe("workflows routes", () => {
     );
 
     await waitFor(() => {
-      expect(pathname()).toBe("/settings");
-      expect(search()).toBe("?tab=timezone&focus=morning-brief");
+      expect(pathname()).toBe("/agents");
+      expect(search()).toBe("?settings=preference&focus=morning-brief");
     });
     const preference = await screen.findByTestId("morning-brief-preference");
     expect(preference).toHaveFocus();
