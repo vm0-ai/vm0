@@ -12,6 +12,7 @@ import {
   runPiOfficialRpcMode,
   type PiAgentModelConfig,
   type PiMemoryRecallOutcome,
+  type PiMemoryToolSourceUse,
 } from "@okouai/pi-agent-runtime/node";
 
 import {
@@ -32,6 +33,21 @@ function recordPiMemoryRecallOutcome(
 ): void {
   process.stderr.write(
     `${JSON.stringify({ type: "pi_memory_recall_outcome", runId, ...outcome })}\n`,
+  );
+}
+
+export function recordPiMemoryToolSourceUse(
+  runId: string,
+  sessionId: string,
+  sourceUse: PiMemoryToolSourceUse,
+): void {
+  process.stderr.write(
+    `${JSON.stringify({
+      type: "pi_memory_tool_source_use",
+      runId,
+      sessionId,
+      ...sourceUse,
+    })}\n`,
   );
 }
 
@@ -168,6 +184,13 @@ export async function runPiSandboxAgentLoop(args: {
     memoryRecall: args.config.launchPayload.launchConfig.memoryRecall,
     onMemoryRecallOutcome(outcome) {
       recordPiMemoryRecallOutcome(args.config.runId, outcome);
+    },
+    onMemoryToolSourceUse(sourceUse) {
+      recordPiMemoryToolSourceUse(
+        args.config.runId,
+        args.config.sessionId,
+        sourceUse,
+      );
     },
     sessionFile: handoff.sessionFile,
     ownershipTransferMode: handoff.ownershipTransferMode,
