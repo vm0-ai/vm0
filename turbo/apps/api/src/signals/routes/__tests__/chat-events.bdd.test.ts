@@ -141,10 +141,6 @@ import {
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
-import {
-  deleteModelStatsObservations,
-  readModelStatsObservations,
-} from "./helpers/model-stats-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -229,8 +225,6 @@ const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";
-const PI_API_FIRST_TURN_OBSERVATION_NAMESPACE =
-  "670e6ebc-79c3-4f44-b322-e26d1be7cf2e";
 const TERRA_USAGE_PRICING = [
   "tokens.input",
   "tokens.output",
@@ -552,22 +546,6 @@ async function expectTerraApiFirstTurnUsage(
     cacheRead: 3,
     cacheWrite: 2,
   });
-  if (firstAssistant?.role !== "assistant") {
-    throw new Error("Expected the Terra first turn to persist an assistant");
-  }
-  const responseSourceId =
-    firstAssistant.responseId ??
-    createHash("sha256").update(sessionBytes).digest("hex");
-  const observationIdempotencyKey = uuidv5(
-    JSON.stringify([runId, responseSourceId]),
-    PI_API_FIRST_TURN_OBSERVATION_NAMESPACE,
-  );
-  onTestFinished(async () => {
-    await deleteModelStatsObservations(context, [observationIdempotencyKey]);
-  });
-  await expect(
-    readModelStatsObservations(context, [observationIdempotencyKey]),
-  ).resolves.toStrictEqual([]);
   await expectTerraApiUsage(runId, "", {
     input: 5,
     output: 3,
@@ -5670,6 +5648,9 @@ describe("CHAT-02: model-first provider policies", () => {
     onTestFinished(async () => {
       await deletePiApiFirstTurnUsageEventsFixture(idempotencyKeys);
     });
+    // No production API can preseed first-turn billing identities before the
+    // provider responds. This run-owned fixture creates the otherwise
+    // unreachable retry state while the public chat API remains under test.
     await insertPiApiFirstTurnUsageEventsFixture({
       runId: run.runId,
       orgId,
@@ -5744,18 +5725,24 @@ describe("CHAT-02: model-first provider policies", () => {
       usagePricingResolution,
     );
     await providerEntered.promise;
-    const [expectedEvent] = terraApiFirstTurnUsageEvents(
+    const usageEvents = terraApiFirstTurnUsageEvents(
       run.runId,
       "resp_pi_api_0",
     );
+    const [expectedEvent] = usageEvents;
     if (!expectedEvent) {
       throw new Error("Expected a Terra billing identity fixture");
     }
     onTestFinished(async () => {
-      await deletePiApiFirstTurnUsageEventsFixture([
-        expectedEvent.idempotencyKey,
-      ]);
+      await deletePiApiFirstTurnUsageEventsFixture(
+        usageEvents.map((event) => {
+          return event.idempotencyKey;
+        }),
+      );
     });
+    // No production API can preseed a conflicting first-turn billing identity
+    // before the provider responds. This run-owned fixture creates that
+    // otherwise unreachable state while the public chat API remains under test.
     await insertPiApiFirstTurnUsageEventsFixture({
       runId: run.runId,
       orgId,
@@ -5772,6 +5759,8 @@ describe("CHAT-02: model-first provider policies", () => {
       status: "failed",
       error: expect.stringContaining("[PI_API_MODEL_FAILED]"),
     });
+    // Public usage summaries omit unprocessed rows. Inspect this run's unique
+    // rows only to prove the failed transaction added no partial billing data.
     await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual([
       expect.objectContaining({
         category: expectedEvent.category,

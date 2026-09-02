@@ -3069,6 +3069,10 @@ export async function readRunUsageEventsFixture(runId: string): Promise<
     .orderBy(usageEvent.category);
 }
 
+/**
+ * Seed immutable first-turn billing identities that production APIs cannot
+ * create before the model response, for route-level retry and collision tests.
+ */
 export async function insertPiApiFirstTurnUsageEventsFixture(args: {
   readonly runId: string;
   readonly orgId: string;

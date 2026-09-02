@@ -2679,9 +2679,10 @@ const modelUsageObservationsInner$ = command(
       return body.response;
     }
 
-    // Old runners can submit retained observation batches while their fleet
-    // drains. Remove this old-runner -> new-backend sink with #30974 only
-    // after #30973 is deployed everywhere and its live traffic gate passes.
+    // Old runner -> new backend compatibility: retained batches can arrive for
+    // the two-hour run lifetime plus the five-minute flush interval, including
+    // old-image resumption. Remove this sink with #30974 only after #30973 is
+    // deployed everywhere and live traffic stays at zero for that window.
 
     return {
       status: 200 as const,

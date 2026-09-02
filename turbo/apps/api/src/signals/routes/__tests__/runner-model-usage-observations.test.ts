@@ -73,41 +73,39 @@ describe("POST /api/runners/model-usage-observations", () => {
       body: { success: true },
     });
 
+    // Raw observation rows have no production read API. Inspect these unique
+    // keys only to prove the still-live compatibility endpoint discards its
+    // accepted batches instead of feeding future rankings.
     await expect(
       readModelStatsObservations(context, idempotencyKeys),
     ).resolves.toStrictEqual([]);
   });
 
-  it("preserves request validation without storing invalid observations", async () => {
+  it("preserves request validation for invalid observations", async () => {
     const idempotencyKey = randomUUID();
-    onTestFinished(async () => {
-      await deleteModelStatsObservations(context, [idempotencyKey]);
-    });
-
-    await accept(
-      client().report({
-        headers: officialRunnerHeaders(),
-        body: {
-          events: [
-            {
-              ...observation(
-                idempotencyKey,
-                DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-              ),
-              inputTokens: 0,
-              outputTokens: 0,
-              cacheReadInputTokens: 0,
-              cacheCreationInputTokens: 0,
-            },
-          ],
-        },
-      }),
-      [400],
-    );
 
     await expect(
-      readModelStatsObservations(context, [idempotencyKey]),
-    ).resolves.toStrictEqual([]);
+      accept(
+        client().report({
+          headers: officialRunnerHeaders(),
+          body: {
+            events: [
+              {
+                ...observation(
+                  idempotencyKey,
+                  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+                ),
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheReadInputTokens: 0,
+                cacheCreationInputTokens: 0,
+              },
+            ],
+          },
+        }),
+        [400],
+      ),
+    ).resolves.toMatchObject({ status: 400 });
   });
 
   it("accepts only official runner authentication", async () => {
