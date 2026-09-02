@@ -29,6 +29,7 @@ const NOTION_OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 interface GoogleCalendarConnectorOAuthOptions {
   readonly accessToken?: string;
   readonly email?: string;
+  readonly subject?: string;
 }
 
 /**
@@ -66,7 +67,7 @@ export function mockGoogleCalendarConnectorOAuth(
     }),
     http.get(GOOGLE_USERINFO_URL, () => {
       return HttpResponse.json({
-        id: "bdd-calendar-user-id",
+        id: options.subject ?? "bdd-calendar-user-id",
         email: options.email ?? "calendar-user@example.com",
         name: "BDD Calendar User",
       });

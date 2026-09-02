@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
+        "timeoutDescription": "Proses ini mencapai batas waktunya. Lanjutkan untuk meneruskan pekerjaan.",
+        "timeoutTitle": "Batas waktu tercapai",
         "tryAgain": "Coba lagi",
         "unavailableDescription": "Model ini tidak didukung oleh akun ChatGPT yang terhubung. Ganti ke model lain untuk melanjutkan.",
         "unavailableTitle": "Model yang dipilih tidak tersedia",
@@ -1988,10 +1990,10 @@
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
         "none": "Tanpa avatar",
-        "visualBalanceAvatarLed": "Fokus pada avatar — narator tampil di layar hampir sepanjang waktu",
-        "visualBalanceBalanced": "Campuran seimbang — waktu yang sama untuk keduanya",
-        "visualBalanceBRollLed": "Fokus pada visual — utamakan slide dan materi visual",
-        "visualBalanceHeading": "Bagaimana keseimbangan visual yang Anda inginkan?"
+        "placementHeading": "Di mana presenter sebaiknya berdiri?",
+        "placementLeft": "Kiri — slide berada di kanan",
+        "placementOverlay": "Di atas slide — slide memenuhi bingkai",
+        "placementRight": "Kanan — slide berada di kiri"
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
@@ -2054,6 +2056,7 @@
         "format": "Format",
         "heading": "Sumber Anda sudah siap",
         "help": "Periksa file sebelum melanjutkan",
+        "inAccount": "Di akun Anda",
         "inBrowser": "Di browser ini",
         "inTab": "Sampai tab ini ditutup",
         "replace": "Ganti sumber",
@@ -4636,10 +4639,6 @@
     },
     "redirecting": "Mengalihkan...",
     "status": {
-      "atLimit_one": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "atLimit_other": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "available_one": "{{count}} slot tersedia",
-      "available_other": "{{count}} slot tersedia",
       "availableNow": "Tersedia sekarang",
       "inUse_one": "{{active}} dari {{limit}} slot digunakan",
       "inUse_other": "{{active}} dari {{limit}} slot digunakan"
@@ -5088,7 +5087,6 @@
           "upstreamModel": "Model upstream"
         },
         "capture": {
-          "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
           "enabled_one": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "enabled_other": "Diaktifkan untuk {{count}} eksekusi berikutnya",
@@ -5111,10 +5109,8 @@
           "recovery": "pemulihan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferensi",
       "language": {
         "description": "Pilih bahasa pilihan Anda untuk antarmuka {{brandName}}",
         "label": "Bahasa",
@@ -5144,8 +5140,6 @@
         "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
         "title": "Brief Pagi"
       },
-      "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
-      "pageTitle": "Preferensi",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Tekan ⌘/Ctrl+Enter untuk mengirim, Enter untuk baris baru",
@@ -5154,11 +5148,6 @@
         "enterDescription": "Tekan Enter untuk mengirim, Shift+Enter untuk baris baru",
         "sectionTitle": "Enter",
         "title": "Kirim pesan dengan"
-      },
-      "tabs": {
-        "appearance": "Tampilan",
-        "models": "Model Pribadi",
-        "timezone": "Zona Waktu"
       },
       "timezone": {
         "description": "Waktu ditampilkan kepada Anda dan digunakan untuk eksekusi otomatis.",
@@ -5934,35 +5923,6 @@
       "noWorkflows": "Belum ada alur kerja. Buat satu di chat untuk melanjutkan."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Hubungkan",
-          "enable": "Aktifkan untuk agen",
-          "reconnect": "Sambungkan ulang",
-          "reviewPermissions": "Tinjau izin"
-        },
-        "aria": "Kesiapan konektor",
-        "check": "Periksa konektor",
-        "checkAgain": "Periksa lagi",
-        "checking": "Memeriksa...",
-        "description": "Lihat konektor bawaan yang mungkin diperlukan alur kerja ini dan apakah semuanya siap.",
-        "empty": "Tidak ada konektor yang diperlukan terdeteksi",
-        "error": {
-          "inputTooLong": "Alur kerja ini terlalu panjang untuk diperiksa. Simpan nama, deskripsi, dan instruksi di bawah 100.000 karakter.",
-          "retry": "Kami tidak dapat memeriksa konektor. Coba lagi.",
-          "timeout": "Pemeriksaan konektor habis waktu. Coba lagi."
-        },
-        "saveFirst": "Simpan perubahan Anda sebelum memeriksa konektor.",
-        "status": {
-          "connected": "Terhubung",
-          "notConnected": "Tidak terhubung",
-          "notEnabled": "Belum diaktifkan untuk agen ini",
-          "reconnect": "Perlu sambungkan ulang",
-          "scopeMismatch": "Perbarui izin",
-          "unavailable": "Saat ini tidak tersedia"
-        },
-        "title": "Kesiapan konektor"
-      },
       "copy": {
         "agentFallback": "agen tersebut",
         "copied": "Disalin ke {{agent}}",

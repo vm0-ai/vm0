@@ -4,8 +4,8 @@ use std::time::Duration;
 use tracing::info;
 
 use crate::process::{
-    self, DiscoveredProcesses, FirecrackerProcessIdentity, ProcessDiscovery, ProcessStat,
-    ProcessStatRead,
+    self, DiscoveredProcesses, ProcessDiscovery, ProcessStat, ProcessStatRead,
+    ProcfsProcessGeneration,
 };
 
 use super::target::KillTarget;
@@ -37,8 +37,8 @@ where
     Discover: FnOnce() -> DiscoverFuture,
     DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
 {
-    let identity = match validate_orphan_target(target).await {
-        OrphanTargetValidation::Valid { identity } => identity,
+    let generation = match validate_orphan_target(target).await {
+        OrphanTargetValidation::Valid { generation } => generation,
         OrphanTargetValidation::AlreadyGone => {
             return already_gone_orphan_outcome_with_discovery(target, discover).await;
         }
@@ -47,14 +47,16 @@ where
         }
     };
 
-    match signal_process_group(target.pid, identity.pgid) {
-        ProcessGroupSignalResult::Signaled => match wait_for_orphan_exit(&identity).await {
-            Ok(()) => Outcome::Killed(target.clone()),
-            Err(failure) => Outcome::TerminationUnconfirmed {
-                target: target.clone(),
-                failure,
-            },
-        },
+    match signal_process_group(target.pid, generation.pgid) {
+        ProcessGroupSignalResult::Signaled => {
+            match wait_for_orphan_exit(target.pid, &generation).await {
+                Ok(()) => Outcome::Killed(target.clone()),
+                Err(failure) => Outcome::TerminationUnconfirmed {
+                    target: target.clone(),
+                    failure,
+                },
+            }
+        }
         ProcessGroupSignalResult::AlreadyGone => {
             already_gone_orphan_outcome_with_discovery(target, discover).await
         }
@@ -123,12 +125,7 @@ fn should_cleanup_disappeared_initial_orphan(
 }
 
 fn target_has_workspace_identity(target: &KillTarget) -> bool {
-    match (&target.base_dir, &target.identity) {
-        (Some(base_dir), Some(identity)) => {
-            identity.sandbox_id == target.sandbox_id && identity.base_dir.as_ref() == Some(base_dir)
-        }
-        _ => false,
-    }
+    target.base_dir.is_some() && target.generation.is_some()
 }
 
 fn discovered_has_same_or_unidentified_firecracker(
@@ -141,15 +138,13 @@ fn discovered_has_same_or_unidentified_firecracker(
 }
 
 enum OrphanTargetValidation {
-    Valid {
-        identity: FirecrackerProcessIdentity,
-    },
+    Valid { generation: ProcfsProcessGeneration },
     AlreadyGone,
     Changed,
 }
 
 async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
-    let Some(identity) = &target.identity else {
+    let Some(generation) = &target.generation else {
         tracing::warn!(
             pid = target.pid,
             sandbox_id = %target.sandbox_id,
@@ -157,15 +152,6 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         );
         return OrphanTargetValidation::Changed;
     };
-
-    if identity.pid != target.pid {
-        tracing::warn!(
-            pid = target.pid,
-            identity_pid = identity.pid,
-            "refusing orphan kill with inconsistent process identity"
-        );
-        return OrphanTargetValidation::Changed;
-    }
 
     let stat = match process::read_process_stat_checked(target.pid).await {
         ProcessStatRead::Found(stat) => stat,
@@ -192,12 +178,12 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
             return OrphanTargetValidation::Changed;
         }
     };
-    if identity.procfs_generation() != stat.procfs_generation() {
+    if generation != &stat.procfs_generation() {
         tracing::warn!(
             pid = target.pid,
-            expected_pgid = identity.pgid,
+            expected_pgid = generation.pgid,
             current_pgid = stat.pgid,
-            expected_starttime = identity.starttime,
+            expected_starttime = generation.starttime,
             current_starttime = stat.starttime,
             "refusing orphan kill after process identity changed"
         );
@@ -217,7 +203,7 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
             pid = target.pid,
             "failed to read cmdline before orphan kill"
         );
-        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, identity).await;
+        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, generation).await;
     };
     if !process::is_firecracker_cmdline(&cmdline) {
         tracing::warn!(
@@ -230,13 +216,13 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
     let cwd_info = process::read_cwd(target.pid)
         .await
         .and_then(|cwd| process::parse_workspace_cwd(&cwd));
-    if !orphan_identity_matches_facts(identity, &stat, true, cwd_info.as_ref()) {
+    if !orphan_target_matches_facts(target, generation, &stat, true, cwd_info.as_ref()) {
         tracing::warn!(
             pid = target.pid,
             sandbox_id = %target.sandbox_id,
             "refusing orphan kill after workspace identity changed"
         );
-        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, identity).await;
+        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, generation).await;
     }
 
     let final_stat = match process::read_process_stat_checked(target.pid).await {
@@ -264,12 +250,12 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
             return OrphanTargetValidation::Changed;
         }
     };
-    if identity.procfs_generation() != final_stat.procfs_generation() {
+    if generation != &final_stat.procfs_generation() {
         tracing::warn!(
             pid = target.pid,
-            expected_pgid = identity.pgid,
+            expected_pgid = generation.pgid,
             current_pgid = final_stat.pgid,
-            expected_starttime = identity.starttime,
+            expected_starttime = generation.starttime,
             current_starttime = final_stat.starttime,
             "refusing orphan kill after process identity changed during validation"
         );
@@ -285,24 +271,21 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
     }
 
     OrphanTargetValidation::Valid {
-        identity: identity.clone(),
+        generation: *generation,
     }
 }
 
 async fn classify_orphan_validation_after_unreadable_pid_fact(
     pid: u32,
-    identity: &FirecrackerProcessIdentity,
+    generation: &ProcfsProcessGeneration,
 ) -> OrphanTargetValidation {
     match process::read_process_stat_checked(pid).await {
         ProcessStatRead::Found(stat)
-            if identity.procfs_generation() == stat.procfs_generation()
-                && !process::process_stat_is_live(&stat) =>
+            if generation == &stat.procfs_generation() && !process::process_stat_is_live(&stat) =>
         {
             OrphanTargetValidation::AlreadyGone
         }
-        ProcessStatRead::Found(stat)
-            if identity.procfs_generation() == stat.procfs_generation() =>
-        {
+        ProcessStatRead::Found(stat) if generation == &stat.procfs_generation() => {
             OrphanTargetValidation::Changed
         }
         ProcessStatRead::Found(_) => OrphanTargetValidation::Changed,
@@ -314,12 +297,12 @@ async fn classify_orphan_validation_after_unreadable_pid_fact(
 }
 
 async fn initial_process_confirmed_terminated(target: &KillTarget) -> bool {
-    let Some(identity) = &target.identity else {
+    let Some(generation) = &target.generation else {
         return false;
     };
     matches!(
         classify_orphan_exit_observation(
-            identity,
+            generation,
             process::read_process_stat_checked(target.pid).await,
         ),
         OrphanExitObservation::Terminated
@@ -374,17 +357,15 @@ impl std::fmt::Display for OrphanExitFailure {
 }
 
 fn classify_orphan_exit_observation(
-    identity: &FirecrackerProcessIdentity,
+    generation: &ProcfsProcessGeneration,
     read: ProcessStatRead,
 ) -> OrphanExitObservation {
     match read {
-        ProcessStatRead::Found(stat)
-            if identity.procfs_generation() != stat.procfs_generation() =>
-        {
+        ProcessStatRead::Found(stat) if generation != &stat.procfs_generation() => {
             OrphanExitObservation::IdentityChanged {
-                expected_pgid: identity.pgid,
+                expected_pgid: generation.pgid,
                 observed_pgid: stat.pgid,
-                expected_starttime: identity.starttime,
+                expected_starttime: generation.starttime,
                 observed_starttime: stat.starttime,
             }
         }
@@ -402,10 +383,12 @@ fn classify_orphan_exit_observation(
 }
 
 async fn wait_for_orphan_exit(
-    identity: &FirecrackerProcessIdentity,
+    pid: u32,
+    generation: &ProcfsProcessGeneration,
 ) -> Result<(), OrphanExitFailure> {
     wait_for_orphan_exit_with(
-        identity,
+        pid,
+        generation,
         ORPHAN_EXIT_TIMEOUT,
         ORPHAN_EXIT_POLL_INTERVAL,
         process::read_process_stat_checked,
@@ -414,7 +397,8 @@ async fn wait_for_orphan_exit(
 }
 
 async fn wait_for_orphan_exit_with<ReadStat, ReadStatFuture>(
-    identity: &FirecrackerProcessIdentity,
+    pid: u32,
+    generation: &ProcfsProcessGeneration,
     timeout: Duration,
     poll_interval: Duration,
     mut read_stat: ReadStat,
@@ -425,27 +409,24 @@ where
 {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let failure =
-            match classify_orphan_exit_observation(identity, read_stat(identity.pid).await) {
-                OrphanExitObservation::Terminated => return Ok(()),
-                OrphanExitObservation::IdentityChanged {
+        let failure = match classify_orphan_exit_observation(generation, read_stat(pid).await) {
+            OrphanExitObservation::Terminated => return Ok(()),
+            OrphanExitObservation::IdentityChanged {
+                expected_pgid,
+                observed_pgid,
+                expected_starttime,
+                observed_starttime,
+            } => {
+                return Err(OrphanExitFailure::IdentityChanged {
                     expected_pgid,
                     observed_pgid,
                     expected_starttime,
                     observed_starttime,
-                } => {
-                    return Err(OrphanExitFailure::IdentityChanged {
-                        expected_pgid,
-                        observed_pgid,
-                        expected_starttime,
-                        observed_starttime,
-                    });
-                }
-                OrphanExitObservation::Live => OrphanExitFailure::TimedOut,
-                OrphanExitObservation::Unverifiable(error) => {
-                    OrphanExitFailure::Unverifiable(error)
-                }
-            };
+                });
+            }
+            OrphanExitObservation::Live => OrphanExitFailure::TimedOut,
+            OrphanExitObservation::Unverifiable(error) => OrphanExitFailure::Unverifiable(error),
+        };
 
         let now = tokio::time::Instant::now();
         if now >= deadline {
@@ -455,24 +436,22 @@ where
     }
 }
 
-fn orphan_identity_matches_facts(
-    identity: &FirecrackerProcessIdentity,
+fn orphan_target_matches_facts(
+    target: &KillTarget,
+    generation: &ProcfsProcessGeneration,
     stat: &ProcessStat,
     is_firecracker_cmdline: bool,
     cwd_info: Option<&(String, PathBuf)>,
 ) -> bool {
-    identity.procfs_generation() == stat.procfs_generation()
+    generation == &stat.procfs_generation()
         && is_firecracker_cmdline
-        && workspace_identity_matches(identity, cwd_info)
+        && workspace_identity_matches(target, cwd_info)
 }
 
-fn workspace_identity_matches(
-    identity: &FirecrackerProcessIdentity,
-    cwd_info: Option<&(String, PathBuf)>,
-) -> bool {
-    match (&identity.base_dir, cwd_info) {
+fn workspace_identity_matches(target: &KillTarget, cwd_info: Option<&(String, PathBuf)>) -> bool {
+    match (&target.base_dir, cwd_info) {
         (Some(expected_base_dir), Some((sandbox_id, base_dir))) => {
-            sandbox_id == &identity.sandbox_id && base_dir == expected_base_dir
+            sandbox_id == &target.sandbox_id && base_dir == expected_base_dir
         }
         _ => false,
     }
@@ -540,16 +519,16 @@ mod tests {
     const ORPHAN_KILL_CHILD_ENV: &str = "OKOU_RUNNER_ORPHAN_KILL_TEST_CHILD";
     const ORPHAN_KILL_READY_LINE: &str = "vm0 orphan kill test ready";
 
-    fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {
-        process_stat_with_state(identity, 'S')
+    fn process_stat(generation: &ProcfsProcessGeneration) -> ProcessStat {
+        process_stat_with_state(generation, 'S')
     }
 
-    fn process_stat_with_state(identity: &FirecrackerProcessIdentity, state: char) -> ProcessStat {
+    fn process_stat_with_state(generation: &ProcfsProcessGeneration, state: char) -> ProcessStat {
         ProcessStat {
             state,
             ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime,
+            pgid: generation.pgid,
+            starttime: generation.starttime,
         }
     }
 
@@ -571,12 +550,9 @@ mod tests {
             run_id: None,
             sandbox_id: "sbox-missing".into(),
             base_dir: Some(PathBuf::from("/data/r1")),
-            identity: Some(FirecrackerProcessIdentity {
-                pid: u32::MAX,
+            generation: Some(ProcfsProcessGeneration {
                 pgid: 1234,
                 starttime: 123456,
-                sandbox_id: "sbox-missing".into(),
-                base_dir: Some(PathBuf::from("/data/r1")),
             }),
         }
     }
@@ -623,7 +599,7 @@ mod tests {
     #[test]
     fn disappeared_initial_without_workspace_identity_rejects_cleanup() {
         let mut initial = make_target(200, "sbox-123");
-        initial.identity.as_mut().unwrap().base_dir = None;
+        initial.base_dir = None;
         let discovered = discovered_with_firecrackers(vec![]);
 
         assert!(!should_cleanup_disappeared_initial_orphan(
@@ -655,7 +631,7 @@ mod tests {
             ppid: None,
             sandbox_id: "pid-201".into(),
             base_dir: None,
-            identity: None,
+            generation: None,
         }]);
 
         assert!(!should_cleanup_disappeared_initial_orphan(
@@ -667,14 +643,15 @@ mod tests {
     }
 
     #[test]
-    fn orphan_identity_facts_match() {
+    fn orphan_target_facts_match() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
-        let stat = process_stat(identity);
+        let generation = target.generation.as_ref().unwrap();
+        let stat = process_stat(generation);
         let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
 
-        assert!(orphan_identity_matches_facts(
-            identity,
+        assert!(orphan_target_matches_facts(
+            &target,
+            generation,
             &stat,
             true,
             Some(&cwd_info)
@@ -682,19 +659,20 @@ mod tests {
     }
 
     #[test]
-    fn orphan_identity_rejects_changed_starttime() {
+    fn orphan_target_rejects_changed_starttime() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'S',
             ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime + 1,
+            pgid: generation.pgid,
+            starttime: generation.starttime + 1,
         };
         let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
 
-        assert!(!orphan_identity_matches_facts(
-            identity,
+        assert!(!orphan_target_matches_facts(
+            &target,
+            generation,
             &stat,
             true,
             Some(&cwd_info)
@@ -702,19 +680,20 @@ mod tests {
     }
 
     #[test]
-    fn orphan_identity_rejects_changed_pgid() {
+    fn orphan_target_rejects_changed_pgid() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'S',
             ppid: 7,
-            pgid: identity.pgid + 1,
-            starttime: identity.starttime,
+            pgid: generation.pgid + 1,
+            starttime: generation.starttime,
         };
         let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
 
-        assert!(!orphan_identity_matches_facts(
-            identity,
+        assert!(!orphan_target_matches_facts(
+            &target,
+            generation,
             &stat,
             true,
             Some(&cwd_info)
@@ -722,53 +701,45 @@ mod tests {
     }
 
     #[test]
-    fn firecracker_identity_projects_to_procfs_generation() {
+    fn target_generation_matches_process_stat_generation() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
-        let matching = process_stat(identity);
+        let generation = target.generation.as_ref().unwrap();
+        let matching = process_stat(generation);
         let changed_starttime = ProcessStat {
             state: 'S',
             ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime + 1,
+            pgid: generation.pgid,
+            starttime: generation.starttime + 1,
         };
         let changed_pgid = ProcessStat {
             state: 'S',
             ppid: 7,
-            pgid: identity.pgid + 1,
-            starttime: identity.starttime,
+            pgid: generation.pgid + 1,
+            starttime: generation.starttime,
         };
         let changed_ppid = ProcessStat {
             state: 'S',
             ppid: 9,
-            pgid: identity.pgid,
-            starttime: identity.starttime,
+            pgid: generation.pgid,
+            starttime: generation.starttime,
         };
 
-        assert_eq!(identity.procfs_generation(), matching.procfs_generation());
-        assert_eq!(
-            identity.procfs_generation(),
-            changed_ppid.procfs_generation()
-        );
-        assert_ne!(
-            identity.procfs_generation(),
-            changed_starttime.procfs_generation()
-        );
-        assert_ne!(
-            identity.procfs_generation(),
-            changed_pgid.procfs_generation()
-        );
+        assert_eq!(*generation, matching.procfs_generation());
+        assert_eq!(*generation, changed_ppid.procfs_generation());
+        assert_ne!(*generation, changed_starttime.procfs_generation());
+        assert_ne!(*generation, changed_pgid.procfs_generation());
     }
 
     #[test]
-    fn orphan_identity_rejects_non_firecracker_cmdline() {
+    fn orphan_target_rejects_non_firecracker_cmdline() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
-        let stat = process_stat(identity);
+        let generation = target.generation.as_ref().unwrap();
+        let stat = process_stat(generation);
         let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
 
-        assert!(!orphan_identity_matches_facts(
-            identity,
+        assert!(!orphan_target_matches_facts(
+            &target,
+            generation,
             &stat,
             false,
             Some(&cwd_info)
@@ -776,14 +747,15 @@ mod tests {
     }
 
     #[test]
-    fn orphan_identity_rejects_changed_workspace() {
+    fn orphan_target_rejects_changed_workspace() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
-        let stat = process_stat(identity);
+        let generation = target.generation.as_ref().unwrap();
+        let stat = process_stat(generation);
         let cwd_info = ("sbox-other".to_string(), PathBuf::from("/data/r1"));
 
-        assert!(!orphan_identity_matches_facts(
-            identity,
+        assert!(!orphan_target_matches_facts(
+            &target,
+            generation,
             &stat,
             true,
             Some(&cwd_info)
@@ -791,69 +763,70 @@ mod tests {
     }
 
     #[test]
-    fn orphan_identity_rejects_missing_workspace_identity() {
+    fn orphan_target_rejects_missing_workspace_identity() {
         let mut target = make_target(200, "sbox-123");
         target.base_dir = None;
-        target.identity.as_mut().unwrap().base_dir = None;
-        let identity = target.identity.as_ref().unwrap();
-        let stat = process_stat(identity);
+        let generation = target.generation.as_ref().unwrap();
+        let stat = process_stat(generation);
 
-        assert!(!orphan_identity_matches_facts(identity, &stat, true, None));
+        assert!(!orphan_target_matches_facts(
+            &target, generation, &stat, true, None
+        ));
     }
 
     #[test]
     fn zombie_process_stat_is_already_exited() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let zombie = ProcessStat {
             state: 'Z',
             ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime,
+            pgid: generation.pgid,
+            starttime: generation.starttime,
         };
 
-        assert_eq!(identity.procfs_generation(), zombie.procfs_generation());
+        assert_eq!(*generation, zombie.procfs_generation());
         assert!(!process::process_stat_is_live(&zombie));
     }
 
     #[test]
     fn dead_process_stat_is_already_exited() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let dead = ProcessStat {
             state: 'X',
             ppid: 7,
-            pgid: identity.pgid,
-            starttime: identity.starttime,
+            pgid: generation.pgid,
+            starttime: generation.starttime,
         };
 
-        assert_eq!(identity.procfs_generation(), dead.procfs_generation());
+        assert_eq!(*generation, dead.procfs_generation());
         assert!(!process::process_stat_is_live(&dead));
     }
 
     #[test]
     fn orphan_exit_observation_distinguishes_live_and_terminal_states() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
 
         assert_eq!(
             classify_orphan_exit_observation(
-                identity,
-                ProcessStatRead::Found(process_stat(identity)),
+                generation,
+                ProcessStatRead::Found(process_stat(generation)),
             ),
             OrphanExitObservation::Live
         );
         for state in ['Z', 'X', 'x'] {
             assert_eq!(
                 classify_orphan_exit_observation(
-                    identity,
-                    ProcessStatRead::Found(process_stat_with_state(identity, state)),
+                    generation,
+                    ProcessStatRead::Found(process_stat_with_state(generation, state)),
                 ),
                 OrphanExitObservation::Terminated
             );
         }
         assert_eq!(
-            classify_orphan_exit_observation(identity, ProcessStatRead::Missing),
+            classify_orphan_exit_observation(generation, ProcessStatRead::Missing),
             OrphanExitObservation::Terminated
         );
     }
@@ -861,20 +834,20 @@ mod tests {
     #[test]
     fn orphan_exit_observation_rejects_identity_changes() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let changed = ProcessStat {
-            pgid: identity.pgid + 1,
-            starttime: identity.starttime + 1,
-            ..process_stat(identity)
+            pgid: generation.pgid + 1,
+            starttime: generation.starttime + 1,
+            ..process_stat(generation)
         };
 
         assert_eq!(
-            classify_orphan_exit_observation(identity, ProcessStatRead::Found(changed)),
+            classify_orphan_exit_observation(generation, ProcessStatRead::Found(changed)),
             OrphanExitObservation::IdentityChanged {
-                expected_pgid: identity.pgid,
-                observed_pgid: identity.pgid + 1,
-                expected_starttime: identity.starttime,
-                observed_starttime: identity.starttime + 1,
+                expected_pgid: generation.pgid,
+                observed_pgid: generation.pgid + 1,
+                expected_starttime: generation.starttime,
+                observed_starttime: generation.starttime + 1,
             }
         );
     }
@@ -882,11 +855,11 @@ mod tests {
     #[test]
     fn orphan_exit_observation_rejects_unverifiable_reads() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
 
         assert!(matches!(
             classify_orphan_exit_observation(
-                identity,
+                generation,
                 ProcessStatRead::Unreadable(std::io::Error::from(
                     std::io::ErrorKind::PermissionDenied,
                 )),
@@ -894,7 +867,7 @@ mod tests {
             OrphanExitObservation::Unverifiable(_)
         ));
         assert_eq!(
-            classify_orphan_exit_observation(identity, ProcessStatRead::Invalid),
+            classify_orphan_exit_observation(generation, ProcessStatRead::Invalid),
             OrphanExitObservation::Unverifiable("process stat is invalid".into())
         );
     }
@@ -902,14 +875,15 @@ mod tests {
     #[tokio::test]
     async fn orphan_exit_wait_observes_delayed_termination() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let mut reads = VecDeque::from([
-            ProcessStatRead::Found(process_stat(identity)),
-            ProcessStatRead::Found(process_stat_with_state(identity, 'Z')),
+            ProcessStatRead::Found(process_stat(generation)),
+            ProcessStatRead::Found(process_stat_with_state(generation, 'Z')),
         ]);
 
         let result = wait_for_orphan_exit_with(
-            identity,
+            target.pid,
+            generation,
             Duration::from_secs(1),
             Duration::ZERO,
             move |_| std::future::ready(reads.pop_front().unwrap()),
@@ -922,11 +896,15 @@ mod tests {
     #[tokio::test]
     async fn orphan_exit_wait_times_out_while_identity_is_live() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
 
-        let result = wait_for_orphan_exit_with(identity, Duration::ZERO, Duration::ZERO, |_| {
-            std::future::ready(ProcessStatRead::Found(process_stat(identity)))
-        })
+        let result = wait_for_orphan_exit_with(
+            target.pid,
+            generation,
+            Duration::ZERO,
+            Duration::ZERO,
+            |_| std::future::ready(ProcessStatRead::Found(process_stat(generation))),
+        )
         .await;
 
         assert_eq!(result, Err(OrphanExitFailure::TimedOut));
@@ -935,18 +913,21 @@ mod tests {
     #[tokio::test]
     async fn orphan_exit_wait_fails_when_identity_changes() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let changed = ProcessStat {
-            pgid: identity.pgid + 1,
-            starttime: identity.starttime + 1,
-            ..process_stat(identity)
+            pgid: generation.pgid + 1,
+            starttime: generation.starttime + 1,
+            ..process_stat(generation)
         };
 
-        let result =
-            wait_for_orphan_exit_with(identity, Duration::from_secs(1), Duration::ZERO, |_| {
-                std::future::ready(ProcessStatRead::Found(changed.clone()))
-            })
-            .await;
+        let result = wait_for_orphan_exit_with(
+            target.pid,
+            generation,
+            Duration::from_secs(1),
+            Duration::ZERO,
+            |_| std::future::ready(ProcessStatRead::Found(changed.clone())),
+        )
+        .await;
 
         let Err(failure) = result else {
             panic!("changed process identity should fail the exit wait");
@@ -954,10 +935,10 @@ mod tests {
         assert_eq!(
             failure,
             OrphanExitFailure::IdentityChanged {
-                expected_pgid: identity.pgid,
-                observed_pgid: identity.pgid + 1,
-                expected_starttime: identity.starttime,
-                observed_starttime: identity.starttime + 1,
+                expected_pgid: generation.pgid,
+                observed_pgid: generation.pgid + 1,
+                expected_starttime: generation.starttime,
+                observed_starttime: generation.starttime + 1,
             }
         );
         assert_eq!(
@@ -970,11 +951,12 @@ mod tests {
     #[tokio::test]
     async fn orphan_exit_wait_recovers_from_transient_unverifiable_read() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
         let mut reads = VecDeque::from([ProcessStatRead::Invalid, ProcessStatRead::Missing]);
 
         let result = wait_for_orphan_exit_with(
-            identity,
+            target.pid,
+            generation,
             Duration::from_secs(1),
             Duration::ZERO,
             move |_| std::future::ready(reads.pop_front().unwrap()),
@@ -987,11 +969,15 @@ mod tests {
     #[tokio::test]
     async fn orphan_exit_wait_fails_when_observation_remains_unverifiable() {
         let target = make_target(200, "sbox-123");
-        let identity = target.identity.as_ref().unwrap();
+        let generation = target.generation.as_ref().unwrap();
 
-        let result = wait_for_orphan_exit_with(identity, Duration::ZERO, Duration::ZERO, |_| {
-            std::future::ready(ProcessStatRead::Invalid)
-        })
+        let result = wait_for_orphan_exit_with(
+            target.pid,
+            generation,
+            Duration::ZERO,
+            Duration::ZERO,
+            |_| std::future::ready(ProcessStatRead::Invalid),
+        )
         .await;
 
         let Err(failure) = result else {
@@ -1076,19 +1062,13 @@ mod tests {
         else {
             panic!("spawned group member stat should be readable");
         };
-        let leader_identity = FirecrackerProcessIdentity {
-            pid: leader_pid,
+        let leader_generation = ProcfsProcessGeneration {
             pgid: leader_stat.pgid,
             starttime: leader_stat.starttime,
-            sandbox_id: sandbox_id.into(),
-            base_dir: Some(base_dir.path().to_path_buf()),
         };
-        let member_identity = FirecrackerProcessIdentity {
-            pid: member_pid,
+        let member_generation = ProcfsProcessGeneration {
             pgid: member_stat.pgid,
             starttime: member_stat.starttime,
-            sandbox_id: sandbox_id.into(),
-            base_dir: Some(base_dir.path().to_path_buf()),
         };
         let target = KillTarget {
             pid: leader_pid,
@@ -1096,7 +1076,7 @@ mod tests {
             run_id: None,
             sandbox_id: sandbox_id.into(),
             base_dir: Some(base_dir.path().to_path_buf()),
-            identity: Some(leader_identity.clone()),
+            generation: Some(leader_generation),
         };
 
         let fixture_error = if leader_pid == member_pid {
@@ -1127,8 +1107,8 @@ mod tests {
         let observations = if fixture_error.is_none() {
             let outcome = terminate(&target).await;
             let (leader_exit, member_exit) = tokio::join!(
-                wait_for_orphan_exit(&leader_identity),
-                wait_for_orphan_exit(&member_identity),
+                wait_for_orphan_exit(leader_pid, &leader_generation),
+                wait_for_orphan_exit(member_pid, &member_generation),
             );
             Some((outcome, leader_exit, member_exit))
         } else {

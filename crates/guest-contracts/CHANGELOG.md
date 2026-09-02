@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.20](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.19...guest-contracts-v0.12.20) (2026-09-02)
+
+
+### Refactoring
+
+* **rust:** centralize cli stderr diagnostic policy ([#30984](https://github.com/vm0-ai/vm0/issues/30984)) ([7f3d97c](https://github.com/vm0-ai/vm0/commit/7f3d97cc84f939ba04be5d9242349fdccfaf368b))
+
 ## [0.12.19](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.18...guest-contracts-v0.12.19) (2026-09-01)
 
 

@@ -141,13 +141,13 @@ interface ExternalCatalogDiscoveryArgs extends ExternalCatalogStatusArgs {
   readonly keyword: string | undefined;
 }
 
-export interface ConnectorCatalogReferenceMetadata {
+interface ConnectorCatalogReferenceMetadata {
   readonly connectorSlug: string;
   readonly label: string;
   readonly icon: PublicConnectorCatalogIcon;
 }
 
-export interface ConnectorCatalogStatusRead {
+interface ConnectorCatalogStatusRead {
   readonly status: PublicConnectorCatalogStatusResponse;
   readonly referenceMetadata: readonly ConnectorCatalogReferenceMetadata[];
 }

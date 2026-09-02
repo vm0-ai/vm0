@@ -44,6 +44,7 @@ type AutomationEventWatchTarget =
       readonly provider: "google_calendar";
       readonly orgId: string;
       readonly userId: string;
+      readonly connectorId: string | null;
       readonly calendarId: string;
     }
   | {
@@ -136,6 +137,7 @@ function automationEventWatchTarget(
     provider: "google_calendar",
     orgId: automation.orgId,
     userId: automation.ownerUserId,
+    connectorId: automation.eventConnectorId ?? null,
     calendarId,
   };
 }
@@ -150,7 +152,7 @@ function targetKey(target: AutomationEventWatchTarget): string {
   if (target.provider === "google_meet") {
     return `google_meet:${target.orgId}:${target.userId}:${target.connectorId}`;
   }
-  return `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
+  return `google_calendar:${target.orgId}:${target.userId}:${target.connectorId ?? "unavailable"}:${target.calendarId}`;
 }
 
 export async function reconcileAutomationEventWatches(
@@ -211,6 +213,9 @@ export async function reconcileAutomationEventWatches(
         db: args.db,
         orgId: target.orgId,
         userId: target.userId,
+        ...(target.connectorId === null
+          ? {}
+          : { connectorId: target.connectorId }),
         calendarId: target.calendarId,
       },
       signal,
@@ -310,17 +315,25 @@ async function ensureNonFormsTarget(
       signal,
     );
   } else {
-    result = await ensureGoogleCalendarWatchForUser(
-      {
-        db,
-        orgId: target.orgId,
-        userId: target.userId,
-        calendarId: target.calendarId,
-        forceRefresh: false,
-        allowStagedOfficialTarget,
-      },
-      signal,
-    );
+    result =
+      target.connectorId === null
+        ? {
+            kind: "bad_request",
+            message:
+              "Connect Google Calendar before using Google Calendar event automations",
+          }
+        : await ensureGoogleCalendarWatchForUser(
+            {
+              db,
+              orgId: target.orgId,
+              userId: target.userId,
+              connectorId: target.connectorId,
+              calendarId: target.calendarId,
+              forceRefresh: false,
+              allowStagedOfficialTarget,
+            },
+            signal,
+          );
   }
   signal.throwIfAborted();
   return result.kind === "ok"

@@ -7,7 +7,6 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import type { ConcurrencyInfo } from "@okouai/api-contracts/contracts/runs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   Sheet,
   SheetContent,
@@ -40,7 +39,6 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { orgPlanCapabilitiesFromBilling } from "../../signals/okou-page/org-plan-capabilities.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Upgrade path config: free → pro, pro → team
@@ -183,12 +181,10 @@ function CheckCircleIcon() {
 
 function CurrentPlanStatus({
   concurrency,
-  showMemberUsage,
   tierColor,
   tierLabel,
 }: {
   readonly concurrency: ConcurrencyInfo;
-  readonly showMemberUsage: boolean;
   readonly tierColor: string;
   readonly tierLabel: string;
 }) {
@@ -232,70 +228,49 @@ function CurrentPlanStatus({
           },
         )}
       </p>
-      {!showMemberUsage ? (
-        <p className="mt-1.5 text-[13px] font-light leading-relaxed text-muted-foreground">
-          {concurrency.available === 0
-            ? t(
-                ($) => {
-                  return $.queue.status.atLimit;
-                },
-                {
-                  count: concurrency.limit,
-                  limit: concurrency.limit,
-                },
-              )
-            : t(
-                ($) => {
-                  return $.queue.status.available;
-                },
-                { count: concurrency.available },
-              )}
-        </p>
-      ) : (
-        <div className="mt-3">
-          {memberUsage.length > 0 && (
-            <ul className="flex flex-col gap-2.5">
-              {memberUsage.map((member) => {
-                return (
-                  <li
-                    key={member.userId}
-                    className="flex min-w-0 items-center justify-between gap-4 text-sm"
-                  >
-                    <span className="flex min-w-0 items-center gap-3 text-foreground">
-                      <span
-                        aria-hidden="true"
-                        className="size-1.5 shrink-0 rounded-full bg-muted-foreground/65"
-                      />
-                      <span className="truncate font-light">
-                        {member.displayName}
-                      </span>
+      <div className="mt-3">
+        {memberUsage.length > 0 && (
+          <ul className="flex flex-col gap-2.5">
+            {memberUsage.map((member) => {
+              return (
+                <li
+                  key={member.userId}
+                  className="flex min-w-0 items-center justify-between gap-4 text-sm"
+                >
+                  <span className="flex min-w-0 items-center gap-3 text-foreground">
+                    <span
+                      aria-hidden="true"
+                      className="size-1.5 shrink-0 rounded-full bg-muted-foreground/65"
+                    />
+                    <span className="truncate font-light">
+                      {member.displayName}
                     </span>
-                    <span className="shrink-0 font-medium tabular-nums text-foreground">
-                      {slotCountLabel(member.active)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <div
-            className={`flex items-center justify-between gap-4 text-sm ${
-              memberUsage.length > 0
-                ? "mt-4 border-t border-border/60 pt-3"
-                : "mt-3"
-            }`}
-          >
-            <span className="font-light text-muted-foreground">
-              {t(($) => {
-                return $.queue.status.availableNow;
-              })}
-            </span>
-            <span className="shrink-0 font-medium tabular-nums text-foreground">
-              {slotCountLabel(Math.max(0, concurrency.available))}
-            </span>
-          </div>
+                  </span>
+                  <span className="shrink-0 font-medium tabular-nums text-foreground">
+                    {slotCountLabel(member.active)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div
+          className={`flex items-center justify-between gap-4 text-sm ${
+            memberUsage.length > 0
+              ? "mt-4 border-t border-border/60 pt-3"
+              : "mt-3"
+          }`}
+        >
+          <span className="font-light text-muted-foreground">
+            {t(($) => {
+              return $.queue.status.availableNow;
+            })}
+          </span>
+          <span className="shrink-0 font-medium tabular-nums text-foreground">
+            {slotCountLabel(Math.max(0, concurrency.available))}
+          </span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -732,7 +707,6 @@ function QueueDrawerContent() {
   const pageSignal = useGet(pageSignal$);
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const [planCheckoutLoadable, checkout] = useLoadableSet(startCheckout$);
-  const features = useGet(featureSwitch$);
   const planCheckoutLoading = planCheckoutLoadable.state === "loading";
   const upgrade = useUpgradePath(data?.concurrency.tier ?? "");
 
@@ -780,9 +754,6 @@ function QueueDrawerContent() {
     <div className="flex flex-col gap-4 h-full">
       <CurrentPlanStatus
         concurrency={concurrency}
-        showMemberUsage={
-          features[FeatureSwitchKey.ConcurrencyMemberUsage] ?? false
-        }
         tierColor={tierColor}
         tierLabel={tierLabel}
       />

@@ -795,7 +795,7 @@ describe("desktop tray screen recording section", () => {
     expect(labels).not.toContain("Retry Delivery");
   });
 
-  it("shows where the finished recording was written", () => {
+  it("offers only a new recording once one has finished", () => {
     const menu = menuFor(
       recorderState({
         lastRecording: {
@@ -810,12 +810,13 @@ describe("desktop tray screen recording section", () => {
       }),
     );
 
+    // The finished recording is delivered into the app, so where it happens to
+    // sit on disk is not a thing to act on from the menu bar.
     const section = findItem(menu, "Screen Recording: Ready");
     expect(
-      findItem(
-        submenu(section),
-        "Saved to /Users/z/Library/recordings/screen-recording-1.mp4",
-      ),
-    ).toBeDefined();
+      submenu(section).map((item) => {
+        return item.label;
+      }),
+    ).toEqual(["New Recording..."]);
   });
 });
