@@ -340,11 +340,9 @@ async function openModelSettings(): Promise<void> {
 }
 
 async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Test User");
-  const accountButton = accountName.closest("button");
-  if (!accountButton) {
-    throw new Error("Account menu trigger not found");
-  }
+  const accountButton = await waitFor(() => {
+    return buttonByLabel("Test User");
+  });
   click(accountButton);
   const menu = await screen.findByRole("menu");
   click(within(menu).getByText("Settings"));
@@ -381,6 +379,16 @@ function buttonByText(
   });
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
