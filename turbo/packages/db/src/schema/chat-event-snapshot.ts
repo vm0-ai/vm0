@@ -39,7 +39,7 @@ export const chatEventSnapshots = pgTable(
     terminalEventId: uuid("terminal_event_id"),
     /** Sequence position paired with terminal_event_id, or zero for an empty body. */
     terminalSeqId: bigint("terminal_seq_id", { mode: "number" }),
-    /** Current NDJSON line-shape version, retained as a publication invariant. */
+    /** Selected NDJSON line-shape version, retained as a publication invariant. */
     archiveSchemaVersion: integer("archive_schema_version")
       .default(8)
       .notNull(),
