@@ -1852,7 +1852,7 @@
       "noAccounts": "Non sono disponibili conti attivi. Ricollega o ripara prima l'istituto.",
       "oneDay": "24 ore",
       "oneHour": "1 ora",
-      "popupBlocked": "Consenti i popup per Zero e riprova.",
+      "popupBlocked": "Consenti i popup per {{assistantName}} e riprova.",
       "readOnly": "Conti, saldi e transazioni · sola lettura",
       "repair": "Ripara",
       "repairRequired": "{{institution}} deve essere riparato",
@@ -2060,7 +2060,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Controlla il video introduttivo",
-        "help": "Conferma le scelte che Zero riceverà nella nuova chat",
+        "help": "Conferma le scelte che {{assistantName}} riceverà nella nuova chat",
         "instructions": "Istruzioni di montaggio",
         "source": "Fonte",
         "voice": "Voce"

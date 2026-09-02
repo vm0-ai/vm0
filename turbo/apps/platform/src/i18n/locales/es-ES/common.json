@@ -1852,7 +1852,7 @@
       "noAccounts": "No hay cuentas activas disponibles. Vuelve a conectar o repara la institución primero.",
       "oneDay": "24 horas",
       "oneHour": "1 hora",
-      "popupBlocked": "Permite las ventanas emergentes de Zero y vuelve a intentarlo.",
+      "popupBlocked": "Permite las ventanas emergentes de {{assistantName}} y vuelve a intentarlo.",
       "readOnly": "Cuentas, saldos y transacciones · solo lectura",
       "repair": "Reparar",
       "repairRequired": "{{institution}} necesita reparación",
@@ -2060,7 +2060,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Revisa tu vídeo de introducción",
-        "help": "Confirma las opciones que recibirá Zero en el nuevo hilo de chat",
+        "help": "Confirma las opciones que recibirá {{assistantName}} en el nuevo hilo de chat",
         "instructions": "Instrucciones de edición",
         "source": "Fuente",
         "voice": "Voz"

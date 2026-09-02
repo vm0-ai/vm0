@@ -1822,7 +1822,7 @@
       "noAccounts": "Keine aktiven Konten verfügbar. Verbinden Sie das Institut erneut oder reparieren Sie die Verbindung.",
       "oneDay": "24 Stunden",
       "oneHour": "1 Stunde",
-      "popupBlocked": "Erlauben Sie Pop-ups für Zero und versuchen Sie es erneut.",
+      "popupBlocked": "Erlauben Sie Pop-ups für {{assistantName}} und versuchen Sie es erneut.",
       "readOnly": "Konten, Salden und Transaktionen · schreibgeschützt",
       "repair": "Reparieren",
       "repairRequired": "{{institution}} muss repariert werden",
@@ -2027,7 +2027,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Intro-Video prüfen",
-        "help": "Bestätige die Auswahl, die Zero im neuen Chat-Thread erhält",
+        "help": "Bestätige die Auswahl, die {{assistantName}} im neuen Chat-Thread erhält",
         "instructions": "Bearbeitungsanweisungen",
         "source": "Quelle",
         "voice": "Stimme"

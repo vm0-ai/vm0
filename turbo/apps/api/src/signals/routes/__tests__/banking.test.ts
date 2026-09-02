@@ -715,6 +715,54 @@ describe("banking access request lifecycle", () => {
     expect(revoked.body.connection?.status).toBe("active");
   });
 
+  it("uses branded Mastercard redirect origins without changing the webhook origin", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockEnv(
+      "FINICITY_WEBHOOK_BASE_URL",
+      "https://public-api-tunnel.example.test",
+    );
+    const fixture = await seedBankingFixture();
+    const generatedBodies: Record<string, unknown>[] = [];
+    server.use(
+      finicityAuthHandler(),
+      http.post(FINICITY_CONNECT_URL, async ({ request }) => {
+        generatedBodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({
+          link: "https://connect.example.test/session",
+        });
+      }),
+    );
+
+    const client = setupApp({ context, routes: bankingRoutes })(
+      bankingUserContract,
+    );
+    const brandCases = [
+      {
+        origin: "https://app.vm0.ai",
+        redirectUri: "https://app.vm0.ai/banking/connect/return",
+      },
+      {
+        origin: "https://app.okou.ai",
+        redirectUri: "https://app.okou.ai/banking/connect/return",
+      },
+    ] as const;
+
+    for (const [index, brandCase] of brandCases.entries()) {
+      await accept(
+        client.createConnectSession({
+          headers: sessionHeaders(),
+          extraHeaders: { origin: brandCase.origin },
+          body: { agentId: fixture.agentId, mode: "connect" },
+        }),
+        [200],
+      );
+      expect(generatedBodies[index]).toMatchObject({
+        redirectUri: brandCase.redirectUri,
+        webhook: "https://public-api-tunnel.example.test/api/webhooks/finicity",
+      });
+    }
+  });
+
   it("completes only after signed added and done webhooks", async () => {
     mockEnv("APP_URL", "https://local-app.example.test");
     mockEnv(
@@ -884,17 +932,35 @@ describe("banking access request lifecycle", () => {
     expect(response.status).toBe(401);
   });
 
-  it("serves the Finicity browser return from the API", async () => {
-    const response = await createApp({
-      signal: context.signal,
-      routes: bankingRoutes,
-    }).request(
-      "/api/banking/connect/return?reason=complete&code=200&reportData=null",
-    );
+  it.each([
+    {
+      apiOrigin: "https://api.vm0.ai",
+      assistantName: "Zero",
+      otherAssistantName: "Okou",
+    },
+    {
+      apiOrigin: "https://api.okou.ai",
+      assistantName: "Okou",
+      otherAssistantName: "Zero",
+    },
+  ] as const)(
+    "serves the $assistantName Finicity browser return from the API",
+    async ({ apiOrigin, assistantName, otherAssistantName }) => {
+      const response = await createApp({
+        signal: context.signal,
+        routes: bankingRoutes,
+      }).request(
+        `${apiOrigin}/api/banking/connect/return?reason=complete&code=200&reportData=null`,
+      );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe(
-      "text/html; charset=utf-8",
-    );
-  });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe(
+        "text/html; charset=utf-8",
+      );
+      const html = await response.text();
+      expect(html).toContain(`<title>Return to ${assistantName}</title>`);
+      expect(html).toContain(`continue in ${assistantName} Chat.`);
+      expect(html).not.toContain(`Return to ${otherAssistantName}`);
+    },
+  );
 });

@@ -1822,7 +1822,7 @@
       "noAccounts": "No healthy accounts are available. Reconnect or repair the institution first.",
       "oneDay": "24 hours",
       "oneHour": "1 hour",
-      "popupBlocked": "Allow popups for Zero, then try again.",
+      "popupBlocked": "Allow popups for {{assistantName}}, then try again.",
       "readOnly": "Accounts, balances, and transactions · read only",
       "repair": "Repair",
       "repairRequired": "{{institution}} needs repair",
@@ -2027,7 +2027,7 @@
       "review": {
         "avatar": "Avatar",
         "heading": "Review your intro video",
-        "help": "Confirm the choices Zero will receive in the new chat thread",
+        "help": "Confirm the choices {{assistantName}} will receive in the new chat thread",
         "instructions": "Editing instructions",
         "source": "Source",
         "voice": "Voice"
