@@ -5166,7 +5166,7 @@ function InsufficientCreditsCard() {
   };
 
   return (
-    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
+    <div className="zero-chat-card max-w-md px-3 py-3">
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
@@ -5264,7 +5264,7 @@ function AssistantRecoveryActions({
   };
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
       {hasResetAction && (
         <Button
           type="button"
@@ -5289,7 +5289,7 @@ function AssistantRecoveryActions({
           placeholder={t(($) => {
             return $.chat.errors.recovery.selectModel;
           })}
-          triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
+          triggerClassName="h-8 w-auto bg-background text-sm"
           compactTrigger
           resolveDefaultSelection={false}
           {...(recovery.failedModel
@@ -5386,35 +5386,31 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="zero-card p-4 text-foreground"
+      className="zero-chat-card flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5 text-foreground"
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2.5">
         {recovery.kind === "usage-limit" ||
         recovery.kind === "execution-timeout" ? (
-          <Clock
-            size={16}
-            className="mt-[3px] shrink-0 text-amber-600 dark:text-amber-400"
-          />
+          <Clock size={16} className="shrink-0 text-primary-950" />
         ) : (
-          <AlertCircle
-            size={16}
-            className="mt-[3px] shrink-0 text-amber-600 dark:text-amber-400"
-          />
+          <Coffee size={16} className="shrink-0 text-primary-950" />
         )}
-        <div className="min-w-0 flex-1">
-          <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
-          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
-            {description}
-          </p>
-          {resetText && (
-            <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Clock size={14} className="text-muted-foreground" />
-              {resetText}
-            </div>
-          )}
-          <AssistantRecoveryActions recovery={recovery} thread={thread} />
-        </div>
+        <span className="shrink-0 text-[0.9375rem] font-medium leading-6">
+          {title}
+        </span>
+        {/* The row is the point on desktop; on a phone a half-truncated
+            sentence is worse than none, and the title already carries it. */}
+        <span className="hidden min-w-0 flex-1 truncate text-sm text-muted-foreground sm:block">
+          {description}
+        </span>
+        {resetText && (
+          <span className="hidden shrink-0 items-center gap-1.5 text-sm font-medium text-foreground sm:inline-flex">
+            <Clock size={14} className="text-muted-foreground" />
+            {resetText}
+          </span>
+        )}
       </div>
+      <AssistantRecoveryActions recovery={recovery} thread={thread} />
     </div>
   );
 }
@@ -5430,13 +5426,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
-      <div
-        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
-        style={{
-          border: "0.7px solid hsl(var(--border))",
-          borderRadius: "12px",
-        }}
-      >
+      <div className="zero-chat-card inline-flex items-center gap-2 px-3 py-1.5 text-[0.9375rem] text-muted-foreground">
         <Hand size={14} className="shrink-0" />
         <span>
           {t(($) => {

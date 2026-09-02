@@ -416,7 +416,7 @@ function UnavailableActionCard() {
   return (
     <div
       data-testid="unavailable-action-card"
-      className="flex min-h-[88px] w-full items-center gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm"
+      className="zero-chat-card flex min-h-[88px] w-full items-center gap-3 p-3 text-left"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
         <AlertCircle size={22} />
@@ -565,7 +565,7 @@ function ComputerUseAuthorizationCard({
   return (
     <div
       data-testid="computer-use-authorization-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+      className="zero-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
@@ -611,7 +611,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
   return (
     <div
       data-testid="plan-upgrade-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+      className="zero-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
@@ -1225,7 +1225,7 @@ function PermissionActionCardContent({
   return (
     <div
       data-testid="permission-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+      className="zero-chat-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
