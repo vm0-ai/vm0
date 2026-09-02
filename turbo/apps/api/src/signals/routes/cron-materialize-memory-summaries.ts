@@ -1,6 +1,7 @@
 import { cronMaterializeMemorySummariesContract } from "@okouai/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
+import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import { executeMemorySummaryProjectionWork$ } from "../services/memory-summary-projection.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
@@ -13,7 +14,7 @@ const materializeMemorySummariesRoute$ = command(
 
     const result = await set(
       executeMemorySummaryProjectionWork$,
-      undefined,
+      { scope: undefined, currentTime: nowDate() },
       signal,
     );
     signal.throwIfAborted();

@@ -231,8 +231,13 @@ const action$ = command(async ({ get, set }, signal: AbortSignal) => {
       const result = await set(
         executeMemorySummaryProjectionWork$,
         {
-          memoryStorageId: body.memory_storage_id,
-          storageVersionId: body.storage_version_id,
+          scope: {
+            memoryStorageId: body.memory_storage_id,
+            storageVersionId: body.storage_version_id,
+          },
+          currentTime: body.current_time
+            ? new Date(body.current_time)
+            : nowDate(),
         },
         signal,
       );

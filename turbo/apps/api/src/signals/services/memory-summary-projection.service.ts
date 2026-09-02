@@ -75,6 +75,11 @@ interface MemorySummaryProjectionScope {
   readonly storageVersionId: string;
 }
 
+interface MemorySummaryProjectionWorkerInput {
+  readonly scope: MemorySummaryProjectionScope | undefined;
+  readonly currentTime: Date;
+}
+
 interface ClaimedProjection extends MemorySummaryProjectionScope {
   readonly orgId: string;
   readonly userId: string;
@@ -172,6 +177,7 @@ function projectionScopeCondition(
 async function backfillMissingProjections(
   db: Db,
   scope: MemorySummaryProjectionScope | undefined,
+  currentTime: Date,
   signal: AbortSignal,
 ): Promise<number> {
   const rows = await db
@@ -208,7 +214,11 @@ async function backfillMissingProjections(
 
   const inserted = await db
     .insert(memorySummaryProjections)
-    .values(rows)
+    .values(
+      rows.map((row) => {
+        return { ...row, availableAt: currentTime };
+      }),
+    )
     .onConflictDoNothing()
     .returning({
       memoryStorageId: memorySummaryProjections.memoryStorageId,
@@ -220,10 +230,10 @@ async function backfillMissingProjections(
 async function claimProjectionWork(
   db: Db,
   scope: MemorySummaryProjectionScope | undefined,
+  currentTime: Date,
   signal: AbortSignal,
 ): Promise<readonly ClaimedProjection[]> {
   return await db.transaction(async (tx) => {
-    const currentTime = nowDate();
     const rows = await tx
       .select({
         memoryStorageId: memorySummaryProjections.memoryStorageId,
@@ -739,12 +749,22 @@ function logProjectionOutcome(args: {
 export const executeMemorySummaryProjectionWork$ = command(
   async (
     { set },
-    scope: MemorySummaryProjectionScope | undefined,
+    input: MemorySummaryProjectionWorkerInput,
     signal: AbortSignal,
   ): Promise<MemorySummaryProjectionWorkerResult> => {
     const db = set(writeDb$);
-    const backfilled = await backfillMissingProjections(db, scope, signal);
-    const claimed = await claimProjectionWork(db, scope, signal);
+    const backfilled = await backfillMissingProjections(
+      db,
+      input.scope,
+      input.currentTime,
+      signal,
+    );
+    const claimed = await claimProjectionWork(
+      db,
+      input.scope,
+      input.currentTime,
+      signal,
+    );
     let ready = 0;
     let noContent = 0;
     let retried = 0;

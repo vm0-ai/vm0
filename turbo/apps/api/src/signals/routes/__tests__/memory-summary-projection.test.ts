@@ -329,10 +329,11 @@ async function inspect(version: PublishedVersion) {
     .state;
 }
 
-async function run(version: PublishedVersion) {
+async function run(version: PublishedVersion, currentTime?: Date) {
   const result = await stateAction({
     action: "run",
     ...projectionScope(version),
+    ...(currentTime ? { current_time: currentTime.toISOString() } : {}),
   });
   if (!result.worker) {
     throw new Error("Projection worker returned no result");
@@ -738,14 +739,16 @@ describe("memory summary projection", () => {
     });
   });
 
-  it("backfills bounded misses while read misses only enqueue", async () => {
+  it("backfills misses as due on the worker clock while reads only enqueue", async () => {
     const content = Buffer.from("lazy projection", "utf8");
     const version = await publishVersion({
       files: [declaredFile("memory_summary.md", content)],
       archive: tarGz([{ path: "memory_summary.md", content }]),
     });
     await stateAction({ action: "delete", ...projectionScope(version) });
-    await expect(run(version)).resolves.toMatchObject({
+    await expect(
+      run(version, new Date("2000-01-01T00:00:00.000Z")),
+    ).resolves.toMatchObject({
       backfilled: 1,
       claimed: 1,
       ready: 1,

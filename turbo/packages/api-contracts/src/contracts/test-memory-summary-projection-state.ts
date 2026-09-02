@@ -57,7 +57,10 @@ export const testMemorySummaryProjectionStateActionBodySchema =
       action: z.literal("corrupt-ready"),
       content: z.string(),
     }),
-    projectionScopeSchema.extend({ action: z.literal("run") }),
+    projectionScopeSchema.extend({
+      action: z.literal("run"),
+      current_time: z.iso.datetime().optional(),
+    }),
     projectionScopeSchema.extend({ action: z.literal("read") }),
   ]);
 
