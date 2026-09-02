@@ -3,10 +3,7 @@ import type { LoadableState } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import {
-  connectorAccountEffectiveLabel,
-  type ConnectorAccountSummary,
-} from "@okouai/api-contracts/contracts/connector-accounts";
+import { type ConnectorAccountSummary } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   Button,
@@ -27,6 +24,7 @@ import {
   launchConnectorConnect,
   type ConnectorConnectHandlers,
 } from "./launch-connector-connect.ts";
+import { useConnectorAccountLabel } from "./use-connector-account-label.ts";
 
 type CatalogConnectorCardProps = {
   readonly variant: "catalog";
@@ -374,6 +372,7 @@ export function ConnectorAccountSummaryText({
   readonly className?: string;
 }) {
   const { t } = useTranslation();
+  const accountLabel = useConnectorAccountLabel();
   if (status === "loading") {
     return (
       <span className={className}>
@@ -404,15 +403,7 @@ export function ConnectorAccountSummaryText({
     }
     if (accountCount === 1) {
       if (summary?.defaultConnection) {
-        return connectorAccountEffectiveLabel(
-          summary.defaultConnection,
-          t(
-            ($) => {
-              return $.connectors.accounts.fallbackName;
-            },
-            { id: summary.defaultConnection.id.slice(0, 8) },
-          ),
-        );
+        return accountLabel(summary.defaultConnection);
       }
       return t(
         ($) => {

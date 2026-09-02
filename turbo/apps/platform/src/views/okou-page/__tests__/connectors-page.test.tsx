@@ -167,6 +167,19 @@ function queryConnectorCardByLabel(label: string): HTMLElement | null {
   return card instanceof HTMLElement ? card : null;
 }
 
+function defaultAccountRow(manager: HTMLElement): HTMLElement {
+  const checked = within(manager)
+    .getAllByRole("radio")
+    .find((radio) => {
+      return radio.getAttribute("aria-checked") === "true";
+    });
+  const row = checked?.closest("[data-account-row]");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("default account row not found");
+  }
+  return row;
+}
+
 function connectorCardByLabel(label: string): HTMLElement {
   const card = queryConnectorCardByLabel(label);
   if (!(card instanceof HTMLElement)) {
@@ -1731,12 +1744,12 @@ describe("connectors page", () => {
     });
     click(manageAccounts);
 
-    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
-    const defaultGroup = within(dialog).getByRole("group", {
-      name: "Default",
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
     });
+    const defaultGroup = defaultAccountRow(dialog);
     expect(
-      within(defaultGroup).getByText("Account #00000000"),
+      within(defaultGroup).getByText("Unnamed account"),
     ).toBeInTheDocument();
     expect(
       within(defaultGroup).getByText("Reconnect required"),
@@ -1744,7 +1757,7 @@ describe("connectors page", () => {
     expect(
       within(defaultGroup).getByLabelText("Account actions"),
     ).toBeInTheDocument();
-    expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
   });
 
   it("paginates a feature-on account manager", async () => {
@@ -1784,7 +1797,9 @@ describe("connectors page", () => {
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
-    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
     expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
     expect(within(dialog).queryByText("Work 4")).toBeNull();
     click(buttonByText("Load more", dialog));
@@ -1803,7 +1818,7 @@ describe("connectors page", () => {
     expect(queryButtonByText("Load more", dialog)).toBeNull();
     expect(within(dialog).getByText("Work 7")).toBeInTheDocument();
     expect(within(dialog).getByText("Work 4")).toBeInTheDocument();
-    expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+    expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
     const requestedLimits = new Set(
       accountQueries.map((query) => {
         return query.limit;
@@ -1851,7 +1866,9 @@ describe("connectors page", () => {
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
-    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
     const searchInput = within(dialog).getByPlaceholderText("Find accounts");
     const queryCountBeforeSearch = accountQueries.length;
     fireEvent.input(searchInput, { target: { value: "W" } });
@@ -1864,7 +1881,7 @@ describe("connectors page", () => {
         { search: "Work 2", cursor: null },
       ]);
       expect(within(dialog).getByText("Work 2")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+      expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
     });
 
     fireEvent.input(searchInput, {
@@ -1876,7 +1893,7 @@ describe("connectors page", () => {
         cursor: null,
       });
       expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Account #00000000")).toHaveLength(1);
+      expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
     });
   });
 
@@ -1933,7 +1950,9 @@ describe("connectors page", () => {
     });
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
-    const dialog = await screen.findByRole("dialog", { name: "GitHub" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
     const searchInput = within(dialog).getByPlaceholderText("Find accounts");
     fireEvent.input(searchInput, { target: { value: "Stale" } });
     await waitFor(() => {
@@ -2040,28 +2059,18 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const manager = await screen.findByRole("dialog", {
-      name: "GitHub",
+      name: "Manage GitHub accounts",
     });
     expect(
-      within(within(manager).getByRole("group", { name: "Default" })).getByText(
-        "Work",
-      ),
+      within(defaultAccountRow(manager)).getByText("Work"),
     ).toBeInTheDocument();
     expect(within(manager).queryByPlaceholderText("Find accounts")).toBeNull();
-    const actions = within(manager).getAllByLabelText("Account actions");
-    const personalActions = actions.at(1);
-    if (!personalActions) {
-      throw new Error("Expected Personal account actions");
-    }
-    click(personalActions);
-    click(menuItemByText("Make default"));
+    click(within(manager).getByLabelText("Make default"));
 
     await waitFor(() => {
       expect(defaultConnectionId).toBe(personalAccount.id);
       expect(connectorCardByLabel("GitHub")).toHaveTextContent("2 accounts");
-      const defaultGroup = within(manager).getByRole("group", {
-        name: "Default",
-      });
+      const defaultGroup = defaultAccountRow(manager);
       expect(within(defaultGroup).getByText("Personal")).toBeInTheDocument();
       expect(within(manager).getAllByText("Personal")).toHaveLength(1);
       expect(within(manager).getAllByText("Work")).toHaveLength(1);
@@ -2116,7 +2125,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const manager = await screen.findByRole("dialog", {
-      name: "GitHub",
+      name: "Manage GitHub accounts",
     });
     await expect(
       within(manager).findByText(
@@ -2124,9 +2133,7 @@ describe("connectors page", () => {
       ),
     ).resolves.toBeInTheDocument();
     expect(buttonByText("Add account", manager)).toBeDisabled();
-    expect(
-      within(manager).queryByRole("group", { name: "Default" }),
-    ).toBeNull();
+    expect(within(manager).queryByLabelText("Default")).toBeNull();
   });
 
   it("does not restore a pending deletion draft after the manager closes", async () => {
@@ -2195,7 +2202,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const firstManager = await screen.findByRole("dialog", {
-      name: "GitHub",
+      name: "Manage GitHub accounts",
     });
     click(within(firstManager).getByLabelText("Account actions"));
     click(menuItemByText("Delete"));
@@ -2209,7 +2216,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     await screen.findByRole("dialog", {
-      name: "GitHub",
+      name: "Manage GitHub accounts",
     });
     resolveImpact();
     await waitFor(() => {
@@ -2304,7 +2311,7 @@ describe("connectors page", () => {
 
     click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
     const dialog = await screen.findByRole("dialog", {
-      name: "GitHub",
+      name: "Manage GitHub accounts",
     });
     click(within(dialog).getByLabelText("Account actions"));
     click(menuItemByText("Rename"));
@@ -3811,7 +3818,7 @@ describe("connectors page", () => {
     });
     expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
       "placeholder",
-      `Account #${connectionId.slice(0, 8)}`,
+      "Unnamed account",
     );
     click(buttonByText("Skip", nameDialog));
     expect(submittedAccount).toStrictEqual({ intent: "add" });
@@ -7161,13 +7168,13 @@ describe("connectors page", () => {
       });
       expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
         "placeholder",
-        `Account #${connectionId.slice(0, 8)}`,
+        "Unnamed account",
       );
       click(buttonByText("Skip", nameDialog));
       await waitFor(() => {
         expect(
           within(connectorCardByLabel(connector.displayName)).getByText(
-            `Account #${connectionId.slice(0, 8)}`,
+            "Unnamed account",
           ),
         ).toBeInTheDocument();
       });
@@ -7239,7 +7246,7 @@ describe("connectors page", () => {
       ),
     );
     const manager = await screen.findByRole("dialog", {
-      name: connector.displayName,
+      name: `Manage ${connector.displayName} accounts`,
     });
     click(buttonByText("Add account", manager));
     const dialog = await screen.findByRole("dialog", {
@@ -7332,11 +7339,9 @@ describe("connectors page", () => {
       ),
     );
     const manager = await screen.findByRole("dialog", {
-      name: connector.displayName,
+      name: `Manage ${connector.displayName} accounts`,
     });
-    const defaultGroup = within(manager).getByRole("group", {
-      name: "Default",
-    });
+    const defaultGroup = defaultAccountRow(manager);
     expect(within(defaultGroup).getByText("Existing")).toBeInTheDocument();
     click(within(defaultGroup).getByLabelText("Account actions"));
     click(menuItemByText("Reconnect"));
@@ -7414,7 +7419,7 @@ describe("connectors page", () => {
     click(await waitForButtonByAriaLabel("Manage Acme MCP accounts"));
 
     const manager = await screen.findByRole("dialog", {
-      name: "Acme MCP",
+      name: "Manage Acme MCP accounts",
     });
     expect(buttonByText("Add account", manager)).toBeDisabled();
     click(within(manager).getByLabelText("Account actions"));
@@ -7532,7 +7537,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(
         within(connectorCardByLabel(connector.displayName)).getByText(
-          `Account #${connectionId.slice(0, 8)}`,
+          "Unnamed account",
         ),
       ).toBeInTheDocument();
     });

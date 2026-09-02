@@ -4,13 +4,13 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { EllipsisVertical } from "lucide-react";
 import {
-  connectorAccountEffectiveLabel,
   connectorAccountExternalIdentity,
   type ConnectorAccountConnection,
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,12 +22,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
+  Radio,
+  RadioGroup,
 } from "@okouai/ui";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
-  connectorAccountSummaryByTarget$,
-  connectorAccountTargetKey,
   CONNECTOR_ACCOUNT_SEARCH_THRESHOLD,
   type ConnectorAccountList,
 } from "../../../../signals/okou-page/connector-accounts.ts";
@@ -48,6 +48,7 @@ import {
   startConnectorAccountRename$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { useConnectorAccountLabel } from "./use-connector-account-label.ts";
 
 interface ConnectorAccountManagerDialogProps {
   readonly target: ConnectorAccountTarget;
@@ -59,20 +60,83 @@ interface ConnectorAccountManagerDialogProps {
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }
 
+// Mirrors the status dot used by ConnectorAccountSummaryText on the connector
+// card, so a row reads the same in the dialog as it does in the grid behind it.
 function AccountStatus({ account }: { account: ConnectorAccountConnection }) {
   const { t } = useTranslation();
-  return account.connectionStatus === "reconnect-required" ? (
-    <span className="text-amber-600">
-      {t(($) => {
-        return $.connectors.accounts.reconnectRequired;
-      })}
+  const needsReconnect = account.connectionStatus === "reconnect-required";
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <span
+        className={cn(
+          "h-1.5 w-1.5 shrink-0 rounded-full",
+          needsReconnect ? "bg-amber-500" : "bg-emerald-500",
+        )}
+      />
+      <span
+        className={cn(
+          "truncate",
+          needsReconnect
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-muted-foreground",
+        )}
+      >
+        {needsReconnect
+          ? t(($) => {
+              return $.connectors.accounts.reconnectRequired;
+            })
+          : t(($) => {
+              return $.connectors.accounts.connected;
+            })}
+      </span>
     </span>
-  ) : (
-    <span className="text-muted-foreground">
-      {t(($) => {
-        return $.connectors.accounts.connected;
-      })}
-    </span>
+  );
+}
+
+function AccountDefaultRadio({
+  target,
+  account,
+}: {
+  readonly target: ConnectorAccountTarget;
+  readonly account: ConnectorAccountConnection;
+}) {
+  const { t } = useTranslation();
+  const [setDefaultLoadable, setDefault] = useLoadableSet(
+    setDefaultConnectorAccount$,
+  );
+  const signal = useGet(pageSignal$);
+  return (
+    <label className="flex shrink-0 cursor-pointer items-center gap-2">
+      {account.isDefault ? (
+        <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+          {t(($) => {
+            return $.connectors.accounts.default;
+          })}
+        </span>
+      ) : null}
+      <Radio
+        value={account.id}
+        aria-label={
+          account.isDefault
+            ? t(($) => {
+                return $.connectors.accounts.default;
+              })
+            : t(($) => {
+                return $.connectors.accounts.makeDefault;
+              })
+        }
+        disabled={setDefaultLoadable.state === "loading"}
+        onClick={() => {
+          if (account.isDefault) {
+            return;
+          }
+          detach(
+            setDefault({ target, connectionId: account.id }, signal),
+            Reason.DomCallback,
+          );
+        }}
+      />
+    </label>
   );
 }
 
@@ -89,7 +153,6 @@ function AccountActions({
 }) {
   const { t } = useTranslation();
   const startRename = useSet(startConnectorAccountRename$);
-  const [, setDefault] = useLoadableSet(setDefaultConnectorAccount$);
   const [, prepareDelete] = useLoadableSet(prepareConnectorAccountDeletion$);
   const signal = useGet(pageSignal$);
   return (
@@ -108,7 +171,8 @@ function AccountActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {connectionActionsEnabled ? (
+        {connectionActionsEnabled &&
+        account.connectionStatus !== "reconnect-required" ? (
           <DropdownMenuItem
             onClick={() => {
               return onReconnect(account);
@@ -128,20 +192,6 @@ function AccountActions({
             return $.connectors.accounts.rename;
           })}
         </DropdownMenuItem>
-        {!account.isDefault ? (
-          <DropdownMenuItem
-            onClick={() => {
-              detach(
-                setDefault({ target, connectionId: account.id }, signal),
-                Reason.DomCallback,
-              );
-            }}
-          >
-            {t(($) => {
-              return $.connectors.accounts.makeDefault;
-            })}
-          </DropdownMenuItem>
-        ) : null}
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
           onClick={() => {
@@ -172,150 +222,131 @@ function AccountRow({
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
+  const renameDraft = useGet(connectorAccountRenameDraft$);
+  const accountLabel = useConnectorAccountLabel();
   const identity = connectorAccountExternalIdentity(account);
-  const label = connectorAccountEffectiveLabel(
-    account,
-    t(
-      ($) => {
-        return $.connectors.accounts.fallbackName;
-      },
-      { id: account.id.slice(0, 8) },
-    ),
-  );
+  const label = accountLabel(account);
+  const needsReconnect = account.connectionStatus === "reconnect-required";
+  if (renameDraft?.account.id === account.id) {
+    return <RenameAccountForm target={target} />;
+  }
   return (
-    <div className="flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {label}
-          </span>
-          {account.isDefault ? (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-              {t(($) => {
-                return $.connectors.accounts.default;
-              })}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex gap-2 truncate text-xs">
+    <div
+      data-account-row
+      className="flex items-center justify-between gap-4 px-5 py-4"
+    >
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-foreground">{label}</p>
+        <p className="mt-0.5 flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
           <AccountStatus account={account} />
           {identity && identity !== label ? (
-            <span className="truncate text-muted-foreground">{identity}</span>
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="truncate">{identity}</span>
+            </>
           ) : null}
-        </div>
+          {needsReconnect && connectionActionsEnabled ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-[13px]"
+                onClick={() => {
+                  return onReconnect(account);
+                }}
+              >
+                {t(($) => {
+                  return $.connectors.actions.reconnect;
+                })}
+              </Button>
+            </>
+          ) : null}
+        </p>
       </div>
-      <AccountActions
-        target={target}
-        account={account}
-        connectionActionsEnabled={connectionActionsEnabled}
-        onReconnect={onReconnect}
-      />
+      <div className="flex shrink-0 items-center gap-3">
+        <AccountDefaultRadio target={target} account={account} />
+        <AccountActions
+          target={target}
+          account={account}
+          connectionActionsEnabled={connectionActionsEnabled}
+          onReconnect={onReconnect}
+        />
+      </div>
     </div>
   );
 }
 
-function AccountList({
+function AccountsCard({
   loadable,
-  defaultConnectionId,
   target,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
-  readonly defaultConnectionId: string | null;
   readonly target: ConnectorAccountTarget;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
 }) {
-  const { t } = useTranslation();
-  const renameDraft = useGet(connectorAccountRenameDraft$);
   if (loadable.state === "hasError") {
-    return (
-      <p className="p-6 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.connectors.accounts.accountsUnavailable;
-        })}
-      </p>
-    );
+    return <AccountsMessage messageKey="accountsUnavailable" />;
   }
   if (loadable.state === "loading") {
-    return (
-      <p className="p-6 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.connectors.accounts.loading;
-        })}
-      </p>
-    );
+    return <AccountsMessage messageKey="loading" />;
   }
   if (!loadable.data.available) {
-    return (
-      <p className="p-6 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.connectors.accounts.accountsUnavailable;
-        })}
-      </p>
-    );
+    return <AccountsMessage messageKey="accountsUnavailable" />;
   }
   if (loadable.data.connections.length === 0) {
-    return (
-      <p className="p-6 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.connectors.accounts.noAccountsFound;
-        })}
-      </p>
-    );
+    return <AccountsMessage messageKey="noAccountsFound" />;
   }
-  return loadable.data.connections
-    .filter((account) => {
-      return account.id !== defaultConnectionId;
-    })
-    .flatMap((account) => {
-      return [
-        <AccountRow
-          key={`${account.id}-row`}
-          target={target}
-          account={account}
-          connectionActionsEnabled={connectionActionsEnabled}
-          onReconnect={onReconnect}
-        />,
-        renameDraft?.account.id === account.id ? (
-          <RenameAccountForm key={`${account.id}-rename`} target={target} />
-        ) : null,
-      ];
-    });
+  const defaultConnection = loadable.data.connections.find((account) => {
+    return account.isDefault;
+  });
+  return (
+    <RadioGroup
+      value={defaultConnection?.id ?? null}
+      // The row radios post their own change; RadioGroup only owns grouping.
+      className="overflow-hidden rounded-xl bg-card"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+    >
+      {loadable.data.connections.map((account, index) => {
+        return (
+          <div key={account.id}>
+            {index > 0 ? <div className="mx-5 h-0 zero-border-t" /> : null}
+            <AccountRow
+              target={target}
+              account={account}
+              connectionActionsEnabled={connectionActionsEnabled}
+              onReconnect={onReconnect}
+            />
+          </div>
+        );
+      })}
+    </RadioGroup>
+  );
 }
 
-function DefaultAccount({
-  target,
-  account,
-  connectionActionsEnabled,
-  onReconnect,
+function AccountsMessage({
+  messageKey,
 }: {
-  readonly target: ConnectorAccountTarget;
-  readonly account: ConnectorAccountConnection;
-  readonly connectionActionsEnabled: boolean;
-  readonly onReconnect: (account: ConnectorAccountConnection) => void;
+  readonly messageKey: "accountsUnavailable" | "loading" | "noAccountsFound";
 }) {
   const { t } = useTranslation();
-  const renameDraft = useGet(connectorAccountRenameDraft$);
   return (
-    <div
-      role="group"
-      aria-label={t(($) => {
-        return $.connectors.accounts.default;
-      })}
-      className="border-b border-border bg-muted/20 text-sm text-muted-foreground"
-    >
-      <AccountRow
-        target={target}
-        account={account}
-        connectionActionsEnabled={connectionActionsEnabled}
-        onReconnect={onReconnect}
-      />
-      {renameDraft?.account.id === account.id ? (
-        <RenameAccountForm target={target} />
-      ) : null}
-    </div>
+    <p className="py-8 text-center text-sm text-muted-foreground">
+      {messageKey === "accountsUnavailable"
+        ? t(($) => {
+            return $.connectors.accounts.accountsUnavailable;
+          })
+        : messageKey === "loading"
+          ? t(($) => {
+              return $.connectors.accounts.loading;
+            })
+          : t(($) => {
+              return $.connectors.accounts.noAccountsFound;
+            })}
+    </p>
   );
 }
 
@@ -344,10 +375,7 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
     );
   };
   return (
-    <form
-      className="border-b border-border bg-muted/30 px-4 py-3"
-      onSubmit={submit}
-    >
+    <form className="px-1 py-4" onSubmit={submit}>
       <label className="text-sm font-medium" htmlFor="account-rename">
         {t(($) => {
           return $.connectors.accounts.accountName;
@@ -384,6 +412,7 @@ function DeleteAccountConfirmation({
 }) {
   const { t } = useTranslation();
   const draft = useGet(connectorAccountDeletionDraft$);
+  const accountLabel = useConnectorAccountLabel();
   const clear = useSet(clearConnectorAccountDeletion$);
   const [deleteLoadable, deleteAccount] = useLoadableSet(
     deleteConnectorAccount$,
@@ -415,17 +444,7 @@ function DeleteAccountConfirmation({
               ($) => {
                 return $.connectors.accounts.deleteTitle;
               },
-              {
-                account: connectorAccountEffectiveLabel(
-                  draft.account,
-                  t(
-                    ($) => {
-                      return $.connectors.accounts.fallbackName;
-                    },
-                    { id: draft.account.id.slice(0, 8) },
-                  ),
-                ),
-              },
+              { account: accountLabel(draft.account) },
             )}
           </DialogTitle>
           <DialogDescription>
@@ -468,7 +487,7 @@ function ConnectorAccountSearch({ value }: { readonly value: string }) {
   const setSearch = useSet(settingsConnectorAccounts.setSearch$);
   const signal = useGet(pageSignal$);
   return (
-    <div className="border-b border-border px-6 py-3">
+    <div className="relative">
       <Input
         value={value}
         onChange={(event) => {
@@ -507,7 +526,6 @@ export function ConnectorAccountManagerDialog({
 }: ConnectorAccountManagerDialogProps) {
   const { t } = useTranslation();
   const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
-  const summariesLoadable = useLoadable(connectorAccountSummaryByTarget$);
   const search = useGet(settingsConnectorAccounts.search$);
   const [loadMoreLoadable, loadMore] = useLoadableSet(
     settingsConnectorAccounts.loadMore$,
@@ -517,13 +535,6 @@ export function ConnectorAccountManagerDialog({
   const nextCursor =
     accountsLoadable.state === "hasData"
       ? accountsLoadable.data.nextCursor
-      : null;
-  const defaultConnection =
-    summariesLoadable.state === "hasData" &&
-    accountsLoadable.state === "hasData" &&
-    accountsLoadable.data.available
-      ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
-          ?.defaultConnection ?? null)
       : null;
   const showSearch = connectorAccountSearchIsVisible(search, accountsLoadable);
   const leave = (next: () => void) => {
@@ -542,61 +553,46 @@ export function ConnectorAccountManagerDialog({
         return !open && leave(onClose);
       }}
     >
-      <DialogContent
-        className="max-w-xl gap-0 overflow-hidden p-0"
-        aria-describedby={undefined}
-      >
-        <DialogHeader className="border-b border-border bg-muted/40 py-4 pl-6 pr-16">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-3">
+      <DialogContent className="!flex w-full max-w-xl !flex-col !overflow-hidden">
+        <DialogHeader className="shrink-0 gap-2">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               {icon}
-              <DialogTitle className="truncate leading-6">
-                {connectorLabel}
+            </span>
+            <div className="min-w-0">
+              <DialogTitle className="text-base">
+                {t(
+                  ($) => {
+                    return $.connectors.accounts.managerTitle;
+                  },
+                  { connector: connectorLabel },
+                )}
               </DialogTitle>
+              <DialogDescription>
+                {t(($) => {
+                  return $.connectors.accounts.managerDescription;
+                })}
+              </DialogDescription>
             </div>
-            <Button
-              type="button"
-              className="shrink-0"
-              disabled={
-                !connectionActionsEnabled ||
-                accountsLoadable.state === "hasError" ||
-                (accountsLoadable.state === "hasData" &&
-                  !accountsLoadable.data.available)
-              }
-              onClick={() => {
-                return leave(onAdd);
-              }}
-            >
-              {t(($) => {
-                return $.connectors.accounts.addAccount;
-              })}
-            </Button>
           </div>
         </DialogHeader>
-        {showSearch ? <ConnectorAccountSearch value={search} /> : null}
-        {defaultConnection ? (
-          <DefaultAccount
-            target={target}
-            account={defaultConnection}
-            connectionActionsEnabled={connectionActionsEnabled}
-            onReconnect={reconnect}
-          />
+        {showSearch ? (
+          <div className="shrink-0">
+            <ConnectorAccountSearch value={search} />
+          </div>
         ) : null}
-        <div className="max-h-[min(60vh,420px)] overflow-y-auto text-sm text-muted-foreground">
-          <AccountList
+        <div className="min-h-0 overflow-y-auto">
+          <AccountsCard
             loadable={accountsLoadable}
-            defaultConnectionId={defaultConnection?.id ?? null}
             target={target}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={reconnect}
           />
-        </div>
-        {nextCursor ? (
-          <div className="border-t border-border px-6 py-3">
+          {nextCursor ? (
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="mt-3 w-full"
               disabled={loadMoreLoadable.state === "loading"}
               onClick={() => {
                 return detach(loadMore(signal), Reason.DomCallback);
@@ -610,8 +606,26 @@ export function ConnectorAccountManagerDialog({
                     return $.connectors.accounts.loadMore;
                   })}
             </Button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
+        <DialogFooter className="shrink-0">
+          <Button
+            type="button"
+            disabled={
+              !connectionActionsEnabled ||
+              accountsLoadable.state === "hasError" ||
+              (accountsLoadable.state === "hasData" &&
+                !accountsLoadable.data.available)
+            }
+            onClick={() => {
+              return leave(onAdd);
+            }}
+          >
+            {t(($) => {
+              return $.connectors.accounts.addAccount;
+            })}
+          </Button>
+        </DialogFooter>
         <DeleteAccountConfirmation target={target} />
       </DialogContent>
     </Dialog>
