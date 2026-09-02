@@ -2505,6 +2505,21 @@ const specializedRuntimeFixtureAction$ = command(
         body: { ok: true as const, processed },
       };
     }
+    if (body.action === "read-run-failure-reason") {
+      const [run] = await db
+        .select({ failureReason: agentRuns.failureReason })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, body.run_id))
+        .limit(1);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          failure_reason: run?.failureReason ?? null,
+        },
+      };
+    }
     return null;
   },
 );

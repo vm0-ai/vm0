@@ -665,12 +665,39 @@ export const rustTypeBindings = [
         },
       },
       {
+        rustTypeName: "RequestFailureReason",
+        rustDoc: ["Detailed failure reason reported during completion."],
+        variants: {
+          session_history_limit: ["Session history exceeded its size limit."],
+          insufficient_credits: ["The provider account lacks credits."],
+          invalid_api_key: ["The configured API key is invalid."],
+          invalid_credentials: ["The configured credentials are invalid."],
+          terms_acceptance_required: [
+            "The provider requires acceptance of updated terms.",
+          ],
+          context_window_exceeded: ["The model context window was exceeded."],
+          output_token_limit: ["The provider output-token limit was reached."],
+          provider_rate_limited: ["The provider rate limited the request."],
+          provider_overloaded: ["The provider reported overload."],
+          provider_stream_timeout: ["The provider stream timed out."],
+          provider_server_error: ["The provider returned a server error."],
+          response_connection_lost: ["The response connection was lost."],
+          safety_policy_refusal: ["The provider refused for safety policy."],
+          reconnect_required: ["The CLI requires reconnecting."],
+          unsupported_model: ["The selected model is unsupported."],
+          usage_limit: ["The provider reported a usage limit."],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: ["Request body for completing an agent run."],
         fields: {
           runId: ["Agent run identifier bound to the sandbox token."],
           exitCode: ["Process exit code reported by the caller."],
           error: ["Optional process failure description."],
+          failureReason: [
+            "Optional detailed failure reason reported by the caller.",
+          ],
           lastEventSequence: [
             "Highest contiguous agent event sequence delivered before completion.",
           ],

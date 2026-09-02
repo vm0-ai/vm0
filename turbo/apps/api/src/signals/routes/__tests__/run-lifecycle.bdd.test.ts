@@ -141,6 +141,7 @@ import {
   readRunAutonomyBudgetFixture,
   readRunApiStart,
   readRunClaimOwner,
+  readRunFailureReasonFixture,
   readRunLaunchSnapshotFixture,
   readRunnerJobStorageState,
   readStoragePersistenceState,
@@ -18160,6 +18161,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       const body = {
         runId: run.runId,
         exitCode: 0,
+        failureReason: "provider_overloaded",
         lastEventSequence: 0,
         checkpoint: {
           cliAgentType,
@@ -18184,6 +18186,9 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         agentSessionId: run.sessionId,
         conversationId: expect.any(String),
       });
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBeNull();
 
       const repeated = await webhooks.requestAgentComplete(
         body,
@@ -18315,6 +18320,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
             runId: run.runId,
             exitCode: 1,
             error: "runner reported failure",
+            failureReason: "provider_overloaded",
           },
           sandboxHeaders,
           [200],
@@ -18325,6 +18331,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         runId: run.runId,
         exitCode: 1,
         error: "guest reported failure",
+        failureReason: "usage_limit",
         checkpoint: {
           cliAgentType: "claude-code",
           cliAgentSessionId,
@@ -18343,6 +18350,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         ordering === "runner-first"
           ? "runner reported failure"
           : "guest reported failure",
+      );
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBe(
+        ordering === "runner-first" ? "provider_overloaded" : "usage_limit",
       );
 
       const continued = await api.createRun(actor, {
@@ -18382,6 +18394,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         [200],
       );
       expect(repeatedAfterSuccessor.body).toStrictEqual(recovery.body);
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBe(
+        ordering === "runner-first" ? "provider_overloaded" : "usage_limit",
+      );
 
       const afterRetry = await api.createRun(actor, {
         agentId,
@@ -18397,6 +18414,129 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       await api.requestCancelRun(actor, afterRetry.runId, [200]);
     },
   );
+
+  it("does not enrich a settled reasonless failure", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "preserve a reasonless first failure",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "first failure without a reason",
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "duplicate classified failure",
+        failureReason: "provider_server_error",
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "failed",
+      error: "first failure without a reason",
+    });
+    await expect(
+      readRunFailureReasonFixture(context, run.runId),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects unknown failure reasons before settling the run", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "reject an unknown failure reason",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const response = await webhooks.requestAgentCompleteUnchecked(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        failureReason: "future_reason",
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [400],
+    );
+
+    expectApiError(response.body);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "running",
+    });
+    await expect(
+      readRunFailureReasonFixture(context, run.runId),
+    ).resolves.toBeNull();
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("ignores failure reasons outside a reported failure transition", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const syntheticFailure = await api.createRun(actor, {
+      agentId,
+      prompt: "complete successfully without a checkpoint",
+      modelProvider: "anthropic-api-key",
+    });
+    const syntheticClaim = await api.claimRunnerJob(syntheticFailure.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: syntheticFailure.runId,
+        exitCode: 0,
+        failureReason: "provider_overloaded",
+      },
+      { authorization: `Bearer ${syntheticClaim.sandboxToken}` },
+      [200],
+    );
+    await expect(
+      api.readRun(actor, syntheticFailure.runId),
+    ).resolves.toMatchObject({ status: "failed" });
+    await expect(
+      readRunFailureReasonFixture(context, syntheticFailure.runId),
+    ).resolves.toBeNull();
+
+    const cancelled = await api.createRun(actor, {
+      agentId,
+      prompt: "ignore a late classified failure",
+      modelProvider: "anthropic-api-key",
+    });
+    const cancelledClaim = await api.claimRunnerJob(cancelled.runId);
+    await api.requestCancelRun(actor, cancelled.runId, [200]);
+    await webhooks.requestAgentComplete(
+      {
+        runId: cancelled.runId,
+        exitCode: 1,
+        failureReason: "usage_limit",
+      },
+      { authorization: `Bearer ${cancelledClaim.sandboxToken}` },
+      [200],
+    );
+    await expect(api.readRun(actor, cancelled.runId)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    await expect(
+      readRunFailureReasonFixture(context, cancelled.runId),
+    ).resolves.toBeNull();
+  });
 
   it("preserves generic cancellation recovery in a combined request", async () => {
     const api = createRunsApi(context);
