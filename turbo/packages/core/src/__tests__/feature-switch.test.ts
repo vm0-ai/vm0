@@ -96,6 +96,34 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
+  it("should keep Morning Brief default-off with an independent staff rollout and user override", () => {
+    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+    expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
+    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: staffOrgId,
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: staffOrgId,
+        overrides: { [FeatureSwitchKey.MorningBrief]: false },
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: "org_nonexistent",
+        overrides: { [FeatureSwitchKey.MorningBrief]: true },
+      }),
+    ).toBe(true);
+    expect(getFeatureSwitchMetadata()[FeatureSwitchKey.MorningBrief]).toEqual({
+      maintainer: "lancy@vm0.ai",
+      description:
+        "Enable the first-class Morning Brief experience in Preferences.",
+    });
+  });
+
   it("should return true when orgId matches even if userId does not", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
@@ -139,6 +167,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
@@ -152,6 +181,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -159,6 +189,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
@@ -172,6 +203,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
 
   it("should enable intro video for Bingjie only", () => {
