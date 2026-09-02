@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { apiBackendUrl } from "../api-backend-url";
-import { mockEnv, mockOptionalEnv } from "../env";
+import { mockEnv } from "../env";
 import { getOAuthApiOrigin } from "../oauth-origin";
 
 const CANONICAL_API_BACKEND_URL_KEY = "OKOU_API_BACKEND_URL";
-const LEGACY_API_BACKEND_URL_KEY = "VM0_API_BACKEND_URL";
 
 function configureApiBackendUrl(value: string | undefined): void {
   mockEnv(CANONICAL_API_BACKEND_URL_KEY, value);
@@ -30,30 +29,6 @@ describe("API backend URL", () => {
     expect(() => {
       configureApiBackendUrl(value);
     }).toThrow(/Invalid URL/u);
-  });
-
-  it("ignores a retired legacy-only input", () => {
-    configureApiBackendUrl(undefined);
-    mockOptionalEnv(
-      LEGACY_API_BACKEND_URL_KEY,
-      "https://legacy-only.example.test/path",
-    );
-
-    expect(apiBackendUrl()).toBeUndefined();
-  });
-
-  it("does not let a retired legacy value override or conflict with canonical", () => {
-    const canonical = "https://canonical.example.test/path";
-    configureApiBackendUrl(canonical);
-    mockOptionalEnv(
-      LEGACY_API_BACKEND_URL_KEY,
-      "https://legacy.example.test/path",
-    );
-
-    expect(() => {
-      apiBackendUrl();
-    }).not.toThrow();
-    expect(apiBackendUrl()).toBe(canonical);
   });
 });
 

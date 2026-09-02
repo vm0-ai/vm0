@@ -402,7 +402,6 @@ ruby -e '
   release = release_config.fetch("jobs")
   turbo = turbo_config.fetch("jobs")
   canonical_api_backend_source = "$" + "{{ vars.OKOU_API_BACKEND_URL }}"
-  legacy_api_backend_source = "$" + "{{ vars.VM0_API_BACKEND_URL }}"
   release_api_step = release.fetch("promote-api-production").fetch("steps").find do |step|
     step["name"] == "Resolve API production environment"
   end
@@ -424,9 +423,6 @@ ruby -e '
   unless selected_api_backend_sources == Array.new(3, canonical_api_backend_source)
     raise "production API backend sources must use only the canonical GitHub variable"
   end
-  if selected_api_backend_sources.include?(legacy_api_backend_source)
-    raise "selected production API backend sources must not use the legacy GitHub variable"
-  end
 
   neutral_api_url = "$" + "{API_URL}"
   {
@@ -434,7 +430,7 @@ ruby -e '
     "production Runner rollback" => rollback_runner_step,
   }.each do |boundary, step|
     env = step.fetch("env")
-    if env.key?("OKOU_API_BACKEND_URL") || env.key?("VM0_API_BACKEND_URL")
+    if env.key?("OKOU_API_BACKEND_URL")
       raise "#{boundary} must retain the neutral API_URL shell boundary"
     end
     unless step.fetch("run").include?("-e \"api_url=#{neutral_api_url}\"")
