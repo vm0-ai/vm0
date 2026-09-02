@@ -55,6 +55,7 @@ import { DesktopRecorderWindows } from "./desktop-recorder-windows";
 import { STOP_SCREEN_RECORDING_ACCELERATOR } from "./desktop-recorder-types";
 import type {
   DesktopRecorderArea,
+  DesktopRecorderError,
   DesktopRecorderAudioChoice,
   DesktopRecorderPrepareRequest,
 } from "./desktop-recorder-types";
@@ -335,10 +336,21 @@ function refreshDesktopTray(): void {
  * time, and it exists because the recording controls live in the menu bar
  * rather than in an overlay that the capture would record.
  */
+let lastLoggedRecorderError: DesktopRecorderError | null = null;
+
 function notifyScreenRecorderChanged(): void {
   refreshDesktopTray();
 
-  const status = screenRecorder.getState().status;
+  const state = screenRecorder.getState();
+  // The tray truncates the message to a menu line; the terminal gets it whole.
+  if (state.error && state.error !== lastLoggedRecorderError) {
+    console.error(
+      `Desktop screen recording ${state.error.code}: ${state.error.message}`,
+    );
+  }
+  lastLoggedRecorderError = state.error;
+
+  const status = state.status;
   // Paused still holds the capture open, so the poll, the stop shortcut and the
   // on-screen controls all stay alive for it.
   const isCapturing = status === "recording" || status === "paused";

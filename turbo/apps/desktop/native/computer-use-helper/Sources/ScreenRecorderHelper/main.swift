@@ -431,6 +431,10 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     /// writer input, so a sample that would not advance its track is refused
     /// before the writer refuses it and fails.
     private var lastWrittenSeconds: [ObjectIdentifier: Double] = [:]
+    /// The format description each track was started with, keyed by writer
+    /// input. A sample whose format differs from it is the leading way a
+    /// window capture can turn into a sample the writer refuses.
+    private var firstFormat: [ObjectIdentifier: CMFormatDescription] = [:]
     private var clickTimeline: ClickTimeline?
     private var pauseTimeline = PauseTimeline()
     private var startedAtUnixMs = 0
@@ -1014,7 +1018,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         // dropped every later frame in silence while the clock kept running,
         // and `stop` then delivered a recording holding its first fragment.
         if assetWriter.status == .failed {
-            noteWriterFailure(assetWriter)
+            noteWriterFailure(assetWriter, sample: sampleBuffer, type: type, at: nil)
             return
         }
         guard let input, input.isReadyForMoreMediaData, let start else {
@@ -1053,9 +1057,65 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             lock.lock()
             latestSampleAt = timestamp
             lastWrittenSeconds[ObjectIdentifier(input)] = mediaSeconds
+            if firstFormat[ObjectIdentifier(input)] == nil,
+                let format = CMSampleBufferGetFormatDescription(sampleBuffer)
+            {
+                firstFormat[ObjectIdentifier(input)] = format
+            }
             lock.unlock()
         } else if assetWriter.status == .failed {
-            noteWriterFailure(assetWriter)
+            noteWriterFailure(assetWriter, sample: sampleBuffer, type: type, at: mediaSeconds)
+        }
+    }
+
+    /// Describes a sample the way the failure message needs it: which track,
+    /// what format, and whether that format is the one the track began with.
+    private func describeSample(
+        _ sampleBuffer: CMSampleBuffer,
+        type: SCStreamOutputType,
+        at mediaSeconds: Double?
+    ) -> String {
+        var parts: [String] = [type == .screen ? "screen" : "audio"]
+        if let format = CMSampleBufferGetFormatDescription(sampleBuffer) {
+            parts.append(describeFormat(format))
+            lock.lock()
+            let first = writerInputLocked(for: type).flatMap { firstFormat[ObjectIdentifier($0)] }
+            lock.unlock()
+            if let first, !CMFormatDescriptionEqual(first, format) {
+                parts.append("format changed from \(describeFormat(first))")
+            }
+        } else {
+            parts.append("no format description")
+        }
+        let duration = CMSampleBufferGetDuration(sampleBuffer)
+        parts.append(
+            duration.isValid && duration.seconds > 0
+                ? String(format: "duration %.1fms", duration.seconds * 1000)
+                : "no duration"
+        )
+        if let mediaSeconds {
+            parts.append(String(format: "at %.2fs", mediaSeconds))
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private func describeFormat(_ format: CMFormatDescription) -> String {
+        let subtype = CMFormatDescriptionGetMediaSubType(format)
+        let code = String(
+            [24, 16, 8, 0].map { Character(UnicodeScalar(UInt8((subtype >> $0) & 0xff))) }
+        )
+        switch CMFormatDescriptionGetMediaType(format) {
+        case kCMMediaType_Video:
+            let size = CMVideoFormatDescriptionGetDimensions(format)
+            return "\(size.width)×\(size.height) \(code)"
+        case kCMMediaType_Audio:
+            guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee
+            else {
+                return code
+            }
+            return "\(Int(asbd.mSampleRate)) Hz \(asbd.mChannelsPerFrame) ch \(code)"
+        default:
+            return code
         }
     }
 
@@ -1065,11 +1125,17 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     /// still there, it is the output that broke. What was written before the
     /// failure is kept for `stop` to finalize, the same as any other external
     /// end.
-    private func noteWriterFailure(_ assetWriter: AVAssetWriter) {
+    private func noteWriterFailure(
+        _ assetWriter: AVAssetWriter,
+        sample: CMSampleBuffer,
+        type: SCStreamOutputType,
+        at mediaSeconds: Double?
+    ) {
         noteExternalStop(
             reason: .failed,
             code: "capture_failed",
             message: writerFailureMessage(assetWriter)
+                + " while writing \(describeSample(sample, type: type, at: mediaSeconds))"
         )
     }
 }
