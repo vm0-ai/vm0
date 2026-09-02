@@ -229,6 +229,42 @@ describe("okou video camera command", () => {
     );
   });
 
+  it("keeps a pass-through stage between the moving crop and the scaler", async () => {
+    // Wired straight into `scale`, a crop whose size changes mid-stream never
+    // gets rescaled and the encoder segfaults on the first zoomed frame; the
+    // `null` stage in between is what makes `scale` notice the change.
+    const videoPath = join(directory, "recording.mp4");
+    const eventsPath = join(directory, "recording.clicks.json");
+    const outputPath = join(directory, "draft.mp4");
+    writeFileSync(videoPath, Buffer.from("source-video"));
+    writeFileSync(
+      eventsPath,
+      JSON.stringify({
+        version: 1,
+        recording: {
+          durationMs: 10_000,
+          video: { width: 1920, height: 1080, frameRate: 30 },
+        },
+        clicks: [{ tMs: 2_000, normalized: { x: 0.12, y: 0.22 } }],
+        pointerEvents: [
+          { tMs: 2_000, kind: "click", normalized: { x: 0.12, y: 0.22 } },
+        ],
+      }),
+    );
+
+    await cameraCommand.parseAsync(
+      ["--file", videoPath, "--events", eventsPath, "--output", outputPath],
+      { from: "user" },
+    );
+
+    const ffmpegCall = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return call[0] === "ffmpeg";
+    });
+    const filterIndex = ffmpegCall?.[1]?.indexOf("-vf") ?? -1;
+    const filter = ffmpegCall?.[1]?.[filterIndex + 1];
+    expect(filter).toMatch(/crop@camera=[^,]*,null,scale=1920:1080:/u);
+  });
+
   it("uses the existing VM0 demo capture event format", async () => {
     const videoPath = join(directory, "browser-recording.webm");
     const eventsPath = join(directory, "browser-recording.events.json");
