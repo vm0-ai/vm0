@@ -106,6 +106,9 @@ if "VITE_GIT_COMMIT_SHA" in build_step.get("env", {}):
 require_fragments(
     preview_step,
     [
+        "/workers/scripts/okou-app-preview/deployments",
+        ".result.deployments | length == 0",
+        "wrangler deploy",
         "wrangler versions upload",
         "--env preview",
         '--preview-alias "$WORKER_PREVIEW_ALIAS"',

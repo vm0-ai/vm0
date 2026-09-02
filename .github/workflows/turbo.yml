@@ -1522,6 +1522,29 @@ jobs:
             <<< "$subdomain_response" >/dev/null
 
           cd turbo
+
+          # Cloudflare requires a newly-created Worker service to have one
+          # active deployment before version preview URLs can route traffic.
+          # Bootstrap the shared preview service once; subsequent PRs only
+          # upload isolated, alias-pinned versions below.
+          deployments_response="$(curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/okou-app-preview/deployments" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Cloudflare-Workers-Script-Api-Date: 2025-08-01")"
+          jq --exit-status \
+            '.success == true and (.result.deployments | type == "array")' \
+            <<< "$deployments_response" >/dev/null
+          if jq --exit-status \
+            '.result.deployments | length == 0' \
+            <<< "$deployments_response" >/dev/null; then
+            pnpm --filter @okouai/app-worker exec wrangler deploy \
+              --env preview \
+              --message "bootstrap app preview Worker (${ARTIFACT_SHA})"
+          fi
+
           pnpm --filter @okouai/app-worker exec wrangler versions upload \
             --env preview \
             --preview-alias "$WORKER_PREVIEW_ALIAS" \
