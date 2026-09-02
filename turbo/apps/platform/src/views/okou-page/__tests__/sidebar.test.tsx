@@ -2593,6 +2593,32 @@ describe("zero sidebar", () => {
     expect(dialog).toBeInTheDocument();
   });
 
+  it("opens three-column conversation search with mod+k on a mobile viewport", async () => {
+    mockMobileLayout();
+    prepareAgents();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await waitFor(() => {
+      expect(mobileSidebar()).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, {
+      key: "k",
+      code: "KeyK",
+      ctrlKey: true,
+    });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Search chats, messages, workflows, and artifacts...",
+    });
+    expect(dialog).toBeInTheDocument();
+  });
+
   it("moves to the next pinned agent chat from the composer", async () => {
     prepareAgents();
     context.mocks.data.userPreferences({

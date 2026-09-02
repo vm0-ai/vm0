@@ -802,7 +802,6 @@ function ThreeColumnNav() {
     <>
       <LabeledNavRail />
       {!chatListHidden && <ChatListColumn />}
-      <ThreeColumnSearchDialogContainer />
     </>
   );
 }
@@ -811,6 +810,7 @@ export function Sidebar({ isDesktop }: { isDesktop: boolean }) {
   return (
     <>
       {isDesktop ? <ThreeColumnNav /> : <ExpandedSidebar />}
+      <ThreeColumnSearchDialogContainer />
       <PinnedAgentDialogs />
       <ChatThreadDialogs />
     </>
