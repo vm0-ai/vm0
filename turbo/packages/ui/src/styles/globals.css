@@ -269,9 +269,9 @@
     /* Background/Gray Color Scale (Sand — warm neutral, dual-anchored on
        Linen #FAF5F3 and Ink #242121). Only `--gray-0` is generated, above the
        published 50. */
-    --gray-0: 17.1 41.2% 98%; /* #FCF9F8 */
-    --gray-50: 17.1 41.2% 96.7%; /* #FAF5F3 - Linen */
-    --gray-100: 20 16.7% 92.9%; /* #F0ECEA */
+    --gray-0: 17.1 41.2% 98.3%; /* #FCFAF9 */
+    --gray-50: 17.1 41.2% 97.7%; /* #FCF8F7 - default neutral fill */
+    --gray-100: 17.1 41.2% 96.7%; /* #FAF5F3 - Linen */
     --gray-200: 12 7.5% 86.9%; /* #E0DCDB */
     --gray-300: 20 2.9% 79.4%; /* #CCCAC9 */
     --gray-400: 0 2% 71.2%; /* #B7B4B4 */
@@ -300,9 +300,9 @@
     /* The page sits one step above the ramp, because `gray-50` is the app's
        neutral *fill* (chips, icon containers, inset panels, mobile bars). If
        the page took gray-50 as well, every one of those fills would vanish
-       against it. Linen therefore lands on the fill and the chrome, and the
-       page is the step just above it. */
-    --background: 17.1 41.2% 98.6%; /* #FDFBFA - above gray-0 */
+       against it. Linen sits one step below at gray-100, carrying the heavier
+       chrome -- sidebar, muted, accent, secondary. */
+    --background: 17.1 41.2% 98.8%; /* #FDFBFB - above gray-0 */
     --foreground: var(--gray-950); /* gray-950 */
 
     --card: var(--white); /* white */
@@ -316,7 +316,7 @@
        8.09:1 and is the same in both themes, because the fill is too. */
     --primary-foreground: 0 4.3% 13.5%; /* #242121 - Ink on brand */
 
-    --secondary: 20 16.7% 92.9%; /* gray-100 - direct value for opacity modifier support */
+    --secondary: 17.1 41.2% 96.7%; /* gray-100 - direct value for opacity modifier support */
     --secondary-foreground: var(--gray-950); /* gray-950 */
 
     --muted: var(--gray-100); /* gray-100 */
@@ -342,7 +342,7 @@
     /* Text on filled/colored backgrounds (buttons, tooltips, badges) */
     --on-filled: 0 0% 100%; /* Pure white for text on colored backgrounds */
 
-    --sidebar: var(--gray-50); /* gray-50 - Linen */
+    --sidebar: var(--gray-100); /* gray-100 - Linen */
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
