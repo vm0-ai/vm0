@@ -210,6 +210,7 @@ describe("Desktop IPC boundary", () => {
       selectWindow: vi.fn(async () => null),
       completeWindowSelection: vi.fn(),
       cancel: vi.fn(),
+      openScreenRecordingSettings: vi.fn(),
     };
 
     installDesktopRecorderIpc(api, { recorderUrl });
@@ -279,6 +280,7 @@ describe("Desktop IPC boundary", () => {
       selectWindow: vi.fn(async () => null),
       completeWindowSelection: vi.fn(),
       cancel: vi.fn(),
+      openScreenRecordingSettings: vi.fn(),
     };
 
     installDesktopRecorderIpc(api, { recorderUrl });

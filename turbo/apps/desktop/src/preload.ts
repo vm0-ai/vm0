@@ -168,6 +168,11 @@ const desktopRecorderApi: DesktopRecorderApi = {
   getCapabilities() {
     return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.getCapabilities);
   },
+  openScreenRecordingSettings() {
+    return ipcRenderer.invoke(
+      DESKTOP_RECORDER_CHANNELS.openScreenRecordingSettings,
+    );
+  },
   startCapture(request) {
     return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.startCapture, request);
   },

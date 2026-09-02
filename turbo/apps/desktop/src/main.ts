@@ -855,6 +855,9 @@ function installDesktopRecorder(): void {
       cancel: () => {
         getRecorderWindows().hideBar();
       },
+      openScreenRecordingSettings: () => {
+        openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
+      },
     },
     { recorderUrl: localRecorderUrl },
   );

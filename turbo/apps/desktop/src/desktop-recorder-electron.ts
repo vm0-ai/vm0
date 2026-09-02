@@ -45,6 +45,8 @@ interface DesktopRecorderNativeApi {
   readonly discard: () => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly cancel: () => void;
+  /** Takes the user to the pane where the recording grant is given. */
+  readonly openScreenRecordingSettings: () => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -194,4 +196,11 @@ export function installDesktopRecorderIpc(
     assertRecorderPage(event);
     api.cancel();
   });
+  ipcMain.handle(
+    DESKTOP_RECORDER_CHANNELS.openScreenRecordingSettings,
+    (event) => {
+      assertRecorderPage(event);
+      api.openScreenRecordingSettings();
+    },
+  );
 }

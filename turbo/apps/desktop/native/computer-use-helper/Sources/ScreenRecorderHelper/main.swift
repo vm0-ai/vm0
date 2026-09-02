@@ -87,6 +87,16 @@ private func resolveDisplay(
 // MARK: - Source discovery
 
 private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableContent {
+    // Asking ScreenCaptureKit without the grant makes the system put its own
+    // prompt on screen, every single time. Once the answer is already no, say
+    // so instead: the app can then offer Settings rather than the user being
+    // asked the same question again on the next click.
+    guard CGPreflightScreenCaptureAccess() else {
+        throw HelperFailure(
+            code: "permission_denied",
+            message: "Okou needs Screen Recording permission in System Settings"
+        )
+    }
     let semaphore = DispatchSemaphore(value: 0)
     let box = ResultBox<SCShareableContent>()
     SCShareableContent.getExcludingDesktopWindows(
@@ -175,6 +185,14 @@ private func microphoneSupported() -> Bool {
 /// to do to someone.
 private func handleCapabilities() -> [String: Any] {
     return ["supportsMicrophone": microphoneSupported()]
+}
+
+/// Asks the system for the screen recording grant, once, on purpose.
+///
+/// This is the only place that may raise the system prompt, and it runs when
+/// the user asked for it rather than as a side effect of listing windows.
+private func handleRequestPermission() -> [String: Any] {
+    return ["granted": CGRequestScreenCaptureAccess()]
 }
 
 private func handleSources() throws -> [String: Any] {
@@ -1084,6 +1102,8 @@ private func handle(_ request: [String: Any]) throws -> [String: Any] {
     switch kind {
     case "recorder.capabilities":
         return handleCapabilities()
+    case "recorder.requestPermission":
+        return handleRequestPermission()
     case "recorder.sources":
         return try handleSources()
     case "recorder.windowPreviews":

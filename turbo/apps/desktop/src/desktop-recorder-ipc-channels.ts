@@ -1,6 +1,8 @@
 export const DESKTOP_RECORDER_CHANNELS = {
   getState: "desktop-recorder:get-state",
   getCapabilities: "desktop-recorder:get-capabilities",
+  openScreenRecordingSettings:
+    "desktop-recorder:open-screen-recording-settings",
   startCapture: "desktop-recorder:start-capture",
   beginAreaSelection: "desktop-recorder:begin-area-selection",
   completeAreaSelection: "desktop-recorder:complete-area-selection",

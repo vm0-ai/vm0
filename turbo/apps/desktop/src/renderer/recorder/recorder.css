@@ -475,3 +475,46 @@ select {
 .window-picker__error {
   color: #ffb4a2;
 }
+
+.recorder-bar__error-action {
+  margin-left: 10px;
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 16%);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.recorder-bar__error-action:hover {
+  background: rgb(255 255 255 / 26%);
+}
+
+.window-picker__error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.window-picker__error-text {
+  margin: 0;
+  color: #ffb4a2;
+  font-size: 13px;
+}
+
+.window-picker__settings {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #e8590c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.window-picker__settings:hover {
+  background: #f76707;
+}

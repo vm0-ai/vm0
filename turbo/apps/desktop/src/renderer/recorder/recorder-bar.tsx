@@ -207,7 +207,20 @@ export function RecorderBar(): React.ReactElement {
         {busy ? "Starting…" : "Start recording"}
       </button>
 
-      {error ? <p className="recorder-bar__error">{error}</p> : null}
+      {error ? (
+        <p className="recorder-bar__error">
+          {error}
+          <button
+            type="button"
+            className="recorder-bar__error-action"
+            onClick={() => {
+              void recorder?.openScreenRecordingSettings();
+            }}
+          >
+            Open settings
+          </button>
+        </p>
+      ) : null}
     </div>
   );
 }

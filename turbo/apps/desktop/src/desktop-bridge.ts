@@ -126,6 +126,7 @@ export interface DesktopRecorderApi {
   readonly discard: () => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly cancel: () => Promise<void>;
+  readonly openScreenRecordingSettings: () => Promise<void>;
 }
 
 export type DesktopIdentityInfo = Pick<

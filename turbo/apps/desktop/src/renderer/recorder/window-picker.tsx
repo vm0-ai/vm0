@@ -61,7 +61,22 @@ export function WindowPicker(): React.ReactElement {
         </button>
       </header>
 
-      {error ? <p className="window-picker__error">{error}</p> : null}
+      {error ? (
+        <div className="window-picker__error">
+          <p className="window-picker__error-text">{error}</p>
+          {/* The system will not ask again once it has been told no, so the
+              only way forward is the Settings pane itself. */}
+          <button
+            type="button"
+            className="window-picker__settings"
+            onClick={() => {
+              void recorder?.openScreenRecordingSettings();
+            }}
+          >
+            Open Screen Recording settings
+          </button>
+        </div>
+      ) : null}
 
       {options === null && !error ? (
         <p className="window-picker__empty">Looking for open windows…</p>
