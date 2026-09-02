@@ -5535,6 +5535,37 @@ function enabledAutomationWithAccountProjection(
   };
 }
 
+async function finalizeAndPublishEnabledWorkflowAutomation(
+  db: Db,
+  args: {
+    readonly previousAutomation: AutomationRow;
+    readonly enabledAutomation: AutomationRow;
+    readonly memberUserId: string;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const row = await finalizeEnabledOfficialAutomation(
+    db,
+    args.previousAutomation,
+    args.enabledAutomation,
+    signal,
+  );
+  const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
+    orgId: row.orgId,
+    userId: row.ownerUserId,
+    workflowId: row.workflowId,
+  });
+  signal.throwIfAborted();
+  await publishThreadBoundWorkflowAutomationChanged(
+    args.memberUserId,
+    chatThreadId,
+  );
+  signal.throwIfAborted();
+  const summary = await rowToSummary(db, row, { chatThreadId });
+  signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 async function persistAndReconcileEnabledWorkflowAutomation(
   db: Db,
   args: {
@@ -5649,26 +5680,15 @@ async function persistAndReconcileEnabledWorkflowAutomation(
   if (watchFailure) {
     return watchFailure;
   }
-  const row = await finalizeEnabledOfficialAutomation(
+  return await finalizeAndPublishEnabledWorkflowAutomation(
     db,
-    args.automation,
-    enabled.row,
+    {
+      previousAutomation: args.automation,
+      enabledAutomation: enabled.row,
+      memberUserId: args.memberUserId,
+    },
     signal,
   );
-  const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
-    orgId: row.orgId,
-    userId: row.ownerUserId,
-    workflowId: row.workflowId,
-  });
-  signal.throwIfAborted();
-  await publishThreadBoundWorkflowAutomationChanged(
-    args.memberUserId,
-    chatThreadId,
-  );
-  signal.throwIfAborted();
-  const summary = await rowToSummary(db, row, { chatThreadId });
-  signal.throwIfAborted();
-  return { kind: "ok", summary };
 }
 
 function validateEventAutomationEnableReadiness(
