@@ -1,5 +1,5 @@
 /**
- * Tests for okou presentation-template screenshot.
+ * Tests for okou presentation screenshot.
  *
  * Mocks only external binaries (agent-browser, soffice, pdftocairo, none of
  * which exist in CI). The fakes write real PNG bytes, so the command's real
@@ -12,7 +12,7 @@ import { join } from "path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { presentationTemplateCommand } from "../index";
+import { presentationCommand } from "../index";
 
 const state = {
   /** Boxes the fake browser reports for the slide selector. */
@@ -107,12 +107,12 @@ let workDir = "";
 let outDir = "";
 
 async function run(...args: string[]): Promise<void> {
-  await presentationTemplateCommand.parseAsync(["screenshot", ...args], {
+  await presentationCommand.parseAsync(["screenshot", ...args], {
     from: "user",
   });
 }
 
-describe("okou presentation-template screenshot", () => {
+describe("okou presentation screenshot", () => {
   beforeEach(() => {
     workDir = mkdtempSync(join(tmpdir(), "okou-shot-"));
     outDir = join(workDir, "pages");

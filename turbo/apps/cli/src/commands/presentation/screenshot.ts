@@ -1,5 +1,5 @@
 /**
- * okou presentation-template screenshot — render a presentation to page PNGs.
+ * okou presentation screenshot — render a presentation to page PNGs.
  *
  * A PPT, PPTX, or PDF deck is rasterised through LibreOffice and Poppler.
  * HTML — one page, a directory of layouts, or an assembled deck — is captured
