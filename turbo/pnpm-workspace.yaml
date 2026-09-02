@@ -37,6 +37,7 @@ overrides:
   "@protobufjs/utf8@1.1.0": 1.1.1
   "@sentry/webpack-plugin": 5.3.0
   "@tiptap/core": 3.21.0
+  "@tiptap/core@>=2.0.0-alpha.0 <3.30.4": ">=3.30.4"
   "@tiptap/extension-blockquote": 3.21.0
   "@tiptap/extension-bold": 3.21.0
   "@tiptap/extension-bullet-list": 3.21.0
@@ -93,6 +94,8 @@ overrides:
   postcss: ">=8.5.23"
   "protobufjs@>=7.5.0 <=7.6.4": 7.6.5
   "protobufjs@>=8.0.0 <=8.6.5": 8.6.6
+  "qs@>=2.2.5 <6.16.0": ">=6.16.0"
+  "qs@>=6.14.2 <=6.15.3": ">=6.16.0"
   smol-toml: ">=1.6.1"
   svix: 1.92.2
   tar: ">=7.5.21"
