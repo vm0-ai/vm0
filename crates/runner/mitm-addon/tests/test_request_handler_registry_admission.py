@@ -452,6 +452,58 @@ async def test_invalid_registered_sandbox_firewalls_shape_blocks_before_auth_inj
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
 
 
+async def test_invalid_inline_apis_blocks_before_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    sandbox_info = _single_firewall_sandbox(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    firewalls = sandbox_info["firewalls"]
+    assert isinstance(firewalls, list)
+    firewall_entry = firewalls[0]
+    assert isinstance(firewall_entry, dict)
+    firewall = firewall_entry["firewall"]
+    assert isinstance(firewall, dict)
+    firewall["apis"] = None
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", sandbox_info=sandbox_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "invalid_registry_sandbox",
+        "message": "inline firewall apis must be a list",
+        "reason": "invalid_firewalls",
+    }
+    auth_fetch.assert_not_called()
+    assert flow.request.headers.get("Authorization") is None
+    assert metadata_keys.SANDBOX_RUN_ID not in flow.metadata
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_AUTH_CACHE_KEY not in flow.metadata
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_sandbox"
+
+
 async def test_registered_sandbox_null_firewalls_passes_through_without_auth_injection(
     tmp_path,
     real_flow,

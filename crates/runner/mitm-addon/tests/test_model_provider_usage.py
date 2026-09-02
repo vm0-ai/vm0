@@ -6,7 +6,6 @@ import pytest
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
-import http_network_log
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
@@ -14,6 +13,7 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
+from tests.model_provider_flow_helpers import make_model_provider_usage_reporting_flow
 from tests.usage_helpers import compact_observation_quantities
 
 
@@ -24,21 +24,21 @@ class TestReportModelProviderUsage:
     def _sync_executor(self, sync_usage_executor):
         """Run delivery inline for reporting behavior tests."""
 
-    def test_reports_usage_for_model_provider(self, real_flow, usage_webhook_api):
+    def test_reports_usage_for_model_provider(self, tmp_path, real_flow, usage_webhook_api):
         """Model-provider usage reaches the webhook boundary with correct payload."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-opus-4-6"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "model": "claude-sonnet-4-6",
-            "message_id": "msg-usage-1",
-            "tokens.input": 100,
-            "tokens.output": 50,
-            "tokens.cache_read": 25,
-            "tokens.cache_creation": 10,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            model_usage_provider="claude-opus-4-6",
+            usage={
+                "model": "claude-sonnet-4-6",
+                "message_id": "msg-usage-1",
+                "tokens.input": 100,
+                "tokens.output": 50,
+                "tokens.cache_read": 25,
+                "tokens.cache_creation": 10,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -96,21 +96,25 @@ class TestReportModelProviderUsage:
     )
     def test_classifies_long_context_usage_at_model_boundary(
         self,
+        tmp_path,
         real_flow,
         usage_webhook_api,
         provider,
         input_tokens,
         expected_suffix,
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = provider
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "tokens.input": input_tokens,
-            "tokens.output": 7,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            model_usage_provider=provider,
+            usage={
+                "tokens.input": input_tokens,
+                "tokens.output": 7,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -124,21 +128,25 @@ class TestReportModelProviderUsage:
 
     def test_cache_partitions_select_long_context_without_changing_observation(
         self,
+        tmp_path,
         real_flow,
         usage_webhook_api,
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "service_tier": "priority",
-            "tokens.input": 200_000,
-            "tokens.output": 9,
-            "tokens.cache_read": 70_000,
-            "tokens.cache_creation": 2_001,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            model_usage_provider="gpt-5.6-sol",
+            usage={
+                "service_tier": "priority",
+                "tokens.input": 200_000,
+                "tokens.output": 9,
+                "tokens.cache_read": 70_000,
+                "tokens.cache_creation": 2_001,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -164,14 +172,17 @@ class TestReportModelProviderUsage:
         real_flow,
         usage_webhook_api,
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.output": 12}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            model_usage_provider="gpt-5.5",
+            proxy_log_path=proxy_log,
+            usage={"tokens.output": 12},
+        )
 
         with usage_webhook_api() as webhook:
             accepted = usage.report_model_provider_usage(flow, "run-abc-123")
@@ -196,19 +207,21 @@ class TestReportModelProviderUsage:
 
     def test_aggregate_buffer_keeps_base_and_long_context_items_separate(
         self,
+        tmp_path,
         real_flow,
         usage_webhook_api,
     ):
         flows = []
         for input_tokens in (10, 272_001):
-            flow = real_flow(with_response=False, host="api.openai.com")
-            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-            flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-            flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-                "tokens.input": input_tokens,
-            }
+            flow = make_model_provider_usage_reporting_flow(
+                real_flow,
+                tmp_path,
+                host="api.openai.com",
+                original_url="https://api.openai.com/v1/responses",
+                firewall_name="model-provider:openai-api-key",
+                model_usage_provider="gpt-5.5",
+                usage={"tokens.input": input_tokens},
+            )
             flows.append(flow)
 
         with usage_webhook_api() as webhook:
@@ -221,16 +234,19 @@ class TestReportModelProviderUsage:
             "tokens.input.long_context": 272_001,
         }
 
-    def test_falls_back_to_response_model_then_unknown(self, real_flow, usage_webhook_api):
+    def test_falls_back_to_response_model_then_unknown(
+        self, tmp_path, real_flow, usage_webhook_api
+    ):
         """Provider falls back only when selected vm0 model metadata is absent."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "message_id": "msg-usage-1",
-            "tokens.input": 100,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            model_usage_provider=None,
+            usage={
+                "message_id": "msg-usage-1",
+                "tokens.input": 100,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -239,15 +255,16 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["provider"] == "unknown"
 
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "message_id": "msg-usage-2",
-            "model": "claude-sonnet-4-6",
-            "tokens.input": 100,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            model_usage_provider=None,
+            usage={
+                "message_id": "msg-usage-2",
+                "model": "claude-sonnet-4-6",
+                "tokens.input": 100,
+            },
+        )
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
@@ -255,18 +272,18 @@ class TestReportModelProviderUsage:
         body = webhook.requests[-1].json_body()
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
 
-    def test_skips_when_no_positive_token_quantities(self, real_flow, usage_webhook_api):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "message_id": "msg-usage-1",
-            "tokens.input": 0,
-            "tokens.output": -1,
-            "tokens.cache_read": "10",
-            "tokens.cache_creation": True,
-        }
+    def test_skips_when_no_positive_token_quantities(self, tmp_path, real_flow, usage_webhook_api):
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
+                "message_id": "msg-usage-1",
+                "tokens.input": 0,
+                "tokens.output": -1,
+                "tokens.cache_read": "10",
+                "tokens.cache_creation": True,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -274,18 +291,19 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
-    def test_skips_when_firewall_not_billable(self, real_flow, usage_webhook_api):
+    def test_skips_when_firewall_not_billable(self, tmp_path, real_flow, usage_webhook_api):
         """Should NOT report usage when firewall_billable is False.
 
         Simulates a user supplying their own Anthropic key — the web layer
         does not list the firewall in billableFirewalls, so no platform
         credits should be charged.
         """
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 100}
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_billable=False,
+            usage={"tokens.input": 100},
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -293,18 +311,20 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
-    def test_reports_non_billable_observable_model_provider(self, real_flow, usage_webhook_api):
+    def test_reports_non_billable_observable_model_provider(
+        self, tmp_path, real_flow, usage_webhook_api
+    ):
         """BYOK model providers report observations without billing events."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "model": "ignored-runtime-model",
-            "message_id": "msg-byok-usage-1",
-            "tokens.input": 100,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_billable=False,
+            usage={
+                "model": "ignored-runtime-model",
+                "message_id": "msg-byok-usage-1",
+                "tokens.input": 100,
+            },
+        )
 
         runner_token = str(uuid.uuid4())
         with usage_webhook_api() as webhook:
@@ -335,17 +355,17 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["outputTokens"] == 0
 
     def test_billable_model_provider_reports_billing_and_observation(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "message_id": "msg-built-in-usage-1",
-            "tokens.input": 100,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_name="model-provider:vm0",
+            usage={
+                "message_id": "msg-built-in-usage-1",
+                "tokens.input": 100,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -367,17 +387,19 @@ class TestReportModelProviderUsage:
         )
 
     def test_billable_model_provider_without_model_usage_provider_skips_observation(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "model": "claude-sonnet-4-6",
-            "message_id": "msg-built-in-usage-1",
-            "tokens.input": 100,
-        }
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_name="model-provider:vm0",
+            model_usage_provider=None,
+            usage={
+                "model": "claude-sonnet-4-6",
+                "message_id": "msg-built-in-usage-1",
+                "tokens.input": 100,
+            },
+        )
 
         with usage_webhook_api() as webhook:
             observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
@@ -389,14 +411,15 @@ class TestReportModelProviderUsage:
     def test_logs_warning_when_observation_missing_runner_token(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_billable=False,
+            sandbox_token="",
+            proxy_log_path=proxy_log,
+            usage={"tokens.input": 50},
+        )
 
         with mitm_ctx(api_url="https://api.vm0.ai"):
             usage.configure_model_usage_observation_reporting(
@@ -417,11 +440,16 @@ class TestReportModelProviderUsage:
         assert entry["missing_runner_token"] is True
         assert entry["missing_api_url"] is False
 
-    def test_skips_non_model_provider(self, real_flow, usage_webhook_api):
+    def test_skips_non_model_provider(self, tmp_path, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
-        flow = real_flow(with_response=False, host="api.github.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.github.com",
+            original_url="https://api.github.com/",
+            firewall_name="github",
+            usage={"tokens.input": 50},
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -430,12 +458,15 @@ class TestReportModelProviderUsage:
         assert webhook.request_count == 0
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
-    def test_skips_malformed_firewall_name(self, real_flow, usage_webhook_api, firewall_name):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+    def test_skips_malformed_firewall_name(
+        self, tmp_path, real_flow, usage_webhook_api, firewall_name
+    ):
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={"tokens.input": 50},
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
 
         with usage_webhook_api() as webhook:
             accepted = usage.report_model_provider_usage(flow, "run-abc-123")
@@ -444,11 +475,9 @@ class TestReportModelProviderUsage:
         assert accepted is False
         assert webhook.request_count == 0
 
-    def test_skips_when_no_model_provider_usage(self, real_flow, usage_webhook_api):
+    def test_skips_when_no_model_provider_usage(self, tmp_path, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary when model_provider_usage is absent."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow = make_model_provider_usage_reporting_flow(real_flow, tmp_path)
         # No model_provider_usage in metadata
 
         with usage_webhook_api() as webhook:
@@ -457,11 +486,13 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
-    def test_skips_when_no_run_id(self, real_flow, usage_webhook_api):
+    def test_skips_when_no_run_id(self, tmp_path, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary when run_id is empty."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={"tokens.input": 50},
+        )
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "")
@@ -471,13 +502,14 @@ class TestReportModelProviderUsage:
 
     def test_logs_underbilling_when_missing_sandbox_token(self, tmp_path, real_flow, mitm_ctx):
         """Should emit an alertable underbilling signal when sandbox_token is empty."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = ""
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            sandbox_token="",
+            proxy_log_path=proxy_log,
+            usage={"tokens.input": 50},
+        )
 
         with mitm_ctx(api_url="https://api.vm0.ai"):
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -497,13 +529,13 @@ class TestReportModelProviderUsage:
 
     def test_logs_underbilling_when_missing_api_url(self, tmp_path, real_flow, mitm_ctx):
         """Should emit an alertable underbilling signal when api_url is empty."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
-        flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH] = str(proxy_log)
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            proxy_log_path=proxy_log,
+            usage={"tokens.input": 50},
+        )
 
         with mitm_ctx(api_url=""):
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -522,16 +554,18 @@ class TestReportModelProviderUsage:
         assert entry["missing_sandbox_token"] is False
         assert entry["missing_api_url"] is True
 
-    def test_source_dedupe_uses_flow_id_when_message_id_missing(self, real_flow, usage_webhook_api):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+    def test_source_dedupe_uses_flow_id_when_message_id_missing(
+        self, tmp_path, real_flow, usage_webhook_api
+    ):
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
+                "model": "claude-sonnet-4-6",
+                "tokens.input": 10,
+            },
+        )
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "model": "claude-sonnet-4-6",
-            "tokens.input": 10,
-        }
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-fallback")
@@ -541,17 +575,19 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 10
 
-    def test_source_dedupe_uses_flow_id_when_message_id_present(self, real_flow, usage_webhook_api):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+    def test_source_dedupe_uses_flow_id_when_message_id_present(
+        self, tmp_path, real_flow, usage_webhook_api
+    ):
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
+                "model": "claude-sonnet-4-6",
+                "message_id": "msg_real_anthropic_id",
+                "tokens.input": 10,
+            },
+        )
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "model": "claude-sonnet-4-6",
-            "message_id": "msg_real_anthropic_id",
-            "tokens.input": 10,
-        }
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-fallback")
@@ -562,26 +598,29 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["quantity"] == 10
 
     def test_source_dedupe_aggregates_model_provider_usage_sources(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            model_usage_provider="gpt-5.5",
+            usage_sources={
+                "resp_ws_1": {
+                    "model": "gpt-5.5",
+                    "message_id": "resp_ws_1",
+                    "tokens.input": 10,
+                },
+                "resp_ws_2": {
+                    "model": "gpt-5.5",
+                    "message_id": "resp_ws_2",
+                    "tokens.input": 3,
+                },
+            },
+        )
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
-            "resp_ws_1": {
-                "model": "gpt-5.5",
-                "message_id": "resp_ws_1",
-                "tokens.input": 10,
-            },
-            "resp_ws_2": {
-                "model": "gpt-5.5",
-                "message_id": "resp_ws_2",
-                "tokens.input": 3,
-            },
-        }
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-websocket")
@@ -624,25 +663,29 @@ class TestReportModelProviderUsage:
         uuid.UUID(observation_body["events"][0]["idempotencyKey"])
 
     def test_source_dedupe_separates_billing_sources_by_response_model_without_context_model(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            model_usage_provider=None,
+            usage_sources={
+                "resp_ws_1": {
+                    "model": "gpt-5.5",
+                    "message_id": "resp_ws_1",
+                    "tokens.input": 10,
+                },
+                "resp_ws_2": {
+                    "model": "gpt-5.6-luna",
+                    "message_id": "resp_ws_2",
+                    "tokens.input": 3,
+                },
+            },
+        )
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
-            "resp_ws_1": {
-                "model": "gpt-5.5",
-                "message_id": "resp_ws_1",
-                "tokens.input": 10,
-            },
-            "resp_ws_2": {
-                "model": "gpt-5.6-luna",
-                "message_id": "resp_ws_2",
-                "tokens.input": 3,
-            },
-        }
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-websocket")
@@ -660,13 +703,17 @@ class TestReportModelProviderUsage:
         }
 
     def test_source_dedupe_skips_malformed_model_provider_usage_sources(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            model_usage_provider="gpt-5.5",
+        )
         flow.id = "flow-uuid-xyz-123"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {
             "resp_invalid": "invalid",
             "": {"model": "gpt-5.5", "tokens.input": 10},
@@ -683,20 +730,26 @@ class TestReportModelProviderUsage:
         assert webhook.request_count == 0
 
     def test_source_dedupe_separates_flows_when_message_id_missing(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        first = real_flow(with_response=False, host="api.anthropic.com")
-        first.id = "flow-first"
-        second = real_flow(with_response=False, host="api.anthropic.com")
-        second.id = "flow-second"
-        for flow in (first, second):
-            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-            flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+        first = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
                 "model": "claude-sonnet-4-6",
                 "tokens.input": 10,
-            }
+            },
+        )
+        first.id = "flow-first"
+        second = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
+                "model": "claude-sonnet-4-6",
+                "tokens.input": 10,
+            },
+        )
+        second.id = "flow-second"
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(first, "run-fallback")
@@ -707,21 +760,28 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["quantity"] == 20
 
     def test_source_dedupe_separates_flows_when_message_id_matches(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        first = real_flow(with_response=False, host="api.anthropic.com")
-        first.id = "flow-first"
-        second = real_flow(with_response=False, host="api.anthropic.com")
-        second.id = "flow-second"
-        for flow in (first, second):
-            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-            flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+        first = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
                 "model": "claude-sonnet-4-6",
                 "message_id": "msg_real_anthropic_id",
                 "tokens.input": 10,
-            }
+            },
+        )
+        first.id = "flow-first"
+        second = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            usage={
+                "model": "claude-sonnet-4-6",
+                "message_id": "msg_real_anthropic_id",
+                "tokens.input": 10,
+            },
+        )
+        second.id = "flow-second"
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(first, "run-preserved")
@@ -732,22 +792,30 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["quantity"] == 20
 
     def test_observation_source_dedupe_separates_flows_when_message_id_matches(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        first = real_flow(with_response=False, host="api.anthropic.com")
-        first.id = "flow-first"
-        second = real_flow(with_response=False, host="api.anthropic.com")
-        second.id = "flow-second"
-        for flow in (first, second):
-            flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-            flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
-            flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+        first = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_billable=False,
+            usage={
                 "model": "ignored-runtime-model",
                 "message_id": "msg_real_anthropic_id",
                 "tokens.input": 10,
-            }
+            },
+        )
+        first.id = "flow-first"
+        second = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            firewall_billable=False,
+            usage={
+                "model": "ignored-runtime-model",
+                "message_id": "msg_real_anthropic_id",
+                "tokens.input": 10,
+            },
+        )
+        second.id = "flow-second"
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage_observation(first, "run-preserved")
@@ -758,21 +826,25 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["inputTokens"] == 20
 
     def test_incremental_observation_and_terminal_replay_share_source_identities(
-        self, real_flow, usage_webhook_api
+        self, tmp_path, real_flow, usage_webhook_api
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.id = "flow-incremental-terminal"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
         source_usage = {
             "model": "gpt-5.5",
             "tokens.input": 80,
             "tokens.output": 40,
             "tokens.cache_read": 20,
         }
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {"resp-replayed": source_usage}
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            host="api.openai.com",
+            original_url="https://api.openai.com/v1/responses",
+            firewall_name="model-provider:openai-api-key",
+            firewall_billable=False,
+            model_usage_provider="gpt-5.5",
+            usage_sources={"resp-replayed": source_usage},
+        )
+        flow.id = "flow-incremental-terminal"
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage_source(
@@ -812,27 +884,16 @@ class TestModelProviderResponseHookUsage:
         this test verifies the successful loopback HTTP requests. It does not
         trigger a delivery retry.
         """
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        log_path = str(tmp_path / "network.jsonl")
-        flow.metadata[metadata_keys.SANDBOX_RUN_ID] = "run-int-001"
-        flow.metadata[metadata_keys.SANDBOX_NETWORK_LOG_PATH] = log_path
-        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.anthropic.com/v1/messages"
-        http_network_log.set_target(
-            flow,
-            url="https://api.anthropic.com/v1/messages",
-            host="api.anthropic.com",
-            port=443,
+        flow = make_model_provider_usage_reporting_flow(
+            real_flow,
+            tmp_path,
+            run_id="run-int-001",
+            usage={
+                "model": "claude-sonnet-4-6",
+                "tokens.input": 100,
+                "tokens.output": 500,
+            },
         )
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.metadata[metadata_keys.SANDBOX_AUTH_KEY] = "tok-xyz"
-        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
-        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
-            "model": "claude-sonnet-4-6",
-            "tokens.input": 100,
-            "tokens.output": 500,
-        }
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )

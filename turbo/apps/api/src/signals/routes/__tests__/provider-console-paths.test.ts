@@ -41,8 +41,9 @@ interface ResponseSnapshot {
 // once the Slack app console was repointed at `/api/webhooks/slack/*` and
 // `routes/slack-oauth.ts` began emitting the neutral `redirect_uri`. The Feishu
 // OAuth callback was narrowed the same way by #28709 and the Teams OAuth
-// callback by #30812, which leaves nothing in this file holding a branded form.
-// What each block still pins is that the console flow reaches its handler.
+// callback by #30812, which left nothing in this file holding a branded form.
+// #31088 then emptied the table outright, so no path anywhere has one. What
+// each block still pins is that the console flow reaches its handler.
 
 async function snapshot(response: Response): Promise<ResponseSnapshot> {
   return {
@@ -217,8 +218,9 @@ describe("provider console paths", () => {
   // `MIGRATED_BRANDED_PATHS` row; #28709 removed that row, because the only
   // thing holding the branded form was an already-loaded platform tab
   // forwarding a code, a window that closed well before the retained request
-  // log begins. The case stays because the callback is still reached from a
-  // Feishu console flow, narrowed to the path that serves it.
+  // log begins, and #31088 emptied the table itself. The case stays because the
+  // callback is still reached from a Feishu console flow, narrowed to the path
+  // that serves it.
   describe("GET /api/integrations/feishu/oauth/callback", () => {
     it("rejects a callback without connect state", async () => {
       const snapshots = await snapshotEachPath(

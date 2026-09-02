@@ -1271,6 +1271,20 @@ async function setOfficialWorkflowsEnabled(
   );
 }
 
+async function setMorningBriefEnabled(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected organization-scoped actor");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    { orgId: actor.orgId, userId: actor.userId },
+    { [FeatureSwitchKey.MorningBrief]: enabled },
+  );
+}
+
 async function connectGoogleMeetForOfficialWorkflow(
   actor: ApiTestUser,
 ): Promise<void> {
@@ -1601,6 +1615,7 @@ describe.sequential("Morning Brief preference", () => {
     });
     const headers = authHeaders(actor);
     await setOfficialWorkflowsEnabled(actor, false);
+    await setMorningBriefEnabled(actor, true);
 
     const initial = await accept(
       morningBriefPreferenceClient().get({ headers }),
@@ -1730,10 +1745,44 @@ describe.sequential("Morning Brief preference", () => {
       },
     ]);
     expect(after.body.workflow.id).toBe(identities.workflowId);
+
+    await setMorningBriefEnabled(actor, false);
+    const deniedRead = await accept(
+      morningBriefPreferenceClient().get({ headers }),
+      [403],
+    );
+    expect(deniedRead.body.error.code).toBe("FORBIDDEN");
+    const deniedUpdate = await accept(
+      morningBriefPreferenceClient().update({
+        headers,
+        body: { enabled: false },
+      }),
+      [403],
+    );
+    expect(deniedUpdate.body.error.code).toBe("FORBIDDEN");
+
+    const afterRolloutOff = await accept(
+      installationClient().get({
+        headers,
+        params: { workflowId: morningBrief.id },
+      }),
+      [200],
+    );
+    expect(afterRolloutOff.body.workflow).toMatchObject({
+      id: identities.workflowId,
+      automations: [
+        {
+          id: identities.automationId,
+          chatThreadId: identities.chatThreadId,
+          enabled: true,
+        },
+      ],
+    });
   });
 
   it("returns typed missing-timezone and missing-default-Agent states without mutation", async () => {
     const missingTimezone = await workflowBdd.setupWorkflowOrg();
+    await setMorningBriefEnabled(missingTimezone.actor, true);
     const timezoneHeaders = authHeaders(missingTimezone.actor);
     const unavailableTimezone = await accept(
       morningBriefPreferenceClient().get({ headers: timezoneHeaders }),
@@ -1756,6 +1805,7 @@ describe.sequential("Morning Brief preference", () => {
 
     const missingAgent = bdd.user();
     await bdd.updateUserTimezone(missingAgent, "Asia/Shanghai");
+    await setMorningBriefEnabled(missingAgent, true);
     const agentHeaders = authHeaders(missingAgent);
     const unavailableAgent = await accept(
       morningBriefPreferenceClient().get({ headers: agentHeaders }),
@@ -1829,6 +1879,22 @@ describe.sequential("Morning Brief preference", () => {
         );
       }),
     );
+
+    const hiddenRead = await accept(
+      morningBriefPreferenceClient().get({ headers }),
+      [403],
+    );
+    expect(hiddenRead.body.error.code).toBe("FORBIDDEN");
+    const hiddenUpdate = await accept(
+      morningBriefPreferenceClient().update({
+        headers,
+        body: { enabled: false },
+      }),
+      [403],
+    );
+    expect(hiddenUpdate.body.error.code).toBe("FORBIDDEN");
+
+    await setMorningBriefEnabled(actor, true);
 
     const read = await accept(
       morningBriefPreferenceClient().get({ headers }),

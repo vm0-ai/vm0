@@ -316,14 +316,14 @@ def resolve_firewall_entries(
     path. A supplied snapshot pins builtin resolution for this call so a single
     registry pass cannot mix catalog versions.
 
-    Inline firewalls are deep-copied and receive per-entry `None` builtin cache
-    keys. Builtin catalog API IDs are discarded during expansion, so builtin
-    APIs receive generated run-scoped IDs. Inline APIs preserve an existing
-    non-empty string ID; absent, empty, or non-string IDs are generated.
-    Generated IDs use `<runId>:<index>`, where the zero-based index advances over
-    dictionary API entries in resolved firewall order, including entries whose
-    IDs are preserved. Callers must validate `sandbox["runId"]` as a non-empty string
-    before calling.
+    Inline firewalls are deep-copied, must contain a list-valued `apis` field,
+    and receive per-entry `None` builtin cache keys. Builtin catalog API IDs are
+    discarded during expansion, so builtin APIs receive generated run-scoped
+    IDs. Inline APIs preserve an existing non-empty string ID; absent, empty, or
+    non-string IDs are generated. Generated IDs use `<runId>:<index>`, where the
+    zero-based index advances over dictionary API entries in resolved firewall
+    order, including entries whose IDs are preserved. Callers must validate
+    `sandbox["runId"]` as a non-empty string before calling.
 
     When `sandbox["firewalls"]` is present, `connectorRuntimeTargets` defaults to
     an empty list when absent. When supplied, it must be a list of object targets.
@@ -408,6 +408,9 @@ def resolve_firewall_entries(
                     "inline firewall entry firewall must be an object"
                 )
             resolved_firewall = copy.deepcopy(firewall)
+            raw_apis = resolved_firewall.get("apis")
+            if not isinstance(raw_apis, list):
+                raise FirewallEntryResolutionError("inline firewall apis must be a list")
             connector_runtime_metadata.clear_connector_runtime_kind(resolved_firewall)
             _apply_source_id(resolved_firewall, _source_id(entry))
             custom_connector_id = _custom_connector_id(entry)
@@ -417,9 +420,6 @@ def resolve_firewall_entries(
                     connector_runtime_metadata.mark_connector_runtime_kind(
                         resolved_firewall, "custom"
                     )
-                raw_apis = resolved_firewall.get("apis")
-                if not isinstance(raw_apis, list):
-                    raise FirewallEntryResolutionError("inline firewall apis must be a list")
                 for api in raw_apis:
                     if isinstance(api, dict):
                         api["customConnectorId"] = custom_connector_id

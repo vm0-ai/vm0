@@ -67,6 +67,22 @@ interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
 }
 
+interface BrowserScreenOptions {
+  readonly height: number;
+  readonly pixelRatio: number;
+  readonly width: number;
+}
+
+interface CanvasRender {
+  readonly background: string;
+  readonly height: number;
+  readonly width: number;
+}
+
+interface CanvasRenderingMock {
+  readonly renders: CanvasRender[];
+}
+
 interface BrowserFedCmOptions {
   readonly credentials?: boolean;
   readonly identityCredential?: boolean;
@@ -418,6 +434,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           maxTouchPoints,
         );
       },
+      screen: (options: BrowserScreenOptions): void => {
+        mockScreen(getSignal(), options);
+      },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
@@ -461,6 +480,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           | readonly ImageDimensionsMockResult[],
       ): ImageDimensionsMock => {
         return mockImageDimensions(getSignal(), results);
+      },
+      canvasRendering: (): CanvasRenderingMock => {
+        return mockCanvasRendering(getSignal());
       },
     },
     upload: {
@@ -1033,6 +1055,67 @@ function mockImageDimensions(
   });
 
   return { createdUrls, revokedUrls };
+}
+
+function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
+  const widthDescriptor = defineWindowProperty(screen, "width", options.width);
+  const heightDescriptor = defineWindowProperty(
+    screen,
+    "height",
+    options.height,
+  );
+  const pixelRatioDescriptor = defineWindowProperty(
+    window,
+    "devicePixelRatio",
+    options.pixelRatio,
+  );
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(screen, "width", widthDescriptor);
+    restoreWindowProperty(screen, "height", heightDescriptor);
+    restoreWindowProperty(window, "devicePixelRatio", pixelRatioDescriptor);
+  });
+}
+
+function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
+  const renders: CanvasRender[] = [];
+  const context = {
+    fillStyle: "",
+    imageSmoothingEnabled: false,
+    imageSmoothingQuality: "low",
+    arc() {},
+    beginPath() {},
+    clip() {},
+    drawImage() {},
+    fillRect() {},
+    restore() {},
+    save() {},
+  } as unknown as CanvasRenderingContext2D;
+
+  const getContext = vi
+    .spyOn(HTMLCanvasElement.prototype, "getContext")
+    .mockImplementation(function getContext(contextId: string) {
+      return contextId === "2d" ? context : null;
+    } as typeof HTMLCanvasElement.prototype.getContext);
+  const toDataURL = vi
+    .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+    .mockImplementation(function toDataURL(this: HTMLCanvasElement) {
+      renders.push({
+        background: String(context.fillStyle),
+        height: this.height,
+        width: this.width,
+      });
+      return renders.length === 1
+        ? "data:image/png;base64,AAAA"
+        : "data:image/png;base64,AAAB";
+    });
+
+  restoreOnAbort(signal, () => {
+    getContext.mockRestore();
+    toDataURL.mockRestore();
+  });
+
+  return { renders };
 }
 
 function defineWindowProperty(

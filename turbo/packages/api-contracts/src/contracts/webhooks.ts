@@ -2,6 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
+import { runFailureReasonSchema } from "./run-failure-reasons";
 import {
   artifactMissingRootPolicySchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -473,6 +474,7 @@ const webhookCompleteBodySchema = z
     runId: z.string().min(1, "runId is required"),
     exitCode: z.number(),
     error: z.string().optional(),
+    failureReason: runFailureReasonSchema.optional(),
     lastEventSequence: eventSequenceNumberSchema.optional(),
     // Sandbox id the run executed against. Optional because a run that fails
     // before sandbox creation has no sandbox. Persisted to agent_runs.sandbox_id;

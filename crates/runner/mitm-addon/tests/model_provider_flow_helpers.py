@@ -134,6 +134,42 @@ def make_model_provider_flow(
     return flow
 
 
+def make_model_provider_usage_reporting_flow(
+    real_flow: RealFlowFactory,
+    tmp_path: Path,
+    *,
+    host: str = "api.anthropic.com",
+    original_url: str = "https://api.anthropic.com/v1/messages",
+    firewall_name: str = "model-provider:anthropic-api-key",
+    run_id: str = "run-abc-123",
+    network_log_path: Path | str | None = None,
+    proxy_log_path: Path | str | None = None,
+    firewall_billable: bool = True,
+    sandbox_token: str | None = None,
+    model_usage_provider: str | None = "claude-sonnet-4-6",
+    usage: dict | None = None,
+    usage_sources: dict | None = None,
+) -> http.HTTPFlow:
+    flow = make_model_provider_flow(
+        real_flow,
+        tmp_path,
+        host=host,
+        original_url=original_url,
+        firewall_name=firewall_name,
+        run_id=run_id,
+        network_log_path=network_log_path,
+        proxy_log_path=proxy_log_path,
+        firewall_billable=firewall_billable,
+        sandbox_token=sandbox_token,
+        model_usage_provider=model_usage_provider,
+    )
+    if usage is not None:
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage
+    if usage_sources is not None:
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = usage_sources
+    return flow
+
+
 def make_openai_responses_websocket_flow(
     real_flow: RealFlowFactory,
     tmp_path: Path,
