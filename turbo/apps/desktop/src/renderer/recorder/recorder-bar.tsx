@@ -75,10 +75,23 @@ export function RecorderBar(): React.ReactElement {
       });
   }, []);
 
+  /**
+   * Abandons an open window pick.
+   *
+   * `selectWindow` stays pending until something answers it. Leaving it open
+   * while the user moves on left the picker floating over every other choice,
+   * and tearing the bar down with the call still in flight surfaced Electron's
+   * "reply was never sent" as a recording error.
+   */
+  const abandonWindowChoice = useCallback(() => {
+    void recorder?.completeWindowSelection(null);
+  }, []);
+
   const chooseArea = useCallback(() => {
     if (!recorder) {
       return;
     }
+    abandonWindowChoice();
     setError(null);
     // An area capture is started by the overlay that draws it, so the audio
     // choices travel with the request rather than waiting for Start here.
@@ -91,7 +104,7 @@ export function RecorderBar(): React.ReactElement {
             : "Could not select a region",
         );
       });
-  }, [microphone, systemAudio]);
+  }, [abandonWindowChoice, microphone, systemAudio]);
 
   const start = useCallback(() => {
     if (!recorder) {
@@ -137,6 +150,7 @@ export function RecorderBar(): React.ReactElement {
           className="recorder-bar__source"
           aria-pressed={choice.kind === "display"}
           onClick={() => {
+            abandonWindowChoice();
             setChoice({ kind: "display" });
           }}
         >
@@ -148,12 +162,17 @@ export function RecorderBar(): React.ReactElement {
           type="button"
           className="recorder-bar__source"
           aria-pressed={choice.kind === "window"}
+          title={choice.kind === "window" ? choice.title : undefined}
           onClick={chooseWindow}
         >
           <AppWindow size={22} />
-          <span className="recorder-bar__source-label">
-            {choice.kind === "window" ? choice.title : "Window"}
-          </span>
+          {/* The mode keeps its own name. Naming the button after the chosen
+              window made a pick titled "Menubar" read as a third capture mode
+              beside Display and Area; the target belongs under it. */}
+          <span className="recorder-bar__source-label">Window</span>
+          {choice.kind === "window" ? (
+            <span className="recorder-bar__source-target">{choice.title}</span>
+          ) : null}
         </button>
 
         <button
