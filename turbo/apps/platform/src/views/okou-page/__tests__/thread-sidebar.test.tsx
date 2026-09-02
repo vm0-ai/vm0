@@ -59,6 +59,49 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
 const THREAD_PATH = `/chats/${THREAD_ID}`;
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
 
+type OfficePreviewFixture = {
+  readonly filename: string;
+  readonly kindLabel: string;
+};
+
+const officePreviewFixtures: readonly OfficePreviewFixture[] = [
+  { filename: "brief.doc", kindLabel: "Document" },
+  { filename: "brief.docm", kindLabel: "Document" },
+  { filename: "brief.docx", kindLabel: "Document" },
+  { filename: "brief.dot", kindLabel: "Document" },
+  { filename: "brief.dotm", kindLabel: "Document" },
+  { filename: "brief.dotx", kindLabel: "Document" },
+  { filename: "brief.odt", kindLabel: "Document" },
+  { filename: "metrics.ods", kindLabel: "Data" },
+  { filename: "metrics.xls", kindLabel: "Data" },
+  { filename: "metrics.xlsb", kindLabel: "Data" },
+  { filename: "metrics.xlm", kindLabel: "Data" },
+  { filename: "metrics.xlsm", kindLabel: "Data" },
+  { filename: "metrics.xlsx", kindLabel: "Data" },
+  { filename: "launch.odp", kindLabel: "Presentation" },
+  { filename: "launch.pot", kindLabel: "Presentation" },
+  { filename: "launch.potm", kindLabel: "Presentation" },
+  { filename: "launch.potx", kindLabel: "Presentation" },
+  { filename: "launch.pps", kindLabel: "Presentation" },
+  { filename: "launch.ppsm", kindLabel: "Presentation" },
+  { filename: "launch.ppsx", kindLabel: "Presentation" },
+  { filename: "launch.ppt", kindLabel: "Presentation" },
+  { filename: "launch.pptm", kindLabel: "Presentation" },
+  { filename: "launch.pptx", kindLabel: "Presentation" },
+  { filename: "FORECAST.XLSX", kindLabel: "Data" },
+] as const;
+
+const unsupportedOfficePreviewFilenames = [
+  "archive.xlt",
+  "archive.xltx",
+  "archive.xltm",
+  "archive.ppa",
+  "archive.ppam",
+  "archive.rtf",
+  "archive.one",
+  "archive.zip",
+] as const;
+
 function browserSession(
   overrides: Partial<BrowserSession> = {},
 ): BrowserSession {
@@ -366,6 +409,42 @@ function setupChatThread({
   };
 }
 
+function setupOfficePreviewAttachment(filename: string): string {
+  const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${encodeURIComponent(filename)}`;
+  setupChatThread({
+    artifactFiles: [
+      threadArtifactFile(url, {
+        id: `artifact-${filename}`,
+        filename,
+        contentType: "application/octet-stream",
+      }),
+    ],
+    messages: [
+      {
+        id: `msg-${filename}`,
+        role: "assistant",
+        content: `[${filename}](${url})`,
+        runId: "run-sidebar",
+        seqId: 1,
+        createdAt: "2026-03-10T00:00:01Z",
+      },
+      {
+        id: `msg-${filename}-completed`,
+        role: "assistant",
+        content: null,
+        runId: "run-sidebar",
+        runLifecycleEvent: "completed",
+        seqId: 2,
+        createdAt: "2026-03-10T00:00:02Z",
+      },
+    ],
+    featureSwitches: {
+      [FeatureSwitchKey.OfficeDocumentPreview]: true,
+    },
+  });
+  return url;
+}
+
 async function openArtifactsFromHeader(): Promise<void> {
   const button = await waitFor(() => {
     const found = queryAllByRoleFast("button").find((element) => {
@@ -491,95 +570,80 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
-  it.each([
-    {
-      contentType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      filename: "revised-manuscript.docx",
-    },
-    {
-      contentType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      filename: "launch-metrics.xlsx",
-    },
-    {
-      contentType:
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      filename: "quarterly-review.pptx",
-    },
-  ])("previews $filename in the dialog and split view", async (fixture) => {
-    const { contentType, filename } = fixture;
-    const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
-    setupChatThread({
-      artifactFiles: [
-        threadArtifactFile(url, {
-          id: `artifact-${filename}`,
-          filename,
-          contentType,
-        }),
-      ],
-      messages: [
-        {
-          id: `msg-${filename}`,
-          role: "assistant",
-          content: `[${filename}](${url})`,
-          runId: "run-sidebar",
-          seqId: 1,
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-        {
-          id: `msg-${filename}-completed`,
-          role: "assistant",
-          content: null,
-          runId: "run-sidebar",
-          runLifecycleEvent: "completed",
-          seqId: 2,
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-      featureSwitches: {
-        [FeatureSwitchKey.OfficeDocumentPreview]: true,
-      },
-    });
+  it.each(officePreviewFixtures)(
+    "previews $filename in the dialog and split view",
+    async ({ filename, kindLabel }) => {
+      const url = setupOfficePreviewAttachment(filename);
 
-    const card = await screen.findByLabelText(`Preview ${filename}`);
-    expect(
-      screen.queryByLabelText(`Download ${filename}`),
-    ).not.toBeInTheDocument();
-    click(card);
-
-    const dialog = await screen.findByTestId("attachment-lightbox");
-    const dialogFrame = await within(dialog).findByTitle(`${filename} preview`);
-    const dialogFrameUrl = dialogFrame.getAttribute("src");
-    expect(dialogFrameUrl).not.toBeNull();
-    if (dialogFrameUrl === null) {
-      throw new Error("Office preview iframe is missing its source URL");
-    }
-    const parsedDialogFrameUrl = new URL(dialogFrameUrl);
-    expect(parsedDialogFrameUrl.origin).toBe(
-      "https://view.officeapps.live.com",
-    );
-    expect(parsedDialogFrameUrl.pathname).toBe("/op/embed.aspx");
-    expect(parsedDialogFrameUrl.searchParams.get("src")).toBe(url);
-
-    click(within(dialog).getByLabelText("Open in split view"));
-
-    await waitFor(() => {
+      const card = await screen.findByLabelText(`Preview ${filename}`);
       expect(
-        screen.queryByTestId("attachment-lightbox"),
+        screen.queryByLabelText(`Download ${filename}`),
       ).not.toBeInTheDocument();
-    });
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    const sidebarFrame = await within(sidebar).findByTitle(
-      `${filename} preview`,
-    );
-    const sidebarFrameUrl = sidebarFrame.getAttribute("src");
-    expect(sidebarFrameUrl).not.toBeNull();
-    if (sidebarFrameUrl === null) {
-      throw new Error("Office split-view iframe is missing its source URL");
-    }
-    expect(new URL(sidebarFrameUrl).searchParams.get("src")).toBe(url);
-  });
+      click(card);
+
+      const dialog = await screen.findByTestId("attachment-lightbox");
+      expect(
+        within(dialog).getByText((content) => {
+          return content.startsWith(`${kindLabel} ·`);
+        }),
+      ).toBeInTheDocument();
+      const dialogFrame = await within(dialog).findByTitle(
+        `${filename} preview`,
+      );
+      const dialogFrameUrl = dialogFrame.getAttribute("src");
+      expect(dialogFrameUrl).not.toBeNull();
+      if (dialogFrameUrl === null) {
+        throw new Error("Office preview iframe is missing its source URL");
+      }
+      const parsedDialogFrameUrl = new URL(dialogFrameUrl);
+      expect(parsedDialogFrameUrl.origin).toBe(
+        "https://view.officeapps.live.com",
+      );
+      expect(parsedDialogFrameUrl.pathname).toBe("/op/embed.aspx");
+      expect(parsedDialogFrameUrl.searchParams.get("src")).toBe(url);
+
+      click(within(dialog).getByLabelText("Open in split view"));
+
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId("attachment-lightbox"),
+        ).not.toBeInTheDocument();
+      });
+      const sidebar = await screen.findByTestId("artifact-sidebar");
+      const sidebarFrame = await within(sidebar).findByTitle(
+        `${filename} preview`,
+      );
+      const sidebarFrameUrl = sidebarFrame.getAttribute("src");
+      expect(sidebarFrameUrl).not.toBeNull();
+      if (sidebarFrameUrl === null) {
+        throw new Error("Office split-view iframe is missing its source URL");
+      }
+      expect(new URL(sidebarFrameUrl).searchParams.get("src")).toBe(url);
+    },
+  );
+
+  it.each(unsupportedOfficePreviewFilenames)(
+    "keeps unsupported %s files on the generic preview",
+    async (filename) => {
+      setupOfficePreviewAttachment(filename);
+
+      click(await screen.findByLabelText(`Preview ${filename}`));
+
+      const dialog = await screen.findByTestId("attachment-lightbox");
+      expect(
+        within(dialog).getByText("No inline preview available for this file."),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
+
+      click(within(dialog).getByLabelText("Open in split view"));
+
+      const sidebar = await screen.findByTestId("artifact-sidebar");
+      expect(
+        within(sidebar).getByText("No inline preview available for this file."),
+      ).toBeInTheDocument();
+      expect(within(sidebar).queryByTitle(`${filename} preview`)).toBeNull();
+    },
+  );
 
   it("uses the public office attachment url instead of its presigned resource url", async () => {
     const filename = "private-manuscript.docx";
