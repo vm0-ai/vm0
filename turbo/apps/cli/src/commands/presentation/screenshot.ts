@@ -71,6 +71,8 @@ function clearPages(outDir: string): void {
   mkdirSync(outDir, { recursive: true });
   for (const name of readdirSync(outDir)) {
     if (/^page-\d+\.png$/u.test(name)) {
+      // Local CLI output paths are intentionally operator-selected.
+      // nosemgrep
       rmSync(join(outDir, name), { force: true });
     }
   }
@@ -109,11 +111,15 @@ function renumber(outDir: string): string[] {
 
   const staged = rendered.map((item, index) => {
     const name = `.staged-${process.pid.toString()}-${index.toString()}.png`;
+    // Local CLI output paths are intentionally operator-selected.
+    // nosemgrep
     renameSync(join(outDir, item.name), join(outDir, name));
     return name;
   });
   return staged.map((name, index) => {
     const final = `page-${(index + 1).toString().padStart(3, "0")}.png`;
+    // Local CLI output paths are intentionally operator-selected.
+    // nosemgrep
     renameSync(join(outDir, name), join(outDir, final));
     return final;
   });
@@ -127,6 +133,8 @@ function captureDeck(options: Options, outDir: string): string[] {
   requireTool("pdftocairo", "poppler-utils");
   clearPages(outDir);
 
+  // Local CLI output paths are intentionally operator-selected.
+  // nosemgrep
   const scratch = mkdtempSync(join(outDir, ".okou-convert-"));
   try {
     let pdf = options.input;
@@ -145,6 +153,8 @@ function captureDeck(options: Options, outDir: string): string[] {
       if (produced === undefined) {
         throw new Error("LibreOffice produced no PDF");
       }
+      // The file name comes directly from readdirSync(scratch).
+      // nosemgrep
       pdf = join(scratch, produced);
     }
     run("pdftocairo", [
@@ -156,6 +166,8 @@ function captureDeck(options: Options, outDir: string): string[] {
       "-scale-to-y",
       options.height.toString(),
       pdf,
+      // Local CLI output paths are intentionally operator-selected.
+      // nosemgrep
       join(outDir, "page"),
     ]);
     return renumber(outDir);
@@ -207,6 +219,8 @@ function htmlSources(input: string): { url: string; label: string }[] {
   if (/^https?:\/\//u.test(input)) {
     return [{ url: input, label: input }];
   }
+  // Reading an operator-selected local input is this CLI's contract.
+  // nosemgrep
   const path = resolve(input);
   if (statSync(path).isDirectory()) {
     const names = readdirSync(path)
@@ -221,6 +235,8 @@ function htmlSources(input: string): { url: string; label: string }[] {
       throw new Error(`No page-level .html files in ${path}`);
     }
     return names.map((name) => {
+      // The file name comes directly from readdirSync(path).
+      // nosemgrep
       return { url: pathToFileURL(join(path, name)).href, label: name };
     });
   }
@@ -268,6 +284,8 @@ function captureHtml(options: Options, outDir: string): string[] {
 
       for (const box of slideBoxes(page, options.slides)) {
         const file = `page-${(files.length + 1).toString().padStart(3, "0")}.png`;
+        // Local CLI output paths are intentionally operator-selected.
+        // nosemgrep
         const target = join(outDir, file);
         capturePage(page, box, target, options);
         files.push(file);
@@ -363,6 +381,8 @@ export const presentationScreenshotCommand = new Command()
   .option("--json", "Print the result as JSON")
   .action(
     withErrorHandler(async (options: Options) => {
+      // Writing to an operator-selected output is this CLI's contract.
+      // nosemgrep
       const outDir = resolve(options.out);
       const resolved: Options = {
         ...options,
