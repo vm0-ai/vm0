@@ -7,6 +7,14 @@ import {
 import { resolveClerkInstanceConfig } from "./clerk-instance-config.ts";
 import type { ClerkTokenSource } from "../signals/clerk-token.ts";
 
+/**
+ * Mirrors Clerk's own DOM-less client: `@clerk/chrome-extension` builds the
+ * same `@clerk/clerk-js/no-rhc` instance and injects the dev browser JWT
+ * through `__internal_onBeforeRequest` / `__internal_onAfterResponse`, because
+ * a development instance identifies the browser by `__clerk_db_jwt` instead of
+ * a cookie on the Frontend API domain. Production instances keep using cookies:
+ * a SharedWorker request carries the same cookies as the page that owns it.
+ */
 function attachDevBrowser(clerk: Clerk, devBrowserJwt: string): void {
   let jwt = devBrowserJwt;
   clerk.__internal_onBeforeRequest((request) => {
