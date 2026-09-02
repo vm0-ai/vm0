@@ -427,6 +427,60 @@ describe("DesktopAuthSession", () => {
     ]);
   });
 
+  it("mints a fresh token and retries a request when the bearer and the cookies are both rejected", async () => {
+    // The recorder uploads the video, then its click track. The token is
+    // short-lived, so after a long upload the second request can arrive with
+    // an expired bearer; its cookies do not answer for the API either. The
+    // request has to recover on its own rather than fail the delivery.
+    const { session, runAuthWindow } = createSession();
+    const observedAuthorization: (string | null)[] = [];
+    session.completeSignIn("expired");
+    runAuthWindow.mockImplementation(async () => {
+      session.completeSignIn("fresh");
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        observedAuthorization.push(headers.get("authorization"));
+        return headers.get("authorization") === "Bearer fresh"
+          ? jsonResponse({ id: "upload-1" })
+          : new Response(null, { status: 401 });
+      }),
+    );
+
+    const response = await session.fetchWithSessionAuth(
+      new URL("https://api.vm0.ai/api/uploads/prepare"),
+      { method: "POST", body: "{}" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(observedAuthorization).toStrictEqual([
+      "Bearer expired",
+      null,
+      "Bearer fresh",
+    ]);
+    expect(runAuthWindow).toHaveBeenCalledOnce();
+    expect(session.getCachedToken()).toBe("fresh");
+  });
+
+  it("hands back the 401 when a refresh yields no token", async () => {
+    const { session, runAuthWindow } = createSession();
+    session.completeSignIn("expired");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+
+    const response = await session.fetchWithSessionAuth(
+      new URL("https://api.vm0.ai/api/uploads/prepare"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(runAuthWindow).toHaveBeenCalledOnce();
+    expect(session.getCachedToken()).toBeNull();
+  });
+
   it("derives signed-in state with a null organization on 404", async () => {
     const { session } = createSession();
     vi.stubGlobal(
