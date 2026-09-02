@@ -59,6 +59,10 @@ export function requirePiApiFirstTurnExecutionContext(
   }
   return {
     apiStartTime: context.apiStartTime,
+    // A pre-#31157 API can leave this stored billing snapshot absent during its
+    // rollback window and the two-hour runner/Sandbox drain plus finalization.
+    // Treat that old context as non-billable; remove after production proves no
+    // executable Pi context omits the field. Follow-up: #31161.
     billableFirewalls: context.billableFirewalls ?? [],
     encryptedSecrets: context.encryptedSecrets,
     environment: context.environment,
