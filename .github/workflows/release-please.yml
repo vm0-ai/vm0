@@ -1653,21 +1653,6 @@ jobs:
               "https://static.okou.io/okou-app/assets" \
               "$CANONICAL_ASSETS"
 
-            html="$(
-              curl -fsSL \
-                --connect-timeout 10 \
-                --max-time 30 \
-                --retry 12 \
-                --retry-delay 5 \
-                --retry-all-errors \
-                "$app_origin"
-            )"
-            expected_marker="<meta name=\"vm0-api-origin\" content=\"${api_origin}\""
-            if [[ "$html" != *"$expected_marker"* ]]; then
-              echo "::error title=App Worker API origin mismatch::${app_origin} does not declare ${api_origin}" >&2
-              exit 1
-            fi
-
             cors_result="$(
               curl -fsS \
                 --connect-timeout 10 \

@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.305.5](https://github.com/vm0-ai/vm0/compare/cli-v9.305.4...cli-v9.305.5) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+    * @okouai/pi-agent-runtime bumped to 1.11.1
+
+## [9.305.4](https://github.com/vm0-ai/vm0/compare/cli-v9.305.3...cli-v9.305.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **cli:** render the camera cut at the frame rate the recording declares ([#31159](https://github.com/vm0-ai/vm0/issues/31159)) ([d9f8a7d](https://github.com/vm0-ai/vm0/commit/d9f8a7d6b97ede4a901cdf1f865f06be3630b24e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.393.0
+    * @okouai/core bumped to 8.611.0
+
 ## [9.305.3](https://github.com/vm0-ai/vm0/compare/cli-v9.305.2...cli-v9.305.3) (2026-09-02)
 
 

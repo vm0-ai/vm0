@@ -198,6 +198,7 @@ import {
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
 import {
+  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorManualAuthReferencesMemberField,
@@ -4449,28 +4450,47 @@ class CustomConnectorRuntimeBuildStats {
 }
 
 function customConnectorRuntimeAuth(args: {
-  readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
+  readonly row: CustomConnectorRuntimeDataRows[number];
 }): {
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
 } {
+  if (
+    args.row.connector.authMode === "automatic" &&
+    args.row.credentialAccess.kind === "current"
+  ) {
+    if (args.row.credentialAccess.resolvedAuthMethod === "none") {
+      return { headers: {}, query: {} };
+    }
+    if (args.row.credentialAccess.resolvedAuthMethod === "oauth") {
+      const authorization = renderTemplateForRuntime({
+        template: `Bearer {{oauth.${CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME}}}`,
+        connectorId: args.row.connector.id,
+        fields: args.row.connector.fields,
+      });
+      if (authorization === null) {
+        throw new Error("Automatic OAuth runtime template is invalid");
+      }
+      return { headers: { Authorization: authorization }, query: {} };
+    }
+  }
   return {
     headers: Object.fromEntries(
-      args.connector.headerInjections.flatMap((header) => {
+      args.row.connector.headerInjections.flatMap((header) => {
         const rendered = renderTemplateForRuntime({
           template: header.valueTemplate,
-          connectorId: args.connector.id,
-          fields: args.connector.fields,
+          connectorId: args.row.connector.id,
+          fields: args.row.connector.fields,
         });
         return rendered === null ? [] : [[header.name, rendered]];
       }),
     ),
     query: Object.fromEntries(
-      args.connector.queryInjections.flatMap((queryInjection) => {
+      args.row.connector.queryInjections.flatMap((queryInjection) => {
         const rendered = renderTemplateForRuntime({
           template: queryInjection.valueTemplate,
-          connectorId: args.connector.id,
-          fields: args.connector.fields,
+          connectorId: args.row.connector.id,
+          fields: args.row.connector.fields,
         });
         return rendered === null ? [] : [[queryInjection.name, rendered]];
       }),
@@ -4751,14 +4771,19 @@ async function buildCustomConnectorRuntimeRow(args: {
   }
   const authTemplateStartedAt = now();
   const { headers, query } = customConnectorRuntimeAuth({
-    connector: args.row.connector,
+    row: args.row,
   });
   args.stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
     args.stats.recordNoAuthInjectionConnector();
     if (
       args.row.connector.kind === "mcp" &&
-      args.row.connector.authMode !== "none"
+      args.row.connector.authMode !== "none" &&
+      !(
+        args.row.connector.authMode === "automatic" &&
+        args.row.credentialAccess.kind === "current" &&
+        args.row.credentialAccess.resolvedAuthMethod === "none"
+      )
     ) {
       return unavailableCustomConnectorRuntimeRow(skill);
     }
@@ -10015,12 +10040,16 @@ function finalizePreparedRunContext(
   return {
     ...prepared.context,
     launchSnapshot: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       framework:
         prepared.context.piSandbox === undefined
           ? prepared.context.framework
           : "pi",
       runnerProfile: runnerProfile(prepared.context.resolved.content),
+      piMemoryGenerationEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PiMemoryGeneration,
+        prepared.context.featureSwitchContext,
+      ),
     },
     body: withFinalRunAppendSystemPrompt({
       body: {

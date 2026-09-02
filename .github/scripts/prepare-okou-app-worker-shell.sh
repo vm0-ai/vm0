@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# < 2 || $# > 3 )); then
-  echo "usage: $0 <canonical-dist> <empty-worker-shell> [preview-api-origin]" >&2
+if (( $# != 2 )); then
+  echo "usage: $0 <canonical-dist> <empty-worker-shell>" >&2
   exit 1
 fi
 
 canonical_dist="$1"
 worker_shell="$2"
-preview_api_origin="${3:-}"
 production_primary_app_domain="${CLERK_PRODUCTION_PRIMARY_APP_DOMAIN:-app.vm0.ai}"
 
 case "$production_primary_app_domain" in
@@ -41,12 +40,6 @@ if [[ ! -d "$worker_shell" ]] ||
   exit 1
 fi
 
-if [[ -n "$preview_api_origin" ]] &&
-  [[ ! "$preview_api_origin" =~ ^https://(staging|pr-[0-9]+)-api\.vm6\.ai$ ]]; then
-  echo "invalid preview API origin: ${preview_api_origin}" >&2
-  exit 1
-fi
-
 for relative_path in "${required_files[@]}"; do
   destination="${worker_shell}/${relative_path}"
   mkdir -p "$(dirname "$destination")"
@@ -69,16 +62,5 @@ clerk_primary_app_domain_marker="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__"
 if grep -Fq "$clerk_primary_app_domain_marker" "${worker_shell}/index.html"; then
   sed -i \
     "s|${clerk_primary_app_domain_marker}|${production_primary_app_domain}|g" \
-    "${worker_shell}/index.html"
-fi
-
-if [[ -n "$preview_api_origin" ]]; then
-  runtime_config_marker='<meta name="vm0-api-origin" content="" />'
-  if ! grep -Fq "$runtime_config_marker" "${worker_shell}/index.html"; then
-    echo "canonical app artifact is missing the API origin marker" >&2
-    exit 1
-  fi
-  sed -i \
-    "s|${runtime_config_marker}|<meta name=\"vm0-api-origin\" content=\"${preview_api_origin}\" />|" \
     "${worker_shell}/index.html"
 fi

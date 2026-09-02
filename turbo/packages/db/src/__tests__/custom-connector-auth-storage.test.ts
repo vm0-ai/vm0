@@ -50,10 +50,11 @@ describe("custom connector auth storage schema", () => {
     }
     const dialect = new PgDialect();
     expect(dialect.sqlToQuery(authModeCheck.value).sql).toContain(
-      "IN ('none', 'manual', 'oauth')",
+      "IN ('none', 'manual', 'oauth', 'automatic')",
     );
     const definitionSql = dialect.sqlToQuery(definitionCheck.value).sql;
     expect(definitionSql).toContain("\"auth_mode\" = 'none'");
+    expect(definitionSql).toContain("\"auth_mode\" IN ('none', 'automatic')");
     expect(definitionSql).toContain("jsonb_path_exists");
     expect(definitionSql).toContain("\"header_injections\" = '[]'::jsonb");
     expect(definitionSql).toContain("\"query_injections\" = '[]'::jsonb");

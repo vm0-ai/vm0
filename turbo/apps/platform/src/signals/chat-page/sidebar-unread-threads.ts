@@ -6,10 +6,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-import {
-  reloadChatIndicators$,
-  reloadChatIndicatorsCounter$,
-} from "../chat-thread-list-reload.ts";
+import { reloadChatIndicatorsCounter$ } from "../chat-thread-list-reload.ts";
 import { optimisticReadMarks$ } from "./optimistic-chat-thread-read-marks.ts";
 
 type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
@@ -46,7 +43,7 @@ export const sidebarUnreadThreadIds$ = computed(
 );
 
 export const markAgentThreadsRead$ = command(
-  async ({ get, set }, agentId: string, signal: AbortSignal) => {
+  async ({ get }, agentId: string, signal: AbortSignal) => {
     const client = get(apiClient$)(chatThreadMarkAgentReadContract);
     await accept(
       client.markAgentRead({
@@ -56,6 +53,5 @@ export const markAgentThreadsRead$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(reloadChatIndicators$);
   },
 );

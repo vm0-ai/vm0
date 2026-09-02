@@ -799,18 +799,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
+function sandboxOperationEvents(): readonly Record<string, unknown>[] {
   return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
     const dataset = call[0];
     const events = call[1];
     if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
       return [];
     }
-    return events.filter((event): event is Record<string, unknown> => {
-      return isRecord(event) && event.run_id === runId;
-    });
+    return events.filter(isRecord);
+  });
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEvents().filter((event) => {
+    return event.run_id === runId;
   });
 }
 
@@ -873,6 +877,7 @@ async function expectGoalDrainPreCreateTiming(args: {
   readonly runId: string;
   readonly schedulerOrigin: "chat_callback" | "terminal_callback_fallback";
   readonly builtInModelContext: boolean;
+  readonly skippedHigherPriorityDrains?: boolean;
   readonly forbiddenValues: readonly string[];
 }): Promise<void> {
   const expectedActionTypes = [
@@ -944,6 +949,17 @@ async function expectGoalDrainPreCreateTiming(args: {
     0,
   );
   expect(schedulerPhaseDuration).toBe(Number(schedulerStartGap.duration_ms));
+  const higherPriorityDrainDurations = [
+    "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
+    "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+  ].map((actionType) => {
+    return timingEventsForAction(goalDrainEvents, actionType)[0]?.duration_ms;
+  });
+  expect(higherPriorityDrainDurations).toStrictEqual(
+    args.skippedHigherPriorityDrains
+      ? [0, 0]
+      : [expect.any(Number), expect.any(Number)],
+  );
 
   const entrypointGapEvents = timingEventsForAction(
     allEvents,
@@ -1836,6 +1852,60 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
+  it("runs a queued prompt before an admitted goal fast path", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before queued goal interruption",
+    });
+    const goalBrief = "Continue after the queued prompt";
+    await createGoalForRun(actor, first.runId, goalBrief);
+    const queuedMessageId = await queueChatEvent(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "run before the admitted goal",
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before queued goal interruption"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === queuedMessageId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimedPrompt = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === queuedMessageId;
+    });
+    if (!claimedPrompt?.runId) {
+      throw new Error("Expected the queued prompt to win goal priority");
+    }
+    expect(chatEventDisplayText(claimedPrompt)).toBe(
+      "run before the admitted goal",
+    );
+    await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+    await expect(goalQueueEventIds(first.threadId)).resolves.toHaveLength(1);
+
+    await api.requestCancelRun(actor, claimedPrompt.runId, [200]);
+    await waitForRunStatus(actor, claimedPrompt.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
   it("sources the goal system prompt from thread goals", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -1908,6 +1978,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       runId: goalContinuation.runId,
       schedulerOrigin: "chat_callback",
       builtInModelContext: true,
+      skippedHigherPriorityDrains: true,
       forbiddenValues: [
         goalBrief,
         goalObjective,
@@ -2599,6 +2670,40 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     ).toBeUndefined();
     expect(userRun.runId).toBeDefined();
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+    await flushWaitUntilForTest();
+
+    let lostGoalRunId: string | undefined;
+    await expect
+      .poll(() => {
+        const lostClaim = sandboxOperationEvents().find((event) => {
+          return (
+            event.op_type === "api_dispatch_claim_queue_first_message" &&
+            event.api_start_source === "goal_input" &&
+            event.queue_first_claim_result === "lost" &&
+            event.queue_first_launch_outcome === "claim_lost"
+          );
+        });
+        lostGoalRunId =
+          typeof lostClaim?.run_id === "string" ? lostClaim.run_id : undefined;
+        return lostGoalRunId;
+      })
+      .toBeDefined();
+    if (!lostGoalRunId) {
+      throw new Error("Expected the prepared goal to lose its final claim");
+    }
+    const lostGoalTiming = goalDrainPreCreateTimingEventsForRun(lostGoalRunId);
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+    ]) {
+      expect(timingEventsForAction(lostGoalTiming, actionType)).toStrictEqual([
+        expect.objectContaining({
+          duration_ms: 0,
+          goal_scheduler_origin: "chat_callback",
+          queue_first_launch_outcome: "claim_lost",
+        }),
+      ]);
+    }
 
     const paused = await accept(
       goalsClient().pause({

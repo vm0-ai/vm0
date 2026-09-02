@@ -4714,6 +4714,20 @@
       "teamDescription": "Fai crescere il tuo team con 10 esecuzioni parallele e più crediti."
     }
   },
+  "serviceStatus": {
+    "dismiss": "Ignora aggiornamento del servizio",
+    "label": "Aggiornamenti sullo stato del servizio",
+    "statuses": {
+      "identified": "Problema identificato",
+      "incident": "Interruzione del servizio",
+      "investigating": "Indagine in corso",
+      "maintenance": "Manutenzione",
+      "maintenanceInProgress": "Manutenzione in corso",
+      "maintenanceScheduled": "Manutenzione programmata",
+      "monitoring": "Monitoraggio del ripristino"
+    },
+    "viewUpdates": "Visualizza gli ultimi aggiornamenti"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "Aggiungi account",

@@ -951,15 +951,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
         endpoint: provider.endpoint,
         transport: "streamable-http",
         fields: [],
-        headerInjections: [
-          {
-            name: "Authorization",
-            valueTemplate: "Bearer {{oauth.access_token}}",
-          },
-        ],
+        headerInjections: [],
         queryInjections: [],
-        authMode: "oauth",
-        oauthSetup: "automatic",
+        authMode: "automatic",
       });
       const authorizationUrl = await connectors.startCustomConnectorOAuth2(
         actor,

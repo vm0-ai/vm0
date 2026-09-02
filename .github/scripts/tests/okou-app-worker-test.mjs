@@ -202,10 +202,7 @@ const embeddedWorker = workerModule.createWorker({
   icon192: new TextEncoder().encode("icon-192").buffer,
   icon512: new TextEncoder().encode("icon-512").buffer,
   icon512Maskable: new TextEncoder().encode("icon-maskable").buffer,
-  indexHtml: embeddedIndexTemplate.replace(
-    '<meta name="vm0-api-origin" content="" />',
-    `<meta name="vm0-api-origin" content="${previewOrigin}" />`,
-  ),
+  indexHtml: embeddedIndexTemplate,
   manifest: manifestTemplate,
   robots: "User-agent: *\nAllow: /\n",
   serviceWorker: 'self.addEventListener("install", () => {});',
@@ -225,11 +222,8 @@ function requestUrl(input) {
   return new URL(input instanceof Request ? input.url : input.toString());
 }
 
-function assetEnvironment(apiOrigin = "", publicBrand) {
-  const indexHtml = builtIndexTemplate.replace(
-    '<meta name="vm0-api-origin" content="" />',
-    `<meta name="vm0-api-origin" content="${apiOrigin}" />`,
-  );
+function assetEnvironment(publicBrand) {
+  const indexHtml = builtIndexTemplate;
   return {
     ...(publicBrand ? { PUBLIC_BRAND: publicBrand } : {}),
     STATIC_ASSETS_BUCKET: {
@@ -384,10 +378,10 @@ function assertBootstrapAvatar(html) {
   assert.doesNotMatch(html, /assets\/avatar-svg\//u);
 }
 
-async function requestAppPage(origin, apiOrigin = "", publicBrand) {
+async function requestAppPage(origin, publicBrand) {
   const response = await worker.fetch(
     new Request(`${origin}/settings/profile`),
-    assetEnvironment(apiOrigin, publicBrand),
+    assetEnvironment(publicBrand),
   );
   const html = await response.text();
   return { html, response };
@@ -409,34 +403,14 @@ assert.equal(
 );
 assert.equal(htmlAttribute(vm0Page.html, "data-app-brand-name"), "VM0");
 assert.equal(metaContent(vm0Page.html, "name", "application-name"), "VM0");
-assert.equal(
-  metaContent(vm0Page.html, "name", "apple-mobile-web-app-title"),
-  "VM0",
-);
 assert.equal(metaContent(vm0Page.html, "name", "description"), vm0Description);
 assert.equal(metaContent(vm0Page.html, "property", "og:site_name"), "VM0");
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:title"),
-  "VM0 - Your Trustworthy AI Teammate",
-);
 assert.equal(metaContent(vm0Page.html, "name", "twitter:site"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "twitter:creator"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "robots"), "noindex, nofollow");
 assert.equal(
   tagAttribute(vm0Page.html, "link", "rel", "canonical", "href"),
   "https://app.vm0.ai/",
-);
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:url"),
-  "https://app.vm0.ai/",
-);
-assert.equal(
-  metaContent(vm0Page.html, "name", "vm0-api-origin"),
-  "https://api.vm0.ai",
-);
-assert.equal(
-  metaContent(vm0Page.html, "property", "og:image"),
-  "https://static.vm0.io/web/og-image.png",
 );
 assert.ok(
   tagAttributeValues(vm0Page.html, "link", "href").includes(
@@ -463,30 +437,10 @@ assert.equal(
 );
 assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
-assert.equal(
-  metaContent(okouPage.html, "name", "description"),
-  okouDescription,
-);
 assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
-assert.equal(
-  metaContent(okouPage.html, "property", "og:title"),
-  "Okou - Your Trustworthy AI Teammate",
-);
 assert.equal(
   tagAttribute(okouPage.html, "link", "rel", "canonical", "href"),
   "https://app.okou.ai/",
-);
-assert.equal(
-  metaContent(okouPage.html, "property", "og:url"),
-  "https://app.okou.ai/",
-);
-assert.equal(
-  metaContent(okouPage.html, "name", "vm0-api-origin"),
-  "https://api.okou.ai",
-);
-assert.equal(
-  metaContent(okouPage.html, "property", "og:image"),
-  "https://static.okou.io/web/og-image.png",
 );
 assert.ok(
   tagAttributeValues(okouPage.html, "link", "href").includes(
@@ -512,9 +466,9 @@ assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
 
-for (const [origin, brandName, expectedApiOrigin] of [
-  ["https://app-worker.vm0.ai", "VM0", "https://api.vm0.ai"],
-  ["https://app-worker.okou.ai", "Okou", "https://api.okou.ai"],
+for (const [origin, brandName] of [
+  ["https://app-worker.vm0.ai", "VM0"],
+  ["https://app-worker.okou.ai", "Okou"],
 ]) {
   const canaryPage = await requestAppPage(origin);
   assert.equal(canaryPage.response.status, 200);
@@ -522,26 +476,17 @@ for (const [origin, brandName, expectedApiOrigin] of [
     htmlAttribute(canaryPage.html, "data-app-brand-name"),
     brandName,
   );
-  assert.equal(
-    metaContent(canaryPage.html, "name", "vm0-api-origin"),
-    expectedApiOrigin,
-  );
   assert.equal(clerkBootstrap(canaryPage.html), expectedClerkBootstrap);
 }
 
 const okouPreview = await requestAppPage(
   "https://pr-25304-app-okou-app-preview.vm0.workers.dev",
-  previewOrigin,
   "okou",
 );
 assert.equal(htmlAttribute(okouPreview.html, "data-app-brand-name"), "Okou");
 assert.equal(
   tagAttribute(okouPreview.html, "link", "rel", "canonical", "href"),
   "https://app.okou.ai/",
-);
-assert.equal(
-  metaContent(okouPreview.html, "name", "vm0-api-origin"),
-  previewOrigin,
 );
 assert.equal(clerkBootstrap(okouPreview.html), expectedClerkBootstrap);
 assert.equal(clerkCoreScript(okouPreview.html), expectedClerkCoreScript);
@@ -566,10 +511,6 @@ const embeddedPage = await embeddedWorker.fetch(
 );
 const embeddedHtml = await embeddedPage.text();
 assert.equal(embeddedPage.status, 200);
-assert.equal(
-  metaContent(embeddedHtml, "name", "vm0-api-origin"),
-  previewOrigin,
-);
 assert.equal(htmlAttribute(embeddedHtml, "data-app-brand-name"), "Okou");
 assert.match(
   embeddedHtml,
@@ -723,12 +664,7 @@ assert.equal(
   "export const publicWorker = true;",
 );
 
-async function requestSharedPage({
-  appOrigin,
-  apiOrigin = "",
-  query = "",
-  metaResponse,
-}) {
+async function requestSharedPage({ appOrigin, query = "", metaResponse }) {
   let observedUrl = null;
   let observedHeaders = null;
   globalThis.fetch = (input, init) => {
@@ -738,14 +674,13 @@ async function requestSharedPage({
   };
   const response = await worker.fetch(
     new Request(`${appOrigin}/share/threads/${sharedThreadId}${query}`),
-    assetEnvironment(apiOrigin),
+    assetEnvironment(),
   );
   return { response, observedUrl, observedHeaders };
 }
 
 const preview = await requestSharedPage({
   appOrigin: "https://pr-25304-app.omby.ai",
-  apiOrigin: previewOrigin,
   query: "?x-vercel-protection-bypass=preview-secret",
   metaResponse() {
     return Response.json({
@@ -766,7 +701,6 @@ assert.equal(
 const previewHtml = await preview.response.text();
 assert.equal(documentTitle(previewHtml), "Preview conversation | Okou");
 assert.equal(htmlAttribute(previewHtml, "data-app-brand-name"), "Okou");
-assert.equal(metaContent(previewHtml, "name", "vm0-api-origin"), previewOrigin);
 assert.equal(
   metaContent(previewHtml, "property", "og:title"),
   "Preview conversation",
@@ -782,7 +716,6 @@ assert.equal(
 
 const production = await requestSharedPage({
   appOrigin: "https://app.okou.ai",
-  apiOrigin: previewOrigin,
   query: "?x-vercel-protection-bypass=must-not-forward",
   metaResponse() {
     return Response.json({
@@ -801,10 +734,6 @@ assert.equal(
   null,
 );
 const productionHtml = await production.response.text();
-assert.equal(
-  metaContent(productionHtml, "name", "vm0-api-origin"),
-  "https://api.okou.ai",
-);
 
 const canaryProduction = await requestSharedPage({
   appOrigin: "https://app-worker.okou.ai",
@@ -872,10 +801,6 @@ assert.equal(
 assert.equal(missing.response.headers.get("x-robots-tag"), "noindex, nofollow");
 const missingHtml = await missing.response.text();
 assert.equal(documentTitle(missingHtml), "Shared conversation not found | VM0");
-assert.equal(
-  metaContent(missingHtml, "name", "vm0-api-origin"),
-  "https://api.vm0.ai",
-);
 assert.equal(metaContent(missingHtml, "property", "og:title"), null);
 assert.equal(metaContent(missingHtml, "name", "twitter:title"), null);
 

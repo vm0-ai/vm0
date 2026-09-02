@@ -466,11 +466,6 @@ require_fragments(
         '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
     ],
 )
-for step in (release_step, rollback_verification_step):
-    if "api-promotion" in str(step.get("run", "")):
-        raise RuntimeError(
-            f"post-App verification must enforce the API origin marker: {step['name']}"
-        )
 
 for fragment in (
     "https://app.vm0.ai",
@@ -480,7 +475,6 @@ for fragment in (
     "sign-in",
     "sign-up",
     "%{redirect_url}",
-    "vm0-api-origin",
     "Access-Control-Request-Method: GET",
     "%header{access-control-allow-origin}",
     "%header{access-control-allow-credentials}",
@@ -496,7 +490,6 @@ for api_origin, app_origin in (
 ):
     invocations = (
         f'verify_auth_redirect "{api_origin}" "{app_origin}"',
-        f'verify_api_origin_marker "{app_origin}" "{api_origin}"',
         f'verify_api_cors "{api_origin}" "{app_origin}"',
     )
     for invocation in invocations:

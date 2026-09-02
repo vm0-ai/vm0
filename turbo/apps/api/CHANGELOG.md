@@ -1,5 +1,68 @@
 # Changelog
 
+## [1.531.0](https://github.com/vm0-ai/vm0/compare/api-v1.530.0...api-v1.531.0) (2026-09-02)
+
+
+### Features
+
+* **api:** add Morning Brief default onboarding foundation ([#31183](https://github.com/vm0-ai/vm0/issues/31183)) ([2ca9dee](https://github.com/vm0-ai/vm0/commit/2ca9dee54342bc1556e1042b5a48ab8baee56923))
+* **api:** resolve automatic mcp auth as none or oauth ([#31135](https://github.com/vm0-ai/vm0/issues/31135)) ([d84a7e0](https://github.com/vm0-ai/vm0/commit/d84a7e0cd556e91916858ea18cd5256efde6ed03))
+
+
+### Refactoring
+
+* **api:** rename model provider gateway runtime secret ([#31193](https://github.com/vm0-ai/vm0/issues/31193)) ([dfdbaf6](https://github.com/vm0-ai/vm0/commit/dfdbaf65f12ee9679403a6488efcf47c3e2f2729))
+
+
+### Performance Improvements
+
+* **api:** skip redundant drains for admitted goals ([#31171](https://github.com/vm0-ai/vm0/issues/31171)) ([bbb111a](https://github.com/vm0-ai/vm0/commit/bbb111ac83d53579633fc2f3826b34372b015b97))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+    * @okouai/db bumped to 1.235.0
+    * @okouai/pi-agent-runtime bumped to 1.11.1
+
+## [1.530.0](https://github.com/vm0-ai/vm0/compare/api-v1.529.0...api-v1.530.0) (2026-09-02)
+
+
+### Features
+
+* **app:** add standalone worker previews ([#30987](https://github.com/vm0-ai/vm0/issues/30987)) ([7a4ce6a](https://github.com/vm0-ai/vm0/commit/7a4ce6ad45daa6c4cb823a9b7253340123dd98df))
+* **memory:** materialize bounded summaries by storage version ([#31117](https://github.com/vm0-ai/vm0/issues/31117)) ([2cfd42a](https://github.com/vm0-ai/vm0/commit/2cfd42a36d3dcb947b30cea95cd05832316284a8))
+
+
+### Bug Fixes
+
+* **api:** converge connector account trigger lifecycle ([#31122](https://github.com/vm0-ai/vm0/issues/31122)) ([7a9b6ec](https://github.com/vm0-ai/vm0/commit/7a9b6ec42e36208e2837a38178123b15c278b301))
+* **api:** self-heal renamed Calendar primary watches ([#31130](https://github.com/vm0-ai/vm0/issues/31130)) ([a2b06d6](https://github.com/vm0-ai/vm0/commit/a2b06d63a54309a504b8d8e60f688bab6e1b9374))
+* **api:** stop logging echoed provider request input ([#31129](https://github.com/vm0-ai/vm0/issues/31129)) ([570bf61](https://github.com/vm0-ai/vm0/commit/570bf61917c79cdf2fe08b9c25fb1bccf654a4f1)), closes [#30960](https://github.com/vm0-ai/vm0/issues/30960)
+* **api:** suppress repeated auth unavailability warnings ([#31128](https://github.com/vm0-ai/vm0/issues/31128)) ([03c37ce](https://github.com/vm0-ai/vm0/commit/03c37ce804316f1054202df724115d1b27d9de12))
+* **github:** use branded official app callbacks ([#31109](https://github.com/vm0-ai/vm0/issues/31109)) ([bf8cdec](https://github.com/vm0-ai/vm0/commit/bf8cdec0c8016295208fae60bb63dd846c6f4f9d))
+* project remaining public brand surfaces ([#31151](https://github.com/vm0-ai/vm0/issues/31151)) ([769b53e](https://github.com/vm0-ai/vm0/commit/769b53e654a275477750026201f55207dc13d839))
+* **slack:** preserve dual-brand oauth domains ([#31063](https://github.com/vm0-ai/vm0/issues/31063)) ([54bce0d](https://github.com/vm0-ai/vm0/commit/54bce0db9fe56c579241c91c766ce4d428bc95de))
+* **social:** file downloaded media by its actual container ([#30998](https://github.com/vm0-ai/vm0/issues/30998)) ([3752d3f](https://github.com/vm0-ai/vm0/commit/3752d3fea2e6f5dbd535693ad4346f58e943485a))
+
+
+### Refactoring
+
+* **api:** remove morning brief snapshot compatibility ([#31162](https://github.com/vm0-ai/vm0/issues/31162)) ([1f8a715](https://github.com/vm0-ai/vm0/commit/1f8a71577990f9b75bfe56760f63fb9285229ce2))
+* **api:** remove terminal preview job-reference legacy reader ([#31168](https://github.com/vm0-ai/vm0/issues/31168)) ([e21b4f2](https://github.com/vm0-ai/vm0/commit/e21b4f2dd93fe797820f1ec09095db0e44487479))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.393.0
+    * @okouai/core bumped to 8.611.0
+    * @okouai/db bumped to 1.234.0
+
 ## [1.529.0](https://github.com/vm0-ai/vm0/compare/api-v1.528.0...api-v1.529.0) (2026-09-02)
 
 

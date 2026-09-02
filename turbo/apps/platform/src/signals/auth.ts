@@ -1,4 +1,9 @@
 import { command, computed, state } from "ccstate";
+import {
+  resolveClerkInstanceConfig,
+  resolveClerkSatelliteConfig,
+  resolveConfiguredProductionPrimaryAppDomain,
+} from "../lib/clerk-instance-config.ts";
 import { startClerkBrowserRuntime } from "../lib/clerk-runtime.ts";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import {
@@ -12,20 +17,15 @@ import {
   isOkouProductionHostname,
   type PlatformService,
   resolvePlatformEnvironment,
-  resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import {
-  CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN,
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
-  type ClerkProductionDomain,
-  type ClerkProductionPrimaryAppDomain,
   VM0_CLERK_PRIMARY_APP_ORIGIN,
 } from "../lib/clerk-production-topology.ts";
 import { resolveBrandNameForHostname, type BrandName } from "./branding.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { setupForegroundCatchUp$ } from "./foreground-catch-up.ts";
-import { readClerkToken } from "./clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -43,12 +43,6 @@ const PRODUCTION_VM0_AUTH_REDIRECT_ORIGINS = [
 ] as const;
 
 type AllowedAuthRedirectOrigin = string | RegExp;
-
-interface ClerkSatelliteConfig {
-  readonly domain: ClerkProductionDomain;
-  readonly isSatellite: true;
-  readonly satelliteAutoSync: true;
-}
 
 export interface AuthBrandContext {
   readonly brandName: BrandName;
@@ -107,16 +101,6 @@ export function deriveServiceOrigin(
   return derivePlatformServiceOrigin(currentOrigin, service);
 }
 
-function resolveConfiguredProductionPrimaryAppDomain(): ClerkProductionPrimaryAppDomain {
-  if (typeof window === "undefined") {
-    return CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN;
-  }
-  return (
-    window.__vm0ClerkBootstrap?.productionPrimaryAppDomain ??
-    CURRENT_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN
-  );
-}
-
 // The WWW origin sibling of the current host.
 export function resolveWebOrigin(): string {
   const origin = location.origin;
@@ -131,25 +115,7 @@ function resolveAppOrigin(): string {
   return !origin || origin === "null" ? "" : origin;
 }
 
-export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
-  if (typeof location === "undefined") {
-    return null;
-  }
-
-  const domain = resolveClerkProductionSatelliteDomain(
-    location.hostname,
-    resolveConfiguredProductionPrimaryAppDomain(),
-  );
-  if (!domain) {
-    return null;
-  }
-
-  return {
-    domain,
-    isSatellite: true,
-    satelliteAutoSync: true,
-  };
-}
+export { resolveClerkSatelliteConfig };
 
 function resolveAuthOrigin(): string {
   const primaryAppDomain = resolveConfiguredProductionPrimaryAppDomain();
@@ -407,8 +373,7 @@ export function buildSignInRedirectUrl(
 
 /** Loaded Clerk instance for consumers that need authentication state. */
 export const clerk$ = computed(async () => {
-  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
-  const satelliteConfig = resolveClerkSatelliteConfig();
+  const { publishableKey, satelliteConfig } = resolveClerkInstanceConfig();
   const runtime = await startClerkBrowserRuntime({
     domain: satelliteConfig?.domain,
     loadOptions: {
@@ -428,14 +393,6 @@ export const clerk$ = computed(async () => {
 
   return runtime.clerk;
 });
-
-export const reloadToken$ = command(
-  async ({ get }, signal: AbortSignal): Promise<string | null> => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    return await readClerkToken(clerk, signal, { skipCache: true });
-  },
-);
 
 /**
  * Command to setup Clerk authentication listeners.

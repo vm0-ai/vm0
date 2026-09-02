@@ -1441,14 +1441,11 @@ jobs:
           set -euo pipefail
 
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
           worker_shell="turbo/apps/app-worker/shell"
           mkdir "$worker_shell"
-          job_ref="${WORKER_PREVIEW_ALIAS%-app}"
-          api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
 
           if [[ "$ARTIFACT_EXISTS" == "true" ]]; then
             canonical_dist="$(mktemp -d)"
@@ -1465,12 +1462,10 @@ jobs:
 
           bash .github/scripts/prepare-okou-app-worker-shell.sh \
             "$canonical_dist" \
-            "$worker_shell" \
-            "$api_origin"
+            "$worker_shell"
 
           {
             echo "canonical-dist=$canonical_dist"
-            echo "api-origin=$api_origin"
             echo "shell=$worker_shell"
           } >> "$GITHUB_OUTPUT"
 

@@ -1449,6 +1449,7 @@ describe("OPS-01: user data export", () => {
         readonly agentInstructionFiles: number;
         readonly workflowFiles: number;
         readonly memoryFiles: number;
+        readonly memoryStage1Candidates: number;
         readonly conversationThreads: number;
         readonly sessionHistories: number;
       };
@@ -1457,6 +1458,7 @@ describe("OPS-01: user data export", () => {
       agentInstructionFiles: 2,
       workflowFiles: 2,
       memoryFiles: 2,
+      memoryStage1Candidates: 0,
       conversationThreads: 0,
       sessionHistories: 0,
     });

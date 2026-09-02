@@ -1209,6 +1209,8 @@ describe("zero sidebar", () => {
       chatThreadMarkUnreadContract.markUnread,
       ({ params, respond }) => {
         markedUnreadThreadId = params.id;
+        // The API publishes the read-cursor signal before it responds.
+        changeChatThreadReadCursor();
         return respond(200, {
           lastReadAt: null,
           unreads: [
@@ -3084,6 +3086,7 @@ describe("zero sidebar", () => {
         unreadAgentIds = unreadAgentIds.filter((id) => {
           return id !== body.agentId;
         });
+        changeChatThreadReadCursor();
         return respond(204);
       },
     );
@@ -3137,6 +3140,7 @@ describe("zero sidebar", () => {
       ({ body, respond }) => {
         markedAgentIds.push(body.agentId);
         hasUnread = false;
+        changeChatThreadReadCursor();
         return respond(204);
       },
     );
@@ -4132,6 +4136,7 @@ describe("zero sidebar", () => {
       ({ body, respond }) => {
         markedAgentIds.push(body.agentId);
         hasUnread = false;
+        changeChatThreadReadCursor();
         return respond(204);
       },
     );

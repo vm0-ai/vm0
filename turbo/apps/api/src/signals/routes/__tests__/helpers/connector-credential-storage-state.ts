@@ -537,7 +537,7 @@ export async function setCustomConnectorCredentialStorageState(
     readonly orgId: string;
     readonly userId: string;
     readonly customConnectorId: string;
-    readonly authMethod: "manual" | "oauth";
+    readonly authMethod: "none" | "manual" | "oauth";
     readonly storageVersion: number;
     readonly needsReconnect?: boolean;
   },

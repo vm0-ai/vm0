@@ -4660,6 +4660,20 @@
       "teamDescription": "10 समानांतर रन और अधिक क्रेडिट के साथ अपनी टीम को स्केल करें।"
     }
   },
+  "serviceStatus": {
+    "dismiss": "सेवा अपडेट बंद करें",
+    "label": "सेवा स्थिति अपडेट",
+    "statuses": {
+      "identified": "समस्या की पहचान हो गई",
+      "incident": "सेवा घटना",
+      "investigating": "जांच जारी है",
+      "maintenance": "रखरखाव",
+      "maintenanceInProgress": "रखरखाव जारी है",
+      "maintenanceScheduled": "रखरखाव निर्धारित है",
+      "monitoring": "बहाली की निगरानी जारी है"
+    },
+    "viewUpdates": "नवीनतम अपडेट देखें"
+  },
   "settings": {
     "accountMenu": {
       "addAccount": "खाता जोड़ें",

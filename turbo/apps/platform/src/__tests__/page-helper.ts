@@ -9,6 +9,7 @@ import {
   type MockedClientSession,
   type MockedInvitation,
   type MockedMembership,
+  mockedClerk,
   mockOrganization,
   mockUser,
 } from "./mock-auth";
@@ -119,7 +120,7 @@ export interface SetupBootstrapOptions {
   debugLoggers?: string[];
   cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
-  afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
+  afterSharedDatabaseWorkerRegistration?: () => Promise<void>;
   sharedWorkerAppVersion?: string;
   sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
@@ -210,14 +211,17 @@ export async function setupBootstrap(
     setupSharedWorkerTestBootstrap$,
     {
       appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
+      clerk: Promise.resolve(mockedClerk),
       workerStore: options.context.workerStore,
       identity:
         testUser && activeOrgId
           ? { userId: testUser.id, orgId: activeOrgId }
           : null,
       transport: options.sharedWorkerTestTransport ?? "direct",
-      ...(options.afterSharedDatabaseWorkerHeartbeat
-        ? { afterHeartbeat: options.afterSharedDatabaseWorkerHeartbeat }
+      ...(options.afterSharedDatabaseWorkerRegistration
+        ? {
+            afterRegistration: options.afterSharedDatabaseWorkerRegistration,
+          }
         : {}),
     },
     options.context.signal,
