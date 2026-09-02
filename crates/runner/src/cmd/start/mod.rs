@@ -601,10 +601,18 @@ async fn run_start_with_home(
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
     );
-    match pre_spawn_capacity {
+    match &pre_spawn_capacity {
         host::PreSpawnCpuCapacity::ExactPhysical(_) => {
             info!(
-                capacity_source = "physical_topology",
+                capacity_source = pre_spawn_capacity.source(),
+                pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
+                host_logical_cpus = host_cpus,
+                "pre-spawn admission initialized"
+            );
+        }
+        host::PreSpawnCpuCapacity::RestrictedPhysical(_) => {
+            info!(
+                capacity_source = pre_spawn_capacity.source(),
                 pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
                 host_logical_cpus = host_cpus,
                 "pre-spawn admission initialized"
@@ -612,7 +620,7 @@ async fn run_start_with_home(
         }
         host::PreSpawnCpuCapacity::ConservativeLogical(_) => {
             warn!(
-                capacity_source = "logical_cpu_fallback",
+                capacity_source = pre_spawn_capacity.source(),
                 reason = "topology directories are absent for all online CPUs",
                 pre_spawn_vcpu_tokens = pre_spawn_admission.total_tokens(),
                 host_logical_cpus = host_cpus,
