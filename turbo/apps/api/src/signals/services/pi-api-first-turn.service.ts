@@ -851,7 +851,6 @@ async function observeDiscardedProviderResult(
       orgId: args.activation.orgId,
       userId: args.activation.userId,
       modelUsageProvider: args.activation.executionContext.modelUsageProvider,
-      piApi: args.activation.executionContext.piModelConfig.api,
       piProvider: args.activation.executionContext.piModelConfig.provider,
       requestedServiceTier:
         args.activation.executionContext.piModelConfig.serviceTier,
@@ -972,7 +971,6 @@ async function executeApiModelTurn(
     orgId: args.activation.orgId,
     userId: args.activation.userId,
     modelUsageProvider: args.executionContext.modelUsageProvider,
-    piApi: args.executionContext.piModelConfig.api,
     piProvider: args.executionContext.piModelConfig.provider,
     requestedServiceTier: args.executionContext.piModelConfig.serviceTier,
     turn,

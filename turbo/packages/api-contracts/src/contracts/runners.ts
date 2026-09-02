@@ -890,9 +890,11 @@ export const piModelConfigSchema = z
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
-    // Optional additions keep stored legacy launch contexts readable. When
-    // absent, readers preserve the previous adapter transport and Pi's medium
-    // thinking default.
+    // Current writers emit openai-responses; readers normalize absent or legacy
+    // values while the previous API can be rolled back, old runner/Sandbox
+    // instances complete their two-hour drain plus finalization, and executable
+    // pre-cutover contexts remain. Remove this field with #31085 after all three
+    // gates pass.
     api: z.enum(MODEL_PROVIDER_PI_APIS).optional(),
     thinkingLevel: z
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])

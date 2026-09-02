@@ -45,6 +45,7 @@ const CONFIG: PiSandboxAgentConfig = {
     provider: "deepseek",
     baseUrl: "https://api.deepseek.com/",
     model: "deepseek-v4-flash",
+    api: "openai-responses",
     apiKey: "test-api-key",
   },
 };
@@ -570,31 +571,38 @@ describe("sandbox Pi agent loop", () => {
     ).resolves.toEqual(CONFIG);
   });
 
-  it("reads optional Terra transport and request policy from the launch config", async () => {
-    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
-    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
-      provider: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      model: "gpt-5.6-terra",
-      api: "openai-responses",
-      thinkingLevel: "low",
-      serviceTier: "priority",
-      apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: "OPENAI_API_KEY",
-    });
-
-    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
-      model: {
+  it.each([
+    "openai-completions",
+    "openai-responses",
+    "openai-codex-responses",
+  ] as const)(
+    "normalizes legacy %s config while preserving request policy",
+    async (api) => {
+      const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+      env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-5.6-terra",
-        api: "openai-responses",
+        api,
         thinkingLevel: "low",
         serviceTier: "priority",
-        apiKey: "test-api-key",
-      },
-    });
-  });
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "OPENAI_API_KEY",
+      });
+
+      await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+        model: {
+          provider: "openai",
+          baseUrl: "https://api.openai.com/v1",
+          model: "gpt-5.6-terra",
+          api: "openai-responses",
+          thinkingLevel: "low",
+          serviceTier: "priority",
+          apiKey: "test-api-key",
+        },
+      });
+    },
+  );
 
   it("requires the run id", async () => {
     await expect(piSandboxAgentConfigFromEnv(piEnv({}))).rejects.toThrowError(

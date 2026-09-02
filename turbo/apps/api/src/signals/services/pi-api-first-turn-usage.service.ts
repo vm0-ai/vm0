@@ -45,7 +45,6 @@ interface RecordPiApiFirstTurnUsageArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly modelUsageProvider: string | undefined;
-  readonly piApi: PiModelConfig["api"];
   readonly piProvider: PiModelConfig["provider"];
   readonly requestedServiceTier: PiModelConfig["serviceTier"];
   readonly turn: PiApiFirstTurnResult;
@@ -108,9 +107,8 @@ function piApiFirstTurnUsageEntries(
 function isFastPiApiFirstTurn(args: RecordPiApiFirstTurnUsageArgs): boolean {
   if (args.piProvider === "openrouter") {
     return (
-      args.piApi === "openai-responses" &&
-      (args.turn.observedServiceTier === "priority" ||
-        args.turn.observedServiceTier === "fast")
+      args.turn.observedServiceTier === "priority" ||
+      args.turn.observedServiceTier === "fast"
     );
   }
   // Preserve direct OpenAI's accepted requested-tier billing contract.
