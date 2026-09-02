@@ -55,6 +55,7 @@ pub(super) async fn report_prepared_checkpoint(
         exit_code,
         None,
         None,
+        None,
         &[],
         checkpoint,
     )
