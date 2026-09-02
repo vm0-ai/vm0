@@ -1,6 +1,7 @@
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -129,6 +130,7 @@ describe("lab page", () => {
   });
 
   it("lets users toggle and reset feature switches", async () => {
+    const user = userEvent.setup();
     let switches: Partial<Record<FeatureSwitchKey, boolean>> = {
       [FeatureSwitchKey.Lab]: true,
       [FeatureSwitchKey.TestOauthConnector]: false,
@@ -166,7 +168,8 @@ describe("lab page", () => {
 
     const reset = buttonByText("Reset all");
     expectBefore(reset, screen.getByRole("heading", { name: "Released" }));
-    click(reset);
+    reset.focus();
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(

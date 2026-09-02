@@ -109,7 +109,7 @@ function LabControls(props: {
         variant="outline"
         size="sm"
         disabled={props.busy}
-        onPointerDown={props.onReset}
+        onClick={props.onReset}
       >
         {props.resetting
           ? t(($) => {
