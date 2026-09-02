@@ -220,13 +220,3 @@ export const setFeatureSwitch$ = command(
     await set(reloadFeatureSwitch$, signal);
   },
 );
-
-export const resetFeatureSwitches$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const client = get(apiFeatureSwitchClient$);
-    signal.throwIfAborted();
-    await accept(client.delete({ fetchOptions: { signal } }), [200]);
-    signal.throwIfAborted();
-    await set(reloadFeatureSwitch$, signal);
-  },
-);

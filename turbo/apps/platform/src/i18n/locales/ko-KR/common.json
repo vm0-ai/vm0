@@ -4793,24 +4793,13 @@
       "title": "데이터 내보내기"
     },
     "lab": {
-      "actions": {
-        "resetAll": "모두 재설정",
-        "resetting": "재설정 중…"
-      },
-      "description": "실험 기능을 켜거나 끄세요.",
+      "description": "출시 단계별 기능 스위치를 확인하세요.",
       "documentTitle": "랩",
-      "empty": {
-        "description": "이 유지관리자에 대한 기능 전환이 없습니다.",
-        "title": "기능 전환 없음"
-      },
-      "filters": {
-        "all": "전체"
-      },
       "groups": {
-        "connectors": "커넥터",
-        "other": "기타"
+        "alpha": "알파",
+        "beta": "베타",
+        "released": "출시됨"
       },
-      "maintainer": "유지관리자: {{maintainer}}",
       "title": "랩"
     },
     "models": {

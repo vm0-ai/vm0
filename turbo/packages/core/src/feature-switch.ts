@@ -25,7 +25,10 @@ export interface FeatureSwitch {
 export interface FeatureSwitchMetadata {
   readonly maintainer: string;
   readonly description?: string;
+  readonly rolloutStage: FeatureSwitchRolloutStage;
 }
+
+export type FeatureSwitchRolloutStage = "released" | "beta" | "alpha";
 
 export interface FeatureSwitchContext {
   readonly userId?: string;
@@ -480,6 +483,22 @@ export function getFeatureSwitchDescriptions(): Record<
   return result;
 }
 
+function getFeatureSwitchRolloutStage(
+  featureSwitch: FeatureSwitch,
+): FeatureSwitchRolloutStage {
+  if (featureSwitch.enabled) {
+    return "released";
+  }
+  if (
+    featureSwitch.enabledOrgIdHashes?.some((hash) => {
+      return STAFF_ORG_ID_HASHES.includes(hash);
+    })
+  ) {
+    return "beta";
+  }
+  return "alpha";
+}
+
 /**
  * Return display metadata for every feature switch.
  */
@@ -493,6 +512,7 @@ export function getFeatureSwitchMetadata(): Record<
     result[key] = {
       maintainer: featureSwitch.maintainer,
       description: featureSwitch.description,
+      rolloutStage: getFeatureSwitchRolloutStage(featureSwitch),
     };
   }
   return result;
