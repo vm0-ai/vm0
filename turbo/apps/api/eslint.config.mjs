@@ -410,10 +410,6 @@ export default [
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
-      // Account-bound event membership is a finite shared lifecycle contract;
-      // route tests cover copy and Official reconciliation behavior, while no
-      // production endpoint exposes the complete account/non-account matrix.
-      "src/signals/services/__tests__/workflow-automation-account-classification.service.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
     ],
     rules: {
@@ -527,9 +523,6 @@ export default [
       // policy lookup byte-for-byte; individual provider routes cannot cover
       // every lookup-table row without duplicating the contract under test.
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
-      // Account-bound trigger ownership is a closed event-type matrix shared
-      // by enable, copy, and Official Workflow reconciliation entry points.
-      "src/signals/services/__tests__/workflow-automation-account-classification.service.test.ts",
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
       "src/signals/services/__tests__/storage-content-hash.service.test.ts",
