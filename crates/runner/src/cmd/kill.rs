@@ -503,7 +503,6 @@ mod tests {
     fn make_target_at_base(pid: u32, sandbox_id: &str, base_dir: &Path) -> KillTarget {
         let mut target = make_target(pid, sandbox_id);
         target.base_dir = Some(base_dir.to_path_buf());
-        target.identity.as_mut().unwrap().base_dir = Some(base_dir.to_path_buf());
         target
     }
 
