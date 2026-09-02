@@ -3,7 +3,10 @@ import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
 import { i18n } from "../i18n/index.ts";
-import { readClerkDevBrowserJwt } from "../lib/clerk-dev-browser.ts";
+import {
+  CLERK_DEV_BROWSER_NAME,
+  readClerkDevBrowserJwt,
+} from "../lib/clerk-dev-browser.ts";
 import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
@@ -83,15 +86,15 @@ function createBrowserSharedDatabaseBridge(
       vercelProtectionBypass,
     );
   }
+  const devBrowserJwt = readClerkDevBrowserJwt(document.cookie);
+  if (devBrowserJwt) {
+    workerUrl.searchParams.set(CLERK_DEV_BROWSER_NAME, devBrowserJwt);
+  }
   const worker = new SharedWorker(workerUrl, {
     name: `okou_${identity.userId}_${identity.orgId}`,
     type: "module",
   });
-  const portBridge = new MessagePortSharedDatabaseBridge(
-    worker.port,
-    events,
-    readClerkDevBrowserJwt(document.cookie),
-  );
+  const portBridge = new MessagePortSharedDatabaseBridge(worker.port, events);
   let failureHandled = false;
   worker.addEventListener(
     "error",

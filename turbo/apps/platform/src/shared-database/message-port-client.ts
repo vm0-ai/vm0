@@ -38,7 +38,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   constructor(
     private readonly port: SharedDatabasePortLike,
     private readonly events: SharedDatabaseBridgeEvents,
-    private readonly devBrowserJwt: string | null = null,
   ) {
     this.handleMessage = onDomEventFn(async (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
@@ -86,10 +85,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
 
   registerTab(signal: AbortSignal): Promise<void> {
     this.bindOwner(signal);
-    this.emit({
-      type: "register-tab",
-      ...(this.devBrowserJwt ? { devBrowserJwt: this.devBrowserJwt } : {}),
-    });
+    this.emit({ type: "register-tab" });
     return Promise.resolve();
   }
 

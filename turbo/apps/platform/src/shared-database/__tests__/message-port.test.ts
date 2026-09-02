@@ -20,7 +20,6 @@ import {
   connectionControllers$,
   updateRealtimeStatusForConnections$,
 } from "../worker-context.ts";
-import { awaitWorkerDevBrowserJwt$ } from "../worker-dev-browser.ts";
 
 const context = testContext();
 
@@ -90,17 +89,6 @@ describe("shared database MessagePort protocol", () => {
 
     expect(store.get(connectionControllers$).size).toBe(1);
     expect(port.messages).toStrictEqual([]);
-  });
-
-  it("hands the dev browser JWT of the first registering tab to the Worker", async () => {
-    const store = createServerStore();
-    const port = new TestServerPort();
-    new SharedDatabaseMessagePortServer(store, port, context.signal);
-    const devBrowserJwt = store.set(awaitWorkerDevBrowserJwt$, context.signal);
-
-    port.receive({ type: "register-tab", devBrowserJwt: "dev-browser-jwt" });
-
-    await expect(devBrowserJwt).resolves.toBe("dev-browser-jwt");
   });
 
   it("replays the realtime status a tab missed before it registered", () => {

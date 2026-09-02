@@ -1,20 +1,13 @@
-import { command } from "ccstate";
+import { computed } from "ccstate";
 
-import { isDevelopmentClerkInstance } from "../lib/clerk-dev-browser.ts";
-import { resolveClerkInstanceConfig } from "../lib/clerk-instance-config.ts";
+import { CLERK_DEV_BROWSER_NAME } from "../lib/clerk-dev-browser.ts";
 import { startClerkWorkerRuntime } from "../lib/clerk-worker-runtime.ts";
-import { awaitWorkerDevBrowserJwt$ } from "../shared-database/worker-dev-browser.ts";
-import type { ClerkTokenSource } from "./clerk-token.ts";
 
-export const startWorkerClerk$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ClerkTokenSource> => {
-    const { publishableKey } = resolveClerkInstanceConfig();
-    if (!isDevelopmentClerkInstance(publishableKey)) {
-      return startClerkWorkerRuntime(null);
-    }
-    // A development instance rejects the Worker until it presents the page's
-    // dev browser JWT, so Clerk only starts once the first tab hands it over.
-    const devBrowserJwt = set(awaitWorkerDevBrowserJwt$, signal);
-    return startClerkWorkerRuntime(await devBrowserJwt);
-  },
-);
+export const clerk$ = computed(() => {
+  // Only a development instance needs the dev browser JWT, and only a page can
+  // read it, so the tab that starts the Worker passes it on the Worker URL.
+  const devBrowserJwt = new URL(location.href).searchParams.get(
+    CLERK_DEV_BROWSER_NAME,
+  );
+  return startClerkWorkerRuntime(devBrowserJwt);
+});

@@ -1,17 +1,13 @@
-const CLERK_DEV_BROWSER_NAME = "__clerk_db_jwt";
+export const CLERK_DEV_BROWSER_NAME = "__clerk_db_jwt";
 const CLERK_DEV_BROWSER_SUFFIXED_PREFIX = `${CLERK_DEV_BROWSER_NAME}_`;
 
 export const CLERK_DEV_BROWSER_ROTATION_HEADER = "Clerk-Db-Jwt";
-
-export function isDevelopmentClerkInstance(publishableKey: string): boolean {
-  return publishableKey.startsWith("pk_test_");
-}
 
 /**
  * Development Clerk instances authenticate a browser with a dev browser JWT
  * instead of a first-party cookie on the Frontend API domain. Clerk keeps it in
  * a document cookie, which a SharedWorker cannot read, so the page has to hand
- * it over.
+ * it over. Production instances never write this cookie.
  */
 export function readClerkDevBrowserJwt(cookieHeader: string): string | null {
   let plain: string | null = null;

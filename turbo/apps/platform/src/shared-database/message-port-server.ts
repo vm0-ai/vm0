@@ -15,7 +15,6 @@ import {
   type SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
 import { registerConnection$ } from "./worker-context.ts";
-import { setWorkerDevBrowserJwt$ } from "./worker-dev-browser.ts";
 import {
   getComputedStoreMessage$,
   queryStoreMessage$,
@@ -167,11 +166,10 @@ export class SharedDatabaseMessagePortServer {
     }
   }
 
-  private registerTab(devBrowserJwt: string | null): void {
+  private registerTab(): void {
     if (this.registeredSignal) {
       throw new Error("Shared database tab is already registered");
     }
-    this.store.set(setWorkerDevBrowserJwt$, devBrowserJwt);
     const signal = this.store.set(
       registerConnection$,
       this.connectionId,
@@ -234,7 +232,7 @@ export class SharedDatabaseMessagePortServer {
         return;
       }
       if (message.type === "register-tab") {
-        this.registerTab(message.devBrowserJwt ?? null);
+        this.registerTab();
         return;
       }
       const registeredSignal = this.registeredSignal;

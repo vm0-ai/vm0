@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  isDevelopmentClerkInstance,
   readClerkDevBrowserJwt,
   withClerkDevBrowserJwt,
 } from "../clerk-dev-browser.ts";
@@ -25,11 +24,6 @@ describe("clerk dev browser", () => {
     expect(
       readClerkDevBrowserJwt("__client_uat=1; __session=token"),
     ).toBeNull();
-  });
-
-  it("only treats test publishable keys as development instances", () => {
-    expect(isDevelopmentClerkInstance("pk_test_abc")).toBeTruthy();
-    expect(isDevelopmentClerkInstance("pk_live_abc")).toBeFalsy();
   });
 
   it("carries the dev browser JWT in the Frontend API query", () => {
