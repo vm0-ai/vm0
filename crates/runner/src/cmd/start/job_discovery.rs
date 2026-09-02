@@ -8,8 +8,10 @@
 //! A discovered candidate is not provider-owned until `JobProvider::claim` returns a claim. The
 //! path before that boundary must remain reversible: local resources can be reserved, cancellation
 //! can be registered, and either step can still be rolled back without completing a provider job.
-//! After a successful claim, every exit either transfers the claimed setup to the executor or
-//! completes the claim through the provider before releasing or recovering its local ownership.
+//! In ordinary control flow after a successful claim, every exit either transfers the claimed setup
+//! to the executor or completes the claim through the provider before releasing or recovering its
+//! local ownership. A panic after ownership becomes active instead preserves enough active state
+//! for cleanup and orphan reconciliation to resolve the uncertain provider outcome.
 //!
 //! The lifecycle is ordered as follows:
 //!
