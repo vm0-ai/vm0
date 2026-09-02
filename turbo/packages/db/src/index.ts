@@ -128,6 +128,7 @@ import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
 import * as presentationTemplateSchema from "./schema/presentation-template";
 import * as piResourceSnapshotSchema from "./schema/pi-resource-snapshot";
+import * as memorySummaryProjectionSchema from "./schema/memory-summary-projection";
 
 export const schema = {
   ...userSchema,
@@ -260,6 +261,7 @@ export const schema = {
   ...browserSessionSchema,
   ...presentationTemplateSchema,
   ...piResourceSnapshotSchema,
+  ...memorySummaryProjectionSchema,
 };
 
 export type DatabaseSchema = typeof schema;

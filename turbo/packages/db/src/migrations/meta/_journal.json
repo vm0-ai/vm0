@@ -1709,6 +1709,13 @@
       "when": 1788326111286,
       "tag": "1051_add_claude_fable_5_1_support",
       "breakpoints": true
+    },
+    {
+      "idx": 1052,
+      "version": "7",
+      "when": 1788336418300,
+      "tag": "1052_memory_summary_projections",
+      "breakpoints": true
     }
   ]
 }
