@@ -33,6 +33,7 @@ function normalizedBaseUrl(url: string): string {
 
 function piRuntimeContract(args: {
   readonly providerType: string;
+  readonly concreteType: ModelProviderType;
   readonly selectedModel: string;
   readonly api: NonNullable<PiModelConfig["api"]>;
   readonly codexServiceTier: "fast" | undefined;
@@ -49,7 +50,7 @@ function piRuntimeContract(args: {
         : {}),
     };
   }
-  return {};
+  return args.concreteType === "openrouter-codex" ? { api: args.api } : {};
 }
 
 function piProvider(
@@ -104,7 +105,8 @@ export function shouldUsePiExecution(args: {
   const isFastTerra =
     args.selectedModel === "gpt-5.6-terra" &&
     args.codexServiceTier === "fast" &&
-    args.builtInModelRuntimeRoute?.providerType === "openai-api-key" &&
+    (args.builtInModelRuntimeRoute?.providerType === "openai-api-key" ||
+      args.builtInModelRuntimeRoute?.providerType === "openrouter-codex") &&
     isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
   return (
     args.chatThreadId !== undefined &&
@@ -169,6 +171,7 @@ export function resolvePiSandboxModelConfig(
         : "OPENAI_API_KEY";
   const runtimeContract = piRuntimeContract({
     providerType: provider.type,
+    concreteType: concreteType.data,
     selectedModel: provider.selectedModel,
     api,
     codexServiceTier,

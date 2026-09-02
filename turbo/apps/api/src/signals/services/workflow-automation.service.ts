@@ -101,6 +101,7 @@ import {
   ensureGoogleCalendarWatchForUser,
   hasEnabledGoogleCalendarConsumer,
 } from "./google-calendar-automation-event.service";
+import { resolveGoogleCalendarAutomationConnectorId } from "./google-calendar-automation-account.service";
 import {
   ensureGoogleFormsWatchForUser,
   hasEnabledGoogleFormsConsumer,
@@ -1627,13 +1628,15 @@ async function insertEventAutomation(
   return await db.transaction(async (tx) => {
     const connectorSlug = automationCreateInputIsGmail(args.input)
       ? "gmail"
-      : automationCreateInputIsNotion(args.input)
-        ? "notion"
-        : automationCreateInputIsGoogleForms(args.input)
-          ? "google-forms"
-          : automationCreateInputIsGoogleMeet(args.input)
-            ? "google-meet"
-            : null;
+      : automationCreateInputIsGoogleCalendar(args.input)
+        ? "google-calendar"
+        : automationCreateInputIsNotion(args.input)
+          ? "notion"
+          : automationCreateInputIsGoogleForms(args.input)
+            ? "google-forms"
+            : automationCreateInputIsGoogleMeet(args.input)
+              ? "google-meet"
+              : null;
     if (connectorSlug !== null) {
       await lockConnectorAccountTarget(tx, {
         orgId: args.input.orgId,
@@ -1648,13 +1651,15 @@ async function insertEventAutomation(
     };
     const eventConnectorId = automationCreateInputIsGmail(args.input)
       ? await resolveGmailAutomationConnectorId(tx, connectorArgs)
-      : automationCreateInputIsNotion(args.input)
-        ? await resolveNotionAutomationConnectorId(tx, connectorArgs)
-        : automationCreateInputIsGoogleForms(args.input)
-          ? await resolveGoogleFormsAutomationConnectorId(tx, connectorArgs)
-          : automationCreateInputIsGoogleMeet(args.input)
-            ? await resolveGoogleMeetAutomationConnectorId(tx, connectorArgs)
-            : null;
+      : automationCreateInputIsGoogleCalendar(args.input)
+        ? await resolveGoogleCalendarAutomationConnectorId(tx, connectorArgs)
+        : automationCreateInputIsNotion(args.input)
+          ? await resolveNotionAutomationConnectorId(tx, connectorArgs)
+          : automationCreateInputIsGoogleForms(args.input)
+            ? await resolveGoogleFormsAutomationConnectorId(tx, connectorArgs)
+            : automationCreateInputIsGoogleMeet(args.input)
+              ? await resolveGoogleMeetAutomationConnectorId(tx, connectorArgs)
+              : null;
     if (
       args.expectedEventConnectorId !== undefined &&
       eventConnectorId !== args.expectedEventConnectorId
@@ -2190,6 +2195,22 @@ async function createGoogleCalendarEventAutomationForWorkflow(
   },
   signal: AbortSignal,
 ): Promise<AutomationResult> {
+  const eventConnectorId = await resolveGoogleCalendarAutomationConnectorId(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Calendar before adding a Google Calendar event automation",
+    };
+  }
   const preparedConfig = parseGoogleCalendarEventConfig(
     args.input.eventType,
     args.input.eventConfig,
@@ -2200,6 +2221,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
           db: args.context.db,
           orgId: args.input.orgId,
           userId: args.input.member.userId,
+          connectorId: eventConnectorId,
           calendarId: preparedConfig.calendarId,
         },
         signal,
@@ -2213,7 +2235,15 @@ async function createGoogleCalendarEventAutomationForWorkflow(
     workflowTitle: args.context.workflowTitle,
     automationId: args.context.automationId,
     currentTime: nowDate(),
+    expectedEventConnectorId: eventConnectorId,
   });
+  if (summary === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Google Calendar account selection changed; retry adding the automation",
+    };
+  }
   if (!args.input.enabled) {
     signal.throwIfAborted();
     return { kind: "ok", summary };
@@ -2226,6 +2256,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
         db: args.context.db,
         orgId: args.input.orgId,
         userId: args.input.member.userId,
+        connectorId: eventConnectorId,
         calendarId: preparedConfig.calendarId,
         forceRefresh: !hadConsumer,
       },
@@ -2251,7 +2282,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
             ownerUserId: args.input.member.userId,
             eventType: args.input.eventType,
             eventConfig: preparedConfig,
-            eventConnectorId: null,
+            eventConnectorId,
           },
         ],
       },
@@ -3587,6 +3618,33 @@ async function prepareOfficialGmailEvent(
     : prepared;
 }
 
+async function prepareOfficialGoogleCalendarEvent(
+  db: Db,
+  input: CreateGoogleCalendarEventAutomationInput,
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const eventConnectorId = await resolveGoogleCalendarAutomationConnectorId(
+    db,
+    {
+      orgId: input.orgId,
+      userId: input.member.userId,
+      workflowId: input.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Calendar before adding a Google Calendar event automation",
+    };
+  }
+  return preparedOfficialEvent(
+    parseGoogleCalendarEventConfig(input.eventType, input.eventConfig),
+    { eventConnectorId },
+  );
+}
+
 async function prepareOfficialGithubEvent(
   db: Db,
   input: CreateGithubEventAutomationInput,
@@ -3778,9 +3836,7 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       return await prepareOfficialGithubEvent(db, input, signal);
     }
     if (automationCreateInputIsGoogleCalendar(input)) {
-      return preparedOfficialEvent(
-        parseGoogleCalendarEventConfig(input.eventType, input.eventConfig),
-      );
+      return await prepareOfficialGoogleCalendarEvent(db, input, signal);
     }
     if (automationCreateInputIsGoogleForms(input)) {
       const enabled = await get(
@@ -4539,6 +4595,9 @@ async function enabledWatchHadConsumer(
   if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
     return false;
   }
+  if (args.automation.eventConnectorId === null) {
+    return false;
+  }
   const config = parseGoogleCalendarEventConfig(
     args.automation.eventType,
     args.automation.eventConfig,
@@ -4548,6 +4607,7 @@ async function enabledWatchHadConsumer(
       db: args.db,
       orgId: args.automation.orgId,
       userId: args.automation.ownerUserId,
+      connectorId: args.automation.eventConnectorId,
       calendarId: config.calendarId,
     },
     signal,
@@ -4626,6 +4686,13 @@ async function ensureEnabledAutomationEventWatch(
   if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
     return null;
   }
+  if (args.automation.eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Calendar before using Google Calendar event automations",
+    };
+  }
   const config = parseGoogleCalendarEventConfig(
     args.automation.eventType,
     args.automation.eventConfig,
@@ -4635,6 +4702,7 @@ async function ensureEnabledAutomationEventWatch(
       db: args.db,
       orgId: args.automation.orgId,
       userId: args.automation.ownerUserId,
+      connectorId: args.automation.eventConnectorId,
       calendarId: config.calendarId,
       forceRefresh: !args.hadConsumer,
     },
@@ -4855,6 +4923,7 @@ async function ensureEnabledAutomationEventWatchWithRollback(
 
 type EnabledAutomationAccountProjection =
   | { readonly status: "gmail-unavailable" }
+  | { readonly status: "google-calendar-unavailable" }
   | { readonly status: "google-forms-unavailable" }
   | { readonly status: "google-meet-unavailable" }
   | { readonly status: "notion-unavailable" }
@@ -4890,6 +4959,7 @@ async function projectGoogleFormsEnabledEventConfig(
 
 type EnabledAutomationAccountProvider =
   | "gmail"
+  | "google-calendar"
   | "google-forms"
   | "google-meet"
   | "notion"
@@ -4900,6 +4970,9 @@ function enabledAutomationAccountProvider(
 ): EnabledAutomationAccountProvider | null {
   if (supportedGmailEventType(automation.eventType)) {
     return "gmail";
+  }
+  if (supportedGoogleCalendarEventType(automation.eventType)) {
+    return "google-calendar";
   }
   if (supportedGoogleFormsEventType(automation.eventType)) {
     return "google-forms";
@@ -4926,6 +4999,9 @@ async function resolveEnabledAutomationConnectorId(
     case "gmail": {
       return await resolveGmailAutomationConnectorId(db, args);
     }
+    case "google-calendar": {
+      return await resolveGoogleCalendarAutomationConnectorId(db, args);
+    }
     case "google-forms": {
       return await resolveGoogleFormsAutomationConnectorId(db, args);
     }
@@ -4945,6 +5021,9 @@ function unavailableEnabledAutomationProjection(
     case "gmail": {
       return { status: "gmail-unavailable" };
     }
+    case "google-calendar": {
+      return { status: "google-calendar-unavailable" };
+    }
     case "google-forms": {
       return { status: "google-forms-unavailable" };
     }
@@ -4953,6 +5032,28 @@ function unavailableEnabledAutomationProjection(
     }
     case "notion": {
       return { status: "notion-unavailable" };
+    }
+  }
+}
+
+function enabledAutomationUnavailableMessage(
+  provider: Exclude<EnabledAutomationAccountProvider, "stripe">,
+): string {
+  switch (provider) {
+    case "gmail": {
+      return "Connect Gmail before using Gmail event automations";
+    }
+    case "google-calendar": {
+      return "Connect Google Calendar before using Google Calendar event automations";
+    }
+    case "google-forms": {
+      return "Connect Google Forms before using Google Forms response automations";
+    }
+    case "google-meet": {
+      return "Connect Google Meet before using Google Meet event automations";
+    }
+    case "notion": {
+      return "Connect Notion before using Notion event automations";
     }
   }
 }
@@ -5054,6 +5155,7 @@ async function persistEnabledWorkflowAutomation(
   | { readonly status: "team-required" }
   | { readonly status: "conflict" }
   | { readonly status: "gmail-unavailable" }
+  | { readonly status: "google-calendar-unavailable" }
   | { readonly status: "notion-unavailable" }
   | { readonly status: "notion-account-changed" }
   | { readonly status: "stripe-unavailable"; readonly message: string }
@@ -5137,11 +5239,8 @@ async function prepareEnabledAutomationAccountProjection(
   | { readonly kind: "ok"; readonly eventConnectorId: string | null }
   | AutomationActionFailure
 > {
-  const usesGmail = supportedGmailEventType(automation.eventType);
-  const usesGoogleForms = supportedGoogleFormsEventType(automation.eventType);
-  const usesGoogleMeet = supportedGoogleMeetEventType(automation.eventType);
-  const usesNotion = supportedNotionEventType(automation.eventType);
-  if (!usesGmail && !usesGoogleForms && !usesGoogleMeet && !usesNotion) {
+  const provider = enabledAutomationAccountProvider(automation);
+  if (provider === null || provider === "stripe") {
     return { kind: "ok", eventConnectorId: automation.eventConnectorId };
   }
   const connectorArgs = {
@@ -5149,28 +5248,23 @@ async function prepareEnabledAutomationAccountProjection(
     userId: automation.ownerUserId,
     workflowId: automation.workflowId,
   };
-  const eventConnectorId = usesGmail
-    ? await resolveGmailAutomationConnectorId(db, connectorArgs)
-    : usesGoogleForms
-      ? await resolveGoogleFormsAutomationConnectorId(db, connectorArgs)
-      : usesGoogleMeet
-        ? await resolveGoogleMeetAutomationConnectorId(db, connectorArgs)
-        : await resolveNotionAutomationConnectorId(db, connectorArgs);
+  const eventConnectorId = await resolveEnabledAutomationConnectorId(
+    db,
+    provider,
+    connectorArgs,
+  );
   signal.throwIfAborted();
   if (eventConnectorId === null) {
     return {
       kind: "bad-request",
-      message: usesGmail
-        ? "Connect Gmail before using Gmail event automations"
-        : usesGoogleForms
-          ? "Connect Google Forms before using Google Forms response automations"
-          : usesGoogleMeet
-            ? "Connect Google Meet before using Google Meet event automations"
-            : "Connect Notion before using Notion event automations",
+      message: enabledAutomationUnavailableMessage(provider),
     };
   }
-  if (!supportedNotionEventType(automation.eventType)) {
+  if (provider !== "notion") {
     return { kind: "ok", eventConnectorId };
+  }
+  if (!supportedNotionEventType(automation.eventType)) {
+    throw new Error("Notion automation account projection is incomplete");
   }
   const eventType = automation.eventType;
   const validation = await validateNotionEventConfigForConnector(
@@ -5214,6 +5308,37 @@ function enabledAutomationWithAccountProjection(
       connectorId: eventConnectorId,
     },
   };
+}
+
+async function finalizeAndPublishEnabledWorkflowAutomation(
+  db: Db,
+  args: {
+    readonly previousAutomation: AutomationRow;
+    readonly enabledAutomation: AutomationRow;
+    readonly memberUserId: string;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
+  const row = await finalizeEnabledOfficialAutomation(
+    db,
+    args.previousAutomation,
+    args.enabledAutomation,
+    signal,
+  );
+  const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
+    orgId: row.orgId,
+    userId: row.ownerUserId,
+    workflowId: row.workflowId,
+  });
+  signal.throwIfAborted();
+  await publishThreadBoundWorkflowAutomationChanged(
+    args.memberUserId,
+    chatThreadId,
+  );
+  signal.throwIfAborted();
+  const summary = await rowToSummary(db, row, { chatThreadId });
+  signal.throwIfAborted();
+  return { kind: "ok", summary };
 }
 
 async function persistAndReconcileEnabledWorkflowAutomation(
@@ -5273,6 +5398,14 @@ async function persistAndReconcileEnabledWorkflowAutomation(
       message: "Connect Gmail before using Gmail event automations",
     };
   }
+  if (enabled.status === "google-calendar-unavailable") {
+    signal.throwIfAborted();
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Calendar before using Google Calendar event automations",
+    };
+  }
   if (enabled.status === "notion-unavailable") {
     signal.throwIfAborted();
     return {
@@ -5322,26 +5455,15 @@ async function persistAndReconcileEnabledWorkflowAutomation(
   if (watchFailure) {
     return watchFailure;
   }
-  const row = await finalizeEnabledOfficialAutomation(
+  return await finalizeAndPublishEnabledWorkflowAutomation(
     db,
-    args.automation,
-    enabled.row,
+    {
+      previousAutomation: args.automation,
+      enabledAutomation: enabled.row,
+      memberUserId: args.memberUserId,
+    },
     signal,
   );
-  const chatThreadId = await loadWorkflowUserAutomationThreadId(db, {
-    orgId: row.orgId,
-    userId: row.ownerUserId,
-    workflowId: row.workflowId,
-  });
-  signal.throwIfAborted();
-  await publishThreadBoundWorkflowAutomationChanged(
-    args.memberUserId,
-    chatThreadId,
-  );
-  signal.throwIfAborted();
-  const summary = await rowToSummary(db, row, { chatThreadId });
-  signal.throwIfAborted();
-  return { kind: "ok", summary };
 }
 
 const validateStripeFeature$ = command(

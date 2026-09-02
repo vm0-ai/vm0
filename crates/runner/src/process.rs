@@ -22,7 +22,7 @@ pub(crate) use self::procfs::{
     read_process_stat_checked_blocking, read_process_stat_checked_from,
 };
 pub use self::types::{
-    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-    MitmproxyProcessInfo, ProcessStat,
+    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessInfo, MitmproxyProcessInfo,
+    ProcessStat, ProcfsProcessGeneration,
 };
 pub(crate) use self::types::{ProcessDiscovery, process_stat_is_live};

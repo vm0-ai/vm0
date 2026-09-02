@@ -372,7 +372,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       throw new Error("Expected a Morning Brief result email");
     }
     const manageUrl =
-      "https://app.okou.ai/settings?tab=timezone&focus=morning-brief";
+      "https://app.okou.ai/agents?settings=preference&focus=morning-brief";
     const accountUnsubscribeUrl = `https://app.okou.ai/email/unsubscribe?token=${unsubscribeToken(
       scenario.actor.userId,
     )}`;
@@ -397,7 +397,7 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).toContain(
-      'href="https://app.okou.ai/settings?tab=timezone&amp;focus=morning-brief"',
+      'href="https://app.okou.ai/agents?settings=preference&amp;focus=morning-brief"',
     );
     expect(html).toContain(
       `>Manage this automation</a> &middot; <a href="${accountUnsubscribeUrl}"`,

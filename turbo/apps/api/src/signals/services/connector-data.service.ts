@@ -27,12 +27,10 @@ import {
   getAllFeatureStates,
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
-import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
 import { connectors } from "@okouai/db/schema/connector";
 import { secrets } from "@okouai/db/schema/secret";
 import { variables } from "@okouai/db/schema/variable";
-import { workflowUserAutomationThreads } from "@okouai/db/schema/workflow";
-import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -85,7 +83,12 @@ import {
   stopPreparedGmailWatch,
   type PendingGmailWatchStop,
 } from "./gmail-automation-event.service";
-import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
+import {
+  prepareGoogleCalendarWatchStopForConnector,
+  reconcileGoogleCalendarWatchesForUser,
+  stopPreparedGoogleCalendarWatches,
+  type PendingGoogleCalendarWatchStop,
+} from "./google-calendar-automation-event.service";
 import {
   prepareGoogleFormsWatchStopForConnector,
   reconcileGoogleFormsWatchesForUser,
@@ -538,64 +541,6 @@ interface ConnectorListState {
   readonly catalogConnections: readonly ConnectorCatalogConnection[];
 }
 
-interface StoredBuiltinConnectorRow extends StoredConnectorRow {
-  readonly connectorSlug: string;
-}
-
-function storedBuiltinConnectorSelection() {
-  return {
-    id: connectors.id,
-    connectorSlug: sql`${connectors.connectorSlug}`
-      .mapWith(pgTextDecoder)
-      .as("connector_slug"),
-    authMethod: connectors.authMethod,
-    displayName: connectors.displayName,
-    isDefault: connectors.isDefault,
-    externalId: connectors.externalId,
-    externalUsername: connectors.externalUsername,
-    externalEmail: connectors.externalEmail,
-    oauthScopes: connectors.oauthScopes,
-    oauthGrantedScopes: connectors.oauthGrantedScopes,
-    needsReconnect: connectors.needsReconnect,
-    reconnectReason: connectors.reconnectReason,
-    storageVersion: connectors.storageVersion,
-    tokenExpiresAt: connectors.tokenExpiresAt,
-    createdAt: connectors.createdAt,
-    updatedAt: connectors.updatedAt,
-  };
-}
-
-function storedBuiltinConnectorsWithRuntimeMethods(args: {
-  readonly rows: readonly StoredBuiltinConnectorRow[];
-  readonly snapshot: ConnectorRuntimeSnapshot | null;
-}): readonly ConnectorWithRuntimeMethod[] {
-  const snapshot = args.snapshot;
-  if (snapshot === null) {
-    return [];
-  }
-  const now = nowDate();
-  return args.rows.flatMap((row) => {
-    const connector = storedConnectorRowWithRuntimeMethod({
-      connectorSlug: row.connectorSlug,
-      now,
-      row,
-      snapshot,
-    });
-    return connector === null ? [] : [connector];
-  });
-}
-
-function catalogConnectionsForStoredConnectors(
-  storedConnectors: readonly ConnectorWithRuntimeMethod[],
-): readonly ConnectorCatalogConnection[] {
-  return storedConnectors.map((connector) => {
-    return {
-      response: connector.response,
-      oauthRequestedScopes: connector.oauthRequestedScopes,
-    };
-  });
-}
-
 function connectorListState(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -603,7 +548,26 @@ function connectorListState(args: {
   return computed(async (get): Promise<ConnectorListState> => {
     const db = get(db$);
     const storedRowsPromise = db
-      .select(storedBuiltinConnectorSelection())
+      .select({
+        id: connectors.id,
+        connectorSlug: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("connector_slug"),
+        authMethod: connectors.authMethod,
+        displayName: connectors.displayName,
+        isDefault: connectors.isDefault,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        oauthGrantedScopes: connectors.oauthGrantedScopes,
+        needsReconnect: connectors.needsReconnect,
+        reconnectReason: connectors.reconnectReason,
+        storageVersion: connectors.storageVersion,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+        createdAt: connectors.createdAt,
+        updatedAt: connectors.updatedAt,
+      })
       .from(connectors)
       .where(
         and(
@@ -617,10 +581,19 @@ function connectorListState(args: {
       storedRowsPromise,
       loadStoredConnectorRuntimeSnapshot(db),
     ]);
-    const storedConnectors = storedBuiltinConnectorsWithRuntimeMethods({
-      rows: storedRows,
-      snapshot,
-    });
+    const now = nowDate();
+    const storedConnectors: ConnectorWithRuntimeMethod[] =
+      snapshot === null
+        ? []
+        : storedRows.flatMap((row) => {
+            const connector = storedConnectorRowWithRuntimeMethod({
+              connectorSlug: row.connectorSlug,
+              now,
+              row,
+              snapshot,
+            });
+            return connector === null ? [] : [connector];
+          });
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(storedConnectors);
 
@@ -631,8 +604,12 @@ function connectorListState(args: {
         }),
         connectorProvidedBindings,
       },
-      catalogConnections:
-        catalogConnectionsForStoredConnectors(storedConnectors),
+      catalogConnections: storedConnectors.map((connector) => {
+        return {
+          response: connector.response,
+          oauthRequestedScopes: connector.oauthRequestedScopes,
+        };
+      }),
     };
   });
 }
@@ -653,107 +630,6 @@ export function connectorCatalogConnectionList(args: {
   return computed(
     async (get): Promise<readonly ConnectorCatalogConnection[]> => {
       return (await get(connectorListState(args))).catalogConnections;
-    },
-  );
-}
-
-interface WorkflowBuiltinConnectorSelection {
-  readonly connectorId: string;
-  readonly connectorSlug: string;
-}
-
-async function loadWorkflowBuiltinConnectorSelections(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly workflowId: string;
-  },
-): Promise<readonly WorkflowBuiltinConnectorSelection[]> {
-  const rows = await db
-    .select({
-      connectorId: chatThreadConnectorSelections.connectorId,
-      connectorSlug: chatThreadConnectorSelections.connectorSlug,
-    })
-    .from(workflowUserAutomationThreads)
-    .innerJoin(
-      chatThreadConnectorSelections,
-      eq(
-        chatThreadConnectorSelections.chatThreadId,
-        workflowUserAutomationThreads.chatThreadId,
-      ),
-    )
-    .where(
-      and(
-        eq(workflowUserAutomationThreads.orgId, args.orgId),
-        eq(workflowUserAutomationThreads.userId, args.userId),
-        eq(workflowUserAutomationThreads.workflowId, args.workflowId),
-        isNotNull(chatThreadConnectorSelections.connectorSlug),
-      ),
-    );
-  return rows.flatMap((row) => {
-    return row.connectorSlug === null
-      ? []
-      : [{ connectorId: row.connectorId, connectorSlug: row.connectorSlug }];
-  });
-}
-
-function selectWorkflowStoredBuiltinConnectorRows(args: {
-  readonly rows: readonly StoredBuiltinConnectorRow[];
-  readonly selections: readonly WorkflowBuiltinConnectorSelection[];
-}): readonly StoredBuiltinConnectorRow[] {
-  const selectedIdBySlug = new Map(
-    args.selections.map((selection) => {
-      return [selection.connectorSlug, selection.connectorId];
-    }),
-  );
-  return args.rows.filter((row) => {
-    const selectedId = selectedIdBySlug.get(row.connectorSlug);
-    return selectedId === undefined ? row.isDefault : row.id === selectedId;
-  });
-}
-
-export function workflowConnectorCatalogConnectionList(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly workflowId: string;
-}): Computed<Promise<readonly ConnectorCatalogConnection[]>> {
-  return computed(
-    async (get): Promise<readonly ConnectorCatalogConnection[]> => {
-      const db = get(db$);
-      const [selections, snapshot] = await Promise.all([
-        loadWorkflowBuiltinConnectorSelections(db, args),
-        loadStoredConnectorRuntimeSnapshot(db),
-      ]);
-      const selectedIds = selections.map((selection) => {
-        return selection.connectorId;
-      });
-      const storedRows = await db
-        .select(storedBuiltinConnectorSelection())
-        .from(connectors)
-        .where(
-          and(
-            eq(connectors.orgId, args.orgId),
-            eq(connectors.userId, args.userId),
-            isNotNull(connectors.connectorSlug),
-            selectedIds.length === 0
-              ? eq(connectors.isDefault, true)
-              : or(
-                  eq(connectors.isDefault, true),
-                  inArray(connectors.id, selectedIds),
-                ),
-          ),
-        );
-      const selectedRows = selectWorkflowStoredBuiltinConnectorRows({
-        rows: storedRows,
-        selections,
-      });
-      return catalogConnectionsForStoredConnectors(
-        storedBuiltinConnectorsWithRuntimeMethods({
-          rows: selectedRows,
-          snapshot,
-        }),
-      );
     },
   );
 }
@@ -969,18 +845,6 @@ async function revokePendingConnectorToken(
   );
 }
 
-async function cleanupConnectorWatchesForDisconnect(
-  db: Db,
-  connectorSlug: string,
-  connectorId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const args = { db, connectorId };
-  if (connectorSlug === "google-calendar") {
-    await bestEffort(cleanupGoogleCalendarWatchesForConnector(args, signal));
-  }
-}
-
 async function reconcileAccountBoundAutomationWatches(
   db: Db,
   args: {
@@ -993,6 +857,11 @@ async function reconcileAccountBoundAutomationWatches(
   if (args.connectorSlug === "gmail") {
     await bestEffort(
       reconcileGmailWatchesForUser({ db, ...args }, signal),
+      signal,
+    );
+  } else if (args.connectorSlug === "google-calendar") {
+    await bestEffort(
+      reconcileGoogleCalendarWatchesForUser({ db, ...args }, signal),
       signal,
     );
   } else if (args.connectorSlug === "google-forms") {
@@ -1115,6 +984,7 @@ interface DeleteConnectorLocalStateArgs {
 
 interface PendingConnectorAutomationCleanup {
   readonly pendingGmailWatchStop: PendingGmailWatchStop | null;
+  readonly pendingGoogleCalendarWatchStop: PendingGoogleCalendarWatchStop | null;
   readonly pendingGoogleFormsWatchStop: PendingGoogleFormsWatchStop | null;
   readonly pendingGoogleMeetSubscriptionDelete: PendingGoogleMeetSubscriptionDelete | null;
 }
@@ -1135,6 +1005,10 @@ async function prepareConnectorAutomationCleanup(
     args.connectorSlug === "gmail"
       ? await prepareGmailWatchStopForConnector(cleanupArgs, signal)
       : null;
+  const pendingGoogleCalendarWatchStop =
+    args.connectorSlug === "google-calendar"
+      ? await prepareGoogleCalendarWatchStopForConnector(cleanupArgs, signal)
+      : null;
   const pendingGoogleFormsWatchStop =
     args.connectorSlug === "google-forms"
       ? await prepareGoogleFormsWatchStopForConnector(cleanupArgs, signal)
@@ -1148,6 +1022,7 @@ async function prepareConnectorAutomationCleanup(
       : null;
   return {
     pendingGmailWatchStop,
+    pendingGoogleCalendarWatchStop,
     pendingGoogleFormsWatchStop,
     pendingGoogleMeetSubscriptionDelete,
   };
@@ -1173,6 +1048,7 @@ async function deleteConnectorAccountLocalState(
       kind: account.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleCalendarWatchStop: null,
       pendingGoogleMeetSubscriptionDelete: null,
       pendingGoogleFormsWatchStop: null,
     };
@@ -1192,6 +1068,7 @@ async function deleteConnectorAccountLocalState(
       kind: deletion.kind,
       pendingTokenRevoke: null,
       pendingGmailWatchStop: null,
+      pendingGoogleCalendarWatchStop: null,
       pendingGoogleMeetSubscriptionDelete: null,
       pendingGoogleFormsWatchStop: null,
     };
@@ -1232,16 +1109,6 @@ async function deleteConnectorAccountLocalState(
     existing.id,
     signal,
   );
-  if (args.connectorSlug !== "gmail" && args.connectorSlug !== "google-forms") {
-    await cleanupConnectorWatchesForDisconnect(
-      tx,
-      args.connectorSlug,
-      existing.id,
-      signal,
-    );
-  }
-  signal.throwIfAborted();
-
   await deleteConnectorCredentialStorageConnection(
     tx,
     { connectorId: existing.id },
@@ -1278,6 +1145,10 @@ async function stopPendingConnectorAutomationCleanup(
       capturedAbort ??= stopped.error;
     }
   }
+  capturedAbort ??= await stopPendingGoogleCalendarAutomationCleanup(
+    pending.pendingGoogleCalendarWatchStop,
+    signal,
+  );
   if (pending.pendingGoogleMeetSubscriptionDelete !== null) {
     const deleted = await settleIncludingAbort(
       bestEffort(
@@ -1316,6 +1187,22 @@ async function stopPendingConnectorAutomationCleanup(
     }
   }
   return capturedAbort;
+}
+
+async function stopPendingGoogleCalendarAutomationCleanup(
+  pending: PendingGoogleCalendarWatchStop | null,
+  signal: AbortSignal,
+): Promise<unknown> {
+  if (pending === null) {
+    return null;
+  }
+  const stopped = await settleIncludingAbort(
+    bestEffort(stopPreparedGoogleCalendarWatches(pending), signal),
+  );
+  if (signal.aborted) {
+    return signal.reason;
+  }
+  return stopped.ok ? null : stopped.error;
 }
 
 export const deleteConnectorLocalState$ = command(
@@ -1380,6 +1267,15 @@ export const deleteConnectorLocalState$ = command(
     if (args.connectorSlug === "gmail") {
       await bestEffort(
         reconcileGmailWatchesForUser(
+          { db: writeDb, orgId: args.orgId, userId: args.userId },
+          signal,
+        ),
+        signal,
+      );
+    }
+    if (args.connectorSlug === "google-calendar") {
+      await bestEffort(
+        reconcileGoogleCalendarWatchesForUser(
           { db: writeDb, orgId: args.orgId, userId: args.userId },
           signal,
         ),
@@ -2345,6 +2241,71 @@ async function reprojectConnectedWorkflowAutomations(
   );
 }
 
+async function prepareGoogleCalendarPrincipalReplacementWatchStop(
+  db: Tx,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: string;
+    readonly existing: StoredConnectorRow | null;
+    readonly nextPrincipalId: string;
+  },
+  signal: AbortSignal,
+): Promise<PendingGoogleCalendarWatchStop | null> {
+  if (
+    args.existing === null ||
+    args.connectorSlug !== "google-calendar" ||
+    args.existing.externalId === args.nextPrincipalId
+  ) {
+    return null;
+  }
+  return await prepareGoogleCalendarWatchStopForConnector(
+    {
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: args.existing.id,
+    },
+    signal,
+  );
+}
+
+async function prepareConnectorTokenConnectionCleanup(
+  args: CommitConnectorTokenConnectionArgs,
+  existing: StoredConnectorRow | null,
+  signal: AbortSignal,
+): Promise<{
+  readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+  readonly pendingGoogleCalendarWatchStop: PendingGoogleCalendarWatchStop | null;
+}> {
+  const pendingTokenRevoke =
+    await loadPendingConnectorTokenRevokeForTokenConnect(
+      args.db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        snapshot: args.snapshot,
+        featureSwitchContext: args.featureSwitchContext,
+        existing,
+      },
+      signal,
+    );
+  const pendingGoogleCalendarWatchStop =
+    await prepareGoogleCalendarPrincipalReplacementWatchStop(
+      args.db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        existing,
+        nextPrincipalId: args.userInfo.id,
+      },
+      signal,
+    );
+  return { pendingTokenRevoke, pendingGoogleCalendarWatchStop };
+}
+
 async function commitConnectorTokenConnection(
   args: CommitConnectorTokenConnectionArgs,
   signal: AbortSignal,
@@ -2354,6 +2315,7 @@ async function commitConnectorTokenConnection(
       readonly connectorRow: StoredConnectorRow;
       readonly created: boolean;
       readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+      readonly pendingGoogleCalendarWatchStop: PendingGoogleCalendarWatchStop | null;
     }
   | ConnectorConnectionMutationFailure
   | { readonly status: "identityMismatch" }
@@ -2392,17 +2354,10 @@ async function commitConnectorTokenConnection(
   ) {
     return { status: "identityMismatch" };
   }
-  const pendingTokenRevoke =
-    await loadPendingConnectorTokenRevokeForTokenConnect(
-      args.db,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorSlug: args.runtimeMethod.connectorSlug,
-        snapshot: args.snapshot,
-        featureSwitchContext: args.featureSwitchContext,
-        existing: existingConnector,
-      },
+  const { pendingTokenRevoke, pendingGoogleCalendarWatchStop } =
+    await prepareConnectorTokenConnectionCleanup(
+      args,
+      existingConnector,
       signal,
     );
 
@@ -2467,6 +2422,7 @@ async function commitConnectorTokenConnection(
     connectorRow,
     created: existingConnector === null,
     pendingTokenRevoke,
+    pendingGoogleCalendarWatchStop,
   };
 }
 
@@ -2564,6 +2520,13 @@ export const upsertConnectorTokenConnection$ = command(
     if (connectionResult.status !== "connected") {
       return connectionResult;
     }
+
+    const automationCleanupAbort =
+      await stopPendingGoogleCalendarAutomationCleanup(
+        connectionResult.pendingGoogleCalendarWatchStop,
+        signal,
+      );
+    postCommitAbort ??= automationCleanupAbort;
 
     await finalizeConnectorStateChangeAfterCommit(
       {

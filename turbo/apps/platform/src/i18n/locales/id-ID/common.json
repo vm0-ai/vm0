@@ -2054,6 +2054,7 @@
         "format": "Format",
         "heading": "Sumber Anda sudah siap",
         "help": "Periksa file sebelum melanjutkan",
+        "inAccount": "Di akun Anda",
         "inBrowser": "Di browser ini",
         "inTab": "Sampai tab ini ditutup",
         "replace": "Ganti sumber",
@@ -5088,7 +5089,6 @@
           "upstreamModel": "Model upstream"
         },
         "capture": {
-          "description": "Tangkap nama header HTTP, nilai header aman yang dipilih, dan body dalam log jaringan untuk debugging.",
           "disabled": "Dinonaktifkan",
           "enabled_one": "Diaktifkan untuk {{count}} eksekusi berikutnya",
           "enabled_other": "Diaktifkan untuk {{count}} eksekusi berikutnya",
@@ -5111,10 +5111,8 @@
           "recovery": "pemulihan",
           "title": "Diagnostik koneksi waktu nyata",
           "unavailable": "tidak tersedia"
-        },
-        "tab": "Debug"
+        }
       },
-      "documentTitle": "Preferensi",
       "language": {
         "description": "Pilih bahasa pilihan Anda untuk antarmuka {{brandName}}",
         "label": "Bahasa",
@@ -5144,8 +5142,6 @@
         "retryMessage": "Pengaturan Morning Brief tidak dapat dimuat atau diperbarui. Coba lagi untuk melanjutkan.",
         "title": "Brief Pagi"
       },
-      "pageDescription": "Kelola tampilan dan preferensi runtime agen Anda",
-      "pageTitle": "Preferensi",
       "send": {
         "cmdEnter": "⌘ Enter",
         "cmdEnterDescription": "Tekan ⌘/Ctrl+Enter untuk mengirim, Enter untuk baris baru",
@@ -5154,11 +5150,6 @@
         "enterDescription": "Tekan Enter untuk mengirim, Shift+Enter untuk baris baru",
         "sectionTitle": "Enter",
         "title": "Kirim pesan dengan"
-      },
-      "tabs": {
-        "appearance": "Tampilan",
-        "models": "Model Pribadi",
-        "timezone": "Zona Waktu"
       },
       "timezone": {
         "description": "Waktu ditampilkan kepada Anda dan digunakan untuk eksekusi otomatis.",
@@ -5934,35 +5925,6 @@
       "noWorkflows": "Belum ada alur kerja. Buat satu di chat untuk melanjutkan."
     },
     "detail": {
-      "connectors": {
-        "action": {
-          "connect": "Hubungkan",
-          "enable": "Aktifkan untuk agen",
-          "reconnect": "Sambungkan ulang",
-          "reviewPermissions": "Tinjau izin"
-        },
-        "aria": "Kesiapan konektor",
-        "check": "Periksa konektor",
-        "checkAgain": "Periksa lagi",
-        "checking": "Memeriksa...",
-        "description": "Lihat konektor bawaan yang mungkin diperlukan alur kerja ini dan apakah semuanya siap.",
-        "empty": "Tidak ada konektor yang diperlukan terdeteksi",
-        "error": {
-          "inputTooLong": "Alur kerja ini terlalu panjang untuk diperiksa. Simpan nama, deskripsi, dan instruksi di bawah 100.000 karakter.",
-          "retry": "Kami tidak dapat memeriksa konektor. Coba lagi.",
-          "timeout": "Pemeriksaan konektor habis waktu. Coba lagi."
-        },
-        "saveFirst": "Simpan perubahan Anda sebelum memeriksa konektor.",
-        "status": {
-          "connected": "Terhubung",
-          "notConnected": "Tidak terhubung",
-          "notEnabled": "Belum diaktifkan untuk agen ini",
-          "reconnect": "Perlu sambungkan ulang",
-          "scopeMismatch": "Perbarui izin",
-          "unavailable": "Saat ini tidak tersedia"
-        },
-        "title": "Kesiapan konektor"
-      },
       "copy": {
         "agentFallback": "agen tersebut",
         "copied": "Disalin ke {{agent}}",

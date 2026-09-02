@@ -1695,6 +1695,13 @@
       "when": 1788317979906,
       "tag": "1049_mushy_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 1050,
+      "version": "7",
+      "when": 1788323238631,
+      "tag": "1050_watery_the_renegades",
+      "breakpoints": true
     }
   ]
 }
