@@ -47,9 +47,11 @@ export const completeOnboarding$ = command(
     }
 
     const onboardingClient = createClient(onboardingCompleteContract);
+    const timezone =
+      new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     await accept(
       onboardingClient.complete({
-        body: {},
+        body: { timezone },
         fetchOptions: { signal },
       }),
       [200],
