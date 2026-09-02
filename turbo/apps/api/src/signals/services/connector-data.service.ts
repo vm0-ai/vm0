@@ -764,18 +764,12 @@ export function connectorById(args: {
   readonly userId: string;
   readonly connectorSlug: string;
   readonly connectorId: string;
-  readonly snapshot?: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSnapshot;
 }): Computed<Promise<ConnectorResponse | null>> {
   return computed(async (get): Promise<ConnectorResponse | null> => {
-    const snapshot =
-      args.snapshot ?? (await loadStoredConnectorRuntimeSnapshot(get(db$)));
-    if (snapshot === null) {
-      return null;
-    }
     const connector = await get(
       storedConnector({
         ...args,
-        snapshot,
         selection: { kind: "exact", connectorId: args.connectorId },
       }),
     );
