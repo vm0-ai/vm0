@@ -110,18 +110,16 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
           }),
       platformContext.authBrand.brandName,
     );
-    await set(hideAppSkeleton$, signal);
-    signal.throwIfAborted();
     await set(continuationSignals.initialize$, signal);
     signal.throwIfAborted();
-    if (get(continuationSignals.state$).status !== "inactive") {
-      return;
+    if (get(continuationSignals.state$).status === "inactive") {
+      if (signInSignals) {
+        await set(signInSignals.initialize$, signal);
+      } else if (signUpSignals) {
+        await set(signUpSignals.initialize$, signal);
+      }
     }
-    if (signInSignals) {
-      await set(signInSignals.initialize$, signal);
-    } else if (signUpSignals) {
-      await set(signUpSignals.initialize$, signal);
-    }
+    await set(hideAppSkeleton$, signal);
   });
 }
 
