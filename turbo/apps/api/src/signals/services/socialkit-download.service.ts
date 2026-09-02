@@ -496,10 +496,24 @@ async function fetchSafeSocialKitArtifact(
   throw new Error("SocialKit artifact redirected too many times");
 }
 
-async function probeArtifactMedia(
+interface ArtifactDownload {
+  readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  // The leading bytes already pulled off the stream to identify the container.
+  // The upload consumes them before draining the rest of the reader.
+  readonly head: Uint8Array;
+  readonly media: SniffedMedia | null;
+}
+
+/**
+ * Start the artifact download and read just enough of it to identify the
+ * container. The filename and content type are decided from this before the
+ * artifact object is allocated, and the same open stream then carries the whole
+ * body into R2, so the artifact is fetched exactly once.
+ */
+async function openArtifactDownload(
   downloadUrl: string,
   signal: AbortSignal,
-): Promise<SniffedMedia | null> {
+): Promise<ArtifactDownload> {
   const response = await fetchSafeSocialKitArtifact(downloadUrl, signal);
   signal.throwIfAborted();
   if (!response.ok || !response.body) {
@@ -507,6 +521,11 @@ async function probeArtifactMedia(
       startUntrackedBestEffortCleanup(response.body.cancel());
     }
     throw new Error("SocialKit artifact download failed");
+  }
+  const declaredSize = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > MAX_DOWNLOAD_BYTES) {
+    startUntrackedBestEffortCleanup(response.body.cancel());
+    throw new Error("SocialKit artifact exceeds the 2 GiB limit");
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -520,15 +539,15 @@ async function probeArtifactMedia(
     chunks.push(next.value);
     bufferedBytes += next.value.byteLength;
   }
-  startUntrackedBestEffortCleanup(reader.cancel());
-  return sniffMedia(concatChunks(chunks, bufferedBytes));
+  const head = concatChunks(chunks, bufferedBytes);
+  return { reader, head, media: sniffMedia(head) };
 }
 
 const streamDownloadToArtifact$ = command(
   async (
     { get },
     args: {
-      readonly downloadUrl: string;
+      readonly download: ArtifactDownload;
       readonly bucket: string;
       readonly key: string;
       readonly contentType: string;
@@ -536,22 +555,20 @@ const streamDownloadToArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<number> => {
-    const response = await fetchSafeSocialKitArtifact(args.downloadUrl, signal);
-    signal.throwIfAborted();
-    if (!response.ok || !response.body) {
-      if (response.body) {
-        startUntrackedBestEffortCleanup(response.body.cancel());
-      }
-      throw new Error("SocialKit artifact download failed");
-    }
-    const declaredSize = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declaredSize) && declaredSize > MAX_DOWNLOAD_BYTES) {
-      startUntrackedBestEffortCleanup(response.body.cancel());
-      throw new Error("SocialKit artifact exceeds the 2 GiB limit");
-    }
-
     const parts: MultipartS3Part[] = [];
-    const reader = response.body.getReader();
+    const { reader } = args.download;
+    let pendingHead: Uint8Array | null =
+      args.download.head.byteLength > 0 ? args.download.head : null;
+    const nextChunk = async (): Promise<Uint8Array | null> => {
+      if (pendingHead) {
+        const chunk = pendingHead;
+        pendingHead = null;
+        return chunk;
+      }
+      const next = await reader.read();
+      signal.throwIfAborted();
+      return next.done ? null : next.value;
+    };
     let uploadId: string | undefined;
     let chunks: Uint8Array[] = [];
     let bufferedBytes = 0;
@@ -595,16 +612,15 @@ const streamDownloadToArtifact$ = command(
         );
         signal.throwIfAborted();
         while (true) {
-          const next = await reader.read();
-          signal.throwIfAborted();
-          if (next.done) {
+          const chunk = await nextChunk();
+          if (!chunk) {
             break;
           }
           let offset = 0;
-          while (offset < next.value.byteLength) {
+          while (offset < chunk.byteLength) {
             const remaining = MULTIPART_PART_BYTES - bufferedBytes;
-            const length = Math.min(remaining, next.value.byteLength - offset);
-            const piece = next.value.subarray(offset, offset + length);
+            const length = Math.min(remaining, chunk.byteLength - offset);
+            const piece = chunk.subarray(offset, offset + length);
             chunks.push(piece);
             bufferedBytes += piece.byteLength;
             totalBytes += piece.byteLength;
@@ -1046,14 +1062,14 @@ const materializeSocialKitArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<NonNullable<DownloadJob["artifact"]>> => {
-    const media = await probeArtifactMedia(args.ready.downloadUrl, signal);
+    const download = await openArtifactDownload(args.ready.downloadUrl, signal);
     const filename = artifactFilename(
       args.providerResult.title,
       args.job.id,
-      media?.extension ?? args.job.request.format,
+      download.media?.extension ?? args.job.request.format,
     );
     const contentType =
-      media?.contentType ??
+      download.media?.contentType ??
       (args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4");
     const existing = await set(
       resolveArtifactObject$,
@@ -1071,6 +1087,9 @@ const materializeSocialKitArtifact$ = command(
       readonly sizeBytes: number;
     };
     if (existing) {
+      // A previous attempt already stored this object, so drop the stream
+      // instead of downloading a body nothing will consume.
+      startUntrackedBestEffortCleanup(download.reader.cancel());
       stored = {
         key: existing.key,
         url: existing.url,
@@ -1091,7 +1110,7 @@ const materializeSocialKitArtifact$ = command(
       const sizeBytes = await set(
         streamDownloadToArtifact$,
         {
-          downloadUrl: args.ready.downloadUrl,
+          download,
           bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
           key: location.key,
           contentType,
