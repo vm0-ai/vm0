@@ -1105,13 +1105,24 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         ),
         (
             "VM0_APP_URL".into(),
-            "https://filtered.runner-env.example.test".into(),
+            "https://ordinary.runner-env.example.test".into(),
         ),
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
+        ("VM0_PROMPT".into(), "hostile-user-prompt".into()),
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
         ("VM0_USER_ENV_FILE".into(), "/tmp/evil-env.json".into()),
+        (
+            "VM0_RUN_PAYLOAD_FILE".into(),
+            "/tmp/evil-payload.json".into(),
+        ),
         ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
+        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
+        ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), " 4 ".into()),
+        (
+            "VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(),
+            "not-a-duration".into(),
+        ),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
             "/tmp/evil-connector-account-context.json".into(),
@@ -1161,13 +1172,19 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "tok"
     );
     assert!(!start_env.contains_key("VM0_API_TOKEN"));
-    assert_eq!(
-        start_env
-            .get(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV)
-            .map(String::as_str),
-        Some("3")
-    );
-    assert!(!start_env.contains_key(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV));
+    for ((legacy_input, canonical_bootstrap_output), expected_value) in
+        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+            .into_iter()
+            .zip(["3", "1", " 4 ", "not-a-duration"])
+    {
+        assert_eq!(
+            start_env
+                .get(canonical_bootstrap_output)
+                .map(String::as_str),
+            Some(expected_value)
+        );
+        assert!(!start_env.contains_key(legacy_input));
+    }
     assert_eq!(
         start_env
             .get(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV)
@@ -1259,11 +1276,30 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "--require /tmp/user-node.js"
     );
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
-    assert!(!user_env.contains_key("VM0_APP_URL"));
-    assert!(!user_env.contains_key("VM0_API_TOKEN"));
+    assert_eq!(
+        user_env.get("VM0_APP_URL").map(String::as_str),
+        Some("https://ordinary.runner-env.example.test")
+    );
+    assert_eq!(
+        user_env.get("VM0_PROMPT").map(String::as_str),
+        Some("hostile-user-prompt")
+    );
+    assert_eq!(
+        user_env.get("VM0_API_TOKEN").map(String::as_str),
+        Some("stolen-token")
+    );
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
-    assert!(!user_env.contains_key("VM0_USER_ENV_FILE"));
-    assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
+    assert_eq!(
+        user_env.get("VM0_USER_ENV_FILE").map(String::as_str),
+        Some("/tmp/evil-env.json")
+    );
+    assert_eq!(
+        user_env.get("VM0_RUN_PAYLOAD_FILE").map(String::as_str),
+        Some("/tmp/evil-payload.json")
+    );
+    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
+        assert!(!user_env.contains_key(*key));
+    }
     assert_eq!(
         user_env
             .get(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV)

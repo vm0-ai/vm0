@@ -870,8 +870,8 @@ impl HostEnv {
 }
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
-    // The entire OKOU_ and VM0_ namespaces are runner-owned. Bootstrap keys
-    // outside them must stay explicit.
+    // The entire OKOU_ namespace and the exact retained local timing inputs are
+    // runner-owned. Bootstrap keys outside that namespace must stay explicit.
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 

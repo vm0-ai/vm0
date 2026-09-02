@@ -5,12 +5,11 @@
 //! through [`CANONICAL_USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
-//! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
-//! in sibling modules such as
-//! [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
-//! User env filtering should treat current and future `OKOU_` keys plus current,
-//! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
-//! namespaces are listed explicitly below.
+//! The `OKOU_` namespace is runner-owned, including keys defined in sibling
+//! modules such as [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
+//! User env filtering protects every current and future `OKOU_` key. Bootstrap
+//! keys outside that namespace and the four retained local-only timing inputs
+//! are classified explicitly below.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
@@ -533,13 +532,13 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
-/// This covers every `OKOU_` and `VM0_` key, including future and retired names,
-/// plus the explicit bootstrap keys required by established runner, guest-agent,
-/// or integration contracts. Runner and local-submit code use this predicate to
-/// scrub or reject user-provided env keys before the guest-agent starts.
+/// This covers every `OKOU_` key, the four exact retained local-only timing
+/// inputs, and the explicit bootstrap keys required by established runner,
+/// guest-agent, or integration contracts. Runner and local-submit code use this
+/// predicate to scrub or reject those keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
     key.starts_with("OKOU_")
-        || key.starts_with("VM0_")
+        || is_guest_agent_tuning_env_key(key)
         || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
@@ -862,30 +861,22 @@ mod tests {
     }
 
     #[test]
-    fn runner_owned_key_detection_covers_bootstrap_namespaces() {
+    fn runner_owned_key_detection_covers_terminal_contract() {
         for key in [
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
-            "VM0_API_TOKEN",
             CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
-            "VM0_SANDBOX_ID",
-            "VM0_SANDBOX_REUSE_RESULT",
-            "VM0_WORKSPACE_REUSE_RESULT",
-            "VM0_RESUME_SESSION_ID",
-            "VM0_API_START_TIME",
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
-            "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
-            "VM0_RUN_PAYLOAD_FILE",
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
@@ -896,7 +887,20 @@ mod tests {
         }
         assert!(is_runner_owned_env_key("OKOU_TOKEN"));
         assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-        assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
+        for key in [
+            "VM0_API_TOKEN",
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
+            "VM0_RESUME_SESSION_ID",
+            "VM0_API_START_TIME",
+            "VM0_USER_ENV_FILE",
+            "VM0_RUN_PAYLOAD_FILE",
+            "VM0_FUTURE_RUNNER_KEY",
+            "CUSTOM_ENV",
+        ] {
+            assert!(!is_runner_owned_env_key(key), "{key} should be user-owned");
+        }
     }
 
     #[test]
@@ -931,6 +935,10 @@ mod tests {
                 POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             ]
         );
+        for key in GUEST_AGENT_TUNING_ENV_KEYS {
+            assert!(is_guest_agent_tuning_env_key(key));
+            assert!(is_runner_owned_env_key(key));
+        }
         for key in [
             CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
             CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
@@ -1031,7 +1039,8 @@ mod tests {
         assert!(
             unprotected.is_empty(),
             "these bootstrap env keys are not protected from user env injection. Add each to \
-             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep an OKOU_/VM0_ prefix:\n  {}",
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS, register an exact local timing input, or keep an \
+             OKOU_ prefix:\n  {}",
             unprotected.join("\n  ")
         );
     }
