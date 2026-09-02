@@ -734,6 +734,7 @@ describe("chat inline feedback", () => {
     const selectedContent = "Keep the launch checklist short and actionable.";
     const translationRequests: unknown[] = [];
     const preferenceUpdates: unknown[] = [];
+    const translationResponse = context.mocks.deferred<void>();
     let preferences: UserPreferencesResponse = {
       timezone: "UTC",
       locale: "en-US",
@@ -755,8 +756,9 @@ describe("chat inline feedback", () => {
     });
     context.mocks.api(
       chatTranslationContract.translate,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
         translationRequests.push(body);
+        await translationResponse.promise;
         return respond(200, {
           text:
             body.targetLanguage === "fr"
@@ -813,7 +815,9 @@ describe("chat inline feedback", () => {
       expect(translationRequests).toStrictEqual([
         { text: selectedContent, targetLanguage: "fr" },
       ]);
+      expect(buttonByText("Translate")).toBeDisabled();
     });
+    translationResponse.resolve();
     await expect(
       screen.findByText("Gardez la liste de lancement courte et exploitable."),
     ).resolves.toBeInTheDocument();
