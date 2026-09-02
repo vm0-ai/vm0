@@ -112,37 +112,22 @@ expected_log() {
     $'cors\thttps://api.okou.ai/api/__brand-smoke__\thttps://app.okou.ai'
 }
 
-verify_scope() {
-  local name="$1"
-  local pages_url="$2"
-  shift 2
-  local curl_log="${test_root}/${name}.curl.log"
-  local expected="${test_root}/${name}.expected.log"
+verify_domains() {
+  local pages_url="$1"
+  local curl_log="${test_root}/valid.curl.log"
+  local expected="${test_root}/valid.expected.log"
 
   PATH="${fake_bin}:$PATH" \
     MOCK_CURL_LOG="$curl_log" \
-    bash "$script" "$pages_url" "$@" > "${test_root}/${name}.output"
+    bash "$script" "$pages_url" > "${test_root}/valid.output"
 
   expected_log "$pages_url" > "$expected"
   if ! diff -u "$expected" "$curl_log"; then
-    fail "$name scope did not verify both brand auth redirects and CORS pairs"
+    fail "verifier did not check both brand auth redirects and CORS pairs"
   fi
 }
 
-verify_scope full https://preview-full.test
-verify_scope api-promotion https://preview-api.test api-promotion
-
-invalid_log="${test_root}/invalid.curl.log"
-: > "$invalid_log"
-if PATH="${fake_bin}:$PATH" \
-  MOCK_CURL_LOG="$invalid_log" \
-  bash "$script" https://preview-invalid.test invalid \
-    > "${test_root}/invalid.output" 2>&1; then
-  fail "invalid scope succeeded"
-fi
-grep -Fxq 'invalid verification scope: invalid' "${test_root}/invalid.output" ||
-  fail "invalid scope error was not preserved"
-[[ ! -s "$invalid_log" ]] || fail "invalid scope reached curl"
+verify_domains https://preview.test
 
 missing_log="${test_root}/missing.curl.log"
 : > "$missing_log"

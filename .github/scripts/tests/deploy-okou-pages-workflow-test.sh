@@ -393,7 +393,6 @@ if release_step_source.count(shared_script) != 1:
         "production readiness polling must follow exactly one Pages deployment"
     )
 runtime_verifier = "bash .github/scripts/verify-okou-app-runtime.sh"
-domain_verifier = "bash .github/scripts/verify-okou-production-domains.sh"
 if not (
     release_step_source.index(shared_script)
     < release_step_source.index(runtime_verifier)
@@ -402,8 +401,6 @@ if not (
     raise RuntimeError(
         "production readiness and runtime verification must finish before success output"
     )
-if domain_verifier in release_source:
-    raise RuntimeError("release workflow must not verify production domains")
 if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
     "${{ steps.pages-production.outputs.canonical-dist }}/assets"
 ):
