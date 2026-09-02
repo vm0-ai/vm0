@@ -16,11 +16,18 @@ function formatElapsed(elapsedMs: number): string {
  * Lives in its own window placed outside the captured region, so for an area
  * capture it is never part of the video.
  */
+type FinishPhase = "finalizing" | "delivering" | null;
+
+function finishLabel(phase: FinishPhase): string {
+  return phase === "delivering" ? "Uploading…" : "Finishing…";
+}
+
 export function RecordingController(): React.ReactElement {
   // Narrowed once here so the handlers below need no assertions.
   const bridge = recorder;
   const [paused, setPaused] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [finishing, setFinishing] = useState<FinishPhase>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +41,13 @@ export function RecordingController(): React.ReactElement {
         .then((state) => {
           setPaused(state.status === "paused");
           setElapsedMs(state.elapsedMs);
+          // The window outlives the capture so the finish has somewhere to be
+          // seen; the controls it carried are meaningless by then.
+          setFinishing(
+            state.status === "finalizing" || state.status === "delivering"
+              ? state.status
+              : null,
+          );
         })
         .catch((pollError: unknown) => {
           setError(
@@ -63,24 +77,26 @@ export function RecordingController(): React.ReactElement {
       });
   }
 
+  const controlsDisabled = busy || finishing !== null || !bridge;
+
   return (
     <div className="recording-controller">
       <span className="recording-controller__clock">
         <span
           className={
-            paused
+            paused || finishing
               ? "recording-controller__dot recording-controller__dot--paused"
               : "recording-controller__dot"
           }
         />
-        {formatElapsed(elapsedMs)}
+        {finishing ? finishLabel(finishing) : formatElapsed(elapsedMs)}
       </span>
 
       <button
         type="button"
         className="recording-controller__button"
         aria-label={paused ? "Resume" : "Pause"}
-        disabled={busy || !bridge}
+        disabled={controlsDisabled}
         onClick={() => {
           if (bridge) {
             run(
@@ -97,7 +113,7 @@ export function RecordingController(): React.ReactElement {
         type="button"
         className="recording-controller__button recording-controller__button--stop"
         aria-label="Finish recording"
-        disabled={busy || !bridge}
+        disabled={controlsDisabled}
         onClick={() => {
           if (bridge) {
             run(() => bridge.stop(), "Could not finish the recording");
@@ -111,7 +127,7 @@ export function RecordingController(): React.ReactElement {
         type="button"
         className="recording-controller__button recording-controller__button--discard"
         aria-label="Delete recording"
-        disabled={busy || !bridge}
+        disabled={controlsDisabled}
         onClick={() => {
           if (bridge) {
             run(() => bridge.discard(), "Could not delete the recording");

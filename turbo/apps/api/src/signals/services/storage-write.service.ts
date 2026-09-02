@@ -23,6 +23,7 @@ import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
+import { enqueueMemorySummaryProjection } from "./memory-summary-projection.service";
 
 const ACTIVE_SANDBOX_STORAGE_RUN_STATUSES = ["pending", "running"] as const;
 
@@ -768,13 +769,16 @@ async function recordStorageLineage(args: {
   });
 }
 
-async function commitActiveStorageVersion(args: {
-  readonly tx: Tx;
-  readonly storage: StorageRow;
-  readonly version: StorageVersionRow | undefined;
-  readonly input: CommitStorageForStorageInput;
-  readonly verification: VerifiedStorageCommit;
-}): Promise<CommitStorageResponse> {
+async function commitActiveStorageVersion(
+  args: {
+    readonly tx: Tx;
+    readonly storage: StorageRow;
+    readonly version: StorageVersionRow | undefined;
+    readonly input: CommitStorageForStorageInput;
+    readonly verification: VerifiedStorageCommit;
+  },
+  signal: AbortSignal,
+): Promise<CommitStorageResponse> {
   if (args.version) {
     if (args.version.archiveSize !== args.verification.archiveSize) {
       await args.tx
@@ -803,6 +807,14 @@ async function commitActiveStorageVersion(args: {
       storageId: args.storage.id,
       input: args.input,
     });
+    await enqueueMemorySummaryProjection(
+      {
+        db: args.tx,
+        storage: args.storage,
+        storageVersionId: args.input.versionId,
+      },
+      signal,
+    );
     return storageCommitSuccess({
       storage: args.storage,
       versionId: args.input.versionId,
@@ -861,6 +873,14 @@ async function commitActiveStorageVersion(args: {
     storageId: args.storage.id,
     input: args.input,
   });
+  await enqueueMemorySummaryProjection(
+    {
+      db: args.tx,
+      storage: args.storage,
+      storageVersionId: args.input.versionId,
+    },
+    signal,
+  );
 
   return storageCommitSuccess({
     storage: args.storage,
@@ -939,13 +959,16 @@ async function commitVerifiedStorageVersion(
         : notFound("Active agent run not found");
     }
 
-    return await commitActiveStorageVersion({
-      tx,
-      storage,
-      version,
-      input: args.input,
-      verification: args.verification,
-    });
+    return await commitActiveStorageVersion(
+      {
+        tx,
+        storage,
+        version,
+        input: args.input,
+        verification: args.verification,
+      },
+      signal,
+    );
   });
 }
 
