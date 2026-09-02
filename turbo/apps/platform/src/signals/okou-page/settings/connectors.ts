@@ -630,6 +630,9 @@ export const selectedConnectorSlug$ = computed((get) => {
 });
 export const setSelectedConnectorSlug$ = command(
   ({ get, set }, connectorSlug: ConnectorSlug | null) => {
+    if (connectorSlug) {
+      set(resetManualGrantForm$, connectorSlug);
+    }
     set(internalSelectedConnectorSlug$, connectorSlug);
     const deviceAuthCurrent = get(internalConnectorOAuthDeviceAuthState$);
     if (connectorSlug !== deviceAuthCurrent.connectorSlug) {
@@ -787,7 +790,7 @@ export const setManualGrantFormValue$ = command(
   },
 );
 
-export const clearManualGrantForm$ = command(
+export const resetManualGrantForm$ = command(
   ({ get, set }, connectorSlug: ConnectorSlug) => {
     const current = get(manualGrantFormValues$);
     const updated = { ...current };

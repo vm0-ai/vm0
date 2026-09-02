@@ -13,6 +13,7 @@ import {
   agentConnectorAuthorizations,
   reloadAgentConnectorAuthorizations$,
 } from "../okou-page/agent-connector-authorizations.ts";
+import { resetManualGrantForm$ } from "../okou-page/settings/connectors.ts";
 
 /**
  * Connector slug extracted from `/connectors/:connectorSlug/authorize` route params.
@@ -74,6 +75,9 @@ export const directedAuthorizeConnectModalKey$ = computed((get) => {
 });
 export const setDirectedAuthorizeConnectModalKey$ = command(
   ({ set }, key: DirectedAuthorizeConnectModalKey | null) => {
+    if (key) {
+      set(resetManualGrantForm$, key.connectorSlug);
+    }
     set(internalDirectedAuthorizeConnectModalKey$, key);
   },
 );
