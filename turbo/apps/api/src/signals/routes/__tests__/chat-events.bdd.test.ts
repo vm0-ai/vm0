@@ -152,7 +152,6 @@ import {
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setVm0BuiltInCandidateCooldownFixture,
   setRunAutonomyBudgetFixture,
-  setRunnerJobPiOwnershipTransferAsPreviousApi,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -8677,12 +8676,6 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       },
     });
-    const fallbackFirstTurnConfig =
-      fallbackClaim.claim.piLaunchConfig?.apiFirstTurn;
-    if (!fallbackFirstTurnConfig) {
-      throw new Error("Expected Pi API first-turn launch config");
-    }
-    expect(fallbackFirstTurnConfig).not.toHaveProperty("ownershipTransfer");
     const postProviderPrompt = "must fail after one provider request";
     const postProvider = await sendChatRun(actor, {
       agentId,
@@ -9238,7 +9231,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "before parallel tools", sequenceNumber: 0 },
       { content: "after parallel tools", sequenceNumber: 3 },
     ]);
-    await setRunnerJobPiOwnershipTransferAsPreviousApi(context, run.runId);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
@@ -9251,7 +9243,6 @@ describe("CHAT-02: model-first provider policies", () => {
       schemaVersion: 2,
       apiFirstTurn: {
         schemaVersion: 1,
-        ownershipTransfer: { schemaVersion: 1 },
         baseSession: { sessionId: run.threadId, sha256: null },
         sandboxEventSequenceStart: 1,
       },

@@ -892,21 +892,6 @@ export const piApiFirstTurnManifestSchema = z.discriminatedUnion("mode", [
     .readonly(),
 ]);
 
-const piApiFirstTurnOwnershipTransferCapabilitySchema = z
-  .object({
-    schemaVersion: z.literal(1),
-  })
-  .strict()
-  .readonly();
-
-/**
- * Ignored compatibility field for stored contexts written before #31020.
- * Keep accepting this exact shape until parent #31007 records the
- * marker-omitting deployment and its queued/claimed context window drains.
- */
-const piApiFirstTurnOwnershipTransferSchema =
-  piApiFirstTurnOwnershipTransferCapabilitySchema.optional();
-
 export const piApiFirstTurnConfigSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -916,7 +901,6 @@ export const piApiFirstTurnConfigSchema = z
     deadlineAt: z.number().int().positive(),
     baseSession: piSessionCheckpointSchema,
     sandboxEventSequenceStart: piSandboxEventSequenceStartSchema,
-    ownershipTransfer: piApiFirstTurnOwnershipTransferSchema,
   })
   .strict()
   .readonly();
