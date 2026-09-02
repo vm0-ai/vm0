@@ -15,7 +15,6 @@ from tests.usage_buffer_helpers import (
     DeliveryOutcomeCallback,
     RecordingEnqueue,
     event,
-    observation,
 )
 from usage.quantities import MAX_USAGE_QUANTITY
 
@@ -24,71 +23,6 @@ def assert_usage_buffer_drained(enqueue: RecordingEnqueue) -> None:
     enqueue.clear()
     assert usage.flush_usage_events(trigger="test") == 0
     enqueue.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "post_executor_drain",
-    [pytest.param(False, id="flush"), pytest.param(True, id="post-executor-drain")],
-)
-def test_billing_lane_failure_still_attempts_observation_lane(tmp_path, post_executor_drain: bool):
-    def fail_billing_enqueue(
-        url: str,
-        sandbox_token: str,
-        payload: dict,
-        path: str,
-        log_type: str,
-        delivery_outcome_callback: DeliveryOutcomeCallback,
-    ) -> bool:
-        del url, sandbox_token, payload, path
-        if log_type == "usage_event":
-            raise OSError("billing unavailable")
-        delivery_outcome_callback("success")
-        return True
-
-    enqueue = RecordingEnqueue(side_effect=fail_billing_enqueue)
-    pending_path = tmp_path / "usage-pending"
-    proxy_log_path = str(tmp_path / "proxy.jsonl")
-    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
-    usage.set_pending_path(str(pending_path))
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [event(source_key="billing-source")],
-        proxy_log_path,
-    )
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/runners/model-usage-observations",
-        "runner-token",
-        "run-1",
-        [observation(source_key="observation-source", input_tokens=1)],
-        proxy_log_path,
-    )
-
-    if post_executor_drain:
-        with pytest.raises(OSError, match="billing unavailable"):
-            usage.drain_usage_events_after_executor_shutdown()
-    else:
-        with pytest.raises(OSError, match="billing unavailable"):
-            usage.flush_usage_events(trigger="shutdown")
-
-    assert [call.log_type for call in enqueue.calls] == [
-        "usage_event",
-        "model_usage_observation",
-    ]
-    assert_current_pending(
-        pending_path,
-        flows=0,
-        buffered=1,
-        reports=0,
-        flush_request_id="billing-failed-observation-drained",
-    )
-
-    enqueue.side_effect = None
-    if post_executor_drain:
-        usage.drain_usage_events_after_executor_shutdown()
-    else:
-        assert usage.flush_billing_usage_events(trigger="shutdown") == 1
 
 
 def test_pre_admission_failure_retains_source_event_and_releases_delivery_ownership(
@@ -506,92 +440,6 @@ def test_retained_aggregate_batch_keeps_source_event_count(tmp_path):
     assert enqueue.last_call.payload["events"][0]["quantity"] == 22
     usage.write_pending_snapshot(flush_request_id="drained")
     assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="drained")
-    assert_usage_buffer_drained(enqueue)
-
-
-def test_billable_usage_is_admitted_before_model_usage_observation(tmp_path):
-    attempted_log_types = []
-
-    def admit_one_batch(url, sandbox_token, payload, path, log_type):
-        del url, sandbox_token, payload, path
-        attempted_log_types.append(log_type)
-        return len(attempted_log_types) == 1
-
-    enqueue = RecordingEnqueue(side_effect=admit_one_batch)
-    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
-    proxy_log_path = str(tmp_path / "proxy.jsonl")
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/runners/model-usage-observations",
-        "token-a",
-        "run-1",
-        [observation(source_key="observation-source", input_tokens=1)],
-        proxy_log_path,
-    )
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [event(source_key="usage-source")],
-        proxy_log_path,
-    )
-
-    assert usage.flush_usage_events(trigger="test") == 1
-
-    assert attempted_log_types == ["usage_event", "model_usage_observation"]
-
-    enqueue.side_effect = None
-    enqueue.clear()
-    assert usage.flush_usage_events(trigger="test") == 1
-
-    enqueue.assert_called_once()
-    assert enqueue.last_call.log_type == "model_usage_observation"
-    assert_usage_buffer_drained(enqueue)
-
-
-def test_live_billable_usage_preempts_retained_model_usage_observation(tmp_path):
-    enqueue = RecordingEnqueue(return_value=False)
-    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
-    proxy_log_path = str(tmp_path / "proxy.jsonl")
-    usage.buffer_model_usage_observations(
-        "https://api.test/api/runners/model-usage-observations",
-        "token-a",
-        "run-1",
-        [observation(source_key="observation-source", input_tokens=1)],
-        proxy_log_path,
-    )
-
-    assert usage.flush_usage_events(trigger="test") == 0
-
-    enqueue.assert_called_once()
-    assert enqueue.last_call.log_type == "model_usage_observation"
-
-    usage.buffer_usage_events(
-        "https://api.test/api/webhooks/agent/usage-event",
-        "token-a",
-        "run-1",
-        [event(source_key="usage-source")],
-        proxy_log_path,
-    )
-    attempted_log_types = []
-
-    def admit_usage_then_saturate_observation(url, sandbox_token, payload, path, log_type):
-        del url, sandbox_token, payload, path
-        attempted_log_types.append(log_type)
-        return log_type == "usage_event"
-
-    enqueue.side_effect = admit_usage_then_saturate_observation
-    enqueue.clear()
-    assert usage.flush_usage_events(trigger="test") == 1
-
-    assert attempted_log_types == ["usage_event", "model_usage_observation"]
-
-    enqueue.side_effect = None
-    enqueue.return_value = True
-    enqueue.clear()
-    assert usage.flush_usage_events(trigger="test") == 1
-
-    enqueue.assert_called_once()
-    assert enqueue.last_call.log_type == "model_usage_observation"
     assert_usage_buffer_drained(enqueue)
 
 

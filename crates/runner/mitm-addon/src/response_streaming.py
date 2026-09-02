@@ -97,7 +97,7 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
     if (
         response is None
         or not http_response_classification.can_have_body(flow, response)
-        or not usage.is_model_provider_usage_observable(flow)
+        or not usage.is_model_provider_usage_billable(flow)
     ):
         return False
     if http_response_classification.has_event_stream_media_type(response):
@@ -188,18 +188,17 @@ def _configure_response_inspection_stream(
         return _ResponseStreamSetup(None, False)
 
     # Platform-billable firewall flag, sourced from sandbox_info["billableFirewalls"]
-    # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
-    # and the incremental response parsers used for connector billing payload
-    # extraction. Model-provider usage reporting is gated separately.
+    # via auth.handle_firewall_request. It gates model-provider and connector
+    # usage extraction and reporting.
     is_billable_flow = flow_metadata.is_firewall_billable(flow.metadata)
-    is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
+    is_billable_model_provider = usage.is_model_provider_usage_billable(flow)
     model_protocol = (
         model_usage_protocol(flow)
-        if is_observable_model_provider or failure_observer is not None
+        if is_billable_model_provider or failure_observer is not None
         else None
     )
     if (
-        is_observable_model_provider
+        is_billable_model_provider
         and model_protocol == "openai_responses"
         and is_confirmed_websocket_upgrade_response(flow)
     ):
@@ -228,9 +227,9 @@ def _configure_response_inspection_stream(
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                     on_terminal_usage=(
-                        record_openai_terminal_usage if is_observable_model_provider else None
+                        record_openai_terminal_usage if is_billable_model_provider else None
                     ),
-                    include_usage=is_observable_model_provider,
+                    include_usage=is_billable_model_provider,
                     failure_observer=failure_observer,
                 )
             elif model_protocol == "openai_chat_completions":
@@ -241,7 +240,7 @@ def _configure_response_inspection_stream(
                 )
                 parser_fn, usage_dict = usage.create_openai_chat_completions_sse_usage_extractor(
                     on_parse_error=log_parse_error,
-                    include_usage=is_observable_model_provider,
+                    include_usage=is_billable_model_provider,
                     failure_observer=failure_observer,
                 )
             else:
@@ -251,15 +250,15 @@ def _configure_response_inspection_stream(
                     usage_protocol=usage_protocol,
                 )
                 lifecycle_observer = (
-                    _anthropic_lifecycle_observer(flow) if is_observable_model_provider else None
+                    _anthropic_lifecycle_observer(flow) if is_billable_model_provider else None
                 )
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                     on_lifecycle_event=lifecycle_observer,
                     on_accounting_event=(
-                        anthropic_accounting_events.add if is_observable_model_provider else None
+                        anthropic_accounting_events.add if is_billable_model_provider else None
                     ),
-                    include_usage=is_observable_model_provider,
+                    include_usage=is_billable_model_provider,
                     failure_observer=failure_observer,
                 )
             decode_session = _make_response_decode_session(parser_fn, response.headers)
@@ -274,7 +273,7 @@ def _configure_response_inspection_stream(
                     False,
                     reject_uninspectable=(
                         is_billable_flow
-                        and is_observable_model_provider
+                        and is_billable_model_provider
                         and _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
                     ),
                 )
@@ -287,7 +286,7 @@ def _configure_response_inspection_stream(
                     decode_error = decode_session.finish_error()
                     if decode_error is None:
                         parser_fn.finish()
-                    elif is_observable_model_provider:
+                    elif is_billable_model_provider:
                         log_parse_error("compressed_body", decode_error)
                         if (
                             usage_protocol == _ANTHROPIC_MESSAGES_SSE_PROTOCOL
@@ -321,7 +320,7 @@ def _configure_response_inspection_stream(
                 finish_sse_response()
                 return failure_observer.settle() if failure_observer is not None else None
 
-            if is_observable_model_provider:
+            if is_billable_model_provider:
                 flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
                 flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_response
             if failure_observer is not None:
@@ -334,7 +333,7 @@ def _configure_response_inspection_stream(
 
         extractor = usage.create_model_json_response_inspector(
             model_protocol,
-            include_usage=is_observable_model_provider,
+            include_usage=is_billable_model_provider,
             include_failure=failure_observer is not None,
         )
         decode_session = _make_response_decode_session(
@@ -348,7 +347,7 @@ def _configure_response_inspection_stream(
                 response.headers
             ) and (
                 failure_observer is not None
-                or (is_observable_model_provider and uses_model_json_fallback(flow))
+                or (is_billable_model_provider and uses_model_json_fallback(flow))
             )
             if not needs_buffered_fallback:
                 if failure_observer is not None:
@@ -361,7 +360,7 @@ def _configure_response_inspection_stream(
                     False,
                     reject_uninspectable=(
                         is_billable_flow
-                        and is_observable_model_provider
+                        and is_billable_model_provider
                         and _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
                     ),
                 )
@@ -412,7 +411,7 @@ def _configure_response_inspection_stream(
             finish_json_response()
             return failure_observer.settle() if failure_observer is not None else None
 
-        if is_observable_model_provider:
+        if is_billable_model_provider:
             flow.metadata[_MODEL_JSON_USAGE_FINISH] = finish_json_usage
         if failure_observer is not None:
             model_provider_failure.register_response_finish(flow, finish_json_response)
@@ -479,7 +478,7 @@ def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     RFC-generated accept token. Missing or malformed values fail closed and
     return ``False``.
 
-    For an observable OpenAI Responses model-provider flow, ``True`` is the
+    For a billable OpenAI Responses model-provider flow, ``True`` is the
     signal for WebSocket usage activation and allows tracked-flow release to
     wait for ``websocket_end()``; ``False`` follows ordinary HTTP terminal
     handling.
