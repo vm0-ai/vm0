@@ -72,7 +72,5 @@ verify_api_cors() {
 
 verify_auth_redirect "https://api.vm0.ai" "https://app.vm0.ai"
 verify_auth_redirect "https://api.okou.ai" "https://app.okou.ai"
-if [[ "$verification_scope" == "full" ]]; then
-fi
 verify_api_cors "https://api.vm0.ai" "https://app.vm0.ai"
 verify_api_cors "https://api.okou.ai" "https://app.okou.ai"
