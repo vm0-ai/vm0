@@ -1507,14 +1507,14 @@ jobs:
       deployments: write
     environment: production
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.release-please.outputs.release_target }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Start GitHub Deployment
         id: deployment
-        uses: bobheadxi/deployments@v1
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
         with:
           step: start
           token: ${{ github.token }}
@@ -1691,7 +1691,7 @@ jobs:
 
       - name: Finish GitHub Deployment
         if: always()
-        uses: bobheadxi/deployments@v1
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
         with:
           step: finish
           token: ${{ github.token }}
