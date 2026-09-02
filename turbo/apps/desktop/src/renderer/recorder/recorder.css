@@ -93,8 +93,10 @@ select {
   gap: 5px;
   box-sizing: border-box;
   width: 88px;
-  height: 64px;
-  padding: 0 6px;
+  /* Grows for the caption naming the chosen window; the row stretches all
+     three together so they stay one control group. */
+  min-height: 64px;
+  padding: 4px 6px;
   border: 1px solid transparent;
   border-radius: 12px;
   background: transparent;
@@ -117,6 +119,18 @@ select {
   display: block;
   max-width: 100%;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The window the pick landed on, subordinate to the mode name above it. */
+.recorder-bar__source-target {
+  display: block;
+  max-width: 100%;
+  margin-top: -2px;
+  overflow: hidden;
+  color: rgb(245 245 247 / 55%);
+  font-size: 10px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
