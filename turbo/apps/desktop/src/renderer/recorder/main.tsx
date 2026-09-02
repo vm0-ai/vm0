@@ -7,6 +7,7 @@ import "./recorder.css";
 import { AreaSelector } from "./area-selector";
 import { RecorderBar } from "./recorder-bar";
 import { RecordingController } from "./recording-controller";
+import { WindowPicker } from "./window-picker";
 
 const container = document.getElementById("root");
 if (!container) {
@@ -21,6 +22,9 @@ function overlayForMode(): React.ReactElement {
   }
   if (mode === "controller") {
     return <RecordingController />;
+  }
+  if (mode === "windows") {
+    return <WindowPicker />;
   }
   return <RecorderBar />;
 }

@@ -413,26 +413,44 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     });
   });
 
-  it("retires Connector Doctor while preserving its released artifact", async () => {
+  it("retires Connector Doctor while retaining its released identity and Morning Brief behavior", async () => {
     const s3 = installVolumeS3Fixture();
-    const legacyRelease = await syncCatalog(
+    const historicalBlueprint: OfficialWorkflowBlueprint = {
+      key: "weekly-check",
+      parameters: [],
+      desiredState: {
+        kind: "schedule",
+        schedule: {
+          type: "cron",
+          cronExpression: "0 9 * * 1",
+        },
+      },
+      runtime: { resultEmail: false },
+    };
+    const released = await syncCatalog(
       catalog([
         activeDefinition("connector-doctor", {
-          instruction: "Legacy retired Definition.",
+          blueprints: [historicalBlueprint],
         }),
       ]),
     );
-    expect(legacyRelease.body).toMatchObject({
+    expect(released.body).toMatchObject({
       outcome: "accepted",
       diagnostics: [],
     });
-    const legacyDefinition = requireValue(
+    const releasedConnectorDoctor = requireValue(
       (await readState("connector-doctor")).body.definition,
-      "Expected the legacy Definition",
+      "Expected the released Connector Doctor Definition",
     );
+    expect(releasedConnectorDoctor).toMatchObject({
+      name: "connector-doctor",
+      lifecycle: "active",
+      blueprints: [{ key: "weekly-check" }],
+      releasedBlueprintKeys: ["weekly-check"],
+    });
 
-    const retiredRelease = await syncDeployedCatalog();
-    expect(retiredRelease.body).toMatchObject({
+    const first = await syncDeployedCatalog();
+    expect(first.body).toMatchObject({
       outcome: "accepted",
       diagnostics: [],
     });
@@ -447,9 +465,9 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       morningBriefState.body.definition,
       "Expected the Morning Brief Definition",
     );
-    const retiredConnectorDoctor = requireValue(
+    const connectorDoctorDefinition = requireValue(
       connectorDoctorState.body.definition,
-      "Expected the retired Definition",
+      "Expected the retired Connector Doctor Definition",
     );
     expect(
       deployedCatalog.payload.definitions.map(({ name, lifecycle }) => {
@@ -459,12 +477,6 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       { name: "connector-doctor", lifecycle: "retired" },
       { name: "morning-brief", lifecycle: "active" },
     ]);
-    expect(retiredConnectorDoctor).toMatchObject({
-      name: "connector-doctor",
-      lifecycle: "retired",
-      revision: legacyDefinition.revision,
-      artifact: legacyDefinition.artifact,
-    });
     expect(morningBriefDefinition).toMatchObject({
       name: "morning-brief",
       lifecycle: "active",
@@ -483,6 +495,25 @@ describe.sequential("Official Workflow catalog release boundary", () => {
         },
       ],
     });
+    expect(connectorDoctorDefinition).toMatchObject({
+      name: "connector-doctor",
+      lifecycle: "retired",
+      blueprints: [{ key: "weekly-check" }],
+      releasedBlueprintKeys: ["weekly-check"],
+      presentation: { category: "productivity" },
+    });
+    expect(connectorDoctorDefinition.revision).toBe(
+      releasedConnectorDoctor.revision,
+    );
+    expect(connectorDoctorDefinition.artifact).toStrictEqual(
+      releasedConnectorDoctor.artifact,
+    );
+    expect(connectorDoctorDefinition.blueprints).toStrictEqual(
+      releasedConnectorDoctor.blueprints,
+    );
+    expect(connectorDoctorDefinition.releasedBlueprintKeys).toStrictEqual(
+      releasedConnectorDoctor.releasedBlueprintKeys,
+    );
     expect(morningBriefState.body.storage).toMatchObject({
       storageName: "official-workflow@morning-brief",
       orgId: SYSTEM_ORG_ID,
@@ -494,7 +525,7 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       storageName: "official-workflow@connector-doctor",
       orgId: SYSTEM_ORG_ID,
       userId: VOLUME_ORG_USER_ID,
-      headVersionId: retiredConnectorDoctor.artifact.storageVersion,
+      headVersionId: releasedConnectorDoctor.artifact.storageVersion,
       versionCount: 1,
     });
     expect(morningBriefState.body.counts).toStrictEqual({
@@ -505,17 +536,18 @@ describe.sequential("Official Workflow catalog release boundary", () => {
     });
     expect(s3.objects.size).toBe(4);
 
+    const morningBriefRevision = morningBriefDefinition.revision;
     const exactMorningBrief = await readState(
       "morning-brief",
-      morningBriefDefinition.revision,
+      morningBriefRevision,
     );
-    const morningBriefRevision = requireValue(
+    const exactMorningBriefRevision = requireValue(
       exactMorningBrief.body.revision,
       "Expected the exact Morning Brief revision",
     );
     const morningBriefInstruction =
-      morningBriefRevision.definition.workflow.instruction;
-    expect(morningBriefRevision.definition.workflow).toMatchObject({
+      exactMorningBriefRevision.definition.workflow.instruction;
+    expect(exactMorningBriefRevision.definition.workflow).toMatchObject({
       displayName: "Morning Brief",
       description:
         "Summarize today's email, GitHub, calendar, and unread Chat priorities.",
@@ -537,13 +569,71 @@ describe.sequential("Official Workflow catalog release boundary", () => {
       /morning-brief-(?:collect|run)|morning_brief|chat_morning_brief_context/,
     );
 
+    const exactConnectorDoctor = await readState(
+      "connector-doctor",
+      releasedConnectorDoctor.revision,
+    );
+    const exactConnectorDoctorRevision = requireValue(
+      exactConnectorDoctor.body.revision,
+      "Expected the exact historical Connector Doctor revision",
+    );
+    expect(exactConnectorDoctorRevision.definition.revision).toBe(
+      releasedConnectorDoctor.revision,
+    );
+    expect(exactConnectorDoctorRevision.definition.blueprints).toStrictEqual(
+      releasedConnectorDoctor.blueprints,
+    );
+    expect(exactConnectorDoctorRevision.artifact).toStrictEqual(
+      releasedConnectorDoctor.artifact,
+    );
+
+    expect(morningBriefRevision).not.toBe(releasedConnectorDoctor.revision);
+    expect(morningBriefDefinition.blueprints[0]?.fingerprint).not.toBe(
+      connectorDoctorDefinition.blueprints[0]?.fingerprint,
+    );
+    expect(morningBriefDefinition.artifact.storageVersion).not.toBe(
+      connectorDoctorDefinition.artifact.storageVersion,
+    );
+    const firstIdentities = {
+      morningBrief: {
+        revision: morningBriefDefinition.revision,
+        blueprintFingerprint: morningBriefDefinition.blueprints[0]?.fingerprint,
+        artifact: morningBriefDefinition.artifact,
+      },
+      connectorDoctor: {
+        revision: connectorDoctorDefinition.revision,
+        blueprintFingerprint:
+          connectorDoctorDefinition.blueprints[0]?.fingerprint,
+        artifact: connectorDoctorDefinition.artifact,
+      },
+    };
     s3.clearWrites();
-    const repeatedRetirement = await syncDeployedCatalog();
-    expect(repeatedRetirement.body).toMatchObject({
+    const second = await syncDeployedCatalog();
+    expect(second.body).toMatchObject({
       outcome: "unchanged",
-      releaseId: retiredRelease.body.releaseId,
+      releaseId: first.body.releaseId,
       diagnostics: [],
     });
+    const secondMorningBrief = requireValue(
+      (await readState("morning-brief")).body.definition,
+      "Expected the unchanged Morning Brief Definition",
+    );
+    const secondConnectorDoctor = requireValue(
+      (await readState("connector-doctor")).body.definition,
+      "Expected the unchanged retired Connector Doctor Definition",
+    );
+    expect({
+      morningBrief: {
+        revision: secondMorningBrief.revision,
+        blueprintFingerprint: secondMorningBrief.blueprints[0]?.fingerprint,
+        artifact: secondMorningBrief.artifact,
+      },
+      connectorDoctor: {
+        revision: secondConnectorDoctor.revision,
+        blueprintFingerprint: secondConnectorDoctor.blueprints[0]?.fingerprint,
+        artifact: secondConnectorDoctor.artifact,
+      },
+    }).toStrictEqual(firstIdentities);
     expect(s3.writes).toStrictEqual([]);
   });
 

@@ -2057,6 +2057,7 @@
         "format": "Format",
         "heading": "Your source is ready",
         "help": "Check the file before you continue",
+        "inAccount": "In your account",
         "inBrowser": "In this browser",
         "inTab": "Until this tab closes",
         "replace": "Replace source",

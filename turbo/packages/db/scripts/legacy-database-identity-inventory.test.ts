@@ -65,7 +65,7 @@ function catalogCandidate(args: {
 }
 
 describe("active legacy database identity inventory", () => {
-  it("tracks exactly 20 identities after the entitlement contract", () => {
+  it("tracks exactly 17 retained identities after the acquisition contract", () => {
     const counts = LEGACY_DATABASE_IDENTITY_MANIFEST.reduce(
       (result, entry) => {
         result[entry.classification] += 1;
@@ -76,7 +76,7 @@ describe("active legacy database identity inventory", () => {
     expect({
       total: LEGACY_DATABASE_IDENTITY_MANIFEST.length,
       ...counts,
-    }).toEqual({ total: 20, migrate: 3, retain: 17 });
+    }).toEqual({ total: 17, migrate: 0, retain: 17 });
 
     expect(
       LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
@@ -84,11 +84,18 @@ describe("active legacy database identity inventory", () => {
       }).map((entry) => {
         return entry.key;
       }),
-    ).toEqual([
+    ).toEqual([]);
+
+    const removedAcquisitionKeys = [
       "column:public.org_metadata.acquisition_vm0_source",
       "function:public.sync_org_metadata_acquisition_first_party_source_1033()",
       "trigger:public.org_metadata.sync_org_metadata_acquisition_first_party_source_1033",
-    ]);
+    ];
+    expect(
+      LEGACY_DATABASE_IDENTITY_MANIFEST.filter((entry) => {
+        return removedAcquisitionKeys.includes(entry.key);
+      }),
+    ).toEqual([]);
 
     const removedEntitlementKeys = [
       "column:public.org_plan_entitlements.restricted_vm0_models",
@@ -108,7 +115,7 @@ describe("active legacy database identity inventory", () => {
           return source === "snapshot";
         });
       }),
-    ).toHaveLength(15);
+    ).toHaveLength(14);
   });
 
   it("matches the journal-selected current snapshot and semantic contracts exactly", async () => {

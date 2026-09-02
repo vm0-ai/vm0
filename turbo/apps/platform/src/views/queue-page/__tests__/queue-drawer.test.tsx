@@ -230,6 +230,9 @@ async function openDrawer(
   sharedWorkerTestTransport: "direct" | "message-port" = "direct",
 ): Promise<void> {
   mockQueuedThread();
+  // Settle the app bootstrap on its own observable signal before polling for
+  // the queue button, so the button's `waitFor` budget covers only the queue
+  // marker rendering instead of the whole page startup.
   await setupPageAndWaitForContent({
     context,
     path: `/chats/${THREAD_ID}`,

@@ -35,16 +35,12 @@ function createBackendFake(
 ): RecorderNativeBackend {
   return {
     dispose: vi.fn(),
-    listSources: vi.fn(async () => ({
-      sources: [
-        {
-          id: "display:1",
-          kind: "display" as const,
-          title: "Built-in Display",
-        },
-      ],
-      supportsMicrophone: true,
-    })),
+    getCapabilities: vi.fn(async () => ({ supportsMicrophone: true })),
+    requestScreenRecordingPermission: vi.fn(async () => true),
+    listSources: vi.fn(async () => [
+      { id: "display:1", kind: "display" as const, title: "Built-in Display" },
+    ]),
+    listWindowPreviews: vi.fn(async () => []),
     prepare: vi.fn(async () => PREPARED),
     start: vi.fn(async () => {}),
     pause: vi.fn(async () => {}),
