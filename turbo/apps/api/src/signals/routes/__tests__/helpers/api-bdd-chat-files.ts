@@ -38,6 +38,7 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
+  type ChatEventSchemaVersion,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { userModelPreferenceContract } from "@okouai/api-contracts/contracts/user-model-preference";
 import {
@@ -176,11 +177,11 @@ function authenticate(
 function authenticateChatEvent(
   context: TestContext,
   actor: ApiTestUser | null,
+  schemaVersion: ChatEventSchemaVersion = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 ) {
   return {
     ...authenticate(context, actor),
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: schemaVersion.toString(),
   };
 }
 
@@ -1123,10 +1124,11 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       cursor: ChatEventCursor = { lastEventId: null, lastSeqId: 0 },
+      schemaVersion: ChatEventSchemaVersion = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
     ) {
       const response = await accept(
         threadEventsClient().rows({
-          headers: authenticateChatEvent(context, actor),
+          headers: authenticateChatEvent(context, actor, schemaVersion),
           params: { threadId },
           query:
             cursor.lastEventId === null

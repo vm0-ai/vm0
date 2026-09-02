@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command } from "ccstate";
 import { sql, type SQL } from "drizzle-orm";
 import {
@@ -22,6 +25,10 @@ import { tryLockChatEventRetention } from "./chat-event-retention-lock.service";
 const CHAT_EVENT_RETENTION_DAYS = 30;
 const CHAT_EVENT_RETENTION_DELETE_LIMIT = 2500;
 const CHAT_EVENT_RETENTION_SCAN_LIMIT = 5000;
+const CURRENT_SNAPSHOT_OBJECT_KEY_PATTERN =
+  "^chat-events/[0-9a-f-]{36}/[0-9]+-r2-[0-9a-f]{64}[.]ndjson[.]gz$";
+const PREVIOUS_SNAPSHOT_OBJECT_KEY_PATTERN =
+  "^chat-events/[0-9a-f-]{36}/[0-9]+-r1-[0-9a-f]{64}[.]ndjson[.]gz$";
 
 export interface ChatEventRetentionStats {
   readonly cutoff: string;
@@ -114,7 +121,19 @@ function retentionSafetyAndSelectionSql(cutoff: string): SQL {
                 AND snapshot.archive_schema_version
                   = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
                 AND snapshot.last_seq_id >= event.seq_id
-                AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
+                AND snapshot.object_key
+                  ~ ${CURRENT_SNAPSHOT_OBJECT_KEY_PATTERN}
+            )
+            THEN 'snapshot'
+          WHEN NOT EXISTS (
+              SELECT 1
+              FROM ${chatEventSnapshots} snapshot
+              WHERE snapshot.chat_thread_id = event.chat_thread_id
+                AND snapshot.archive_schema_version
+                  = ${PREVIOUS_CHAT_EVENT_SCHEMA_VERSION}
+                AND snapshot.last_seq_id >= event.seq_id
+                AND snapshot.object_key
+                  ~ ${PREVIOUS_SNAPSHOT_OBJECT_KEY_PATTERN}
             )
             THEN 'snapshot'
           WHEN watermark.chat_thread_id IS NULL
@@ -251,7 +270,18 @@ async function hasMoreRetainableRows(
               AND snapshot.archive_schema_version
                 = ${CURRENT_CHAT_EVENT_SCHEMA_VERSION}
               AND snapshot.last_seq_id >= event.seq_id
-              AND snapshot.object_key ~ '-[0-9a-f]{64}[.]ndjson[.]gz$'
+              AND snapshot.object_key
+                ~ ${CURRENT_SNAPSHOT_OBJECT_KEY_PATTERN}
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM ${chatEventSnapshots} snapshot
+            WHERE snapshot.chat_thread_id = event.chat_thread_id
+              AND snapshot.archive_schema_version
+                = ${PREVIOUS_CHAT_EVENT_SCHEMA_VERSION}
+              AND snapshot.last_seq_id >= event.seq_id
+              AND snapshot.object_key
+                ~ ${PREVIOUS_SNAPSHOT_OBJECT_KEY_PATTERN}
           )
           AND NOT (
             event.run_id IS NULL

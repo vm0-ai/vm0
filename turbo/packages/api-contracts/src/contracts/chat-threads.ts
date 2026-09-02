@@ -13,6 +13,7 @@ import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
 import { runStatusSchema } from "./runs";
+import { runFailureReasonSchema } from "./run-failure-reasons";
 import { supportedRunModelSchema } from "./model-providers";
 import {
   VIDEO_ASPECT_RATIOS,
@@ -884,6 +885,7 @@ const runFailedEventSchema = chatEventBaseSchema
     eventType: z.literal("run.failed"),
     runId: z.string(),
     error: z.string().optional(),
+    failureReason: runFailureReasonSchema.optional(),
     runLifecycleEvent: z.literal("failed"),
   })
   .strict();

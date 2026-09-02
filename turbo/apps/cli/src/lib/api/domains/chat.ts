@@ -19,7 +19,9 @@ import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-ro
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
+  type ChatEventSchemaVersion,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -42,8 +44,12 @@ type ZeroChatEventSnapshotResult =
       readonly url: string;
       readonly lastEventId: string | null;
       readonly lastSeqId: number;
+      readonly schemaVersion: ChatEventSchemaVersion;
     }
-  | { readonly kind: "missing" };
+  | {
+      readonly kind: "missing";
+      readonly schemaVersion: ChatEventSchemaVersion;
+    };
 
 type ZeroChatEventRowsPage =
   | {
@@ -51,24 +57,49 @@ type ZeroChatEventRowsPage =
       readonly rows: readonly ChatEventRow[];
       readonly cursor: ChatEventCursor;
       readonly hasMore: boolean;
+      readonly schemaVersion: ChatEventSchemaVersion;
     }
-  | { readonly kind: "expired" };
+  | {
+      readonly kind: "expired";
+      readonly schemaVersion: ChatEventSchemaVersion;
+    };
 
 type ChatEventSchemaVersionHeaders = Readonly<{
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]: string;
 }>;
 
-const CHAT_EVENT_SCHEMA_VERSION_HEADERS: ChatEventSchemaVersionHeaders =
-  Object.freeze({
-    [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+function chatEventSchemaVersionHeaders(
+  schemaVersion: ChatEventSchemaVersion,
+): ChatEventSchemaVersionHeaders {
+  return Object.freeze({
+    [CHAT_EVENT_SCHEMA_VERSION_HEADER]: schemaVersion.toString(),
   });
+}
 
-function assertChatEventSchemaVersion(headers: Headers): void {
+function assertChatEventSchemaVersion(
+  headers: Headers,
+  schemaVersion: ChatEventSchemaVersion,
+): void {
   const version = headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-  if (version !== CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()) {
+  if (version !== schemaVersion.toString()) {
     throw new Error(`Unexpected Chat Event schema version ${version}`);
   }
+}
+
+function isChatEventSchemaVersionAhead(result: {
+  readonly status: number;
+  readonly body: unknown;
+}): boolean {
+  return (
+    result.status === 409 &&
+    typeof result.body === "object" &&
+    result.body !== null &&
+    "error" in result.body &&
+    typeof result.body.error === "object" &&
+    result.body.error !== null &&
+    "code" in result.body.error &&
+    result.body.error.code === "CHAT_EVENT_SCHEMA_VERSION_AHEAD"
+  );
 }
 
 function requireSupportedModel(model: string) {
@@ -257,21 +288,30 @@ export async function getChatEventSnapshot(options: {
 }): Promise<ZeroChatEventSnapshotResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
-  const result = await client.snapshot({
-    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+  let schemaVersion: ChatEventSchemaVersion = CURRENT_CHAT_EVENT_SCHEMA_VERSION;
+  let result = await client.snapshot({
+    headers: chatEventSchemaVersionHeaders(schemaVersion),
     params: { threadId: options.threadId },
   });
-  assertChatEventSchemaVersion(result.headers);
+  if (isChatEventSchemaVersionAhead(result)) {
+    schemaVersion = PREVIOUS_CHAT_EVENT_SCHEMA_VERSION;
+    result = await client.snapshot({
+      headers: chatEventSchemaVersionHeaders(schemaVersion),
+      params: { threadId: options.threadId },
+    });
+  }
+  assertChatEventSchemaVersion(result.headers, schemaVersion);
   if (result.status === 200) {
     return {
       kind: "snapshot",
       url: result.body.url,
       lastEventId: result.body.lastEventId,
       lastSeqId: result.body.lastSeqId,
+      schemaVersion,
     };
   }
   if (result.status === 404) {
-    return { kind: "missing" };
+    return { kind: "missing", schemaVersion };
   }
   handleError(result, "Failed to get chat event snapshot");
 }
@@ -280,6 +320,7 @@ export async function listChatEventRows(
   options: {
     readonly threadId: string;
     readonly limit: number;
+    readonly schemaVersion: ChatEventSchemaVersion;
   } & (
     | { readonly sinceEventId: null; readonly sinceSeqId: 0 }
     | {
@@ -291,7 +332,7 @@ export async function listChatEventRows(
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.rows({
-    headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+    headers: chatEventSchemaVersionHeaders(options.schemaVersion),
     params: { threadId: options.threadId },
     query:
       options.sinceEventId === null
@@ -302,17 +343,18 @@ export async function listChatEventRows(
             limit: options.limit,
           },
   });
-  assertChatEventSchemaVersion(result.headers);
+  assertChatEventSchemaVersion(result.headers, options.schemaVersion);
   if (result.status === 200) {
     return {
       kind: "rows",
       rows: result.body.rows,
       cursor: result.body.cursor,
       hasMore: result.body.hasMore,
+      schemaVersion: options.schemaVersion,
     };
   }
   if (result.status === 410) {
-    return { kind: "expired" };
+    return { kind: "expired", schemaVersion: options.schemaVersion };
   }
   handleError(result, "Failed to list chat event rows");
 }

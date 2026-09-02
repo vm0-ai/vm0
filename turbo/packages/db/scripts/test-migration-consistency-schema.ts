@@ -4733,7 +4733,26 @@ async function addCurrentChatEventPayloadStorage(
     ALTER TABLE "chat_events"
     ADD COLUMN "payload" jsonb
   `);
+  await addCurrentChatEventFailureReasonStorage(client);
   await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+}
+
+async function addCurrentChatEventFailureReasonStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "failure_reason" text
+  `);
+}
+
+async function removeCurrentChatEventFailureReasonStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    DROP COLUMN "failure_reason"
+  `);
 }
 
 async function addCurrentChatEventOfficialWorkflowQueueStorage(
@@ -8207,6 +8226,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
+      await addCurrentChatEventFailureReasonStorage(client);
       await addCurrentChatEventOfficialWorkflowQueueStorage(client);
       await client.query(
         `
@@ -8327,8 +8347,10 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         threadId: fixture.threadId,
       });
       // Migration 0910 intentionally asserts its historical exact column set.
-      // The private queue column arrived later, so remove the test-only current
-      // ORM shim while 0910 runs and restore it for the post-migration probe.
+      // The private queue and failure-reason columns arrived later, so remove
+      // the test-only current ORM shims while 0910 runs and restore them for
+      // the post-migration probe.
+      await removeCurrentChatEventFailureReasonStorage(client);
       await removeCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       await client.query(
@@ -8357,6 +8379,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         client,
         CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
       );
+      await addCurrentChatEventFailureReasonStorage(client);
       await addCurrentChatEventOfficialWorkflowQueueStorage(client);
 
       const retained = await client.query<{ row: Record<string, unknown> }>(
@@ -8375,6 +8398,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         "context_type",
         "created_at",
         "event_type",
+        "failure_reason",
         "id",
         "payload",
         "required_official_workflow_ids",

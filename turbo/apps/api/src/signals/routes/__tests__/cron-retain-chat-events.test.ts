@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { testChatEventRetentionContract } from "@okouai/api-contracts/contracts/test-chat-event-retention";
 import { cronRetainChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { createStore } from "ccstate";
@@ -282,6 +286,65 @@ describe("chat event retention cron", () => {
     expect(released.deleted).toBe(2);
     await expect(
       eventRows(snapshotEventId, searchEventId),
+    ).resolves.toHaveLength(0);
+  }, 60_000);
+
+  it("requires both supported Snapshot generations before deleting Raw Events", async () => {
+    const currentOnlyThreadId = await createFixtureThread("current-only");
+    const previousOnlyThreadId = await createFixtureThread("previous-only");
+    const currentOnlyEventId = await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: currentOnlyThreadId, offsetMs: OLD_OFFSET_MS },
+      context.signal,
+    );
+    const previousOnlyEventId = await store.set(
+      seedRetentionOutputEvent$,
+      { chatThreadId: previousOnlyThreadId, offsetMs: OLD_OFFSET_MS },
+      context.signal,
+    );
+    await store.set(
+      coverRetentionThread$,
+      {
+        chatThreadId: currentOnlyThreadId,
+        schemaVersions: [CURRENT_CHAT_EVENT_SCHEMA_VERSION],
+      },
+      context.signal,
+    );
+    await store.set(
+      coverRetentionThread$,
+      {
+        chatThreadId: previousOnlyThreadId,
+        schemaVersions: [PREVIOUS_CHAT_EVENT_SCHEMA_VERSION],
+      },
+      context.signal,
+    );
+
+    const held = await retainFixtures(
+      currentOnlyThreadId,
+      previousOnlyThreadId,
+    );
+    expect(held).toMatchObject({ deleted: 0, skippedSnapshot: 2 });
+    await expect(
+      eventRows(currentOnlyEventId, previousOnlyEventId),
+    ).resolves.toHaveLength(2);
+
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: currentOnlyThreadId },
+      context.signal,
+    );
+    await store.set(
+      coverRetentionThread$,
+      { chatThreadId: previousOnlyThreadId },
+      context.signal,
+    );
+    const released = await retainFixtures(
+      currentOnlyThreadId,
+      previousOnlyThreadId,
+    );
+    expect(released.deleted).toBe(2);
+    await expect(
+      eventRows(currentOnlyEventId, previousOnlyEventId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 

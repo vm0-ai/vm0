@@ -1,68 +1,104 @@
 # Chat Event schema versioning
 
 Snapshot NDJSON rows and Raw Chat Event API rows are two representations of
-the same Chat Event schema. Clients select that schema with
-`X-Chat-Event-Schema-Version` on both read endpoints, and successful responses
-echo the selected version in the same header.
+the same versioned schema. Clients select that schema with
+`X-Chat-Event-Schema-Version` on both read endpoints. Every successful or
+expected-miss response echoes the selected version in the same header.
 
-Platform and CLI readers require that echoed header and require Snapshot
-responses to include the paired `lastEventId`; they do not reconstruct missing
+Platform and CLI readers require the echoed header and require Snapshot
+responses to include the paired `lastEventId`. They never reconstruct missing
 response metadata from the immutable NDJSON body.
 
-## Version negotiation
+## Supported versions
 
-- The current and only supported version is V5. The request header is required.
+V8 is current and V7 is the one bounded previous version supported during the
+rollout bridge.
+
 - A malformed version returns `400 CHAT_EVENT_SCHEMA_VERSION_INVALID`.
-- A version below the current version returns
-  `426 CHAT_EVENT_SCHEMA_VERSION_RETIRED` so the client can force an upgrade.
-- A version newer than the API returns
-  `409 CHAT_EVENT_SCHEMA_VERSION_AHEAD`.
+- A version below V7 returns `426 CHAT_EVENT_SCHEMA_VERSION_RETIRED`.
+- A version above V8 returns `409 CHAT_EVENT_SCHEMA_VERSION_AHEAD`.
+- V7 and V8 requests are served in the exact requested version.
 
-Raw Events are read from the current database schema and returned in V5. The
-API does not downgrade rows or Snapshot objects to retired versions.
+V8 adds the optional `failureReason` field to `run.failed` rows and projected
+events. V7 output removes that field and preserves every other canonical row
+field. Historical reasonless failures remain valid V8 rows, and no other event
+type may contain the field.
 
-## Snapshot storage and reads
+New clients request V8 first. They retry V7 only when the API returns the
+specific V8 `AHEAD` response, which permits a new client to run briefly against
+the previous API during traffic promotion.
 
-The API owns exactly one canonical pointer per
+## Snapshot storage and publication
+
+The API owns one canonical pointer per
 `(chat_thread_id, archive_schema_version)`, enforced by a unique database
-index. Readers select the current-version pointer directly.
+index. During the V8 bridge, the Snapshot writer maintains both V8 and V7
+pointers:
 
-The pointer contains the immutable, content-addressed R2 object key and a
-paired `{lastEventId, lastSeqId}` terminal cursor. `last_event_id` is required.
-Snapshot pointers have no parent or head identity columns.
+- V8 objects use the `r2` object-key contract revision.
+- V7 objects retain the `r1` object-key contract revision.
+- Both objects represent one physical coverage boundary and paired terminal
+  cursor.
 
-Snapshot reads persist and return the current-version pointer. A request cannot
-fall back to a stored retired-version pointer when the current pointer is
-unavailable.
+For each refresh, the writer chooses the furthest reusable V8-compatible V8 or
+V7 prefix, preferring V8 at equal physical coverage. It validates that prefix,
+appends only the Raw Event tail, prepares the canonical V8 body, derives the V7
+body through the strict downgrade, and uploads both immutable objects.
 
-## Snapshot upgrade invariant
+The two pointers are published in one transaction after locking both exact
+observed sources. If either source changed concurrently, neither pointer moves;
+the immutable uploads remain safe for reference-aware garbage collection.
 
-Only the first Snapshot for a thread may bootstrap from the currently available
-Raw Event prefix. Sequence positions may start above 1 and contain gaps. Once
-any Snapshot exists, every refresh or schema upgrade must:
+## Snapshot reads and history
 
-1. Download and validate the stored Snapshot object.
-2. Run the adjacent Snapshot migration chain on that historical prefix.
-3. Read only Raw Events after the stored paired cursor.
-4. Append that tail, upload a new immutable object, then publish its database
-   pointer with an exact compare-and-swap.
+A V7 reader selects only the V7 pointer. A V8 reader selects the furthest V8 or
+V7 pointer and may use a V7 object as an identity-compatible historical prefix:
+every V7 row is already a valid V8 row, and the V8 Raw Event tail carries any
+new failure reasons.
 
-A missing object, invalid Snapshot, missing migration, or missing historical
-prefix fails closed. It must never authorize a full Raw Event rebuild because
+Internal current-history reads use the same furthest-compatible-prefix rule.
+They never rebuild from sequence zero after a Snapshot pointer exists because
 older Raw Events may already have been reclaimed.
 
-Future Chat Event schema bumps must include every required adjacent Snapshot
-migration before release; if an old version is not migratable, all pointers
-relying on it must first converge to a migratable version.
+A missing object, invalid Snapshot, unsupported object revision, incomplete
+cursor, or invalid historical prefix fails closed. It cannot authorize a Raw
+Event rebuild.
 
-## Browser cache
+## Retention and object collection
 
-The IndexedDB database version combines a cache-layout base version with the
-requested Chat Event schema version. Any IndexedDB version change deletes and
-recreates all Chat Event cache stores. The cache cursor stores the schema
-version and paired event/sequence boundary, and row-plus-cursor writes are
-atomic.
+Raw Event retention requires adequate V8 `r2` and V7 `r1` Snapshot coverage
+before deleting a row. This keeps both the current API and the retained V7 API
+able to serve complete history throughout the bridge.
 
-Raw Event retention and orphaned R2 object collection policy are outside this
-change. The invariant above makes later Raw Event reclamation safe without
-adding retention behavior here.
+R2 garbage collection treats every Snapshot pointer version as a live
+reference. Replaced objects become collectible only after no pointer refers to
+them and the normal grace period has elapsed.
+
+## Client caches
+
+CLI disk caches and Platform IndexedDB cursors record the schema version that
+was actually negotiated. Every network synchronization probes V8 first and
+falls back as described above. Tail pages use that one selected version.
+
+If the selected version differs from the cached version, the client replaces
+the entire managed thread generation from the selected Snapshot before
+tailing. It never append-enriches a V7 cursor with V8 rows. The Platform V8
+IndexedDB generation also clears the previous compile-time V7 database layout;
+row and cursor writes remain atomic.
+
+## Removing the V7 bridge
+
+V7 support is temporary. Remove it only after production evidence confirms all
+of the following:
+
+1. Previous app and CLI readers have drained or are outside their support
+   window.
+2. No serving or rollback API needs to read or publish V7 Snapshots.
+3. Commit-addressed CLI artifacts selected by queued or active runs no longer
+   request V7.
+4. V8 Snapshot coverage is complete and healthy for retention authority.
+5. Stored V7 object references have drained before changing garbage-collection
+   or database constraints.
+
+Cleanup must be a later release. It must not be combined with the release that
+first deploys V8 readers and writers.

@@ -2,10 +2,17 @@ import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 
-import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
-import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import {
+  chatEventRowV7Schema,
+  type ChatEventRow,
+} from "@okouai/api-contracts/contracts/chat-event-rows";
+import {
+  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
+  type ChatEventSchemaVersion,
+} from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { computed, type Computed } from "ccstate";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 
@@ -15,7 +22,12 @@ import {
   decodeChatEventSnapshotBody,
   validateChatEventSnapshotRows,
 } from "./chat-event-snapshot-body.service";
-import { chatEventRowFromDbRow } from "./cron-snapshot-chat-events.service";
+import {
+  chatEventRowFromDbRow,
+  isCurrentChatEventSnapshotObjectKey,
+  isLegacyChatEventSnapshotObjectKey,
+  isPreviousChatEventSnapshotObjectKey,
+} from "./cron-snapshot-chat-events.service";
 
 const gunzipAsync = promisify(gunzip);
 const CHAT_EVENT_HISTORY_PAGE_SIZE = 1000;
@@ -44,6 +56,7 @@ async function readPostgresTail(
         revokesEventId: chatEvents.revokesEventId,
         eventType: chatEvents.eventType,
         payload: chatEvents.payload,
+        failureReason: chatEvents.failureReason,
         contextType: chatEvents.contextType,
         contextId: chatEvents.contextId,
         runEventSequenceNumber: chatEvents.runEventSequenceNumber,
@@ -80,8 +93,14 @@ function decodeSnapshotRows(
     readonly eventId: string | null;
     readonly seqId: number | null;
   },
+  schemaVersion: ChatEventSchemaVersion,
 ): readonly ChatEventRow[] {
   const rows = decodeChatEventSnapshotBody(body);
+  if (schemaVersion === PREVIOUS_CHAT_EVENT_SCHEMA_VERSION) {
+    for (const row of rows) {
+      chatEventRowV7Schema.parse(row);
+    }
+  }
   validateChatEventSnapshotRows(rows);
   let previousSeqId: number | null = null;
   for (const row of rows) {
@@ -94,10 +113,12 @@ function decodeSnapshotRows(
     }
     previousSeqId = row.seqId;
   }
+  if (terminalCursor.seqId === null) {
+    throw new Error("Chat event snapshot terminal metadata is incomplete");
+  }
   if (
-    terminalCursor.seqId !== null &&
-    ((rows.at(-1)?.id ?? null) !== terminalCursor.eventId ||
-      (rows.at(-1)?.seqId ?? 0) !== terminalCursor.seqId)
+    (rows.at(-1)?.id ?? null) !== terminalCursor.eventId ||
+    (rows.at(-1)?.seqId ?? 0) !== terminalCursor.seqId
   ) {
     throw new Error("Chat event snapshot terminal metadata is invalid");
   }
@@ -126,16 +147,21 @@ function readCurrentChatEventHistoryAtSnapshot(
         terminalSeqId: chatEventSnapshots.terminalSeqId,
         terminalEventId: chatEventSnapshots.terminalEventId,
         objectKey: chatEventSnapshots.objectKey,
+        schemaVersion: chatEventSnapshots.archiveSchemaVersion,
       })
       .from(chatEventSnapshots)
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, chatThreadId),
-          eq(
-            chatEventSnapshots.archiveSchemaVersion,
+          inArray(chatEventSnapshots.archiveSchemaVersion, [
+            PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
             CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-          ),
+          ]),
         ),
+      )
+      .orderBy(
+        desc(chatEventSnapshots.lastSeqId),
+        desc(chatEventSnapshots.archiveSchemaVersion),
       )
       .limit(1);
     signal.throwIfAborted();
@@ -145,6 +171,22 @@ function readCurrentChatEventHistoryAtSnapshot(
     }
     if (head.lastSeqId <= 0 || head.objectKey.trim().length === 0) {
       throw new Error("Chat event snapshot head is not reusable");
+    }
+    if (
+      head.schemaVersion !== PREVIOUS_CHAT_EVENT_SCHEMA_VERSION &&
+      head.schemaVersion !== CURRENT_CHAT_EVENT_SCHEMA_VERSION
+    ) {
+      throw new Error("Chat event snapshot schema version is unsupported");
+    }
+    const supportedObjectKey =
+      head.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
+        ? isCurrentChatEventSnapshotObjectKey(head.objectKey) ||
+          isLegacyChatEventSnapshotObjectKey(head.objectKey)
+        : head.schemaVersion === PREVIOUS_CHAT_EVENT_SCHEMA_VERSION &&
+          (isPreviousChatEventSnapshotObjectKey(head.objectKey) ||
+            isLegacyChatEventSnapshotObjectKey(head.objectKey));
+    if (!supportedObjectKey) {
+      throw new Error("Chat event snapshot object revision is invalid");
     }
 
     const compressed = await get(
@@ -166,6 +208,7 @@ function readCurrentChatEventHistoryAtSnapshot(
         eventId: head.terminalEventId,
         seqId: head.terminalSeqId,
       },
+      head.schemaVersion,
     );
     signal.throwIfAborted();
     const tail = await readPostgresTail(

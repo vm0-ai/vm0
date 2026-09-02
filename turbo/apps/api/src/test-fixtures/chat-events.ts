@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { ChatEventSchemaVersion } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type { ChatEventPayload } from "@okouai/db/jsonb-contracts/chat-event";
 import type {
@@ -24,6 +25,7 @@ import { chatTelegramContext } from "@okouai/db/schema/chat-telegram-context";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSearchMessageWatermarks } from "@okouai/db/schema/chat-event-search";
+import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { feishuChatIngress } from "@okouai/db/schema/feishu-chat-ingress";
 import { feishuOrgEvents } from "@okouai/db/schema/feishu-org-event";
 import { conversations } from "@okouai/db/schema/conversation";
@@ -2873,6 +2875,7 @@ async function insertCanonicalBatchWrites(
       eventType: "run.failed",
       content: "run failed",
       error: "runner error",
+      failureReason: "provider_server_error",
       runId: randomUUID(),
     },
     {
@@ -3019,6 +3022,7 @@ export async function readCanonicalChatEventStorageFixture(
       id: chatEvents.id,
       eventType: chatEvents.eventType,
       payload: chatEvents.payload,
+      failureReason: chatEvents.failureReason,
       runId: chatEvents.runId,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
@@ -3026,6 +3030,24 @@ export async function readCanonicalChatEventStorageFixture(
     })
     .from(chatEvents)
     .where(inArray(chatEvents.id, [...eventIds]));
+}
+
+export async function deleteChatEventSnapshotVersionFixture(
+  chatThreadId: string,
+  schemaVersion: ChatEventSchemaVersion,
+): Promise<void> {
+  const deleted = await db()
+    .delete(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, chatThreadId),
+        eq(chatEventSnapshots.archiveSchemaVersion, schemaVersion),
+      ),
+    )
+    .returning({ id: chatEventSnapshots.id });
+  if (deleted.length !== 1) {
+    throw new Error("Expected one Chat Event Snapshot version fixture");
+  }
 }
 
 export async function isVisibleChatEventFixture(

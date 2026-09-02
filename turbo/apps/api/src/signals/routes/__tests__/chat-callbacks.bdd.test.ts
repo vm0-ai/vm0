@@ -11,6 +11,7 @@ import {
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
@@ -667,9 +668,15 @@ async function failChatRun(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
   error: string,
+  failureReason?: RunFailureReason,
 ): Promise<void> {
   await webhooks.requestAgentComplete(
-    { runId, exitCode: 1, error },
+    {
+      runId,
+      exitCode: 1,
+      error,
+      ...(failureReason === undefined ? {} : { failureReason }),
+    },
     sandboxHeaders,
     [200],
   );
@@ -4658,6 +4665,43 @@ describe("CHAT-02: drain-time admission failure", () => {
 });
 
 describe("CHAT-02: failed chat callbacks", () => {
+  it("copies the persisted failure reason into one immutable failed event", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const rawError = "provider failed before producing output";
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "preserve the structured failure reason",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+
+    await failChatRun(
+      run.runId,
+      sandboxHeaders,
+      rawError,
+      "provider_overloaded",
+    );
+    await flushWaitUntilForTest();
+    await failChatRun(
+      run.runId,
+      sandboxHeaders,
+      "late duplicate failure",
+      "unsupported_model",
+    );
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadEvents(actor, run.threadId);
+    const failed = lifecycleMarkers(messages.events, run.runId, "failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({
+      failureReason: "provider_overloaded",
+    });
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "failed",
+      error: rawError,
+    });
+  }, 90_000);
+
   it("formats failed-run errors and notifies, without auto-sending", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
