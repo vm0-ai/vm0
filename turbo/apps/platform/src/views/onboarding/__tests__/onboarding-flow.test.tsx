@@ -19,6 +19,7 @@ import {
   connectorManualGrantContract,
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
+import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
   agentsMainContract,
   type AgentResponse,
@@ -37,7 +38,10 @@ import {
 } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
-import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
+import {
+  ONBOARDING_CHECKOUT_STATE_PARAM,
+  onboardingDraft$,
+} from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { detachedNavigateTo$, searchParams$ } from "../../../signals/route.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -46,9 +50,8 @@ import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.t
 const context = testContext();
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const STALE_AGENT_ID = "c0000000-0000-4000-a000-000000000099";
-const { set$: setLastUsedAgentId$ } = localStorageSignals(
-  "zero.lastUsedAgentId",
-);
+const { get$: lastUsedAgentId$, set$: setLastUsedAgentId$ } =
+  localStorageSignals("zero.lastUsedAgentId");
 
 function onboardingAgent(agentId: string): AgentResponse {
   return {
@@ -288,25 +291,63 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
-  it("leads with Slack and opens its setup after completing onboarding", async () => {
-    await openMakePage();
+  it.each([
+    {
+      browserTimezone: "Asia/Shanghai",
+      expectedTimezone: "Asia/Shanghai",
+      scenario: "browser-resolved",
+    },
+    {
+      browserTimezone: "",
+      expectedTimezone: "UTC",
+      scenario: "fallback",
+    },
+  ])(
+    "sends the $scenario timezone before opening Slack setup",
+    async ({ browserTimezone, expectedTimezone }) => {
+      const resolvedOptions = new Intl.DateTimeFormat().resolvedOptions();
+      vi.spyOn(
+        Intl.DateTimeFormat.prototype,
+        "resolvedOptions",
+      ).mockReturnValue({
+        ...resolvedOptions,
+        timeZone: browserTimezone,
+      });
+      let completionBody: unknown;
+      context.mocks.api(
+        onboardingCompleteContract.complete,
+        ({ body, respond }) => {
+          completionBody = body;
+          return respond(200, {
+            onboardingComplete: true,
+            needsOnboarding: false,
+          });
+        },
+      );
+      context.store.set(setLastUsedAgentId$, STALE_AGENT_ID);
 
-    const slackOption = firstItem(screen.getAllByRole("radio"));
-    expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
-    expect(
-      screen.getByTestId("onboarding-slack-illustration"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
-      "src",
-      expect.stringContaining("slack-198390069136.svg"),
-    );
+      await openMakePage();
 
-    click(slackOption);
+      const slackOption = firstItem(screen.getAllByRole("radio"));
+      expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
+      expect(
+        screen.getByTestId("onboarding-slack-illustration"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+        "src",
+        expect.stringContaining("slack-198390069136.svg"),
+      );
 
-    await waitFor(() => {
-      expect(pathname()).toBe(ROUTES.works);
-    });
-  });
+      click(slackOption);
+
+      await waitFor(() => {
+        expect(pathname()).toBe(ROUTES.works);
+      });
+      expect(completionBody).toStrictEqual({ timezone: expectedTimezone });
+      expect(context.store.get(lastUsedAgentId$)).toBeNull();
+      expect(context.store.get(onboardingDraft$).choice).toBeNull();
+    },
+  );
 
   it.each([
     ["Generate a presentation", "Generate slides and speaker", "Presentation"],
