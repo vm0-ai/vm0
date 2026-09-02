@@ -9,6 +9,8 @@ import {
   type SocialKitDownloadRequest,
   type SocialKitDownloadResponse,
 } from "@okouai/api-contracts/contracts/social";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
 import { socialKitDownloadJobs } from "@okouai/db/schema/socialkit-download-job";
 import { command } from "ccstate";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
@@ -38,6 +40,7 @@ import {
   allocateArtifactObject$,
   resolveArtifactObject$,
 } from "./artifact-storage.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
   checkManagedCredits$,
   recordManagedUsage$,
@@ -58,6 +61,9 @@ const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ARTIFACT_FILENAME_STEM_CHARS = 120;
+// Enough for the ISO base media `ftyp` brand, which sits at offset 8 and is the
+// longest signature this service inspects.
+const MEDIA_SNIFF_BYTES = 12;
 const MAX_PROVIDER_FAILURE_CODE_CHARS = 128;
 const MAX_PROVIDER_FAILURE_MESSAGE_CHARS = 500;
 const INVALID_ARTIFACT_FILENAME_CHARS = String.raw`<>:"/\|?*`;
@@ -395,6 +401,57 @@ async function pollProviderJob(
     : { status: "invalid" };
 }
 
+interface SniffedMedia {
+  readonly contentType: string;
+  readonly extension: string;
+}
+
+function leadingBytesAre(
+  head: Uint8Array,
+  offset: number,
+  signature: string,
+): boolean {
+  if (head.byteLength < offset + signature.length) {
+    return false;
+  }
+  for (let index = 0; index < signature.length; index += 1) {
+    if (head[offset + index] !== signature.charCodeAt(index)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * SocialKit echoes back only the format that was requested, and the artifact CDN
+ * carries no trustworthy media type, so the container is read from the leading
+ * bytes instead. A `format=mp4` request can still resolve to an audio-only file
+ * upstream, and filing those bytes as `video/mp4` leaves an artifact that no
+ * video consumer can decode. Returns null when the container is unrecognized,
+ * which keeps the requested format as the recorded media type.
+ */
+function sniffMedia(head: Uint8Array): SniffedMedia | null {
+  if (leadingBytesAre(head, 0, "ID3")) {
+    return { contentType: "audio/mpeg", extension: "mp3" };
+  }
+  if (leadingBytesAre(head, 4, "ftyp")) {
+    return leadingBytesAre(head, 8, "M4A") || leadingBytesAre(head, 8, "M4B")
+      ? { contentType: "audio/mp4", extension: "m4a" }
+      : { contentType: "video/mp4", extension: "mp4" };
+  }
+  // MPEG audio frame sync: eleven set bits followed by a non-reserved layer.
+  const sync = head[1];
+  if (
+    head[0] === 0xff &&
+    sync !== undefined &&
+    (sync & 0xe0) === 0xe0 &&
+    (sync & 0x06) !== 0x00
+  ) {
+    return { contentType: "audio/mpeg", extension: "mp3" };
+  }
+  return null;
+}
+
 function concatChunks(chunks: readonly Uint8Array[], size: number): Uint8Array {
   const result = new Uint8Array(size);
   let offset = 0;
@@ -442,11 +499,70 @@ async function fetchSafeSocialKitArtifact(
   throw new Error("SocialKit artifact redirected too many times");
 }
 
+interface ArtifactDownload {
+  readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  // The leading bytes already pulled off the stream to identify the container.
+  // The upload consumes them before draining the rest of the reader.
+  readonly head: Uint8Array;
+  readonly media: SniffedMedia | null;
+}
+
+async function readMediaHead(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  while (bufferedBytes < MEDIA_SNIFF_BYTES) {
+    const next = await reader.read();
+    signal.throwIfAborted();
+    if (next.done) {
+      break;
+    }
+    chunks.push(next.value);
+    bufferedBytes += next.value.byteLength;
+  }
+  return concatChunks(chunks, bufferedBytes);
+}
+
+/**
+ * Start the artifact download and read just enough of it to identify the
+ * container. The filename and content type are decided from this before the
+ * artifact object is allocated, and the same open stream then carries the whole
+ * body into R2, so the artifact is fetched exactly once.
+ *
+ * The caller owns the returned reader and must cancel it on every path that
+ * does not hand it to `streamDownloadToArtifact$`.
+ */
+async function openArtifactDownload(
+  downloadUrl: string,
+  signal: AbortSignal,
+): Promise<ArtifactDownload> {
+  const response = await fetchSafeSocialKitArtifact(downloadUrl, signal);
+  signal.throwIfAborted();
+  if (!response.ok || !response.body) {
+    if (response.body) {
+      startUntrackedBestEffortCleanup(response.body.cancel());
+    }
+    throw new Error("SocialKit artifact download failed");
+  }
+  const declaredSize = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > MAX_DOWNLOAD_BYTES) {
+    startUntrackedBestEffortCleanup(response.body.cancel());
+    throw new Error("SocialKit artifact exceeds the 2 GiB limit");
+  }
+  const reader = response.body.getReader();
+  const head = await onRejection(readMediaHead(reader, signal), () => {
+    startUntrackedBestEffortCleanup(reader.cancel());
+  });
+  return { reader, head, media: sniffMedia(head) };
+}
+
 const streamDownloadToArtifact$ = command(
   async (
     { get },
     args: {
-      readonly downloadUrl: string;
+      readonly download: ArtifactDownload;
       readonly bucket: string;
       readonly key: string;
       readonly contentType: string;
@@ -454,22 +570,20 @@ const streamDownloadToArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<number> => {
-    const response = await fetchSafeSocialKitArtifact(args.downloadUrl, signal);
-    signal.throwIfAborted();
-    if (!response.ok || !response.body) {
-      if (response.body) {
-        startUntrackedBestEffortCleanup(response.body.cancel());
-      }
-      throw new Error("SocialKit artifact download failed");
-    }
-    const declaredSize = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declaredSize) && declaredSize > MAX_DOWNLOAD_BYTES) {
-      startUntrackedBestEffortCleanup(response.body.cancel());
-      throw new Error("SocialKit artifact exceeds the 2 GiB limit");
-    }
-
     const parts: MultipartS3Part[] = [];
-    const reader = response.body.getReader();
+    const { reader } = args.download;
+    let pendingHead: Uint8Array | null =
+      args.download.head.byteLength > 0 ? args.download.head : null;
+    const nextChunk = async (): Promise<Uint8Array | null> => {
+      if (pendingHead) {
+        const chunk = pendingHead;
+        pendingHead = null;
+        return chunk;
+      }
+      const next = await reader.read();
+      signal.throwIfAborted();
+      return next.done ? null : next.value;
+    };
     let uploadId: string | undefined;
     let chunks: Uint8Array[] = [];
     let bufferedBytes = 0;
@@ -513,16 +627,15 @@ const streamDownloadToArtifact$ = command(
         );
         signal.throwIfAborted();
         while (true) {
-          const next = await reader.read();
-          signal.throwIfAborted();
-          if (next.done) {
+          const chunk = await nextChunk();
+          if (!chunk) {
             break;
           }
           let offset = 0;
-          while (offset < next.value.byteLength) {
+          while (offset < chunk.byteLength) {
             const remaining = MULTIPART_PART_BYTES - bufferedBytes;
-            const length = Math.min(remaining, next.value.byteLength - offset);
-            const piece = next.value.subarray(offset, offset + length);
+            const length = Math.min(remaining, chunk.byteLength - offset);
+            const piece = chunk.subarray(offset, offset + length);
             chunks.push(piece);
             bufferedBytes += piece.byteLength;
             totalBytes += piece.byteLength;
@@ -842,9 +955,9 @@ function safeProviderResult(ready: ProviderReady) {
 function artifactFilename(
   title: string | undefined,
   id: string,
-  format: SocialKitDownloadRequest["format"],
+  fileExtension: string,
 ): string {
-  const extension = `.${format}`;
+  const extension = `.${fileExtension}`;
   const sanitizedTitle = [...(title?.trim() ?? "")]
     .map((character) => {
       const codePoint = character.codePointAt(0);
@@ -954,6 +1067,12 @@ const persistAndSettleSocialKitDownloadUsage$ = command(
   },
 );
 
+interface StoredArtifactObject {
+  readonly key: string;
+  readonly url: string;
+  readonly sizeBytes: number;
+}
+
 const materializeSocialKitArtifact$ = command(
   async (
     { set },
@@ -964,59 +1083,89 @@ const materializeSocialKitArtifact$ = command(
     },
     signal: AbortSignal,
   ): Promise<NonNullable<DownloadJob["artifact"]>> => {
+    const featureContext = await loadUserFeatureSwitchContext(
+      set(writeDb$),
+      args.job.orgId,
+      args.job.userId,
+    );
+    signal.throwIfAborted();
+    const download = await openArtifactDownload(args.ready.downloadUrl, signal);
+    // The switch gates the outcome, not the transfer: the container is always
+    // read off the stream, but until it graduates the artifact keeps being
+    // filed under the requested format.
+    const media = isFeatureEnabled(
+      FeatureSwitchKey.SocialDownloadDetectedMediaType,
+      featureContext,
+    )
+      ? download.media
+      : null;
     const filename = artifactFilename(
       args.providerResult.title,
       args.job.id,
-      args.job.request.format,
+      media?.extension ?? args.job.request.format,
     );
     const contentType =
-      args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4";
-    const existing = await set(
-      resolveArtifactObject$,
-      {
-        userId: args.job.userId,
-        id: args.job.id,
-        filenameHint: filename,
-        variant: "socialkit",
+      media?.contentType ??
+      (args.job.request.format === "mp4" ? "video/mp4" : "audio/mp4");
+    // The artifact key is derived from the sniffed extension, so the download
+    // must already be open before an object stored by an earlier attempt can be
+    // looked up. Every retry re-polls the provider and gets a fresh
+    // `downloadUrl`, so reopening it on a recovery pass costs one request
+    // rather than depending on a link that has since expired.
+    const stored = await onRejection(
+      (async (): Promise<StoredArtifactObject> => {
+        const existing = await set(
+          resolveArtifactObject$,
+          {
+            userId: args.job.userId,
+            id: args.job.id,
+            filenameHint: filename,
+            variant: "socialkit",
+          },
+          signal,
+        );
+        if (existing) {
+          // A previous attempt already stored this object, so drop the stream
+          // instead of downloading a body nothing will consume.
+          startUntrackedBestEffortCleanup(download.reader.cancel());
+          return {
+            key: existing.key,
+            url: existing.url,
+            sizeBytes: existing.size,
+          };
+        }
+        const location = await set(
+          allocateArtifactObject$,
+          {
+            userId: args.job.userId,
+            id: args.job.id,
+            variant: "socialkit",
+            filename,
+            publicBrand: args.job.publicBrand,
+          },
+          signal,
+        );
+        const sizeBytes = await set(
+          streamDownloadToArtifact$,
+          {
+            download,
+            bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+            key: location.key,
+            contentType,
+            metadata: location.metadata,
+          },
+          signal,
+        );
+        return { key: location.key, url: location.url, sizeBytes };
+      })(),
+      () => {
+        // `streamDownloadToArtifact$` cancels the reader on its own failures.
+        // This covers the window before it takes ownership, where a rejected
+        // lookup or allocation would otherwise leave the response body open.
+        startUntrackedBestEffortCleanup(download.reader.cancel());
       },
-      signal,
     );
-    let stored: {
-      readonly key: string;
-      readonly url: string;
-      readonly sizeBytes: number;
-    };
-    if (existing) {
-      stored = {
-        key: existing.key,
-        url: existing.url,
-        sizeBytes: existing.size,
-      };
-    } else {
-      const location = await set(
-        allocateArtifactObject$,
-        {
-          userId: args.job.userId,
-          id: args.job.id,
-          variant: "socialkit",
-          filename,
-          publicBrand: args.job.publicBrand,
-        },
-        signal,
-      );
-      const sizeBytes = await set(
-        streamDownloadToArtifact$,
-        {
-          downloadUrl: args.ready.downloadUrl,
-          bucket: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-          key: location.key,
-          contentType,
-          metadata: location.metadata,
-        },
-        signal,
-      );
-      stored = { key: location.key, url: location.url, sizeBytes };
-    }
+    signal.throwIfAborted();
     const artifact = {
       id: args.job.id,
       url: stored.url,

@@ -69,4 +69,5 @@ export enum FeatureSwitchKey {
   DesktopScreenRecording = "desktopScreenRecording",
   IosPwaStartupImages = "iosPwaStartupImages",
   GeistTypeface = "geistTypeface",
+  SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
 }
