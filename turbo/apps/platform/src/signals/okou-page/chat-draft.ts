@@ -29,6 +29,7 @@ import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
 import { flattenAnnotatedImage } from "./flatten-annotated-image.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
+import { desktopRecordingAgentInstructions } from "./intro-video-agent-instructions.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -907,8 +908,14 @@ export function createDraftSignals(): DraftSignals {
   const internalAttachments$ = state<ChatAttachment[]>([]);
   const internalDragOver$ = state(false);
 
+  // Instructions set by a flow win; a draft that carries a desktop screen
+  // recording and its click track earns them from the attachments themselves,
+  // which is the only part of the draft the server gives back.
   const agentInstructions$ = computed((get) => {
-    return get(internalAgentInstructions$);
+    return (
+      get(internalAgentInstructions$) ??
+      desktopRecordingAgentInstructions(get(internalAttachments$))
+    );
   });
   const setAgentInstructions$ = command(
     ({ set }, value: string | null): void => {

@@ -3,7 +3,7 @@ import { command } from "ccstate";
 import { updateSearchParams$ } from "../route.ts";
 import type { DraftSignals, RestorableAttachment } from "./chat-draft.ts";
 import { introVideoWizardSignals } from "./intro-video.ts";
-import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
+import { INTRO_VIDEO_RECORDING_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
 
 const RECORDING_ID_PARAM = "intro-video-recording";
 const RECORDING_NAME_PARAM = "intro-video-recording-name";
@@ -154,7 +154,10 @@ export const applyDesktopRecordingHandoff$ = command(
       signal,
     );
     if (!removedUnavailable) {
-      set(draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
+      set(
+        draft.setAgentInstructions$,
+        INTRO_VIDEO_RECORDING_AGENT_INSTRUCTIONS,
+      );
       // Prefilled for whoever dismisses the wizard: the attachments stay on the
       // draft, so the chat composer alone is still a complete request.
       set(

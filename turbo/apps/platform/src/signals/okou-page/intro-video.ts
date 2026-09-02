@@ -14,7 +14,10 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
-import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
+import {
+  INTRO_VIDEO_DOCUMENT_AGENT_INSTRUCTIONS,
+  INTRO_VIDEO_RECORDING_AGENT_INSTRUCTIONS,
+} from "./intro-video-agent-instructions.ts";
 import { settle } from "../utils.ts";
 
 export type IntroVideoWizardStep =
@@ -647,7 +650,14 @@ function createSubmissionCommands(
       if (!(await set(uploadSourceIfNeeded$, composer, source, signal))) {
         return false;
       }
-      set(composer.draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
+      // A deck and a screen recording become a video by entirely different
+      // means, so each source kind sends the workflow that fits it.
+      set(
+        composer.draft.setAgentInstructions$,
+        source.kind === "document"
+          ? INTRO_VIDEO_DOCUMENT_AGENT_INSTRUCTIONS
+          : INTRO_VIDEO_RECORDING_AGENT_INSTRUCTIONS,
+      );
       set(
         composer.draft.setDraftInput$,
         buildIntroVideoPrompt({

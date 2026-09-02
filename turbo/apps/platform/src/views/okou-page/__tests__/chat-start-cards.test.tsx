@@ -308,7 +308,13 @@ describe("chat start cards", () => {
         "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
       );
       expect(sentPrompt).toContain("<intro_video_workflow>");
-      expect(sentPrompt).toContain("okou video camera");
+      // A deck is turned into slides and narrated, so it carries the document
+      // workflow rather than the recording camera pass.
+      expect(sentPrompt).toContain(
+        "decide whether it is a presentation: a paginated deck whose pages can be rendered as slides",
+      );
+      expect(sentPrompt).toContain("Render every page to an image in page");
+      expect(sentPrompt).not.toContain("okou video camera");
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
         fileId: "intro-video-source",
@@ -319,7 +325,7 @@ describe("chat start cards", () => {
         "<intro_video_workflow>",
       );
       expect(JSON.stringify(sentUserMessage)).not.toContain(
-        "okou video camera",
+        "is a presentation",
       );
     });
   });
