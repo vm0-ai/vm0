@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.528.0](https://github.com/vm0-ai/vm0/compare/api-v1.527.1...api-v1.528.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+
+
+### Bug Fixes
+
+* **chat:** surface execution timeouts as recoverable ([#31014](https://github.com/vm0-ai/vm0/issues/31014)) ([97a794d](https://github.com/vm0-ai/vm0/commit/97a794d0dedcac24c2a7d3911a6cb85207964d16))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.391.0
+    * @okouai/core bumped to 8.609.0
+    * @okouai/db bumped to 1.232.0
+
 ## [1.527.1](https://github.com/vm0-ai/vm0/compare/api-v1.527.0...api-v1.527.1) (2026-09-02)
 
 
