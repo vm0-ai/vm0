@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.821.2](https://github.com/vm0-ai/vm0/compare/app-v0.821.1...app-v0.821.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* share attachments by their public artifacts url ([#30835](https://github.com/vm0-ai/vm0/issues/30835)) ([7aa3ac3](https://github.com/vm0-ai/vm0/commit/7aa3ac3843232909951bd81d1ee60bacf852a078))
+
+
+### Performance Improvements
+
+* **app:** start application before Google Ads ([#30924](https://github.com/vm0-ai/vm0/issues/30924)) ([4e77d33](https://github.com/vm0-ai/vm0/commit/4e77d33443d862020727b3cb709d942f2d44b718))
+* **platform:** keep auth skeleton until auth is ready ([#30922](https://github.com/vm0-ai/vm0/issues/30922)) ([ecbf4cc](https://github.com/vm0-ai/vm0/commit/ecbf4cc91c5f112470cb1222e8dd5152efcbeac2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.389.1
+    * @okouai/core bumped to 8.607.1
+
 ## [0.821.1](https://github.com/vm0-ai/vm0/compare/app-v0.821.0...app-v0.821.1) (2026-09-01)
 
 
