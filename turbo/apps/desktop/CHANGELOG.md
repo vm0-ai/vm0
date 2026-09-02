@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.11...desktop-v0.43.0) (2026-09-02)
+
+
+### Features
+
+* **desktop:** record the pointer trail alongside clicks in the recording sidecar ([#31179](https://github.com/vm0-ai/vm0/issues/31179)) ([81dedea](https://github.com/vm0-ai/vm0/commit/81dedea86941e4c7e85c842095169f3e0e1f1f98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+
 ## [0.42.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.10...desktop-v0.42.11) (2026-09-02)
 
 

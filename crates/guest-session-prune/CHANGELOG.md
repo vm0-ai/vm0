@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.60](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.59...guest-session-prune-v0.3.60) (2026-09-02)
+
 ## [0.3.59](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.58...guest-session-prune-v0.3.59) (2026-09-02)
 
 ## [0.3.58](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.57...guest-session-prune-v0.3.58) (2026-09-01)

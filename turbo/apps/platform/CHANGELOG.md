@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.826.0](https://github.com/vm0-ai/vm0/compare/app-v0.825.0...app-v0.826.0) (2026-09-02)
+
+
+### Features
+
+* **api:** resolve automatic mcp auth as none or oauth ([#31135](https://github.com/vm0-ai/vm0/issues/31135)) ([d84a7e0](https://github.com/vm0-ai/vm0/commit/d84a7e0cd556e91916858ea18cd5256efde6ed03))
+
+
+### Bug Fixes
+
+* **platform:** let clerk own shared worker authentication ([#31037](https://github.com/vm0-ai/vm0/issues/31037)) ([6ba1dbe](https://github.com/vm0-ai/vm0/commit/6ba1dbeb842c60a8b5c8f014bcfc7a624b2a7817))
+* **platform:** prevent custom credit amount layout shift ([#31175](https://github.com/vm0-ai/vm0/issues/31175)) ([a3a6300](https://github.com/vm0-ai/vm0/commit/a3a6300676d4fec516868f695d63d1de8d5650e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+
 ## [0.825.0](https://github.com/vm0-ai/vm0/compare/app-v0.824.0...app-v0.825.0) (2026-09-02)
 
 
