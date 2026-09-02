@@ -129,24 +129,6 @@ class _LifecycleSocketFactory:
         return created
 
 
-class _FindTrackingBytearray(bytearray):
-    def __init__(
-        self,
-        find_calls: list[tuple[int, int]],
-        search_misses: asyncio.Queue[None],
-    ) -> None:
-        super().__init__()
-        self._find_calls = find_calls
-        self._search_misses = search_misses
-
-    def find(self, sub: bytes, start: int = 0, end: int | None = None) -> int:
-        self._find_calls.append((len(self), start))
-        result = super().find(sub, start) if end is None else super().find(sub, start, end)
-        if result < 0:
-            self._search_misses.put_nowait(None)
-        return result
-
-
 @dataclass(frozen=True)
 class _OrderedResolver:
     expected_host: str
@@ -2120,8 +2102,13 @@ class TestFirewallAuthAsyncTransport:
         search_misses: asyncio.Queue[None] = asyncio.Queue()
         find_calls: list[tuple[int, int]] = []
 
-        def tracking_buffer() -> _FindTrackingBytearray:
-            return _FindTrackingBytearray(find_calls, search_misses)
+        class FindTrackingBytearray(bytearray):
+            def find(self, sub: bytes, start: int = 0, end: int | None = None) -> int:
+                find_calls.append((len(self), start))
+                result = super().find(sub, start) if end is None else super().find(sub, start, end)
+                if result < 0:
+                    search_misses.put_nowait(None)
+                return result
 
         async def handle_proxy(
             reader: asyncio.StreamReader,
@@ -2140,7 +2127,7 @@ class TestFirewallAuthAsyncTransport:
                     os.environ,
                     _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
                 ),
-                patch.object(auth_client, "bytearray", tracking_buffer, create=True),
+                patch.object(auth_client, "bytearray", FindTrackingBytearray, create=True),
                 patch.object(platform_api, "VERCEL_BYPASS", ""),
                 mitm_ctx(api_url="https://platform.example"),
                 pytest.raises(
