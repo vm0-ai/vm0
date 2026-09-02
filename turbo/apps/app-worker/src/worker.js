@@ -2,8 +2,10 @@ const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
-const API_ORIGIN_MARKER_PATTERN =
-  /<meta\s+name=["']vm0-api-origin["']\s+content=["']([^"']*)["']\s*\/?>/iu;
+const PREVIEW_APP_HOSTNAME_PATTERNS = [
+  /^(staging|pr-[0-9]+)-app\.omby\.ai$/u,
+  /^(staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u,
+];
 const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
 const APP_ASSET_REQUEST_HEADER_NAMES = [
   "Accept",
@@ -78,18 +80,17 @@ function appMetadata(hostname, configuredPublicBrand) {
   return isOkou ? OKOU_APP_METADATA : VM0_APP_METADATA;
 }
 
-function apiOrigin(requestUrl, indexHtml) {
+function apiOrigin(requestUrl) {
   const productionApiOrigin = PRODUCTION_API_ORIGINS.get(requestUrl.hostname);
   if (productionApiOrigin) {
     return productionApiOrigin;
   }
 
-  const marker = API_ORIGIN_MARKER_PATTERN.exec(indexHtml)?.[1]?.trim();
-  if (marker) {
-    if (!PREVIEW_API_ORIGIN_PATTERN.test(marker)) {
-      throw new Error("Invalid shared-thread preview API origin");
+  for (const pattern of PREVIEW_APP_HOSTNAME_PATTERNS) {
+    const previewApp = pattern.exec(requestUrl.hostname);
+    if (previewApp) {
+      return `https://${previewApp[1]}-api.vm6.ai`;
     }
-    return marker;
   }
   throw new Error("Shared-thread API origin is unavailable");
 }
@@ -199,7 +200,7 @@ function noIndexResponse(response) {
   });
 }
 
-function rewriteAppPage(response, metadata, productionApiOrigin) {
+function rewriteAppPage(response, metadata) {
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on("title", {
@@ -253,12 +254,6 @@ function rewriteAppPage(response, metadata, productionApiOrigin) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
-  if (productionApiOrigin) {
-    rewriter.on(
-      'meta[name="vm0-api-origin"]',
-      setMetaContent(productionApiOrigin),
-    );
-  }
   const rewrittenResponse = rewriter.transform(response);
   return noIndexResponse(rewrittenResponse);
 }
@@ -282,11 +277,10 @@ async function rewriteManifest(response, metadata) {
   });
 }
 
-function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
+function rewriteFound(response, title, canonicalUrl, metadata) {
   const sharedDescription = `A conversation shared from ${metadata.brandName}`;
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
-    .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
     .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
     .on(
       'meta[name="apple-mobile-web-app-title"]',
@@ -327,10 +321,9 @@ function rewriteFound(response, title, canonicalUrl, metadata, apiOrigin) {
   return rewriter.transform(response);
 }
 
-function rewriteNotFound(response, metadata, apiOrigin) {
+function rewriteNotFound(response, metadata) {
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
-    .on('meta[name="vm0-api-origin"]', setMetaContent(apiOrigin))
     .on('meta[name="application-name"]', setMetaContent(metadata.brandName))
     .on(
       'meta[name="apple-mobile-web-app-title"]',
@@ -586,7 +579,6 @@ async function handleRequest(request, env, requestUrl, embeddedShell) {
           "public, max-age=60, s-maxage=60",
         ),
         appMetadata(requestUrl.hostname, env.PUBLIC_BRAND),
-        origin,
       );
     }
     if (!metaResponse.ok) {
@@ -622,7 +614,6 @@ async function handleRequest(request, env, requestUrl, embeddedShell) {
       metadata.title,
       canonicalUrl,
       sharedAppMetadata,
-      origin,
     );
   }
 
@@ -643,11 +634,7 @@ async function handleRequest(request, env, requestUrl, embeddedShell) {
   ) {
     return assetResponse;
   }
-  return rewriteAppPage(
-    assetResponse,
-    metadata,
-    PRODUCTION_API_ORIGINS.get(requestUrl.hostname),
-  );
+  return rewriteAppPage(assetResponse, metadata);
 }
 
 export function createWorker(embeddedShell) {

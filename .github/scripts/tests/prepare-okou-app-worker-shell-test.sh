@@ -12,7 +12,6 @@ mkdir -p "${canonical_dist}/icons" "$worker_shell"
 
 printf '%s\n' \
   '<!doctype html>' \
-  '<meta name="vm0-api-origin" content="" />' \
   '<script>window.testPrimary="__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__";</script>' \
   '<script type="module" src="https://static.okou.io/okou-app/assets/app-123.js"></script>' \
   > "${canonical_dist}/index.html"
@@ -24,10 +23,7 @@ printf '512\n' > "${canonical_dist}/icons/icon-512.png"
 printf 'maskable\n' > "${canonical_dist}/icons/icon-512-maskable.png"
 printf 'source map\n' > "${canonical_dist}/app.js.map"
 
-bash "$script" \
-  "$canonical_dist" \
-  "$worker_shell" \
-  "https://pr-23364-api.vm6.ai"
+bash "$script" "$canonical_dist" "$worker_shell"
 
 expected_files="$(find "$worker_shell" -type f -printf '%P\n' | sort)"
 test "$expected_files" = "$(printf '%s\n' \
@@ -43,9 +39,6 @@ test "$expected_files" = "$(printf '%s\n' \
   'robots.txt' \
   'sw.js' \
   'sw.txt')"
-grep -Fq \
-  '<meta name="vm0-api-origin" content="https://pr-23364-api.vm6.ai" />' \
-  "${worker_shell}/index.html"
 grep -Fq 'window.testPrimary="app.vm0.ai"' "${worker_shell}/index.html"
 grep -Fq 'https://static.okou.io/okou-app/assets/app-123.js' \
   "${worker_shell}/index.html"
@@ -56,16 +49,6 @@ mkdir "$cutover_shell"
 CLERK_PRODUCTION_PRIMARY_APP_DOMAIN=app.okou.ai \
   bash "$script" "$canonical_dist" "$cutover_shell"
 grep -Fq 'window.testPrimary="app.okou.ai"' "${cutover_shell}/index.html"
-grep -Fq '<meta name="vm0-api-origin" content="" />' \
-  "${cutover_shell}/index.html"
-
-invalid_origin_shell="${tmp_dir}/invalid-origin-shell"
-mkdir "$invalid_origin_shell"
-if bash "$script" "$canonical_dist" "$invalid_origin_shell" \
-  "https://example.com" >/dev/null 2>&1; then
-  echo "expected an invalid preview API origin to be rejected" >&2
-  exit 1
-fi
 
 nonempty_shell="${tmp_dir}/nonempty-shell"
 mkdir "$nonempty_shell"

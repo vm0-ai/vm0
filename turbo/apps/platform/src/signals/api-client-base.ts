@@ -17,7 +17,6 @@ interface AuthedClientOptions {
   readonly clientVersion: string;
   readonly getRootSignal: () => AbortSignal;
   readonly getToken: (signal: AbortSignal) => Promise<string | null>;
-  readonly reloadToken?: (signal: AbortSignal) => Promise<string | null>;
   readonly getVercelProtectionBypass: () => string | undefined;
   readonly onForceUpgrade?: () => void;
   readonly validateResponse?: boolean;
@@ -68,14 +67,7 @@ export function createAuthedContractClient<T extends AppRouter>(
         });
       };
 
-      let response = await requestWithToken(initialToken, signal);
-
-      if (response.status === 401 && options.reloadToken) {
-        const freshToken = await options.reloadToken(signal);
-        if (freshToken) {
-          response = await requestWithToken(freshToken, signal);
-        }
-      }
+      const response = await requestWithToken(initialToken, signal);
 
       if (reportForceUpgradeResponse(response, options.onForceUpgrade)) {
         return response;

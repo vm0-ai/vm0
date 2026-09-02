@@ -9,7 +9,6 @@ import {
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
-  SharedDatabaseHeartbeat,
 } from "./bridge.ts";
 import type {
   SharedDatabaseDataKey,
@@ -17,10 +16,7 @@ import type {
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
-import {
-  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
-  type SharedDatabaseHeartbeatResult,
-} from "./protocol.ts";
+import { SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME } from "./protocol.ts";
 
 const DEFAULT_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -103,18 +99,11 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     return preparation;
   }
 
-  async heartbeat(
-    heartbeat: SharedDatabaseHeartbeat,
-    signal: AbortSignal,
-  ): Promise<SharedDatabaseHeartbeatResult> {
+  async registerTab(signal: AbortSignal): Promise<void> {
     await this.prepare(signal);
     const bridge = this.requireBridge();
-    return await this.runWithReload(() => {
-      return bridge.heartbeat(
-        heartbeat,
-        this.requireConnectionController().signal,
-      );
-    }, signal);
+    await bridge.registerTab(this.requireConnectionController().signal);
+    signal.throwIfAborted();
   }
 
   async query<TKey extends SharedDatabaseDataKey>(
@@ -134,21 +123,6 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     return await this.runWithReload(() => {
       return bridge.getComputed(computedKey);
     }, this.requireOwnerSignal());
-  }
-
-  reloadComputed(computedKey: ComputedKey): void {
-    this.requireBridge().reloadComputed(computedKey);
-  }
-
-  async setToken(
-    recoveryId: string,
-    token: string | null,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const bridge = this.requireBridge();
-    await this.runWithReload(() => {
-      return bridge.setToken(recoveryId, token, signal);
-    }, signal);
   }
 
   private bindOwner(signal: AbortSignal): void {
@@ -233,21 +207,21 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
 
   private requireBridge(): SharedDatabaseBridge {
     if (!this.bridge) {
-      throw new Error("Shared database heartbeat is required first");
+      throw new Error("Shared database tab registration is required first");
     }
     return this.bridge;
   }
 
   private requireConnectionController(): AbortController {
     if (!this.connectionController) {
-      throw new Error("Shared database heartbeat is required first");
+      throw new Error("Shared database tab registration is required first");
     }
     return this.connectionController;
   }
 
   private requireOwnerSignal(): AbortSignal {
     if (!this.ownerSignal) {
-      throw new Error("Shared database heartbeat is required first");
+      throw new Error("Shared database tab registration is required first");
     }
     return this.ownerSignal;
   }

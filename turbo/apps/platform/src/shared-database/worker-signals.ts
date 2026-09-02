@@ -1,10 +1,21 @@
 import type { InboundMessage } from "ably";
-import { command, computed, createStore, state, type Store } from "ccstate";
+import { command, computed, state } from "ccstate";
 
+import {
+  derivePlatformServiceOrigin,
+  resolvePlatformEnvironment,
+} from "../lib/platform-host.ts";
+import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
+import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
+import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
-import { appVersion$, initializeAppVersion$ } from "../signals/app-version.ts";
+import { initializeAppVersion$ } from "../signals/app-version.ts";
 import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
-import { reloadChatIndicators$ } from "../signals/chat-thread-list-reload.ts";
+import {
+  setupConnectionDiagnostics$,
+  writeConnectionDiagnostic$,
+} from "../signals/connection-diagnostics.ts";
+import type { ClerkTokenSource } from "../signals/clerk-token.ts";
 import {
   computerUseHosts$,
   reloadComputerUseHosts$,
@@ -21,81 +32,51 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import { createChildAbortController, settle } from "../signals/utils.ts";
-import { chatThreadIndicators$ } from "../signals/chat-page/chat-thread-indicators.ts";
+import { settle } from "../signals/utils.ts";
+import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
+import {
+  chatThreadIndicators$,
+  reloadChatThreadIndicators$,
+} from "../signals/chat-page/chat-thread-indicators.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
-import type {
-  ChatThreadIndicators,
-  SharedDatabaseDataKey,
-  SharedDatabaseIdentity,
-  SharedDatabaseQuery,
-  SharedDatabaseQueryResult,
+import {
+  sharedDatabaseIdentitySchema,
+  type ChatThreadIndicators,
+  type SharedDatabaseDataKey,
+  type SharedDatabaseIdentity,
+  type SharedDatabaseQuery,
+  type SharedDatabaseQueryResult,
 } from "./data-key.ts";
-import type {
-  SharedDatabaseClientMessage,
-  SharedDatabaseHeartbeatResult,
-} from "./protocol.ts";
+import type { SharedDatabaseClientMessage } from "./protocol.ts";
 import {
   broadcastSharedDatabaseWorkerMessage$,
-  forceRefreshWorkerToken$,
   forwardChatThreadReadCursorUpdated$,
-  getWorkerToken$,
-  heartbeatConnection$,
-  initializeWorkerCredentialContext$,
   reloadComputedForConnections$,
   reloadConnections$,
   requireConnectionSignal$,
-  setWorkerToken$,
   updateRealtimeStatusForConnections$,
   type ConnectionId,
-  type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
-import {
-  createSharedDatabaseContractClientFactory,
-  type SharedDatabaseAuthRecovery,
-} from "./worker-client.ts";
 
-const STALE_CONNECTION_AFTER_MS = 3 * 60 * 1000;
-
-const credentialControllerState$ = state<AbortController | null>(null);
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
-const credentialStoreDaemonsStartedState$ = state(false);
-const sharedDatabaseClientFactory$ = computed((get) => {
-  return createSharedDatabaseContractClientFactory(get(appVersion$));
-});
+const workerDaemonsStartedState$ = state(false);
 
-interface CreateSharedDatabaseCredentialStoreOptions {
+export interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
-  readonly vercelProtectionBypass: string | undefined;
-}
-
-export interface InitializeCredentialStoreOptions {
-  readonly identity: SharedDatabaseIdentity;
-  readonly apiBaseUrl: string;
-  readonly vercelProtectionBypass: string | undefined;
+  readonly clerk: Promise<ClerkTokenSource>;
+  readonly oauthApiBaseUrl: string;
   readonly onForceUpgrade: () => void;
-}
-
-interface CredentialStoreResources {
-  readonly controller: AbortController;
-  readonly runtime: SharedDatabaseWorkerRuntime;
-  readonly authRecovery: SharedDatabaseAuthRecovery;
-}
-
-interface InitializeCredentialStoreResources {
-  readonly controller: AbortController;
-  readonly authRecovery: SharedDatabaseAuthRecovery;
-  readonly broadcast: (message: WorkerBroadcastMessage) => void;
+  readonly vercelProtectionBypass?: string;
 }
 
 function requireRuntime(
   runtime: SharedDatabaseWorkerRuntime | null,
 ): SharedDatabaseWorkerRuntime {
   if (!runtime) {
-    throw new Error("Shared database credential Store is not bootstrapped");
+    throw new Error("Shared database Worker Store is not bootstrapped");
   }
   return runtime;
 }
@@ -144,107 +125,91 @@ function isInboundMessage(value: unknown): value is InboundMessage {
   );
 }
 
-const installCredentialStore$ = command(
+export const initializeSharedDatabaseWorker$ = command(
   (
-    { set },
-    resources: CredentialStoreResources,
-    options: InitializeCredentialStoreOptions,
+    { get, set },
+    options: BootstrapSharedDatabaseWorkerOptions,
     signal: AbortSignal,
   ): void => {
     signal.throwIfAborted();
-    set(credentialControllerState$, resources.controller);
-    set(workerRuntimeState$, resources.runtime);
-    set(initializeWorkerCredentialContext$, options.identity);
+    set(initializeAppVersion$, options.appVersion);
+    set(setRootSignal$, signal);
     set(setApiClientRuntime$, {
-      environment: "worker",
+      clerk: options.clerk,
       apiBaseUrl: options.apiBaseUrl,
-      getToken: (tokenSignal) => {
-        return resources.authRecovery.getToken(tokenSignal);
-      },
-      oauthApiBaseUrl: options.apiBaseUrl,
-      reloadToken: (tokenSignal) => {
-        return resources.authRecovery.forceRefreshToken(tokenSignal);
-      },
+      oauthApiBaseUrl: options.oauthApiBaseUrl,
       ...(options.vercelProtectionBypass
         ? { vercelProtectionBypass: options.vercelProtectionBypass }
         : {}),
       onForceUpgrade: options.onForceUpgrade,
     });
     set(setAuthenticatedIdentity$, Promise.resolve(options.identity));
-  },
-);
-
-export const initializeCredentialStore$ = command(
-  (
-    { get, set },
-    resources: InitializeCredentialStoreResources,
-    options: InitializeCredentialStoreOptions,
-    signal: AbortSignal,
-  ): void => {
-    signal.throwIfAborted();
-    set(setRootSignal$, signal);
     const runtime = new SharedDatabaseWorkerRuntime(
       {
         identity: options.identity,
-        apiBaseUrl: options.apiBaseUrl,
-        vercelProtectionBypass: options.vercelProtectionBypass,
-        authRecovery: resources.authRecovery,
-        emit: resources.broadcast,
-        createContractClient: get(sharedDatabaseClientFactory$),
+        emit: (message) => {
+          set(broadcastSharedDatabaseWorkerMessage$, message);
+        },
+        createContractClient: get(apiClient$),
       },
       signal,
     );
-    set(
-      installCredentialStore$,
+    set(workerRuntimeState$, runtime);
+  },
+);
+
+export const bootstrapSharedDatabaseWorkerStore$ = command(
+  (
+    { set },
+    options: BootstrapSharedDatabaseWorkerOptions,
+    signal: AbortSignal,
+  ): Promise<void> | null => {
+    set(initializeSharedDatabaseWorker$, options, signal);
+    return set(startSharedDatabaseWorkerDaemons$);
+  },
+);
+
+function resolveWorkerIdentity(): SharedDatabaseIdentity {
+  const params = new URL(location.href).searchParams;
+  return sharedDatabaseIdentitySchema.parse({
+    userId: params.get("userId"),
+    orgId: params.get("orgId"),
+  });
+}
+
+export const bootstrapWorker$ = command(
+  ({ get, set }, signal: AbortSignal): Promise<void> | null => {
+    const params = new URL(location.href).searchParams;
+    const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
+    const vercelProtectionBypass = params.get(VERCEL_PROTECTION_BYPASS_NAME);
+    set(setupConnectionDiagnostics$, signal);
+    // The tab bakes the capture decision into the Worker URL, so a Worker
+    // started for a debugging tab records from its very first event.
+    set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: params.has(CONNECTION_DIAGNOSTICS_PARAM),
+    });
+    const oauthApiBaseUrl =
+      resolvePlatformEnvironment() === "production"
+        ? derivePlatformServiceOrigin(location.origin, "www")
+        : apiBaseUrl;
+    return set(
+      bootstrapSharedDatabaseWorkerStore$,
       {
-        controller: resources.controller,
-        runtime,
-        authRecovery: resources.authRecovery,
+        appVersion: __OKOU_APP_VERSION__,
+        identity: resolveWorkerIdentity(),
+        apiBaseUrl,
+        clerk: get(workerClerk$),
+        oauthApiBaseUrl,
+        onForceUpgrade: () => {
+          set(reloadConnections$);
+        },
+        ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },
-      options,
       signal,
     );
   },
 );
-
-export function createSharedDatabaseCredentialStore(
-  options: CreateSharedDatabaseCredentialStoreOptions,
-  workerSignal: AbortSignal,
-): Store {
-  const store = createStore();
-  store.set(initializeAppVersion$, options.appVersion);
-  const credentialController = createChildAbortController(workerSignal);
-  const credentialSignal = credentialController.signal;
-  const authRecovery: SharedDatabaseAuthRecovery = {
-    getToken: (signal) => {
-      return store.set(getWorkerToken$, signal);
-    },
-    forceRefreshToken: (signal) => {
-      return store.set(forceRefreshWorkerToken$, signal);
-    },
-  };
-  const broadcast = (message: WorkerBroadcastMessage): void => {
-    store.set(broadcastSharedDatabaseWorkerMessage$, message);
-  };
-  store.set(
-    initializeCredentialStore$,
-    { controller: credentialController, authRecovery, broadcast },
-    {
-      ...options,
-      onForceUpgrade: () => {
-        store.set(reloadConnections$);
-        credentialController.abort(
-          new DOMException(
-            "Credential Store requires a newer client",
-            "AbortError",
-          ),
-        );
-      },
-    },
-    credentialSignal,
-  );
-  return store;
-}
 
 const updateSharedDatabaseRealtimeStatus$ = command(
   ({ set }, state: RealtimeConnectionState): void => {
@@ -289,7 +254,7 @@ export const handleSharedDatabaseRealtimeMessage$ = command(
 const reloadWorkerComputed$ = command(
   ({ set }, computedKey: ComputedKey): void => {
     if (computedKey === "chat-thread-indicators") {
-      set(reloadChatIndicators$);
+      set(reloadChatThreadIndicators$);
       return;
     }
     if (computedKey === "computer-use-hosts") {
@@ -297,6 +262,14 @@ const reloadWorkerComputed$ = command(
       return;
     }
     set(reloadQueueData$);
+  },
+);
+
+/** Recompute one Worker computed and tell every tab to re-read it. */
+export const refreshWorkerComputed$ = command(
+  ({ set }, computedKey: ComputedKey): void => {
+    set(reloadWorkerComputed$, computedKey);
+    set(reloadComputedForConnections$, computedKey);
   },
 );
 
@@ -344,7 +317,7 @@ export const reloadWorkerQueueDataFromRealtime$ = command(
   },
 );
 
-export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
+export const recoverSharedDatabaseWorkerAfterRealtimeReconnect$ = command(
   ({ set }, signal: AbortSignal): void => {
     signal.throwIfAborted();
     set(broadcastSharedDatabaseReconnect$);
@@ -357,14 +330,14 @@ export const recoverCredentialStoreAfterRealtimeReconnect$ = command(
   },
 );
 
-const runCredentialStoreDaemons$ = command(
+const runSharedDatabaseWorkerDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     set(
       subscribeRealtimeConnectionState$,
       ({ state, reconnected }) => {
         set(updateSharedDatabaseRealtimeStatus$, state);
         if (reconnected) {
-          set(recoverCredentialStoreAfterRealtimeReconnect$, signal);
+          set(recoverSharedDatabaseWorkerAfterRealtimeReconnect$, signal);
         }
       },
       signal,
@@ -455,25 +428,14 @@ const runCredentialStoreDaemons$ = command(
   },
 );
 
-export const startCredentialStoreDaemons$ = command(
+export const startSharedDatabaseWorkerDaemons$ = command(
   ({ get, set }): Promise<void> | null => {
-    if (get(credentialStoreDaemonsStartedState$)) {
+    if (get(workerDaemonsStartedState$)) {
       return null;
     }
     const signal = get(rootSignal$);
-    set(credentialStoreDaemonsStartedState$, true);
-    return set(runCredentialStoreDaemons$, signal);
-  },
-);
-
-export const heartbeatSharedDatabaseWorker$ = command(
-  (
-    { set },
-    connectionId: ConnectionId,
-    signal: AbortSignal,
-  ): SharedDatabaseHeartbeatResult => {
-    set(heartbeatConnection$, connectionId, signal, STALE_CONNECTION_AFTER_MS);
-    return { clientReconnected: false };
+    set(workerDaemonsStartedState$, true);
+    return set(runSharedDatabaseWorkerDaemons$, signal);
   },
 );
 
@@ -489,10 +451,6 @@ export const querySharedDatabaseWorker$ = command(
   },
 );
 
-type HeartbeatMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "heartbeat" }
->;
 type QueryMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "query" }
@@ -501,37 +459,6 @@ type GetComputedMessage = Extract<
   SharedDatabaseClientMessage,
   { readonly type: "get-computed" }
 >;
-type ReloadComputedMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "reload-computed" }
->;
-type SetTokenMessage = Extract<
-  SharedDatabaseClientMessage,
-  { readonly type: "set-token" }
->;
-
-export const heartbeatStoreMessage$ = command(
-  (
-    { set },
-    connectionId: ConnectionId,
-    _message: HeartbeatMessage,
-    signal: AbortSignal,
-  ): SharedDatabaseHeartbeatResult => {
-    return set(heartbeatSharedDatabaseWorker$, connectionId, signal);
-  },
-);
-
-export const setTokenStoreMessage$ = command(
-  (
-    { set },
-    connectionId: ConnectionId,
-    message: SetTokenMessage,
-    signal: AbortSignal,
-  ): void => {
-    set(requireConnectionSignal$, connectionId, signal);
-    set(setWorkerToken$, connectionId, message.recoveryId, message.token);
-  },
-);
 
 export const queryStoreMessage$ = command(
   async (
@@ -565,27 +492,5 @@ export const getComputedStoreMessage$ = command(
           : await get(queueData$);
     signal.throwIfAborted();
     return value;
-  },
-);
-
-export const reloadComputedStoreMessage$ = command(
-  (
-    { set },
-    _connectionId: ConnectionId,
-    message: ReloadComputedMessage,
-  ): void => {
-    set(reloadWorkerComputed$, message.computedKey);
-    set(reloadComputedForConnections$, message.computedKey);
-  },
-);
-
-export const disposeSharedDatabaseCredentialStore$ = command(
-  ({ get }): void => {
-    get(credentialControllerState$)?.abort(
-      new DOMException(
-        "Shared database credential Store disposed",
-        "AbortError",
-      ),
-    );
   },
 );
