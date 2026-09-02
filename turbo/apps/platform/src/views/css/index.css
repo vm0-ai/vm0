@@ -25,19 +25,20 @@
   --color-sidebar-border: hsl(var(--gray-200));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
-  --color-credit-free: #3eb7b8;
-  --color-credit-promotional: #e88033;
-  --color-credit-plan-pro: #edc43e;
-  --color-credit-plan-team: #6b8de3;
+  --color-credit-free: #008d76;
+  --color-credit-promotional: #ff6030;
+  --color-credit-plan-pro: #ffa500;
+  --color-credit-plan-team: #3462d3;
 
-  /* Usage record kind breakdown segment colors. Model uses a cool indigo so
-     the dominant LLM segment separates cleanly from the pink image hue; image
-     and video also sit far apart (pink vs teal). */
-  --color-usage-kind-model: #5e6ad2;
-  --color-usage-kind-image: #ec70a5;
-  --color-usage-kind-video: #358a8e;
-  --color-usage-kind-connector: #98928b;
-  --color-usage-kind-other: #e1c43c;
+  /* Usage record kind breakdown segment colors, drawn from the palette's
+     categorical set. Model keeps a cool blue so the dominant LLM segment
+     separates cleanly from the image hue; image and video also sit far apart
+     (blossom vs jade). */
+  --color-usage-kind-model: #3462d3;
+  --color-usage-kind-image: #ce9cb5;
+  --color-usage-kind-video: #008d76;
+  --color-usage-kind-connector: #779aad;
+  --color-usage-kind-other: #c8b800;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
@@ -540,10 +541,10 @@ body {
   /* The composer is the largest surface on the page and leads the radius scale. */
   --zero-composer-radius: 1.5rem;
   --zero-card-shadow:
-    0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
+    0 2px 12px hsl(20 6% 45% / 0.05), 0 0 0 0.5px hsl(20 6% 45% / 0.025);
   /* Static focus veil for the composer. Fading this layer through opacity lets
      the browser composite it without interpolating the wide blur every frame. */
-  --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(20 8% 45% / 0.09);
 }
 
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
@@ -701,7 +702,7 @@ body {
   background-color: hsl(var(--zero-nav-rail));
 }
 :where([data-theme="dark"]) .zero-nav {
-  --color-sidebar: hsl(240 5% 8%);
+  --color-sidebar: hsl(0 4.3% 10.5%);
 }
 
 /* Morandi outline buttons */
@@ -841,7 +842,7 @@ body {
 
 /* Global selection color */
 ::selection {
-  background-color: hsl(var(--primary-200));
+  background-color: hsl(var(--brand-subtle));
   color: hsl(var(--foreground));
 }
 
@@ -863,11 +864,11 @@ body {
   --color-border-default: hsl(var(--border));
   --color-border-muted: hsl(var(--border));
   --color-neutral-muted: hsl(var(--gray-100));
-  --color-accent-fg: hsl(var(--primary-700));
-  --color-accent-emphasis: hsl(var(--primary-700));
-  --color-attention-subtle: hsl(var(--primary-50));
-  --color-attention-fg: hsl(var(--primary-800));
-  --color-attention-emphasis: hsl(var(--primary-800));
+  --color-accent-fg: hsl(var(--brand-text));
+  --color-accent-emphasis: hsl(var(--brand-text));
+  --color-attention-subtle: hsl(var(--brand-subtle));
+  --color-attention-fg: hsl(var(--brand-text));
+  --color-attention-emphasis: hsl(var(--brand-text));
   --color-danger-fg: hsl(var(--destructive));
   --color-danger-emphasis: hsl(var(--destructive));
   --color-success-fg: #2a7a4b;
@@ -893,7 +894,7 @@ body {
   --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
   --color-prettylights-syntax-constant-other-reference-link: #4a6fa5;
   --color-prettylights-syntax-meta-diff-range: #6a5acd;
-  --color-prettylights-syntax-markup-heading: hsl(var(--primary-800));
+  --color-prettylights-syntax-markup-heading: hsl(var(--brand-text));
   --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
   --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
   --color-prettylights-syntax-markup-deleted-text: #8b2020;
@@ -901,7 +902,7 @@ body {
   --color-prettylights-syntax-markup-inserted-text: #2a7a4b;
   --color-prettylights-syntax-markup-inserted-bg: #e6f6ed;
   --color-prettylights-syntax-markup-changed-text: #b35a00;
-  --color-prettylights-syntax-markup-changed-bg: hsl(var(--primary-50));
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--brand-subtle));
   --color-prettylights-syntax-markup-list: #b35a00;
 }
 
@@ -916,11 +917,11 @@ body {
   --color-border-default: hsl(var(--border));
   --color-border-muted: hsl(var(--border));
   --color-neutral-muted: hsl(var(--gray-200));
-  --color-accent-fg: hsl(var(--primary-900));
-  --color-accent-emphasis: hsl(var(--primary-700));
-  --color-attention-subtle: hsl(var(--primary-100));
-  --color-attention-fg: hsl(var(--primary-900));
-  --color-attention-emphasis: hsl(var(--primary-700));
+  --color-accent-fg: hsl(var(--brand-text));
+  --color-accent-emphasis: hsl(var(--brand-text));
+  --color-attention-subtle: hsl(var(--brand-subtle));
+  --color-attention-fg: hsl(var(--brand-text));
+  --color-attention-emphasis: hsl(var(--brand-text));
   --color-danger-fg: hsl(var(--destructive));
   --color-danger-emphasis: hsl(var(--destructive));
   --color-success-fg: #7dba97;
@@ -946,7 +947,7 @@ body {
   --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
   --color-prettylights-syntax-constant-other-reference-link: #8aabcc;
   --color-prettylights-syntax-meta-diff-range: #b8a0d8;
-  --color-prettylights-syntax-markup-heading: hsl(var(--primary-900));
+  --color-prettylights-syntax-markup-heading: hsl(var(--brand-text));
   --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
   --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
   --color-prettylights-syntax-markup-deleted-text: #e8a0a0;
@@ -1057,22 +1058,22 @@ body {
 
 /* --- Links -------------------------------------------------------------- */
 .wmde-markdown a {
-  color: hsl(216 70% 45%);
+  color: hsl(222.6 64.4% 51.6%);
   text-decoration: none;
   overflow-wrap: break-word;
 }
 
 .wmde-markdown a:hover {
   text-decoration: underline;
-  color: hsl(216 75% 38%);
+  color: hsl(222.2 57.3% 40.4%);
 }
 
 :where([data-theme="dark"]) .wmde-markdown a {
-  color: hsl(216 65% 62%);
+  color: hsl(220.5 100% 84.3%);
 }
 
 :where([data-theme="dark"]) .wmde-markdown a:hover {
-  color: hsl(216 70% 70%);
+  color: hsl(220.4 100% 90.4%);
 }
 
 /* --- Blockquote --------------------------------------------------------- */
@@ -1127,7 +1128,7 @@ body {
 
 /* --- Mark / highlight --------------------------------------------------- */
 .wmde-markdown mark {
-  background-color: hsl(var(--primary-100));
+  background-color: hsl(var(--brand-subtle));
   color: hsl(var(--foreground));
 }
 
@@ -1304,11 +1305,11 @@ body {
 }
 
 .wmde-markdown .markdown-alert.markdown-alert-note {
-  border-left-color: hsl(var(--primary-600));
+  border-left-color: hsl(var(--brand-text));
 }
 
 .wmde-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
-  color: hsl(var(--primary-700));
+  color: hsl(var(--brand-text));
 }
 
 /* Details/summary animation */
