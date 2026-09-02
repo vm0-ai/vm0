@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.42.10](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.9...desktop-v0.42.10) (2026-09-02)
+
+
+### Bug Fixes
+
+* **desktop:** offer every space in the window picker and let it be dismissed ([#31065](https://github.com/vm0-ai/vm0/issues/31065)) ([d4bbd4d](https://github.com/vm0-ai/vm0/commit/d4bbd4d3448916f558fa125252818c7274a711b9))
+
+
+### Refactoring
+
+* **api:** empty the branded compatibility table ([#31106](https://github.com/vm0-ai/vm0/issues/31106)) ([26e0aa1](https://github.com/vm0-ai/vm0/commit/26e0aa1a2872bc0fafccd0c3089466ea3653f7c5))
+* rename internal feature switch keys ([#30955](https://github.com/vm0-ai/vm0/issues/30955)) ([b0670b4](https://github.com/vm0-ai/vm0/commit/b0670b464a105432aaa08b3bd340a07a5b32654e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.392.0
+
 ## [0.42.9](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.8...desktop-v0.42.9) (2026-09-02)
 
 
