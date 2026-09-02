@@ -29,7 +29,7 @@ interface UserMessageFile {
 
 type UserMessageFilePart = Extract<UserMessagePart, { readonly type: "file" }>;
 
-export function userMessageFileParts(
+function userMessageFileParts(
   document: UserMessageDocument,
 ): readonly UserMessageFilePart[] {
   return document.parts.filter((part): part is UserMessageFilePart => {
@@ -235,7 +235,7 @@ function webFilePrompt(part: {
   return `[Web file] ${part.filenameSnapshot} (${part.contentType})\n   [ID] ${part.fileId}`;
 }
 
-export function annotatedImageFilenameSnapshot(filename: string): string {
+function annotatedImageFilenameSnapshot(filename: string): string {
   const dot = filename.lastIndexOf(".");
   const stem = dot > 0 ? filename.slice(0, dot) : filename;
   return `${stem}.annotated.png`;

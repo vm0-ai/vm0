@@ -14339,13 +14339,10 @@ describe("CHAT-02: generation templates and attachments", () => {
     const fileId = randomUUID();
     const annotatedFileId = randomUUID();
     const filename = "billing-page.png";
-    chat.mockCompletedUploadObject(actor, fileId, filename, 42);
-    chat.mockCompletedUploadObject(
-      actor,
-      annotatedFileId,
-      "billing-page.annotated.png",
-      54,
-    );
+    chat.mockCompletedUploadObjects(actor, [
+      { id: fileId, filename, size: 42 },
+      { id: annotatedFileId, filename: "billing-page.annotated.png", size: 54 },
+    ]);
     const filePart = {
       type: "file" as const,
       fileId,
