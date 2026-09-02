@@ -424,9 +424,32 @@ function createSourceCommands(
 ) {
   const openWizard$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      set(internal.open$, true);
+      signal.throwIfAborted();
+      runtime.generation += 1;
+      set(resetRecordingAttempt$);
+      releaseRecordingRuntime(runtime, true);
+      set(internal.avatar$, null);
+      set(internal.busy$, false);
+      set(internal.countdown$, 3);
       set(internal.error$, null);
-      if (get(internal.source$)) {
+      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+      set(internal.microphone$, false);
+      set(internal.recordingSeconds$, 0);
+      set(internal.sourceUploaded$, false);
+      set(internal.systemAudio$, true);
+      set(internal.visualBalance$, "balanced");
+      set(internal.voice$, null);
+      const source = get(internal.source$);
+      set(internal.step$, source ? "source-review" : "source");
+      signal.addEventListener(
+        "abort",
+        () => {
+          set(internal.open$, false);
+        },
+        { once: true },
+      );
+      set(internal.open$, true);
+      if (source) {
         return;
       }
       const restored = await settle(readIntroVideoDraft(), signal);
