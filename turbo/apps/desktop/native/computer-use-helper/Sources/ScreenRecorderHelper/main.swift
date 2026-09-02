@@ -517,9 +517,14 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         try? FileManager.default.removeItem(at: url)
 
         let assetWriter = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        // Fragmented output keeps the file playable if this process dies mid
-        // capture; an unfinalized plain MP4 would be unreadable.
-        assetWriter.movieFragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
+        // Written as one movie, finalized at stop, rather than in two-second
+        // fragments. Fragments were meant to keep the file playable if this
+        // process died mid-capture, but nothing recovers such a file, and
+        // closing a fragment failed whenever the video track had no frame in
+        // it: a window capture only produces a frame when the window changes,
+        // so a still window left every fragment after the first empty, and the
+        // writer failed at the boundary. Every recording of a still window
+        // ended a few seconds in.
 
         let video = AVAssetWriterInput(
             mediaType: .video,
