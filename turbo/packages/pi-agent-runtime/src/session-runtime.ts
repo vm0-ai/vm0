@@ -14,9 +14,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import type { PiPreheatedResourceSnapshot } from "./api-types";
-import { piAgentRegisteredStream, resolvePiAgentModel } from "./model";
+import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
-import type { PiAgentModelConfig, PiAgentServiceTier } from "./types";
+import type { PiAgentModelConfig } from "./types";
 
 function initializePiSessionResourceRegistry(): void {
   // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
@@ -29,31 +29,17 @@ function initializePiSessionResourceRegistry(): void {
   unregister();
 }
 
-function requestScopedPiAgentStream(
-  serviceTier: PiAgentServiceTier | undefined,
-): typeof piAgentRegisteredStream {
-  if (serviceTier === undefined) {
-    return piAgentRegisteredStream;
-  }
-  return (model, context, options) => {
-    return piAgentRegisteredStream(model, context, {
-      ...options,
-      serviceTier,
-    });
-  };
-}
-
 function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
-  serviceTier: PiAgentServiceTier | undefined,
+  config: Pick<PiAgentModelConfig, "requestHeaders" | "serviceTier">,
 ) {
   return {
     name: model.provider,
     baseUrl: model.baseUrl,
     apiKey,
     api: model.api,
-    streamSimple: requestScopedPiAgentStream(serviceTier),
+    streamSimple: piAgentStreamForConfig(config),
     models: [
       {
         id: model.id,
@@ -127,7 +113,7 @@ export async function createPiAgentSessionForRuntime(args: {
   });
   modelRuntime.registerProvider(
     args.model.provider,
-    registeredModelConfig(model, args.model.apiKey, args.model.serviceTier),
+    registeredModelConfig(model, args.model.apiKey, args.model),
   );
   const services = await createAgentSessionServices({
     cwd: args.cwd,

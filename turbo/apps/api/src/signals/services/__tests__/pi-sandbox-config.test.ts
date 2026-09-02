@@ -42,6 +42,77 @@ describe("Pi sandbox model configuration", () => {
     },
   );
 
+  it.each([
+    {
+      selectedModel: "deepseek-v4-flash",
+      upstreamModel: "company-deepseek-flash-production",
+      provider: "deepseek",
+      thinkingLevel: undefined,
+    },
+    {
+      selectedModel: "deepseek-v4-pro",
+      upstreamModel: "company-deepseek-pro-production",
+      provider: "deepseek",
+      thinkingLevel: undefined,
+    },
+    {
+      selectedModel: "gpt-5.6-terra",
+      upstreamModel: "company-terra-production",
+      provider: "openai",
+      thinkingLevel: "low",
+    },
+  ] as const)(
+    "resolves custom gateway $selectedModel to $upstreamModel",
+    ({ selectedModel, upstreamModel, provider, thinkingLevel }) => {
+      expect(
+        resolvePiSandboxModelConfig({
+          type: "custom-openai-responses",
+          environment: {
+            OPENAI_BASE_URL: "https://gateway.example.com/openai/v1",
+            OPENAI_MODEL: upstreamModel,
+          },
+          selectedModel,
+          inlineFirewall: true,
+          credentialHeader: {
+            name: "x-api-key",
+            valueTemplate: "Key {{secret}}",
+          },
+        }),
+      ).toStrictEqual({
+        provider,
+        baseUrl: "https://gateway.example.com/openai/v1",
+        model: upstreamModel,
+        catalogModel: selectedModel,
+        api: "openai-responses",
+        ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+        apiKeyEnv: "OPENAI_API_KEY",
+        credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+        credentialHeader: {
+          name: "x-api-key",
+          valueTemplate: "Key {{secret}}",
+        },
+      });
+    },
+  );
+
+  it("keeps an unmapped custom gateway model outside the Pi config", () => {
+    expect(
+      resolvePiSandboxModelConfig({
+        type: "custom-openai-responses",
+        environment: {
+          OPENAI_BASE_URL: "https://gateway.example.com/openai/v1",
+          OPENAI_MODEL: "company-sol-production",
+        },
+        selectedModel: "gpt-5.6-sol",
+        inlineFirewall: true,
+        credentialHeader: {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secret}}",
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("resolves the built-in OpenAI Terra primary route", () => {
     expect(
       resolvePiSandboxModelConfig({
@@ -231,6 +302,44 @@ describe("Pi sandbox model configuration", () => {
     },
   );
 
+  it.each(["deepseek-v4-flash", "deepseek-v4-pro", "gpt-5.6-terra"] as const)(
+    "admits custom gateway %s to standard Pi",
+    (selectedModel) => {
+      expect(
+        shouldUsePiExecution({
+          chatThreadId: "thread-id",
+          modelProviderType: "custom-openai-responses",
+          selectedModel,
+          codexServiceTier: undefined,
+          builtInModelRuntimeRoute: undefined,
+          triggerSource: "web",
+          featureSwitchContext: {
+            overrides: { [FeatureSwitchKey.PiLoop]: true },
+          },
+        }),
+      ).toBeTruthy();
+    },
+  );
+
+  it.each(["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5"] as const)(
+    "does not widen custom gateway admission to %s",
+    (selectedModel) => {
+      expect(
+        shouldUsePiExecution({
+          chatThreadId: "thread-id",
+          modelProviderType: "custom-openai-responses",
+          selectedModel,
+          codexServiceTier: undefined,
+          builtInModelRuntimeRoute: undefined,
+          triggerSource: "web",
+          featureSwitchContext: {
+            overrides: { [FeatureSwitchKey.PiLoop]: true },
+          },
+        }),
+      ).toBeFalsy();
+    },
+  );
+
   it.each(["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5"] as const)(
     "does not admit built-in %s to Pi on OpenRouter",
     (selectedModel) => {
@@ -333,6 +442,17 @@ describe("Pi sandbox model configuration", () => {
     {
       name: "fast Terra BYOK",
       modelProviderType: "openai-api-key",
+      selectedModel: "gpt-5.6-terra",
+      codexServiceTier: "fast" as const,
+      builtInModelRuntimeRoute: undefined,
+      triggerSource: "web" as const,
+      chatThreadId: "thread-id",
+      piLoopEnabled: true,
+      codexFastModeEnabled: true,
+    },
+    {
+      name: "fast Terra custom gateway",
+      modelProviderType: "custom-openai-responses",
       selectedModel: "gpt-5.6-terra",
       codexServiceTier: "fast" as const,
       builtInModelRuntimeRoute: undefined,

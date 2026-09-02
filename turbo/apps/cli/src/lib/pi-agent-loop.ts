@@ -8,6 +8,7 @@ import {
   type PiLaunchPayload,
 } from "@okouai/api-contracts/contracts/runners";
 import {
+  resolvePiAgentCredential,
   runPiOfficialRpcMode,
   type PiAgentModelConfig,
 } from "@okouai/pi-agent-runtime/node";
@@ -97,15 +98,24 @@ export async function piSandboxAgentConfigFromEnv(
   const {
     api: _legacyApi,
     apiKeyEnv,
+    credentialHeader,
     credentialSecretName: _credentialSecretName,
     ...model
   } = parsedModel;
-  const apiKey = requiredEnv(env, apiKeyEnv);
+  const credential = requiredEnv(env, apiKeyEnv);
   return {
     runId,
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     launchPayload: await readLaunchPayload(env),
-    model: { ...model, api: "openai-responses", apiKey },
+    model: {
+      ...model,
+      api: "openai-responses",
+      ...resolvePiAgentCredential({
+        credential,
+        header: credentialHeader,
+        target: "sandbox-firewall",
+      }),
+    },
   };
 }
 

@@ -5721,6 +5721,131 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
+  it.each([
+    {
+      selectedModel: "deepseek-v4-flash",
+      upstreamModel: "company-deepseek-flash-production",
+    },
+    {
+      selectedModel: "deepseek-v4-pro",
+      upstreamModel: "company-deepseek-pro-production",
+    },
+    {
+      selectedModel: "gpt-5.6-terra",
+      upstreamModel: "company-terra-production",
+    },
+  ] as const)(
+    "runs custom Responses gateway $selectedModel through Pi without vm0 model billing",
+    async ({ selectedModel, upstreamModel }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const orgId = requireOrgId(actor);
+      const usagePricingResolution = await createTerraUsagePricingResolution();
+      const created = await accept(
+        modelProviderConnectionsClient().create({
+          headers: sessionHeaders(actor),
+          body: {
+            displayName: `Pi custom gateway for ${selectedModel}`,
+            secret: "custom-pi-gateway-secret",
+            surfaces: [
+              {
+                protocol: "openai-responses",
+                apiBaseUrl: "https://pi-custom-gateway.example.com/openai/v1",
+                authHeaderName: "x-api-key",
+                authHeaderTemplate: "Key {{secret}}",
+                modelMappings: { [selectedModel]: upstreamModel },
+              },
+            ],
+          },
+        }),
+        [201],
+      );
+      const surfaceId = created.body.surfaces[0]?.id;
+      if (!surfaceId) {
+        throw new Error("Expected the custom Pi gateway to have a surface");
+      }
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: selectedModel,
+          isDefault: true,
+          defaultProviderType: "custom-openai-responses",
+          credentialScope: "org",
+          modelProviderId: null,
+          modelProviderSurfaceId: surfaceId,
+        },
+      ]);
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const modelRequests: {
+        readonly body: unknown;
+        readonly authorization: string | null;
+        readonly apiKey: string | null;
+      }[] = [];
+      server.use(
+        http.post(
+          "https://pi-custom-gateway.example.com/openai/v1/responses",
+          async ({ request }) => {
+            modelRequests.push({
+              body: await request.json(),
+              authorization: request.headers.get("authorization"),
+              apiKey: request.headers.get("x-api-key"),
+            });
+            return new HttpResponse(
+              piResponsesTextSse(
+                `custom gateway answer for ${selectedModel}`,
+                0,
+                {
+                  input_tokens: 10,
+                  output_tokens: 3,
+                  total_tokens: 13,
+                  input_tokens_details: {
+                    cached_tokens: 3,
+                    cache_write_tokens: 2,
+                  },
+                },
+              ),
+              { headers: { "content-type": "text/event-stream" } },
+            );
+          },
+        ),
+      );
+
+      const run = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: `route ${selectedModel} through the custom Pi gateway`,
+          model: selectedModel,
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+      await waitForRunStatus(actor, run.runId, "completed");
+      await flushWaitUntilForTest();
+
+      await expect(
+        readRunLaunchSnapshotFixture(context, run.runId),
+      ).resolves.toMatchObject({
+        launch_snapshot: { framework: "pi" },
+      });
+      expect(modelRequests).toStrictEqual([
+        {
+          body: expect.objectContaining({ model: upstreamModel }),
+          authorization: null,
+          apiKey: "Key custom-pi-gateway-secret",
+        },
+      ]);
+      await expect(readRunUsageEventsFixture(run.runId)).resolves.toStrictEqual(
+        [],
+      );
+    },
+    90_000,
+  );
+
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
     "runs built-in %s OpenRouter fallback through Responses without widening admission",
     async (selectedModel) => {

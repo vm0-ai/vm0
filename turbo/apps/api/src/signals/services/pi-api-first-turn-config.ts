@@ -22,6 +22,7 @@ export interface PiApiFirstTurnActivation {
     | "storageMounts"
   > & {
     readonly apiStartTime: number;
+    readonly billableFirewalls: readonly string[];
     readonly piLaunchConfig: PiLaunchConfig;
     readonly piModelConfig: PiModelConfig;
     readonly piSessionId: string;
@@ -35,6 +36,7 @@ export function requirePiApiFirstTurnExecutionContext(
   context: Pick<
     StoredExecutionContext,
     | "apiStartTime"
+    | "billableFirewalls"
     | "encryptedSecrets"
     | "environment"
     | "modelUsageProvider"
@@ -57,6 +59,7 @@ export function requirePiApiFirstTurnExecutionContext(
   }
   return {
     apiStartTime: context.apiStartTime,
+    billableFirewalls: context.billableFirewalls ?? [],
     encryptedSecrets: context.encryptedSecrets,
     environment: context.environment,
     modelUsageProvider: context.modelUsageProvider,

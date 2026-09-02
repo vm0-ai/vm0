@@ -5,6 +5,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 
 import { createPiAgentSessionForRuntime } from "./session-runtime";
+import type { PiAgentRequestHeaders } from "./types";
 
 const TERRA_MODEL = {
   provider: "openai" as const,
@@ -20,6 +21,32 @@ const EMPTY_RESOURCE_SNAPSHOT = {
   agentsFiles: [],
   skills: [],
 };
+
+const CUSTOM_GATEWAY_CREDENTIAL_CASES: ReadonlyArray<{
+  readonly name: string;
+  readonly sessionId: string;
+  readonly requestHeaders: PiAgentRequestHeaders;
+  readonly authorization: string | undefined;
+  readonly apiKey: string | undefined;
+}> = [
+  {
+    name: "x-api-key",
+    sessionId: "00000000-0000-4000-8000-000000000127",
+    requestHeaders: {
+      authorization: null,
+      "x-api-key": "Key gateway-secret",
+    },
+    authorization: undefined,
+    apiKey: "Key gateway-secret",
+  },
+  {
+    name: "Authorization",
+    sessionId: "00000000-0000-4000-8000-000000000128",
+    requestHeaders: { Authorization: "Bearer gateway-secret" },
+    authorization: "Bearer gateway-secret",
+    apiKey: undefined,
+  },
+];
 
 function responsesTextSse(response: ServerResponse, text: string): void {
   const responseId = "resp_terra_sandbox";
@@ -92,6 +119,66 @@ function responsesTextSse(response: ServerResponse, text: string): void {
   );
 }
 
+interface CapturedProviderRequest {
+  readonly url: string | undefined;
+  readonly body: unknown;
+  readonly authorization: string | undefined;
+  readonly apiKey: string | undefined;
+}
+
+async function startResponsesProvider(): Promise<{
+  readonly baseUrl: string;
+  readonly requests: CapturedProviderRequest[];
+  close(): Promise<void>;
+}> {
+  const requests: CapturedProviderRequest[] = [];
+  const server = createServer((request, response) => {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      requests.push({
+        url: request.url,
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+        authorization: request.headers.authorization,
+        apiKey: request.headers["x-api-key"] as string | undefined,
+      });
+      responsesTextSse(response, "Sandbox answer");
+    })().catch((error: unknown) => {
+      response.destroy(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Sandbox test server has no TCP address");
+  }
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    requests,
+    async close() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+    },
+  };
+}
+
 describe("official Pi AgentSession runtime", () => {
   it.each([
     {
@@ -107,38 +194,7 @@ describe("official Pi AgentSession runtime", () => {
   ] as const)(
     "normalizes legacy transport for $name Sandbox turns",
     async ({ api, serviceTier }) => {
-      const providerRequests: Array<{
-        readonly url: string | undefined;
-        readonly body: unknown;
-      }> = [];
-      const server = createServer((request, response) => {
-        void (async () => {
-          const chunks: Buffer[] = [];
-          for await (const chunk of request) {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-          }
-          providerRequests.push({
-            url: request.url,
-            body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
-          });
-          responsesTextSse(response, "Terra Sandbox answer");
-        })().catch((error: unknown) => {
-          response.destroy(
-            error instanceof Error ? error : new Error(String(error)),
-          );
-        });
-      });
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(0, "127.0.0.1", () => {
-          server.off("error", reject);
-          resolve();
-        });
-      });
-      const address = server.address();
-      if (address === null || typeof address === "string") {
-        throw new Error("Terra Sandbox test server has no TCP address");
-      }
+      const provider = await startResponsesProvider();
       const sessionManager = SessionManager.inMemory("/home/user/workspace", {
         id: "00000000-0000-4000-8000-000000000126",
       });
@@ -148,7 +204,7 @@ describe("official Pi AgentSession runtime", () => {
         sessionManager,
         model: {
           ...TERRA_MODEL,
-          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          baseUrl: provider.baseUrl,
           api,
           ...(serviceTier === undefined ? {} : { serviceTier }),
         },
@@ -159,8 +215,8 @@ describe("official Pi AgentSession runtime", () => {
       try {
         await created.session.prompt("answer through the Sandbox");
 
-        expect(providerRequests).toHaveLength(1);
-        expect(providerRequests[0]).toMatchObject({
+        expect(provider.requests).toHaveLength(1);
+        expect(provider.requests[0]).toMatchObject({
           url: "/v1/responses",
           body: {
             model: "gpt-5.6-terra",
@@ -168,23 +224,59 @@ describe("official Pi AgentSession runtime", () => {
           },
         });
         if (serviceTier === undefined) {
-          expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
+          expect(provider.requests[0]?.body).not.toHaveProperty("service_tier");
         } else {
-          expect(providerRequests[0]?.body).toMatchObject({
+          expect(provider.requests[0]?.body).toMatchObject({
             service_tier: "priority",
           });
         }
       } finally {
         created.session.dispose();
-        await new Promise<void>((resolve, reject) => {
-          server.close((error) => {
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
-          });
-        });
+        await provider.close();
+      }
+    },
+  );
+
+  it.each(CUSTOM_GATEWAY_CREDENTIAL_CASES)(
+    "uses the custom gateway request model and $name credential header",
+    async ({ sessionId, requestHeaders, authorization, apiKey }) => {
+      const provider = await startResponsesProvider();
+      const sessionManager = SessionManager.inMemory("/home/user/workspace", {
+        id: sessionId,
+      });
+      const created = await createPiAgentSessionForRuntime({
+        cwd: "/home/user/workspace",
+        agentDir: "/home/user/.pi/agent",
+        sessionManager,
+        model: {
+          provider: "deepseek",
+          baseUrl: provider.baseUrl,
+          apiKey: "unused",
+          model: "company-deepseek-production",
+          catalogModel: "deepseek-v4-flash",
+          api: "openai-responses",
+          requestHeaders,
+        },
+        appendSystemPrompt: null,
+        resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+      });
+
+      try {
+        await created.session.prompt("answer through the custom gateway");
+
+        expect(provider.requests).toStrictEqual([
+          expect.objectContaining({
+            url: "/v1/responses",
+            authorization,
+            apiKey,
+            body: expect.objectContaining({
+              model: "company-deepseek-production",
+            }),
+          }),
+        ]);
+      } finally {
+        created.session.dispose();
+        await provider.close();
       }
     },
   );
