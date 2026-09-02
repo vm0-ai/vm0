@@ -25,7 +25,6 @@ const internalTaglineDisplayed$ = state("");
 
 export const reloadTagline$ = command(({ set }) => {
   set(internalTaglineIndex$, Math.floor(Math.random() * 18));
-  set(internalTaglineDisplayed$, "");
 });
 
 export const chatPageTaglineIndex$ = computed((get) => {

@@ -11,6 +11,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { setupAgentChatPage$ } from "../../../signals/okou-page/agent-chat-page-setup.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -256,6 +257,33 @@ describe("chat start cards", () => {
       "lg:grid-cols-3",
     );
     expect(screen.getByTestId("start-cards")).not.toHaveClass("sm:grid-cols-3");
+  });
+
+  it("keeps a completed tagline visible when the same chat route is set up again", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        random.mockRestore();
+      },
+      { once: true },
+    );
+    setupChatStartCards();
+
+    const tagline = await screen.findByTestId("chat-tagline");
+    const expected = tagline.getAttribute("aria-label");
+    if (!expected) {
+      throw new Error("Expected an accessible chat tagline");
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-tagline").textContent).toBe(expected);
+    });
+
+    await act(async () => {
+      await context.store.set(setupAgentChatPage$, context.signal);
+    });
+
+    expect(screen.getByTestId("chat-tagline").textContent).toBe(expected);
   });
 
   it("uploads an intro video source and creates its chat thread", async () => {
