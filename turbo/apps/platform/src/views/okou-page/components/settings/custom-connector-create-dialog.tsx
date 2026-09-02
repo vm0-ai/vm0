@@ -31,7 +31,10 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { resolveApiBaseForTarget } from "../../../../signals/api-base.ts";
-import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
+import {
+  customConnectorMcpEnabled$,
+  customConnectorNoAuthEnabled$,
+} from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
@@ -694,6 +697,42 @@ function OAuth2AuthenticationFields({
   );
 }
 
+function NoAuthenticationFields({
+  onRemove,
+}: {
+  readonly onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-xl border border-border p-4 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.connectors.custom.create.noAuthentication;
+          })}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.connectors.custom.create.noAuthenticationDescription;
+          })}
+        </p>
+      </div>
+      <Button
+        showTooltip
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={t(($) => {
+          return $.connectors.custom.create.removeNoAuthentication;
+        })}
+        onClick={onRemove}
+      >
+        <Trash size={16} />
+      </Button>
+    </div>
+  );
+}
+
 function connectorHasSimpleApiDefinition(
   connector: CustomConnectorResponse,
 ): boolean {
@@ -708,6 +747,15 @@ function connectorHasSimpleApiDefinition(
     connector.headerInjections.length === 1 &&
     injection?.valueTemplate.includes("{{secrets.secret}}") === true &&
     connector.queryInjections.length === 0
+  );
+}
+
+function connectorHasAdvancedApiDefinition(
+  connector: CustomConnectorResponse | undefined,
+): boolean {
+  return (
+    connector?.authMode === "manual" &&
+    !connectorHasSimpleApiDefinition(connector)
   );
 }
 
@@ -822,21 +870,37 @@ function oauthConfigFromForm(
 
 interface CustomConnectorSharedDefinition extends CustomConnectorDefinitionParts {
   readonly displayName: string;
-  readonly authMode: "manual" | "oauth";
+  readonly authMode: "none" | "manual" | "oauth";
   readonly oauthConfig?: NonNullable<UpdateCustomConnectorBody["oauthConfig"]>;
+}
+
+function noAuthDefinitionFromConnector(
+  connector?: CustomConnectorResponse,
+): CustomConnectorDefinitionParts {
+  return connector?.authMode === "none"
+    ? {
+        fields: connector.fields,
+        headerInjections: [],
+        queryInjections: [],
+      }
+    : { fields: [], headerInjections: [], queryInjections: [] };
 }
 
 function sharedDefinitionFromForm(
   form: CustomConnectorCreateForm,
   connector?: CustomConnectorResponse,
 ): CustomConnectorSharedDefinition {
-  const authMode = form.authMethodTypes.includes("oauth2")
-    ? ("oauth" as const)
-    : ("manual" as const);
+  const authMode = form.authMethodTypes.includes("none")
+    ? ("none" as const)
+    : form.authMethodTypes.includes("oauth2")
+      ? ("oauth" as const)
+      : ("manual" as const);
   const definition =
-    authMode === "manual"
-      ? manualDefinitionFromForm(form, connector)
-      : oauthDefinitionFromConnector(connector);
+    authMode === "none"
+      ? noAuthDefinitionFromConnector(connector)
+      : authMode === "manual"
+        ? manualDefinitionFromForm(form, connector)
+        : oauthDefinitionFromConnector(connector);
   return {
     displayName: form.displayName.trim(),
     ...definition,
@@ -988,6 +1052,7 @@ function formCanSubmit(
   form: CustomConnectorCreateForm,
   connector: CustomConnectorResponse | undefined,
   mcpEnabled: boolean,
+  noAuthEnabled: boolean,
 ): boolean {
   const connectorKind = connector?.kind ?? form.kind;
   if (
@@ -1001,6 +1066,9 @@ function formCanSubmit(
   }
   if (form.authMethodTypes.length === 0) {
     return false;
+  }
+  if (form.authMethodTypes.includes("none")) {
+    return noAuthEnabled;
   }
   const advancedApiDefinition =
     connector !== undefined &&
@@ -1029,6 +1097,7 @@ function formCanSubmit(
 interface AuthenticationFieldsProps extends CreateFormFieldProps {
   readonly editing: boolean;
   readonly advancedApiDefinition: boolean;
+  readonly noAuthEnabled: boolean;
   readonly addAuthMethod: (type: CustomConnectorAuthMethodType) => void;
   readonly removeAuthMethod: (type: CustomConnectorAuthMethodType) => void;
 }
@@ -1038,15 +1107,27 @@ function AuthenticationFields({
   setField,
   editing,
   advancedApiDefinition,
+  noAuthEnabled,
   addAuthMethod,
   removeAuthMethod,
 }: AuthenticationFieldsProps) {
   const { t } = useTranslation();
-  const availableAuthMethods = (["api", "oauth2"] as const).filter((type) => {
+  const availableAuthMethods = (
+    noAuthEnabled
+      ? (["none", "api", "oauth2"] as const)
+      : (["api", "oauth2"] as const)
+  ).filter((type) => {
     return !form.authMethodTypes.includes(type);
   });
   return (
     <>
+      {form.authMethodTypes.includes("none") && (
+        <NoAuthenticationFields
+          onRemove={() => {
+            removeAuthMethod("none");
+          }}
+        />
+      )}
       {form.authMethodTypes.includes("api") && (
         <ApiAuthenticationFields
           form={form}
@@ -1083,6 +1164,17 @@ function AuthenticationFields({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
+          {availableAuthMethods.includes("none") && (
+            <DropdownMenuItem
+              onClick={() => {
+                addAuthMethod("none");
+              }}
+            >
+              {t(($) => {
+                return $.connectors.custom.create.noAuthentication;
+              })}
+            </DropdownMenuItem>
+          )}
           {availableAuthMethods.includes("api") && (
             <DropdownMenuItem
               onClick={() => {
@@ -1116,6 +1208,7 @@ function CustomConnectorForm({
   editing,
   mcpEnabled,
   advancedApiDefinition,
+  noAuthEnabled,
   addAuthMethod,
   removeAuthMethod,
   submitting,
@@ -1145,6 +1238,7 @@ function CustomConnectorForm({
         setField={setField}
         editing={editing}
         advancedApiDefinition={advancedApiDefinition}
+        noAuthEnabled={noAuthEnabled}
         addAuthMethod={addAuthMethod}
         removeAuthMethod={removeAuthMethod}
       />
@@ -1204,6 +1298,7 @@ export function CustomConnectorCreateDialog({
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  const noAuthEnabled = useGet(customConnectorNoAuthEnabled$);
   const setField = useSet(setCustomConnectorCreateField$);
   const setKind = useSet(setCustomConnectorCreateKind$);
   const addAuthMethod = useSet(addCustomConnectorAuthMethod$);
@@ -1229,11 +1324,9 @@ export function CustomConnectorCreateDialog({
   const submitting = editing
     ? updateLoadable.state === "loading"
     : createLoadable.state === "loading";
-  const canSubmit = !submitting && formCanSubmit(form, connector, mcpEnabled);
-  const advancedApiDefinition =
-    connector !== undefined &&
-    connector.authMode === "manual" &&
-    !connectorHasSimpleApiDefinition(connector);
+  const canSubmit =
+    !submitting && formCanSubmit(form, connector, mcpEnabled, noAuthEnabled);
+  const advancedApiDefinition = connectorHasAdvancedApiDefinition(connector);
 
   const close = () => {
     resetForm();
@@ -1306,6 +1399,7 @@ export function CustomConnectorCreateDialog({
             setKind={setKind}
             editing={editing}
             mcpEnabled={mcpEnabled}
+            noAuthEnabled={noAuthEnabled}
             advancedApiDefinition={advancedApiDefinition}
             addAuthMethod={addAuthMethod}
             removeAuthMethod={removeAuthMethod}

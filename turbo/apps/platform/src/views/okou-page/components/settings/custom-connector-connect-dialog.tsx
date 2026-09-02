@@ -243,31 +243,37 @@ function useCustomConnectorConnectionSubmitters(
 
 function ConnectDialogFooter({
   oauth,
+  noAuth,
   submitting,
   canSubmit,
   onClose,
 }: {
   readonly oauth: boolean;
+  readonly noAuth: boolean;
   readonly submitting: boolean;
   readonly canSubmit: boolean;
   readonly onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const submitLabel = oauth
-    ? submitting
+  const submitLabel = submitting
+    ? oauth || noAuth
       ? t(($) => {
           return $.connectors.custom.connect.connecting;
         })
       : t(($) => {
-          return $.connectors.custom.connect.continue;
-        })
-    : submitting
-      ? t(($) => {
           return $.connectors.custom.connect.saving;
         })
-      : t(($) => {
-          return $.connectors.custom.connect.save;
-        });
+    : oauth
+      ? t(($) => {
+          return $.connectors.custom.connect.continue;
+        })
+      : noAuth
+        ? t(($) => {
+            return $.connectors.custom.connect.connect;
+          })
+        : t(($) => {
+            return $.connectors.custom.connect.save;
+          });
   return (
     <DialogFooter>
       <Button
@@ -320,6 +326,7 @@ function CustomConnectorConnectForm({
 }) {
   const { t } = useTranslation();
   const oauth = connector.authMode === "oauth";
+  const noAuth = connector.authMode === "none";
   return (
     <form className="flex flex-col gap-4" onSubmit={onSubmit}>
       {oauth ? (
@@ -338,6 +345,7 @@ function CustomConnectorConnectForm({
       )}
       <ConnectDialogFooter
         oauth={oauth}
+        noAuth={noAuth}
         submitting={submitting}
         canSubmit={canSubmit}
         onClose={close}
@@ -365,6 +373,7 @@ export function CustomConnectorConnectDialog({
     useCustomConnectorConnectionSubmitters(agentId, resolvedAccountOptions);
   const signal = useGet(pageSignal$);
   const oauth = connector.authMode === "oauth";
+  const noAuth = connector.authMode === "none";
   const values = declaredValuesFromForm(connector, form.values);
   const submittedKeys = new Set(
     values.map((value) => {
@@ -381,7 +390,8 @@ export function CustomConnectorConnectDialog({
     return submittedKeys.has(key);
   });
   const canSubmit =
-    !submitting && (oauth || (values.length > 0 && hasRequiredValues));
+    !submitting &&
+    (oauth || (hasRequiredValues && (noAuth || values.length > 0)));
   const showSecretDescription =
     !oauth &&
     connector.fields.length === 1 &&

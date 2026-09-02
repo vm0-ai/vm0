@@ -87,6 +87,7 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
+import { isCustomConnectorNoAuthEnabled } from "./custom-connector-no-auth-feature.service";
 import {
   type ConnectorConnectionMetadataArgs,
   replaceConnectorConnection,
@@ -431,18 +432,26 @@ function isValidPersistedHttpDefinition(
     readonly mcpTransport: null;
   },
   prefixTemplates: readonly string[],
+  fields: readonly CustomConnectorField[],
   headerInjections: readonly CustomConnectorHeaderInjection[],
   queryInjections: readonly CustomConnectorQueryInjection[],
 ): row is PersistedHttpDefinitionRow {
   return (
     prefixTemplates.length > 0 &&
-    (headerInjections.length > 0 || queryInjections.length > 0)
+    (row.authMode === "none"
+      ? fields.every((field) => {
+          return field.kind === "variable";
+        }) &&
+        headerInjections.length === 0 &&
+        queryInjections.length === 0
+      : headerInjections.length > 0 || queryInjections.length > 0)
   );
 }
 
 function isValidPersistedMcpDefinition(
   row: CustomConnectorDefinitionRow,
   prefixTemplates: readonly string[],
+  fields: readonly CustomConnectorField[],
   headerInjections: readonly CustomConnectorHeaderInjection[],
   queryInjections: readonly CustomConnectorQueryInjection[],
 ): row is PersistedMcpDefinitionRow {
@@ -451,7 +460,11 @@ function isValidPersistedMcpDefinition(
     row.mcpEndpoint.trim().length > 0 &&
     row.mcpTransport === "streamable-http" &&
     prefixTemplates.length === 0 &&
-    (headerInjections.length > 0 || queryInjections.length > 0) &&
+    (row.authMode === "none"
+      ? fields.length === 0 &&
+        headerInjections.length === 0 &&
+        queryInjections.length === 0
+      : headerInjections.length > 0 || queryInjections.length > 0) &&
     row.permissionBundleRef === null
   );
 }
@@ -466,10 +479,10 @@ export function normaliseCustomConnectorRow(
   const queryInjections = queryInjectionArray(row.queryInjections);
   const isHttp = hasHttpDiscriminator(row);
   const oauthSetup = (() => {
-    if (row.authMode === "manual") {
+    if (row.authMode === "manual" || row.authMode === "none") {
       if (row.oauthSetup !== null || oauthConfig !== null) {
         throw new Error(
-          "Invalid persisted manual Custom Connector OAuth setup",
+          "Invalid persisted non-OAuth Custom Connector OAuth setup",
         );
       }
       return null;
@@ -515,6 +528,7 @@ export function normaliseCustomConnectorRow(
       !isValidPersistedHttpDefinition(
         row,
         prefixTemplates,
+        storedFields,
         storedHeaderInjections,
         queryInjections,
       )
@@ -533,6 +547,7 @@ export function normaliseCustomConnectorRow(
     !isValidPersistedMcpDefinition(
       row,
       prefixTemplates,
+      storedFields,
       storedHeaderInjections,
       queryInjections,
     )
@@ -815,6 +830,9 @@ export function serialiseCustomConnector(args: {
       : []),
   ];
   const auth = (() => {
+    if (args.row.authMode === "none") {
+      return { authMode: "none" as const };
+    }
     if (args.row.authMode === "manual") {
       return { authMode: "manual" as const };
     }
@@ -1404,7 +1422,7 @@ function validateOAuthConfigUpdate(args: {
   readonly input: CustomConnectorOAuthConfigInput | undefined;
   readonly existingConfig: CustomConnectorOAuthConfigRow | null;
 }): ValidatedOAuthConfigUpdate | BadRequestResponse {
-  if (args.authMode === "manual") {
+  if (args.authMode === "manual" || args.authMode === "none") {
     if (args.input !== undefined) {
       return badRequestMessage(
         "OAuth configuration requires OAuth authentication mode",
@@ -1492,12 +1510,17 @@ function validateDefinitionAuth(
     );
   }
   if (
-    authMode === "oauth" &&
+    authMode !== "manual" &&
     fields.some((field) => {
       return field.kind === "secret";
     })
   ) {
-    return badRequestMessage("OAuth custom connector fields must be variables");
+    return badRequestMessage(
+      `${authMode === "none" ? "No-auth" : "OAuth"} custom connector fields must be variables`,
+    );
+  }
+  if (authMode === "none" && input.kind === "mcp" && fields.length > 0) {
+    return badRequestMessage("No-auth MCP connectors cannot include fields");
   }
   return { authMode, oauthSetup };
 }
@@ -1536,7 +1559,14 @@ function validateDefinition(
   if (isBadRequest(queryInjections)) {
     return queryInjections;
   }
-  if (headerInjections.length === 0 && queryInjections.length === 0) {
+  const hasAuthInjections =
+    headerInjections.length > 0 || queryInjections.length > 0;
+  if (authMode === "none" && hasAuthInjections) {
+    return badRequestMessage(
+      "No-auth custom connectors cannot include authentication injections",
+    );
+  }
+  if (authMode !== "none" && !hasAuthInjections) {
     return badRequestMessage(
       "At least one header or query injection is required",
     );
@@ -1902,13 +1932,24 @@ export const createCustomConnector$ = command(
     if (isBadRequest(v)) {
       return v;
     }
-    const mcpFeatureContext =
-      v.kind === "mcp"
+    const featureSwitchContext =
+      v.kind === "mcp" || v.authMode === "none"
         ? await get(userFeatureSwitchContext(args.orgId, args.userId))
         : null;
     signal.throwIfAborted();
-    if (mcpFeatureContext && !isCustomConnectorMcpEnabled(mcpFeatureContext)) {
+    if (
+      v.kind === "mcp" &&
+      featureSwitchContext &&
+      !isCustomConnectorMcpEnabled(featureSwitchContext)
+    ) {
       return forbidden("MCP custom connector management is not enabled");
+    }
+    if (
+      v.authMode === "none" &&
+      featureSwitchContext &&
+      !isCustomConnectorNoAuthEnabled(featureSwitchContext)
+    ) {
+      return forbidden("No-auth custom connectors are not enabled");
     }
     const invalidPermissionBundle = await validatePermissionBundleRef(
       writeDb,
@@ -1932,7 +1973,7 @@ export const createCustomConnector$ = command(
     let encryptedClientSecret: string | null = null;
     if (oauthConfigUpdate.kind === "upsert" && oauthConfigUpdate.clientSecret) {
       const featureContext =
-        mcpFeatureContext ??
+        featureSwitchContext ??
         (await get(userFeatureSwitchContext(args.orgId, args.userId)));
       signal.throwIfAborted();
       encryptedClientSecret = await encryptStoredSecretValue(
@@ -2314,6 +2355,38 @@ function mcpUpdateRequiresEnabledFeature(args: {
   });
 }
 
+function customConnectorUpdateFeatureForbiddenMessage(args: {
+  readonly existing: CustomConnectorRow;
+  readonly definition: ValidatedDefinition;
+  readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+  readonly comparisonNextOAuthConfig: CustomConnectorOAuthConfigRow | null;
+  readonly requestedStorageVersion: number | undefined;
+  readonly featureSwitchContext: NonNullable<FeatureSwitchContextArg> | null;
+}): string | null {
+  if (
+    mcpUpdateRequiresEnabledFeature({
+      existing: args.existing,
+      definition: args.definition,
+      oauthConfigUpdate: args.oauthConfigUpdate,
+      comparisonNextOAuthConfig: args.comparisonNextOAuthConfig,
+      requestedStorageVersion: args.requestedStorageVersion,
+      featureEnabled:
+        args.featureSwitchContext === null ||
+        isCustomConnectorMcpEnabled(args.featureSwitchContext),
+    })
+  ) {
+    return "MCP custom connector management is not enabled";
+  }
+  if (
+    args.definition.authMode === "none" &&
+    (args.featureSwitchContext === null ||
+      !isCustomConnectorNoAuthEnabled(args.featureSwitchContext))
+  ) {
+    return "No-auth custom connectors are not enabled";
+  }
+  return null;
+}
+
 function resolveCustomConnectorUpdateWrite(args: {
   readonly existing: CustomConnectorRow;
   readonly definition: ValidatedDefinition;
@@ -2396,8 +2469,9 @@ export const updateCustomConnectorDefinition$ = command(
     if (invalidPermissionBundle) {
       return invalidPermissionBundle;
     }
-    const mcpFeatureContext =
-      existingConnector.kind === "mcp"
+    const featureSwitchContext =
+      existingConnector.kind === "mcp" ||
+      prepared.definition.authMode === "none"
         ? await get(userFeatureSwitchContext(args.orgId, args.userId))
         : null;
     signal.throwIfAborted();
@@ -2409,25 +2483,24 @@ export const updateCustomConnectorDefinition$ = command(
       update: prepared.oauthConfigUpdate,
       encryptedClientSecret,
     });
-    if (
-      mcpUpdateRequiresEnabledFeature({
+    const featureForbiddenMessage =
+      customConnectorUpdateFeatureForbiddenMessage({
         existing: existingConnector,
         definition: prepared.definition,
         oauthConfigUpdate: prepared.oauthConfigUpdate,
         comparisonNextOAuthConfig,
         requestedStorageVersion: args.input.storageVersion,
-        featureEnabled:
-          !mcpFeatureContext || isCustomConnectorMcpEnabled(mcpFeatureContext),
-      })
-    ) {
-      return forbidden("MCP custom connector management is not enabled");
+        featureSwitchContext,
+      });
+    if (featureForbiddenMessage) {
+      return forbidden(featureForbiddenMessage);
     }
     if (
       prepared.oauthConfigUpdate.kind === "upsert" &&
       prepared.oauthConfigUpdate.clientSecret
     ) {
       const featureContext =
-        mcpFeatureContext ??
+        featureSwitchContext ??
         (await get(userFeatureSwitchContext(args.orgId, args.userId)));
       signal.throwIfAborted();
       encryptedClientSecret = await encryptStoredSecretValue(
@@ -2850,7 +2923,7 @@ async function prepareCustomConnectorValueWrite(args: {
     return notFound("Custom connector not found");
   }
   const connector = normaliseCustomConnectorRow(lockedDefinition);
-  if (connector.authMode !== "manual") {
+  if (connector.authMode === "oauth") {
     return badRequestMessage(
       "OAuth custom connectors must be connected through OAuth",
     );
@@ -2973,7 +3046,7 @@ async function persistCustomConnectorValues(
   const connectionArgs: ConnectorConnectionMetadataArgs = {
     orgId: args.request.orgId,
     userId: args.request.userId,
-    authMethod: "manual",
+    authMethod: state.connector.authMode,
     storageVersion: state.connector.storageVersion,
     tokenExpiresAt: null,
     target: {
@@ -3044,7 +3117,7 @@ export const setCustomConnectorValues$ = command(
     if (isIntegrationManagedCustomConnector(connector)) {
       return integrationManagedCustomConnectorMutationForbidden();
     }
-    if (connector.authMode !== "manual") {
+    if (connector.authMode === "oauth") {
       return badRequestMessage(
         "OAuth custom connectors must be connected through OAuth",
       );
@@ -3058,6 +3131,12 @@ export const setCustomConnectorValues$ = command(
       !isCustomConnectorMcpEnabled(featureSwitchContext)
     ) {
       return forbidden("MCP custom connector management is not enabled");
+    }
+    if (
+      connector.authMode === "none" &&
+      !isCustomConnectorNoAuthEnabled(featureSwitchContext)
+    ) {
+      return forbidden("No-auth custom connectors are not enabled");
     }
     const values = validateValueInputs({ connector, values: args.values });
     if (isBadRequest(values)) {

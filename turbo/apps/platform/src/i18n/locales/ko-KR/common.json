@@ -2671,6 +2671,7 @@
     "custom": {
       "connect": {
         "configured": "구성됨",
+        "connect": "연결",
         "connecting": "연결 중…",
         "continue": "계속",
         "continueToProvider": "접근 권한 승인을 위해 제공자 페이지로 이동합니다.",
@@ -2703,6 +2704,8 @@
         "mcpEndpointHint": "(Streamable HTTP, HTTPS만)",
         "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "새 클라이언트 비밀 키",
+        "noAuthentication": "인증 없음",
+        "noAuthenticationDescription": "자격 증명 또는 인증 데이터를 전송하지 않고 연결합니다.",
         "none": "없음",
         "oauthChangesDisconnect": "OAuth 설정 또는 클라이언트 자격 증명 변경 시 기존 OAuth 연결이 끊어집니다.",
         "oauthDescription": "구성원 승인을 위해 하나의 OAuth 앱을 설정하세요.",
@@ -2719,6 +2722,7 @@
         "redirectHint": "(이 URL을 제공자의 OAuth 애플리케이션에 등록하세요.)",
         "redirectUrl": "리디렉트 URL",
         "removeApiAuthentication": "API 인증 제거",
+        "removeNoAuthentication": "인증 없음 제거",
         "removeOauth": "OAuth 2.0 제거",
         "scopes": "범위",
         "scopesHint": "(한 줄에 하나씩)",

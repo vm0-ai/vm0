@@ -4673,7 +4673,10 @@ async function buildCustomConnectorRuntimeRow(args: {
   args.stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
     args.stats.recordNoAuthInjectionConnector();
-    if (args.row.connector.kind === "mcp") {
+    if (
+      args.row.connector.kind === "mcp" &&
+      args.row.connector.authMode !== "none"
+    ) {
       return unavailableCustomConnectorRuntimeRow(skill);
     }
   }
