@@ -1529,7 +1529,6 @@ export function IntroVideoWizard({
   const recordingSeconds = useGet(introVideoWizardSignals.recordingSeconds$);
   const busy = useGet(introVideoWizardSignals.busy$);
   const error = useGet(introVideoWizardSignals.error$);
-  const pageSignal = useGet(pageSignal$);
   const closeWizard = useSet(introVideoWizardSignals.closeWizard$);
 
   return (
@@ -1537,11 +1536,7 @@ export function IntroVideoWizard({
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
-          detach(
-            closeWizard(pageSignal),
-            Reason.DomCallback,
-            "close intro video wizard",
-          );
+          closeWizard();
         }
       }}
     >
