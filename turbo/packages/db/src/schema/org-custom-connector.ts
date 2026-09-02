@@ -29,7 +29,7 @@ export type {
   OrgCustomConnectorQueryInjection,
 } from "@okouai/db/jsonb-contracts/org-custom-connector";
 
-export type OrgCustomConnectorAuthMode = "manual" | "oauth";
+export type OrgCustomConnectorAuthMode = "none" | "manual" | "oauth";
 export type OrgCustomConnectorMcpTransport = "streamable-http";
 export type OrgCustomConnectorOAuthSetup = "custom" | "automatic";
 
@@ -109,13 +109,13 @@ export const orgCustomConnectors = pgTable(
       ),
       check(
         "chk_org_custom_connectors_auth_mode",
-        sql`${table.authMode} IN ('manual', 'oauth')`,
+        sql`${table.authMode} IN ('none', 'manual', 'oauth')`,
       ),
       check(
         "chk_org_custom_connectors_oauth_setup",
         sql`(
           (
-            ${table.authMode} = 'manual'
+            ${table.authMode} IN ('none', 'manual')
             AND ${table.oauthSetup} IS NULL
           ) OR (
             ${table.authMode} = 'oauth'
@@ -149,8 +149,21 @@ export const orgCustomConnectors = pgTable(
               AND ${table.mcpTransport} IS NULL
               AND ${table.prefixTemplates} <> '[]'::jsonb
               AND (
-                ${table.headerInjections} <> '[]'::jsonb
-                OR ${table.queryInjections} <> '[]'::jsonb
+                (
+                  ${table.authMode} = 'none'
+                  AND NOT jsonb_path_exists(
+                    ${table.fields},
+                    '$[*] ? (@.kind == "secret")'
+                  )
+                  AND ${table.headerInjections} = '[]'::jsonb
+                  AND ${table.queryInjections} = '[]'::jsonb
+                ) OR (
+                  ${table.authMode} <> 'none'
+                  AND (
+                    ${table.headerInjections} <> '[]'::jsonb
+                    OR ${table.queryInjections} <> '[]'::jsonb
+                  )
+                )
               )
             ) OR (
               ${table.mcpEndpoint} IS NOT NULL
@@ -159,8 +172,18 @@ export const orgCustomConnectors = pgTable(
               AND ${table.mcpTransport} = 'streamable-http'
               AND ${table.prefixTemplates} = '[]'::jsonb
               AND (
-                ${table.headerInjections} <> '[]'::jsonb
-                OR ${table.queryInjections} <> '[]'::jsonb
+                (
+                  ${table.authMode} = 'none'
+                  AND ${table.fields} = '[]'::jsonb
+                  AND ${table.headerInjections} = '[]'::jsonb
+                  AND ${table.queryInjections} = '[]'::jsonb
+                ) OR (
+                  ${table.authMode} <> 'none'
+                  AND (
+                    ${table.headerInjections} <> '[]'::jsonb
+                    OR ${table.queryInjections} <> '[]'::jsonb
+                  )
+                )
               )
               AND ${table.permissionBundleRef} IS NULL
             )

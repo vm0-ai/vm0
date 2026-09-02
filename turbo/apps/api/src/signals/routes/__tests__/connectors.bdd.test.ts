@@ -2117,6 +2117,197 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
+  it("connects HTTP and MCP no-auth definitions with local credential-free accounts", async () => {
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const httpDefinition = {
+      displayName: "BDD Public HTTP",
+      prefixTemplates: [
+        `https://{{variables.region}}.${randomUUID()}.public-http.test/v1/`,
+      ],
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable" as const,
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none" as const,
+    };
+    const disabledCreate = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      httpDefinition,
+      [403],
+    );
+    expectApiError(disabledCreate.body);
+    expect(disabledCreate.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorNoAuth]: true,
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const http = await connectorsApi.createCustomConnector(
+      admin,
+      httpDefinition,
+    );
+    expect(http).toMatchObject({
+      kind: "http",
+      authMode: "none",
+      connected: false,
+      missingRequiredFields: ["region"],
+    });
+    const connectedHttp = await connectorsApi.setCustomConnectorValues(
+      admin,
+      http.id,
+      [{ key: "region", kind: "variable", value: "us" }],
+    );
+    expect(connectedHttp).toMatchObject({
+      authMode: "none",
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["region"],
+    });
+    const httpStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: http.id,
+      },
+    );
+    expect(httpStorage.connector).toMatchObject({
+      auth_method: "none",
+      storage_version: 1,
+      external_id: null,
+      external_username: null,
+      external_email: null,
+      oauth_scopes: null,
+      oauth_granted_scopes: null,
+      token_expires_at: null,
+    });
+    expect(httpStorage.secrets).toStrictEqual([]);
+    expect(httpStorage.variables).toStrictEqual([
+      {
+        name: "region",
+        connector_id: httpStorage.connector?.id,
+        value: "us",
+      },
+    ]);
+
+    const mcp = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Public MCP",
+      endpoint: `https://${randomUUID()}.public-mcp.test/server`,
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "none",
+    });
+    expect(mcp).toMatchObject({
+      kind: "mcp",
+      authMode: "none",
+      connected: false,
+      missingRequiredFields: [],
+    });
+    const connectedMcp = await connectorsApi.setCustomConnectorValues(
+      admin,
+      mcp.id,
+      [],
+    );
+    expect(connectedMcp).toMatchObject({
+      authMode: "none",
+      connected: true,
+      configuredFieldKeys: [],
+    });
+    const mcpStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: mcp.id,
+      },
+    );
+    expect(mcpStorage.connector).toMatchObject({ auth_method: "none" });
+    expect(mcpStorage.secrets).toStrictEqual([]);
+    expect(mcpStorage.variables).toStrictEqual([]);
+
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD No Auth Agent",
+    });
+    await expect(
+      connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
+        http.id,
+        mcp.id,
+      ]),
+    ).resolves.toStrictEqual(expect.arrayContaining([http.id, mcp.id]));
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorNoAuth]: false,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, http.id),
+    ).resolves.toMatchObject({ authMode: "none", connected: true });
+    const blockedReconnect =
+      await connectorsApi.requestSetCustomConnectorValues(
+        admin,
+        http.id,
+        [{ key: "region", kind: "variable", value: "eu" }],
+        [403],
+      );
+    expectApiError(blockedReconnect.body);
+    expect(blockedReconnect.body.error.code).toBe("FORBIDDEN");
+
+    const manualHttp = await connectorsApi.updateCustomConnector(
+      admin,
+      http.id,
+      {
+        displayName: httpDefinition.displayName,
+        prefixTemplates: httpDefinition.prefixTemplates,
+        fields: [
+          ...httpDefinition.fields,
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+      },
+    );
+    expect(manualHttp).toMatchObject({
+      authMode: "manual",
+      connected: false,
+      storageVersion: 2,
+    });
+    const blockedNoneUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      http.id,
+      httpDefinition,
+      [403],
+    );
+    expectApiError(blockedNoneUpdate.body);
+    expect(blockedNoneUpdate.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.disconnectSingleCustomConnectorAccount(admin, http.id);
+    await connectorsApi.disconnectSingleCustomConnectorAccount(admin, mcp.id);
+    await connectorsApi.deleteCustomConnector(admin, http.id);
+    await connectorsApi.deleteCustomConnector(admin, mcp.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
   it("uses explicit single-account semantics for HTTP and MCP custom connectors", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {

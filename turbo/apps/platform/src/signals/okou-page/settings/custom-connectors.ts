@@ -41,7 +41,7 @@ import { resetConnectorAccountDialogs$ } from "./connector-account-dialogs.ts";
 const internalReload$ = state(0);
 const internalAuthorizedAgentsReload$ = state(0);
 
-export type CustomConnectorAuthMethodType = "api" | "oauth2";
+export type CustomConnectorAuthMethodType = "none" | "api" | "oauth2";
 
 export const customConnectorAuthorizationReloadVersion$ = computed((get) => {
   return get(internalAuthorizedAgentsReload$);
@@ -1037,7 +1037,13 @@ function createFormFromConnector(
         "{{secrets.secret}}",
         "{{secret}}",
       ) ?? CREATE_FORM_DEFAULTS.headerTemplate,
-    authMethodTypes: [connector.authMode === "oauth" ? "oauth2" : "api"],
+    authMethodTypes: [
+      connector.authMode === "none"
+        ? "none"
+        : connector.authMode === "oauth"
+          ? "oauth2"
+          : "api",
+    ],
     ...oauthCreateFormFromConnector(connector),
   };
 }

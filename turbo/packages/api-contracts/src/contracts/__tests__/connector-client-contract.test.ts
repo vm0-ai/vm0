@@ -355,8 +355,31 @@ describe("connector client request contracts", () => {
     kind: "mcp" as const,
     endpoint: "https://mcp.example.test",
     transport: "streamable-http" as const,
+  };
+  const oauthDefinition = {
+    ...definitionBase,
     fields: [],
-    headerInjections: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    queryInjections: [],
+  };
+  const manualDefinition = {
+    ...definitionBase,
+    fields: [
+      {
+        key: "token",
+        label: "Token",
+        kind: "secret" as const,
+        required: true,
+      },
+    ],
+    headerInjections: [
+      { name: "Authorization", valueTemplate: "Bearer {{token}}" },
+    ],
     queryInjections: [],
   };
 
@@ -375,14 +398,14 @@ describe("connector client request contracts", () => {
 
     expect(
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...oauthDefinition,
         authMode: "oauth",
         oauthConfig,
       }),
     ).toMatchObject({ authMode: "oauth", oauthConfig });
     expect(
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...oauthDefinition,
         authMode: "oauth",
         oauthSetup: "automatic",
       }),
@@ -392,7 +415,7 @@ describe("connector client request contracts", () => {
   it("keeps additive request fields forward-compatible", () => {
     expect(
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...manualDefinition,
         authMode: "manual",
         futureOption: true,
       }),
@@ -401,7 +424,7 @@ describe("connector client request contracts", () => {
 
   it("rejects ambiguous OAuth setup variants", () => {
     const automatic = {
-      ...definitionBase,
+      ...oauthDefinition,
       authMode: "oauth",
       oauthSetup: "automatic",
     } as const;
@@ -431,7 +454,7 @@ describe("connector client request contracts", () => {
     }).toThrow();
     expect(() => {
       createCustomConnectorBodySchema.parse({
-        ...definitionBase,
+        ...manualDefinition,
         authMode: "manual",
         oauthSetup: "custom",
       });

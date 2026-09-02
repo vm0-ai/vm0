@@ -123,6 +123,10 @@ export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
 
+export const customConnectorNoAuthEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorNoAuth] ?? false;
+});
+
 const hydrateFeatureSwitch$ = command(
   async (
     { get, set },

@@ -431,6 +431,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CustomConnectorNoAuth]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable credential-free authentication for organization Custom Connectors.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

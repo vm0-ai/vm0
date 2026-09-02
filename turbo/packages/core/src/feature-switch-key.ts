@@ -60,6 +60,7 @@ export enum FeatureSwitchKey {
   StrapiIntegration = "strapiIntegration",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   CustomConnectorMcp = "customConnectorMcp",
+  CustomConnectorNoAuth = "customConnectorNoAuth",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
