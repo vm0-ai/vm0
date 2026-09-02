@@ -544,6 +544,9 @@ body {
   --zero-composer-radius: 1.5rem;
   --zero-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
+  /* A card inside a message is not elevated off the page the way a page-level
+     card is, so it gets contact rather than lift: a 2px blur instead of 12px. */
+  --zero-chat-card-shadow: 0 1px 2px hsl(220 12% 50% / 0.04);
   /* Static focus veil for the composer. Fading this layer through opacity lets
      the browser composite it without interpolating the wide blur every frame. */
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
@@ -559,6 +562,7 @@ body {
   --zero-card-shadow:
     0 2px 12px hsl(var(--state-layer) / 0.035),
     0 0 0 0.5px hsl(var(--state-layer) / 0.018);
+  --zero-chat-card-shadow: 0 1px 2px hsl(var(--state-layer) / 0.035);
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
 }
 
@@ -731,7 +735,7 @@ body {
 .zero-app .zero-chat-frame {
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-chat-card-radius);
-  box-shadow: var(--zero-card-shadow);
+  box-shadow: var(--zero-chat-card-shadow);
 }
 .zero-app .zero-chat-card {
   background-color: hsl(var(--card));
