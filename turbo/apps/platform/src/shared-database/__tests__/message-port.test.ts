@@ -1,6 +1,7 @@
 import { createStore } from "ccstate";
 import { describe, expect, it, vi } from "vitest";
 
+import { writeConnectionDiagnostic$ } from "../../signals/connection-diagnostics.ts";
 import { setRootSignal$ } from "../../signals/root-signal.ts";
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import type {
@@ -161,5 +162,39 @@ describe("shared database MessagePort protocol", () => {
     await vi.waitFor(() => {
       expect(statuses).toStrictEqual(["connected"]);
     });
+  });
+
+  it("serves the worker connection diagnostics capture to a tab", async () => {
+    const store = createServerStore();
+    store.set(writeConnectionDiagnostic$, {
+      action: "set-enabled",
+      enabled: true,
+    });
+    store.set(writeConnectionDiagnostic$, {
+      action: "append",
+      event: {
+        details: { connectionState: "suspended" },
+        event: "realtime.connection",
+        phase: "instant",
+        spanId: "worker-span",
+      },
+    });
+    const channel = new MessageChannel();
+    new SharedDatabaseMessagePortServer(store, channel.port1, context.signal);
+    const bridge = new MessagePortSharedDatabaseBridge(
+      channel.port2,
+      createEvents(),
+    );
+    await bridge.registerTab(context.signal);
+
+    const diagnostics = await bridge.getComputed("connection-diagnostics");
+
+    expect(diagnostics.enabled).toBeTruthy();
+    expect(
+      diagnostics.events.map((event) => {
+        return event.event;
+      }),
+    ).toStrictEqual(["lifecycle.snapshot", "realtime.connection"]);
+    expect(diagnostics.snapshot.connectionState).toBe("suspended");
   });
 });
