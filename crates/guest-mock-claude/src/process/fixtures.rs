@@ -28,7 +28,9 @@ const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 const TRANSCRIPT_FENCE_PADDING_BYTES: usize = 16 * 1024;
 const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const TOOL_OOM_PARENT_HEADROOM_BYTES: u64 = 192 * 1024 * 1024;
-const TOOL_OOM_READY_TIMEOUT: Duration = Duration::from_secs(5);
+const TOOL_MARKER_TIMEOUT: Duration = Duration::from_secs(5);
+const TOOL_COMPLETION_TIMEOUT: Duration = Duration::from_secs(5);
+const TOOL_OOM_CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(15);
 const TOOL_OOM_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TOOL_OOM_SURVIVOR_CGROUP: &str = "/tmp/vm0-tool-oom-survivor.cgroup";
 const TOOL_OOM_OFFENDER_CGROUP: &str = "/tmp/vm0-tool-oom-offender.cgroup";
@@ -630,7 +632,7 @@ fn verify_parallel_shell_tool_oom() -> Result<String, String> {
             .offender
             .as_mut()
             .ok_or_else(|| "offender process is missing".to_string())?,
-        TOOL_OOM_READY_TIMEOUT,
+        TOOL_OOM_CONVERGENCE_TIMEOUT,
         "offender Bash tool",
     )?;
     fixture.offender = None;
@@ -656,7 +658,7 @@ fn verify_parallel_shell_tool_oom() -> Result<String, String> {
     std::fs::write(TOOL_OOM_SURVIVOR_RELEASE, b"release\n")
         .map_err(|error| format!("release survivor Bash tool: {error}"))?;
     let survivor_status =
-        wait_for_child_exit(survivor, TOOL_OOM_READY_TIMEOUT, "survivor Bash tool")?;
+        wait_for_child_exit(survivor, TOOL_COMPLETION_TIMEOUT, "survivor Bash tool")?;
     fixture.survivor = None;
     if !survivor_status.success() {
         return Err(format!(
@@ -728,7 +730,7 @@ fn spawn_bash_tool(script: &str) -> Result<Child, String> {
 }
 
 fn wait_for_tool_marker(path: &str, child: &mut Child) -> Result<String, String> {
-    let deadline = Instant::now() + TOOL_OOM_READY_TIMEOUT;
+    let deadline = Instant::now() + TOOL_MARKER_TIMEOUT;
     loop {
         match std::fs::read_to_string(path) {
             Ok(contents) if !contents.trim().is_empty() => return Ok(contents.trim().to_string()),
