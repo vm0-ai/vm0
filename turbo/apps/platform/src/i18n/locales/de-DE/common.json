@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "Zurücksetzen und erneut versuchen",
         "resetsAt": "Wird um {{time}} zurückgesetzt",
         "selectModel": "Modell wechseln",
+        "timeoutDescription": "Dieser Lauf hat sein Zeitlimit erreicht. Fahren Sie fort, um weiterzuarbeiten.",
+        "timeoutTitle": "Zeitlimit erreicht",
         "tryAgain": "Erneut versuchen",
         "unavailableDescription": "Dieses Modell wird vom verbundenen ChatGPT-Konto nicht unterstützt. Wechseln Sie zu einem anderen Modell, um fortzufahren.",
         "unavailableTitle": "Ausgewähltes Modell ist nicht verfügbar",
@@ -1991,10 +1993,10 @@
         "heading": "Avatar auswählen",
         "help": "Wähle einen Präsentator oder fahre ohne Avatar fort",
         "none": "Kein Avatar",
-        "visualBalanceAvatarLed": "Avatar-fokussiert — der Sprecher ist die meiste Zeit im Bild",
-        "visualBalanceBalanced": "Ausgewogene Mischung — gleiche Zeit für beides",
-        "visualBalanceBRollLed": "B-Roll-fokussiert — Schwerpunkt auf Folien und visuellen Inhalten",
-        "visualBalanceHeading": "Wie soll die visuelle Balance aussehen?"
+        "placementHeading": "Wo soll der Präsentator stehen?",
+        "placementLeft": "Links — die Folie steht rechts",
+        "placementOverlay": "Über der Folie — die Folie füllt das Bild",
+        "placementRight": "Rechts — die Folie steht links"
       },
       "cardDescription": "Eine Datei oder Bildschirmaufnahme in ein fertiges Video verwandeln",
       "description": "Füge eine Quelle hinzu, wähle optional Avatar und Stimme und erstelle das Video in einem Chat-Thread.",
@@ -4645,10 +4647,6 @@
     },
     "redirecting": "Weiterleitung...",
     "status": {
-      "atLimit_one": "Sie können jeweils nur {{limit}} Aufgabe gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
-      "atLimit_other": "Sie können jeweils nur {{limit}} Aufgaben gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
-      "available_one": "{{count}} Slot verfügbar",
-      "available_other": "{{count}} Slots verfügbar",
       "availableNow": "Jetzt verfügbar",
       "inUse_one": "{{active}} von {{limit}} Slot belegt",
       "inUse_other": "{{active}} von {{limit}} Slots belegt"

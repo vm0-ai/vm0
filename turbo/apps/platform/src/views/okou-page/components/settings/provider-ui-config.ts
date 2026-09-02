@@ -96,6 +96,7 @@ export function getMediaModelPriceTierLabel(tier: ModelPriceTier): string {
 
 const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
   Object.freeze({
+    "claude-fable-5-1": "anthropic-api-key",
     "claude-fable-5": "anthropic-api-key",
     "claude-opus-5": "anthropic-api-key",
     "claude-opus-4-8": "anthropic-api-key",

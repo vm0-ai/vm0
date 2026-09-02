@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.609.0](https://github.com/vm0-ai/vm0/compare/core-v8.608.3...core-v8.609.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.391.0
+
+## [8.608.3](https://github.com/vm0-ai/vm0/compare/core-v8.608.2...core-v8.608.3) (2026-09-02)
+
+
+### Refactoring
+
+* remove concurrency member usage feature switch ([#30934](https://github.com/vm0-ai/vm0/issues/30934)) ([e211986](https://github.com/vm0-ai/vm0/commit/e2119869809f7b50614d1367d2fbdc7c1517e4f6))
+* remove workflow connector readiness ([#30996](https://github.com/vm0-ai/vm0/issues/30996)) ([94ec7af](https://github.com/vm0-ai/vm0/commit/94ec7afb7be4163a70f0f3fdea1d1c5579541c9b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.3
+
 ## [8.608.2](https://github.com/vm0-ai/vm0/compare/core-v8.608.1...core-v8.608.2) (2026-09-02)
 
 

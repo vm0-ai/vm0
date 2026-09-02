@@ -94,7 +94,7 @@ export type IntroVideoVoiceSelection =
   | { readonly kind: "none" }
   | { readonly kind: "original" };
 
-export type IntroVideoVisualBalance = "avatar-led" | "b-roll-led" | "balanced";
+export type IntroVideoPlacement = "left" | "overlay" | "right";
 
 interface RecordingRuntime {
   audioContext: AudioContext | null;
@@ -339,17 +339,17 @@ function voiceSelectionLabel(selection: IntroVideoVoiceSelection | null) {
 function buildIntroVideoPrompt(args: {
   readonly avatar: AvatarVideoAvatar | null;
   readonly instructions: string;
+  readonly placement: IntroVideoPlacement;
   readonly source: IntroVideoSource;
-  readonly visualBalance: IntroVideoVisualBalance;
   readonly voice: IntroVideoVoiceSelection | null;
 }): string {
   const avatar = args.avatar
     ? `${args.avatar.name} (${args.avatar.id})`
     : "No avatar";
-  const visualBalanceDescription: Record<IntroVideoVisualBalance, string> = {
-    "avatar-led": "Avatar-led (presenter on screen most of the time)",
-    "b-roll-led": "B-roll-led (focus on slides and source visuals)",
-    balanced: "Balanced mix (roughly equal time for presenter and visuals)",
+  const placementDescription: Record<IntroVideoPlacement, string> = {
+    left: "Presenter on the left, slide on the right",
+    overlay: "Presenter over the slide, anchored to the bottom right",
+    right: "Presenter on the right, slide on the left",
   };
   const direction = args.instructions.trim() || DEFAULT_INSTRUCTIONS;
   return [
@@ -367,7 +367,12 @@ function buildIntroVideoPrompt(args: {
     ...(args.avatar
       ? [
           "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
-          `- Visual balance: ${visualBalanceDescription[args.visualBalance]}`,
+          ...(args.source.kind === "document"
+            ? [
+                `- Presenter placement: ${placementDescription[args.placement]}`,
+                "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
+              ]
+            : []),
         ]
       : []),
     "",
@@ -386,17 +391,18 @@ interface IntroVideoInternalState {
   readonly avatar$: State<AvatarVideoAvatar | null>;
   readonly busy$: State<boolean>;
   readonly countdown$: State<number>;
+  readonly draftDiscarded$: State<boolean>;
   readonly error$: State<IntroVideoWizardError | null>;
   readonly instructions$: State<string>;
   readonly microphone$: State<boolean>;
   readonly open$: State<boolean>;
+  readonly placement$: State<IntroVideoPlacement>;
   readonly recordingSeconds$: State<number>;
   readonly source$: State<IntroVideoSource | null>;
   readonly sourcePersisted$: State<boolean>;
   readonly sourceUploaded$: State<boolean>;
   readonly step$: State<IntroVideoWizardStep>;
   readonly systemAudio$: State<boolean>;
-  readonly visualBalance$: State<IntroVideoVisualBalance>;
   readonly voice$: State<IntroVideoVoiceSelection | null>;
 }
 
@@ -406,17 +412,18 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     avatar$: state<AvatarVideoAvatar | null>(null),
     busy$: state(false),
     countdown$: state(3),
+    draftDiscarded$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
     instructions$: state(DEFAULT_INSTRUCTIONS),
     microphone$: state(false),
     open$: state(false),
+    placement$: state<IntroVideoPlacement>("left"),
     recordingSeconds$: state(0),
     source$: state<IntroVideoSource | null>(null),
     sourcePersisted$: state(false),
     sourceUploaded$: state(false),
     step$: state<IntroVideoWizardStep>("source"),
     systemAudio$: state(true),
-    visualBalance$: state<IntroVideoVisualBalance>("balanced"),
     voice$: state<IntroVideoVoiceSelection | null>(null),
   };
 }
@@ -436,12 +443,12 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
     instructions$: exposeState(internal.instructions$),
     microphone$: exposeState(internal.microphone$),
     open$: exposeState(internal.open$),
+    placement$: exposeState(internal.placement$),
     recordingSeconds$: exposeState(internal.recordingSeconds$),
     source$: exposeState(internal.source$),
     sourcePersisted$: exposeState(internal.sourcePersisted$),
     step$: exposeState(internal.step$),
     systemAudio$: exposeState(internal.systemAudio$),
-    visualBalance$: exposeState(internal.visualBalance$),
     voice$: exposeState(internal.voice$),
   };
 }
@@ -460,6 +467,28 @@ function sourceFromFile(
     previewUrl: kind === "video" ? URL.createObjectURL(file) : null,
     size: file.size,
   };
+}
+
+/**
+ * Return the wizard to a closed, empty source step.
+ *
+ * Closing the dialog and finishing a submission both discard the whole draft,
+ * so the field list lives here rather than being repeated by each caller and
+ * drifting apart as the wizard gains state.
+ */
+function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
+  return command(({ set }): void => {
+    set(internal.source$, null);
+    set(internal.sourcePersisted$, false);
+    set(internal.sourceUploaded$, false);
+    set(internal.avatar$, null);
+    set(internal.voice$, null);
+    set(internal.placement$, "left");
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.step$, "source");
+    set(internal.busy$, false);
+    set(internal.open$, false);
+  });
 }
 
 /**
@@ -499,62 +528,91 @@ function createDiscardAdoptedAttachmentsCommand(
   );
 }
 
-function createSourceCommands(
+/**
+ * Open the wizard on a clean step.
+ *
+ * Extracted so createSourceCommands stays inside oxlint's function-length
+ * limit as the wizard gains sources; the body is unchanged.
+ */
+function createOpenWizardCommand(
   internal: IntroVideoInternalState,
   runtime: RecordingRuntime,
   resetRecordingAttempt$: ReturnType<typeof resetSignal>,
 ) {
-  const openWizard$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      signal.throwIfAborted();
-      runtime.generation += 1;
-      set(resetRecordingAttempt$);
-      releaseRecordingRuntime(runtime, true);
-      set(internal.avatar$, null);
-      set(internal.busy$, false);
-      set(internal.countdown$, 3);
-      set(internal.error$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.microphone$, false);
-      set(internal.recordingSeconds$, 0);
-      set(internal.sourceUploaded$, false);
-      set(internal.systemAudio$, true);
-      set(internal.visualBalance$, "balanced");
-      set(internal.voice$, null);
-      const source = get(internal.source$);
-      set(internal.step$, source ? "source-review" : "source");
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(internal.open$, false);
-        },
-        { once: true },
-      );
-      set(internal.open$, true);
-      if (source) {
-        return;
-      }
-      const restored = await settle(readIntroVideoDraft(), signal);
-      if (!restored.ok || !restored.value) {
-        return;
-      }
-      set(internal.source$, sourceFromDraft(restored.value));
-      set(internal.sourcePersisted$, true);
-      set(internal.step$, "source-review");
-    },
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    runtime.generation += 1;
+    set(resetRecordingAttempt$);
+    releaseRecordingRuntime(runtime, true);
+    set(internal.avatar$, null);
+    set(internal.busy$, false);
+    set(internal.countdown$, 3);
+    set(internal.error$, null);
+    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.microphone$, false);
+    set(internal.recordingSeconds$, 0);
+    set(internal.sourceUploaded$, false);
+    set(internal.systemAudio$, true);
+    set(internal.placement$, "left");
+    set(internal.voice$, null);
+    const source = get(internal.source$);
+    set(internal.step$, source ? "source-review" : "source");
+    // Navigating away only hides the wizard; it deliberately does not run
+    // closeWizard$. Dismissing the dialog is "discard this", while leaving the
+    // page is "come back to it", so the source survives a route change and the
+    // user keeps an upload they never asked to throw away.
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(internal.open$, false);
+      },
+      { once: true },
+    );
+    set(internal.open$, true);
+    if (source) {
+      return;
+    }
+    if (get(internal.draftDiscarded$)) {
+      // The user closed the wizard, so the stored draft is dead. Clearing it
+      // here keeps closeWizard$ synchronous for the dialog callback.
+      set(internal.draftDiscarded$, false);
+      await settle(deleteIntroVideoDraft(), signal);
+      return;
+    }
+    const restored = await settle(readIntroVideoDraft(), signal);
+    if (!restored.ok || !restored.value) {
+      return;
+    }
+    set(internal.source$, sourceFromDraft(restored.value));
+    set(internal.sourcePersisted$, true);
+    set(internal.step$, "source-review");
+  });
+}
+
+function createSourceCommands(
+  internal: IntroVideoInternalState,
+  runtime: RecordingRuntime,
+  resetRecordingAttempt$: ReturnType<typeof resetSignal>,
+  resetWizardDraft$: Command<void, []>,
+) {
+  const openWizard$ = createOpenWizardCommand(
+    internal,
+    runtime,
+    resetRecordingAttempt$,
   );
+  // Closing discards the wizard: the next open starts from an empty source
+  // step. openWizard$ drops the stored draft rather than resuming it, so this
+  // stays synchronous and the dialog callback needs no signal.
   const closeWizard$ = command(({ get, set }) => {
     runtime.generation += 1;
     set(resetRecordingAttempt$);
     releaseRecordingRuntime(runtime, true);
-    set(internal.busy$, false);
+    releasePreviewUrl(get(internal.source$));
+    set(resetWizardDraft$);
     set(internal.countdown$, 3);
     set(internal.recordingSeconds$, 0);
-    const step = get(internal.step$);
-    if (step === "countdown" || step === "recording") {
-      set(internal.step$, "record-setup");
-    }
-    set(internal.open$, false);
+    set(internal.error$, null);
+    set(internal.draftDiscarded$, true);
   });
   const setStep$ = command(
     ({ get, set }, nextStep: IntroVideoWizardStep): void => {
@@ -642,17 +700,17 @@ function createSelectionCommands(internal: IntroVideoInternalState) {
   const setInstructions$ = command(({ set }, instructions: string): void => {
     set(internal.instructions$, instructions);
   });
-  const setVisualBalance$ = command(
-    ({ set }, visualBalance: IntroVideoVisualBalance): void => {
-      set(internal.visualBalance$, visualBalance);
+  const setPlacement$ = command(
+    ({ set }, placement: IntroVideoPlacement): void => {
+      set(internal.placement$, placement);
     },
   );
   return {
     setAvatar$,
     setInstructions$,
     setMicrophone$,
+    setPlacement$,
     setSystemAudio$,
-    setVisualBalance$,
     setVoice$,
   };
 }
@@ -1056,7 +1114,10 @@ function createDownloadSourceCommand(internal: IntroVideoInternalState) {
   });
 }
 
-function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
+function createClearCompletedDraftCommand(
+  internal: IntroVideoInternalState,
+  resetWizardDraft$: Command<void, []>,
+) {
   return command(
     async (
       { set },
@@ -1066,17 +1127,11 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
       // A stale local draft is harmless if cleanup fails after the server send.
       await settle(deleteIntroVideoDraft(), signal);
       releasePreviewUrl(source);
-      set(internal.source$, null);
+      set(resetWizardDraft$);
+      // The send consumed the adopted handoff uploads, so the wizard stops
+      // tracking them. Closing deliberately does not: those files stay on the
+      // composer draft and only discardAdoptedAttachments$ can take them off.
       set(internal.adoptedAttachmentIds$, []);
-      set(internal.sourcePersisted$, false);
-      set(internal.sourceUploaded$, false);
-      set(internal.avatar$, null);
-      set(internal.voice$, null);
-      set(internal.instructions$, DEFAULT_INSTRUCTIONS);
-      set(internal.visualBalance$, "balanced");
-      set(internal.step$, "source");
-      set(internal.busy$, false);
-      set(internal.open$, false);
     },
   );
 }
@@ -1084,6 +1139,7 @@ function createClearCompletedDraftCommand(internal: IntroVideoInternalState) {
 function createSubmissionCommands(
   internal: IntroVideoInternalState,
   downloadSource$: Command<void, []>,
+  resetWizardDraft$: Command<void, []>,
   discardAdoptedAttachments$: ReturnType<
     typeof createDiscardAdoptedAttachmentsCommand
   >,
@@ -1114,7 +1170,10 @@ function createSubmissionCommands(
       return true;
     },
   );
-  const clearCompletedDraft$ = createClearCompletedDraftCommand(internal);
+  const clearCompletedDraft$ = createClearCompletedDraftCommand(
+    internal,
+    resetWizardDraft$,
+  );
   const submitComposer$ = command(
     async (
       { get, set },
@@ -1179,8 +1238,8 @@ function createSubmissionCommands(
         buildIntroVideoPrompt({
           avatar: get(internal.avatar$),
           instructions: get(internal.instructions$),
+          placement: get(internal.placement$),
           source,
-          visualBalance: get(internal.visualBalance$),
           voice: get(internal.voice$),
         }),
       );
@@ -1207,10 +1266,12 @@ function createIntroVideoWizardSignals() {
   const runtime = createRecordingRuntime();
   const resetRecordingAttempt$ = resetSignal();
   const selectors = createIntroVideoSelectors(internal);
+  const resetWizardDraft$ = createResetWizardDraftCommand(internal);
   const sourceCommands = createSourceCommands(
     internal,
     runtime,
     resetRecordingAttempt$,
+    resetWizardDraft$,
   );
   const selectionCommands = createSelectionCommands(internal);
   const recordingCommands = createRecordingCommands(
@@ -1224,6 +1285,7 @@ function createIntroVideoWizardSignals() {
   const submissionCommands = createSubmissionCommands(
     internal,
     downloadSource$,
+    resetWizardDraft$,
     discardAdoptedAttachments$,
   );
   return {

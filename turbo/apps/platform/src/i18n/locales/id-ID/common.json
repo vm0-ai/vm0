@@ -1949,6 +1949,8 @@
         "resetAndTryAgain": "Atur ulang dan coba lagi",
         "resetsAt": "Direset pada {{time}}",
         "selectModel": "Ganti model",
+        "timeoutDescription": "Proses ini mencapai batas waktunya. Lanjutkan untuk meneruskan pekerjaan.",
+        "timeoutTitle": "Batas waktu tercapai",
         "tryAgain": "Coba lagi",
         "unavailableDescription": "Model ini tidak didukung oleh akun ChatGPT yang terhubung. Ganti ke model lain untuk melanjutkan.",
         "unavailableTitle": "Model yang dipilih tidak tersedia",
@@ -1988,10 +1990,10 @@
         "heading": "Pilih avatar",
         "help": "Pilih presenter atau lanjutkan tanpa avatar",
         "none": "Tanpa avatar",
-        "visualBalanceAvatarLed": "Fokus pada avatar — narator tampil di layar hampir sepanjang waktu",
-        "visualBalanceBalanced": "Campuran seimbang — waktu yang sama untuk keduanya",
-        "visualBalanceBRollLed": "Fokus pada visual — utamakan slide dan materi visual",
-        "visualBalanceHeading": "Bagaimana keseimbangan visual yang Anda inginkan?"
+        "placementHeading": "Di mana presenter sebaiknya berdiri?",
+        "placementLeft": "Kiri — slide berada di kanan",
+        "placementOverlay": "Di atas slide — slide memenuhi bingkai",
+        "placementRight": "Kanan — slide berada di kiri"
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
@@ -4637,10 +4639,6 @@
     },
     "redirecting": "Mengalihkan...",
     "status": {
-      "atLimit_one": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "atLimit_other": "Anda hanya dapat menjalankan {{limit}} tugas sekaligus. Eksekusi baru akan menunggu di antrean sampai satu selesai.",
-      "available_one": "{{count}} slot tersedia",
-      "available_other": "{{count}} slot tersedia",
       "availableNow": "Tersedia sekarang",
       "inUse_one": "{{active}} dari {{limit}} slot digunakan",
       "inUse_other": "{{active}} dari {{limit}} slot digunakan"

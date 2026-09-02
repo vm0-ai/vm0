@@ -54,7 +54,6 @@ export enum FeatureSwitchKey {
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "_multipleSubscriptions",
   ConnectorAccounts = "connectorAccounts",
-  ConcurrencyMemberUsage = "concurrencyMemberUsage",
   FeishuIntegration = "_feishuIntegration",
   CustomConnectorMcp = "customConnectorMcp",
   CustomConnectorNoAuth = "customConnectorNoAuth",

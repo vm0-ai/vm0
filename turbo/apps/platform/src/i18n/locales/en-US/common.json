@@ -1952,6 +1952,8 @@
         "resetAndTryAgain": "Reset and try again",
         "resetsAt": "Resets {{time}}",
         "selectModel": "Switch model",
+        "timeoutDescription": "This run reached its time limit. Continue to keep working.",
+        "timeoutTitle": "Time limit reached",
         "tryAgain": "Try again",
         "unavailableDescription": "This model isn't supported by the connected ChatGPT account. Switch to another model to continue.",
         "unavailableTitle": "Selected model isn't available",
@@ -1991,10 +1993,10 @@
         "heading": "Choose an avatar",
         "help": "Choose a presenter or continue without one",
         "none": "No avatar",
-        "visualBalanceAvatarLed": "Avatar-led — narrator on screen most of the time",
-        "visualBalanceBalanced": "Balanced mix — equal time for both",
-        "visualBalanceBRollLed": "B-roll-led — focus on slides and visuals",
-        "visualBalanceHeading": "How would you like the visual balance?"
+        "placementHeading": "Where should the presenter stand?",
+        "placementLeft": "Left — the slide sits to the right",
+        "placementOverlay": "Over the slide — the slide fills the frame",
+        "placementRight": "Right — the slide sits to the left"
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
@@ -4637,10 +4639,6 @@
     },
     "redirecting": "Redirecting...",
     "status": {
-      "atLimit_one": "You can only run {{limit}} task at a time. New runs will wait in a queue until one finishes.",
-      "atLimit_other": "You can only run {{limit}} tasks at a time. New runs will wait in a queue until one finishes.",
-      "available_one": "{{count}} slot available",
-      "available_other": "{{count}} slots available",
       "availableNow": "Available now",
       "inUse_one": "{{active}} of {{limit}} slot in use",
       "inUse_other": "{{active}} of {{limit}} slots in use"
