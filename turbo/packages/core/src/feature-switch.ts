@@ -299,6 +299,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.IosPwaStartupImages]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Generate iOS PWA startup images from the inline bootstrap skeleton.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
     description:
