@@ -60,6 +60,7 @@ describe("Pi memory Phase 2 selection", () => {
 
   it("uses the exact age boundary, excludes blank/no-output rows, and returns session order", async () => {
     const scope = await createPhase2TestScope("age");
+    const sourceRunId = "00000000-0000-4000-8000-000000031243";
     const oldestAllowed = new Date(
       NOW.getTime() - PI_MEMORY_PHASE2_MAX_UNUSED_AGE_MS,
     );
@@ -76,6 +77,7 @@ describe("Pi memory Phase 2 selection", () => {
       },
       {
         piSessionId: "a-source-boundary",
+        sourceRunId,
         sourceCompletedAt: oldestAllowed,
       },
       {
@@ -112,6 +114,11 @@ describe("Pi memory Phase 2 selection", () => {
         return candidate.piSessionId;
       }),
     ).toStrictEqual(["a-source-boundary", "z-used-boundary"]);
+    expect(claimed?.selected[0]).toMatchObject({
+      piSessionId: "a-source-boundary",
+      sourceRunId,
+      sourceCompletedAt: oldestAllowed,
+    });
   });
 
   it("applies every ranking tier before the 256-row boundary", async () => {

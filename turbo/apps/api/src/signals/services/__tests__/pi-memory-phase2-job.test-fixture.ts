@@ -22,6 +22,7 @@ interface Phase2TestScope {
 
 export interface Phase2CandidateInput {
   readonly piSessionId: string;
+  readonly sourceRunId?: string;
   readonly sourceHistoryHash?: string;
   readonly sourceCompletedAt?: Date;
   readonly status?:
@@ -166,7 +167,7 @@ function phase2CandidateRow(
     orgId: scope.orgId,
     userId: scope.userId,
     piSessionId: input.piSessionId,
-    sourceRunId: randomUUID(),
+    sourceRunId: input.sourceRunId ?? randomUUID(),
     sourceHistoryHash,
     sourceCompletedAt,
     eligibleAt: sourceCompletedAt,

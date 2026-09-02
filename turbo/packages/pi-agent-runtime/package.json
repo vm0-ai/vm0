@@ -28,7 +28,9 @@
   "dependencies": {
     "@earendil-works/pi-ai": "0.84.1",
     "@earendil-works/pi-coding-agent": "0.84.1",
-    "gpt-tokenizer": "^3.4.0"
+    "@okouai/api-contracts": "workspace:*",
+    "gpt-tokenizer": "^3.4.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
