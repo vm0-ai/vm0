@@ -269,6 +269,30 @@ Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
 
+### Workflow automation connector-account projections
+
+Connector-backed workflow event automations persist account authority in an
+additive relational projection and, for providers with pre-existing strict
+bindings, in provider-specific JSON. The workflow owner's automation chat
+thread remains authoritative; persisted connector IDs are derived state for
+provider registration, repair, matching, and exact run-source admission.
+
+Gmail, Google Calendar, and Google Meet keep connector identity outside their
+strict JSON config and use the nullable relational projection. Google Forms and
+Notion retain a JSON connector mirror. Stripe retains its JSON connector,
+external account, and mode binding. New writers converge these forms, while new
+readers continue repairing legacy null or mismatched state during rolling
+deployment.
+
+Do not contract the nullable projection, JSON mirrors, or legacy repair paths
+until production evidence shows both that supported old API/rollback versions
+have drained and that persisted rows and durable provider work no longer need
+the compatibility path. A current writer producing only converged rows is not
+evidence that older readers, queued work, or existing rows have drained.
+
+The complete authority, provider, lifecycle, ingress, and failure model is in
+[Connector-account workflow automations](./connector-account-workflow-automation.md).
+
 ### Locale compatibility
 
 Locale-capable clients receive a `supportedLocales` handshake derived from the

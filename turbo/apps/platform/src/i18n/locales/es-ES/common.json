@@ -430,13 +430,11 @@
         "agents": "Agentes",
         "artifacts": "Artefactos",
         "connectors": "Conectores",
-        "newChat": "Nuevo chat",
         "settings": "Configuración",
         "workflows": "Flujos de trabajo",
         "works": "Dónde trabaja {{agentName}}"
       },
       "rail": {
-        "new": "Nuevo",
         "workflows": "Flujos de trabajo",
         "works": "Integraciones"
       },
@@ -4857,24 +4855,13 @@
       "title": "Datos de exportación"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Restablecer todo",
-        "resetting": "Restableciendo..."
-      },
-      "description": "Activa o desactiva funciones experimentales.",
+      "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
-      "empty": {
-        "description": "No hay funciones experimentales para este responsable.",
-        "title": "Sin funciones experimentales"
-      },
-      "filters": {
-        "all": "Todos"
-      },
       "groups": {
-        "connectors": "Conectores",
-        "other": "Otro"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "released": "Lanzadas"
       },
-      "maintainer": "Responsable: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {

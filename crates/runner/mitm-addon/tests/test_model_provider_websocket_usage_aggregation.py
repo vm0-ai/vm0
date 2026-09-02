@@ -22,7 +22,7 @@ from tests.model_provider_websocket_helpers import (
     feed_websocket_server_message,
     openai_websocket_usage_frame,
 )
-from tests.usage_helpers import assert_usage_event_rows, compact_observation_quantities
+from tests.usage_helpers import assert_usage_event_rows
 
 
 @pytest.fixture(autouse=True)
@@ -96,7 +96,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 2),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_late_same_id_frame_after_release_is_duplicate(
         self, tmp_path, real_flow
@@ -124,7 +123,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 12),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
         source_entries = model_usage_source_entries(flow)
         assert len(source_entries) == 2
         first_entry = next(
@@ -140,13 +138,6 @@ class TestModelProviderWebSocketUsageAggregation:
         }
         assert all(event["buffer_accepted"] is True for event in first_entry["usage_events"])
         assert all(event["buffer_accepted"] is False for event in repeated_entry["usage_events"])
-        first_observations = first_entry["model_usage_observations"]
-        repeated_observations = repeated_entry["model_usage_observations"]
-        assert {observation["source_idempotency_key"] for observation in first_observations} == {
-            observation["source_idempotency_key"] for observation in repeated_observations
-        }
-        assert all(observation["buffer_accepted"] is True for observation in first_observations)
-        assert all(observation["buffer_accepted"] is False for observation in repeated_observations)
 
     def test_model_websocket_late_same_id_frame_can_add_new_category_after_release(
         self, tmp_path, real_flow
@@ -184,7 +175,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 12),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_late_output_reuses_long_context_tier_for_duplicates(
         self,
@@ -236,14 +226,6 @@ class TestModelProviderWebSocketUsageAggregation:
             webhook.usage_events(),
             "provider",
             expected_billing_rows,
-        )
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            [
-                ("gpt-5.5", "tokens.input", 272_001),
-                ("gpt-5.5", "tokens.output", 12),
-            ],
         )
         underbilling_entries = [
             entry
@@ -316,14 +298,6 @@ class TestModelProviderWebSocketUsageAggregation:
                 ("gpt-5.5", "tokens.output.long_context.fast", 12),
             ],
         )
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            [
-                ("gpt-5.5", "tokens.input", 272_001),
-                ("gpt-5.5", "tokens.output", 12),
-            ],
-        )
         underbilling_entries = [
             entry
             for entry in read_jsonl_entries_after_flush(
@@ -385,14 +359,6 @@ class TestModelProviderWebSocketUsageAggregation:
                 ("gpt-5.5", "tokens.output", 12),
             ],
         )
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            [
-                ("gpt-5.5", "tokens.input", 20),
-                ("gpt-5.5", "tokens.output", 12),
-            ],
-        )
         duplicate_entry = next(
             entry
             for entry in model_usage_source_entries(flow)
@@ -439,11 +405,6 @@ class TestModelProviderWebSocketUsageAggregation:
             "provider",
             [("gpt-5.5", "tokens.output", 12)],
         )
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            [("gpt-5.5", "tokens.output", 12)],
-        )
 
     def test_model_websocket_output_without_input_uses_conservative_billing_fallback(
         self,
@@ -471,11 +432,6 @@ class TestModelProviderWebSocketUsageAggregation:
             webhook.usage_events(),
             "provider",
             [("gpt-5.5", "tokens.output.long_context", 12)],
-        )
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            [("gpt-5.5", "tokens.output", 12)],
         )
         [entry] = [
             entry
@@ -619,17 +575,6 @@ class TestModelProviderWebSocketUsageAggregation:
         }
         for event in events:
             uuid.UUID(event["idempotencyKey"])
-        observation_events = webhook.model_usage_observation_events()
-        observations_by_category = compact_observation_quantities(observation_events)
-        assert len(observation_events) == 2
-        assert len({event["idempotencyKey"] for event in observation_events}) == 2
-        assert observations_by_category == {
-            "tokens.input": input_tokens - cached_tokens,
-            "tokens.output": 40,
-            "tokens.cache_read": cached_tokens,
-        }
-        for event in observation_events:
-            uuid.UUID(event["idempotencyKey"])
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert model_provider_usage_sources(flow) == {}
 
@@ -666,14 +611,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output.long_context", 12),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            [
-                ("gpt-5.5", "tokens.input", 272_001),
-                ("gpt-5.5", "tokens.output", 12),
-            ],
-        )
 
     def test_model_websocket_zero_frame_without_model_releases_source(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -763,7 +700,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 12),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_same_id_zero_after_positive_does_not_double_bill(
         self, tmp_path, real_flow
@@ -791,7 +727,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 12),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_full_pipeline_model_websocket_uses_context_model_for_response_ids(
         self, tmp_path, real_flow
@@ -823,7 +758,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 2),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_full_pipeline_model_websocket_reports_id_and_missing_id_usage(
         self, tmp_path, real_flow
@@ -863,7 +797,6 @@ class TestModelProviderWebSocketUsageAggregation:
             ("gpt-5.5", "tokens.output", 4),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
         source_entries = model_usage_source_entries(flow)
         assert len(source_entries) == 2
         [source_preserving_entry] = [
@@ -954,10 +887,6 @@ class TestModelProviderWebSocketUsageAggregation:
             + by_category["tokens.cache_creation"]
             == 100
         )
-        observation_events = webhook.model_usage_observation_events()
-        observations_by_category = compact_observation_quantities(observation_events)
-        assert len(observation_events) == 1
-        assert observations_by_category == by_category
         assert model_provider_usage_sources(flow) == {}
 
     def test_full_pipeline_model_websocket_zero_frame_preserves_billed_usage_and_id(

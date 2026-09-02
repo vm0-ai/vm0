@@ -34,7 +34,6 @@ from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import (
     CapturedWebhookRequest,
     UsageWebhookServer,
-    compact_observation_quantities,
     fresh_usage_executor_context,
 )
 from tests.webhook_test_helpers import (
@@ -165,10 +164,6 @@ class TestAnthropicMessagesSseUsage:
         assert {
             event["category"]: event["quantity"] for event in webhook.usage_events()
         } == expected_quantities
-        assert (
-            compact_observation_quantities(webhook.model_usage_observation_events())
-            == expected_quantities
-        )
         assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -214,7 +209,6 @@ class TestAnthropicMessagesSseUsage:
         webhook = run_response(flow, self._usage_webhook_api)
 
         assert webhook.usage_events() == []
-        assert webhook.model_usage_observation_events() == []
         [operation] = _anthropic_accounting_operations(webhook)
         assert operation["action_type"] == "anthropic_sse_incomplete_no_recoverable_usage"
         assert_single_model_sse_parse_warning(
@@ -580,9 +574,6 @@ class TestAnthropicMessagesSseUsage:
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
             "tokens.input": 50
         }
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
-            "tokens.input": 50
-        }
         [operation] = _anthropic_accounting_operations(webhook)
         assert operation["action_type"] == "anthropic_sse_incomplete_recovered_partial"
         assert b"987654" not in _anthropic_accounting_requests(webhook)[0].body
@@ -664,9 +655,6 @@ class TestAnthropicMessagesSseUsage:
         assert [(event["category"], event["quantity"]) for event in webhook.usage_events()] == [
             ("tokens.input", 50)
         ]
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
-            "tokens.input": 50
-        }
         assert [
             operation["action_type"] for operation in _anthropic_accounting_operations(webhook)
         ] == ["anthropic_sse_incomplete_recovered_partial"]

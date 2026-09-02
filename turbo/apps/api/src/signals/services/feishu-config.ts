@@ -95,8 +95,9 @@ export function feishuCallbackUrl(
  * `feishuOAuthAppCallbackUrl()` instead, so nothing outside this service pins
  * this path; #28544 moved it off the legacy `/api/zero/**` namespace it had
  * kept, to the neutral path its contract now declares. #28709 retired the
- * `MIGRATED_BRANDED_PATHS` row that kept both branded forms routable, and
- * #31088 emptied that table, so the neutral path is the only one served.
+ * branded compatibility row that kept both branded forms routable, #31088
+ * emptied that table and #31090 removed it, so the neutral path is the only one
+ * served.
  */
 export function feishuOAuthCallbackUrl(): string {
   return new URL(

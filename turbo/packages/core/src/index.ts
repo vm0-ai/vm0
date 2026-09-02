@@ -656,6 +656,7 @@ export {
   type FeatureSwitch,
   type FeatureSwitchContext,
   type FeatureSwitchMetadata,
+  type FeatureSwitchRolloutStage,
 } from "./feature-switch";
 export { isStaffOrg } from "./staff-org";
 export {

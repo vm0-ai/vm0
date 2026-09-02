@@ -23,8 +23,8 @@ def assert_pending(
 
     ``flows``, ``buffered``, and ``reports`` map directly to the JSON fields
     with the same names.  ``flows`` is the number of admitted in-flight usage
-    flows, including billable model-provider and connector flows plus
-    non-billable observable model-provider flows.  ``buffered`` is the number
+    flows, including billable model-provider and connector flows. ``buffered``
+    is the number
     of unadmitted addon work units, including usage source events and retained
     diagnostic reports, and ``reports`` is the number of pending webhook
     report deliveries.

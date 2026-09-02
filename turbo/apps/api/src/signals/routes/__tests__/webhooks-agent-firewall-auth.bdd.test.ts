@@ -1312,7 +1312,9 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       refreshToken: "refresh-1",
       expiresIn: -60,
     });
+    let failedRefreshCalls = 0;
     fw.mockTestOauthTokenRefresh(() => {
+      failedRefreshCalls += 1;
       return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
     });
 
@@ -1328,6 +1330,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       })),
     };
 
+    context.mocks.axiomLogging.warn.mockClear();
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
     if (failed.status !== 502) {
       throw new Error("Expected invalid_grant to fail with 502");
@@ -1348,6 +1351,22 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     expect(failedConnector.reconnectReason).toBe(
       "authorization_expired_or_revoked",
     );
+
+    const repeated = await fw.requestFirewallAuth(headers, body, [502]);
+    if (repeated.status !== 502) {
+      throw new Error("Expected repeated invalid_grant to fail with 502");
+    }
+    expect(repeated.body.error.failureReason).toBe("reconnect_required");
+    expect(failedRefreshCalls).toBe(2);
+    const refreshWarnings = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message]) => {
+        return (
+          typeof message === "string" &&
+          message.includes("test-oauth token refresh failed")
+        );
+      },
+    );
+    expect(refreshWarnings).toHaveLength(1);
 
     fw.mockTestOauthTokenRefresh(() => {
       return fw.oauthTokenResponse({
@@ -1403,6 +1422,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       })),
     };
 
+    context.mocks.axiomLogging.warn.mockClear();
     const failed = await fw.requestFirewallAuth(headers, body, [502]);
     if (failed.status !== 502) {
       throw new Error("Expected invalid_rapt to fail with 502");
@@ -1674,6 +1694,25 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
       throw new Error("Expected the flagged connector to keep failing");
     }
     expect(flagged.body.error.failureReason).toBe("reconnect_required");
+    const missingInputWarnings =
+      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+        return (
+          message === "test-oauth token refresh failed: required input missing"
+        );
+      });
+    expect(missingInputWarnings).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "test-oauth token refresh failed: required input missing",
+      expect.objectContaining({
+        accessSourceKey: "test-oauth",
+        failureReason: "reconnect_required",
+        missingInputNames: ["refreshToken"],
+      }),
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Failed to refresh test-oauth token"),
+      expect.anything(),
+    );
 
     // The reconnect flag is visible through the public connector read.
     const connectorsApi = createConnectorBddApi(context);

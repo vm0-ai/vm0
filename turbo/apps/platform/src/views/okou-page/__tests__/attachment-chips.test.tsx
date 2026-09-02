@@ -521,6 +521,42 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("prevents viewport pinch outside the image preview canvas", async () => {
+    await setupUploadedImagePreview();
+
+    const composer = screen.getByPlaceholderText(PLACEHOLDER);
+    const wheelPinchEvent = zoomWheelEvent(composer, {
+      clientX: 0,
+      clientY: 0,
+      ctrlKey: true,
+      deltaY: -20,
+    });
+    fireEvent(composer, wheelPinchEvent);
+    expect(wheelPinchEvent.defaultPrevented).toBeTruthy();
+
+    const scrollEvent = createEvent.wheel(composer, { deltaY: 20 });
+    fireEvent(composer, scrollEvent);
+    expect(scrollEvent.defaultPrevented).toBeFalsy();
+
+    for (const eventName of ["gesturestart", "gesturechange"]) {
+      const safariPinchEvent = new Event(eventName, {
+        bubbles: true,
+        cancelable: true,
+      });
+      fireEvent(composer, safariPinchEvent);
+      expect(safariPinchEvent.defaultPrevented).toBeTruthy();
+    }
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+    const zoomStage = await screen.findByTestId("artifact-dialog-image-stage");
+    const previewPinchEvent = new Event("gesturestart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    fireEvent(zoomStage, previewPinchEvent);
+    expect(previewPinchEvent.defaultPrevented).toBeFalsy();
+  });
+
   it("zooms an uploaded image preview and resets its canvas when reopened", async () => {
     await setupUploadedImagePreview();
 

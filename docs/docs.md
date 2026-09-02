@@ -20,6 +20,9 @@ surface; the index does not replace their detailed rules.
 - [Testing](./testing.md): testing strategy, patterns, and anti-patterns.
 - [Deployment compatibility](./deployment-compatibility.md): compatibility
   requirements for independently deployed components and persisted state.
+- [Connector-account workflow automations](./connector-account-workflow-automation.md):
+  workflow-thread account authority, exact provider ingress, lifecycle
+  convergence, and persisted compatibility for account-backed triggers.
 - [Externally managed references](./externally-managed-references.md): how to
   resolve identifiers whose entities are owned by another authority without
   conflating missing entities, invalid input, dependency failures, and local

@@ -430,13 +430,11 @@
         "agents": "Agentes",
         "artifacts": "Artefatos",
         "connectors": "Conectores",
-        "newChat": "Novo chat",
         "settings": "Configurações",
         "workflows": "Fluxos de trabalho",
         "works": "Onde {{agentName}} trabalha"
       },
       "rail": {
-        "new": "Novo",
         "workflows": "Fluxos de trabalho",
         "works": "Trabalha"
       },
@@ -4857,24 +4855,13 @@
       "title": "Exportar dados"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Redefinir tudo",
-        "resetting": "Redefinindo…"
-      },
-      "description": "Ative ou desative recursos experimentais.",
+      "description": "Veja os recursos por estágio de lançamento.",
       "documentTitle": "Laboratório",
-      "empty": {
-        "description": "Não há recursos experimentais para este responsável.",
-        "title": "Nenhum recurso experimental"
-      },
-      "filters": {
-        "all": "Todos"
-      },
       "groups": {
-        "connectors": "Conectores",
-        "other": "Outros"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "released": "Lançados"
       },
-      "maintainer": "Responsável: {{maintainer}}",
       "title": "Laboratório"
     },
     "models": {

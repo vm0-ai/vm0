@@ -84,8 +84,7 @@ Firewall and auth context
 - ``FIREWALL_BILLABLE``: ``bool`` computed from runner sandbox billable firewall
   context for matched auth flows, or forced ``False`` for browser passthrough
   and policy-only asterisk-form allows. Gates connector billing, model-provider
-  billing, and connector response parser setup; model usage observation still
-  checks model-provider-specific gates.
+  billing and response parser setup.
 - ``FIREWALL_ACTION``: ``str`` firewall decision such as ``ALLOW``, ``DENY``,
   or ``BLOCK``. Read by response/error network logging.
 - ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or
@@ -173,13 +172,12 @@ Model-provider usage
 - ``MODEL_PROVIDER_USAGE``: ``dict`` of normalized token usage for one
   flow-level model response source. Written by streaming/JSON extractors,
   WebSocket missing-response-id fallback extraction, or fallback extraction,
-  then read by model usage-event and observation reporters.
+  then read by the model usage-event reporter.
 - ``MODEL_PROVIDER_USAGE_SOURCES``: ``dict`` keyed by WebSocket response id,
   with normalized token usage dict values. Written by WebSocket model-provider
-  usage extraction and read by model usage-event and observation reporters.
+  usage extraction and read by the model usage-event reporter.
   Entries are released before ``websocket_end()`` after each source-preserving
-  report attempt. Zero-only entries are also released immediately because
-  observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
+  report attempt. Zero-only entries are also released immediately.
 - ``MODEL_PROVIDER_USAGE_TIERS``: bounded insertion-ordered mapping from
   WebSocket response id to the concrete billing tier decision selected from
   its input partition. Zero-only decisions remain provisional until the first
@@ -189,7 +187,7 @@ Model-provider usage
   model-provider billing and cleared at the WebSocket terminal lifecycle
   boundary.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry sandbox
-  info. Read by model-provider usage observability and reported-model selection.
+  info. Read by model-provider reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
 

@@ -14,14 +14,11 @@ from .logging import (
     _elapsed_ms,
     _log_dropped_batches,
     _log_flush_summaries,
-    _log_permanent_delivery_failure,
 )
 from .models import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
     DEFAULT_FLUSH_JITTER_RATIO,
     MAX_RETAINED_USAGE_BATCH_RETRIES,
-    ModelUsageObservation,
-    ResourceFieldName,
     UsageEvent,
     UsageFlushTrigger,
     _BatchAdmissionResult,
@@ -50,7 +47,6 @@ class _TimerHandle(Protocol):
 _TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
 _DeliveryOutcomeCallback = Callable[[WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
-_SetBufferedCount = Callable[[int], None]
 
 
 def _log_shutdown_retained_batches(
@@ -87,7 +83,6 @@ class UsageEventBuffer:
         timer_enabled: bool = True,
         timer_factory: _TimerFactory | None = None,
         enqueue_webhook: _EnqueueWebhook | None = None,
-        set_buffered_count: _SetBufferedCount = set_buffered_usage_events,
         flush_owner_lock: _FlushOwnerLock | None = None,
         max_retained_batch_retries: int = MAX_RETAINED_USAGE_BATCH_RETRIES,
     ) -> None:
@@ -99,7 +94,6 @@ class UsageEventBuffer:
             flush_owner_lock if flush_owner_lock is not None else threading.Lock()
         )
         self._enqueue_webhook = enqueue_webhook
-        self._set_buffered_count = set_buffered_count
         self._state = _UsageBufferState(max_retained_batch_retries=max_retained_batch_retries)
         self._flush_interval_seconds = max(1.0, flush_interval_seconds)
         self._jitter_ratio = max(0.0, jitter_ratio)
@@ -121,9 +115,6 @@ class UsageEventBuffer:
         events: Iterable[UsageEvent],
         proxy_log_path: str,
         *,
-        resource_field_name: ResourceFieldName = "provider",
-        include_kind: bool = True,
-        log_type: str = "usage_event",
         preserve_source_idempotency: bool = False,
         atomic_source_key: str | None = None,
         accepted_source_keys: set[str] | None = None,
@@ -138,49 +129,8 @@ class UsageEventBuffer:
                 run_id,
                 events,
                 proxy_log_path,
-                resource_field_name=resource_field_name,
-                include_kind=include_kind,
-                log_type=log_type,
                 preserve_source_idempotency=preserve_source_idempotency,
                 atomic_source_key=atomic_source_key,
-                accepted_source_keys=accepted_source_keys,
-            )
-            if accepted_count == 0:
-                timer_to_start = self._schedule_timer_if_buffered_locked()
-            elif self._state.should_flush():
-                flush_now = True
-            else:
-                timer_to_start = self._schedule_timer_locked()
-            self._sync_buffered_counter_locked()
-
-        if timer_to_start is not None:
-            self._start_timer(timer_to_start)
-        if flush_now:
-            self._flush_usage_events(trigger="threshold")
-        return accepted_count
-
-    def buffer_model_usage_observations(
-        self,
-        url: str,
-        runner_token: str,
-        run_id: str,
-        observations: Iterable[ModelUsageObservation],
-        proxy_log_path: str,
-        *,
-        preserve_source_idempotency: bool = False,
-        accepted_source_keys: set[str] | None = None,
-    ) -> int:
-        """Add observations, collect accepted keys when requested, and maybe flush."""
-        flush_now = False
-        timer_to_start: _TimerHandle | None = None
-        with self._lock:
-            accepted_count = self._state.add_model_usage_observations(
-                url,
-                runner_token,
-                run_id,
-                observations,
-                proxy_log_path,
-                preserve_source_idempotency=preserve_source_idempotency,
                 accepted_source_keys=accepted_source_keys,
             )
             if accepted_count == 0:
@@ -488,12 +438,6 @@ class UsageEventBuffer:
                 timer_to_start = self._schedule_timer_if_buffered_locked()
             self._sync_buffered_counter_locked()
 
-        if outcome == "permanent_failure":
-            _log_permanent_delivery_failure(
-                trigger,
-                pending_flush.flush_sequence,
-                pending_batch,
-            )
         if completion is not None and completion.retained_batches:
             _log_flush_summaries(
                 "retained",
@@ -522,7 +466,7 @@ class UsageEventBuffer:
             raise
 
     def _sync_buffered_counter_locked(self) -> None:
-        self._set_buffered_count(self._state.buffered_source_event_count())
+        set_buffered_usage_events(self._state.buffered_source_event_count())
 
     def _schedule_timer_locked(self) -> _TimerHandle | None:
         if not self._timer_enabled or self._timer is not None:
@@ -559,15 +503,7 @@ class UsageEventBuffer:
             timer = self._pop_timer_locked()
             if timer is not None:
                 timer.cancel()
-            pending_priority = self._state.pending_flush_priority(flush_generation)
-            live_priority = self._state.live_priority() if snapshot_live else None
-            if (
-                pending_priority is not None
-                and live_priority is not None
-                and live_priority < pending_priority
-            ):
-                return self._state.snapshot_live_flush(), True
-            return self._state.pop_highest_priority_pending_flush(flush_generation), False
+            return self._state.pop_pending_flush(flush_generation), False
         if not snapshot_live:
             return None, False
         timer = self._pop_timer_locked()
@@ -590,10 +526,10 @@ def _enqueue_batches(
         try:
             admitted = enqueue_webhook(
                 batch.url,
-                batch.bearer_credential,
+                batch.sandbox_token,
                 batch.payload,
                 batch.proxy_log_path,
-                batch.log_type,
+                "usage_event",
                 delivery_outcome_callback(pending_batch),
             )
         except Exception as exc:

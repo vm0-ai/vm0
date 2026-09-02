@@ -16,39 +16,16 @@ from tests.threaded_http_test_server import ThreadedHttpTestServer
 
 _DeliveryOutcomeCallback = Callable[[usage.webhook.WebhookDeliveryOutcome], None]
 _EnqueueWebhook = Callable[[str, str, dict, str, str, _DeliveryOutcomeCallback], bool]
-_COMPACT_OBSERVATION_COUNTER_CATEGORIES = (
-    ("inputTokens", "tokens.input"),
-    ("outputTokens", "tokens.output"),
-    ("cacheReadInputTokens", "tokens.cache_read"),
-    ("cacheCreationInputTokens", "tokens.cache_creation"),
-)
-
-
-def compact_observation_rows(
-    observations: Sequence[dict[str, Any]],
-) -> list[tuple[str, str, int]]:
-    rows: list[tuple[str, str, int]] = []
-    for observation in observations:
-        model = observation.get("model")
-        if not isinstance(model, str):
-            raise TypeError("Compact observation is missing its model")
-        for counter, category in _COMPACT_OBSERVATION_COUNTER_CATEGORIES:
-            quantity = observation.get(counter)
-            if isinstance(quantity, int) and quantity > 0:
-                rows.append((model, category, quantity))
-    return rows
 
 
 def assert_usage_event_rows(
     events: Sequence[dict[str, Any]],
-    resource_field: Literal["provider", "model"],
+    resource_field: Literal["provider"],
     expected_rows: Sequence[tuple[str, str, int]],
 ) -> None:
-    actual_rows = (
-        compact_observation_rows(events)
-        if resource_field == "model"
-        else [(event[resource_field], event["category"], event["quantity"]) for event in events]
-    )
+    actual_rows = [
+        (event[resource_field], event["category"], event["quantity"]) for event in events
+    ]
     assert len(actual_rows) == len(expected_rows)
     assert sorted(actual_rows) == sorted(expected_rows)
 
@@ -56,15 +33,6 @@ def assert_usage_event_rows(
     assert len(set(idempotency_keys)) == len(idempotency_keys)
     for key in idempotency_keys:
         uuid.UUID(key)
-
-
-def compact_observation_quantities(
-    observations: Sequence[dict[str, Any]],
-) -> dict[str, int]:
-    quantities: dict[str, int] = {}
-    for _, category, quantity in compact_observation_rows(observations):
-        quantities[category] = quantities.get(category, 0) + quantity
-    return quantities
 
 
 class _FlushOwnerLock(Protocol):
@@ -124,12 +92,10 @@ def install_recording_usage_timer(
 
 @contextlib.contextmanager
 def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
-    """Install temporary usage executors and restore the originals on exit."""
+    """Install a temporary usage executor and restore the original on exit."""
     original = usage.webhook.usage_executor
-    original_observation = usage.webhook.model_usage_observation_executor
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
     usage.webhook.usage_executor = executor
-    usage.webhook.model_usage_observation_executor = executor
     try:
         yield executor
     finally:
@@ -142,7 +108,6 @@ def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
                 usage.drain_usage_events_after_executor_shutdown()
         finally:
             usage.webhook.usage_executor = original
-            usage.webhook.model_usage_observation_executor = original_observation
 
 
 @dataclass(frozen=True)
@@ -214,16 +179,6 @@ class UsageWebhookServer:
             event
             for request in self.requests
             if request.path == "/api/webhooks/agent/usage-event"
-            for body in [request.json_body()]
-            for event in body.get("events", [])
-            if isinstance(event, dict)
-        ]
-
-    def model_usage_observation_events(self) -> list[dict[str, Any]]:
-        return [
-            event
-            for request in self.requests
-            if request.path == "/api/runners/model-usage-observations"
             for body in [request.json_body()]
             for event in body.get("events", [])
             if isinstance(event, dict)

@@ -20,7 +20,7 @@ import { and, eq } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { publicBrand$ } from "../context/hono";
+import { publicBrand$, request$ } from "../context/hono";
 import {
   slackOrgInstallation,
   slackOrgStatus,
@@ -42,6 +42,7 @@ import { userSecrets, userVariables } from "../services/user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
+import { getOAuthApiOrigin } from "../../lib/oauth-origin";
 import { OFFICIAL_SLACK_APP_NAME } from "../../lib/slack-official-app";
 import type { RouteEntry } from "../route-entry";
 import { bestEffort, settle } from "../utils";
@@ -135,6 +136,7 @@ const getSlackStatusInner$ = computed(async (get) => {
   const publicBrand = get(publicBrand$);
   const status = await get(
     slackOrgStatus({
+      apiOrigin: getOAuthApiOrigin(get(request$).raw),
       orgId: auth.orgId,
       userId: auth.userId,
       orgRole: auth.orgRole,

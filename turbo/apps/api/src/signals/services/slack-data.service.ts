@@ -8,7 +8,6 @@ import { agents } from "@okouai/db/schema/agent";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
-import { webUrl } from "../../lib/web-url";
 import { db$ } from "../external/db";
 import { listConversations } from "../../lib/slack-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
@@ -45,6 +44,7 @@ function hasAllBotScopes(storedScopes: string | null): boolean {
 }
 
 function buildSlackInstallUrl(args: {
+  readonly apiOrigin: string;
   readonly orgId: string;
   readonly userId: string;
   readonly reinstall: boolean;
@@ -55,7 +55,8 @@ function buildSlackInstallUrl(args: {
     return null;
   }
   const url = new URL(
-    `${apiUrlForPublicBrand(webUrl(), args.publicBrand)}/api/slack/oauth/install`,
+    "/api/slack/oauth/install",
+    apiUrlForPublicBrand(args.apiOrigin, args.publicBrand),
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
@@ -67,6 +68,7 @@ function buildSlackInstallUrl(args: {
 }
 
 function buildSlackConnectUrl(args: {
+  readonly apiOrigin: string;
   readonly orgId: string;
   readonly userId: string;
   readonly publicBrand: PublicBrand;
@@ -76,7 +78,8 @@ function buildSlackConnectUrl(args: {
     return null;
   }
   const url = new URL(
-    `${apiUrlForPublicBrand(webUrl(), args.publicBrand)}/api/slack/oauth/connect`,
+    "/api/slack/oauth/connect",
+    apiUrlForPublicBrand(args.apiOrigin, args.publicBrand),
   );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("userId", args.userId);
@@ -97,6 +100,7 @@ interface SlackOrgStatusResult {
 }
 
 export function slackOrgStatus(args: {
+  readonly apiOrigin: string;
   readonly orgId: string;
   readonly userId: string;
   readonly orgRole?: ApiOrgRole;
@@ -143,6 +147,7 @@ export function slackOrgStatus(args: {
       const scopeMismatch = !hasAllBotScopes(installationRow.botScopes);
       const reinstallUrl = scopeMismatch
         ? buildSlackInstallUrl({
+            apiOrigin: args.apiOrigin,
             orgId: args.orgId,
             userId: args.userId,
             reinstall: true,
@@ -155,6 +160,7 @@ export function slackOrgStatus(args: {
     if (!installation) {
       const installUrl = isAdmin
         ? buildSlackInstallUrl({
+            apiOrigin: args.apiOrigin,
             orgId: args.orgId,
             userId: args.userId,
             reinstall: false,
@@ -191,6 +197,7 @@ export function slackOrgStatus(args: {
     if (!connection) {
       const scopeFields = computeScopeFields(installation);
       const connectUrl = buildSlackConnectUrl({
+        apiOrigin: args.apiOrigin,
         orgId: args.orgId,
         userId: args.userId,
         publicBrand: args.publicBrand,

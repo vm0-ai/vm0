@@ -61,9 +61,10 @@ identifiers, the Slack `/zero model` interaction, and the separate Desktop
 identity. These are not executable CLI producers.
 
 `/api/okou/**` is not a preserved identity. It was a compatibility surface
-drained under #26701, and #31088 emptied `MIGRATED_BRANDED_PATHS`, its last
-holder. After #28984 no contract declares a branded path either, so nothing
-registers one and every request to `/api/okou/**` or `/api/zero/**` is a 404.
+drained under #26701, and #31088 emptied the branded compatibility table, its
+last holder, which #31090 then deleted along with the wrapper that applied it.
+After #28984 no contract declares a branded path either, so nothing registers
+one and every request to `/api/okou/**` or `/api/zero/**` is a 404.
 
 The run-token scope pair was the one exception, retired separately once the
 issuing side had drained; see `docs/okou-protocol-migration.md`.

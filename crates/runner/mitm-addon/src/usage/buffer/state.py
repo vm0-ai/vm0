@@ -5,9 +5,9 @@ State ownership
 Callers hold ``UsageEventBuffer._lock`` for every state transition. Accepted
 source records are represented by exactly one of these work domains:
 
-* *Live* work is still mutable in the aggregate and source-preserving event and
-  observation stores. ``snapshot_live_flush()`` atomically replaces those
-  stores with empty ones and transfers their contents to one pending flush.
+* *Live* work is still mutable in the aggregate and source-preserving event
+  stores. ``snapshot_live_flush()`` atomically replaces those stores with empty
+  ones and transfers their contents to one pending flush.
 * *Pending* work is a batch snapshot eligible for selection, or a retained
   snapshot waiting for a later retry. Selecting a pending flush and calling
   ``begin_delivery()`` transfers its ownership to the delivering domain.
@@ -45,11 +45,9 @@ Retry eligibility and ordering
 ------------------------------
 A retained flush records the current flush generation and is ineligible for the
 rest of that flush invocation; a later invocation has a new generation and may
-select it. Billable ``usage_event`` batches have priority over observation
-batches. When live work is eligible for a snapshot, it preempts available
-pending work only at a strictly higher priority; list order is FIFO among
-equal-priority pending flushes. Original flush batch indices preserve same-flush
-order when callbacks finish out of order or retain additional fragments later.
+select it. Pending flushes remain FIFO. Original flush batch indices preserve
+same-flush order when callbacks finish out of order or retain additional
+fragments later.
 
 Each retention increments the batch's retained retry count. A batch already at
 the configured maximum is dropped instead of returning to pending ownership.
@@ -76,11 +74,7 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Iterable
 
-from ..idempotency import (
-    USAGE_EVENT_NAMESPACE_AGGREGATE,
-    USAGE_OBSERVATION_NAMESPACE_AGGREGATE,
-    derive_usage_idempotency_key,
-)
+from ..idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, derive_usage_idempotency_key
 from ..quantities import MAX_USAGE_QUANTITY, is_usage_quantity
 from ..webhook import WebhookDeliveryOutcome
 from .logging import _log_rejected_usage_quantity
@@ -91,25 +85,17 @@ from .models import (
     MAX_RETAINED_USAGE_BATCH_RETRIES,
     MAX_SOURCE_IDEMPOTENCY_KEYS,
     USAGE_EVENT_BATCH_SIZE,
-    ModelUsageObservation,
-    ResourceFieldName,
     UsageEvent,
     UsageFlushTrigger,
     _AggregateBucket,
     _AggregateKey,
-    _batch_priority,
     _BatchAdmissionResult,
     _BufferedSourceEvent,
-    _BufferedSourceObservation,
     _DeliveringFlush,
     _DeliveryCompletion,
-    _destination_priority,
     _DestinationKey,
     _FlushBatch,
     _FlushEvent,
-    _ObservationAggregateBucket,
-    _ObservationAggregateKey,
-    _pending_flush_priority,
     _PendingBatch,
     _PendingFlush,
     _RetainBatchesResult,
@@ -131,11 +117,6 @@ class _UsageBufferState:
             dict[_AggregateKey, list[_AggregateBucket]],
         ] = {}
         self._source_events: dict[_DestinationKey, list[_BufferedSourceEvent]] = {}
-        self._observation_buckets: dict[
-            _DestinationKey,
-            dict[_ObservationAggregateKey, list[_ObservationAggregateBucket]],
-        ] = {}
-        self._source_observations: dict[_DestinationKey, list[_BufferedSourceObservation]] = {}
         # Keep source and atomic admission keys across flushes so lifecycle
         # duplicates do not become distinct server-side rows.
         self._seen_source_keys: OrderedDict[str, None] = OrderedDict()
@@ -147,8 +128,6 @@ class _UsageBufferState:
     def clear(self) -> None:
         self._buckets = {}
         self._source_events = {}
-        self._observation_buckets = {}
-        self._source_observations = {}
         self._seen_source_keys.clear()
         self._source_event_count = 0
         self._active_enqueue_count = 0
@@ -163,9 +142,6 @@ class _UsageBufferState:
         events: Iterable[UsageEvent],
         proxy_log_path: str,
         *,
-        resource_field_name: ResourceFieldName,
-        include_kind: bool,
-        log_type: str,
         preserve_source_idempotency: bool,
         atomic_source_key: str | None,
         accepted_source_keys: set[str] | None,
@@ -173,7 +149,7 @@ class _UsageBufferState:
         if atomic_source_key is not None:
             events = tuple(events)
             if any(not is_usage_quantity(event["quantity"]) for event in events):
-                _log_rejected_usage_quantity(proxy_log_path, run_id, log_type)
+                _log_rejected_usage_quantity(proxy_log_path, run_id)
                 return 0
             batch_source_keys = {event["idempotencyKey"] for event in events}
             if (
@@ -187,16 +163,13 @@ class _UsageBufferState:
         source_events: list[_BufferedSourceEvent] | None = None
         destination = _DestinationKey(
             url=url,
-            bearer_credential=sandbox_token,
+            sandbox_token=sandbox_token,
             proxy_log_path=proxy_log_path,
-            resource_field_name=resource_field_name,
-            include_kind=include_kind,
-            log_type=log_type,
         )
         accepted_count = 0
         for event in events:
             if not is_usage_quantity(event["quantity"]):
-                _log_rejected_usage_quantity(proxy_log_path, run_id, log_type)
+                _log_rejected_usage_quantity(proxy_log_path, run_id)
                 continue
             source_key = event["idempotencyKey"]
             if source_key in self._seen_source_keys:
@@ -232,68 +205,6 @@ class _UsageBufferState:
         self._evict_source_keys()
         return accepted_count
 
-    def add_model_usage_observations(
-        self,
-        url: str,
-        runner_token: str,
-        run_id: str,
-        observations: Iterable[ModelUsageObservation],
-        admission_log_path: str,
-        *,
-        preserve_source_idempotency: bool,
-        accepted_source_keys: set[str] | None,
-    ) -> int:
-        destination = _DestinationKey(
-            url=url,
-            bearer_credential=runner_token,
-            proxy_log_path="",
-            resource_field_name="model",
-            include_kind=False,
-            log_type="model_usage_observation",
-        )
-        buckets: dict[_ObservationAggregateKey, list[_ObservationAggregateBucket]] | None = None
-        source_observations: list[_BufferedSourceObservation] | None = None
-        accepted_count = 0
-        for observation in observations:
-            if not _observation_has_safe_quantities(observation):
-                _log_rejected_usage_quantity(
-                    admission_log_path,
-                    run_id,
-                    "model_usage_observation",
-                )
-                continue
-            source_key = observation["idempotencyKey"]
-            if source_key in self._seen_source_keys:
-                continue
-            self._seen_source_keys[source_key] = None
-            if preserve_source_idempotency:
-                if source_observations is None:
-                    source_observations = self._source_observations.setdefault(destination, [])
-                source_observations.append(
-                    _BufferedSourceObservation(
-                        observation=_copy_observation(observation),
-                    )
-                )
-            else:
-                if buckets is None:
-                    buckets = self._observation_buckets.setdefault(destination, {})
-                aggregate_key = _ObservationAggregateKey(model=observation["model"])
-                segments = buckets.setdefault(aggregate_key, [])
-                if not segments or not _observation_fits_segment(segments[-1], observation):
-                    segments.append(_ObservationAggregateBucket())
-                bucket = segments[-1]
-                bucket.input_tokens += observation["inputTokens"]
-                bucket.output_tokens += observation["outputTokens"]
-                bucket.cache_read_input_tokens += observation["cacheReadInputTokens"]
-                bucket.cache_creation_input_tokens += observation["cacheCreationInputTokens"]
-                bucket.source_event_count += 1
-            self._source_event_count += 1
-            accepted_count += 1
-            if accepted_source_keys is not None:
-                accepted_source_keys.add(source_key)
-        self._evict_source_keys()
-        return accepted_count
-
     def _evict_source_keys(self) -> None:
         while len(self._seen_source_keys) > MAX_SOURCE_IDEMPOTENCY_KEYS:
             self._seen_source_keys.popitem(last=False)
@@ -307,11 +218,6 @@ class _UsageBufferState:
             return True
         aggregate_bucket_count = sum(
             len(segments) for buckets in self._buckets.values() for segments in buckets.values()
-        )
-        aggregate_bucket_count += sum(
-            len(segments)
-            for buckets in self._observation_buckets.values()
-            for segments in buckets.values()
         )
         if aggregate_bucket_count >= MAX_AGGREGATE_BUCKETS:
             return True
@@ -339,13 +245,6 @@ class _UsageBufferState:
                 (event_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
                 for event_count in source_events_by_run.values()
             )
-        for buckets in self._observation_buckets.values():
-            observation_count = sum(len(segments) for segments in buckets.values())
-            count += (observation_count + USAGE_EVENT_BATCH_SIZE - 1) // USAGE_EVENT_BATCH_SIZE
-        for source_observations in self._source_observations.values():
-            count += (
-                len(source_observations) + USAGE_EVENT_BATCH_SIZE - 1
-            ) // USAGE_EVENT_BATCH_SIZE
         return count
 
     def has_schedulable_work(self) -> bool:
@@ -360,50 +259,21 @@ class _UsageBufferState:
             for pending_flush in self._pending_flushes
         )
 
-    def pending_flush_priority(self, flush_generation: int) -> int | None:
-        priorities = [
-            _pending_flush_priority(pending_flush)
-            for pending_flush in self._pending_flushes
-            if pending_flush.retry_after_flush_generation != flush_generation
-        ]
-        if not priorities:
-            return None
-        return min(priorities)
-
-    def pop_highest_priority_pending_flush(self, flush_generation: int) -> _PendingFlush:
+    def pop_pending_flush(self, flush_generation: int) -> _PendingFlush:
         selected_index: int | None = None
-        selected_priority: int | None = None
         for index, pending_flush in enumerate(self._pending_flushes):
             if pending_flush.retry_after_flush_generation == flush_generation:
                 continue
-            priority = _pending_flush_priority(pending_flush)
-            if selected_priority is None or priority < selected_priority:
-                selected_index = index
-                selected_priority = priority
+            selected_index = index
+            break
         if selected_index is None:
             raise RuntimeError("no pending flush is available for this flush generation")
         pending_flush = self._pending_flushes.pop(selected_index)
         pending_flush.retry_after_flush_generation = 0
         return pending_flush
 
-    def live_priority(self) -> int | None:
-        destinations = (
-            *self._buckets,
-            *self._source_events,
-            *self._observation_buckets,
-            *self._source_observations,
-        )
-        if not destinations:
-            return None
-        return min(_destination_priority(destination) for destination in destinations)
-
     def snapshot_live_flush(self) -> _PendingFlush | None:
-        if (
-            not self._buckets
-            and not self._source_events
-            and not self._observation_buckets
-            and not self._source_observations
-        ):
+        if not self._buckets and not self._source_events:
             self._source_event_count = 0
             return None
 
@@ -411,18 +281,12 @@ class _UsageBufferState:
         flush_sequence = self._flush_sequence
         buckets = self._buckets
         source_events = self._source_events
-        observation_buckets = self._observation_buckets
-        source_observations = self._source_observations
         self._buckets = {}
         self._source_events = {}
-        self._observation_buckets = {}
-        self._source_observations = {}
         self._source_event_count = 0
         batches = [
             *self._build_flush_batches(buckets, flush_sequence),
             *self._build_source_event_flush_batches(source_events),
-            *self._build_observation_flush_batches(observation_buckets, flush_sequence),
-            *self._build_source_observation_flush_batches(source_observations),
         ]
         batches.sort(key=_flush_batch_sort_key)
         return _pending_flush_from_batches(flush_sequence, batches)
@@ -595,13 +459,9 @@ class _UsageBufferState:
         for destination in sorted(
             buckets,
             key=lambda item: (
-                _destination_priority(item),
                 item.url,
-                item.bearer_credential,
+                item.sandbox_token,
                 item.proxy_log_path,
-                item.resource_field_name,
-                item.include_kind,
-                item.log_type,
             ),
         ):
             events_by_run = self._events_by_run(destination, buckets[destination], flush_sequence)
@@ -612,13 +472,12 @@ class _UsageBufferState:
                     batches.append(
                         _FlushBatch(
                             url=destination.url,
-                            bearer_credential=destination.bearer_credential,
+                            sandbox_token=destination.sandbox_token,
                             payload={
                                 "runId": run_id,
                                 "events": [event.payload for event in batch_events],
                             },
                             proxy_log_path=destination.proxy_log_path,
-                            log_type=destination.log_type,
                             source_event_count=sum(
                                 event.source_event_count for event in batch_events
                             ),
@@ -634,20 +493,16 @@ class _UsageBufferState:
         for destination in sorted(
             source_events_by_destination,
             key=lambda item: (
-                _destination_priority(item),
                 item.url,
-                item.bearer_credential,
+                item.sandbox_token,
                 item.proxy_log_path,
-                item.resource_field_name,
-                item.include_kind,
-                item.log_type,
             ),
         ):
             events_by_run: dict[str, list[_FlushEvent]] = {}
             for source_event in source_events_by_destination[destination]:
                 events_by_run.setdefault(source_event.run_id, []).append(
                     _FlushEvent(
-                        payload=_source_event_payload(destination, source_event.event),
+                        payload=_source_event_payload(source_event.event),
                         source_event_count=1,
                     )
                 )
@@ -658,91 +513,17 @@ class _UsageBufferState:
                     batches.append(
                         _FlushBatch(
                             url=destination.url,
-                            bearer_credential=destination.bearer_credential,
+                            sandbox_token=destination.sandbox_token,
                             payload={
                                 "runId": run_id,
                                 "events": [event.payload for event in batch_events],
                             },
                             proxy_log_path=destination.proxy_log_path,
-                            log_type=destination.log_type,
                             source_event_count=sum(
                                 event.source_event_count for event in batch_events
                             ),
                         )
                     )
-        return batches
-
-    def _build_observation_flush_batches(
-        self,
-        buckets_by_destination: dict[
-            _DestinationKey,
-            dict[_ObservationAggregateKey, list[_ObservationAggregateBucket]],
-        ],
-        flush_sequence: int,
-    ) -> list[_FlushBatch]:
-        batches: list[_FlushBatch] = []
-        for destination in sorted(
-            buckets_by_destination,
-            key=lambda item: (
-                _destination_priority(item),
-                item.url,
-                item.bearer_credential,
-                item.proxy_log_path,
-                item.log_type,
-            ),
-        ):
-            observations: list[_FlushEvent] = []
-            for aggregate_key in sorted(
-                buckets_by_destination[destination],
-                key=lambda item: item.model,
-            ):
-                segments = buckets_by_destination[destination][aggregate_key]
-                for segment_index, bucket in enumerate(segments):
-                    observations.append(
-                        _FlushEvent(
-                            payload={
-                                "idempotencyKey": self._observation_aggregate_idempotency_key(
-                                    destination,
-                                    aggregate_key,
-                                    flush_sequence,
-                                    segment_index,
-                                ),
-                                "model": aggregate_key.model,
-                                "inputTokens": bucket.input_tokens,
-                                "outputTokens": bucket.output_tokens,
-                                "cacheReadInputTokens": bucket.cache_read_input_tokens,
-                                "cacheCreationInputTokens": bucket.cache_creation_input_tokens,
-                            },
-                            source_event_count=bucket.source_event_count,
-                        )
-                    )
-            batches.extend(_observation_flush_batches(destination, observations))
-        return batches
-
-    def _build_source_observation_flush_batches(
-        self,
-        observations_by_destination: dict[_DestinationKey, list[_BufferedSourceObservation]],
-    ) -> list[_FlushBatch]:
-        batches: list[_FlushBatch] = []
-        for destination in sorted(
-            observations_by_destination,
-            key=lambda item: (
-                _destination_priority(item),
-                item.url,
-                item.bearer_credential,
-                item.proxy_log_path,
-                item.log_type,
-            ),
-        ):
-            observations: list[_FlushEvent] = []
-            for source_observation in observations_by_destination[destination]:
-                observations.append(
-                    _FlushEvent(
-                        payload=dict(source_observation.observation),
-                        source_event_count=1,
-                    )
-                )
-            batches.extend(_observation_flush_batches(destination, observations))
         return batches
 
     def _events_by_run(
@@ -771,14 +552,13 @@ class _UsageBufferState:
                             flush_sequence,
                             segment_index,
                         ),
-                        destination.resource_field_name: aggregate_key.provider,
+                        "provider": aggregate_key.provider,
                         "category": aggregate_key.category,
                         "quantity": bucket.quantity,
+                        "kind": aggregate_key.kind,
                     },
                     source_event_count=bucket.source_event_count,
                 )
-                if destination.include_kind:
-                    event.payload["kind"] = aggregate_key.kind
                 events_by_run.setdefault(aggregate_key.run_id, []).append(event)
         return events_by_run
 
@@ -795,7 +575,7 @@ class _UsageBufferState:
                 self._buffer_id,
                 str(flush_sequence),
                 destination.url,
-                destination.bearer_credential,
+                destination.sandbox_token,
                 destination.proxy_log_path,
                 aggregate_key.run_id,
                 aggregate_key.kind,
@@ -804,87 +584,6 @@ class _UsageBufferState:
                 str(segment_index),
             ),
         )
-
-    def _observation_aggregate_idempotency_key(
-        self,
-        destination: _DestinationKey,
-        aggregate_key: _ObservationAggregateKey,
-        flush_sequence: int,
-        segment_index: int,
-    ) -> str:
-        return derive_usage_idempotency_key(
-            USAGE_OBSERVATION_NAMESPACE_AGGREGATE,
-            (
-                self._buffer_id,
-                str(flush_sequence),
-                destination.url,
-                aggregate_key.model,
-                str(segment_index),
-            ),
-        )
-
-
-def _observation_has_safe_quantities(observation: ModelUsageObservation) -> bool:
-    return all(
-        is_usage_quantity(quantity)
-        for quantity in (
-            observation["inputTokens"],
-            observation["outputTokens"],
-            observation["cacheReadInputTokens"],
-            observation["cacheCreationInputTokens"],
-        )
-    )
-
-
-def _observation_fits_segment(
-    bucket: _ObservationAggregateBucket,
-    observation: ModelUsageObservation,
-) -> bool:
-    return (
-        bucket.input_tokens + observation["inputTokens"] <= MAX_USAGE_QUANTITY
-        and bucket.output_tokens + observation["outputTokens"] <= MAX_USAGE_QUANTITY
-        and bucket.cache_read_input_tokens + observation["cacheReadInputTokens"]
-        <= MAX_USAGE_QUANTITY
-        and bucket.cache_creation_input_tokens + observation["cacheCreationInputTokens"]
-        <= MAX_USAGE_QUANTITY
-    )
-
-
-def _observation_flush_batches(
-    destination: _DestinationKey,
-    observations: list[_FlushEvent],
-) -> list[_FlushBatch]:
-    batches: list[_FlushBatch] = []
-    for start in range(0, len(observations), USAGE_EVENT_BATCH_SIZE):
-        batch_observations = observations[start : start + USAGE_EVENT_BATCH_SIZE]
-        batches.append(
-            _FlushBatch(
-                url=destination.url,
-                bearer_credential=destination.bearer_credential,
-                payload={
-                    "events": [observation.payload for observation in batch_observations],
-                },
-                proxy_log_path=destination.proxy_log_path,
-                log_type=destination.log_type,
-                source_event_count=sum(
-                    observation.source_event_count for observation in batch_observations
-                ),
-            )
-        )
-    return batches
-
-
-def _copy_observation(
-    observation: ModelUsageObservation,
-) -> ModelUsageObservation:
-    return {
-        "idempotencyKey": observation["idempotencyKey"],
-        "model": observation["model"],
-        "inputTokens": observation["inputTokens"],
-        "outputTokens": observation["outputTokens"],
-        "cacheReadInputTokens": observation["cacheReadInputTokens"],
-        "cacheCreationInputTokens": observation["cacheCreationInputTokens"],
-    }
 
 
 def _copy_event(event: UsageEvent) -> UsageEvent:
@@ -897,25 +596,21 @@ def _copy_event(event: UsageEvent) -> UsageEvent:
     }
 
 
-def _source_event_payload(destination: _DestinationKey, event: UsageEvent) -> dict:
-    payload = {
+def _source_event_payload(event: UsageEvent) -> dict:
+    return {
         "idempotencyKey": event["idempotencyKey"],
-        destination.resource_field_name: event["provider"],
+        "provider": event["provider"],
         "category": event["category"],
         "quantity": event["quantity"],
+        "kind": event["kind"],
     }
-    if destination.include_kind:
-        payload["kind"] = event["kind"]
-    return payload
 
 
 def _flush_batch_sort_key(batch: _FlushBatch) -> tuple[object, ...]:
     run_id = batch.payload.get("runId")
     return (
-        _batch_priority(batch),
         batch.url,
-        batch.bearer_credential,
+        batch.sandbox_token,
         batch.proxy_log_path,
-        batch.log_type,
         run_id if isinstance(run_id, str) else "",
     )

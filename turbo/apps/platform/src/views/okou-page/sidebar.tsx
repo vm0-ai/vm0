@@ -7,6 +7,7 @@ import {
   Route,
   Users,
   Edit,
+  MessageCircle,
   ChevronRight,
   PanelLeftClose,
   Plug,
@@ -32,8 +33,8 @@ import {
   type SidebarNavId,
 } from "../../signals/okou-page/nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import type { RouteKey } from "../../signals/route-paths.ts";
-import { defaultAgentName$ } from "../../signals/agent.ts";
+import { ROUTES, type RouteKey } from "../../signals/route-paths.ts";
+import { defaultAgentId$, defaultAgentName$ } from "../../signals/agent.ts";
 import { assistantName$ } from "../../signals/branding.ts";
 import {
   manageSectionCollapsed$,
@@ -57,15 +58,9 @@ import {
 } from "./sidebar-pinned.tsx";
 import { ThreeColumnSearchDialog } from "./sidebar-dialogs.tsx";
 import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
-import { rootSignal$ } from "../../signals/root-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import {
-  createNewChatThread$,
-  newChatThreadDisabled$,
-} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -456,6 +451,7 @@ function ExpandedFooter() {
 function LabeledRailLink({
   id,
   navPath,
+  navOptions,
   label,
   icon: Icon,
   iconImg,
@@ -465,6 +461,7 @@ function LabeledRailLink({
 }: {
   id: SidebarNavId;
   navPath: string;
+  navOptions?: Parameters<typeof Link>[0]["options"];
   label: string;
   icon: NavIcon;
   iconImg?: string | undefined;
@@ -477,7 +474,7 @@ function LabeledRailLink({
     switch (id) {
       case "chat": {
         return t(($) => {
-          return $.appShell.sidebar.rail.new;
+          return $.appShell.sidebar.chat;
         });
       }
       case "workflows": {
@@ -498,6 +495,7 @@ function LabeledRailLink({
   return (
     <Link
       pathname={navPath as Parameters<typeof Link>[0]["pathname"]}
+      options={navOptions}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) {
           return;
@@ -599,14 +597,17 @@ function ThreeColumnChatListToggle({
 function LabeledNavRail() {
   const chatListHidden = useGet(sidebarOff$);
   const activeId = useGet(activeRoute$);
+  const defaultAgentId = useLastResolved(defaultAgentId$) ?? null;
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
-  const onSelect = useNavSelect();
+  const onNavSelect = useNavSelect();
+  const navigate = useSet(detachedNavigateTo$);
   const { manageNav, footerNav } = useResolvedNavItems();
   const { t } = useTranslation();
   const navItems: {
     id: SidebarNavId;
     activeKeys: readonly RouteKey[];
     pathname: string;
+    options?: Parameters<typeof Link>[0]["options"];
     label: string;
     icon: NavIcon;
     iconImg?: string | undefined;
@@ -614,15 +615,30 @@ function LabeledNavRail() {
     {
       id: "chat",
       activeKeys: ["home", "agentChat", "agentIdeas", "chat"],
-      pathname: "/",
+      pathname: defaultAgentId ? ROUTES.agentChat : ROUTES.home,
+      options: defaultAgentId
+        ? { pathParams: { agentId: defaultAgentId } }
+        : undefined,
       label: t(($) => {
-        return $.appShell.sidebar.navigation.newChat;
+        return $.appShell.sidebar.chat;
       }),
-      icon: Edit as NavIcon,
+      icon: MessageCircle as NavIcon,
     },
     ...manageNav,
     ...footerNav,
   ];
+  const onSelect = (id: SidebarNavId) => {
+    if (id === "chat") {
+      if (!defaultAgentId) {
+        return;
+      }
+      navigate(ROUTES.agentChat, {
+        pathParams: { agentId: defaultAgentId },
+      });
+      return;
+    }
+    onNavSelect(id);
+  };
   return (
     <aside
       data-testid="labeled-nav-rail"
@@ -653,6 +669,7 @@ function LabeledNavRail() {
               key={item.id}
               id={item.id}
               navPath={item.pathname}
+              navOptions={item.options}
               label={item.label}
               icon={item.icon}
               iconImg={item.iconImg}
@@ -708,9 +725,7 @@ function ThreeColumnSearchDialogContainer() {
 
 function ChatListColumn() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const createNewChat = useSet(createNewChatThread$);
-  const newChatDisabled = useGet(newChatThreadDisabled$);
-  const rootSignal = useGet(rootSignal$);
+  const navigate = useSet(detachedNavigateTo$);
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
   const { t } = useTranslation();
   const searchLabel = t(($) => {
@@ -718,16 +733,15 @@ function ChatListColumn() {
   });
   const searchShortcutLabel = getShortcutLabel("mod+k");
   const newChatLabel = t(($) => {
-    return $.appShell.sidebar.navigation.newChat;
+    return $.chat.newChat;
   });
   const onNewChat = () => {
     if (!currentChatAgentId) {
       return;
     }
-    detach(
-      createNewChat(currentChatAgentId, "main", rootSignal),
-      Reason.DomCallback,
-    );
+    navigate(ROUTES.agentChat, {
+      pathParams: { agentId: currentChatAgentId },
+    });
   };
   return (
     <aside
@@ -769,7 +783,7 @@ function ChatListColumn() {
               <Button
                 type="button"
                 onClick={onNewChat}
-                disabled={!currentChatAgentId || newChatDisabled}
+                disabled={!currentChatAgentId}
                 aria-label={newChatLabel}
                 variant="quiet"
                 size="icon-sm"

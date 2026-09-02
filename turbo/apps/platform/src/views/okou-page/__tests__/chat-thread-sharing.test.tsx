@@ -15,6 +15,11 @@ const context = testContext();
 const THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const USER_EVENT_ID = "10000000-0000-4000-8000-000000000701";
 const ASSISTANT_EVENT_ID = "20000000-0000-4000-8000-000000000701";
+const ASSISTANT_EVENT_IDS = [
+  "20000000-0000-4000-8000-000000000801",
+  "20000000-0000-4000-8000-000000000802",
+  "20000000-0000-4000-8000-000000000803",
+] as const;
 const RUN_ID = "d0000000-0000-4000-a000-000000000701";
 const SHARED_THREAD_ID = "30000000-0000-4000-8000-000000000701";
 
@@ -161,6 +166,72 @@ describe("chat thread sharing", () => {
       screen.findByText("Shareable prompt"),
     ).resolves.toBeInTheDocument();
     expect(buttonsByText("Share messages")).toHaveLength(0);
+  });
+
+  it("counts a multi-message group as one selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedEventIds: readonly string[] = [];
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      threadTitle: "Multi answer conversation",
+      chatEvents: [
+        {
+          id: USER_EVENT_ID,
+          role: "user",
+          content: "Shareable prompt",
+          runId: RUN_ID,
+          createdAt: "2026-08-06T10:00:00Z",
+        },
+        ...ASSISTANT_EVENT_IDS.map((id, index) => {
+          return {
+            id,
+            role: "assistant" as const,
+            content: `Shareable answer ${String(index + 1)}`,
+            runId: RUN_ID,
+            createdAt: `2026-08-06T10:00:0${String(index + 1)}Z`,
+          };
+        }),
+      ],
+      activeRunIds: [RUN_ID],
+    });
+    context.mocks.api(sharedThreadsContract.create, ({ body, respond }) => {
+      submittedEventIds = body.eventIds;
+      return respond(201, { id: SHARED_THREAD_ID });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SharedThreadSharing]: true,
+      },
+    });
+
+    await screen.findByText("Shareable answer 3");
+    await user.click(buttonByText("Share messages"));
+
+    const answerGroup = screen
+      .getByText("Shareable answer 3")
+      .closest("[data-chat-share-selectable-group]");
+    const checkbox =
+      answerGroup?.querySelector<HTMLElement>('[role="checkbox"]');
+    if (!checkbox) {
+      throw new Error("Expected the assistant group selection checkbox");
+    }
+
+    await user.click(checkbox);
+
+    // One tick over a group holding three answers is one selection, not three.
+    await waitFor(() => {
+      expect(screen.getAllByText("1 selected").length).toBeGreaterThan(0);
+    });
+    expect(checkedCheckboxes()).toHaveLength(1);
+
+    await user.click(buttonByText("Share"));
+    await screen.findByRole("textbox", { name: "Shared conversation link" });
+    expect([...submittedEventIds].sort()).toStrictEqual(
+      [...ASSISTANT_EVENT_IDS].sort(),
+    );
   });
 
   it("keeps an oversized visual message group unselected", async () => {

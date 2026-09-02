@@ -416,13 +416,11 @@
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
-        "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
         "works": "Tempat {{agentName}} bekerja"
       },
       "rail": {
-        "new": "Baru",
         "workflows": "Alur kerja",
         "works": "Bekerja"
       },
@@ -4794,24 +4792,13 @@
       "title": "Ekspor data"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Reset semua",
-        "resetting": "Mereset…"
-      },
-      "description": "Alihkan fitur eksperimental aktif atau nonaktif.",
+      "description": "Lihat pengalih fitur berdasarkan tahap peluncuran.",
       "documentTitle": "Lab",
-      "empty": {
-        "description": "Tidak ada pengalih fitur untuk pemelihara ini.",
-        "title": "Tidak ada pengalih fitur"
-      },
-      "filters": {
-        "all": "Semua"
-      },
       "groups": {
-        "connectors": "Konektor",
-        "other": "Lainnya"
+        "alpha": "Alfa",
+        "beta": "Beta",
+        "released": "Dirilis"
       },
-      "maintainer": "Pemelihara: {{maintainer}}",
       "title": "Lab"
     },
     "models": {

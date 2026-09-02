@@ -1367,6 +1367,14 @@ impl WorkspaceImageLease {
 }
 
 impl WorkspaceImagePromotionContext {
+    pub(crate) async fn acquire_session_history_sidecar_export_permit(
+        &self,
+    ) -> RunnerResult<tokio::sync::OwnedSemaphorePermit> {
+        self.cache
+            .acquire_session_history_sidecar_export_permit()
+            .await
+    }
+
     pub(crate) fn run_id(&self) -> RunId {
         self.run_id
     }

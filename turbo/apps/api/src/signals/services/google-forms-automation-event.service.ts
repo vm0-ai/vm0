@@ -1871,13 +1871,6 @@ async function dispatchGoogleFormsAutomation(
   );
   signal.throwIfAborted();
   if (access.kind !== "ok") {
-    log.warn(
-      "Google Forms event skipped because connector access is unavailable",
-      {
-        automationId: args.automation.automation.id,
-        message: access.message,
-      },
-    );
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
   const listed = await args.sourceTiming.measure(

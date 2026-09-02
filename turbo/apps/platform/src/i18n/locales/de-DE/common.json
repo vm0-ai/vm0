@@ -416,13 +416,11 @@
         "agents": "Agenten",
         "artifacts": "Artefakte",
         "connectors": "Integrationen",
-        "newChat": "Neuer Chat",
         "settings": "Einstellungen",
         "workflows": "Workflows",
         "works": "Einsatzorte von {{agentName}}"
       },
       "rail": {
-        "new": "Neu",
         "workflows": "Workflows",
         "works": "Kanäle"
       },
@@ -4802,24 +4800,13 @@
       "title": "Daten exportieren"
     },
     "lab": {
-      "actions": {
-        "resetAll": "Alles zurücksetzen",
-        "resetting": "Zurücksetzen…"
-      },
-      "description": "Schalten Sie experimentelle Funktionen ein oder aus.",
+      "description": "Feature-Schalter nach Einführungsphase anzeigen.",
       "documentTitle": "Labor",
-      "empty": {
-        "description": "Für diesen Betreuer gibt es keine Funktionsschalter.",
-        "title": "Keine Funktionsschalter"
-      },
-      "filters": {
-        "all": "Alle"
-      },
       "groups": {
-        "connectors": "Integrationen",
-        "other": "Andere"
+        "alpha": "Alpha",
+        "beta": "Beta",
+        "released": "Veröffentlicht"
       },
-      "maintainer": "Betreuer: {{maintainer}}",
       "title": "Labor"
     },
     "models": {

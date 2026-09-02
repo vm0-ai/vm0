@@ -3,7 +3,7 @@ import { googleCalendarWatchStates } from "@okouai/db/schema/google-calendar-eve
 import { googleFormsWatchStates } from "@okouai/db/schema/google-forms-event";
 import { googleWorkspaceEventSubscriptionStates } from "@okouai/db/schema/google-workspace-event";
 import { mailDrafts } from "@okouai/db/schema/mail-draft";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
@@ -32,6 +32,18 @@ export async function reconcileConnectorAccountState(
         .set({ emailAddress: args.nextEmail, updatedAt: nowDate() })
         .where(eq(gmailWatchStates.connectorId, args.connectorId));
       signal.throwIfAborted();
+      if (args.previousEmail !== null) {
+        await db
+          .update(googleCalendarWatchStates)
+          .set({ needsRewatch: true, updatedAt: nowDate() })
+          .where(
+            and(
+              eq(googleCalendarWatchStates.connectorId, args.connectorId),
+              eq(googleCalendarWatchStates.calendarId, args.previousEmail),
+            ),
+          );
+        signal.throwIfAborted();
+      }
     }
     return;
   }

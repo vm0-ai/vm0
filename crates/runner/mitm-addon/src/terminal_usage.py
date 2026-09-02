@@ -10,9 +10,7 @@ _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 
 
-def track_flow_if_needed(
-    flow: http.HTTPFlow, firewall_billable: bool, model_usage_observable: bool
-) -> None:
+def track_flow_if_needed(flow: http.HTTPFlow, firewall_billable: bool) -> None:
     """Track usage flows before provider work can outlive shutdown.
 
     This closes the shutdown drain gap before standard upstream dispatch and
@@ -23,7 +21,7 @@ def track_flow_if_needed(
     """
     if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
-    if firewall_billable or model_usage_observable:
+    if firewall_billable:
         usage.increment_in_flight_flows()
         flow.metadata[_USAGE_FLOW_TRACKED] = True
 
@@ -38,25 +36,16 @@ def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
     if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
         return
     accepted_usage_keys: set[str] = set()
-    accepted_observation_keys: set[str] = set()
     reported_usage = usage.report_model_provider_usage(
         flow,
         run_id,
         accepted_source_keys=accepted_usage_keys,
     )
-    reported_observation = usage.report_model_provider_usage_observation(
-        flow,
-        run_id,
-        accepted_source_keys=accepted_observation_keys,
-    )
-    if reported_usage or reported_observation:
+    if reported_usage:
         usage.log_terminal_model_provider_usage_sources(
             flow,
             run_id,
-            include_usage_events=reported_usage,
-            include_observations=reported_observation,
             accepted_usage_keys=accepted_usage_keys,
-            accepted_observation_keys=accepted_observation_keys,
             transport="websocket" if model_websocket_usage.is_enabled(flow) else "http",
         )
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True

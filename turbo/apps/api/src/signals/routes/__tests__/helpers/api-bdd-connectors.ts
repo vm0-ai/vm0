@@ -1966,8 +1966,13 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async completeOauthCallback(connectorSlug: string, query: CallbackQuery) {
+    async completeOauthCallback(
+      connectorSlug: string,
+      query: CallbackQuery,
+      options: { readonly baseUrl?: string } = {},
+    ) {
       const client = setupApp({
+        baseUrl: options.baseUrl,
         context,
         routes: connectorsSlugCallbackRoutes,
       })(connectorsSlugCallbackContract);
@@ -2054,19 +2059,44 @@ export function createConnectorBddApi(context: TestContext) {
         throw new Error("Expected the GitHub install redirect to carry state");
       }
 
-      const callback = await accept(
-        client.setupCallback({
-          query: {
-            installation_id: installationId,
-            setup_action: "install",
-            state,
-          },
-        }),
-        [307],
+      const providerCallbackUri = installUrl.searchParams.get("redirect_uri");
+      if (!providerCallbackUri) {
+        throw new Error(
+          "Expected the GitHub install redirect to carry a callback URI",
+        );
+      }
+      const callbackQuery = {
+        installation_id: installationId,
+        setup_action: "install" as const,
+        state,
+      };
+      const requestSetupCallback = async (baseUrl: string) => {
+        const callbackClient = setupApp({
+          baseUrl,
+          context,
+          routes: githubOauthRoutes,
+        })(githubOauthContract);
+        return await accept(
+          callbackClient.setupCallback({ query: callbackQuery }),
+          [307],
+        );
+      };
+      let callback = await requestSetupCallback(
+        new URL(providerCallbackUri).origin,
       );
-      const callbackLocation = callback.headers.get("location");
+      let callbackLocation = callback.headers.get("location");
       if (!callbackLocation) {
         throw new Error("Expected a GitHub setup callback redirect location");
+      }
+      const firstCallbackLocation = new URL(callbackLocation);
+      if (firstCallbackLocation.pathname === "/api/github/app/setup/callback") {
+        callback = await requestSetupCallback(firstCallbackLocation.origin);
+        callbackLocation = callback.headers.get("location");
+        if (!callbackLocation) {
+          throw new Error(
+            "Expected the branded GitHub setup callback to redirect",
+          );
+        }
       }
       const callbackError = new URL(callbackLocation).searchParams.get("error");
       if (callbackError) {
