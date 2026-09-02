@@ -1,6 +1,97 @@
+import ApplicationServices
 import CoreGraphics
 import Foundation
 import ScreenRecorderCore
+
+/// Roles worth walking up to from whatever leaf a click landed on. A click on
+/// the placeholder text of a field belongs to the field; a click on a button's
+/// icon belongs to the button.
+private let targetRoles: Set<String> = [
+    "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField",
+    "AXButton", "AXPopUpButton", "AXMenuButton", "AXMenuItem", "AXMenuBarItem",
+    "AXCheckBox", "AXRadioButton", "AXLink", "AXTab", "AXSlider",
+    "AXDisclosureTriangle", "AXCell", "AXRow", "AXIncrementor", "AXColorWell",
+]
+
+private func attributeValue(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+        return nil
+    }
+    return value
+}
+
+private func rect(of element: AXUIElement) -> CGRect? {
+    guard
+        let positionValue = attributeValue(element, kAXPositionAttribute),
+        let sizeValue = attributeValue(element, kAXSizeAttribute),
+        CFGetTypeID(positionValue) == AXValueGetTypeID(),
+        CFGetTypeID(sizeValue) == AXValueGetTypeID()
+    else {
+        return nil
+    }
+    var position = CGPoint.zero
+    var size = CGSize.zero
+    guard
+        AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+    else {
+        return nil
+    }
+    return CGRect(origin: position, size: size)
+}
+
+/// The UI element under a screen point, described by role and frame only.
+///
+/// Walks up from the leaf that was hit to the nearest control-like ancestor,
+/// so a click on a field's placeholder reports the field. Reads nothing else:
+/// no titles, no values, no descriptions, so a text field's contents never
+/// reach the track.
+private func elementAt(_ point: CGPoint) -> CapturedElement? {
+    let system = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(system, 0.3)
+    var hit: AXUIElement?
+    guard
+        AXUIElementCopyElementAtPosition(system, Float(point.x), Float(point.y), &hit) == .success,
+        let hit
+    else {
+        return nil
+    }
+    var element = hit
+    var role = attributeValue(element, kAXRoleAttribute) as? String ?? ""
+    var depth = 0
+    while !targetRoles.contains(role), depth < 8 {
+        guard
+            let parent = attributeValue(element, kAXParentAttribute),
+            CFGetTypeID(parent) == AXUIElementGetTypeID()
+        else {
+            break
+        }
+        let parentElement = parent as! AXUIElement
+        let parentRole = attributeValue(parentElement, kAXRoleAttribute) as? String ?? ""
+        if parentRole == "AXWindow" || parentRole == "AXApplication" || parentRole == "AXWebArea" {
+            break
+        }
+        element = parentElement
+        role = parentRole
+        depth += 1
+    }
+    if !targetRoles.contains(role) {
+        element = hit
+        role = attributeValue(hit, kAXRoleAttribute) as? String ?? ""
+    }
+    guard !role.isEmpty, let frame = rect(of: element) else {
+        return nil
+    }
+    return CapturedElement(
+        role: role,
+        subrole: attributeValue(element, kAXSubroleAttribute) as? String,
+        screenX: Double(frame.origin.x),
+        screenY: Double(frame.origin.y),
+        screenWidth: Double(frame.width),
+        screenHeight: Double(frame.height)
+    )
+}
 
 private func buttonName(for type: CGEventType) -> String? {
     switch type {
@@ -83,6 +174,10 @@ final class ClickTrackRecorder: @unchecked Sendable {
     /// Asked at each click, so the click is projected through the geometry of
     /// its own moment rather than the recording's first. Set before `start`.
     var geometryProvider: (() -> CaptureGeometry?)?
+    /// Where the content sits in the frame right now; see `ContentMapping`.
+    var mappingProvider: (() -> ContentMapping?)?
+    private let elementQueue = DispatchQueue(label: "ai.okou.recorder.click-elements")
+    private var elements: [Int: CapturedElement] = [:]
 
     /// Starts observing clicks and sampling the pointer. Never throws: losing
     /// the click track must not cost the user their video, so a refused tap is
@@ -215,7 +310,8 @@ final class ClickTrackRecorder: @unchecked Sendable {
             nanoseconds: nanoseconds,
             screenX: Double(location.x),
             screenY: Double(location.y),
-            geometry: geometryProvider?()
+            geometry: geometryProvider?(),
+            mapping: mappingProvider?()
         )
         lock.lock()
         samples.append(sample)
@@ -267,11 +363,23 @@ final class ClickTrackRecorder: @unchecked Sendable {
             button: button,
             clickCount: Int(event.getIntegerValueField(.mouseEventClickState)),
             modifiers: modifierNames(for: event.flags),
-            geometry: geometryProvider?()
+            geometry: geometryProvider?(),
+            mapping: mappingProvider?()
         )
         lock.lock()
         clicks.append(click)
+        let index = clicks.count - 1
         lock.unlock()
+        // The element lookup talks to the clicked application and can take a
+        // while; the tap callback must stay instant, so it happens elsewhere.
+        elementQueue.async { [weak self] in
+            guard let self, let element = elementAt(location) else {
+                return
+            }
+            self.lock.lock()
+            self.elements[index] = element
+            self.lock.unlock()
+        }
     }
 
     /// Projects the captured clicks and pointer samples onto the recording's
@@ -292,8 +400,13 @@ final class ClickTrackRecorder: @unchecked Sendable {
         droppedOutOfFrame: Int,
         warnings: [String]
     ) {
+        // Let element lookups still in flight finish; each is bounded by the
+        // accessibility messaging timeout, so this cannot hang the recording.
+        elementQueue.sync {}
         lock.lock()
-        let captured = clicks
+        let captured = clicks.enumerated().map { index, click in
+            click.withElement(elements[index])
+        }
         let capturedSamples = samples
         let capturedKeyDowns = keyDowns
         let capturedWarnings = warnings
@@ -328,7 +441,7 @@ final class ClickTrackRecorder: @unchecked Sendable {
             guard let tMs = mediaMs(click.offsetMs) else {
                 continue
             }
-            described.append([
+            var entry: [String: Any] = [
                 "tMs": tMs,
                 "button": click.button,
                 "clickCount": click.clickCount,
@@ -338,8 +451,14 @@ final class ClickTrackRecorder: @unchecked Sendable {
                 "normalized": [
                     "x": click.point.normalizedX, "y": click.point.normalizedY,
                 ],
-            ])
-            events.append((tMs, 0, pointerEvent(tMs: tMs, kind: "click", point: click.point)))
+            ]
+            var event = pointerEvent(tMs: tMs, kind: "click", point: click.point)
+            if let element = click.element.map({ describe($0, outputSize: outputSize) }) {
+                entry["element"] = element
+                event["element"] = element
+            }
+            described.append(entry)
+            events.append((tMs, 0, event))
         }
         for sample in trail {
             guard let tMs = mediaMs(sample.offsetMs) else {
@@ -371,6 +490,27 @@ final class ClickTrackRecorder: @unchecked Sendable {
             projection.droppedOutOfFrame,
             capturedWarnings
         )
+    }
+
+    /// The element a click landed on, in frame pixels and frame fractions.
+    private func describe(_ element: ProjectedElement, outputSize: OutputSize) -> [String: Any] {
+        var described: [String: Any] = [
+            "role": element.role,
+            "frame": [
+                "x": element.frameX, "y": element.frameY,
+                "width": element.frameWidth, "height": element.frameHeight,
+            ],
+            "normalized": [
+                "x": Double(element.frameX) / Double(outputSize.width),
+                "y": Double(element.frameY) / Double(outputSize.height),
+                "width": Double(element.frameWidth) / Double(outputSize.width),
+                "height": Double(element.frameHeight) / Double(outputSize.height),
+            ],
+        ]
+        if let subrole = element.subrole {
+            described["subrole"] = subrole
+        }
+        return described
     }
 
     /// One entry of the pointer stream. Positions are rounded to a ten
