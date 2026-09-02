@@ -7,11 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use guest_contracts::workspace_mount::WORKSPACE_MOUNT_SCRIPT;
-use vsock_proto::{
-    ExecCapturedOutput, ExecTermination, WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES,
-    WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS,
-};
+use guest_contracts::workspace_mount::{WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS, WORKSPACE_MOUNT_SCRIPT};
+use vsock_proto::{ExecCapturedOutput, ExecTermination, WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES};
 
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;

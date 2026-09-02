@@ -5,8 +5,6 @@ use crate::{DecodedExecResult, ExecCapturedOutput, ExecTermination, ProtocolErro
 
 /// Fixed stdout/stderr capture bound for the workspace mount helper.
 pub const WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES: usize = 64 * 1024;
-/// Fixed guest child-process timeout for the workspace mount helper.
-pub const WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS: u32 = 30_000;
 
 /// Encode a full fixed workspace-drive mount request frame.
 ///

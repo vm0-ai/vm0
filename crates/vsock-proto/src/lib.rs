@@ -250,10 +250,9 @@ pub use payloads::memory_snapshot::{
     MEMORY_SNAPSHOT_PAYLOAD_SIZE, MemorySnapshot, decode_memory_snapshot,
 };
 pub use payloads::workspace_drive_mount::{
-    WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES, WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS,
-    decode_workspace_drive_mount_request, decode_workspace_drive_mount_result,
-    encode_workspace_drive_mount_request_frame_into, encode_workspace_drive_mount_result,
-    encode_workspace_drive_mount_result_frame_into,
+    WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES, decode_workspace_drive_mount_request,
+    decode_workspace_drive_mount_result, encode_workspace_drive_mount_request_frame_into,
+    encode_workspace_drive_mount_result, encode_workspace_drive_mount_result_frame_into,
 };
 pub use payloads::write_file::{
     WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,

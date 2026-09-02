@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use guest_contracts::workspace_mount::WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE;
 use sandbox::{
     CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, ExecRequest, ExecResult,
     GuestAgentProcessHandle, GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
@@ -33,7 +34,7 @@ use vsock_host::{
 };
 use vsock_proto::{
     ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
-    GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone, WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS,
+    GuestStateRestoreTimezone as VsockGuestStateRestoreTimezone,
 };
 
 use crate::api::BalloonStatistics;
@@ -2494,12 +2495,10 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn mount_workspace_drive(&self) -> sandbox::Result<ExecResult> {
         let operation = SandboxOperation::MountWorkspaceDrive;
-        let request_timeout =
-            Duration::from_millis(u64::from(WORKSPACE_DRIVE_MOUNT_TIMEOUT_MS) + 5_000);
 
         self.run_bounded_guest_operation(operation, |guest| async move {
             guest
-                .mount_workspace_drive(request_timeout)
+                .mount_workspace_drive(WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE)
                 .await
                 .map(workspace_drive_mount_exec_result)
         })
