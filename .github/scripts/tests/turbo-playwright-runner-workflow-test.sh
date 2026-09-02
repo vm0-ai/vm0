@@ -516,14 +516,14 @@ mock_claude_script = File.read(ARGV.fetch(1))
   /api/feature-switches
   claude-code-oauth-token
   claude-sonnet-4-6
-  realAgentInPreview
+  _realAgentInPreview
 ].each do |required_fragment|
   unless mock_claude_script.include?(required_fragment)
     raise "mock Claude bootstrap must include #{required_fragment}"
   end
 end
 unless mock_claude_script.include?(
-    '.effectiveSwitches.realAgentInPreview == false',
+    '.effectiveSwitches._realAgentInPreview == false',
   )
   raise "mock Claude bootstrap must keep the real runtime disabled"
 end
@@ -541,7 +541,7 @@ codex_script = codex_step.fetch("run")
   /api/model-policies
   /api/feature-switches
   gpt-5.6-luna
-  realAgentInPreview
+  _realAgentInPreview
 ].each do |required_fragment|
   unless codex_script.include?(required_fragment)
     raise "real Codex bootstrap must include #{required_fragment}"
@@ -559,7 +559,7 @@ claude_script = claude_step.fetch("run")
 %w[
   /api/model-policies
   /api/feature-switches
-  realAgentInPreview
+  _realAgentInPreview
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
     raise "real Claude bootstrap must include #{required_fragment}"
