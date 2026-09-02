@@ -171,13 +171,28 @@ const desktopRecorderApi: DesktopRecorderApi = {
   startCapture(request) {
     return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.startCapture, request);
   },
-  selectArea() {
-    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.selectArea);
+  beginAreaSelection(audio) {
+    return ipcRenderer.invoke(
+      DESKTOP_RECORDER_CHANNELS.beginAreaSelection,
+      audio,
+    );
   },
-  completeAreaSelection(area) {
+  completeAreaSelection(selection) {
     return ipcRenderer.invoke(
       DESKTOP_RECORDER_CHANNELS.completeAreaSelection,
-      area,
+      selection,
+    );
+  },
+  selectWindow() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.selectWindow);
+  },
+  listWindowOptions() {
+    return ipcRenderer.invoke(DESKTOP_RECORDER_CHANNELS.listWindowOptions);
+  },
+  completeWindowSelection(choice) {
+    return ipcRenderer.invoke(
+      DESKTOP_RECORDER_CHANNELS.completeWindowSelection,
+      choice,
     );
   },
   pause() {

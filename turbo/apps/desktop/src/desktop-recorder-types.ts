@@ -42,22 +42,52 @@ export interface DesktopRecorderArea {
   readonly height: number;
 }
 
-/**
- * What the recorder overlays ask to capture.
- *
- * Only a window names its source. A display or area capture is aimed at the
- * screen the overlays themselves were opened on, and the main process is what
- * knows which one that is, so the renderer cannot pair a region drawn on one
- * screen with another screen's id.
- */
-export type DesktopRecorderCaptureRequest = {
+/** The two audio tracks a capture can carry, as the bar has them set. */
+export interface DesktopRecorderAudioChoice {
   readonly systemAudio: boolean;
   readonly microphone: boolean;
-} & (
-  | { readonly sourceKind: "area"; readonly area: DesktopRecorderArea }
-  | { readonly sourceKind: "display" }
-  | { readonly sourceKind: "window"; readonly sourceId: string }
-);
+}
+
+/**
+ * What the bar asks to capture.
+ *
+ * Only a window names its source; a whole-display capture is aimed at the
+ * screen the bar itself is on, which only the main process knows. An area is
+ * not here at all: its selection ends in the overlay that drew it, so that
+ * request is assembled in the main process from the display the drag happened
+ * on.
+ */
+export type DesktopRecorderCaptureRequest = DesktopRecorderAudioChoice &
+  (
+    | { readonly sourceKind: "display" }
+    | { readonly sourceKind: "window"; readonly sourceId: string }
+  );
+
+/**
+ * A region drawn on one display, in that display's own coordinates.
+ *
+ * The overlay reports which display it covers, because a drag on a secondary
+ * screen means nothing until it is rebased onto that screen's origin.
+ */
+export interface DesktopRecorderAreaSelection {
+  readonly displayId: number;
+  readonly area: DesktopRecorderArea;
+}
+
+/** A window the picker offers, with the preview the user recognises it by. */
+export interface DesktopRecorderWindowOption {
+  readonly id: string;
+  readonly title: string;
+  readonly appName: string;
+  /** A PNG data URL of the window as it looks right now. */
+  readonly previewDataUrl: string;
+}
+
+/** What the picker hands back when the user chooses a window. */
+export interface DesktopRecorderWindowChoice {
+  readonly sourceId: string;
+  readonly title: string;
+}
 
 export interface DesktopRecorderSourceList {
   readonly sources: readonly DesktopRecorderSource[];

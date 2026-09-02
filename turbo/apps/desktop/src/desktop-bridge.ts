@@ -4,10 +4,13 @@ import type {
 } from "./computer-use-types";
 import type { DesktopIdentity } from "./config";
 import type {
-  DesktopRecorderArea,
+  DesktopRecorderAreaSelection,
+  DesktopRecorderAudioChoice,
   DesktopRecorderCaptureRequest,
   DesktopRecorderSourceList,
   DesktopRecorderState,
+  DesktopRecorderWindowChoice,
+  DesktopRecorderWindowOption,
 } from "./desktop-recorder-types";
 
 export interface DesktopAuthUser {
@@ -105,9 +108,18 @@ export interface DesktopRecorderApi {
   readonly startCapture: (
     request: DesktopRecorderCaptureRequest,
   ) => Promise<void>;
-  readonly selectArea: () => Promise<DesktopRecorderArea | null>;
+  readonly beginAreaSelection: (
+    audio: DesktopRecorderAudioChoice,
+  ) => Promise<void>;
   readonly completeAreaSelection: (
-    area: DesktopRecorderArea | null,
+    selection: DesktopRecorderAreaSelection | null,
+  ) => Promise<void>;
+  readonly selectWindow: () => Promise<DesktopRecorderWindowChoice | null>;
+  readonly listWindowOptions: () => Promise<
+    readonly DesktopRecorderWindowOption[]
+  >;
+  readonly completeWindowSelection: (
+    choice: DesktopRecorderWindowChoice | null,
   ) => Promise<void>;
   readonly pause: () => Promise<void>;
   readonly resume: () => Promise<void>;

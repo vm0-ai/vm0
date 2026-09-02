@@ -1,6 +1,6 @@
 import type { DesktopRecorderArea } from "./desktop-recorder-types";
 
-export interface OverlayDisplayBounds {
+interface OverlayDisplayBounds {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -112,6 +112,38 @@ export const RECORDER_CONTROLLER_SIZE = Object.freeze({
   width: 268,
   height: RECORDER_CONTROLLER_SURFACE_HEIGHT + RECORDER_MESSAGE_BAND_HEIGHT,
 });
+
+/** Size of the window picker, in points. Fits a three-column grid. */
+export const RECORDER_WINDOW_PICKER_SIZE = Object.freeze({
+  width: 900,
+  height: 620,
+});
+
+/** Centres a window inside a display's work area, in global coordinates. */
+export function centredBounds(
+  display: OverlayDisplayBounds,
+  size: { readonly width: number; readonly height: number },
+): { readonly x: number; readonly y: number } {
+  return {
+    x: Math.round(display.x + (display.width - size.width) / 2),
+    y: Math.round(display.y + (display.height - size.height) / 2),
+  };
+}
+
+/**
+ * Places an overlay along the bottom of a display, horizontally centred, which
+ * is where controls belong when there is no region to sit beside.
+ */
+export function bottomCentredBounds(
+  display: OverlayDisplayBounds,
+  size: { readonly width: number; readonly height: number },
+  margin: number,
+): { readonly x: number; readonly y: number } {
+  return {
+    x: Math.round(display.x + (display.width - size.width) / 2),
+    y: Math.round(display.y + display.height - size.height - margin),
+  };
+}
 
 /** Clearance kept between the controller and the region being recorded. */
 const CONTROLLER_CLEARANCE = 16;

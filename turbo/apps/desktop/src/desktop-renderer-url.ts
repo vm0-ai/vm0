@@ -16,9 +16,11 @@ export function desktopRendererUrl(): string {
  * resolves on the pathname alone.
  */
 export function desktopRecorderUrl(
-  mode: "area" | "bar" | "controller",
+  mode: "area" | "bar" | "controller" | "windows",
+  params: Readonly<Record<string, string>> = {},
 ): string {
-  return `${DESKTOP_RENDERER_PROTOCOL}://${DESKTOP_RENDERER_HOST}/recorder.html?mode=${mode}`;
+  const query = new URLSearchParams({ mode, ...params });
+  return `${DESKTOP_RENDERER_PROTOCOL}://${DESKTOP_RENDERER_HOST}/recorder.html?${query.toString()}`;
 }
 
 export function desktopRendererRoot(distDir: string = __dirname): string {
