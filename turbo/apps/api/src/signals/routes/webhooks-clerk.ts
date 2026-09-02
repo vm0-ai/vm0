@@ -101,6 +101,7 @@ function organizationCreatedIdentity(data: unknown):
   | {
       readonly orgId: string;
       readonly userId: string;
+      readonly createdAt: Date;
     }
   | undefined {
   const orgId = eventDataId(data);
@@ -109,8 +110,16 @@ function organizationCreatedIdentity(data: unknown):
     stringPropertyOf(data, "created_by") ??
     stringPropertyOf(data, "createdByUserId") ??
     stringPropertyOf(data, "created_by_user_id");
+  const createdAtMilliseconds =
+    numberPropertyOf(data, "createdAt") ?? numberPropertyOf(data, "created_at");
+  const createdAt =
+    createdAtMilliseconds === undefined
+      ? undefined
+      : new Date(createdAtMilliseconds);
 
-  return orgId && userId ? { orgId, userId } : undefined;
+  return orgId && userId && createdAt && Number.isFinite(createdAt.getTime())
+    ? { orgId, userId, createdAt }
+    : undefined;
 }
 
 function isAdminMembershipRole(role: string | undefined): boolean {
@@ -338,9 +347,10 @@ const postClerkWebhook$ = command(
     if (event.type === "organization.created") {
       const identity = organizationCreatedIdentity(event.data);
       if (!identity) {
-        L.error("organization.created event missing org/creator user ID", {
-          data: event.data,
-        });
+        L.error(
+          "organization.created event missing org/creator user ID or creation time",
+          { data: event.data },
+        );
         return new Response("OK", { status: 200 });
       }
 
@@ -350,7 +360,11 @@ const postClerkWebhook$ = command(
         userId: identity.userId,
         task: set(
           ensureOrgLimitedFreeBootstrap$,
-          { orgId: identity.orgId, ownerUserId: identity.userId },
+          {
+            orgId: identity.orgId,
+            ownerUserId: identity.userId,
+            morningBriefEligibilitySourceCreatedAt: identity.createdAt,
+          },
           signal,
         ),
       });

@@ -49,7 +49,13 @@ export const onboardingCompleteContract = c.router({
     method: "POST",
     path: "/api/onboarding/complete",
     headers: authHeadersSchema,
-    body: z.object({}).strict(),
+    body: z
+      .object({
+        // Semantic IANA validation happens after core completion so an invalid
+        // optional fallback cannot roll back the onboarding transition.
+        timezone: z.string().optional(),
+      })
+      .strict(),
     responses: {
       200: z.object({
         onboardingComplete: z.literal(true),
