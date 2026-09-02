@@ -5096,8 +5096,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "recovery",
+          "refresh": "Refresh",
           "title": "Realtime connection diagnostics",
-          "unavailable": "unavailable"
+          "unavailable": "unavailable",
+          "workerDescription": "Inspect the capture recorded by the shared worker that owns the realtime connection.",
+          "workerLoading": "Loading",
+          "workerTitle": "Shared worker connection diagnostics",
+          "workerUnavailable": "Unavailable"
         }
       },
       "language": {
