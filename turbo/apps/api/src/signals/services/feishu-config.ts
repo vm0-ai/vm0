@@ -70,10 +70,11 @@ export async function loadFeishuInstallationConfig(
 
 /**
  * The event subscription URL an operator registers in their own Feishu Open
- * Platform app. #28278 step 3 switches this producer to the final path; the
- * branded paths stay routable, so installations that already hold the old URL
- * keep delivering events. The hostname carries the installation's product
- * brand while the path and installation ID remain provider-compatible.
+ * Platform app. #28278 step 3 switched this producer to the final path, and
+ * #31068 retired the branded row behind it, so an installation still holding
+ * the old URL in its own Feishu console stops delivering until its operator
+ * copies this one back. The hostname carries the installation's product brand
+ * while the path and installation ID remain provider-compatible.
  */
 export function feishuCallbackUrl(
   installationId: string,
