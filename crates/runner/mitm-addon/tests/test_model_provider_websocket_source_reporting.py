@@ -61,7 +61,6 @@ class TestModelProviderWebSocketUsageSourceRelease:
         entries = read_jsonl_entries_after_flush(proxy_log)
         [entry] = [entry for entry in entries if entry.get("type") == "usage_underbilling"]
         [source_entry] = [entry for entry in entries if entry.get("type") == "model_usage_source"]
-        assert not any(entry.get("type") == "model_usage_observation" for entry in entries)
         assert entry["type"] == "usage_underbilling"
         assert entry["reason"] == "missing_reporting_context"
         assert entry["underbilling_class"] == "confirmed"
@@ -70,10 +69,6 @@ class TestModelProviderWebSocketUsageSourceRelease:
         assert entry["missing_sandbox_token"] is True
         assert entry["missing_api_url"] is False
         assert all(event["buffer_accepted"] is False for event in source_entry["usage_events"])
-        assert all(
-            observation["buffer_accepted"] is True
-            for observation in source_entry["model_usage_observations"]
-        )
 
     def test_model_websocket_missing_api_url_releases_positive_source(
         self, tmp_path, real_flow, mitm_ctx
@@ -222,17 +217,6 @@ class TestModelProviderWebSocketSourceReporting:
         assert {event["source_idempotency_key"] for event in source_entry["usage_events"]} == {
             event["idempotencyKey"] for event in webhook.usage_events()
         }
-        assert all(
-            observation["buffer_accepted"] is True
-            for observation in source_entry["model_usage_observations"]
-        )
-        assert {
-            observation["source_idempotency_key"]
-            for observation in source_entry["model_usage_observations"]
-        } == {
-            observation["idempotencyKey"]
-            for observation in webhook.model_usage_observation_events()
-        }
 
     def test_model_websocket_work_limit_warns_and_later_frame_reports(
         self,
@@ -298,7 +282,6 @@ class TestModelProviderWebSocketSourceReporting:
             ("gpt-5.5", "tokens.output", 3),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_out_of_range_quantity_warns_without_correlation_failure(
         self,
@@ -358,7 +341,6 @@ class TestModelProviderWebSocketSourceReporting:
             ("gpt-5.5", "tokens.output", 2),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
 
     def test_model_websocket_ignores_client_messages(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)

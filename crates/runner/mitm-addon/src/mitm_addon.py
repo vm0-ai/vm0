@@ -246,10 +246,6 @@ def configure(updated: set[str]) -> None:
         api_url=get_api_url(),
         bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
-    usage.configure_model_usage_observation_reporting(
-        api_url=get_api_url(),
-        runner_token=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
-    )
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
@@ -1072,7 +1068,6 @@ async def _try_firewall_request_stream_from_headers(
     terminal_usage.track_flow_if_needed(
         flow,
         is_billable_firewall(allow.name, sandbox_info),
-        _is_model_provider_usage_observable(allow.name, sandbox_info),
     )
     try:
         request_classification.cache_classification(flow, classification)
@@ -1437,7 +1432,6 @@ async def request(flow: http.HTTPFlow) -> None:
             terminal_usage.track_flow_if_needed(
                 flow,
                 is_billable_firewall(allow.name, sandbox_info),
-                _is_model_provider_usage_observable(allow.name, sandbox_info),
             )
             expected_run_id = flow_metadata.run_id(flow.metadata)
             admitted_server = flow.server_conn
@@ -1501,16 +1495,6 @@ async def request(flow: http.HTTPFlow) -> None:
         request_classification.pop_cached_classification(flow)
 
 
-def _is_model_provider_usage_observable(firewall_name: str, sandbox_info: dict) -> bool:
-    """Return whether a firewall can produce model usage observations."""
-    model_usage_provider = sandbox_info.get("modelUsageProvider")
-    return (
-        firewall_name.startswith("model-provider:")
-        and isinstance(model_usage_provider, str)
-        and bool(model_usage_provider)
-    )
-
-
 def _maybe_normalize_accept_encoding_for_body_inspection(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
@@ -1535,7 +1519,7 @@ def _expects_http_response_body_usage_inspection(
         return False
     if _is_websocket_upgrade_request(flow):
         return False
-    if _is_model_provider_usage_observable(allow.name, sandbox_info):
+    if allow.name.startswith("model-provider:") and is_billable_firewall(allow.name, sandbox_info):
         return True
     return is_billable_firewall(allow.name, sandbox_info) and usage.has_connector_response_parser(
         allow.name
@@ -1998,7 +1982,7 @@ def done():
     The runner flush lifecycle waits for any active SIGUSR1 delivery worker,
     retries buffered usage and retained diagnostic reports, drains accepted
     requests, and closes admission before this hook shuts down the usage
-    executors. It also performs a final JSONL marker observation and joins the
+    executor. It also performs a final JSONL marker observation and joins the
     marker watcher before the JSONL writer stops. Any retryable usage outcome
     retained by completed workers is then retried synchronously.
     Auth.base forwarding does not need to finish running work during shutdown.
@@ -2007,8 +1991,8 @@ def done():
     upstream work without joining daemon workers or waiting for slow upstream
     responses. JSONL writer shutdown is also bounded and best-effort; if it times
     out, process shutdown continues with accepted log entries possibly still
-    pending. After joining the usage executors, retained billing, observation,
-    and diagnostic work is drained through synchronous delivery. Model-provider
+    pending. After joining the usage executor, retained billing and diagnostic
+    work is drained through synchronous delivery. Model-provider
     failure delivery stops admission and receives one bounded drain window.
     """
     try:

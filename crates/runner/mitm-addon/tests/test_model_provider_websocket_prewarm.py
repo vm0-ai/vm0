@@ -98,7 +98,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         assert full_body_feeds.count(dense_terminal) == 1
         assert webhook.usage_events() == []
-        assert webhook.model_usage_observation_events() == []
         [ignored_entry] = [
             entry
             for entry in model_usage_source_entries(flow)
@@ -135,7 +134,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.usage_events() == []
-        assert webhook.model_usage_observation_events() == []
         [ignored_entry] = [
             entry
             for entry in model_usage_source_entries(flow)
@@ -187,7 +185,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.usage_events() == []
-        assert webhook.model_usage_observation_events() == []
         [warning] = [
             entry
             for entry in read_jsonl_entries_after_flush(proxy_log)
@@ -242,7 +239,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             usage.flush_usage_events(trigger="test")
 
         assert webhook.usage_events() == []
-        assert webhook.model_usage_observation_events() == []
         ignored_entries = [
             entry
             for entry in model_usage_source_entries(flow)
@@ -301,11 +297,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 9)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -358,11 +349,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 10)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         ignored_entries = [
             entry
             for entry in model_usage_source_entries(flow)
@@ -374,7 +360,6 @@ class TestModelProviderWebSocketPrewarmUsage:
         assert ignored_entry["source_id"] == f"{flow.id}:warm-1"
         assert ignored_entry["usage"] == {"tokens.input": 6050}
         assert ignored_entry["usage_events"] == []
-        assert ignored_entry["model_usage_observations"] == []
         assert ignored_entry["url"] == "https://api.openai.com/v1/responses"
         proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
         assert sensitive_marker not in proxy_log.read_text()
@@ -406,11 +391,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 5)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         source_entries = model_usage_source_entries(flow)
         ignored_entries = [
             entry for entry in source_entries if entry.get("disposition") == "ignored"
@@ -463,11 +443,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 4)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not _correlation_entries(flow)
 
     def test_model_websocket_reused_older_ignored_id_fails_open(self, tmp_path, real_flow):
@@ -509,11 +484,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 7)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         source_entries = model_usage_source_entries(flow)
         ignored_entries = [
             entry for entry in source_entries if entry.get("disposition") == "ignored"
@@ -564,11 +534,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 7)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         source_entries = model_usage_source_entries(flow)
         ignored_entries = [
             entry for entry in source_entries if entry.get("disposition") == "ignored"
@@ -633,11 +598,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             ("gpt-5.5", "tokens.input", 6),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -676,11 +636,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             ("gpt-5.5", "tokens.input", 5),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -724,11 +679,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             ("gpt-5.5", "tokens.input", 7),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -757,11 +707,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 9)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -793,11 +738,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 11)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -826,11 +766,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 12)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -873,11 +808,6 @@ class TestModelProviderWebSocketPrewarmUsage:
             ("gpt-5.5", "tokens.input", 4),
         ]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -911,11 +841,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 6)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
 
     @pytest.mark.parametrize(
         "client_request",
@@ -951,11 +876,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 9)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
 
     def test_model_websocket_conflicting_created_ids_fail_open(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -982,11 +902,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 11)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
 
     def test_model_websocket_conflicting_terminal_ids_fail_open(self, tmp_path, real_flow):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -1011,11 +926,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 13)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -1067,11 +977,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 17)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         assert not any(
             entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
         )
@@ -1107,11 +1012,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 8)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
 
     def test_model_websocket_prewarm_state_isolated_by_flow(self, tmp_path, real_flow):
         prewarm_flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
@@ -1173,11 +1073,6 @@ class TestModelProviderWebSocketPrewarmUsage:
 
         expected_rows = [("gpt-5.5", "tokens.input", 7)]
         assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
-        assert_usage_event_rows(
-            webhook.model_usage_observation_events(),
-            "model",
-            expected_rows,
-        )
         ignored_entries = [
             entry
             for entry in model_usage_source_entries(prewarm_flow)

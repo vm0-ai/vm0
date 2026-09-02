@@ -1,6 +1,6 @@
 """Webhook delivery (HTTP + thread pool).
 
-Background thread pools process usage reports in parallel; the runner
+Background workers process usage reports in parallel; the runner
 first waits for the pending counters to drain, then ``done()`` flushes
 submitted futures during mitmproxy shutdown. Falls back to synchronous
 delivery if an executor has been shut down (drain/shutdown race) so
@@ -299,15 +299,9 @@ usage_executor = ThreadPoolExecutor(
     max_workers=USAGE_WEBHOOK_WORKERS,
     thread_name_prefix="usage",
 )
-model_usage_observation_executor = ThreadPoolExecutor(
-    max_workers=USAGE_WEBHOOK_WORKERS,
-    thread_name_prefix="model-usage-observation",
-)
 
 _delivery_capacity_lock = threading.Lock()
 _pending_delivery_payloads = 0
-_model_observation_delivery_capacity_lock = threading.Lock()
-_pending_model_observation_delivery_payloads = 0
 
 
 def _try_acquire_delivery_capacity() -> int | None:
@@ -337,37 +331,9 @@ def pending_delivery_payload_count_for_tests() -> int:
 
 
 def reset_delivery_capacity_for_tests() -> None:
-    global _pending_delivery_payloads, _pending_model_observation_delivery_payloads
+    global _pending_delivery_payloads
     with _delivery_capacity_lock:
         _pending_delivery_payloads = 0
-    with _model_observation_delivery_capacity_lock:
-        _pending_model_observation_delivery_payloads = 0
-
-
-def _try_acquire_model_observation_delivery_capacity() -> int | None:
-    global _pending_model_observation_delivery_payloads
-    with _model_observation_delivery_capacity_lock:
-        if _pending_model_observation_delivery_payloads >= MAX_PENDING_WEBHOOK_PAYLOADS:
-            return None
-        _pending_model_observation_delivery_payloads += 1
-        return _pending_model_observation_delivery_payloads
-
-
-def _release_model_observation_delivery_capacity() -> None:
-    global _pending_model_observation_delivery_payloads
-    with _model_observation_delivery_capacity_lock:
-        if _pending_model_observation_delivery_payloads <= 0:
-            raise RuntimeError("model observation delivery capacity released without acquire")
-        _pending_model_observation_delivery_payloads -= 1
-
-
-def _pending_model_observation_delivery_payload_count() -> int:
-    with _model_observation_delivery_capacity_lock:
-        return _pending_model_observation_delivery_payloads
-
-
-def pending_model_observation_delivery_payload_count_for_tests() -> int:
-    return _pending_model_observation_delivery_payload_count()
 
 
 def _post_admitted_webhook_with_retry(
@@ -538,37 +504,6 @@ def _enqueue_webhook_delivery(
     return True
 
 
-def enqueue_model_usage_observation_delivery(
-    url: str,
-    runner_token: str,
-    payload: dict,
-    proxy_log_path: str,
-    log_type: str,
-    delivery_outcome_callback: _DeliveryOutcomeCallback | None = None,
-) -> bool:
-    """Submit a model observation without consuming billing delivery capacity."""
-    return _enqueue_webhook_delivery(
-        url=url,
-        bearer_credential=runner_token,
-        payload=payload,
-        proxy_log_path=proxy_log_path,
-        log_type=log_type,
-        delivery_outcome_callback=delivery_outcome_callback,
-        executor=model_usage_observation_executor,
-        try_acquire_capacity=_try_acquire_model_observation_delivery_capacity,
-        release_capacity=_release_model_observation_delivery_capacity,
-        pending_delivery_count=_pending_model_observation_delivery_payload_count,
-        saturation_label="model observation delivery",
-        fallback_message=(
-            "Model observation executor shut down, falling back to synchronous delivery"
-        ),
-    )
-
-
 def shutdown_delivery_executors(*, wait: bool) -> None:
-    """Shut down each configured delivery executor exactly once."""
-    try:
-        usage_executor.shutdown(wait=wait)
-    finally:
-        if model_usage_observation_executor is not usage_executor:
-            model_usage_observation_executor.shutdown(wait=wait)
+    """Shut down the usage delivery executor."""
+    usage_executor.shutdown(wait=wait)

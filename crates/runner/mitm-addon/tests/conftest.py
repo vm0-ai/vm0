@@ -81,7 +81,6 @@ def _reset_module_state() -> Iterator[None]:
     codex_output_timing.reset_for_tests()
     model_provider_failure.reset_for_tests()
     usage.reset_usage_buffer_for_tests()
-    usage.configure_model_usage_observation_reporting(api_url="", runner_token="")
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
     logging_utils.reset_log_writer_for_tests()
@@ -408,17 +407,9 @@ def mitm_ctx(tmp_path):
                 client_session_id=client_session_id,
                 client_version=client_version,
             )
-            usage.configure_model_usage_observation_reporting(
-                api_url=api_url,
-                runner_token=str(uuid.uuid4()),
-            )
             try:
                 yield log
             finally:
-                usage.configure_model_usage_observation_reporting(
-                    api_url="",
-                    runner_token="",
-                )
                 platform_api.configure_client_headers(
                     client_session_id="",
                     client_version="",
@@ -527,10 +518,8 @@ def sync_usage_executor():
                 future.result()
 
     original = usage.webhook.usage_executor
-    original_observation = usage.webhook.model_usage_observation_executor
     executor = _InlineExecutor()
     usage.webhook.usage_executor = executor
-    usage.webhook.model_usage_observation_executor = executor
     try:
         yield executor
     finally:
@@ -538,7 +527,6 @@ def sync_usage_executor():
             executor.shutdown(wait=True)
         finally:
             usage.webhook.usage_executor = original
-            usage.webhook.model_usage_observation_executor = original_observation
 
 
 @pytest.fixture

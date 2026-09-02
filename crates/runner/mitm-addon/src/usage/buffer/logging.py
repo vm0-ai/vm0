@@ -18,15 +18,12 @@ Shutdown-retained billing batches emit ``usage_underbilling`` with
 Failed shutdown admission remains an ordinary error record; its separate
 retained-only summary emits the shutdown underbilling signal.
 
-Model observation anomalies instead use their dedicated process event. They do
-not affect billing and must not also emit ``usage_underbilling``.
-
 Operators should use ``retained_source_event_count`` and
 ``retained_webhook_batch_count`` for retained work, and
 ``dropped_source_event_count`` and ``dropped_webhook_batch_count`` for confirmed
 drops. Dropped retained batches also include ``retained_retry_count``. When no
 proxy log path exists, ordinary flush records are skipped. Billing underbilling
-and model observation anomalies use their respective generic process events.
+uses its generic process event.
 """
 
 from __future__ import annotations
@@ -35,7 +32,6 @@ import time
 from collections.abc import Iterable
 from typing import Literal
 
-import addon_process_logging
 from logging_utils import log_proxy_entry
 
 from ..underbilling import log_usage_underbilling
@@ -51,32 +47,19 @@ type _UsageFlushPhase = Literal["started", "enqueued", "failed", "retained", "dr
 _RETRY_BUDGET_EXHAUSTED_REASON = "retry_budget_exhausted"
 _SHUTDOWN_RETAINED_WITHOUT_RETRY_REASON = "shutdown_retained_without_retry"
 _USAGE_QUANTITY_OUT_OF_RANGE_REASON = "usage_quantity_out_of_range"
-_MODEL_OBSERVATION_LOG_TYPE = "model_usage_observation"
-_MODEL_OBSERVATION_SUMMARY_TYPE = "model_usage_observation_buffer_flush"
 
 
 def _log_rejected_usage_quantity(
     proxy_log_path: str,
     run_id: str,
-    log_type: str,
 ) -> None:
-    if log_type == "model_usage_observation":
-        log_proxy_entry(
-            proxy_log_path,
-            "warn",
-            "Model usage observation rejected outside exact-integer range",
-            type=log_type,
-            reason=_USAGE_QUANTITY_OUT_OF_RANGE_REASON,
-            run_id=run_id,
-        )
-        return
     log_usage_underbilling(
         proxy_log_path,
         "Usage event rejected outside exact-integer range",
         _USAGE_QUANTITY_OUT_OF_RANGE_REASON,
         "confirmed",
         run_id=run_id,
-        log_type=log_type,
+        log_type="usage_event",
     )
 
 
@@ -98,23 +81,6 @@ def _log_dropped_batches(
     )
 
 
-def _log_permanent_delivery_failure(
-    trigger: UsageFlushTrigger,
-    flush_sequence: int,
-    pending_batch: _PendingBatch,
-) -> None:
-    """Emit the process-level anomaly for one lost observation batch."""
-    if pending_batch.batch.log_type != _MODEL_OBSERVATION_LOG_TYPE:
-        return
-    _log_flush_summaries(
-        "failed",
-        trigger,
-        flush_sequence,
-        _build_flush_summaries([pending_batch.batch]),
-        delivery_outcome="permanent_failure",
-    )
-
-
 def _log_flush_summaries(
     phase: _UsageFlushPhase,
     trigger: UsageFlushTrigger,
@@ -124,7 +90,6 @@ def _log_flush_summaries(
     duration_ms: int | None = None,
     error_type: str | None = None,
     retained_retry_count: int | None = None,
-    delivery_outcome: Literal["permanent_failure"] | None = None,
 ) -> None:
     for summary in summaries:
         retained_webhook_batch_count = summary.retained_webhook_batch_count
@@ -157,8 +122,6 @@ def _log_flush_summaries(
             extra["reason"] = _RETRY_BUDGET_EXHAUSTED_REASON
         if retained_retry_count is not None:
             extra["retained_retry_count"] = retained_retry_count
-        if delivery_outcome is not None:
-            extra["delivery_outcome"] = delivery_outcome
         level = "error" if phase == "failed" else "info"
         message = f"Usage event buffer flush {phase}"
         if phase == "retained":
@@ -168,14 +131,7 @@ def _log_flush_summaries(
             message = "Usage event buffer flush dropped retained batches"
         elif phase == "enqueued" and summary.retained_webhook_batch_count:
             message = "Usage event buffer flush retained webhook batches for retry"
-        if summary.log_type == _MODEL_OBSERVATION_LOG_TYPE and (
-            phase in ("failed", "retained", "dropped") or retained_webhook_batch_count > 0
-        ):
-            process_level: addon_process_logging.AddonProcessEventLevel = (
-                "error" if phase in ("failed", "dropped") else "warn"
-            )
-            _log_model_observation_process_summary(level=process_level, fields=extra)
-        if phase == "dropped" and summary.log_type != _MODEL_OBSERVATION_LOG_TYPE:
+        if phase == "dropped":
             log_usage_underbilling(
                 summary.proxy_log_path,
                 message,
@@ -185,8 +141,7 @@ def _log_flush_summaries(
             )
             continue
         if (
-            summary.log_type != _MODEL_OBSERVATION_LOG_TYPE
-            and phase in ("enqueued", "retained")
+            phase in ("enqueued", "retained")
             and trigger == "shutdown"
             and retained_webhook_batch_count
         ):
@@ -207,36 +162,6 @@ def _log_flush_summaries(
             message,
             **extra,
         )
-
-
-def _log_model_observation_process_summary(
-    *,
-    level: addon_process_logging.AddonProcessEventLevel,
-    fields: dict[str, object],
-) -> None:
-    """Emit one scalar-only observation anomaly through the process logger."""
-    ordered_keys = (
-        "phase",
-        "trigger",
-        "flush_sequence",
-        "source_event_count",
-        "aggregate_event_count",
-        "webhook_batch_count",
-        "dropped_webhook_batch_count",
-        "retained_webhook_batch_count",
-        "retained_source_event_count",
-        "duration_ms",
-        "retained_retry_count",
-        "error_type",
-        "delivery_outcome",
-    )
-    process_fields = {key: fields[key] for key in ordered_keys if key in fields}
-    addon_process_logging.emit_addon_process_event(
-        level,
-        "Model usage observation buffer flush anomaly",
-        type=_MODEL_OBSERVATION_SUMMARY_TYPE,
-        **process_fields,
-    )
 
 
 def _elapsed_ms(started_at: float) -> int:

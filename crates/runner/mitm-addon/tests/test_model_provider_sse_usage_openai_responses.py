@@ -23,7 +23,6 @@ from tests.model_provider_sse_usage_helpers import (
     run_error,
     run_response,
 )
-from tests.usage_helpers import compact_observation_quantities
 from usage import flush_usage_events, openai_responses
 
 
@@ -132,12 +131,6 @@ class TestOpenAIResponsesSseUsage:
             "tokens.cache_read.long_context": 70_000,
             "tokens.cache_creation.long_context": 2_001,
         }
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
-            "tokens.input": 200_000,
-            "tokens.output": 20,
-            "tokens.cache_read": 70_000,
-            "tokens.cache_creation": 2_001,
-        }
 
     def test_full_pipeline_openai_sse_reports_usage_with_oversized_type(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
@@ -242,7 +235,6 @@ class TestOpenAIResponsesSseUsage:
         assert {
             event["category"]: event["quantity"] for event in webhook.usage_events()
         } == expected
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == expected
         [source_entry] = model_usage_source_entries(flow)
         assert source_entry["source_id"] == flow.id
         assert source_entry["provider_response_id"] == "resp_sse_1"
@@ -250,22 +242,9 @@ class TestOpenAIResponsesSseUsage:
         assert source_entry["buffer_mode"] == "aggregate"
         assert source_entry["usage"] == expected
         assert all(event["buffer_accepted"] is True for event in source_entry["usage_events"])
-        assert all(
-            observation["buffer_accepted"] is True
-            for observation in source_entry["model_usage_observations"]
-        )
         assert {
             event["source_idempotency_key"] for event in source_entry["usage_events"]
         }.isdisjoint({event["idempotencyKey"] for event in webhook.usage_events()})
-        assert {
-            observation["source_idempotency_key"]
-            for observation in source_entry["model_usage_observations"]
-        }.isdisjoint(
-            {
-                observation["idempotencyKey"]
-                for observation in webhook.model_usage_observation_events()
-            }
-        )
         assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="openai_responses_sse",
@@ -643,7 +622,3 @@ class TestOpenAIResponsesSseUsage:
             + by_category["tokens.cache_creation"]
             == 100
         )
-        observation_events = webhook.model_usage_observation_events()
-        observations_by_category = compact_observation_quantities(observation_events)
-        assert len(observation_events) == 1
-        assert observations_by_category == by_category

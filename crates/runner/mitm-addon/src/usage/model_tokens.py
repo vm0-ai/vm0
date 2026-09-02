@@ -2,8 +2,7 @@
 
 Extractors write only the base categories in ``MODEL_USAGE_CATEGORIES``.
 Model-provider reporting may remap those keys to reporter-owned billing
-categories after selecting a tier, while model usage observations retain the
-base categories.
+categories after selecting a tier.
 """
 
 from .quantities import is_usage_quantity
