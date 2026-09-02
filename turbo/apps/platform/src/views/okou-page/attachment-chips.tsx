@@ -104,10 +104,8 @@ import {
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
-import {
-  isOfficeDocumentPreview,
-  OfficeDocumentPreview,
-} from "./office-document-preview.tsx";
+import { OfficeDocumentPreview } from "./office-document-preview.tsx";
+import { isOfficeFilePreview } from "./office-file-preview.ts";
 
 type TextPreviewLoadState = {
   readonly status: "loading" | "loaded" | "error";
@@ -1035,7 +1033,7 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "file") {
-    if (officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename)) {
+    if (officeDocumentPreviewEnabled && isOfficeFilePreview(filename)) {
       return (
         <ArtifactDialogOfficeDocumentBody
           filename={filename}
@@ -1546,7 +1544,7 @@ export function FileAttachmentChip({
   const pageSignal = useGet(pageSignal$);
   const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   const previewOfficeDocument =
-    officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename);
+    officeDocumentPreviewEnabled && isOfficeFilePreview(filename);
   return (
     <button
       type="button"

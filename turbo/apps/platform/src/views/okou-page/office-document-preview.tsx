@@ -4,13 +4,6 @@ import { resolveOfficeDocumentViewerBaseUrl } from "../../lib/platform-host.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { useAttachmentUrls } from "./attachment-resource.ts";
 
-export function isOfficeDocumentPreview(filename: string): boolean {
-  const normalizedFilename = filename.toLowerCase();
-  return (
-    normalizedFilename.endsWith(".docx") || normalizedFilename.endsWith(".pptx")
-  );
-}
-
 function officeDocumentViewerUrl(sourceUrl: string): string {
   const viewerUrl = new URL(resolveOfficeDocumentViewerBaseUrl());
   viewerUrl.searchParams.set("src", sourceUrl);
