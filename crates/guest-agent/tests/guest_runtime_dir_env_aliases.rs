@@ -306,11 +306,11 @@ async fn guest_agent_rejects_relative_canonical_runtime_before_bootstrap_side_ef
             &process_endpoint,
         )
         .env(
-            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
+            guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
             &workload_endpoint,
         )
         .env(
-            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
+            guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
             "tool-endpoint-must-not-leak",
         );
 

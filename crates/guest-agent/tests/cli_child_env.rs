@@ -53,7 +53,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             std::env::set_var(legacy, std::env::var(canonical)?);
         }
         std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
-        std::env::set_var("VM0_PROCESS_CONTROL_ENDPOINT", "runner-control-endpoint");
         std::env::set_var(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "runner-control-endpoint",
@@ -314,21 +313,14 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         );
     }
     assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
-    for key in [
-        "VM0_PROCESS_CONTROL_ENDPOINT",
-        process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
-    ] {
-        assert!(
-            !cli_env.contains_key(key),
-            "Claude child env contains {key}"
-        );
-    }
+    assert!(
+        !cli_env.contains_key(process_control_ipc::CANONICAL_BOOTSTRAP_ENV),
+        "Claude child env contains the process-control endpoint"
+    );
     assert!(!cli_env.contains_key("OKOU_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL"));
     for key in [
         guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-        guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
     ] {
         assert!(
             !cli_env.contains_key(key),

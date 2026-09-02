@@ -130,9 +130,7 @@ test "$(cat "$parent/workload/tools/memory.max")" = max
 test "$(cat "$parent/workload/tools/memory.oom.group")" = 0
 grep -qw memory "$parent/workload/tools/cgroup.subtree_control"
 test "$(cat "/sys/fs/cgroup$relative/memory.oom.group")" = 1
-test -z "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
 test -z "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT+x}"
-test -z "${VM0_TOOL_CGROUP_PROCS_ENDPOINT+x}"
 test "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT+x}" = x
 test -n "$OKOU_TOOL_CGROUP_PROCS_ENDPOINT"
 control_member_count=$(wc -l < "$parent/control/cgroup.procs")

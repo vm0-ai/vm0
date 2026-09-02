@@ -13,13 +13,6 @@ fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
     let runtime_dir = tmp.path().join("runtime");
 
     unsafe {
-        std::env::remove_var(
-            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-        );
-        std::env::set_var(
-            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
-            "inherited-tool-placement",
-        );
         common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(
             guest_contracts::env::RUN_ID_ENV,
