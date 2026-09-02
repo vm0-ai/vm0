@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# < 1 || $# > 2 )); then
-  echo "usage: $0 <cloudflare-pages-url> [api-promotion]" >&2
+if (( $# != 1 )); then
+  echo "usage: $0 <cloudflare-pages-url>" >&2
   exit 1
 fi
 
 pages_url="$1"
-verification_scope="${2:-full}"
-if [[ "$verification_scope" != "full" && "$verification_scope" != "api-promotion" ]]; then
-  echo "invalid verification scope: $verification_scope" >&2
-  exit 1
-fi
 curl_retry=(
   --retry 12
   --retry-delay 5
