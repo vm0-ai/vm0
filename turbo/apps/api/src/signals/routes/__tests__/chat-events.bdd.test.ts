@@ -34,6 +34,7 @@ import {
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
@@ -145,6 +146,7 @@ import {
 import { createRouteMocks } from "./helpers/route-test";
 import { formatUserPresentationTemplateId } from "@okouai/core/presentation-template-selection";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import { commitMemoryVersion } from "./helpers/memory";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
 import {
   readCustomConnectorCredentialStorageParent,
@@ -5259,6 +5261,182 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
   }, 90_000);
 
+  it("pins recall-enabled Pi memory through API completion and Sandbox handoff", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    const initialMemory = await commitMemoryVersion(context, actor, [
+      {
+        path: "MEMORY.md",
+        content: "Pi memory version pinned before the API-first completion.",
+      },
+    ]);
+    const usagePricingResolution = await createTerraUsagePricingResolution();
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryRecall]: true,
+      },
+    );
+    mockPiResourceArchiveDownloads();
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return new HttpResponse(
+          modelCalls === 1
+            ? piResponsesTextSse("API-first memory checkpoint", modelCalls)
+            : piResponsesToolSse({
+                callId: "call_pi_memory_handoff",
+                name: "read",
+                arguments: { path: "/home/user/workspace/AGENTS.md" },
+                sequence: modelCalls,
+              }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+
+    const first = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "complete through the Pi API-first slot",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, first.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+
+    const newerMemory = await commitMemoryVersion(context, actor, [
+      {
+        path: "MEMORY.md",
+        content: "A newer HEAD must not replace the session-pinned version.",
+      },
+    ]);
+    expect(newerMemory.versionId).not.toBe(initialMemory.versionId);
+
+    const second = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "handoff with the pinned Pi memory mount",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(manifestKey);
+      })
+      .toBe(true);
+    expect(modelCalls).toBe(2);
+    const manifestBytes = checkpointObjects.get(manifestKey);
+    if (!manifestBytes) {
+      throw new Error("Expected the Pi memory ownership-transfer manifest");
+    }
+    expect(
+      piApiFirstTurnManifestSchema.parse(
+        JSON.parse(manifestBytes.toString("utf8")),
+      ),
+    ).toMatchObject({
+      outcome: "ownership-transfer",
+      mode: "pending-tool-continuation",
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      { [FeatureSwitchKey.PiMemoryRecall]: false },
+    );
+    const claimed = await claimChatRun(runnerGroup, second.runId);
+    expect(claimed.claim.cliAgentType).toBe("pi");
+    expect(claimed.claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.PiMemoryRecall]: true,
+    });
+    expect(claimed.claim.appendSystemPrompt).not.toMatch(/auto.?memory/iu);
+    const storageManifest = expectCanonicalStorageManifest(
+      claimed.claim.storageManifest,
+    );
+    if (!storageManifest) {
+      throw new Error("Expected recall-enabled Pi Storage mounts");
+    }
+    const memorySlotMounts = storageManifest.storageMounts.filter((mount) => {
+      return mount.name === "memory" || mount.mountPath === PI_MEMORY_ROOT;
+    });
+    expect(memorySlotMounts).toHaveLength(1);
+    expect(memorySlotMounts[0]).toMatchObject({
+      name: "memory",
+      versionId: initialMemory.versionId,
+      mountPath: PI_MEMORY_ROOT,
+      missingRootPolicy: "preserveParentVersion",
+      writeback: true,
+      archiveUrl: expect.any(String),
+    });
+    expect(memorySlotMounts[0]).not.toHaveProperty("generatedBy");
+    expect(storageManifest.storageMounts).not.toContainEqual(
+      expect.objectContaining({
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+      }),
+    );
+
+    await cancelChatRun(actor, second.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps an empty recall-enabled Pi memory mount valid", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const orgId = requireOrgId(actor);
+    await configureBuiltInPiModel(actor, "gpt-5.6-terra");
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.PiMemoryRecall]: true,
+      },
+    );
+    mockPiResourceArchiveDownloads(true);
+    mockPiCheckpointObjectStore();
+    await api.heartbeatRunner(runnerGroup);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "launch Pi with an absent memory Storage",
+      model: "gpt-5.6-terra",
+    });
+    const claimed = await claimChatRun(runnerGroup, run.runId);
+    const storageManifest = expectCanonicalStorageManifest(
+      claimed.claim.storageManifest,
+    );
+    if (!storageManifest) {
+      throw new Error("Expected empty recall-enabled Pi Storage mounts");
+    }
+    const memorySlotMounts = storageManifest.storageMounts.filter((mount) => {
+      return mount.name === "memory" || mount.mountPath === PI_MEMORY_ROOT;
+    });
+    expect(memorySlotMounts).toHaveLength(1);
+    expect(memorySlotMounts[0]).toMatchObject({
+      name: "memory",
+      versionId: expect.any(String),
+      mountPath: PI_MEMORY_ROOT,
+      missingRootPolicy: "preserveParentVersion",
+      writeback: true,
+      empty: true,
+    });
+    expect(memorySlotMounts[0]).not.toHaveProperty("archiveUrl");
+    expect(memorySlotMounts[0]).not.toHaveProperty("generatedBy");
+
+    await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
   it("keeps captured Codex admission after PiLoop turns on", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
@@ -5334,6 +5512,18 @@ describe("CHAT-02: model-first provider policies", () => {
     const disabledClaim = await claimChatRun(runnerGroup, disabled.runId);
     expect(disabledClaim.claim.cliAgentType).toBe("codex");
     expect(disabledClaim.claim.piLaunchConfig).toBeUndefined();
+    expect(
+      expectCanonicalStorageManifest(
+        disabledClaim.claim.storageManifest,
+      )?.storageMounts.filter((mount) => {
+        return mount.name === "memory";
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion",
+      }),
+    ]);
     await expect(
       readRunLaunchSnapshotFixture(context, disabled.runId),
     ).resolves.toMatchObject({
