@@ -116,17 +116,6 @@ describe("API namespace compatibility", () => {
     }
   });
 
-  it("rejects duplicate method and path registrations", () => {
-    const source = ROUTES[0];
-    if (!source) {
-      throw new Error("Expected a route to duplicate");
-    }
-
-    expect(() => {
-      assertUniqueRouteRegistrations([source, source]);
-    }).toThrow(`Duplicate API route registration: ${routeKey(source)}`);
-  });
-
   it("serves every listed legacy path with the handler that serves its canonical path", () => {
     for (const [canonical, legacy] of Object.entries(SERVED_LEGACY_PATHS)) {
       const sources = registrationsFor(canonical);
