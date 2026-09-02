@@ -7,6 +7,7 @@ import {
   bigint,
   integer,
   timestamp,
+  unique,
   uniqueIndex,
   index,
   check,
@@ -45,6 +46,11 @@ export const storages = pgTable(
         table.orgId,
         table.userId,
         table.name,
+      ),
+      idOrgUserConstraint: unique("idx_storages_id_org_user").on(
+        table.id,
+        table.orgId,
+        table.userId,
       ),
     };
   },

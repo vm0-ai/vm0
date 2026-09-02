@@ -214,18 +214,6 @@ export const agentRuns = pgTable(
         sql`(
           ${table.launchSnapshot} IS NULL OR (
             jsonb_typeof(${table.launchSnapshot}) = 'object' AND
-            ${table.launchSnapshot} ?& ARRAY[
-              'schemaVersion',
-              'framework',
-              'runnerProfile'
-            ] AND
-            (
-              ${table.launchSnapshot} -
-              'schemaVersion' -
-              'framework' -
-              'runnerProfile'
-            ) = '{}'::jsonb AND
-            ${table.launchSnapshot} -> 'schemaVersion' = '1'::jsonb AND
             jsonb_typeof(${table.launchSnapshot} -> 'framework') = 'string' AND
             ${table.launchSnapshot} ->> 'framework' = ANY (
               ARRAY['claude-code', 'codex', 'pi']
@@ -234,7 +222,41 @@ export const agentRuns = pgTable(
               ${table.launchSnapshot} -> 'runnerProfile'
             ) = 'string' AND
             char_length(${table.launchSnapshot} ->> 'runnerProfile') >= 1 AND
-            char_length(${table.launchSnapshot} ->> 'runnerProfile') <= 255
+            char_length(${table.launchSnapshot} ->> 'runnerProfile') <= 255 AND
+            (
+              (
+                ${table.launchSnapshot} ?& ARRAY[
+                  'schemaVersion',
+                  'framework',
+                  'runnerProfile'
+                ] AND
+                (
+                  ${table.launchSnapshot} -
+                  'schemaVersion' -
+                  'framework' -
+                  'runnerProfile'
+                ) = '{}'::jsonb AND
+                ${table.launchSnapshot} -> 'schemaVersion' = '1'::jsonb
+              ) OR (
+                ${table.launchSnapshot} ?& ARRAY[
+                  'schemaVersion',
+                  'framework',
+                  'runnerProfile',
+                  'piMemoryGenerationEnabled'
+                ] AND
+                (
+                  ${table.launchSnapshot} -
+                  'schemaVersion' -
+                  'framework' -
+                  'runnerProfile' -
+                  'piMemoryGenerationEnabled'
+                ) = '{}'::jsonb AND
+                ${table.launchSnapshot} -> 'schemaVersion' = '2'::jsonb AND
+                jsonb_typeof(
+                  ${table.launchSnapshot} -> 'piMemoryGenerationEnabled'
+                ) = 'boolean'
+              )
+            )
           )
         )`,
       ),
