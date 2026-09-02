@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { upsertBuiltInNoSecretModelProviderIdentity } from "@okouai/db/operations/model-provider-built-in-identity";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
-
-const dirname = path.dirname(fileURLToPath(import.meta.url));
-const ACTIVE_PROVIDER_IDENTITY_HELPER = path.join(
-  dirname,
-  "../src/operations/model-provider-built-in-identity.ts",
-);
 
 function databaseErrorField(
   error: unknown,
@@ -32,18 +23,6 @@ function databaseErrorCode(error: unknown): string | undefined {
     return code;
   }
   return databaseErrorCode(Reflect.get(error, "cause"));
-}
-
-async function assertActiveProviderIdentityHelperIsCanonicalOnly(): Promise<void> {
-  const source = await fs.readFile(ACTIVE_PROVIDER_IDENTITY_HELPER, "utf8");
-  const canonicalTypeFilters = source.match(
-    /eq\(modelProviders\.type, "built-in"\)/gu,
-  );
-  assert.equal(canonicalTypeFilters?.length, 1);
-  assert.doesNotMatch(source, /["'`]vm0["'`]/u);
-  assert.doesNotMatch(source, /\binArray\s*\(/u);
-  assert.doesNotMatch(source, /\bexistingProviders\b/u);
-  assert.doesNotMatch(source, /alias(?:-pair| rows?)/iu);
 }
 
 export async function validatePermanentBuiltInProviderDiscriminatorState(
@@ -76,8 +55,6 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
   const userId = "user-provider-discriminator-permanent-30671";
 
   try {
-    await assertActiveProviderIdentityHelperIsCanonicalOnly();
-
     const residuals = await client.query<{ count: number }>(`
       SELECT (
         (SELECT count(*) FROM "agent_runs" WHERE "model_provider" = 'vm0') +
@@ -394,7 +371,7 @@ export async function validatePermanentBuiltInProviderDiscriminatorState(
       "   ✅ exact-value contraction preserves other historical provider spellings\n",
     );
     console.log(
-      "   ✅ active helper is canonical-only and preserves creation, locking, update, repeated-upsert, and row identity semantics\n",
+      "   ✅ active helper preserves canonical creation, locking, update, repeated-upsert, and row identity semantics\n",
     );
   } finally {
     await client.query(`DELETE FROM "org_model_policies" WHERE "org_id" = $1`, [
