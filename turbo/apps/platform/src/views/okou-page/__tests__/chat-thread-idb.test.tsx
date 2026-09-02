@@ -13,7 +13,10 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPageAndWaitForContent,
+} from "../../../__tests__/page-helper.ts";
 import {
   testContext,
   chatEventRowsResponse,
@@ -285,7 +288,11 @@ describe("okou chat thread IndexedDB fallback", () => {
       return respond(200, { events: [], hasMore: false });
     });
 
-    detachedSetupPage({
+    // Wait for bootstrap to hand the viewport over to page content before
+    // asserting on the composer. The app skeleton retiring is the real settle
+    // point, so the assertions below do not have to fit page bootstrap into a
+    // single Testing Library polling budget.
+    await setupPageAndWaitForContent({
       context,
       path: `/chats/${OTHER_THREAD_ID}`,
       user: { id: idbUserId(), fullName: "Test User" },

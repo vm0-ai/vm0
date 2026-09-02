@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.822.0](https://github.com/vm0-ai/vm0/compare/app-v0.821.2...app-v0.822.0) (2026-09-02)
+
+
+### Features
+
+* support no-auth custom connectors ([#30897](https://github.com/vm0-ai/vm0/issues/30897)) ([f6a4e7a](https://github.com/vm0-ai/vm0/commit/f6a4e7af74566f31c53c59035554aaf5f0c1076c))
+
+
+### Bug Fixes
+
+* **platform:** catch up active threads after indicator reload ([#30927](https://github.com/vm0-ai/vm0/issues/30927)) ([8342677](https://github.com/vm0-ai/vm0/commit/83426770cd04e75d78a77f34cea9feb6414a3888))
+
+
+### Performance Improvements
+
+* **platform:** simplify index resource loading ([#30921](https://github.com/vm0-ai/vm0/issues/30921)) ([0dee441](https://github.com/vm0-ai/vm0/commit/0dee441cddfa3e523d2846127674972f788eb11b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.0
+    * @okouai/core bumped to 8.608.0
+
 ## [0.821.2](https://github.com/vm0-ai/vm0/compare/app-v0.821.1...app-v0.821.2) (2026-09-02)
 
 

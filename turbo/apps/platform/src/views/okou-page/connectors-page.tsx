@@ -903,14 +903,13 @@ interface SettingsConnectorCardProps {
 }
 
 interface ConnectorCatalogHeaderProps {
-  readonly connectorCatalogCountEnabled: boolean;
   readonly connectorCatalogCount: number | null;
 }
 
 function ConnectorCatalogHeader(props: ConnectorCatalogHeaderProps) {
   const { t } = useTranslation();
   const description =
-    props.connectorCatalogCountEnabled && props.connectorCatalogCount !== null
+    props.connectorCatalogCount !== null
       ? t(
           ($) => {
             return $.connectors.catalog.descriptionWithCount;
@@ -1030,8 +1029,6 @@ export function ConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
-  const connectorCatalogCountEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
   const connectorAccountsEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ConnectorAccounts] ?? false;
   const accountSummariesLoadable = useLoadable(
@@ -1270,10 +1267,7 @@ export function ConnectorsPage() {
       ref={scrollContainerRef}
       className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
     >
-      <ConnectorCatalogHeader
-        connectorCatalogCountEnabled={connectorCatalogCountEnabled}
-        connectorCatalogCount={connectorCatalogCount}
-      />
+      <ConnectorCatalogHeader connectorCatalogCount={connectorCatalogCount} />
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">

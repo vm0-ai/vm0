@@ -1,10 +1,16 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 
-import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { testGoogleMeetSubscriptionRenewalContract } from "@okouai/api-contracts/contracts/test-google-meet-subscription-renewal";
-import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import {
+  workflowAutomationsContract,
+  workflowsDetailContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { onTestFinished } from "vitest";
@@ -18,19 +24,29 @@ import { server } from "../../../mocks/server";
 import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import {
+  clearWorkflowAutomationEventConnectorAsPreviousApi,
+  holdOrgAdmissionLock,
+  readOrgAdmissionLockState,
+  releaseOrgAdmissionLock,
+  stageOfficialWorkflowAutomationFixture,
+} from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
 import { chatThreadRoutes } from "../chat-threads";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { testGoogleMeetSubscriptionRenewalRoutes } from "../test-google-meet-subscription-renewal";
 import { webhooksGoogleWorkspaceEventsRoutes } from "../webhooks-google-workspace-events";
 import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 
 const context = testContext();
 const connectors = createConnectorBddApi(context);
 const mocks = createRouteMocks(context);
+const runs = createRunsApi(context);
 const workflows = createWorkflowsBddApi(context);
 
 const PUSH_AUDIENCE = "https://api.vm0.ai/api/webhooks/google-workspace-events";
@@ -54,17 +70,36 @@ interface GoogleMeetProviderOptions {
 }
 
 interface GoogleMeetProviderRecorder {
+  readonly accounts: Readonly<
+    Record<GoogleMeetProviderAccountKey, GoogleMeetProviderAccountRecorder>
+  >;
   readonly createdNames: string[];
   readonly deletedUrls: string[];
   readonly operations: string[];
+  readonly runnerGroup: string;
   readonly topicName: string;
   readonly externalId: string;
   renewCalls: number;
   reactivateCalls: number;
 }
 
+type GoogleMeetProviderAccountKey = "primary" | "secondary";
+
+interface GoogleMeetProviderAccountRecorder {
+  readonly accessToken: string;
+  readonly createdNames: string[];
+  readonly deletedUrls: string[];
+  readonly email: string;
+  readonly externalId: string;
+  readonly key: GoogleMeetProviderAccountKey;
+  readonly operations: string[];
+  renewCalls: number;
+  reactivateCalls: number;
+}
+
 interface GoogleMeetFixture {
   readonly actor: OrgActor;
+  readonly agentId: string;
   readonly workflowId: string;
   readonly connectorId: string;
   readonly provider: GoogleMeetProviderRecorder;
@@ -100,6 +135,12 @@ function renewalClient() {
   })(testGoogleMeetSubscriptionRenewalContract);
 }
 
+function workflowDetailClient() {
+  return setupApp({ context, routes: workflowsRoutes })(
+    workflowsDetailContract,
+  );
+}
+
 function encodeJwtPart(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
@@ -129,13 +170,37 @@ function configureGoogleMeetBoundaries(
   options: GoogleMeetProviderOptions = {},
 ): GoogleMeetProviderRecorder {
   const testId = randomUUID();
-  const accessToken = `google-meet-access-${testId}`;
+  const account = (
+    key: GoogleMeetProviderAccountKey,
+  ): GoogleMeetProviderAccountRecorder => {
+    return {
+      accessToken: `google-meet-access-${key}-${testId}`,
+      createdNames: [],
+      deletedUrls: [],
+      email: `meet-${key}-${testId}@example.test`,
+      externalId: `google-meet-user-${key}-${testId}`,
+      key,
+      operations: [],
+      renewCalls: 0,
+      reactivateCalls: 0,
+    };
+  };
+  const accounts = {
+    primary: account("primary"),
+    secondary: account("secondary"),
+  } as const;
+  const subscriptionAccounts = new Map<
+    string,
+    GoogleMeetProviderAccountRecorder
+  >();
   const recorder: GoogleMeetProviderRecorder = {
+    accounts,
     createdNames: [],
     deletedUrls: [],
     operations: [],
+    runnerGroup: `vm0/google-workspace-events-${testId}`,
     topicName: `projects/vm0-ai-488909/topics/google-workspace-events-${testId}`,
-    externalId: `google-meet-user-${testId}`,
+    externalId: accounts.primary.externalId,
     renewCalls: 0,
     reactivateCalls: 0,
   };
@@ -143,10 +208,7 @@ function configureGoogleMeetBoundaries(
   mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
-  mockOptionalEnv(
-    "RUNNER_DEFAULT_GROUP",
-    `vm0/google-workspace-events-${testId}`,
-  );
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", recorder.runnerGroup);
   mockOptionalEnv(
     "GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME",
     recorder.topicName,
@@ -161,45 +223,77 @@ function configureGoogleMeetBoundaries(
   );
 
   server.use(
-    http.post("https://oauth2.googleapis.com/token", () => {
+    http.post("https://oauth2.googleapis.com/token", async ({ request }) => {
+      const requestBody = new URLSearchParams(await request.text());
+      const code = requestBody.get("code");
+      const refreshToken = requestBody.get("refresh_token");
+      const requestedAccount = Object.values(accounts).find((candidate) => {
+        return (
+          code === `google-meet-code-${candidate.key}` ||
+          refreshToken === `google-meet-refresh-${candidate.key}-${testId}`
+        );
+      });
+      if (!requestedAccount) {
+        return HttpResponse.text("unknown test Google Meet account", {
+          status: 503,
+        });
+      }
       return HttpResponse.json({
-        access_token: accessToken,
-        refresh_token: `google-meet-refresh-${testId}`,
+        access_token: requestedAccount.accessToken,
+        refresh_token: `google-meet-refresh-${requestedAccount.key}-${testId}`,
         expires_in: options.tokenExpiresInSeconds ?? 3600,
         token_type: "Bearer",
         scope:
           "https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/userinfo.email",
       });
     }),
-    http.get("https://www.googleapis.com/oauth2/v2/userinfo", () => {
+    http.get("https://www.googleapis.com/oauth2/v2/userinfo", ({ request }) => {
+      const requestedAccount = Object.values(accounts).find((candidate) => {
+        return (
+          request.headers.get("authorization") ===
+          `Bearer ${candidate.accessToken}`
+        );
+      });
+      if (!requestedAccount) {
+        return HttpResponse.text("unknown test Google Meet account", {
+          status: 503,
+        });
+      }
       return HttpResponse.json({
-        id: recorder.externalId,
-        email: `meet-${testId}@example.test`,
-        name: "Google Meet User",
+        id: requestedAccount.externalId,
+        email: requestedAccount.email,
+        name: `Google Meet ${requestedAccount.key} User`,
       });
     }),
     http.post(
       "https://workspaceevents.googleapis.com/v1/subscriptions",
       async ({ request }) => {
         const requestText = await request.text();
+        const requestedAccount = Object.values(accounts).find((candidate) => {
+          return (
+            request.headers.get("authorization") ===
+            `Bearer ${candidate.accessToken}`
+          );
+        });
         if (
+          !requestedAccount ||
           !requestText.includes(recorder.topicName) ||
-          !requestText.includes(recorder.externalId)
+          !requestText.includes(requestedAccount.externalId)
         ) {
           return HttpResponse.text("unowned test subscription", {
             status: 503,
           });
         }
-        const call = recorder.createdNames.length + 1;
-        const subscriptionName = `subscriptions/google-meet-${testId}-${call}`;
+        const call = requestedAccount.createdNames.length + 1;
+        const subscriptionName = `subscriptions/google-meet-${testId}-${requestedAccount.key}-${call}`;
+        subscriptionAccounts.set(subscriptionName, requestedAccount);
         recorder.createdNames.push(subscriptionName);
         recorder.operations.push(`create:${subscriptionName}`);
-        expect(request.headers.get("authorization")).toBe(
-          `Bearer ${accessToken}`,
-        );
+        requestedAccount.createdNames.push(subscriptionName);
+        requestedAccount.operations.push(`create:${subscriptionName}`);
         const body: unknown = JSON.parse(requestText);
         expect(body).toStrictEqual({
-          targetResource: `//cloudidentity.googleapis.com/users/${recorder.externalId}`,
+          targetResource: `//cloudidentity.googleapis.com/users/${requestedAccount.externalId}`,
           eventTypes: ["google.workspace.meet.transcript.v2.fileGenerated"],
           notificationEndpoint: { pubsubTopic: recorder.topicName },
           ttl: "604800s",
@@ -212,7 +306,7 @@ function configureGoogleMeetBoundaries(
         return HttpResponse.json({
           response: {
             name: subscriptionName,
-            targetResource: `//cloudidentity.googleapis.com/users/${recorder.externalId}`,
+            targetResource: `//cloudidentity.googleapis.com/users/${requestedAccount.externalId}`,
             eventTypes: ["google.workspace.meet.transcript.v2.fileGenerated"],
             notificationEndpoint: { pubsubTopic: recorder.topicName },
             state: "ACTIVE",
@@ -227,13 +321,19 @@ function configureGoogleMeetBoundaries(
         const subscriptionName = new URL(request.url).pathname.slice(
           "/v1/".length,
         );
-        if (!subscriptionName.includes(testId)) {
+        const requestedAccount = subscriptionAccounts.get(subscriptionName);
+        if (!requestedAccount) {
           return HttpResponse.text("unowned test subscription", {
             status: 503,
           });
         }
         recorder.renewCalls += 1;
         recorder.operations.push(`renew:${subscriptionName}`);
+        requestedAccount.renewCalls += 1;
+        requestedAccount.operations.push(`renew:${subscriptionName}`);
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${requestedAccount.accessToken}`,
+        );
         expect(new URL(request.url).searchParams.get("updateMask")).toBe("ttl");
         await expect(request.json()).resolves.toStrictEqual({
           name: subscriptionName,
@@ -251,15 +351,20 @@ function configureGoogleMeetBoundaries(
     http.post(
       /^https:\/\/workspaceevents\.googleapis\.com\/v1\/subscriptions\/[^/]+:reactivate$/,
       ({ request }) => {
-        if (!request.url.includes(testId)) {
+        const subscriptionName = new URL(request.url).pathname
+          .slice("/v1/".length)
+          .replace(/:reactivate$/, "");
+        const requestedAccount = subscriptionAccounts.get(subscriptionName);
+        if (!requestedAccount) {
           return HttpResponse.text("unowned test subscription", {
             status: 503,
           });
         }
         recorder.reactivateCalls += 1;
+        requestedAccount.reactivateCalls += 1;
         return HttpResponse.json({
           response: {
-            name: recorder.createdNames.at(-1),
+            name: subscriptionName,
             state: "ACTIVE",
             expireTime: "2099-08-14T00:00:00.000Z",
           },
@@ -271,19 +376,23 @@ function configureGoogleMeetBoundaries(
       async ({ request }) => {
         const url = new URL(request.url);
         const subscriptionName = url.pathname.slice("/v1/".length);
-        if (!subscriptionName.includes(testId)) {
+        const requestedAccount = subscriptionAccounts.get(subscriptionName);
+        if (!requestedAccount) {
           return HttpResponse.text("unowned test subscription", {
             status: 503,
           });
         }
         recorder.deletedUrls.push(url.toString());
         recorder.operations.push(`delete-start:${subscriptionName}`);
+        requestedAccount.deletedUrls.push(url.toString());
+        requestedAccount.operations.push(`delete-start:${subscriptionName}`);
         expect(request.headers.get("authorization")).toBe(
-          `Bearer ${accessToken}`,
+          `Bearer ${requestedAccount.accessToken}`,
         );
         expect(url.searchParams.get("allowMissing")).toBe("true");
         await options.onDelete?.();
         recorder.operations.push(`delete-end:${subscriptionName}`);
+        requestedAccount.operations.push(`delete-end:${subscriptionName}`);
         if (options.deleteStatus !== undefined) {
           return HttpResponse.text("delete failed", {
             status: options.deleteStatus,
@@ -305,25 +414,39 @@ function configureGoogleMeetBoundaries(
   return recorder;
 }
 
-async function connectGoogleMeet(actor: OrgActor): Promise<string> {
-  const started = await connectors.startOauth(actor, "google-meet", "oauth");
+async function connectGoogleMeet(
+  actor: OrgActor,
+  provider: GoogleMeetProviderRecorder,
+  accountKey: GoogleMeetProviderAccountKey = "primary",
+  agentId?: string,
+  account?: ConnectorAccountMutationIntent,
+): Promise<string> {
+  const started = await connectors.startOauth(
+    actor,
+    "google-meet",
+    "oauth",
+    agentId,
+    account,
+  );
   const state = new URL(started.authorizationUrl).searchParams.get("state");
   if (!state) {
     throw new Error("Expected Google Meet OAuth state");
   }
   await connectors.completeOauthCallback("google-meet", {
-    code: "google-meet-code",
+    code: `google-meet-code-${accountKey}`,
     state,
   });
   const accounts = await connectors.listBuiltinConnectorAccounts(
     actor,
     "google-meet",
   );
-  const account = accounts[0];
-  if (accounts.length !== 1 || !account) {
-    throw new Error("Expected one Google Meet connector account");
+  const connectedAccount = accounts.find((candidate) => {
+    return candidate.externalEmail === provider.accounts[accountKey].email;
+  });
+  if (!connectedAccount) {
+    throw new Error(`Expected the ${accountKey} Google Meet connector account`);
   }
-  return account.id;
+  return connectedAccount.id;
 }
 
 async function setupFixture(
@@ -347,19 +470,26 @@ async function setupFixture(
     { orgId: orgActor.orgId, userId: orgActor.userId },
     { [FeatureSwitchKey.ConnectorAccounts]: true },
   );
-  const connectorId = await connectGoogleMeet(orgActor);
+  const connectorId = await connectGoogleMeet(orgActor, provider);
   context.mocks.s3.send.mockResolvedValue({});
-  return { actor: orgActor, workflowId, connectorId, provider };
+  return {
+    actor: orgActor,
+    agentId: agent.agentId,
+    workflowId,
+    connectorId,
+    provider,
+  };
 }
 
 async function createMeetAutomation(
   fixture: GoogleMeetFixture,
   enabled?: boolean,
+  workflowId: string = fixture.workflowId,
 ) {
   return await accept(
     automationsClient().create({
       headers: authHeaders(fixture.actor),
-      params: { workflowId: fixture.workflowId },
+      params: { workflowId },
       body: {
         kind: "event",
         eventType: "google-meet-transcript-generated",
@@ -563,6 +693,426 @@ describe("Google Workspace Events subscription lifecycle", () => {
     expect(fixture.provider.deletedUrls).toHaveLength(1);
   });
 
+  it("isolates simultaneous subscriptions and dispatch by selected account", async () => {
+    const fixture = await setupFixture();
+    const primary = await createMeetAutomation(fixture);
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+    const secondaryWorkflowId = await workflows.createWorkflow(fixture.actor, {
+      agentId: fixture.agentId,
+      name: `google-meet-secondary-${randomUUID()}`,
+    });
+    const secondary = await createMeetAutomation(
+      fixture,
+      false,
+      secondaryWorkflowId,
+    );
+    if (!secondary.body.chatThreadId) {
+      throw new Error("Expected a secondary automation chat thread");
+    }
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(fixture.actor),
+        params: { id: secondary.body.chatThreadId },
+        body: {
+          connectionId: secondaryConnectorId,
+          target: { kind: "builtin", connectorSlug: "google-meet" },
+        },
+      }),
+      [200],
+    );
+    await accept(
+      automationsClient().enable({
+        headers: authHeaders(fixture.actor),
+        params: { id: secondary.body.id },
+      }),
+      [200],
+    );
+
+    const primarySubscription =
+      fixture.provider.accounts.primary.createdNames[0];
+    const secondarySubscription =
+      fixture.provider.accounts.secondary.createdNames[0];
+    if (!primarySubscription || !secondarySubscription) {
+      throw new Error("Expected one subscription for each Google Meet account");
+    }
+    expect(fixture.provider.accounts.primary.createdNames).toHaveLength(1);
+    expect(fixture.provider.accounts.secondary.createdNames).toHaveLength(1);
+
+    await runs.heartbeatRunner(fixture.provider.runnerGroup);
+    const primaryPush = await postWorkspaceEvent(primarySubscription);
+    expect(primaryPush.status).toBe(200);
+    await expect(primaryPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+    const primaryRunIds = new Set(
+      (
+        await runs.listAgentRuns(fixture.actor, {
+          agent: fixture.agentId,
+          limit: 20,
+        })
+      ).runs.map((run) => {
+        return run.id;
+      }),
+    );
+    const secondaryPush = await postWorkspaceEvent(secondarySubscription);
+    expect(secondaryPush.status).toBe(200);
+    await expect(secondaryPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+    const secondaryRunId = (
+      await runs.listAgentRuns(fixture.actor, {
+        agent: fixture.agentId,
+        limit: 20,
+      })
+    ).runs.find((run) => {
+      return !primaryRunIds.has(run.id);
+    })?.id;
+    if (!secondaryRunId) {
+      throw new Error("Expected a queued run for the secondary account");
+    }
+    const claim = await runs.claimRunnerJob(secondaryRunId);
+    expect(
+      Object.values(claim.secretConnectorMetadataMap ?? {}),
+    ).toContainEqual(
+      expect.objectContaining({ sourceId: secondaryConnectorId }),
+    );
+
+    await createMeetAutomation(fixture);
+    expect(fixture.provider.accounts.primary.createdNames).toHaveLength(1);
+    expect(fixture.provider.accounts.secondary.createdNames).toHaveLength(1);
+    expect(primary.body.chatThreadId).not.toBe(secondary.body.chatThreadId);
+  });
+
+  it("reconciles subscriptions when selection and default account change", async () => {
+    const fixture = await setupFixture();
+    const created = await createMeetAutomation(fixture);
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected an automation chat thread");
+    }
+    const primarySubscription =
+      fixture.provider.accounts.primary.createdNames[0];
+    if (!primarySubscription) {
+      throw new Error("Expected a primary Google Meet subscription");
+    }
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(fixture.actor),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: secondaryConnectorId,
+          target: { kind: "builtin", connectorSlug: "google-meet" },
+        },
+      }),
+      [200],
+    );
+    const firstSecondarySubscription =
+      fixture.provider.accounts.secondary.createdNames[0];
+    if (!firstSecondarySubscription) {
+      throw new Error("Expected a selected-account subscription");
+    }
+    expect(fixture.provider.accounts.primary.deletedUrls).toHaveLength(1);
+
+    const delayedPrimary = await postWorkspaceEvent(primarySubscription);
+    expect(delayedPrimary.status).toBe(200);
+    await expect(delayedPrimary.json()).resolves.toMatchObject({
+      watchStates: 0,
+      dispatched: 0,
+    });
+    const selectedPush = await postWorkspaceEvent(firstSecondarySubscription);
+    expect(selectedPush.status).toBe(200);
+    await expect(selectedPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+
+    await accept(
+      chatThreadConnectorSelectionsClient().clear({
+        headers: authHeaders(fixture.actor),
+        params: { id: created.body.chatThreadId },
+        body: { kind: "builtin", connectorSlug: "google-meet" },
+      }),
+      [204],
+    );
+    expect(fixture.provider.accounts.primary.createdNames).toHaveLength(2);
+    expect(fixture.provider.accounts.secondary.deletedUrls).toHaveLength(1);
+
+    await accept(
+      connectorAccountsClient().setDefault({
+        headers: authHeaders(fixture.actor),
+        params: { connectionId: secondaryConnectorId },
+        body: { target: { kind: "builtin", connectorSlug: "google-meet" } },
+      }),
+      [200],
+    );
+    expect(fixture.provider.accounts.primary.deletedUrls).toHaveLength(2);
+    expect(fixture.provider.accounts.secondary.createdNames).toHaveLength(2);
+  });
+
+  it("retains staged official subscriptions across default account changes", async () => {
+    const fixture = await setupFixture();
+    const staged = await createMeetAutomation(fixture, false);
+    await stageOfficialWorkflowAutomationFixture(
+      context,
+      staged.body.id,
+      "meet-transcript",
+    );
+    expect(fixture.provider.createdNames).toStrictEqual([]);
+
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+    expect(fixture.provider.accounts.primary.createdNames).toHaveLength(1);
+    expect(fixture.provider.accounts.secondary.createdNames).toStrictEqual([]);
+
+    await accept(
+      connectorAccountsClient().setDefault({
+        headers: authHeaders(fixture.actor),
+        params: { connectionId: secondaryConnectorId },
+        body: { target: { kind: "builtin", connectorSlug: "google-meet" } },
+      }),
+      [200],
+    );
+    expect(fixture.provider.accounts.primary.deletedUrls).toHaveLength(1);
+    expect(fixture.provider.accounts.secondary.createdNames).toHaveLength(1);
+  });
+
+  it("supersedes an old source that changes before queue admission", async () => {
+    const fixture = await setupFixture();
+    const created = await createMeetAutomation(fixture);
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected an automation chat thread");
+    }
+    const primarySubscription =
+      fixture.provider.accounts.primary.createdNames[0];
+    if (!primarySubscription) {
+      throw new Error("Expected a primary Google Meet subscription");
+    }
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+    const admissionLockRequest = holdOrgAdmissionLock(
+      context,
+      `chat_event_queue:${created.body.chatThreadId}`,
+    );
+    const cleanupRequests: Promise<unknown>[] = [admissionLockRequest];
+    onTestFinished(async () => {
+      const cleanupResults = await Promise.allSettled([
+        releaseOrgAdmissionLock(context),
+        ...cleanupRequests,
+      ]);
+      const cleanupFailure = cleanupResults.find((result) => {
+        return result.status === "rejected";
+      });
+      if (cleanupFailure?.status === "rejected") {
+        throw cleanupFailure.reason;
+      }
+    });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).held;
+      })
+      .toBe(true);
+
+    const oldSourceRequest = postWorkspaceEvent(primarySubscription);
+    cleanupRequests.push(oldSourceRequest);
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).waiting;
+      })
+      .toBe(true);
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(fixture.actor),
+        params: { id: created.body.chatThreadId },
+        body: {
+          connectionId: secondaryConnectorId,
+          target: { kind: "builtin", connectorSlug: "google-meet" },
+        },
+      }),
+      [200],
+    );
+    await releaseOrgAdmissionLock(context);
+    await admissionLockRequest;
+
+    const oldSource = await oldSourceRequest;
+    expect(oldSource.status).toBe(200);
+    await expect(oldSource.json()).resolves.toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    const events = await workflows.readThreadEvents(created.body.chatThreadId);
+    expect(
+      events.filter((event) => {
+        return (
+          chatEventDisplayText(event) === "A Google Meet transcript is ready."
+        );
+      }),
+    ).toStrictEqual([]);
+
+    const secondarySubscription =
+      fixture.provider.accounts.secondary.createdNames[0];
+    if (!secondarySubscription) {
+      throw new Error("Expected a secondary Google Meet subscription");
+    }
+    const currentSource = await postWorkspaceEvent(secondarySubscription);
+    expect(currentSource.status).toBe(200);
+    await expect(currentSource.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+  });
+
+  it("reprojects a copied automation to the destination default account", async () => {
+    const fixture = await setupFixture();
+    const source = await createMeetAutomation(fixture);
+    if (!source.body.chatThreadId) {
+      throw new Error("Expected a source automation chat thread");
+    }
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+    await accept(
+      chatThreadConnectorSelectionsClient().update({
+        headers: authHeaders(fixture.actor),
+        params: { id: source.body.chatThreadId },
+        body: {
+          connectionId: secondaryConnectorId,
+          target: { kind: "builtin", connectorSlug: "google-meet" },
+        },
+      }),
+      [200],
+    );
+    const sourceSubscription =
+      fixture.provider.accounts.secondary.createdNames[0];
+    if (!sourceSubscription) {
+      throw new Error("Expected a source-account subscription");
+    }
+
+    const targetAgent = await workflows.createAgent(fixture.actor, {
+      displayName: "Google Meet copy target agent",
+    });
+    const copied = await accept(
+      workflowDetailClient().copy({
+        headers: authHeaders(fixture.actor),
+        params: { workflowId: fixture.workflowId },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(fixture.actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+    expect(copiedAutomations.body).toContainEqual(
+      expect.objectContaining({
+        kind: "event",
+        eventType: "google-meet-transcript-generated",
+        enabled: true,
+      }),
+    );
+    const copiedSubscription =
+      fixture.provider.accounts.primary.createdNames[1];
+    if (!copiedSubscription) {
+      throw new Error("Expected a destination-default subscription");
+    }
+    expect(fixture.provider.accounts.secondary.deletedUrls).toStrictEqual([]);
+
+    const sourcePush = await postWorkspaceEvent(sourceSubscription);
+    expect(sourcePush.status).toBe(200);
+    await expect(sourcePush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+    const copiedPush = await postWorkspaceEvent(copiedSubscription);
+    expect(copiedPush.status).toBe(200);
+    await expect(copiedPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+  });
+
+  it("repairs a legacy null account projection before dispatch", async () => {
+    const fixture = await setupFixture();
+    const created = await createMeetAutomation(fixture);
+    const subscriptionName = fixture.provider.createdNames[0];
+    if (!subscriptionName) {
+      throw new Error("Expected a Workspace Events subscription");
+    }
+    await clearWorkflowAutomationEventConnectorAsPreviousApi(
+      context,
+      created.body.id,
+    );
+
+    const repairedPush = await postWorkspaceEvent(subscriptionName);
+    expect(repairedPush.status).toBe(200);
+    await expect(repairedPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+  });
+
+  it("retains the exact subscription after reconnecting the same account", async () => {
+    const fixture = await setupFixture();
+    await createMeetAutomation(fixture);
+    const originalSubscription =
+      fixture.provider.accounts.primary.createdNames[0];
+    if (!originalSubscription) {
+      throw new Error("Expected an original Google Meet subscription");
+    }
+
+    const reconnectedConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "primary",
+      fixture.agentId,
+      { intent: "reconnect", connectionId: fixture.connectorId },
+    );
+    expect(reconnectedConnectorId).toBe(fixture.connectorId);
+    expect(fixture.provider.accounts.primary.createdNames).toStrictEqual([
+      originalSubscription,
+    ]);
+
+    const reconnectedPush = await postWorkspaceEvent(originalSubscription);
+    expect(reconnectedPush.status).toBe(200);
+    await expect(reconnectedPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+  });
+
   it("fails closed and does not retry after provider delete failure", async () => {
     const fixture = await setupFixture({ deleteStatus: 503 });
     const created = await createMeetAutomation(fixture);
@@ -677,6 +1227,91 @@ describe("Google Workspace Events subscription lifecycle", () => {
     );
   });
 
+  it("promotes a sibling account and repairs after deleting and re-adding accounts", async () => {
+    const fixture = await setupFixture();
+    await createMeetAutomation(fixture);
+    const primarySubscription =
+      fixture.provider.accounts.primary.createdNames[0];
+    if (!primarySubscription) {
+      throw new Error("Expected a primary Google Meet subscription");
+    }
+    const secondaryConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "secondary",
+      fixture.agentId,
+      { intent: "add", displayName: "Secondary Google Meet" },
+    );
+
+    const deletedPrimary = await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(fixture.actor),
+        params: { connectionId: fixture.connectorId },
+        body: { target: { kind: "builtin", connectorSlug: "google-meet" } },
+      }),
+      [200],
+    );
+    expect(deletedPrimary.body).toStrictEqual({
+      deletedConnectionId: fixture.connectorId,
+      resolvedSelectionCount: 0,
+      promotedDefaultConnectionId: secondaryConnectorId,
+    });
+    const secondarySubscription =
+      fixture.provider.accounts.secondary.createdNames[0];
+    if (!secondarySubscription) {
+      throw new Error("Expected a promoted-account subscription");
+    }
+    expect(fixture.provider.accounts.primary.deletedUrls).toHaveLength(1);
+
+    const delayedPrimary = await postWorkspaceEvent(primarySubscription);
+    expect(delayedPrimary.status).toBe(200);
+    await expect(delayedPrimary.json()).resolves.toMatchObject({
+      watchStates: 0,
+      dispatched: 0,
+    });
+    const promotedPush = await postWorkspaceEvent(secondarySubscription);
+    expect(promotedPush.status).toBe(200);
+    await expect(promotedPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+
+    const deletedLast = await accept(
+      connectorAccountsClient().delete({
+        headers: authHeaders(fixture.actor),
+        params: { connectionId: secondaryConnectorId },
+        body: { target: { kind: "builtin", connectorSlug: "google-meet" } },
+      }),
+      [200],
+    );
+    expect(deletedLast.body).toStrictEqual({
+      deletedConnectionId: secondaryConnectorId,
+      resolvedSelectionCount: 0,
+      promotedDefaultConnectionId: null,
+    });
+    expect(fixture.provider.accounts.secondary.deletedUrls).toHaveLength(1);
+
+    const readdedConnectorId = await connectGoogleMeet(
+      fixture.actor,
+      fixture.provider,
+      "primary",
+      fixture.agentId,
+    );
+    expect(readdedConnectorId).not.toBe(fixture.connectorId);
+    expect(fixture.provider.accounts.primary.createdNames).toHaveLength(2);
+    const readdedSubscription =
+      fixture.provider.accounts.primary.createdNames[1];
+    if (!readdedSubscription) {
+      throw new Error("Expected a re-added-account subscription");
+    }
+    const readdedPush = await postWorkspaceEvent(readdedSubscription);
+    expect(readdedPush.status).toBe(200);
+    await expect(readdedPush.json()).resolves.toMatchObject({
+      watchStates: 1,
+      dispatched: 1,
+    });
+  });
+
   it("serializes last-consumer cleanup with a concurrent enable", async () => {
     const deleteStarted = createDeferredPromise<void>(context.signal);
     const deleteRelease = createDeferredPromise<void>(context.signal);
@@ -704,21 +1339,18 @@ describe("Google Workspace Events subscription lifecycle", () => {
       params: { id: disabled.body.id },
     });
 
-    let enabledVisible = false;
-    for (let attempt = 0; attempt < 100 && !enabledVisible; attempt += 1) {
-      const listed = await accept(
-        automationsClient().list({
-          headers: authHeaders(fixture.actor),
-          params: { workflowId: fixture.workflowId },
-        }),
-        [200],
-      );
-      enabledVisible =
-        listed.body.find((automation) => {
-          return automation.id === disabled.body.id;
-        })?.enabled === true;
-    }
-    expect(enabledVisible).toBeTruthy();
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(fixture.actor),
+        params: { workflowId: fixture.workflowId },
+      }),
+      [200],
+    );
+    expect(
+      listed.body.find((automation) => {
+        return automation.id === disabled.body.id;
+      })?.enabled,
+    ).toBeFalsy();
     expect(fixture.provider.createdNames).toHaveLength(1);
     deleteRelease.resolve();
 

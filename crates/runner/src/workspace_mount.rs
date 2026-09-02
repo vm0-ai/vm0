@@ -551,6 +551,36 @@ log_call() {{
         }
 
         #[test]
+        fn mount_script_rejects_unavailable_mountinfo() {
+            let fixture = WorkspaceScriptFixture::new();
+            fixture.write_mountpoint(false, Some(WORKSPACE_DEV), None);
+            fs::remove_file(&fixture.mountinfo_path).unwrap();
+
+            let output = fixture.run_mount();
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                !output.status.success(),
+                "mount should fail: stdout={stdout} stderr={stderr}"
+            );
+            assert!(stdout.is_empty(), "unexpected stdout: {stdout}");
+            assert!(
+                stderr.contains("mountinfo is unavailable"),
+                "unexpected stderr: {stderr}"
+            );
+            assert_eq!(
+                fixture.calls(),
+                format!(
+                    "mountpoint\t-x\t--\t{}\nmountpoint\t-q\t--\t{}\n",
+                    fixture.workspace_device.display(),
+                    fixture.workspace_dir.display()
+                )
+            );
+            assert!(!fixture.workspace_dir.exists());
+        }
+
+        #[test]
         fn mount_script_rejects_existing_symlink_before_state_checks() {
             let fixture = WorkspaceScriptFixture::new();
             symlink(&fixture.outside_dir, &fixture.workspace_dir).unwrap();

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.526.0](https://github.com/vm0-ai/vm0/compare/api-v1.525.6...api-v1.526.0) (2026-09-02)
+
+
+### Features
+
+* support no-auth custom connectors ([#30897](https://github.com/vm0-ai/vm0/issues/30897)) ([f6a4e7a](https://github.com/vm0-ai/vm0/commit/f6a4e7af74566f31c53c59035554aaf5f0c1076c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.0
+    * @okouai/core bumped to 8.608.0
+    * @okouai/db bumped to 1.231.0
+
 ## [1.525.6](https://github.com/vm0-ai/vm0/compare/api-v1.525.5...api-v1.525.6) (2026-09-02)
 
 

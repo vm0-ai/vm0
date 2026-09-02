@@ -207,6 +207,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set-official-workflow-automation-admission-state"),
     automation_id: z.uuid(),
+    blueprint_key: z.string().min(1).optional(),
     reconciliation_status: z.enum([
       "current",
       "reconciling",

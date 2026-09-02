@@ -115,6 +115,7 @@ import {
   prepareGoogleFormsResponseEventConfigForPersist,
 } from "./google-forms-automation-event.service";
 import { resolveGoogleFormsAutomationConnectorId } from "./google-forms-automation-account.service";
+import { resolveGoogleMeetAutomationConnectorId } from "./google-meet-automation-account.service";
 import {
   ensureGoogleMeetTranscriptGeneratedSubscriptionForUser,
   hasEnabledGoogleMeetConsumer,
@@ -1684,7 +1685,9 @@ async function insertEventAutomation(
         ? "notion"
         : automationCreateInputIsGoogleForms(args.input)
           ? "google-forms"
-          : null;
+          : automationCreateInputIsGoogleMeet(args.input)
+            ? "google-meet"
+            : null;
     if (connectorSlug !== null) {
       await lockConnectorAccountTarget(tx, {
         orgId: args.input.orgId,
@@ -1703,7 +1706,9 @@ async function insertEventAutomation(
         ? await resolveNotionAutomationConnectorId(tx, connectorArgs)
         : automationCreateInputIsGoogleForms(args.input)
           ? await resolveGoogleFormsAutomationConnectorId(tx, connectorArgs)
-          : null;
+          : automationCreateInputIsGoogleMeet(args.input)
+            ? await resolveGoogleMeetAutomationConnectorId(tx, connectorArgs)
+            : null;
     if (
       args.expectedEventConnectorId !== undefined &&
       eventConnectorId !== args.expectedEventConnectorId
@@ -2463,6 +2468,22 @@ async function createGoogleMeetEventAutomationForWorkflow(
   const preparedConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
     args.input.eventConfig,
   );
+  const connectorId = await resolveGoogleMeetAutomationConnectorId(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+    },
+  );
+  signal.throwIfAborted();
+  if (args.input.enabled && connectorId === null) {
+    return {
+      kind: "bad-request",
+      message:
+        "Connect Google Meet before adding a Google Meet event automation",
+    };
+  }
   const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
     workflowId: args.context.workflowId,
@@ -2470,9 +2491,21 @@ async function createGoogleMeetEventAutomationForWorkflow(
     workflowTitle: args.context.workflowTitle,
     automationId: args.context.automationId,
     currentTime: nowDate(),
+    ...(args.input.enabled && connectorId !== null
+      ? { expectedEventConnectorId: connectorId }
+      : {}),
   });
+  if (summary === null) {
+    return {
+      kind: "bad-request",
+      message: "Google Meet account selection changed; retry the request",
+    };
+  }
   if (!args.input.enabled) {
     return { kind: "ok", summary };
+  }
+  if (connectorId === null) {
+    throw new Error("Enabled Google Meet automation lost account projection");
   }
 
   const rollback = async (): Promise<void> => {
@@ -2489,7 +2522,7 @@ async function createGoogleMeetEventAutomationForWorkflow(
             ownerUserId: args.input.member.userId,
             eventType: args.input.eventType,
             eventConfig: preparedConfig,
-            eventConnectorId: null,
+            eventConnectorId: connectorId,
           },
         ],
       },
@@ -2502,6 +2535,7 @@ async function createGoogleMeetEventAutomationForWorkflow(
         db: args.context.db,
         orgId: args.input.orgId,
         userId: args.input.member.userId,
+        connectorId,
       },
       signal,
     ),
@@ -3866,13 +3900,27 @@ async function prepareOfficialGoogleFormsReconfiguration(
   );
 }
 
-function prepareOfficialGoogleMeetEvent(
+async function prepareOfficialGoogleMeetEvent(
+  db: Db,
   input: CreateGoogleMeetEventAutomationInput,
-): OfficialAutomationEventPreparationResult {
+  signal: AbortSignal,
+): Promise<OfficialAutomationEventPreparationResult> {
+  const eventConnectorId = await resolveGoogleMeetAutomationConnectorId(db, {
+    orgId: input.orgId,
+    userId: input.member.userId,
+    workflowId: input.workflowId,
+  });
+  signal.throwIfAborted();
+  if (eventConnectorId === null) {
+    return {
+      kind: "bad-request",
+      message: "Connect Google Meet before using Google Meet event automations",
+    };
+  }
   const eventConfig = googleMeetTranscriptGeneratedEventConfigSchema.parse(
     input.eventConfig,
   );
-  return preparedOfficialEvent(eventConfig);
+  return preparedOfficialEvent(eventConfig, { eventConnectorId });
 }
 
 async function prepareOfficialStripeEvent(
@@ -3963,7 +4011,7 @@ export const prepareOfficialAutomationReconfiguration$ = command(
       );
     }
     if (automationCreateInputIsGoogleMeet(input)) {
-      return prepareOfficialGoogleMeetEvent(input);
+      return await prepareOfficialGoogleMeetEvent(db, input, signal);
     }
     if (automationCreateInputIsNotion(input)) {
       const enabled = await get(
@@ -4685,11 +4733,15 @@ async function enabledWatchHadConsumer(
     );
   }
   if (supportedGoogleMeetEventType(args.automation.eventType)) {
+    if (args.automation.eventConnectorId === null) {
+      return false;
+    }
     return await hasEnabledGoogleMeetConsumer(
       {
         db: args.db,
         orgId: args.automation.orgId,
         userId: args.automation.ownerUserId,
+        connectorId: args.automation.eventConnectorId,
       },
       signal,
     );
@@ -4757,11 +4809,19 @@ async function ensureEnabledAutomationEventWatch(
       : { kind: "bad-request", message: result.message };
   }
   if (supportedGoogleMeetEventType(args.automation.eventType)) {
+    if (args.automation.eventConnectorId === null) {
+      return {
+        kind: "bad-request",
+        message:
+          "Connect Google Meet before using Google Meet event automations",
+      };
+    }
     const result = await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
       {
         db: args.db,
         orgId: args.automation.orgId,
         userId: args.automation.ownerUserId,
+        connectorId: args.automation.eventConnectorId,
       },
       signal,
     );
@@ -5021,6 +5081,7 @@ async function ensureEnabledAutomationEventWatchWithRollback(
 type EnabledAutomationAccountProjection =
   | { readonly status: "gmail-unavailable" }
   | { readonly status: "google-forms-unavailable" }
+  | { readonly status: "google-meet-unavailable" }
   | { readonly status: "notion-unavailable" }
   | { readonly status: "notion-account-changed" }
   | { readonly status: "stripe-unavailable"; readonly message: string }
@@ -5052,16 +5113,82 @@ async function projectGoogleFormsEnabledEventConfig(
   return { ...config, connectorId: eventConnectorId };
 }
 
+type EnabledAutomationAccountProvider =
+  | "gmail"
+  | "google-forms"
+  | "google-meet"
+  | "notion"
+  | "stripe";
+
+function enabledAutomationAccountProvider(
+  automation: AutomationRow,
+): EnabledAutomationAccountProvider | null {
+  if (supportedGmailEventType(automation.eventType)) {
+    return "gmail";
+  }
+  if (supportedGoogleFormsEventType(automation.eventType)) {
+    return "google-forms";
+  }
+  if (supportedGoogleMeetEventType(automation.eventType)) {
+    return "google-meet";
+  }
+  if (supportedNotionEventType(automation.eventType)) {
+    return "notion";
+  }
+  return automation.eventType === "stripe-invoice-paid" ? "stripe" : null;
+}
+
+async function resolveEnabledAutomationConnectorId(
+  db: Db,
+  provider: Exclude<EnabledAutomationAccountProvider, "stripe">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workflowId: string;
+  },
+): Promise<string | null> {
+  switch (provider) {
+    case "gmail": {
+      return await resolveGmailAutomationConnectorId(db, args);
+    }
+    case "google-forms": {
+      return await resolveGoogleFormsAutomationConnectorId(db, args);
+    }
+    case "google-meet": {
+      return await resolveGoogleMeetAutomationConnectorId(db, args);
+    }
+    case "notion": {
+      return await resolveNotionAutomationConnectorId(db, args);
+    }
+  }
+}
+
+function unavailableEnabledAutomationProjection(
+  provider: Exclude<EnabledAutomationAccountProvider, "stripe">,
+): EnabledAutomationAccountProjection {
+  switch (provider) {
+    case "gmail": {
+      return { status: "gmail-unavailable" };
+    }
+    case "google-forms": {
+      return { status: "google-forms-unavailable" };
+    }
+    case "google-meet": {
+      return { status: "google-meet-unavailable" };
+    }
+    case "notion": {
+      return { status: "notion-unavailable" };
+    }
+  }
+}
+
 async function lockEnabledAutomationAccountProjection(
   db: Db,
   automation: AutomationRow,
   signal: AbortSignal,
 ): Promise<EnabledAutomationAccountProjection> {
-  const usesGmail = supportedGmailEventType(automation.eventType);
-  const usesGoogleForms = supportedGoogleFormsEventType(automation.eventType);
-  const usesNotion = supportedNotionEventType(automation.eventType);
-  const usesStripe = automation.eventType === "stripe-invoice-paid";
-  if (!usesGmail && !usesGoogleForms && !usesNotion && !usesStripe) {
+  const provider = enabledAutomationAccountProvider(automation);
+  if (provider === null) {
     return { status: "ok", required: false };
   }
   await lockConnectorAccountTarget(db, {
@@ -5069,13 +5196,7 @@ async function lockEnabledAutomationAccountProjection(
     userId: automation.ownerUserId,
     target: {
       kind: "builtin",
-      connectorSlug: usesGmail
-        ? "gmail"
-        : usesGoogleForms
-          ? "google-forms"
-          : usesNotion
-            ? "notion"
-            : "stripe",
+      connectorSlug: provider,
     },
   });
   const connectorArgs = {
@@ -5083,7 +5204,7 @@ async function lockEnabledAutomationAccountProjection(
     userId: automation.ownerUserId,
     workflowId: automation.workflowId,
   };
-  if (usesStripe) {
+  if (provider === "stripe") {
     const readiness = await resolveStripeInvoicePaidAutomationBinding(
       { db, ...connectorArgs },
       signal,
@@ -5104,32 +5225,29 @@ async function lockEnabledAutomationAccountProjection(
       },
     };
   }
-  const eventConnectorId = usesGmail
-    ? await resolveGmailAutomationConnectorId(db, connectorArgs)
-    : usesGoogleForms
-      ? await resolveGoogleFormsAutomationConnectorId(db, connectorArgs)
-      : await resolveNotionAutomationConnectorId(db, connectorArgs);
+  const eventConnectorId = await resolveEnabledAutomationConnectorId(
+    db,
+    provider,
+    connectorArgs,
+  );
   if (eventConnectorId === null) {
-    return {
-      status: usesGmail
-        ? "gmail-unavailable"
-        : usesGoogleForms
-          ? "google-forms-unavailable"
-          : "notion-unavailable",
-    };
+    return unavailableEnabledAutomationProjection(provider);
   }
-  if (usesNotion && automation.eventConnectorId !== eventConnectorId) {
+  if (
+    provider === "notion" &&
+    automation.eventConnectorId !== eventConnectorId
+  ) {
     return { status: "notion-account-changed" };
   }
   let eventConfig: WorkflowAutomationEventConfig | null =
     automation.eventConfig;
-  if (usesNotion) {
+  if (provider === "notion") {
     eventConfig = notionConfigWithConnectorId(
       automation.eventType,
       automation.eventConfig,
       eventConnectorId,
     );
-  } else if (usesGoogleForms) {
+  } else if (provider === "google-forms") {
     eventConfig = await projectGoogleFormsEnabledEventConfig(
       db,
       automation,
@@ -5165,6 +5283,7 @@ async function persistEnabledWorkflowAutomation(
   | { readonly status: "notion-account-changed" }
   | { readonly status: "stripe-unavailable"; readonly message: string }
   | { readonly status: "google-forms-unavailable" }
+  | { readonly status: "google-meet-unavailable" }
   | { readonly status: "ok"; readonly row: AutomationRow | undefined }
 > {
   return await db.transaction(async (tx) => {
@@ -5245,8 +5364,9 @@ async function prepareEnabledAutomationAccountProjection(
 > {
   const usesGmail = supportedGmailEventType(automation.eventType);
   const usesGoogleForms = supportedGoogleFormsEventType(automation.eventType);
+  const usesGoogleMeet = supportedGoogleMeetEventType(automation.eventType);
   const usesNotion = supportedNotionEventType(automation.eventType);
-  if (!usesGmail && !usesGoogleForms && !usesNotion) {
+  if (!usesGmail && !usesGoogleForms && !usesGoogleMeet && !usesNotion) {
     return { kind: "ok", eventConnectorId: automation.eventConnectorId };
   }
   const connectorArgs = {
@@ -5258,7 +5378,9 @@ async function prepareEnabledAutomationAccountProjection(
     ? await resolveGmailAutomationConnectorId(db, connectorArgs)
     : usesGoogleForms
       ? await resolveGoogleFormsAutomationConnectorId(db, connectorArgs)
-      : await resolveNotionAutomationConnectorId(db, connectorArgs);
+      : usesGoogleMeet
+        ? await resolveGoogleMeetAutomationConnectorId(db, connectorArgs)
+        : await resolveNotionAutomationConnectorId(db, connectorArgs);
   signal.throwIfAborted();
   if (eventConnectorId === null) {
     return {
@@ -5267,7 +5389,9 @@ async function prepareEnabledAutomationAccountProjection(
         ? "Connect Gmail before using Gmail event automations"
         : usesGoogleForms
           ? "Connect Google Forms before using Google Forms response automations"
-          : "Connect Notion before using Notion event automations",
+          : usesGoogleMeet
+            ? "Connect Google Meet before using Google Meet event automations"
+            : "Connect Notion before using Notion event automations",
     };
   }
   if (!supportedNotionEventType(automation.eventType)) {
@@ -5399,6 +5523,13 @@ async function persistAndReconcileEnabledWorkflowAutomation(
       kind: "bad-request",
       message:
         "Connect Google Forms before using Google Forms response automations",
+    };
+  }
+  if (enabled.status === "google-meet-unavailable") {
+    signal.throwIfAborted();
+    return {
+      kind: "bad-request",
+      message: "Connect Google Meet before using Google Meet event automations",
     };
   }
   if (!enabled.row) {
