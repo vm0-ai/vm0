@@ -381,9 +381,7 @@ body {
    swap with it. Both families ship in the stylesheet request in index.html;
    their woff2 files only download once an element actually resolves to them. */
 :root[data-typeface="geist"] {
-  --font-family-sans:
-    "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+  --font-family-sans: "Geist", system-ui, sans-serif;
   --font-family-mono:
     "Geist Mono", ui-monospace, "SF Mono", Monaco, Consolas, monospace;
 }
