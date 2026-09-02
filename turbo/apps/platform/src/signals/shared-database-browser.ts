@@ -3,12 +3,10 @@ import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
 import { i18n } from "../i18n/index.ts";
-import {
-  getCapturedPreviewBypassForTarget,
-  VERCEL_PROTECTION_BYPASS_NAME,
-} from "../lib/preview-bypass-cookie.ts";
-import { sentryLogContext } from "../lib/sentry-config.ts";
 import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
+import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
+import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
+import { sentryLogContext } from "../lib/sentry-config.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
