@@ -45,6 +45,7 @@ const GOAL_CONTINUATION_PROMPT = "Continue the active thread goal.";
 
 type GoalDrainAttempt = "initial" | "retry";
 type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
+type GoalLaunchDisposition = "continue" | "launched" | "stopped";
 type QueueFirstAgentRunInput = Parameters<
   (typeof createQueueFirstAgentRun$)["write"]
 >[1];
@@ -479,20 +480,20 @@ async function handleGoalLaunchResult(
     readonly result: RunGoalResult;
   },
   signal: AbortSignal,
-): Promise<"continue" | "done"> {
+): Promise<GoalLaunchDisposition> {
   if (args.result.kind === "ok") {
     await publishGoalQueueChanged(args.event, signal);
-    return "done";
+    return "launched";
   }
   if (args.result.kind === "enqueued") {
     const stillValid = await loadGoalQueueTarget(args.db, args.event);
     signal.throwIfAborted();
     if (!stillValid) {
       await revokeGoalEvent(args.db, args.event, signal);
-      return "done";
+      return "stopped";
     }
     return stillValid.stateRevision === args.goal.stateRevision
-      ? "done"
+      ? "stopped"
       : "continue";
   }
 
@@ -517,32 +518,55 @@ async function handleGoalLaunchResult(
     pauseResult: settlement.kind === "rejected" ? "ok" : "not_paused",
     settlement: settlement.kind,
   });
-  return "done";
+  return "stopped";
+}
+
+interface DrainGoalQueueArgs {
+  readonly chatThreadId: string;
+  readonly apiStartTime: number;
+  readonly admittedGoalFastPath?: boolean;
+  readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+  readonly goalSchedulerTiming: GoalSchedulerTimingCollector;
+  readonly queueItemCreatedBefore?: Date;
+}
+
+function appendGoalSchedulerTiming(
+  args: DrainGoalQueueArgs,
+  timing: ApiDispatchTimingCollector,
+  drainStartedAt: number,
+): void {
+  if (args.admittedGoalFastPath) {
+    args.goalSchedulerTiming.checkpointZero(
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_user_message_drain",
+    );
+    args.goalSchedulerTiming.checkpointZero(
+      "api_dispatch_pre_create_zero_goal_drain_scheduler_workflow_drain",
+    );
+  }
+  args.goalSchedulerTiming.checkpoint(
+    "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
+    drainStartedAt,
+  );
+  args.goalSchedulerTiming.appendTo(
+    timing,
+    goalDrainTimingDimensions({ role: "phase" }),
+  );
 }
 
 export const drainGoalQueueForThread$ = command(
   async (
     { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly apiStartTime: number;
-      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
-      readonly goalSchedulerTiming: GoalSchedulerTimingCollector;
-      readonly queueItemCreatedBefore?: Date;
-    },
+    args: DrainGoalQueueArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const drainStartedAt = now();
     const apiStartTime = args.apiStartTime;
     const timing = new ApiDispatchTimingCollector();
-    args.goalSchedulerTiming.checkpoint(
-      "api_dispatch_pre_create_zero_goal_drain_scheduler_goal_handoff",
-      drainStartedAt,
-    );
-    args.goalSchedulerTiming.appendTo(
-      timing,
-      goalDrainTimingDimensions({ role: "phase" }),
-    );
+    let schedulerTimingAppended = false;
+    if (!args.admittedGoalFastPath) {
+      appendGoalSchedulerTiming(args, timing, drainStartedAt);
+      schedulerTimingAppended = true;
+    }
     timing.recordElapsed(
       "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",
       "nested",
@@ -576,7 +600,11 @@ export const drainGoalQueueForThread$ = command(
       );
       signal.throwIfAborted();
       if (!event) {
-        return;
+        return false;
+      }
+      if (!schedulerTimingAppended) {
+        appendGoalSchedulerTiming(args, timing, drainStartedAt);
+        schedulerTimingAppended = true;
       }
       timing.recordElapsed(
         "api_dispatch_pre_create_zero_goal_drain_event_queue_age",
@@ -636,7 +664,8 @@ export const drainGoalQueueForThread$ = command(
       if (disposition === "continue") {
         continue;
       }
-      return;
+      return disposition === "launched";
     }
+    return false;
   },
 );

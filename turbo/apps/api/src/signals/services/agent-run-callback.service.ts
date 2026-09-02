@@ -137,7 +137,12 @@ const dispatchInternalCallback$ = command(
           handleChatInternalCallback$,
           {
             callback: input.envelope,
-            drainThreadQueue: async (chatThreadId, inputSignal, timing) => {
+            drainThreadQueue: async (
+              chatThreadId,
+              inputSignal,
+              timing,
+              goalContinuationAdmitted,
+            ) => {
               await set(
                 drainChatThreadQueueForThread$,
                 {
@@ -145,13 +150,14 @@ const dispatchInternalCallback$ = command(
                   dispatchFailedCallbacks: dispatchFailedRunCallbacks,
                   goalSchedulerOrigin: "chat_callback",
                   timing,
+                  goalContinuationAdmitted,
                 },
                 inputSignal,
               );
             },
             handleTerminalGoal: input.handleTerminalGoal
               ? async (runId, inputSignal) => {
-                  await tapError(
+                  const result = await tapError(
                     set(
                       handleTerminalGoalContinuation$,
                       {
@@ -166,6 +172,9 @@ const dispatchInternalCallback$ = command(
                         error,
                       });
                     },
+                  );
+                  return (
+                    result?.kind === "enqueued" || result?.kind === "coalesced"
                   );
                 }
               : undefined,

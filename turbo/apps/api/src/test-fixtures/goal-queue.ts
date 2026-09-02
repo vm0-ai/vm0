@@ -81,6 +81,7 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
 export async function drainChatThreadQueueFixture(args: {
   readonly threadId: string;
   readonly signal: AbortSignal;
+  readonly goalContinuationAdmitted?: boolean;
   readonly queueItemCreatedBefore?: Date;
 }): Promise<void> {
   await createStore().set(
@@ -88,6 +89,9 @@ export async function drainChatThreadQueueFixture(args: {
     {
       chatThreadId: args.threadId,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+      ...(args.goalContinuationAdmitted === undefined
+        ? {}
+        : { goalContinuationAdmitted: args.goalContinuationAdmitted }),
       queueItemCreatedBefore: args.queueItemCreatedBefore,
     },
     args.signal,

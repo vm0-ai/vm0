@@ -635,12 +635,13 @@ interface ChatCallbackDependencies {
   readonly drainThreadQueue?: (
     chatThreadId: string,
     signal: AbortSignal,
-    timing?: ChatCallbackPreCreateTimingCollector,
+    timing: ChatCallbackPreCreateTimingCollector | undefined,
+    goalContinuationAdmitted: boolean,
   ) => Promise<void>;
   readonly handleTerminalGoal?: (
     runId: string,
     signal: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 }
 
 interface ChatThreadForRunRow {
@@ -4483,6 +4484,7 @@ async function maybeDrainThreadQueueForTerminalCallback(
   args: {
     readonly enabled: boolean;
     readonly chatThreadId: string;
+    readonly goalContinuationAdmitted: boolean;
     readonly dependencies: ChatCallbackDependencies;
     readonly timing: ChatCallbackPreCreateTimingCollector;
   },
@@ -4493,7 +4495,12 @@ async function maybeDrainThreadQueueForTerminalCallback(
   }
 
   const result = await settle(
-    args.dependencies.drainThreadQueue(args.chatThreadId, signal, args.timing),
+    args.dependencies.drainThreadQueue(
+      args.chatThreadId,
+      signal,
+      args.timing,
+      args.goalContinuationAdmitted,
+    ),
     signal,
   );
   return result.ok ? { ok: true } : { ok: false, error: result.error };
@@ -4559,6 +4566,7 @@ async function handleTerminalChatCallbackPreparationFailure(
     readonly runId: string;
     readonly error: unknown;
     readonly chatThreadId: string;
+    readonly goalContinuationAdmitted: boolean;
     readonly slackDelivery: SlackDeliveryTarget | undefined;
     readonly feishuDelivery: FeishuDeliveryTarget | undefined;
     readonly dependencies: ChatCallbackDependencies;
@@ -4570,6 +4578,7 @@ async function handleTerminalChatCallbackPreparationFailure(
     {
       enabled: true,
       chatThreadId: args.chatThreadId,
+      goalContinuationAdmitted: args.goalContinuationAdmitted,
       dependencies: args.dependencies,
       timing: args.timing,
     },
@@ -4718,6 +4727,7 @@ interface TerminalChatCallbackArgs {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
+  readonly goalContinuationAdmitted: boolean;
   readonly suppressWebPushForActiveGoal: boolean;
   readonly dependencies: ChatCallbackDependencies;
 }
@@ -4788,12 +4798,38 @@ async function clearTerminalIntegrationStatus(
   );
 }
 
+async function drainAndClearTerminalChatThread(
+  args: {
+    readonly callback: TerminalChatCallbackArgs;
+    readonly chatThreadId: string;
+    readonly timing: ChatCallbackPreCreateTimingCollector;
+    readonly work: TerminalChatCallbackWork;
+  },
+  signal: AbortSignal,
+): Promise<DrainOutcome> {
+  const result = await maybeDrainThreadQueueForTerminalCallback(
+    {
+      enabled: args.work.shouldDrainThreadQueue,
+      chatThreadId: args.chatThreadId,
+      goalContinuationAdmitted: args.callback.goalContinuationAdmitted,
+      dependencies: args.callback.dependencies,
+      timing: args.timing,
+    },
+    signal,
+  );
+  await clearTerminalIntegrationStatus(
+    args.callback,
+    args.chatThreadId,
+    signal,
+  );
+  return result;
+}
+
 async function processTerminalChatCallback(
   args: TerminalChatCallbackArgs,
   signal: AbortSignal,
 ): Promise<void> {
-  const runId = args.callback.runId;
-  const callbackStatus = args.callback.status;
+  const { runId, status: callbackStatus } = args.callback;
   if (callbackStatus === "progress") {
     return;
   }
@@ -4868,6 +4904,7 @@ async function processTerminalChatCallback(
         runId,
         error: prepared.error,
         chatThreadId: chatThread.chatThreadId,
+        goalContinuationAdmitted: args.goalContinuationAdmitted,
         slackDelivery: args.payload.slackDelivery,
         feishuDelivery: args.payload.feishuDelivery,
         dependencies: args.dependencies,
@@ -4893,23 +4930,20 @@ async function processTerminalChatCallback(
     signal,
   );
 
-  const drainResult = await maybeDrainThreadQueueForTerminalCallback(
+  const drainResult = await drainAndClearTerminalChatThread(
     {
-      enabled: work.shouldDrainThreadQueue,
       chatThreadId: chatThread.chatThreadId,
-      dependencies: args.dependencies,
+      callback: args,
       timing,
+      work,
     },
     signal,
   );
-  await clearTerminalIntegrationStatus(args, chatThread.chatThreadId, signal);
 
   const deferredSideEffects = work.deferredSideEffects;
   if (deferredSideEffects) {
-    // Queue drain may launch another goal iteration or pause the goal when
-    // continuation cannot launch. Decide only after that transition so the
-    // last real run fires when the goal stops, while intermediate runs stay
-    // quiet.
+    // Decide after queue drain so the final real run fires only when the goal
+    // stops, while intermediate runs stay quiet.
     const suppressChatRunFinishedForActiveGoal = await runHasActiveGoal(
       args.db,
       runId,
@@ -5015,6 +5049,7 @@ function buildQueuedChatDispatchFailedCallbacks(
           payload,
         },
         payload,
+        goalContinuationAdmitted: false,
         suppressWebPushForActiveGoal: suppressForActiveGoal,
         dependencies: withoutQueuedRunDependency(args.dependencies),
       },
@@ -5168,7 +5203,11 @@ async function handleChatInternalCallback(
     args.callback.runId,
   );
   signal.throwIfAborted();
-  await args.dependencies.handleTerminalGoal?.(args.callback.runId, signal);
+  const goalContinuationAdmitted =
+    (await args.dependencies.handleTerminalGoal?.(
+      args.callback.runId,
+      signal,
+    )) ?? false;
   signal.throwIfAborted();
   // The webhook sender (dispatchRunCallbacks) awaits this response only to
   // record delivery; it does not retry and nothing downstream reads the body.
@@ -5186,6 +5225,7 @@ async function handleChatInternalCallback(
           db: args.db,
           callback: args.callback,
           payload: payload.data,
+          goalContinuationAdmitted,
           suppressWebPushForActiveGoal,
           dependencies: args.dependencies,
         },
