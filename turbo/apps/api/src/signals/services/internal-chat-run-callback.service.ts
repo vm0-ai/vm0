@@ -635,8 +635,8 @@ interface ChatCallbackDependencies {
   readonly drainThreadQueue?: (
     chatThreadId: string,
     signal: AbortSignal,
-    timing?: ChatCallbackPreCreateTimingCollector,
-    goalContinuationAdmitted?: boolean,
+    timing: ChatCallbackPreCreateTimingCollector | undefined,
+    goalContinuationAdmitted: boolean,
   ) => Promise<void>;
   readonly handleTerminalGoal?: (
     runId: string,

@@ -150,9 +150,7 @@ const dispatchInternalCallback$ = command(
                   dispatchFailedCallbacks: dispatchFailedRunCallbacks,
                   goalSchedulerOrigin: "chat_callback",
                   timing,
-                  ...(goalContinuationAdmitted === undefined
-                    ? {}
-                    : { goalContinuationAdmitted }),
+                  goalContinuationAdmitted,
                 },
                 inputSignal,
               );
