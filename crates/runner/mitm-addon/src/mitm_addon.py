@@ -2000,7 +2000,7 @@ def done():
     finally:
         try:
             try:
-                usage.webhook.shutdown_delivery_executors(wait=True)
+                usage.webhook.shutdown_delivery_executor(wait=True)
                 runner_flush_lifecycle.drain_delivery_work_after_executor_shutdown()
             finally:
                 auth_base_forwarder.shutdown_forward_request_workers(wait=False)

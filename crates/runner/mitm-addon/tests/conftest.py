@@ -475,7 +475,7 @@ def usage_webhook_api(mitm_ctx):
 
 @pytest.fixture
 def sync_usage_executor():
-    """Swap both usage webhook executors for a synchronous stub.
+    """Swap the usage webhook executor for a synchronous stub.
 
     Tests that want webhook side effects to complete before inline
     assertions can use this instead of a background thread plus explicit

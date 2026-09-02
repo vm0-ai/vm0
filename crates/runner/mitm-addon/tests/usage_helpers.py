@@ -92,7 +92,7 @@ def install_recording_usage_timer(
 
 @contextlib.contextmanager
 def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
-    """Install temporary usage executors and restore the originals on exit."""
+    """Install a temporary usage executor and restore the original on exit."""
     original = usage.webhook.usage_executor
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
     usage.webhook.usage_executor = executor

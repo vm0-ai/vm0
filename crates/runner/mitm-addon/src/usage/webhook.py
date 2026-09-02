@@ -504,6 +504,6 @@ def _enqueue_webhook_delivery(
     return True
 
 
-def shutdown_delivery_executors(*, wait: bool) -> None:
+def shutdown_delivery_executor(*, wait: bool) -> None:
     """Shut down the usage delivery executor."""
     usage_executor.shutdown(wait=wait)
