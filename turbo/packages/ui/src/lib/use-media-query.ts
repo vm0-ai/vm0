@@ -37,14 +37,6 @@ export function useMediaQuery(
 
     handleChange();
 
-    // Safari before version 14 only supports the legacy listener methods.
-    if (mediaQueryList.addListener) {
-      mediaQueryList.addListener(handleChange);
-      return () => {
-        mediaQueryList.removeListener(handleChange);
-      };
-    }
-
     mediaQueryList.addEventListener("change", handleChange);
     return () => {
       mediaQueryList.removeEventListener("change", handleChange);

@@ -561,28 +561,18 @@ function mockMatchMedia(
 
   vi.spyOn(window, "matchMedia").mockImplementation((query) => {
     let currentMatches = resolveMatches(query);
-    const listeners = new Set<
-      NonNullable<Parameters<MediaQueryList["addListener"]>[0]>
-    >();
+    const eventTarget = new EventTarget();
     const mediaQueryList: MediaQueryList = {
       get matches() {
         return currentMatches;
       },
       media: query,
       onchange: null,
-      addListener: vi.fn<MediaQueryList["addListener"]>((listener) => {
-        if (listener) {
-          listeners.add(listener);
-        }
-      }),
-      removeListener: vi.fn<MediaQueryList["removeListener"]>((listener) => {
-        if (listener) {
-          listeners.delete(listener);
-        }
-      }),
-      addEventListener: vi.fn<MediaQueryList["addEventListener"]>(),
-      removeEventListener: vi.fn<MediaQueryList["removeEventListener"]>(),
-      dispatchEvent: vi.fn<MediaQueryList["dispatchEvent"]>(),
+      addListener: vi.fn<MediaQueryList["addListener"]>(),
+      removeListener: vi.fn<MediaQueryList["removeListener"]>(),
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      removeEventListener: eventTarget.removeEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
     };
     entries.add({
       query,
@@ -595,9 +585,7 @@ function mockMatchMedia(
           matches,
           media: query,
         });
-        for (const listener of listeners) {
-          listener.call(mediaQueryList, event);
-        }
+        mediaQueryList.dispatchEvent(event);
         mediaQueryList.onchange?.call(mediaQueryList, event);
       },
     });
