@@ -1225,6 +1225,7 @@ describe("chat inline feedback", () => {
           createdAt: "2026-07-17T00:00:00.000Z",
           canManage: true,
           canPublish: false,
+          official: null,
         },
       ]);
     });

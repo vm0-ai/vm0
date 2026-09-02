@@ -465,6 +465,7 @@ describe("chat lifecycle", () => {
       chatThreadId: AUTOMATION_THREAD_ID,
       nextRunAt: null,
       lastRunAt: null,
+      official: null,
       workflow: {
         id: "a0000001-0000-4000-a000-000000000006",
         agentId: AGENT_ID,

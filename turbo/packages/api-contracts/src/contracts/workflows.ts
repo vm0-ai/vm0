@@ -779,9 +779,6 @@ const workflowAutomationSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
-  // Retained new App -> old API fallback from P1. Remove the optional parser
-  // in #29991 only after production proves pre-P1 APIs are no longer serving
-  // or retained for rollback.
   official: z
     .object({
       blueprintKey: officialWorkflowBlueprintKeySchema,
@@ -796,8 +793,7 @@ const workflowAutomationSummaryBaseSchema = z.object({
       parameterBindings: z.array(officialWorkflowParameterBindingSchema),
     })
     .strict()
-    .nullable()
-    .optional(),
+    .nullable(),
 });
 
 export const workflowScheduleAutomationSummarySchema =
@@ -1517,9 +1513,6 @@ export const workflowSummarySchema = z.object({
   createdAt: z.string().datetime(),
   canManage: z.boolean(),
   canPublish: z.boolean(),
-  // Retained new App -> old API fallback from P1. Remove the optional parser
-  // in #29991 only after production proves pre-P1 APIs are no longer serving
-  // or retained for rollback.
   official: z
     .object({
       definitionName: workflowNameSchema,
@@ -1528,8 +1521,7 @@ export const workflowSummarySchema = z.object({
       readOnly: z.literal(true),
     })
     .strict()
-    .nullable()
-    .optional(),
+    .nullable(),
   shadowedBy: z
     .object({
       id: z.string().uuid(),
