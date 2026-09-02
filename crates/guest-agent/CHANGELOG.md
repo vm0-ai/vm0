@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.8...guest-agent-v0.84.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+
 ## [0.83.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.7...guest-agent-v0.83.8) (2026-09-02)
 
 ## [0.83.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.83.6...guest-agent-v0.83.7) (2026-09-02)

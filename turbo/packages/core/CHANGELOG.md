@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.609.0](https://github.com/vm0-ai/vm0/compare/core-v8.608.3...core-v8.609.0) (2026-09-02)
+
+
+### Features
+
+* add Claude Fable 5.1 support ([#30932](https://github.com/vm0-ai/vm0/issues/30932)) ([15f6717](https://github.com/vm0-ai/vm0/commit/15f6717327d927cc8bc61ff3af3cf17802aa4853))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.391.0
+
 ## [8.608.3](https://github.com/vm0-ai/vm0/compare/core-v8.608.2...core-v8.608.3) (2026-09-02)
 
 
