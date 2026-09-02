@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.22](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.21...guest-contracts-v0.12.22) (2026-09-02)
+
+
+### Bug Fixes
+
+* **runner:** report authoritative provider failure reasons ([#31163](https://github.com/vm0-ai/vm0/issues/31163)) ([b84e233](https://github.com/vm0-ai/vm0/commit/b84e2334f9e370b59a299b00250fc037d90538dd))
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
 ## [0.12.21](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.20...guest-contracts-v0.12.21) (2026-09-02)
 
 
