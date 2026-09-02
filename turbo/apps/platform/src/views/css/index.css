@@ -541,10 +541,10 @@ body {
   /* The composer is the largest surface on the page and leads the radius scale. */
   --zero-composer-radius: 1.5rem;
   --zero-card-shadow:
-    0 2px 12px hsl(20 6% 45% / 0.05), 0 0 0 0.5px hsl(20 6% 45% / 0.025);
+    0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025);
   /* Static focus veil for the composer. Fading this layer through opacity lets
      the browser composite it without interpolating the wide blur every frame. */
-  --zero-composer-focus-veil: 0 10px 48px -8px hsl(20 8% 45% / 0.09);
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
@@ -702,7 +702,7 @@ body {
   background-color: hsl(var(--zero-nav-rail));
 }
 :where([data-theme="dark"]) .zero-nav {
-  --color-sidebar: hsl(0 4.3% 10.5%);
+  --color-sidebar: hsl(30 4.3% 10.5%);
 }
 
 /* Morandi outline buttons */
