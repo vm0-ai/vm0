@@ -1486,8 +1486,9 @@ jobs:
 
   # Deploy the production Worker only after the synchronized Pages fallback is
   # ready. The Worker owns the live App routes while retaining the direct canary
-  # domains for diagnosis. Remove the Pages fallback under vm0-ai/vm0#31133
-  # after the post-cutover observation period.
+  # domains for diagnosis. Keep Pages for at least 24 hours after cutover and
+  # until one post-cutover App production release succeeds and browser QA passes
+  # on both live domains. Remove it under vm0-ai/vm0#31133 after all gates pass.
   promote-app-worker-production:
     needs: [release-please, promote-app-production]
     if: >-
