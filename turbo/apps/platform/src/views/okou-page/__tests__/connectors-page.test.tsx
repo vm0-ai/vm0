@@ -66,7 +66,10 @@ import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { submitManualGrant$ } from "../../../signals/okou-page/settings/connectors.ts";
+import {
+  manualGrantFormValuesFor$,
+  submitManualGrant$,
+} from "../../../signals/okou-page/settings/connectors.ts";
 import { customConnectorCreateForm$ } from "../../../signals/okou-page/settings/custom-connectors.ts";
 
 const context = testContext();
@@ -4414,6 +4417,62 @@ describe("connectors page", () => {
     });
   });
 
+  it("resets manual grant values when the connection dialog opens", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorSlug: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const connectButton = await screen.findByLabelText("Connect Public Axiom");
+    click(connectButton);
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(firstDialog).getByPlaceholderText("public-xaat"),
+      "stale-manual-token",
+    );
+    click(within(firstDialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(firstDialog).not.toBeInTheDocument();
+    });
+    expect(context.store.get(manualGrantFormValuesFor$)("axiom")).toStrictEqual(
+      { apiToken: "stale-manual-token" },
+    );
+
+    click(connectButton);
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    expect(
+      within(reopenedDialog).getByPlaceholderText("public-xaat"),
+    ).toHaveValue("");
+  });
+
   it("connects manual-grant connectors without permission dialogs", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -4516,6 +4575,9 @@ describe("connectors page", () => {
     expect(
       screen.queryByText("You've successfully connected with Public Axiom!"),
     ).not.toBeInTheDocument();
+    expect(context.store.get(manualGrantFormValuesFor$)("axiom")).toStrictEqual(
+      { apiToken: "xaat-test" },
+    );
 
     await fill(screen.getByPlaceholderText("Find connectors"), "stripe");
     click(await screen.findByLabelText("Connect Public Stripe"));
@@ -5460,6 +5522,44 @@ describe("connectors page", () => {
     });
     click(buttonByText("Add authentication", createDialog));
     expect(queryMenuItemByText("No authentication")).not.toBeInTheDocument();
+  });
+
+  it("initializes the custom connector create form on every open", async () => {
+    mockCustomConnectorStory();
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    click(await screen.findByText("New connector"));
+    const firstDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    click(buttonByText("Add authentication", firstDialog));
+    click(menuItemByText("OAuth 2.0"));
+    await fill(
+      within(firstDialog).getByLabelText("Client secret"),
+      "stale-client-secret",
+    );
+    click(buttonByText("Cancel", firstDialog));
+
+    await waitFor(() => {
+      expect(firstDialog).not.toBeInTheDocument();
+    });
+    expect(
+      context.store.get(customConnectorCreateForm$).oauthClientSecret,
+    ).toBe("stale-client-secret");
+
+    click(screen.getByText("New connector"));
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual([]);
+    click(buttonByText("Add authentication", reopenedDialog));
+    click(menuItemByText("OAuth 2.0"));
+    expect(within(reopenedDialog).getByLabelText("Client secret")).toHaveValue(
+      "",
+    );
   });
 
   it.each([
@@ -6735,6 +6835,9 @@ describe("connectors page", () => {
       expect(screen.getByText("Acme API")).toBeInTheDocument();
     });
     expect(createdBodies).toHaveLength(1);
+    expect(
+      context.store.get(customConnectorCreateForm$).oauthClientSecret,
+    ).toBe("connector-oauth-client-secret");
     expect(createdBodies[0]).toMatchObject({
       displayName: "Acme API",
       storageVersion: 1,

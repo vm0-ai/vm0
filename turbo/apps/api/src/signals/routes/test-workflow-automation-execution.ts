@@ -12,7 +12,6 @@ import type { RouteEntry } from "../route-entry";
 import { dispatchRunCallbacks } from "../services/agent-run-callback.service";
 import { handleWorkflowAutomationResultEmailInternalCallback } from "../services/internal-workflow-automation-result-email-callback.service";
 import { executeDueNotionAutomationEventsForAutomation$ } from "../services/notion-automation-event.service";
-import { executeDueStrapiAutomationEventsForAutomation$ } from "../services/strapi-automation-event.service";
 import { executeDueStripeAutomationEventsForAutomation$ } from "../services/stripe-automation-event.service";
 import { executeDueWorkflowAutomationsForAutomation$ } from "../services/workflow-automation-poller.service";
 import {
@@ -54,11 +53,6 @@ const executeTestWorkflowAutomation$ = command(
       automationId,
       signal,
     );
-    const strapi = await set(
-      executeDueStrapiAutomationEventsForAutomation$,
-      automationId,
-      signal,
-    );
     const stripe = await set(
       executeDueStripeAutomationEventsForAutomation$,
       automationId,
@@ -70,15 +64,10 @@ const executeTestWorkflowAutomation$ = command(
       status: 200 as const,
       body: {
         success: true as const,
-        executed:
-          scheduled.executed +
-          notion.executed +
-          strapi.executed +
-          stripe.executed,
+        executed: scheduled.executed + notion.executed + stripe.executed,
         skipped:
           scheduled.skipped +
           notion.skipped +
-          strapi.skipped +
           stripe.skipped +
           stripe.failed +
           stripe.retried,

@@ -3139,45 +3139,6 @@
         "uninstallTargetFallback": "このボット",
         "uninstallTitle": "Feishu ボットをアンインストールしますか?"
       },
-      "strapi": {
-        "actions": {
-          "cancel": "キャンセル",
-          "checkTest": "チェックテスト",
-          "copy": "コピー",
-          "create": "統合の作成",
-          "remove": "削除",
-          "revealAuthorization": "認可ヘッダーを明らかにする"
-        },
-        "addDescription": "1 つの統合で複数のワークフローオートメーションに対応できます。",
-        "addTitle": "Strapi インスタンスを追加します",
-        "adminRequired": "Strapi 統合を追加または更新するように組織管理者に依頼します。",
-        "authorizationHeader": "認可ヘッダー",
-        "copied": "{{label}} がコピーされました",
-        "description": "{{assistantName}} が公開された Strapi エントリに反応し、ダウンストリーム作業を自動化できるようにします。",
-        "documentTitle": "Strapi",
-        "empty": "Strapi インスタンスはまだ接続されていません。",
-        "form": {
-          "name": "名前",
-          "namePlaceholder": "企業CMS",
-          "url": "Strapi URL"
-        },
-        "instructions": "Strapi で、[設定] → [Webhook] を開き、この URL と認証ヘッダーを追加し、entry.publish を選択して、[トリガー] をクリックして Strapi テスト Webhook を送信します。",
-        "lastPublish": "最終公開日: {{date}}",
-        "lastTest": "最後のテスト: {{date}}",
-        "notReceived": "未受信",
-        "removeDescription": "まずワークフローのオートメーションを削除します。 Strapi この URL への Webhook リクエストは機能しなくなります。",
-        "removeTitle": "Strapi 統合を削除しますか?",
-        "tested": "Webhook テスト済み",
-        "title": "Strapi",
-        "toasts": {
-          "created": "Strapi 統合が作成されました",
-          "noTestReceived": "Strapi テスト Webhook をまだ受信していません",
-          "removed": "Strapi 統合が削除されました",
-          "testReceived": "Strapi テスト Webhook を受信しました"
-        },
-        "webhookUrl": "Webhook URL",
-        "whereAssistantWorks": "{{assistantName}} が機能する場所"
-      },
       "telegram": {
         "addBot": "ボットの追加",
         "addDescription": "BotFather の各手順を完了してから、ワークスペース ボットを作成します。",
@@ -5858,26 +5819,6 @@
         "time": "時間 ({{timezone}})",
         "updateScheduleAria": "更新スケジュールのオートメーション"
       },
-      "strapi": {
-        "addAction": "Strapi オートメーションを追加",
-        "addAria": "Strapi エントリ公開オートメーションを追加",
-        "addDescription": "ローカライズされたパブリッシュ イベントの一致が解決したら、このワークフローを実行します。",
-        "addTitle": "Strapi オートメーションを追加",
-        "configure": "Strapi を構成する",
-        "connectFirst": "このオートメーションを作成する前に、Strapi インスタンスを接続してください。",
-        "contentType": "コンテンツタイプ UID (オプション)",
-        "contentTypeAny": "あらゆるコンテンツタイプ",
-        "contentTypePlaceholder": "api::article.article",
-        "entryPublishedDescription": "一致する Strapi エントリが公開された後に実行します。",
-        "entryPublishedTitle": "Strapi エントリが公開されました",
-        "instance": "Strapi インスタンス",
-        "locale": "ロケール (オプション)",
-        "localeAny": "任意のロケール",
-        "localeHint": "同じドキュメントのすべてのローカライズされたパブリッシュ イベントを 1 つのワークフロー実行に結合するには、ロケールを空白のままにします。",
-        "localePlaceholder": "jp",
-        "localeSummary": "ロケール {{locale}}",
-        "rule": "一致する Strapi エントリが公開されたとき"
-      },
       "stripe": {
         "addAction": "Stripe オートメーションを追加",
         "addAria": "Stripe の請求書支払い済みオートメーションを追加",
@@ -5923,7 +5864,6 @@
         "googleForms": "Google Forms",
         "googleMeet": "Google 会う",
         "notion": "Notion",
-        "strapi": "Strapi",
         "stripe": "Stripe",
         "webhook": "Webhook"
       },
@@ -6244,10 +6184,6 @@
       "title": "Slack",
       "uninstallDescription": "これにより、ワークスペース全体の Slack 統合が削除されます。接続されているすべてのユーザーは切断され、{{displayName}} は Slack のメッセージやメンションに応答しなくなります。この操作は元に戻すことができません。",
       "uninstallTitle": "Slack 統合をアンインストールしますか?"
-    },
-    "strapi": {
-      "description": "エントリー公開時の作業を自動化する",
-      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Microsoft Teams 統合をインストールするように管理者に依頼してください",

@@ -1,13 +1,11 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@okouai/ui";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import {
   BAND_BASE_WIDTH_PX,
   type LocatorRole,
 } from "../../signals/chat-page/chat-conversation-locator.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { AgentAvatarImg } from "./sidebar-shared.tsx";
 import { formatChatTimestamp } from "../../i18n/format.ts";
 
@@ -132,10 +130,5 @@ export function ChatConversationLocator({
 }: {
   thread: ChatPanelSignals;
 }) {
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatConversationLocator] ?? false;
-  if (!enabled) {
-    return null;
-  }
   return <ConversationLocatorRail thread={thread} />;
 }

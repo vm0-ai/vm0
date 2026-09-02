@@ -502,7 +502,7 @@ describe("chat start cards", () => {
     });
   });
 
-  it("reattaches the source when chat creation is retried", async () => {
+  it("restores the source in a fresh wizard when chat creation is retried", async () => {
     const user = userEvent.setup({ delay: null });
     const downloads = context.mocks.browser.blobDownload();
     let sentUserMessage: UserMessageDocument | undefined;
@@ -582,17 +582,32 @@ describe("chat start cards", () => {
       throw new Error("Expected the new chat navigation link");
     }
     click(newChatLink);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Create an intro video" }),
+      ).not.toBeInTheDocument();
+    });
+    click(await screen.findByTestId("intro-video-start-card"));
     const retryDialog = await screen.findByRole("dialog", {
       name: "Create an intro video",
     });
     expect(
-      screen.getByText(
+      screen.queryByText(
         "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     await expect(
-      screen.findByText("Review your intro video"),
+      screen.findByText("Your source is ready"),
     ).resolves.toBeInTheDocument();
+    click(buttonWithText("Next", retryDialog));
+    await screen.findByText("Choose an avatar");
+    click(buttonWithText("Next", retryDialog));
+    await screen.findByText("Choose a voice");
+    const noVoiceover = buttonWithText("No voiceover", retryDialog, false);
+    expect(noVoiceover).toHaveAttribute("aria-pressed", "false");
+    click(noVoiceover);
+    click(buttonWithText("Next", retryDialog));
+    await screen.findByText("Review your intro video");
 
     const retryCreateButton = buttonWithText("Create in chat", retryDialog);
     expect(retryCreateButton).toBeEnabled();
@@ -689,7 +704,7 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     expect(
-      buttonWithText("Choose screen and start", reopenedDialog),
+      buttonWithText("Record your screen", reopenedDialog, false),
     ).toBeInTheDocument();
     click(screen.getByLabelText("Close"));
   });
@@ -744,7 +759,7 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     expect(
-      buttonWithText("Choose screen and start", reopenedDialog),
+      buttonWithText("Record your screen", reopenedDialog, false),
     ).toBeInTheDocument();
     click(screen.getByLabelText("Close"));
   });
@@ -804,7 +819,7 @@ describe("chat start cards", () => {
       name: "Create an intro video",
     });
     expect(
-      buttonWithText("Choose screen and start", reopenedDialog),
+      buttonWithText("Record your screen", reopenedDialog, false),
     ).toBeInTheDocument();
     click(screen.getByLabelText("Close"));
   });

@@ -4,7 +4,6 @@ import { command } from "ccstate";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
 import { executeDueNotionAutomationEvents$ } from "../services/notion-automation-event.service";
-import { executeDueStrapiAutomationEvents$ } from "../services/strapi-automation-event.service";
 import { executeDueStripeAutomationEvents$ } from "../services/stripe-automation-event.service";
 import { executeDueWorkflowAutomations$ } from "../services/workflow-automation-poller.service";
 import { executeOfficialWorkflowReconciliationWork$ } from "../services/official-workflow-reconciliation-worker.service";
@@ -32,7 +31,6 @@ const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
     }
     const result = await set(executeDueWorkflowAutomations$, signal);
     const notionResult = await set(executeDueNotionAutomationEvents$, signal);
-    const strapiResult = await set(executeDueStrapiAutomationEvents$, signal);
     const stripeResult = await set(executeDueStripeAutomationEvents$, signal);
     signal.throwIfAborted();
 
@@ -41,14 +39,10 @@ const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
       body: {
         success: true as const,
         executed:
-          result.executed +
-          notionResult.executed +
-          strapiResult.executed +
-          stripeResult.executed,
+          result.executed + notionResult.executed + stripeResult.executed,
         skipped:
           result.skipped +
           notionResult.skipped +
-          strapiResult.skipped +
           stripeResult.skipped +
           stripeResult.failed +
           stripeResult.retried,

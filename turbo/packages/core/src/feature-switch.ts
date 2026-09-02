@@ -299,12 +299,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
-  [FeatureSwitchKey.ChatConversationLocator]: {
-    maintainer: "tongx@vm0.ai",
-    description:
-      "Show the conversation locator rail beside long chat threads, with hover preview and click-to-jump.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -339,13 +333,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // flatten and two-file send are still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
-  },
-  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
-    maintainer: "tongx@vm0.ai",
-    description:
-      "Add a category icon rail, pinned section titles, jump-to-category scrolling, and a hovered-emoji name bar to the thread emoji picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
@@ -394,13 +381,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.StrapiIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable Strapi integration settings and Strapi entry-published workflow automations.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

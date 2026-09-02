@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.526.1](https://github.com/vm0-ai/vm0/compare/api-v1.526.0...api-v1.526.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **api:** bind google meet triggers to selected account ([#30906](https://github.com/vm0-ai/vm0/issues/30906)) ([d567690](https://github.com/vm0-ai/vm0/commit/d567690ee7612f31b86e26657d1270d6ac099196))
+* **api:** bound snapshot convergence ([#30929](https://github.com/vm0-ai/vm0/issues/30929)) ([8850bca](https://github.com/vm0-ai/vm0/commit/8850bca232d7c8f65ee29fc4e424c35116a348e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.390.1
+    * @okouai/core bumped to 8.608.1
+    * @okouai/db bumped to 1.231.1
+
 ## [1.526.0](https://github.com/vm0-ai/vm0/compare/api-v1.525.6...api-v1.526.0) (2026-09-02)
 
 

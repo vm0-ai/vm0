@@ -37,7 +37,6 @@ import { setupTeamsConnectPage$ } from "./okou-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./okou-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./okou-page/telegram-settings-page.ts";
 import { setupFeishuSettingsPage$ } from "./okou-page/feishu-settings-page.ts";
-import { setupStrapiSettingsPage$ } from "./okou-page/strapi-settings-page.ts";
 import { setupFeishuOAuthCallbackPage$ } from "./okou-page/feishu-oauth-callback-page.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
@@ -308,10 +307,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsFeishu,
     setup: setupAuthSidebarPageWrapper(setupFeishuSettingsPage$),
-  },
-  {
-    path: ROUTES.settingsStrapi,
-    setup: setupAuthSidebarPageWrapper(setupStrapiSettingsPage$),
   },
   {
     path: ROUTES.settingsTelegram,
