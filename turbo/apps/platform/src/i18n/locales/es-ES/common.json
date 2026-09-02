@@ -4736,12 +4736,6 @@
     },
     "redirecting": "Redirigiendo...",
     "status": {
-      "atLimit_one": "Solo puedes ejecutar {{limit}} tarea a la vez. Las nuevas ejecuciones esperarán en la cola hasta que termine una.",
-      "atLimit_many": "Solo puedes ejecutar {{limit}} tareas a la vez. Las nuevas ejecuciones esperarán en la cola hasta que termine una.",
-      "atLimit_other": "Solo puedes ejecutar {{limit}} tareas a la vez. Las nuevas ejecuciones esperarán en la cola hasta que termine una.",
-      "available_one": "{{count}} cupo disponible",
-      "available_many": "{{count}} cupos disponibles",
-      "available_other": "{{count}} cupos disponibles",
       "availableNow": "Disponible ahora",
       "inUse_one": "{{active}} de {{limit}} cupo en uso",
       "inUse_many": "{{active}} de {{limit}} cupos en uso",

@@ -4683,10 +4683,6 @@
     },
     "redirecting": "Weiterleitung...",
     "status": {
-      "atLimit_one": "Sie können jeweils nur {{limit}} Aufgabe gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
-      "atLimit_other": "Sie können jeweils nur {{limit}} Aufgaben gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
-      "available_one": "{{count}} Slot verfügbar",
-      "available_other": "{{count}} Slots verfügbar",
       "availableNow": "Jetzt verfügbar",
       "inUse_one": "{{active}} von {{limit}} Slot belegt",
       "inUse_other": "{{active}} von {{limit}} Slots belegt"

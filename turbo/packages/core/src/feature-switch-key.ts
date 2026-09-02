@@ -55,7 +55,6 @@ export enum FeatureSwitchKey {
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   PersonalModelProviderAccounts = "personalModelProviderAccounts",
   ConnectorAccounts = "connectorAccounts",
-  ConcurrencyMemberUsage = "concurrencyMemberUsage",
   FeishuIntegration = "feishuIntegration",
   StrapiIntegration = "strapiIntegration",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",

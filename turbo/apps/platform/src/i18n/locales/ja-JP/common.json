@@ -4675,10 +4675,6 @@
     },
     "redirecting": "リダイレクト中...",
     "status": {
-      "atLimit_one": "一度に実行できるのは {{limit}} タスクのみです。新しい実行は、終了するまでキューで待機します。",
-      "atLimit_other": "一度に実行できるタスクは {{limit}} のみです。新しい実行は、終了するまでキューで待機します。",
-      "available_one": "{{count}} スロットが使用可能です",
-      "available_other": "{{count}} スロットが利用可能",
       "availableNow": "現在利用可能",
       "inUse_one": "{{limit}} スロットの {{active}} が使用中です",
       "inUse_other": "{{limit}} スロット中 {{active}} が使用中です"

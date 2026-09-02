@@ -4736,12 +4736,6 @@
     },
     "redirecting": "Redirecionando...",
     "status": {
-      "atLimit_one": "Você atingiu o limite de {{limit}} execução simultânea. Novas execuções aguardarão na fila.",
-      "atLimit_many": "Você atingiu o limite de {{limit}} execuções simultâneas. Novas execuções aguardarão na fila.",
-      "atLimit_other": "Você atingiu o limite de {{limit}} execuções simultâneas. Novas execuções aguardarão na fila.",
-      "available_one": "{{count}} slot disponível",
-      "available_many": "{{count}} slots disponíveis",
-      "available_other": "{{count}} slots disponíveis",
       "availableNow": "Disponível agora",
       "inUse_one": "{{active}} de {{limit}} slot em uso",
       "inUse_many": "{{active}} de {{limit}} slots em uso",

@@ -4675,10 +4675,6 @@
     },
     "redirecting": "리디렉션 중...",
     "status": {
-      "atLimit_one": "한 번에 {{limit}}개의 작업만 실행할 수 있습니다. 새 실행은 하나가 완료될 때까지 대기열에서 기다립니다.",
-      "atLimit_other": "한 번에 {{limit}}개의 작업만 실행할 수 있습니다. 새 실행은 하나가 완료될 때까지 대기열에서 기다립니다.",
-      "available_one": "{{count}}개의 슬롯 사용 가능",
-      "available_other": "{{count}}개의 슬롯 사용 가능",
       "availableNow": "현재 사용 가능",
       "inUse_one": "{{active}}개 사용 중, 총 {{limit}}개 슬롯",
       "inUse_other": "{{active}}개 사용 중, 총 {{limit}}개 슬롯"

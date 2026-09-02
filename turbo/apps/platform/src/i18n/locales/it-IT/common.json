@@ -4736,12 +4736,6 @@
     },
     "redirecting": "Reindirizzamento...",
     "status": {
-      "atLimit_one": "Puoi eseguire solo {{limit}} attività alla volta. Le nuove esecuzioni resteranno in coda finché una non termina.",
-      "atLimit_many": "Puoi eseguire solo {{limit}} attività alla volta. Le nuove esecuzioni resteranno in coda finché una non termina.",
-      "atLimit_other": "Puoi eseguire solo {{limit}} attività alla volta. Le nuove esecuzioni resteranno in coda finché una non termina.",
-      "available_one": "{{count}} slot disponibile",
-      "available_many": "{{count}} slot disponibili",
-      "available_other": "{{count}} slot disponibili",
       "availableNow": "Disponibili ora",
       "inUse_one": "{{active}} di {{limit}} slot in uso",
       "inUse_many": "{{active}} di {{limit}} slot in uso",

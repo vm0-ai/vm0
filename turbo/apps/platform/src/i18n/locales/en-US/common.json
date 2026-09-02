@@ -4675,10 +4675,6 @@
     },
     "redirecting": "Redirecting...",
     "status": {
-      "atLimit_one": "You can only run {{limit}} task at a time. New runs will wait in a queue until one finishes.",
-      "atLimit_other": "You can only run {{limit}} tasks at a time. New runs will wait in a queue until one finishes.",
-      "available_one": "{{count}} slot available",
-      "available_other": "{{count}} slots available",
       "availableNow": "Available now",
       "inUse_one": "{{active}} of {{limit}} slot in use",
       "inUse_other": "{{active}} of {{limit}} slots in use"
