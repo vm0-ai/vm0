@@ -10,6 +10,7 @@ import type {
   PiApiAssistantMessage,
   PiApiFirstTurnArgs,
   PiApiFirstTurnResult,
+  PiObservedServiceTier,
 } from "./api-types";
 import { UnsupportedPiResourceSnapshotError } from "./errors";
 
@@ -98,6 +99,7 @@ export async function runPiApiFirstTurn(
       session: memorySession,
       settings: shell.services.settingsManager.getCompactionSettings(),
     });
+    let observedServiceTier: PiObservedServiceTier;
     const turn = await runPiFirstModelTurn({
       model: shell.model,
       session: memorySession,
@@ -109,6 +111,9 @@ export async function runPiApiFirstTurn(
       streamOptions: {
         apiKey: args.model.apiKey,
         signal,
+        onObservedServiceTier: (serviceTier) => {
+          observedServiceTier = serviceTier;
+        },
         ...(args.model.serviceTier === undefined
           ? {}
           : { serviceTier: args.model.serviceTier }),
@@ -119,6 +124,7 @@ export async function runPiApiFirstTurn(
     return {
       assistantMessage: projectPiApiAssistantMessage(turn.assistantMessage),
       handoffRequired: turn.handoffRequired,
+      observedServiceTier,
       sessionJsonl: memorySession.toJsonl(),
     };
   } finally {
