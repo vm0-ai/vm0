@@ -270,7 +270,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.PiLoop]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "lancy@vm0.ai",
     description:
       "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
     enabled: false,
