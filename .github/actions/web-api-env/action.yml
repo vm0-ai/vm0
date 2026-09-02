@@ -170,17 +170,6 @@ runs:
           add_env "$1" "$(repo_secret "$2")"
         }
 
-        add_doppler_secret() {
-          local key="$1"
-          local value
-          value="$(doppler_secret "$key")"
-          if [[ -z "$value" ]]; then
-            echo "::error::${key} is missing from Doppler config"
-            exit 1
-          fi
-          add_env "$key" "$value"
-        }
-
         add_oauth_client_config_key() {
           local key="$1"
           local value
@@ -327,7 +316,7 @@ runs:
         fi
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret MINIMAX_API_KEY MINIMAX_API_KEY
-        add_doppler_secret BYTEPLUS_STT_API_KEY
+        add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
         add_var VAPID_PUBLIC_KEY VAPID_PUBLIC_KEY
         add_secret VAPID_PRIVATE_KEY VAPID_PRIVATE_KEY
         add_env CONCURRENT_RUN_LIMIT_CAP "$concurrent_run_limit_cap"

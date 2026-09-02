@@ -339,9 +339,6 @@ build_doppler_secrets_json() {
       }
     ' <<< "$json"
   )"
-  if [[ "$omit_key" != "BYTEPLUS_STT_API_KEY" ]]; then
-    json="$(jq -c '. + {BYTEPLUS_STT_API_KEY: "doppler-byteplus-stt-api-key"}' <<< "$json")"
-  fi
   printf '%s' "$json"
 }
 
@@ -676,7 +673,6 @@ assert_env_value "$success_env_file" QUICKBOOKS_OAUTH_CLIENT_ID "doppler-QUICKBO
 assert_env_value "$success_env_file" QUICKBOOKS_OAUTH_CLIENT_SECRET "doppler-QUICKBOOKS_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" TIKTOK_ADS_OAUTH_CLIENT_ID "doppler-TIKTOK_ADS_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" TIKTOK_ADS_OAUTH_CLIENT_SECRET "doppler-TIKTOK_ADS_OAUTH_CLIENT_SECRET"
-assert_env_value "$success_env_file" BYTEPLUS_STT_API_KEY "doppler-byteplus-stt-api-key"
 assert_env_value "$success_env_file" MICROSOFT_TEAMS_BOT_APP_ID "github-teams-bot-app-id"
 assert_env_value "$success_env_file" MICROSOFT_TEAMS_BOT_APP_PASSWORD "github-teams-bot-app-password"
 assert_env_value "$success_env_file" MICROSOFT_TEAMS_APP_TENANT_ID "github-teams-app-tenant-id"
@@ -863,15 +859,6 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing Doppler OAuth client config to fail"
 fi
 assert_contains "$missing_output" "::error::GH_OAUTH_CLIENT_SECRET is missing from Doppler OAuth config"
-
-missing_byteplus_stt_dir="$(mktemp -d)"
-TEMP_DIRS+=("$missing_byteplus_stt_dir")
-status=0
-missing_byteplus_stt_output="$(run_action "$(build_doppler_secrets_json BYTEPLUS_STT_API_KEY)" "$missing_byteplus_stt_dir" 2>&1)" || status=$?
-if [[ "$status" -eq 0 ]]; then
-  fail "expected missing BytePlus STT Doppler config to fail"
-fi
-assert_contains "$missing_byteplus_stt_output" "::error::BYTEPLUS_STT_API_KEY is missing from Doppler config"
 
 missing_stripe_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_stripe_dir")
