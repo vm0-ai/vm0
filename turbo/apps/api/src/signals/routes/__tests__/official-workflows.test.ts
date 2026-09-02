@@ -1491,6 +1491,65 @@ async function installOfficialWorkflowLifecycleScenario() {
   };
 }
 
+async function installStaleAdmissionScenario() {
+  installCatalogStorageFixture();
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+  const definitionName = `api-test-stale-${suffix}`;
+  await syncCatalog(
+    catalog([activeDefinition(definitionName, [loopBlueprint()])]),
+  );
+  const { actor } = await workflowBdd.setupWorkflowOrg();
+  if (!actor.orgId) {
+    throw new Error("Expected organization-scoped actor");
+  }
+  const { agentId } = await workflowBdd.createAgent(actor);
+  const headers = authHeaders(actor);
+  await setOfficialWorkflowsEnabled(actor, true);
+  const installed = await accept(
+    officialClient().install({
+      headers,
+      params: { definitionName },
+      body: {
+        agentId,
+        blueprints: [
+          {
+            blueprintKey: "pulse",
+            bindings: [{ key: "interval-seconds", value: 60 }],
+          },
+        ],
+      },
+    }),
+    [201],
+  );
+  onTestFinished(async () => {
+    installCatalogStorageFixture();
+    const createdRuns = await runs.listAgentRuns(actor, {
+      agent: agentId,
+      limit: 100,
+    });
+    for (const run of createdRuns.runs) {
+      await runs.requestCancelRun(actor, run.id, [200, 400]);
+    }
+    await flushWaitUntilForTest();
+    await bdd.deleteAgent(actor, agentId);
+    await cleanupCatalog();
+  });
+  const automation = installed.body.workflow.automations[0];
+  if (!automation?.official) {
+    throw new Error("Expected Official Automation state");
+  }
+  return {
+    actor,
+    agentId,
+    automation,
+    definitionName,
+    headers,
+    installed,
+    originalFingerprint: automation.official.appliedFingerprint,
+    suffix,
+  };
+}
+
 beforeEach(async () => {
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockEnv(
@@ -7145,115 +7204,16 @@ describe.sequential("Official Workflow Run admission", () => {
     ).resolves.toStrictEqual({ items: [], claim: beforeCleanup.claim });
   });
 
-  it("repairs stale admission state and creates no Run for unresolved or unverifiable state", async () => {
-    installCatalogStorageFixture();
-    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
-    const definitionName = `api-test-stale-${suffix}`;
-    await syncCatalog(
-      catalog([activeDefinition(definitionName, [loopBlueprint()])]),
-    );
-    const setup = await workflowBdd.setupWorkflowOrg();
-    const { actor } = setup;
-    if (!actor.orgId) {
-      throw new Error("Expected organization-scoped actor");
-    }
-    const { agentId } = await workflowBdd.createAgent(actor);
-    const ordinaryWorkflowId = await workflowBdd.createWorkflow(actor, {
-      agentId,
-      name: `api-test-stale-ordinary-${suffix}`,
-    });
-    const headers = authHeaders(actor);
-    await setOfficialWorkflowsEnabled(actor, true);
-    const installed = await accept(
-      officialClient().install({
-        headers,
-        params: { definitionName },
-        body: {
-          agentId,
-          blueprints: [
-            {
-              blueprintKey: "pulse",
-              bindings: [{ key: "interval-seconds", value: 60 }],
-            },
-          ],
-        },
-      }),
-      [201],
-    );
-    const ordinaryAutomation = await accept(
-      automationClient().create({
-        headers,
-        params: { workflowId: ordinaryWorkflowId },
-        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
-      }),
-      [201],
-    );
-    onTestFinished(async () => {
-      installCatalogStorageFixture();
-      const createdRuns = await runs.listAgentRuns(actor, {
-        agent: agentId,
-        limit: 100,
-      });
-      for (const run of createdRuns.runs) {
-        await runs.requestCancelRun(actor, run.id, [200, 400]);
-      }
-      await flushWaitUntilForTest();
-      await bdd.deleteAgent(actor, agentId);
-      await cleanupCatalog();
-    });
+  it("repairs stale reconciling, needs_reconfiguration, and failed admission state", async () => {
+    const { agentId, automation, headers } =
+      await installStaleAdmissionScenario();
     const runnerGroup = runs.configureRunnerGroup();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
-    const automation = installed.body.workflow.automations[0];
-    if (!automation?.official) {
-      throw new Error("Expected Official Automation state");
-    }
-    const originalFingerprint = automation.official.appliedFingerprint;
     const beforeRunFamily = await readAgentRunFamilyCountsFixture(
       context,
       agentId,
     );
-
-    const crossTableMismatches = [
-      {
-        automationId: automation.id,
-        mismatchedWorkflowId: ordinaryWorkflowId,
-        restoredWorkflowId: installed.body.workflow.id,
-      },
-      {
-        automationId: ordinaryAutomation.body.id,
-        mismatchedWorkflowId: installed.body.workflow.id,
-        restoredWorkflowId: ordinaryWorkflowId,
-      },
-    ];
-
-    for (const mismatch of crossTableMismatches) {
-      await retargetWorkflowAutomationFixture(
-        context,
-        mismatch.automationId,
-        mismatch.mismatchedWorkflowId,
-      );
-      await assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture(
-        context,
-        mismatch.automationId,
-        installed.body.workflow.id,
-      );
-      await accept(
-        automationClient().run({
-          headers,
-          params: { id: mismatch.automationId },
-        }),
-        [409],
-      );
-      await expect(
-        readAgentRunFamilyCountsFixture(context, agentId),
-      ).resolves.toStrictEqual(beforeRunFamily);
-      await retargetWorkflowAutomationFixture(
-        context,
-        mismatch.automationId,
-        mismatch.restoredWorkflowId,
-      );
-    }
 
     for (const status of [
       "reconciling",
@@ -7281,6 +7241,32 @@ describe.sequential("Official Workflow Run admission", () => {
         `Repaired ${status} admission`,
       );
     }
+
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual({
+      run_count: beforeRunFamily.run_count + 3,
+      callback_count: beforeRunFamily.callback_count + 6,
+      runner_job_count: beforeRunFamily.runner_job_count,
+      launch_queue_count: beforeRunFamily.launch_queue_count,
+    });
+  });
+
+  it("repairs a stale applied fingerprint and reconciles a changed release at admission", async () => {
+    const {
+      agentId,
+      automation,
+      definitionName,
+      headers,
+      originalFingerprint,
+    } = await installStaleAdmissionScenario();
+    const runnerGroup = runs.configureRunnerGroup();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const beforeRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
 
     await setOfficialWorkflowAutomationAdmissionStateFixture(
       context,
@@ -7342,19 +7328,87 @@ describe.sequential("Official Workflow Run admission", () => {
       readWorkflowAutomationAutonomyFixture(context, automation.id),
     ).resolves.toMatchObject({ autonomyBudget: 5, enabled: true });
 
-    await syncCatalog(
-      catalog([activeDefinition(definitionName, [unresolvedLoopBlueprint()])]),
-    );
-    const beforeUnresolved = await readAgentRunFamilyCountsFixture(
-      context,
-      agentId,
-    );
-    expect(beforeUnresolved).toStrictEqual({
-      run_count: beforeRunFamily.run_count + 5,
-      callback_count: beforeRunFamily.callback_count + 10,
+    await expect(
+      readAgentRunFamilyCountsFixture(context, agentId),
+    ).resolves.toStrictEqual({
+      run_count: beforeRunFamily.run_count + 2,
+      callback_count: beforeRunFamily.callback_count + 4,
       runner_job_count: beforeRunFamily.runner_job_count,
       launch_queue_count: beforeRunFamily.launch_queue_count,
     });
+  });
+
+  it("creates no Run for cross-table mismatched, unresolved, or unavailable admission", async () => {
+    const {
+      actor,
+      agentId,
+      automation,
+      definitionName,
+      headers,
+      installed,
+      suffix,
+    } = await installStaleAdmissionScenario();
+    const ordinaryWorkflowId = await workflowBdd.createWorkflow(actor, {
+      agentId,
+      name: `api-test-stale-ordinary-${suffix}`,
+    });
+    const ordinaryAutomation = await accept(
+      automationClient().create({
+        headers,
+        params: { workflowId: ordinaryWorkflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [201],
+    );
+    const beforeRunFamily = await readAgentRunFamilyCountsFixture(
+      context,
+      agentId,
+    );
+
+    const crossTableMismatches = [
+      {
+        automationId: automation.id,
+        mismatchedWorkflowId: ordinaryWorkflowId,
+        restoredWorkflowId: installed.body.workflow.id,
+      },
+      {
+        automationId: ordinaryAutomation.body.id,
+        mismatchedWorkflowId: installed.body.workflow.id,
+        restoredWorkflowId: ordinaryWorkflowId,
+      },
+    ];
+
+    for (const mismatch of crossTableMismatches) {
+      await retargetWorkflowAutomationFixture(
+        context,
+        mismatch.automationId,
+        mismatch.mismatchedWorkflowId,
+      );
+      await assertOfficialWorkflowAutomationFinalAdmissionRejectedFixture(
+        context,
+        mismatch.automationId,
+        installed.body.workflow.id,
+      );
+      await accept(
+        automationClient().run({
+          headers,
+          params: { id: mismatch.automationId },
+        }),
+        [409],
+      );
+      await expect(
+        readAgentRunFamilyCountsFixture(context, agentId),
+      ).resolves.toStrictEqual(beforeRunFamily);
+      await retargetWorkflowAutomationFixture(
+        context,
+        mismatch.automationId,
+        mismatch.restoredWorkflowId,
+      );
+    }
+
+    await syncCatalog(
+      catalog([activeDefinition(definitionName, [unresolvedLoopBlueprint()])]),
+    );
     await accept(
       automationClient().run({
         headers,
@@ -7364,7 +7418,7 @@ describe.sequential("Official Workflow Run admission", () => {
     );
     await expect(
       readAgentRunFamilyCountsFixture(context, agentId),
-    ).resolves.toStrictEqual(beforeUnresolved);
+    ).resolves.toStrictEqual(beforeRunFamily);
     const unresolved = await accept(
       installationClient().get({
         headers,
@@ -7381,10 +7435,6 @@ describe.sequential("Official Workflow Run admission", () => {
     });
 
     await cleanupCatalog();
-    const beforeUnavailable = await readAgentRunFamilyCountsFixture(
-      context,
-      agentId,
-    );
     await accept(
       workflowClient().run({
         headers,
@@ -7394,7 +7444,7 @@ describe.sequential("Official Workflow Run admission", () => {
     );
     await expect(
       readAgentRunFamilyCountsFixture(context, agentId),
-    ).resolves.toStrictEqual(beforeUnavailable);
+    ).resolves.toStrictEqual(beforeRunFamily);
   });
 
   it("creates no Run-family rows for unresolved explicit, schedule, once, or webhook admission", async () => {
