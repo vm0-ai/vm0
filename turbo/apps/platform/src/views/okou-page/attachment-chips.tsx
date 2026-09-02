@@ -52,6 +52,7 @@ import {
   navigateImageLightbox$,
   openAudioLightbox$,
   openDocumentLightbox$,
+  openFileLightbox$,
   openImageLightbox$,
   toggleLightboxDialogFullscreen$,
   type AttachmentArtifactMetadata,
@@ -1579,11 +1580,19 @@ export function FileAttachmentChip({
 }) {
   const { t } = useTranslation();
   const downloadAttachment = useSet(downloadAttachment$);
+  const openFileLightbox = useSet(openFileLightbox$);
   const pageSignal = useGet(pageSignal$);
+  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
+  const previewOfficeDocument =
+    officeDocumentPreviewEnabled && isOfficeDocumentPreview(filename);
   return (
     <button
       type="button"
       onClick={() => {
+        if (previewOfficeDocument) {
+          openFileLightbox({ filename, url });
+          return;
+        }
         detach(
           downloadAttachment({ filename, url }, pageSignal),
           Reason.DomCallback,
@@ -1591,12 +1600,21 @@ export function FileAttachmentChip({
         );
       }}
       title={filename}
-      aria-label={t(
-        ($) => {
-          return $.artifacts.attachments.download;
-        },
-        { filename },
-      )}
+      aria-label={
+        previewOfficeDocument
+          ? t(
+              ($) => {
+                return $.chat.attachments.previewFile;
+              },
+              { filename },
+            )
+          : t(
+              ($) => {
+                return $.artifacts.attachments.download;
+              },
+              { filename },
+            )
+      }
       className={`${FILE_CHIP_CLASSES} hover:bg-state-hover`}
     >
       <FileChipBody

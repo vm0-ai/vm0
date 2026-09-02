@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   artifactCatalogContract,
@@ -56,8 +50,6 @@ import {
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
-import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
-import { openFileLightbox$ } from "../../../signals/okou-page/attachment-chips.ts";
 
 const context = testContext();
 warmMermaidParser();
@@ -144,6 +136,40 @@ function threadArtifactFile(
     googleDriveSync: { status: "not_synced" },
     ...overrides,
   };
+}
+
+function officeUserFileMessages(
+  fileId: string,
+  filename: string,
+): MockChatEventInput[] {
+  return [
+    {
+      id: `msg-${fileId}`,
+      role: "user",
+      content: "Review this Office document",
+      fileParts: [
+        {
+          type: "file",
+          fileId,
+          filenameSnapshot: filename,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+      ],
+      runId: "run-sidebar",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    },
+    {
+      id: `msg-${fileId}-completed`,
+      role: "assistant",
+      content: null,
+      runId: "run-sidebar",
+      runLifecycleEvent: "completed",
+      seqId: 2,
+      createdAt: "2026-03-10T00:00:02Z",
+    },
+  ];
 }
 
 function googleDriveConnector(
@@ -553,7 +579,6 @@ describe("thread-owned utility sidebar", () => {
   it("uses the public office attachment url instead of its presigned resource url", async () => {
     const filename = "private-manuscript.docx";
     const fileId = "office-with-distinct-public-url";
-    const url = canonicalUserMessageFileUrl(fileId);
     const resourceUrl = `https://r2.example.com/artifacts/${filename}?sig=test`;
     const shareUrl = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
     context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
@@ -564,12 +589,10 @@ describe("thread-owned utility sidebar", () => {
       featureSwitches: {
         [FeatureSwitchKey.OfficeDocumentPreview]: true,
       },
+      messages: officeUserFileMessages(fileId, filename),
     });
-    await screen.findByText("Build the launch plan");
 
-    act(() => {
-      context.store.set(openFileLightbox$, { url, filename });
-    });
+    click(await screen.findByLabelText(`Preview ${filename}`));
 
     const dialog = await screen.findByTestId("attachment-lightbox");
     const dialogFrame = await within(dialog).findByTitle(`${filename} preview`);
@@ -656,7 +679,6 @@ describe("thread-owned utility sidebar", () => {
   it("does not send a presigned office attachment url to the viewer when the api omits its public url", async () => {
     const filename = "legacy-api-document.docx";
     const fileId = "office-without-public-url";
-    const url = canonicalUserMessageFileUrl(fileId);
     const resourceUrl = `https://r2.example.com/artifacts/${filename}?sig=test`;
     context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
       expect(query.file_id).toBe(fileId);
@@ -666,12 +688,10 @@ describe("thread-owned utility sidebar", () => {
       featureSwitches: {
         [FeatureSwitchKey.OfficeDocumentPreview]: true,
       },
+      messages: officeUserFileMessages(fileId, filename),
     });
-    await screen.findByText("Build the launch plan");
 
-    act(() => {
-      context.store.set(openFileLightbox$, { url, filename });
-    });
+    click(await screen.findByLabelText(`Preview ${filename}`));
 
     const dialog = await screen.findByTestId("attachment-lightbox");
     await expect(
