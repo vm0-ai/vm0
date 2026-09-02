@@ -29,6 +29,7 @@ overrides:
   "@babel/core": ">=7.29.6"
   "@electron/get>undici": 7.28.0
   "@floating-ui/dom": 1.8.0
+  "@humanfs/node": 0.16.8
   "@esbuild-kit/core-utils>esbuild": ^0.25.4
   "@isaacs/brace-expansion": ">=5.0.1"
   "@opentelemetry/core": ">=2.8.0"
@@ -69,7 +70,7 @@ overrides:
   esbuild: 0.28.1
   "esbuild@>=0.17.0 <0.28.1": ">=0.28.1"
   "esbuild@>=0.27.3 <0.28.1": ">=0.28.1"
-  fast-uri: 3.1.5
+  fast-uri: 3.1.6
   fast-xml-builder: ">=1.1.7"
   fast-xml-parser: ">=5.5.7"
   flatted: ">=3.4.2"
@@ -92,6 +93,7 @@ overrides:
   postcss: ">=8.5.23"
   "protobufjs@>=7.5.0 <=7.6.4": 7.6.5
   "protobufjs@>=8.0.0 <=8.6.5": 8.6.6
+  qs: 6.16.0
   smol-toml: ">=1.6.1"
   svix: 1.92.2
   tar: ">=7.5.21"
