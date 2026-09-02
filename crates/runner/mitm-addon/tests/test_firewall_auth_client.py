@@ -2088,6 +2088,60 @@ class TestFirewallAuthAsyncTransport:
         assert proxy_requests[0].target == "platform.example"
         assert response_body.decode() not in str(exc_info.value)
 
+    async def test_https_proxy_connect_scans_fragmented_headers_incrementally(
+        self,
+        mitm_ctx,
+    ):
+        header_terminator = b"\r\n\r\n"
+        response = (
+            b"HTTP/1.1 100 Continue\r\nX-Info: ready\r\n\r\n"
+            b"HTTP/1.1 407 Proxy Authentication Required\r\nX-Fill: "
+            + b"x" * 4096
+            + header_terminator
+        )
+        search_misses: asyncio.Queue[None] = asyncio.Queue()
+        find_calls: list[tuple[int, int]] = []
+
+        class FindTrackingBytearray(bytearray):
+            def find(self, sub: bytes, start: int = 0, end: int | None = None) -> int:
+                find_calls.append((len(self), start))
+                result = super().find(sub, start) if end is None else super().find(sub, start, end)
+                if result < 0:
+                    search_misses.put_nowait(None)
+                return result
+
+        async def handle_proxy(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await _read_raw_http_request(reader)
+            for offset in range(len(response)):
+                await search_misses.get()
+                writer.write(response[offset : offset + 1])
+                await writer.drain()
+            await _close_test_writer(writer)
+
+        async with _run_test_server(handle_proxy) as proxy_port:
+            with (
+                patch.dict(
+                    os.environ,
+                    _https_proxy_environment(f"http://127.0.0.1:{proxy_port}"),
+                ),
+                patch.object(auth_client, "bytearray", FindTrackingBytearray, create=True),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url="https://platform.example"),
+                pytest.raises(
+                    OSError,
+                    match=r"^Firewall auth HTTP proxy CONNECT failed with status 407$",
+                ),
+            ):
+                await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        search_windows = [buffer_length - start for buffer_length, start in find_calls]
+        assert len(find_calls) == len(response) + 2
+        assert max(search_windows) <= len(header_terminator)
+        assert sum(search_windows) <= len(response) * len(header_terminator)
+
     async def test_https_proxy_connect_bounds_response_headers_and_closes_socket(
         self,
         mitm_ctx,
