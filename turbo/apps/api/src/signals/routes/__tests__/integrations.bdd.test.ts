@@ -68,6 +68,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function decodeSignedSlackOAuthState(state: string): unknown {
+  const [encodedPayload, signature, extra] = state.split(".");
+  if (!encodedPayload || !signature || extra) {
+    throw new Error("Expected signed Slack OAuth state");
+  }
+  return JSON.parse(Buffer.from(encodedPayload, "base64url").toString());
+}
+
 function requireCanonicalSlackInputAssetId(
   events: readonly ChatEvent[],
 ): string {
@@ -1116,9 +1124,9 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expect(installUrl.searchParams.get("client_id")).toBe(
       "slack-bdd-client-id",
     );
-    expect(installUrl.searchParams.get("state") ?? "").toContain(
-      '"reinstall":true',
-    );
+    expect(
+      decodeSignedSlackOAuthState(installUrl.searchParams.get("state") ?? ""),
+    ).toMatchObject({ reinstall: true });
 
     const missingConnectParams = await integrations.requestSlackOauthConnect(
       {},
@@ -1285,7 +1293,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     );
     expect(connectStartUrl.searchParams.get("team")).toBe(workspaceId);
     const connectStateText = connectStartUrl.searchParams.get("state") ?? "";
-    const connectState: unknown = JSON.parse(connectStateText);
+    const connectState = decodeSignedSlackOAuthState(connectStateText);
     if (!isRecord(connectState)) {
       throw new Error("Expected Slack connect state object");
     }
@@ -1305,13 +1313,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     const connected = await integrations.requestSlackOauthCallback(
       {
         code: "member-connect-code",
-        state: JSON.stringify({
-          orgId,
-          userId: member.userId,
-          flow: "connect",
-          prompt: "member prompt",
-          publicBrand: "vm0",
-        }),
+        state: connectStateText,
       },
       [307],
     );
