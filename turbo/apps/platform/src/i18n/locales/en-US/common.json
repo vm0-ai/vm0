@@ -2000,12 +2000,21 @@
       },
       "cardDescription": "Turn a file or screen recording into a finished video",
       "description": "Add a source, choose an optional avatar and voice, then create the video in a chat thread.",
+      "desktop": {
+        "checkingCompatibility": "Checking compatibility",
+        "description": "Screen recording lives in the {{desktopProductName}} desktop app, which captures any window and records where you click.",
+        "download": "Download for macOS",
+        "handoffDetail": "Your take opens here, ready for a presenter and a voice.",
+        "handoffTitle": "Come back to this wizard automatically",
+        "heading": "Record with {{desktopProductName}} Desktop",
+        "illustration": "Recording happens in {{desktopProductName}} Desktop",
+        "installDetail": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+        "installTitle": "Download and install {{desktopProductName}} Desktop",
+        "recordDetail": "Stop it from the same menu when you are done.",
+        "recordTitle": "Start a recording from the menu bar",
+        "unsupportedIntelMac": "Requires an Apple silicon Mac"
+      },
       "errors": {
-        "recordingEmpty": "The recording was empty. Please try again.",
-        "recordingFailed": "Screen recording could not start. Try again in a recent Chrome browser.",
-        "recordingPermission": "Nothing was shared. Choose a tab, window, or screen when you are ready.",
-        "recordingShareEnded": "Screen sharing ended before recording started.",
-        "recordingUnsupported": "Screen recording is not supported in this browser.",
         "sendFailed": "The chat thread could not be created. Your source is still saved locally and has been downloaded as a backup.",
         "uploadFailed": "The source could not be uploaded. It is still saved locally and has been downloaded as a backup."
       },
@@ -2013,21 +2022,7 @@
         "back": "Back",
         "createInChat": "Create in chat",
         "download": "Download source",
-        "next": "Next",
-        "startRecording": "Choose screen and start",
-        "stopRecording": "Stop recording"
-      },
-      "recording": {
-        "chooseSurface": "Choose a tab, window, or screen",
-        "countdown": "Recording starts after the countdown",
-        "description": "Chrome will ask what to share. Recording begins only after the three-second countdown finishes.",
-        "heading": "Record your screen",
-        "localNote": "You can stop from Chrome's sharing bar or return here. The recording stays local until the chat thread is created.",
-        "microphone": "Microphone",
-        "microphoneHelp": "Add narration while you demonstrate",
-        "recordingLocally": "Recording locally",
-        "systemAudio": "System audio",
-        "systemAudioHelp": "Available sources depend on Chrome and your system"
+        "next": "Next"
       },
       "review": {
         "avatar": "Avatar",
@@ -2038,22 +2033,16 @@
         "voice": "Voice"
       },
       "source": {
-        "chatDescription": "Open a thread now and shape the video with Zero",
-        "chatDetail": "Add a source, avatar, or voice later in chat",
-        "chatTitle": "Start in chat",
-        "documentDescription": "Turn your content into a narrated intro video",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Upload slides or a document",
-        "dropDescription": "Slides, documents, or recordings",
-        "dropTitle": "Drop a source here",
+        "documentDescription": "Turn your slides into a narrated intro video",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Upload slides",
         "heading": "How do you want to start?",
-        "help": "Add something you already have, record your screen, or describe the video in your own words",
-        "recordDescription": "Choose a tab, window, or your entire screen",
-        "recordDetail": "Starts after a three-second countdown",
+        "help": "Upload the slides you already have, or record your screen with {{desktopProductName}} Desktop",
+        "recordDescription": "Capture a demo with the desktop app",
+        "recordDetail": "Needs {{desktopProductName}} Desktop on macOS",
         "recordTitle": "Record your screen",
-        "videoDescription": "Let AI tighten the pacing, framing, and narration",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Upload a recording"
+        "uploadDescription": "Choose a file from your computer",
+        "uploadTitle": "Upload source"
       },
       "sourceReview": {
         "format": "Format",

@@ -1997,12 +1997,21 @@
       },
       "cardDescription": "ファイルや画面録画を完成した動画に変換",
       "description": "素材を追加し、必要に応じてアバターと音声を選んで、チャットスレッドで動画を作成します。",
+      "desktop": {
+        "checkingCompatibility": "互換性の確認",
+        "description": "画面録画は {{desktopProductName}} デスクトップアプリで行います。任意のウィンドウをキャプチャし、クリックした位置も記録します。",
+        "download": "macOS をダウンロード",
+        "handoffDetail": "録画はここで開き、アバターと音声を選べる状態になります。",
+        "handoffTitle": "自動的にこのウィザードに戻ります",
+        "heading": "{{desktopProductName}} Desktop で録画",
+        "illustration": "録画は {{desktopProductName}} Desktop で行います",
+        "installDetail": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
+        "installTitle": "{{desktopProductName}} Desktop をダウンロードしてインストール",
+        "recordDetail": "終わったら同じメニューから停止します。",
+        "recordTitle": "メニューバーから録画を開始",
+        "unsupportedIntelMac": "AppleシリコンMacが必要です"
+      },
       "errors": {
-        "recordingEmpty": "録画が空でした。もう一度お試しください。",
-        "recordingFailed": "画面録画を開始できませんでした。最新の Chrome でもう一度お試しください。",
-        "recordingPermission": "共有対象が選択されませんでした。準備ができたらタブ、ウィンドウ、または画面を選択してください。",
-        "recordingShareEnded": "録画開始前に画面共有が終了しました。",
-        "recordingUnsupported": "このブラウザは画面録画に対応していません。",
         "sendFailed": "チャットスレッドを作成できませんでした。素材はローカルに保存され、バックアップとしてダウンロードされました。",
         "uploadFailed": "素材をアップロードできませんでした。ローカルに保存され、バックアップとしてダウンロードされました。"
       },
@@ -2010,21 +2019,7 @@
         "back": "戻る",
         "createInChat": "チャットで作成",
         "download": "素材をダウンロード",
-        "next": "次へ",
-        "startRecording": "画面を選んで開始",
-        "stopRecording": "録画を停止"
-      },
-      "recording": {
-        "chooseSurface": "タブ、ウィンドウ、または画面を選択",
-        "countdown": "カウントダウン終了後に録画を開始します",
-        "description": "Chrome が共有対象を確認します。3 秒のカウントダウンが終わるまで録画は始まりません。",
-        "heading": "画面を録画",
-        "localNote": "Chrome の共有バーまたはこの画面から停止できます。チャットスレッドが作成されるまで録画はローカルに保持されます。",
-        "microphone": "マイク",
-        "microphoneHelp": "操作を見せながらナレーションを追加",
-        "recordingLocally": "ローカルで録画中",
-        "systemAudio": "システム音声",
-        "systemAudioHelp": "利用できる音声は Chrome とシステムによって異なります"
+        "next": "次へ"
       },
       "review": {
         "avatar": "アバター",
@@ -2035,22 +2030,16 @@
         "voice": "音声"
       },
       "source": {
-        "chatDescription": "今すぐスレッドを開き、Zero と動画を作り上げます",
-        "chatDetail": "素材、アバター、音声は後からチャットで追加できます",
-        "chatTitle": "チャットから開始",
-        "documentDescription": "コンテンツをナレーション付きイントロビデオに変換",
-        "documentFormats": "PPTX、PPT、PDF、DOC、DOCX",
-        "documentTitle": "スライドまたは文書をアップロード",
-        "dropDescription": "スライド、文書、または録画",
-        "dropTitle": "素材をここにドロップ",
+        "documentDescription": "スライドをナレーション付きイントロビデオに変換",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "スライドをアップロード",
         "heading": "どのように始めますか？",
-        "help": "手元の素材を追加するか、画面を録画するか、作りたい動画を言葉で説明してください",
-        "recordDescription": "タブ、ウィンドウ、または画面全体を選択",
-        "recordDetail": "3 秒のカウントダウン後に開始",
+        "help": "手元のスライドをアップロードするか、{{desktopProductName}} Desktop で画面を録画してください",
+        "recordDescription": "デスクトップアプリでデモを録画",
+        "recordDetail": "macOS 版 {{desktopProductName}} Desktop が必要です",
         "recordTitle": "画面を録画",
-        "videoDescription": "AI がテンポ、フレーミング、ナレーションを整えます",
-        "videoFormats": "MP4、MOV、WEBM",
-        "videoTitle": "録画をアップロード"
+        "uploadDescription": "コンピュータからファイルを選択",
+        "uploadTitle": "ソースをアップロード"
       },
       "sourceReview": {
         "format": "形式",

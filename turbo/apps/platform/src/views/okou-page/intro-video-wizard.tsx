@@ -1,17 +1,15 @@
 import type {
   ChangeEvent as ReactChangeEvent,
   CSSProperties,
-  DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   Check,
   Clapperboard,
   Download,
   FileText,
-  MessageCircle,
-  Mic,
   MonitorUp,
   Play,
   RefreshCw,
@@ -28,20 +26,25 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Switch,
   Textarea,
   cn,
 } from "@okouai/ui";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import {
-  classifyIntroVideoSource,
+  desktopDownloadSupportStatus$,
+  OKOU_DESKTOP_DOWNLOAD_URL,
+} from "../../signals/okou-page/computer-use-hosts.ts";
+import {
+  introVideoSourceStep,
   introVideoWizardSignals,
+  isIntroVideoDocument,
   type IntroVideoPlacement,
   type IntroVideoSource,
   type IntroVideoVoiceSelection,
@@ -57,9 +60,8 @@ import {
 } from "./avatar-template-picker.tsx";
 
 const DOCUMENT_ACCEPT =
-  ".doc,.docx,.pdf,.ppt,.pptx,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const VIDEO_ACCEPT = ".mov,.mp4,.webm,video/mp4,video/quicktime,video/webm";
-const ALL_SOURCE_ACCEPT = `${DOCUMENT_ACCEPT},${VIDEO_ACCEPT}`;
+  ".html,.pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/html";
+const DOCUMENT_INPUT_SELECTOR = '[data-intro-video-document-input=""]';
 
 function wizardStage(step: IntroVideoWizardStep): number {
   switch (step) {
@@ -93,9 +95,33 @@ function stepForStage(
       return "review";
     }
     default: {
-      return source ? "source-review" : "source";
+      return introVideoSourceStep(source);
     }
   }
+}
+
+/**
+ * Navigate to a step, restarting the wizard when that step is the empty source
+ * page.
+ *
+ * A deck skips the review page, so its only way back to step one is to give the
+ * deck up; `startOver$` is what makes leaving the presenter mean that.
+ */
+function useGoToStep(): (step: IntroVideoWizardStep) => void {
+  const pageSignal = useGet(pageSignal$);
+  const setStep = useSet(introVideoWizardSignals.setStep$);
+  const startOver = useSet(introVideoWizardSignals.startOver$);
+  return (step) => {
+    if (step === "source") {
+      detach(
+        startOver(pageSignal),
+        Reason.DomCallback,
+        "restart the intro video wizard",
+      );
+      return;
+    }
+    setStep(step);
+  };
 }
 
 function formatBytes(size: number): string {
@@ -144,11 +170,6 @@ function sourceKindLabel(
     case "document": {
       return t(($) => {
         return $.chat.introVideo.source.documentTitle;
-      });
-    }
-    case "video": {
-      return t(($) => {
-        return $.chat.introVideo.source.videoTitle;
       });
     }
     case "recording": {
@@ -275,13 +296,11 @@ function clickFileInput(selector: string): void {
 }
 
 function SourceOptions({
-  busy,
+  desktopProductName,
   onRecord,
-  onStartInChat,
 }: {
-  readonly busy: boolean;
+  readonly desktopProductName: string;
   readonly onRecord: () => void;
-  readonly onStartInChat: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -298,22 +317,7 @@ function SourceOptions({
         })}
         icon={<FileText size={21} />}
         onClick={() => {
-          clickFileInput('[data-intro-video-document-input=""]');
-        }}
-      />
-      <SourceChoice
-        title={t(($) => {
-          return $.chat.introVideo.source.videoTitle;
-        })}
-        description={t(($) => {
-          return $.chat.introVideo.source.videoDescription;
-        })}
-        detail={t(($) => {
-          return $.chat.introVideo.source.videoFormats;
-        })}
-        icon={<Video size={21} />}
-        onClick={() => {
-          clickFileInput('[data-intro-video-recording-input=""]');
+          clickFileInput(DOCUMENT_INPUT_SELECTOR);
         }}
       />
       <SourceChoice
@@ -323,57 +327,29 @@ function SourceOptions({
         description={t(($) => {
           return $.chat.introVideo.source.recordDescription;
         })}
-        detail={t(($) => {
-          return $.chat.introVideo.source.recordDetail;
-        })}
+        detail={t(
+          ($) => {
+            return $.chat.introVideo.source.recordDetail;
+          },
+          { desktopProductName },
+        )}
         icon={<MonitorUp size={21} />}
         onClick={onRecord}
-      />
-      <SourceChoice
-        title={t(($) => {
-          return $.chat.introVideo.source.chatTitle;
-        })}
-        description={t(($) => {
-          return $.chat.introVideo.source.chatDescription;
-        })}
-        detail={t(($) => {
-          return $.chat.introVideo.source.chatDetail;
-        })}
-        icon={<MessageCircle size={21} />}
-        disabled={busy}
-        onClick={onStartInChat}
       />
     </div>
   );
 }
 
-function SourceDropTarget({
-  onDrop,
-}: {
-  readonly onDrop: (event: ReactDragEvent<HTMLButtonElement>) => void;
-}) {
+function SourceUploadButton() {
   const { t } = useTranslation();
   return (
     <button
       type="button"
-      data-dragging="false"
+      data-intro-video-upload-source=""
       onClick={() => {
-        clickFileInput('[data-intro-video-source-input=""]');
+        clickFileInput(DOCUMENT_INPUT_SELECTOR);
       }}
-      onDragEnter={(event) => {
-        event.preventDefault();
-        event.currentTarget.dataset.dragging = "true";
-      }}
-      onDragOver={(event) => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-        event.currentTarget.dataset.dragging = "true";
-      }}
-      onDragLeave={(event) => {
-        event.currentTarget.dataset.dragging = "false";
-      }}
-      onDrop={onDrop}
-      className="group mt-3 flex min-h-24 items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border bg-background px-6 py-4 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[dragging=true]:border-primary data-[dragging=true]:bg-primary/5"
+      className="group mt-3 flex min-h-20 items-center justify-center gap-3 rounded-xl border border-border bg-card px-6 py-4 text-left transition-colors hover:border-foreground/20 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground group-hover:text-primary">
         <Upload size={19} />
@@ -381,12 +357,12 @@ function SourceDropTarget({
       <span>
         <strong className="block text-sm font-semibold text-foreground">
           {t(($) => {
-            return $.chat.introVideo.source.dropTitle;
+            return $.chat.introVideo.source.uploadTitle;
           })}
         </strong>
         <span className="mt-0.5 block text-xs text-muted-foreground">
           {t(($) => {
-            return $.chat.introVideo.source.dropDescription;
+            return $.chat.introVideo.source.uploadDescription;
           })}
         </span>
       </span>
@@ -394,74 +370,24 @@ function SourceDropTarget({
   );
 }
 
-function SourceFileInputs({
-  onChange,
-}: {
-  readonly onChange: (event: ReactChangeEvent<HTMLInputElement>) => void;
-}) {
-  return (
-    <>
-      <input
-        hidden
-        data-intro-video-document-input=""
-        type="file"
-        accept={DOCUMENT_ACCEPT}
-        onChange={onChange}
-      />
-      <input
-        hidden
-        data-intro-video-recording-input=""
-        type="file"
-        accept={VIDEO_ACCEPT}
-        onChange={onChange}
-      />
-      <input
-        hidden
-        data-intro-video-source-input=""
-        type="file"
-        accept={ALL_SOURCE_ACCEPT}
-        onChange={onChange}
-      />
-    </>
-  );
-}
-
-function SourcePage({
-  composer,
-  busy,
-}: {
-  readonly composer: ComposerSignals;
-  readonly busy: boolean;
-}) {
+function SourcePage() {
   const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const rootSignal = useGet(rootSignal$);
+  const desktopProductName = useGet(computerUseProductName$);
   const setSourceFile = useSet(introVideoWizardSignals.setSourceFile$);
   const setStep = useSet(introVideoWizardSignals.setStep$);
-  const submitDirectChat = useSet(introVideoWizardSignals.submitDirectChat$);
 
-  const receiveFile = (file: File | undefined) => {
-    if (!file) {
-      return;
-    }
-    const kind = classifyIntroVideoSource(file);
-    if (!kind || kind === "recording") {
+  const handleFileChange = (event: ReactChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || !isIntroVideoDocument(file)) {
       return;
     }
     detach(
-      setSourceFile(file, kind, pageSignal),
+      setSourceFile(file, pageSignal),
       Reason.DomCallback,
       "select intro video source",
     );
-  };
-  const handleFileChange = (event: ReactChangeEvent<HTMLInputElement>) => {
-    receiveFile(event.currentTarget.files?.[0]);
-    event.currentTarget.value = "";
-  };
-  const handleDrop = (event: ReactDragEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.currentTarget.dataset.dragging = "false";
-    receiveFile(event.dataTransfer.files[0]);
   };
 
   return (
@@ -472,35 +398,94 @@ function SourcePage({
         })}
       </h3>
       <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-        {t(($) => {
-          return $.chat.introVideo.source.help;
-        })}
+        {t(
+          ($) => {
+            return $.chat.introVideo.source.help;
+          },
+          { desktopProductName },
+        )}
       </p>
       <SourceOptions
-        busy={busy}
+        desktopProductName={desktopProductName}
         onRecord={() => {
-          setStep("record-setup");
-        }}
-        onStartInChat={() => {
-          detach(
-            submitDirectChat(composer, rootSignal),
-            Reason.DomCallback,
-            "start intro video in chat",
-          );
+          setStep("desktop-record");
         }}
       />
-      <SourceDropTarget onDrop={handleDrop} />
-      <SourceFileInputs onChange={handleFileChange} />
+      <SourceUploadButton />
+      <input
+        hidden
+        data-intro-video-document-input=""
+        type="file"
+        accept={DOCUMENT_ACCEPT}
+        onChange={handleFileChange}
+      />
     </div>
   );
 }
 
-function RecordingSetupPage() {
+function DesktopStep({
+  detail,
+  index,
+  title,
+}: {
+  readonly detail: string;
+  readonly index: number;
+  readonly title: string;
+}) {
+  return (
+    <li className="flex items-start gap-3 py-3">
+      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+        {index}
+      </span>
+      <span className="min-w-0">
+        <strong className="block text-sm font-medium text-foreground">
+          {title}
+        </strong>
+        <small className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+          {detail}
+        </small>
+      </span>
+    </li>
+  );
+}
+
+function DesktopDownloadButton() {
   const { t } = useTranslation();
-  const systemAudio = useGet(introVideoWizardSignals.systemAudio$);
-  const microphone = useGet(introVideoWizardSignals.microphone$);
-  const setSystemAudio = useSet(introVideoWizardSignals.setSystemAudio$);
-  const setMicrophone = useSet(introVideoWizardSignals.setMicrophone$);
+  const supportLoadable = useLoadable(desktopDownloadSupportStatus$);
+  if (supportLoadable.state !== "hasData") {
+    return (
+      <Button type="button" variant="outline" className="mt-5" disabled>
+        {t(($) => {
+          return $.chat.introVideo.desktop.checkingCompatibility;
+        })}
+      </Button>
+    );
+  }
+  if (supportLoadable.data === "unsupported-intel-mac") {
+    return (
+      <Button type="button" variant="outline" className="mt-5" disabled>
+        <AlertTriangle size={15} />
+        {t(($) => {
+          return $.chat.introVideo.desktop.unsupportedIntelMac;
+        })}
+      </Button>
+    );
+  }
+  return (
+    <Button asChild className="mt-5">
+      <a href={OKOU_DESKTOP_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+        <Download size={15} />
+        {t(($) => {
+          return $.chat.introVideo.desktop.download;
+        })}
+      </a>
+    </Button>
+  );
+}
+
+function DesktopRecordPage() {
+  const { t } = useTranslation();
+  const desktopProductName = useGet(computerUseProductName$);
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-8 md:grid-cols-[1.05fr_1fr] md:items-center">
       <div className="flex min-h-72 items-center justify-center rounded-2xl border border-border bg-gray-50 p-8">
@@ -514,9 +499,12 @@ function RecordingSetupPage() {
             <div>
               <MonitorUp className="mx-auto size-9 text-primary" />
               <p className="mt-3 text-sm font-semibold text-foreground">
-                {t(($) => {
-                  return $.chat.introVideo.recording.chooseSurface;
-                })}
+                {t(
+                  ($) => {
+                    return $.chat.introVideo.desktop.illustration;
+                  },
+                  { desktopProductName },
+                )}
               </p>
             </div>
           </div>
@@ -524,108 +512,54 @@ function RecordingSetupPage() {
       </div>
       <div>
         <h3 className="text-xl font-semibold tracking-tight text-foreground">
-          {t(($) => {
-            return $.chat.introVideo.recording.heading;
-          })}
+          {t(
+            ($) => {
+              return $.chat.introVideo.desktop.heading;
+            },
+            { desktopProductName },
+          )}
         </h3>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          {t(($) => {
-            return $.chat.introVideo.recording.description;
-          })}
+          {t(
+            ($) => {
+              return $.chat.introVideo.desktop.description;
+            },
+            { desktopProductName },
+          )}
         </p>
-        <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-card px-4">
-          <label className="flex items-center justify-between gap-4 py-4">
-            <span className="flex items-start gap-3">
-              <Volume2 className="mt-0.5 size-4 text-muted-foreground" />
-              <span>
-                <strong className="block text-sm font-medium text-foreground">
-                  {t(($) => {
-                    return $.chat.introVideo.recording.systemAudio;
-                  })}
-                </strong>
-                <small className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                  {t(($) => {
-                    return $.chat.introVideo.recording.systemAudioHelp;
-                  })}
-                </small>
-              </span>
-            </span>
-            <Switch checked={systemAudio} onCheckedChange={setSystemAudio} />
-          </label>
-          <label className="flex items-center justify-between gap-4 py-4">
-            <span className="flex items-start gap-3">
-              <Mic className="mt-0.5 size-4 text-muted-foreground" />
-              <span>
-                <strong className="block text-sm font-medium text-foreground">
-                  {t(($) => {
-                    return $.chat.introVideo.recording.microphone;
-                  })}
-                </strong>
-                <small className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                  {t(($) => {
-                    return $.chat.introVideo.recording.microphoneHelp;
-                  })}
-                </small>
-              </span>
-            </span>
-            <Switch checked={microphone} onCheckedChange={setMicrophone} />
-          </label>
-        </div>
-        <p className="mt-4 rounded-lg bg-primary/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
-          {t(($) => {
-            return $.chat.introVideo.recording.localNote;
-          })}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function RecordingPage({
-  countdown,
-  seconds,
-}: {
-  readonly countdown: number | null;
-  readonly seconds: number;
-}) {
-  const { t } = useTranslation();
-  const setPreviewRef = useSet(introVideoWizardSignals.setRecordingPreviewRef$);
-  return (
-    <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-center">
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border bg-gray-950 shadow-sm">
-        <video
-          ref={setPreviewRef}
-          muted
-          autoPlay
-          playsInline
-          className="h-full w-full object-contain"
-        />
-        {countdown !== null ? (
-          <div className="absolute inset-0 grid place-items-center bg-gray-950/55 text-center backdrop-blur-[2px]">
-            <div>
-              <span className="block text-7xl font-semibold tabular-nums text-white">
-                {countdown}
-              </span>
-              <span className="mt-3 block text-sm font-medium text-white/80">
-                {t(($) => {
-                  return $.chat.introVideo.recording.countdown;
-                })}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="absolute inset-x-4 bottom-4 flex items-center gap-2 rounded-xl bg-gray-950/80 px-3 py-2 text-white shadow-lg backdrop-blur">
-            <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
-            <span className="font-mono text-xs tabular-nums">
-              {formatDuration(seconds)}
-            </span>
-            <span className="text-xs text-white/70">
-              {t(($) => {
-                return $.chat.introVideo.recording.recordingLocally;
-              })}
-            </span>
-          </div>
-        )}
+        <ol className="mt-5 divide-y divide-border rounded-xl border border-border bg-card px-4">
+          <DesktopStep
+            index={1}
+            title={t(
+              ($) => {
+                return $.chat.introVideo.desktop.installTitle;
+              },
+              { desktopProductName },
+            )}
+            detail={t(($) => {
+              return $.chat.introVideo.desktop.installDetail;
+            })}
+          />
+          <DesktopStep
+            index={2}
+            title={t(($) => {
+              return $.chat.introVideo.desktop.recordTitle;
+            })}
+            detail={t(($) => {
+              return $.chat.introVideo.desktop.recordDetail;
+            })}
+          />
+          <DesktopStep
+            index={3}
+            title={t(($) => {
+              return $.chat.introVideo.desktop.handoffTitle;
+            })}
+            detail={t(($) => {
+              return $.chat.introVideo.desktop.handoffDetail;
+            })}
+          />
+        </ol>
+        <DesktopDownloadButton />
       </div>
     </div>
   );
@@ -639,7 +573,7 @@ function SourceReviewPage({
   readonly persisted: boolean;
 }) {
   const { t } = useTranslation();
-  const setStep = useSet(introVideoWizardSignals.setStep$);
+  const goToStep = useGoToStep();
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-8 md:grid-cols-[1.2fr_0.8fr] md:items-center">
       <div className="flex aspect-video items-center justify-center overflow-hidden rounded-2xl border border-border bg-gray-50">
@@ -731,7 +665,7 @@ function SourceReviewPage({
           variant="outline"
           className="mt-5"
           onClick={() => {
-            setStep("source");
+            goToStep("source");
           }}
         >
           <RefreshCw size={15} />
@@ -996,8 +930,7 @@ function VoicePage({
   const { t } = useTranslation();
   const voice = useGet(introVideoWizardSignals.voice$);
   const setVoice = useSet(introVideoWizardSignals.setVoice$);
-  const originalAudioAvailable =
-    source.kind === "recording" || source.kind === "video";
+  const originalAudioAvailable = source.kind === "recording";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -1157,31 +1090,6 @@ function errorCopy(
   error: IntroVideoWizardError,
 ): string {
   switch (error) {
-    case "recording-empty": {
-      return t(($) => {
-        return $.chat.introVideo.errors.recordingEmpty;
-      });
-    }
-    case "recording-failed": {
-      return t(($) => {
-        return $.chat.introVideo.errors.recordingFailed;
-      });
-    }
-    case "recording-permission": {
-      return t(($) => {
-        return $.chat.introVideo.errors.recordingPermission;
-      });
-    }
-    case "recording-share-ended": {
-      return t(($) => {
-        return $.chat.introVideo.errors.recordingShareEnded;
-      });
-    }
-    case "recording-unsupported": {
-      return t(($) => {
-        return $.chat.introVideo.errors.recordingUnsupported;
-      });
-    }
     case "send-failed": {
       return t(($) => {
         return $.chat.introVideo.errors.sendFailed;
@@ -1200,16 +1108,6 @@ function primaryLabel(
   step: IntroVideoWizardStep,
 ): string | null {
   switch (step) {
-    case "record-setup": {
-      return t(($) => {
-        return $.chat.introVideo.footer.startRecording;
-      });
-    }
-    case "recording": {
-      return t(($) => {
-        return $.chat.introVideo.footer.stopRecording;
-      });
-    }
     case "source-review":
     case "avatar":
     case "voice": {
@@ -1230,14 +1128,15 @@ function primaryLabel(
 
 function previousWizardStep(
   step: IntroVideoWizardStep,
+  source: IntroVideoSource | null,
 ): IntroVideoWizardStep | null {
   switch (step) {
-    case "record-setup":
+    case "desktop-record":
     case "source-review": {
       return "source";
     }
     case "avatar": {
-      return "source-review";
+      return introVideoSourceStep(source);
     }
     case "voice": {
       return "avatar";
@@ -1316,37 +1215,19 @@ function WizardFooter({
   readonly composer: ComposerSignals;
 }) {
   const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
   const rootSignal = useGet(rootSignal$);
+  const goToStep = useGoToStep();
   const setStep = useSet(introVideoWizardSignals.setStep$);
-  const startRecording = useSet(introVideoWizardSignals.startRecording$);
-  const stopRecording = useSet(introVideoWizardSignals.stopRecording$);
   const submit = useSet(introVideoWizardSignals.submit$);
   const downloadSource = useSet(introVideoWizardSignals.downloadSource$);
   const label = primaryLabel(t, step);
   const goBack = () => {
-    const previous = previousWizardStep(step);
+    const previous = previousWizardStep(step, source);
     if (previous) {
-      setStep(previous);
+      goToStep(previous);
     }
   };
   const activatePrimary = () => {
-    if (step === "record-setup") {
-      detach(
-        startRecording(pageSignal),
-        Reason.DomCallback,
-        "start intro video screen recording",
-      );
-      return;
-    }
-    if (step === "recording") {
-      detach(
-        stopRecording(pageSignal),
-        Reason.DomCallback,
-        "stop intro video screen recording",
-      );
-      return;
-    }
     if (step === "review") {
       detach(
         submit(composer, rootSignal),
@@ -1360,7 +1241,7 @@ function WizardFooter({
       setStep(next);
     }
   };
-  const canGoBack = !busy && step !== "source" && step !== "countdown";
+  const canGoBack = !busy && step !== "source";
   const primaryDisabled =
     busy ||
     (step === "voice" && voice === null) ||
@@ -1401,40 +1282,28 @@ function WizardFooter({
 }
 
 function WizardContent({
-  busy,
   composer,
-  countdown,
-  recordingSeconds,
   source,
   sourcePersisted,
   step,
 }: {
-  readonly busy: boolean;
   readonly composer: ComposerSignals;
-  readonly countdown: number;
-  readonly recordingSeconds: number;
   readonly source: IntroVideoSource | null;
   readonly sourcePersisted: boolean;
   readonly step: IntroVideoWizardStep;
 }) {
   switch (step) {
     case "source": {
-      return <SourcePage composer={composer} busy={busy} />;
+      return <SourcePage />;
     }
-    case "record-setup": {
-      return <RecordingSetupPage />;
-    }
-    case "countdown": {
-      return <RecordingPage countdown={countdown} seconds={recordingSeconds} />;
-    }
-    case "recording": {
-      return <RecordingPage countdown={null} seconds={recordingSeconds} />;
+    case "desktop-record": {
+      return <DesktopRecordPage />;
     }
     case "source-review": {
       return source ? (
         <SourceReviewPage source={source} persisted={sourcePersisted} />
       ) : (
-        <SourcePage composer={composer} busy={busy} />
+        <SourcePage />
       );
     }
     case "avatar": {
@@ -1444,15 +1313,11 @@ function WizardContent({
       return source ? (
         <VoicePage composer={composer} source={source} />
       ) : (
-        <SourcePage composer={composer} busy={busy} />
+        <SourcePage />
       );
     }
     case "review": {
-      return source ? (
-        <ReviewPage source={source} />
-      ) : (
-        <SourcePage composer={composer} busy={busy} />
-      );
+      return source ? <ReviewPage source={source} /> : <SourcePage />;
     }
   }
 }
@@ -1467,7 +1332,7 @@ function WizardHeader({
   readonly step: IntroVideoWizardStep;
 }) {
   const { t } = useTranslation();
-  const setStep = useSet(introVideoWizardSignals.setStep$);
+  const goToStep = useGoToStep();
   const activeStage = wizardStage(step);
   const stepLabels = [
     t(($) => {
@@ -1512,7 +1377,7 @@ function WizardHeader({
                 completed={index < activeStage}
                 disabled={busy || (index > 0 && !source)}
                 onClick={() => {
-                  setStep(stepForStage(index, source));
+                  goToStep(stepForStage(index, source));
                 }}
               />
             );
@@ -1541,8 +1406,6 @@ export function IntroVideoWizard({
   const source = useGet(introVideoWizardSignals.source$);
   const sourcePersisted = useGet(introVideoWizardSignals.sourcePersisted$);
   const voice = useGet(introVideoWizardSignals.voice$);
-  const countdown = useGet(introVideoWizardSignals.countdown$);
-  const recordingSeconds = useGet(introVideoWizardSignals.recordingSeconds$);
   const busy = useGet(introVideoWizardSignals.busy$);
   const error = useGet(introVideoWizardSignals.error$);
   const closeWizard = useSet(introVideoWizardSignals.closeWizard$);
@@ -1563,10 +1426,7 @@ export function IntroVideoWizard({
         <WizardHeader busy={busy} source={source} step={step} />
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background px-5 py-6 sm:px-6">
           <WizardContent
-            busy={busy}
             composer={composer}
-            countdown={countdown}
-            recordingSeconds={recordingSeconds}
             source={source}
             sourcePersisted={sourcePersisted}
             step={step}

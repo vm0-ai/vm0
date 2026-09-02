@@ -1997,12 +1997,21 @@
       },
       "cardDescription": "Ubah file atau rekaman layar menjadi video siap pakai",
       "description": "Tambahkan sumber, pilih avatar dan suara bila perlu, lalu buat video di utas chat.",
+      "desktop": {
+        "checkingCompatibility": "Memeriksa kompatibilitas",
+        "description": "Perekaman layar ada di aplikasi desktop {{desktopProductName}}, yang menangkap jendela apa pun dan merekam tempat Anda mengeklik.",
+        "download": "Unduh untuk macOS",
+        "handoffDetail": "Hasil rekaman terbuka di sini, siap diberi presenter dan suara.",
+        "handoffTitle": "Kembali ke wizard ini secara otomatis",
+        "heading": "Rekam dengan {{desktopProductName}} Desktop",
+        "illustration": "Perekaman berlangsung di {{desktopProductName}} Desktop",
+        "installDetail": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
+        "installTitle": "Unduh dan pasang {{desktopProductName}} Desktop",
+        "recordDetail": "Hentikan dari menu yang sama setelah selesai.",
+        "recordTitle": "Mulai perekaman dari bilah menu",
+        "unsupportedIntelMac": "Memerlukan Mac Apple silicon"
+      },
       "errors": {
-        "recordingEmpty": "Rekaman kosong. Silakan coba lagi.",
-        "recordingFailed": "Perekaman layar tidak dapat dimulai. Coba lagi di Chrome versi terbaru.",
-        "recordingPermission": "Tidak ada yang dibagikan. Pilih tab, jendela, atau layar saat Anda siap.",
-        "recordingShareEnded": "Berbagi layar berakhir sebelum perekaman dimulai.",
-        "recordingUnsupported": "Perekaman layar tidak didukung di browser ini.",
         "sendFailed": "Utas chat tidak dapat dibuat. Sumber Anda tetap tersimpan secara lokal dan telah diunduh sebagai cadangan.",
         "uploadFailed": "Sumber tidak dapat diunggah. Sumber tetap tersimpan secara lokal dan telah diunduh sebagai cadangan."
       },
@@ -2010,21 +2019,7 @@
         "back": "Kembali",
         "createInChat": "Buat di chat",
         "download": "Unduh sumber",
-        "next": "Berikutnya",
-        "startRecording": "Pilih layar dan mulai",
-        "stopRecording": "Hentikan perekaman"
-      },
-      "recording": {
-        "chooseSurface": "Pilih tab, jendela, atau layar",
-        "countdown": "Perekaman dimulai setelah hitung mundur",
-        "description": "Chrome akan menanyakan apa yang ingin dibagikan. Perekaman baru dimulai setelah hitung mundur tiga detik selesai.",
-        "heading": "Rekam layar Anda",
-        "localNote": "Anda dapat berhenti dari bilah berbagi Chrome atau kembali ke sini. Rekaman tetap lokal sampai utas chat dibuat.",
-        "microphone": "Mikrofon",
-        "microphoneHelp": "Tambahkan narasi saat melakukan demonstrasi",
-        "recordingLocally": "Merekam secara lokal",
-        "systemAudio": "Audio sistem",
-        "systemAudioHelp": "Sumber yang tersedia bergantung pada Chrome dan sistem Anda"
+        "next": "Berikutnya"
       },
       "review": {
         "avatar": "Avatar",
@@ -2035,22 +2030,16 @@
         "voice": "Suara"
       },
       "source": {
-        "chatDescription": "Buka utas sekarang dan bentuk video bersama Zero",
-        "chatDetail": "Tambahkan sumber, avatar, atau suara nanti di chat",
-        "chatTitle": "Mulai di chat",
-        "documentDescription": "Ubah konten Anda menjadi video intro bernarasi",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Unggah slide atau dokumen",
-        "dropDescription": "Slide, dokumen, atau rekaman",
-        "dropTitle": "Letakkan sumber di sini",
+        "documentDescription": "Ubah slide Anda menjadi video intro bernarasi",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Unggah slide",
         "heading": "Bagaimana Anda ingin memulai?",
-        "help": "Tambahkan materi yang sudah ada, rekam layar, atau jelaskan video dengan kata-kata Anda sendiri",
-        "recordDescription": "Pilih tab, jendela, atau seluruh layar",
-        "recordDetail": "Dimulai setelah hitung mundur tiga detik",
+        "help": "Unggah slide yang sudah Anda miliki, atau rekam layar dengan {{desktopProductName}} Desktop",
+        "recordDescription": "Rekam demo dengan aplikasi desktop",
+        "recordDetail": "Perlu {{desktopProductName}} Desktop di macOS",
         "recordTitle": "Rekam layar Anda",
-        "videoDescription": "Biarkan AI merapikan tempo, framing, dan narasi",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Unggah rekaman"
+        "uploadDescription": "Pilih berkas dari komputer Anda",
+        "uploadTitle": "Unggah sumber"
       },
       "sourceReview": {
         "format": "Format",
