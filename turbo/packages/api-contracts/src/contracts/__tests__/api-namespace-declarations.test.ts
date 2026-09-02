@@ -168,7 +168,7 @@ describe("branded API namespace declarations", () => {
   it("declares no branded path at all", () => {
     expect(
       brandedNamespaceDeclarations(routes),
-      "A contract declares a neutral path — /api/<domain>/... — never a branded one. #28600 moved the last four, which were branded only because the Slack app configuration held those URLs; a path a provider console holds is served by a MIGRATED_BRANDED_PATHS row in apps/api rather than declared here. See #28278 for the classification and the migration a branded route needs.",
+      "A contract declares a neutral path — /api/<domain>/... — never a branded one. #28600 moved the last four, which were branded only because the Slack app configuration held those URLs; #31090 removed the compatibility mechanism in apps/api that used to keep such a URL reachable, so a provider console is repointed at the neutral path rather than served a branded one. See #28278 for the classification and the migration a branded route needs.",
     ).toStrictEqual([]);
   });
 
@@ -178,7 +178,7 @@ describe("branded API namespace declarations", () => {
   it("declares a branded path in no contract module", () => {
     expect(
       contractSourcesDeclaringBrandedPath(),
-      "No contract module may declare a branded path. A new contract declares a neutral path — /api/<domain>/... — and #28278 records the classification; a URL a third-party console holds is kept reachable by a MIGRATED_BRANDED_PATHS row in apps/api, not by declaring it here.",
+      "No contract module may declare a branded path. A new contract declares a neutral path — /api/<domain>/... — and #28278 records the classification; nothing has served a branded path since #31090 removed the compatibility mechanism, so a URL a third-party console holds is repointed at the neutral path rather than declared here.",
     ).toStrictEqual([]);
   });
 

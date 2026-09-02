@@ -39,6 +39,7 @@ export enum FeatureSwitchKey {
   GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
   StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
   OfficialWorkflows = "officialWorkflows",
+  MorningBrief = "morningBrief",
   TestOauthConnector = "_testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
@@ -67,4 +68,5 @@ export enum FeatureSwitchKey {
   GradientColorThemes = "gradientColorThemes",
   DesktopScreenRecording = "desktopScreenRecording",
   IosPwaStartupImages = "iosPwaStartupImages",
+  GeistTypeface = "geistTypeface",
 }

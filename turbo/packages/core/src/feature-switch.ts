@@ -222,6 +222,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MorningBrief]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable the first-class Morning Brief experience in Preferences.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -369,6 +376,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     // Ming only for the first pass; widen once the system mapping settles.
     enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
+  },
+  [FeatureSwitchKey.GeistTypeface]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Set the interface typeface to Geist and Geist Mono instead of Noto Sans and JetBrains Mono.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",

@@ -11,7 +11,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -490,6 +490,94 @@ describe("POST /api/webhooks/google-calendar", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
+  it("silently acknowledges events after Calendar access becomes unavailable", async () => {
+    const startedAt = Date.parse("2026-09-02T00:00:00.000Z");
+    mockNow(startedAt);
+    const recorder = configureGoogleCalendarApiMock({});
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+    const watch = recorder.channels[0];
+    if (!watch) {
+      throw new Error("Expected a registered Google Calendar watch channel");
+    }
+
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      }),
+    );
+    mockNow(startedAt + 2 * 60 * 60 * 1000);
+    context.mocks.axiomLogging.warn.mockClear();
+
+    for (const messageNumber of ["2", "3"]) {
+      const response = await postGoogleCalendarWebhook(
+        webhookHeaders(watch, { "x-goog-message-number": messageNumber }),
+      );
+      expect(response).toStrictEqual({
+        status: 200,
+        body: {
+          success: true,
+          watchStates: 1,
+          dispatched: 0,
+          duplicates: 0,
+        },
+      });
+    }
+
+    expect(refreshCalls).toBe(1);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.filter(([message]) => {
+        return message === "Connector credential refresh failed";
+      }),
+    ).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Google Calendar event skipped because connector access is unavailable",
+      expect.anything(),
+    );
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+      "Workflow watch lifecycle reconciliation failed",
+      expect.objectContaining({
+        provider: "google_calendar",
+        result: "access_unavailable",
+      }),
+    );
+
+    mockNow(startedAt);
+    server.use(
+      http.post("https://www.googleapis.com/calendar/v3/channels/stop", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await connectGoogleCalendar(scenario);
     await accept(
       automationsClient().delete({
         headers: authHeaders(),
