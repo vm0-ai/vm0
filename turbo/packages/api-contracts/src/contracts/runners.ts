@@ -12,7 +12,6 @@ import {
 } from "@okouai/connectors/firewall-contracts";
 import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
-import { modelUsageObservationEventsSchema } from "./model-usage-observations";
 import {
   MODEL_PROVIDER_PI_APIS,
   modelProviderCodexRuntimeConfigSchema,
@@ -1103,8 +1102,8 @@ const storedExecutionContextObjectSchema = z.object({
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
   // Canonical model id the proxy reports for model token usage. The API uses
-  // this model id for built-in billing rows and model usage observations;
-  // billing eligibility is decided from API-owned run context.
+  // this model id for built-in billing rows; billing eligibility is decided
+  // from API-owned run context.
   modelUsageProvider: z.string().optional(),
   // API-owned Codex provider/runtime metadata forwarded through the runner.
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
@@ -1199,8 +1198,8 @@ const executionContextObjectSchema = z.object({
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
   // Canonical model id the proxy reports for model token usage. The API uses
-  // this model id for built-in billing rows and model usage observations;
-  // billing eligibility is decided from API-owned run context.
+  // this model id for built-in billing rows; billing eligibility is decided
+  // from API-owned run context.
   modelUsageProvider: z.string().optional(),
   // API-owned Codex provider/runtime metadata forwarded through the runner.
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
@@ -1331,29 +1330,6 @@ export const runnersModelProviderFailuresContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Report a built-in model provider failure for a run",
-  },
-});
-
-export const runnersModelUsageObservationsContract = c.router({
-  report: {
-    method: "POST",
-    path: "/api/runners/model-usage-observations",
-    headers: authHeadersSchema,
-    body: z
-      .object({
-        events: modelUsageObservationEventsSchema,
-      })
-      .strict(),
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive compact model usage observations from official runner",
   },
 });
 

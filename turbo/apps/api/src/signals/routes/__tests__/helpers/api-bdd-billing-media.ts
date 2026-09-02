@@ -43,7 +43,6 @@ import {
   mockListStripeInvoices,
   mockStripeClient,
 } from "../../../external/stripe-client";
-import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
@@ -536,16 +535,6 @@ export function createBillingMediaApi(context: TestContext) {
             tz: "UTC",
           },
         }),
-        [200],
-      );
-    },
-
-    async readModelRankings() {
-      const client = setupApp({ context, routes: modelStatsPublicRoutes })(
-        modelStatsContract,
-      );
-      return await accept(
-        client.rankings({ query: { period: "week" } }),
         [200],
       );
     },

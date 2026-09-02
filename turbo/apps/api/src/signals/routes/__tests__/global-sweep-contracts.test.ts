@@ -7,7 +7,6 @@ import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-st
 import { cronDrainEmailOutboxRoutes } from "../cron-drain-email-outbox";
 import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
 import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
-import { modelStatsRoutes } from "../model-stats";
 import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
 import { cronReconcileSocialKitDownloadRoutes } from "../cron-reconcile-socialkit-downloads";
 import { cronSyncSkillsRoutes } from "../cron-sync-skills";
@@ -102,14 +101,6 @@ describe("production-global sweep route contracts", () => {
       context,
       cronRenewGmailWatchesRoutes,
       "/api/cron/renew-gmail-watches",
-    );
-  });
-
-  it("rejects model-stats aggregation with an invalid cron secret", async () => {
-    await expectGlobalSweepWrongAuth(
-      context,
-      modelStatsRoutes,
-      "/api/cron/aggregate-model-stats",
     );
   });
 });

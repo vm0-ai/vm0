@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  cronAggregateModelStatsContract,
   cronBrowserReconcileContract,
   cronCompactChatThreadSnapshotsContract,
   cronCompactUsageEventsContract,
@@ -157,10 +156,6 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
-    path: cronAggregateModelStatsContract.aggregate.path,
-    schedule: "12 * * * *",
-  },
-  {
     path: cronSteerRunTimeBudgetContract.steer.path,
     schedule: "* * * * *",
   },
@@ -191,17 +186,5 @@ describe("vercel cron config", () => {
         `${path} must be registered in API routes`,
       ).toBeTruthy();
     }
-  });
-
-  it("does not register the previous internal model stats cron path", () => {
-    const routePaths = new Set(
-      ROUTES.map(({ route }) => {
-        return route.path;
-      }),
-    );
-
-    expect(
-      routePaths.has("/api/internal/cron/aggregate-model-stats"),
-    ).toBeFalsy();
   });
 });
