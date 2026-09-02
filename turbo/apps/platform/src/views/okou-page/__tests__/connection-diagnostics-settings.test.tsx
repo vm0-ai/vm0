@@ -61,6 +61,16 @@ async function findWorkerDiagnosticsSummary(): Promise<HTMLElement> {
   });
 }
 
+/**
+ * Seeds the Worker capture from the Worker Store instead of through the page.
+ * The Worker records diagnostics from its own realtime activity inside the
+ * SharedWorker, and the test bootstrap never starts that: only the real Worker
+ * entry (`bootstrapWorker$`) subscribes the capture and enables it, while
+ * `setupSharedWorkerTestBootstrap$` stops at `initializeSharedDatabaseWorker$`.
+ * No page interaction can therefore put an event into the Worker's recording,
+ * so the test stands in for that separate process. Everything the test asserts
+ * still comes from the rendered page.
+ */
 function appendWorkerDiagnostic(errorMessage: string): void {
   context.workerStore.set(writeConnectionDiagnostic$, {
     action: "append",
@@ -72,8 +82,9 @@ function appendWorkerDiagnostic(errorMessage: string): void {
   });
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+/** Both panels render a Copy JSON button, so the panel has to be explicit. */
+function buttonByText(panel: HTMLElement, text: string): HTMLElement {
+  const button = queryAllByRoleFast("button", panel).find((candidate) => {
     return candidate.textContent?.includes(text) ?? false;
   });
   if (!button) {
@@ -173,7 +184,8 @@ describe("connection diagnostics settings", () => {
       ).toBeGreaterThan(0);
     });
 
-    await user.click(buttonByText("Copy JSON"));
+    const tabPanel = panelOf(diagnosticsSummary);
+    await user.click(buttonByText(tabPanel, "Copy JSON"));
     await waitFor(() => {
       expect(clipboard.writes).toHaveLength(1);
     });
@@ -188,12 +200,11 @@ describe("connection diagnostics settings", () => {
     expect(exported).not.toContain("realtime.example.test");
     expect(exported).not.toContain("123e4567-e89b-42d3-a456-426614174000");
 
-    await user.click(buttonByText("Clear"));
-    const tabPanel = within(panelOf(diagnosticsSummary));
+    await user.click(buttonByText(tabPanel, "Clear"));
     expect(
-      tabPanel.getByText("No diagnostic events recorded."),
+      within(tabPanel).getByText("No diagnostic events recorded."),
     ).toBeInTheDocument();
-    expect(tabPanel.getByText("events: 0 / 500")).toBeInTheDocument();
+    expect(within(tabPanel).getByText("events: 0 / 500")).toBeInTheDocument();
   });
 
   it("keeps only the latest 500 diagnostic events", async () => {
@@ -216,8 +227,9 @@ describe("connection diagnostics settings", () => {
     });
 
     await user.click(diagnosticsSummary);
-    expect(screen.getByText("events: 500 / 500")).toBeInTheDocument();
-    await user.click(buttonByText("Copy JSON"));
+    const tabPanel = panelOf(diagnosticsSummary);
+    expect(within(tabPanel).getByText("events: 500 / 500")).toBeInTheDocument();
+    await user.click(buttonByText(tabPanel, "Copy JSON"));
     await waitFor(() => {
       expect(clipboard.writes).toHaveLength(1);
     });
@@ -247,9 +259,9 @@ describe("connection diagnostics settings", () => {
 
     const workerSummary = await findWorkerDiagnosticsSummary();
     await user.click(workerSummary);
-    const workerPanel = within(panelOf(workerSummary));
+    const workerPanel = panelOf(workerSummary);
     await expect(
-      workerPanel.findByText(/worker-capture-marker/),
+      within(workerPanel).findByText(/worker-capture-marker/),
     ).resolves.toBeInTheDocument();
 
     const tabSummary = await findDiagnosticsSummary();
@@ -259,11 +271,13 @@ describe("connection diagnostics settings", () => {
     ).toBeNull();
 
     appendWorkerDiagnostic("worker-refresh-marker");
-    await user.click(buttonByText("Refresh"));
+    await user.click(buttonByText(workerPanel, "Refresh"));
 
     await expect(
-      workerPanel.findByText(/worker-refresh-marker/),
+      within(workerPanel).findByText(/worker-refresh-marker/),
     ).resolves.toBeInTheDocument();
-    expect(workerPanel.getByText(/worker-capture-marker/)).toBeInTheDocument();
+    expect(
+      within(workerPanel).getByText(/worker-capture-marker/),
+    ).toBeInTheDocument();
   });
 });
