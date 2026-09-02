@@ -59,6 +59,12 @@ ruby -e '
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
   raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
 
+  preview = build.fetch("steps").find { |step| step["id"] == "preview" }
+  preview_env = preview.fetch("env")
+  raise "Desktop preview must use the Workers subdomain" unless preview_env.fetch("CF_WORKERS_SUBDOMAIN") == "${{ vars.CF_WORKERS_SUBDOMAIN }}"
+  raise "Desktop preview must not use the retired Pages domain" if preview_env.key?("CF_PAGES_PREVIEW_DOMAIN")
+  raise "Desktop preview URL must pass the Workers subdomain" unless preview.fetch("run").include?("$CF_WORKERS_SUBDOMAIN")
+
   artifact_step = deploy.fetch("steps").find { |step| step["id"] == "artifact" }
   raise "deploy-desktop must resolve the checked-out commit" unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
   raise "deploy-desktop must use a SHA-addressed R2 prefix" unless artifact_step.fetch("run").include?(ARGV[6])
