@@ -308,11 +308,14 @@ function notifyScreenRecorderChanged(): void {
   // on-screen controls all stay alive for it.
   const isCapturing = status === "recording" || status === "paused";
 
-  // The controller belongs to a live capture and nothing else. Deciding that
-  // here rather than at each call site is what dismisses it when a recording
-  // ends from the tray, the shortcut, the system indicator, or a failure — and
-  // what takes it off screen the moment a finish starts uploading.
-  if (!isCapturing) {
+  // The controller stays up through the finish as well as the capture: it
+  // vanishing the instant Stop was pressed, seconds before the finalize and
+  // upload were done, read as the recorder having quit. It is dismissed once
+  // the session is over, whether that came from the tray, the shortcut, the
+  // system indicator, a failure, or a successful delivery.
+  const showsController =
+    isCapturing || status === "finalizing" || status === "delivering";
+  if (!showsController) {
     recorderWindows?.hideController();
   }
 

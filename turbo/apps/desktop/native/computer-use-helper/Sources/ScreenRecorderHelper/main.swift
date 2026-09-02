@@ -86,6 +86,44 @@ private func resolveDisplay(
 
 // MARK: - Source discovery
 
+/// One screen read, kept briefly so the picker and the capture that follows it
+/// do not each pay for their own.
+private final class ShareableContentCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var content: SCShareableContent?
+    private var coversEverySpace = false
+    private var readAt = Date.distantPast
+
+    /// How long one read stays good for. Opening the picker reads the screen
+    /// twice in a row and preparing the capture reads it a third time; a
+    /// window that closes inside this span still fails cleanly as
+    /// `source_lost`, the same as one that closes a moment later.
+    private let lifetime: TimeInterval = 20
+
+    func reuse(onScreenWindowsOnly: Bool) -> SCShareableContent? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let content, Date().timeIntervalSince(readAt) < lifetime else {
+            return nil
+        }
+        // A read of every Space answers a request for the current one too.
+        guard coversEverySpace || onScreenWindowsOnly else {
+            return nil
+        }
+        return content
+    }
+
+    func store(_ content: SCShareableContent, coversEverySpace: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.content = content
+        self.coversEverySpace = coversEverySpace
+        readAt = Date()
+    }
+}
+
+private let shareableContentCache = ShareableContentCache()
+
 /// Reads what ScreenCaptureKit can share.
 ///
 /// `onScreenWindowsOnly` is off by default because "on screen" means the active
@@ -106,6 +144,9 @@ private func shareableContent(
             code: "permission_denied",
             message: "Okou needs Screen Recording permission in System Settings"
         )
+    }
+    if let cached = shareableContentCache.reuse(onScreenWindowsOnly: onScreenWindowsOnly) {
+        return cached
     }
     let semaphore = DispatchSemaphore(value: 0)
     let box = ResultBox<SCShareableContent>()
@@ -136,6 +177,7 @@ private func shareableContent(
             message: "Screen recording permission is not granted"
         )
     }
+    shareableContentCache.store(content, coversEverySpace: !onScreenWindowsOnly)
     return content
 }
 
