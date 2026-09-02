@@ -1,10 +1,14 @@
 /**
- * okou presentation-template screenshot — render HTML pages to ordered PNGs.
+ * okou presentation-template screenshot — render a presentation to page PNGs.
  *
- * The counterpart of the source-deck rasteriser: this captures HTML that
- * already renders in a browser — a rebuilt layout, an assembled deck, or a
- * published template — onto a fixed page surface, and verifies every capture
- * before keeping it. See page-capture.ts for what "verifies" means and why.
+ * One command for every presentation source. A PPT, PPTX, or PDF deck is
+ * rasterised through LibreOffice and Poppler; HTML — a rebuilt layout, a
+ * directory of layouts, an assembled deck, or a URL — is captured through a
+ * browser. Both land on the same fixed page surface and produce the same
+ * ordered page-NNN.png.
+ *
+ * Every capture is verified before it is kept. See page-capture.ts for what
+ * that means and which failures motivate each check.
  */
 import { execFileSync } from "child_process";
 import {
@@ -22,7 +26,15 @@ import chalk from "chalk";
 import { Command, InvalidArgumentError } from "commander";
 
 import { withErrorHandler } from "../../lib/command/with-error-handler";
-import { decodePng, verifyCapture, type PageGeometry } from "./page-capture";
+import type {
+  CaptureSummary,
+  FailureRecord,
+  PageGeometry,
+  PageRecord,
+  RetakeRecord,
+} from "./capture-types";
+import { captureDocumentPages, isDocumentInput } from "./document-pages";
+import { decodePng, verifyCapture } from "./page-capture";
 
 const DEFAULT_WIDTH = 1600;
 const DEFAULT_HEIGHT = 900;
@@ -70,25 +82,6 @@ interface SlideBox {
   readonly left: number;
   readonly width: number;
   readonly height: number;
-}
-
-interface PageRecord {
-  readonly page: number;
-  readonly file: string;
-  readonly document: string;
-  readonly slide: number;
-}
-
-interface RetakeRecord {
-  readonly page: number;
-  readonly attempts: number;
-  readonly rejected: readonly string[];
-}
-
-interface FailureRecord {
-  readonly page: number;
-  readonly document: string;
-  readonly problems: readonly string[];
 }
 
 interface ScreenshotOptions {
@@ -357,16 +350,10 @@ function captureOne(
   return { ok: false, attempts };
 }
 
-interface ScreenshotSummary {
-  readonly pages: PageRecord[];
-  readonly retried: RetakeRecord[];
-  readonly failed: FailureRecord[];
-}
-
-async function capturePages(
+async function captureBrowserPages(
   options: ScreenshotOptions,
   outDir: string,
-): Promise<ScreenshotSummary> {
+): Promise<CaptureSummary> {
   mkdirSync(outDir, { recursive: true });
   for (const name of readdirSync(outDir)) {
     if (/^page-\d+\.png$/u.test(name)) {
@@ -426,11 +413,11 @@ async function capturePages(
     browser.close();
   }
 
-  return { pages, retried, failed };
+  return { pages, retried, failed, method: "agent-browser" };
 }
 
 function renderSummary(
-  summary: ScreenshotSummary,
+  summary: CaptureSummary,
   options: ScreenshotOptions,
   outDir: string,
 ): void {
@@ -469,14 +456,14 @@ function renderSummary(
   );
 }
 
-export const screenshotCommand = new Command()
+export const presentationScreenshotCommand = new Command()
   .name("screenshot")
   .description(
-    "Render an HTML page, layout directory, or deck to ordered page PNGs, verifying every capture before keeping it",
+    "Render a presentation (.ppt, .pptx, .pdf, .html) to ordered page PNGs, verifying every capture before keeping it",
   )
   .requiredOption(
     "--input <path>",
-    "HTML file, directory of HTML files, or http(s) URL",
+    "A .ppt, .pptx, .pdf or .html file, a directory of .html files, or an http(s) URL",
   )
   .requiredOption("--out <dir>", "Output directory for page-001.png, ...")
   .option(
@@ -493,12 +480,12 @@ export const screenshotCommand = new Command()
   )
   .option(
     "--slides <selector>",
-    'Slide selector within one document, or "none" for one page per file',
+    'HTML only: slide selector within one document, or "none" for one page per file',
     "auto",
   )
   .option(
     "--retries <count>",
-    "Reload-and-retake attempts per page",
+    "HTML only: reload-and-retake attempts per page",
     parseRetries,
     DEFAULT_RETRIES,
   )
@@ -510,7 +497,12 @@ export const screenshotCommand = new Command()
         ...options,
         slides: options.slides === "none" ? "" : options.slides,
       };
-      const summary = await capturePages(resolved, outDir);
+      const summary = isDocumentInput(options.input)
+        ? captureDocumentPages(options.input, outDir, {
+            width: options.width,
+            height: options.height,
+          })
+        : await captureBrowserPages(resolved, outDir);
 
       if (options.json === true) {
         console.log(
@@ -520,6 +512,7 @@ export const screenshotCommand = new Command()
               width: options.width,
               height: options.height,
               outDir,
+              method: summary.method,
               documents: [
                 ...new Set(
                   summary.pages.map((page) => {

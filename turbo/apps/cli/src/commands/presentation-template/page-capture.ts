@@ -14,6 +14,8 @@
  */
 import { inflateSync } from "node:zlib";
 
+import type { PageGeometry } from "./capture-types";
+
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /** Samples per axis when probing a capture for flat colour. */
@@ -43,11 +45,6 @@ interface DecodedPng {
   readonly channels: number;
   readonly stride: number;
   readonly pixels: Buffer;
-}
-
-export interface PageGeometry {
-  readonly width: number;
-  readonly height: number;
 }
 
 interface PngHeader {
@@ -241,6 +238,7 @@ function sampleGrid(
 export function verifyCapture(
   image: DecodedPng,
   expected: PageGeometry,
+  { edgeBand = true }: { edgeBand?: boolean } = {},
 ): string[] {
   if (image.width !== expected.width || image.height !== expected.height) {
     return [
@@ -263,8 +261,9 @@ export function verifyCapture(
   }
 
   // A capture taken mid-paint loses a band at the bottom edge, filled with a
-  // colour the page itself never uses.
-  const bandColor = uniformRowColor(image, image.height - 1);
+  // colour the page itself never uses. Only a live browser paints incrementally,
+  // so a rasterised document page is never checked for this.
+  const bandColor = edgeBand ? uniformRowColor(image, image.height - 1) : "";
   if (bandColor) {
     let band = 1;
     while (
