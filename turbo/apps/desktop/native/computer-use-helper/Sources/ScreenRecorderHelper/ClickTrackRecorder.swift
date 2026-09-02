@@ -50,6 +50,10 @@ final class ClickTrackRecorder: @unchecked Sendable {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var warnings: [String] = []
+    /// Where the captured region stands right now, for a source that moves.
+    /// Asked at each click, so the click is projected through the geometry of
+    /// its own moment rather than the recording's first. Set before `start`.
+    var geometryProvider: (() -> CaptureGeometry?)?
 
     /// Starts observing clicks. Never throws: losing the click track must not
     /// cost the user their video, so a refused tap is reported as a warning on
@@ -129,7 +133,8 @@ final class ClickTrackRecorder: @unchecked Sendable {
             screenY: Double(location.y),
             button: button,
             clickCount: Int(event.getIntegerValueField(.mouseEventClickState)),
-            modifiers: modifierNames(for: event.flags)
+            modifiers: modifierNames(for: event.flags),
+            geometry: geometryProvider?()
         )
         lock.lock()
         clicks.append(click)

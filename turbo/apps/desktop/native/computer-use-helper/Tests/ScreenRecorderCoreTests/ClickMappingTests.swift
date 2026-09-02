@@ -212,6 +212,44 @@ struct ClickProjectionTests {
     }
 
     @Test
+    func projectsAClickThroughTheGeometryOfItsOwnMoment() {
+        // The window was dragged 100 points right and down before this click.
+        // Projected through the recording's original geometry the click would
+        // land at (0.6, 0.7) — the wrong place in a video that followed the
+        // window; through the geometry captured with it, it lands where the
+        // user actually clicked.
+        let moved = CaptureGeometry(
+            originX: 100,
+            originY: 100,
+            widthPoints: 1000,
+            heightPoints: 500,
+            scale: 2
+        )
+        let projection = projectClicks(
+            [
+                CapturedClick(
+                    ticks: 2_024_000,
+                    screenX: 600,
+                    screenY: 350,
+                    button: "left",
+                    clickCount: 1,
+                    modifiers: [],
+                    geometry: moved
+                )
+            ],
+            timeline: timeline,
+            geometry: display,
+            outputSize: outputSize
+        )
+
+        #expect(projection.droppedOutOfFrame == 0)
+        #expect(projection.clicks.first?.point.normalizedX == 0.5)
+        #expect(projection.clicks.first?.point.normalizedY == 0.5)
+        #expect(projection.clicks.first?.point.frameX == 960)
+        #expect(projection.clicks.first?.point.frameY == 480)
+    }
+
+    @Test
     func countsClicksThatLandedOutsideTheCapturedRegion() {
         let projection = projectClicks(
             [click(ticks: 2_024_000, x: 1_500, y: 250)],

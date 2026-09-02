@@ -444,6 +444,13 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private var clickTimeline: ClickTimeline?
     private var pauseTimeline = PauseTimeline()
     private var startedAtUnixMs = 0
+    /// The window being recorded, when the capture follows one. Its bounds are
+    /// re-read while recording so a click is projected through where the
+    /// window is at that moment, not where it was when the capture was
+    /// prepared; a window capture follows the window wherever it is dragged.
+    private let windowID: CGWindowID?
+    private var currentGeometry: CaptureGeometry
+    private var windowBoundsTimer: DispatchSourceTimer?
 
     init(
         id: String,
@@ -451,16 +458,71 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         configuration: SCStreamConfiguration,
         geometry: CaptureGeometry,
         outputSize: OutputSize,
-        audioPlan: AudioTrackPlan
+        audioPlan: AudioTrackPlan,
+        windowID: CGWindowID? = nil
     ) {
         self.id = id
         self.filter = filter
         self.configuration = configuration
         self.geometry = geometry
+        self.currentGeometry = geometry
         self.outputSize = outputSize
         self.audioPlan = audioPlan
+        self.windowID = windowID
         super.init()
         mach_timebase_info(&timebase)
+    }
+
+    private func currentGeometryNow() -> CaptureGeometry {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentGeometry
+    }
+
+    /// Follows the recorded window's bounds while recording. Four times a
+    /// second is well inside how fast a window can be dragged and clicked.
+    private func startWindowBoundsTracking() {
+        guard let windowID else {
+            return
+        }
+        let timer = DispatchSource.makeTimerSource(queue: sampleQueue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(250))
+        timer.setEventHandler { [weak self] in
+            self?.refreshWindowBounds(windowID)
+        }
+        timer.resume()
+        lock.lock()
+        windowBoundsTimer = timer
+        lock.unlock()
+    }
+
+    private func stopWindowBoundsTracking() {
+        lock.lock()
+        let timer = windowBoundsTimer
+        windowBoundsTimer = nil
+        lock.unlock()
+        timer?.cancel()
+    }
+
+    private func refreshWindowBounds(_ windowID: CGWindowID) {
+        guard
+            let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowID)
+                as? [[String: Any]],
+            let info = list.first,
+            let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
+            let bounds = CGRect(dictionaryRepresentation: boundsDictionary as CFDictionary)
+        else {
+            return
+        }
+        lock.lock()
+        currentGeometry = CaptureGeometry(
+            originX: bounds.origin.x,
+            originY: bounds.origin.y,
+            widthPoints: bounds.width,
+            heightPoints: bounds.height,
+            scale: geometry.scale
+        )
+        lock.unlock()
     }
 
     /// Converts a host-clock presentation timestamp back into the raw mach tick
@@ -612,16 +674,34 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         startedAtUnixMs = Int(Date().timeIntervalSince1970 * 1000)
         lock.unlock()
+        clickTracker.geometryProvider = { [weak self] in
+            self?.currentGeometryNow()
+        }
         clickTracker.start()
+        startWindowBoundsTracking()
+    }
+
+    /// Where the capture stands right now on the recording's clock.
+    ///
+    /// Read from the host clock, which is the clock ScreenCaptureKit stamps
+    /// frames with, rather than from the last written sample: nothing is
+    /// written while paused, so that sample's time froze at the moment of the
+    /// pause and made every pause span empty. The movie then kept a frozen
+    /// stretch the length of the pause, clicks made during it were kept, and
+    /// every click after it sat that much later than the picture.
+    private func captureSecondsNowLocked() -> Double? {
+        guard let start = sessionStartedAt else {
+            return nil
+        }
+        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        return max(0, CMTimeGetSeconds(CMTimeSubtract(now, start)))
     }
 
     func pause() throws {
         try transition(.pause)
         lock.lock()
-        if let start = sessionStartedAt, let latest = latestSampleAt {
-            pauseTimeline.pause(
-                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
-            )
+        if let seconds = captureSecondsNowLocked() {
+            pauseTimeline.pause(at: seconds)
         }
         lock.unlock()
     }
@@ -629,10 +709,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     func resume() throws {
         try transition(.resume)
         lock.lock()
-        if let start = sessionStartedAt, let latest = latestSampleAt {
-            pauseTimeline.resume(
-                at: max(0, CMTimeGetSeconds(CMTimeSubtract(latest, start)))
-            )
+        if let seconds = captureSecondsNowLocked() {
+            pauseTimeline.resume(at: seconds)
         }
         lock.unlock()
     }
@@ -642,6 +720,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     func discard() throws {
         try transition(.discard)
         clickTracker.stop()
+        stopWindowBoundsTracking()
 
         lock.lock()
         let captureStream = stream
@@ -673,6 +752,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     func stop() throws -> [String: Any] {
         try transition(.stop)
         clickTracker.stop()
+        stopWindowBoundsTracking()
 
         lock.lock()
         let captureStream = stream
@@ -947,6 +1027,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         captureStream?.stopCapture { _ in }
         // The tap outlives the stream unless it is torn down here.
         clickTracker.stop()
+        stopWindowBoundsTracking()
     }
 
     // MARK: SCStreamDelegate
@@ -1262,6 +1343,7 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
     let geometry: CaptureGeometry
 
     var croppedArea: AreaRect?
+    var windowID: CGWindowID?
 
     if sourceKind == "display" {
         let display = try resolveDisplay(content, sourceId: sourceId)
@@ -1309,6 +1391,7 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
             )
         }
         filter = SCContentFilter(desktopIndependentWindow: window)
+        windowID = rawID
         geometry = CaptureGeometry(
             originX: window.frame.origin.x,
             originY: window.frame.origin.y,
@@ -1360,7 +1443,8 @@ private func handlePrepare(_ request: [String: Any]) throws -> [String: Any] {
         configuration: configuration,
         geometry: geometry,
         outputSize: outputSize,
-        audioPlan: audioPlan
+        audioPlan: audioPlan,
+        windowID: windowID
     )
     sessionStore.insert(session)
 
