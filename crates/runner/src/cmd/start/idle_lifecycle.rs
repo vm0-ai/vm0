@@ -16,8 +16,10 @@ use crate::idle_pool::{
     IdlePoolPressureSelection, IdlePoolSnapshot, ReservedIdleSandbox,
 };
 use crate::ids::RunId;
-use crate::resource_budget::BudgetLease;
+use crate::paths::short_digest;
+use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::status::{StatusResult, StatusTracker};
+use crate::types::reuse_key_kind;
 
 pub(super) type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
 
@@ -105,17 +107,20 @@ pub(super) struct RetiringIdleEntry {
 }
 
 pub(super) struct IdlePressureRequest<'a> {
+    pub(super) run_id: RunId,
     pub(super) reuse_key: Option<&'a str>,
     pub(super) profile_name: &'a str,
     pub(super) device_rate_limits: &'a Option<DeviceRateLimits>,
     pub(super) history_generation_run_id: Option<RunId>,
+    pub(super) vcpu: u32,
+    pub(super) memory_mb: u32,
     pub(super) context: &'static str,
 }
 
 pub(super) enum IdlePressureSelection {
     Reusable(ReservedIdleActivation),
-    Retiring(RetiringIdleEntry),
-    Empty,
+    Fresh(BudgetLease),
+    Exhausted(Vec<BudgetLease>),
 }
 
 /// A parked sandbox reservation paired with the idle snapshot captured by the
@@ -169,47 +174,108 @@ impl RetiringIdleEntry {
     }
 }
 
-/// Prefer a matching reusable entry; otherwise remove the oldest idle entry.
-/// The pool decision is atomic, and an evicted payload obtains durable cleanup
-/// ownership before the status write yields or its lease can be handed off.
-pub(super) async fn select_idle_entry_for_pressure(
+/// Prefer a matching reusable entry; otherwise retire only enough oldest idle
+/// entries for the incoming resource shape.
+///
+/// The idle pool stays locked while one deterministic oldest-first ordering is
+/// consumed. Resource-budget substitution takes only its short synchronous
+/// mutex inside that pool lock and never carries a guard across an await. Every
+/// evicted payload obtains tracked cleanup ownership before the final pool
+/// snapshot is captured and persisted once.
+pub(super) async fn select_idle_entries_for_pressure(
     idle_pool: &SharedIdlePool,
     status: &StatusTracker,
     tracker: &IdleDestroyTracker,
+    budget: &Arc<ResourceBudget>,
+    mut retiring_leases: Vec<BudgetLease>,
     request: IdlePressureRequest<'_>,
 ) -> IdlePressureSelection {
     let (selection, snapshot) = {
         let mut pool = idle_pool.lock().await;
-        let selection = pool.reserve_reusable_or_evict_oldest(
+        match pool.reserve_reusable_or_order_oldest(
             request.reuse_key,
             request.profile_name,
             request.device_rate_limits,
             request.history_generation_run_id,
-        );
-        let snapshot = pool.status_snapshot();
-        (selection, snapshot)
+        ) {
+            IdlePoolPressureSelection::Reusable(reservation) => {
+                drop(retiring_leases);
+                let snapshot = pool.status_snapshot();
+                (
+                    IdlePressureSelection::Reusable(ReservedIdleActivation {
+                        reservation,
+                        idle_snapshot: snapshot,
+                    }),
+                    None,
+                )
+            }
+            IdlePoolPressureSelection::OldestFirst(reuse_keys) => {
+                let mut mutated = false;
+                let mut fresh_lease = try_substitute_retiring_leases(
+                    budget,
+                    &mut retiring_leases,
+                    request.vcpu,
+                    request.memory_mb,
+                );
+                for reuse_key in reuse_keys {
+                    if fresh_lease.is_some() {
+                        break;
+                    }
+                    let Some(job) = pool.evict_for_pressure(&reuse_key) else {
+                        continue;
+                    };
+                    mutated = true;
+                    let retiring = retire_idle_destroy_job(tracker, job, request.context);
+                    info!(
+                        run_id = %request.run_id,
+                        context = request.context,
+                        reuse_key_fingerprint = %short_digest(retiring.reuse_key()),
+                        reuse_key_kind = reuse_key_kind(retiring.reuse_key()),
+                        profile = %retiring.profile_name(),
+                        vcpu = retiring.budget_vcpu(),
+                        memory_mb = retiring.budget_memory_mb(),
+                        "evicting idle sandbox for admission pressure"
+                    );
+                    retiring_leases.push(retiring.into_budget_lease());
+                    fresh_lease = try_substitute_retiring_leases(
+                        budget,
+                        &mut retiring_leases,
+                        request.vcpu,
+                        request.memory_mb,
+                    );
+                }
+                let selection = match fresh_lease {
+                    Some(lease) => IdlePressureSelection::Fresh(lease),
+                    None => IdlePressureSelection::Exhausted(retiring_leases),
+                };
+                let snapshot = mutated.then(|| pool.status_snapshot());
+                (selection, snapshot)
+            }
+        }
     };
-    match selection {
-        IdlePoolPressureSelection::Reusable(reservation) => {
-            IdlePressureSelection::Reusable(ReservedIdleActivation {
-                reservation,
-                idle_snapshot: snapshot,
-            })
+    if let Some(snapshot) = snapshot {
+        set_idle_status_snapshot(status, snapshot).await;
+    }
+    selection
+}
+
+fn try_substitute_retiring_leases(
+    budget: &Arc<ResourceBudget>,
+    retiring_leases: &mut Vec<BudgetLease>,
+    vcpu: u32,
+    memory_mb: u32,
+) -> Option<BudgetLease> {
+    match ResourceBudget::try_substitute_leases(
+        budget,
+        std::mem::take(retiring_leases),
+        vcpu,
+        memory_mb,
+    ) {
+        Ok(lease) => Some(lease),
+        Err(retained) => {
+            *retiring_leases = retained;
+            None
         }
-        IdlePoolPressureSelection::Evicted(job) => {
-            let reuse_key = job.reuse_key().to_owned();
-            let profile_name = job.profile_name().to_owned();
-            let budget_lease =
-                spawn_idle_destroy_job_retaining_lease(tracker, *job, request.context);
-            let selection = IdlePressureSelection::Retiring(RetiringIdleEntry {
-                budget_lease,
-                reuse_key,
-                profile_name,
-            });
-            set_idle_status_snapshot(status, snapshot).await;
-            selection
-        }
-        IdlePoolPressureSelection::Empty => IdlePressureSelection::Empty,
     }
 }
 
@@ -289,14 +355,21 @@ pub(super) fn spawn_idle_destroy_job(
     tracker.spawn_job(job, context);
 }
 
-fn spawn_idle_destroy_job_retaining_lease(
+fn retire_idle_destroy_job(
     tracker: &IdleDestroyTracker,
     job: IdleDestroyJob,
     context: &'static str,
-) -> BudgetLease {
+) -> RetiringIdleEntry {
+    let reuse_key = job.reuse_key().to_owned();
+    let profile_name = job.profile_name().to_owned();
     let (payload, budget_lease) = job.into_retiring_parts();
     tracker.spawn_payload(payload, context);
-    budget_lease
+    tracker.reuse_state_notify.notify_one();
+    RetiringIdleEntry {
+        budget_lease,
+        reuse_key,
+        profile_name,
+    }
 }
 
 /// Destroy idle entries in parallel and wait until their leases are dropped.

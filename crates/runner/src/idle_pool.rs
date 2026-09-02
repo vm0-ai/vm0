@@ -178,13 +178,14 @@ impl IdlePool {
         Some(ReservedIdleSandbox { entry })
     }
 
-    /// Reserve a matching idle entry or select the oldest entry for pressure
+    /// Reserve a matching idle entry or order all current entries for pressure
     /// eviction in one pool transition.
     ///
-    /// Keeping both decisions under the caller's exclusive `&mut` access
-    /// prevents an entry parked between a match check and eviction from being
-    /// destroyed instead of reused.
-    pub(crate) fn reserve_reusable_or_evict_oldest(
+    /// The caller must retain exclusive pool access while consuming the
+    /// returned keys. This prevents an entry parked between the match check and
+    /// eviction from being destroyed instead of reused, and avoids rescanning
+    /// the shrinking pool for every eviction.
+    pub(crate) fn reserve_reusable_or_order_oldest(
         &mut self,
         reuse_key: Option<&str>,
         profile_name: &str,
@@ -204,10 +205,17 @@ impl IdlePool {
             return IdlePoolPressureSelection::Reusable(Box::new(reservation));
         }
 
-        match self.evict_oldest() {
-            Some(job) => IdlePoolPressureSelection::Evicted(Box::new(job)),
-            None => IdlePoolPressureSelection::Empty,
-        }
+        let mut ordered_entries: Vec<(Instant, String)> = self
+            .entries
+            .iter()
+            .map(|(reuse_key, entry)| (entry.parked_at, reuse_key.clone()))
+            .collect();
+        ordered_entries.sort_unstable();
+        let reuse_keys = ordered_entries
+            .into_iter()
+            .map(|(_, reuse_key)| reuse_key)
+            .collect();
+        IdlePoolPressureSelection::OldestFirst(reuse_keys)
     }
 
     pub fn restore_reserved(
@@ -226,21 +234,12 @@ impl IdlePool {
         RestoreReservedIdleResult::Restored
     }
 
-    /// Evict the oldest idle entry (by park time). Used for resource
-    /// pressure relief.
-    pub fn evict_oldest(&mut self) -> Option<IdleDestroyJob> {
-        let oldest_key = self
-            .entries
-            .iter()
-            .min_by(|(left_key, left), (right_key, right)| {
-                left.parked_at
-                    .cmp(&right.parked_at)
-                    .then_with(|| left_key.cmp(right_key))
-            })
-            .map(|(k, _)| k.clone())?;
+    /// Evict an entry selected by a pressure ordering captured under the same
+    /// exclusive pool access.
+    pub(crate) fn evict_for_pressure(&mut self, reuse_key: &str) -> Option<IdleDestroyJob> {
         let job = self
             .entries
-            .remove(&oldest_key)
+            .remove(reuse_key)
             .map(IdleEntry::into_destroy_job);
         if job.is_some() {
             self.bump_revision();
@@ -378,8 +377,7 @@ pub enum ParkResult {
 #[must_use = "pressure selection must reserve, track, or explicitly handle idle ownership"]
 pub(crate) enum IdlePoolPressureSelection {
     Reusable(Box<ReservedIdleSandbox>),
-    Evicted(Box<IdleDestroyJob>),
-    Empty,
+    OldestFirst(Vec<String>),
 }
 
 #[cfg(test)]

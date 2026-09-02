@@ -284,7 +284,7 @@ async fn rejected_parked_idle_candidate_returns_active_owned_lease() {
 }
 
 #[test]
-fn evict_oldest() {
+fn pressure_ordering_evicts_oldest_first() {
     let mut pool = IdlePool::new(pool_config(0));
     let now = Instant::now();
 
@@ -296,14 +296,20 @@ fn evict_oldest() {
     );
     let _ = park_at(&mut pool, "new", make_candidate_for("new", 4, 4096), now);
 
-    let evicted = pool.evict_oldest().unwrap();
+    let IdlePoolPressureSelection::OldestFirst(reuse_keys) =
+        pool.reserve_reusable_or_order_oldest(None, "vm0/default", &None, None)
+    else {
+        panic!("pressure selection without a reuse key should order idle entries");
+    };
+    assert_eq!(reuse_keys, vec!["old", "new"]);
+    let evicted = pool.evict_for_pressure(&reuse_keys[0]).unwrap();
     assert_eq!(evicted.budget_vcpu(), 2); // the old one
     assert_eq!(pool.len(), 1);
     assert!(pool.take("new").is_some());
 }
 
 #[test]
-fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
+fn pressure_ordering_breaks_equal_park_time_by_reuse_key() {
     let mut pool = IdlePool::new(pool_config(0));
     let parked_at = Instant::now();
     for reuse_key in ["session-z", "session-a", "session-m"] {
@@ -315,8 +321,12 @@ fn evict_oldest_breaks_equal_park_time_by_reuse_key() {
         );
     }
 
-    let evicted = pool.evict_oldest().unwrap();
-    assert_eq!(evicted.reuse_key(), "session-a");
+    let IdlePoolPressureSelection::OldestFirst(reuse_keys) =
+        pool.reserve_reusable_or_order_oldest(None, "vm0/default", &None, None)
+    else {
+        panic!("pressure selection without a reuse key should order idle entries");
+    };
+    assert_eq!(reuse_keys, vec!["session-a", "session-m", "session-z"]);
 }
 
 #[test]
@@ -340,7 +350,7 @@ fn pressure_selection_reserves_exact_match_before_oldest_eviction() {
         parked_at,
     );
 
-    let selection = pool.reserve_reusable_or_evict_oldest(
+    let selection = pool.reserve_reusable_or_order_oldest(
         Some("session-matching"),
         "vm0/default",
         &None,
@@ -358,9 +368,14 @@ fn pressure_selection_reserves_exact_match_before_oldest_eviction() {
 }
 
 #[test]
-fn evict_oldest_empty_returns_none() {
+fn pressure_ordering_empty_returns_no_keys() {
     let mut pool = IdlePool::new(pool_config(0));
-    assert!(pool.evict_oldest().is_none());
+    let IdlePoolPressureSelection::OldestFirst(reuse_keys) =
+        pool.reserve_reusable_or_order_oldest(None, "vm0/default", &None, None)
+    else {
+        panic!("empty pressure selection should return an empty ordering");
+    };
+    assert!(reuse_keys.is_empty());
 }
 
 #[test]
