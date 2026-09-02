@@ -1195,7 +1195,10 @@ describe("zero sidebar account menu", () => {
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.OkouDebug]: true,
+        [FeatureSwitchKey.MorningBrief]: true,
+      },
     });
 
     const menu = await openAccountMenu();

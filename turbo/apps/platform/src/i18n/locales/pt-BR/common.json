@@ -2033,12 +2033,21 @@
       },
       "cardDescription": "Transforme um arquivo ou gravação de tela em um vídeo finalizado",
       "description": "Adicione uma fonte, escolha um avatar e uma voz opcionais e crie o vídeo em uma conversa.",
+      "desktop": {
+        "checkingCompatibility": "Verificando compatibilidade",
+        "description": "A gravação de tela fica no aplicativo {{desktopProductName}} para desktop, que captura qualquer janela e registra onde você clica.",
+        "download": "Baixar para macOS",
+        "handoffDetail": "Sua gravação abre aqui, pronta para um apresentador e uma voz.",
+        "handoffTitle": "Volte para este assistente automaticamente",
+        "heading": "Grave com o {{desktopProductName}} Desktop",
+        "illustration": "A gravação acontece no {{desktopProductName}} Desktop",
+        "installDetail": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
+        "installTitle": "Baixe e instale o {{desktopProductName}} Desktop",
+        "recordDetail": "Pare pelo mesmo menu quando terminar.",
+        "recordTitle": "Inicie uma gravação pela barra de menus",
+        "unsupportedIntelMac": "Requer um Mac com Apple silicon"
+      },
       "errors": {
-        "recordingEmpty": "A gravação ficou vazia. Tente novamente.",
-        "recordingFailed": "Não foi possível iniciar a gravação de tela. Tente novamente em uma versão recente do Chrome.",
-        "recordingPermission": "Nada foi compartilhado. Escolha uma guia, janela ou tela quando estiver pronto.",
-        "recordingShareEnded": "O compartilhamento de tela terminou antes do início da gravação.",
-        "recordingUnsupported": "Este navegador não oferece suporte à gravação de tela.",
         "sendFailed": "Não foi possível criar a conversa. Sua fonte continua salva localmente e foi baixada como backup.",
         "uploadFailed": "Não foi possível enviar a fonte. Ela continua salva localmente e foi baixada como backup."
       },
@@ -2046,21 +2055,7 @@
         "back": "Voltar",
         "createInChat": "Criar na conversa",
         "download": "Baixar fonte",
-        "next": "Avançar",
-        "startRecording": "Escolher tela e iniciar",
-        "stopRecording": "Parar gravação"
-      },
-      "recording": {
-        "chooseSurface": "Escolha uma guia, janela ou tela",
-        "countdown": "A gravação começa após a contagem regressiva",
-        "description": "O Chrome perguntará o que compartilhar. A gravação só começa após o fim da contagem regressiva de três segundos.",
-        "heading": "Grave sua tela",
-        "localNote": "Você pode parar pela barra de compartilhamento do Chrome ou voltar aqui. A gravação permanece local até a conversa ser criada.",
-        "microphone": "Microfone",
-        "microphoneHelp": "Adicione narração enquanto demonstra",
-        "recordingLocally": "Gravando localmente",
-        "systemAudio": "Áudio do sistema",
-        "systemAudioHelp": "As fontes disponíveis dependem do Chrome e do seu sistema"
+        "next": "Avançar"
       },
       "review": {
         "avatar": "Avatar",
@@ -2071,30 +2066,22 @@
         "voice": "Voz"
       },
       "source": {
-        "chatDescription": "Abra uma conversa agora e desenvolva o vídeo com o Zero",
-        "chatDetail": "Adicione uma fonte, avatar ou voz depois na conversa",
-        "chatTitle": "Começar na conversa",
-        "documentDescription": "Transforme seu conteúdo em um vídeo de introdução narrado",
-        "documentFormats": "PPTX, PPT, PDF, DOC, DOCX",
-        "documentTitle": "Enviar slides ou documento",
-        "dropDescription": "Slides, documentos ou gravações",
-        "dropTitle": "Solte uma fonte aqui",
+        "documentDescription": "Transforme seus slides em um vídeo de introdução narrado",
+        "documentFormats": "PPTX, PPT, PDF, HTML",
+        "documentTitle": "Enviar slides",
         "heading": "Como você quer começar?",
-        "help": "Adicione algo que já tem, grave sua tela ou descreva o vídeo com suas próprias palavras",
-        "recordDescription": "Escolha uma guia, janela ou a tela inteira",
-        "recordDetail": "Começa após uma contagem regressiva de três segundos",
+        "help": "Envie os slides que você já tem ou grave sua tela com o {{desktopProductName}} Desktop",
+        "recordDescription": "Capture uma demonstração com o app para desktop",
+        "recordDetail": "Precisa do {{desktopProductName}} Desktop no macOS",
         "recordTitle": "Gravar sua tela",
-        "videoDescription": "Deixe a IA melhorar o ritmo, o enquadramento e a narração",
-        "videoFormats": "MP4, MOV, WEBM",
-        "videoTitle": "Enviar uma gravação"
+        "uploadDescription": "Escolha um arquivo do seu computador",
+        "uploadTitle": "Enviar fonte"
       },
       "sourceReview": {
         "format": "Formato",
         "heading": "Sua fonte está pronta",
         "help": "Confira o arquivo antes de continuar",
         "inAccount": "Na sua conta",
-        "inBrowser": "Neste navegador",
-        "inTab": "Até esta guia ser fechada",
         "replace": "Substituir fonte",
         "saved": "Salvo",
         "source": "Fonte"

@@ -61,7 +61,8 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
 // The final Microsoft console path from #28278. #28917 retired this route's
 // `MIGRATED_BRANDED_PATHS` row — the Azure Bot messaging endpoint was already
 // repointed here before #28545 landed — so the branded forms this file used to
-// replay are no longer registered.
+// replay are no longer registered. #31088 emptied that table, so no route has
+// a branded form to replay any more.
 const TEAMS_BOT_PATH = "http://api.test/api/webhooks/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";

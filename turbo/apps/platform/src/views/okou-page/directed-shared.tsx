@@ -15,6 +15,7 @@ import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   applyColorThemeDocumentAttributes,
+  applyTypefaceDocumentAttribute,
   colorTheme$,
 } from "../../signals/theme.ts";
 
@@ -23,8 +24,11 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const dialogOpen = useGet(settingsDialogOpen$);
   const closeSettingsModal = useSet(closeSettingsModal$);
   const colorTheme = useGet(colorTheme$);
+  const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
+    features[FeatureSwitchKey.GradientColorThemes] ?? false;
+  const geistTypefaceEnabled =
+    features[FeatureSwitchKey.GeistTypeface] ?? false;
 
   return (
     <div
@@ -32,6 +36,9 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
         applyColorThemeDocumentAttributes(
           element !== null && gradientColorThemesEnabled,
           colorTheme,
+        );
+        applyTypefaceDocumentAttribute(
+          element !== null && geistTypefaceEnabled,
         );
       }}
       className="zero-app zero-viewport-shell flex w-full bg-background"

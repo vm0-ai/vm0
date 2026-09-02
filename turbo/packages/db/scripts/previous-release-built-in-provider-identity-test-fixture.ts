@@ -1,14 +1,24 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { modelProviders } from "../schema/model-provider";
+import { modelProviders } from "../src/schema/model-provider";
 
+const PREVIOUS_RELEASE_BUILT_IN_PROVIDER_IDENTITY_TYPES = [
+  "vm0",
+  "built-in",
+] as const;
 const ORG_NO_SECRET_PROVIDER_USER_ID = "__org__";
 
 type ModelProviderRow = typeof modelProviders.$inferSelect;
 
-export async function upsertBuiltInNoSecretModelProviderIdentity(
+/**
+ * Frozen #29938 application behavior from
+ * aad55f424b8a4b72c2b06e25335e06de53e10c7a for the historical 1013-1015
+ * deployment compatibility proof. Production code must not import this test
+ * fixture.
+ */
+export async function upsertPreviousReleaseBuiltInNoSecretModelProviderIdentity(
   db: NodePgDatabase<Record<string, never>>,
   args: {
     readonly orgId: string;
@@ -24,19 +34,28 @@ export async function upsertBuiltInNoSecretModelProviderIdentity(
     );
     signal.throwIfAborted();
 
-    const [existingProvider] = await tx
+    const existingProviders = await tx
       .select()
       .from(modelProviders)
       .where(
         and(
           eq(modelProviders.orgId, args.orgId),
           eq(modelProviders.userId, ORG_NO_SECRET_PROVIDER_USER_ID),
-          eq(modelProviders.type, "built-in"),
+          inArray(modelProviders.type, [
+            ...PREVIOUS_RELEASE_BUILT_IN_PROVIDER_IDENTITY_TYPES,
+          ]),
         ),
       )
       .for("update");
     signal.throwIfAborted();
 
+    if (existingProviders.length > 1) {
+      throw new Error(
+        "Conflicting built-in model provider alias rows; refusing to merge or delete either row",
+      );
+    }
+
+    const existingProvider = existingProviders[0];
     if (existingProvider) {
       const [provider] = await tx
         .update(modelProviders)

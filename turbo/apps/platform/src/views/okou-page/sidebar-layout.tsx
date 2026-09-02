@@ -51,6 +51,7 @@ import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
 import {
   applyColorThemeDocumentAttributes,
+  applyTypefaceDocumentAttribute,
   colorTheme$,
 } from "../../signals/theme.ts";
 
@@ -370,8 +371,11 @@ function MobileSidebarMount() {
 
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const colorTheme = useGet(colorTheme$);
+  const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.GradientColorThemes] ?? false;
+    features[FeatureSwitchKey.GradientColorThemes] ?? false;
+  const geistTypefaceEnabled =
+    features[FeatureSwitchKey.GeistTypeface] ?? false;
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
 
   return (
@@ -380,6 +384,9 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         applyColorThemeDocumentAttributes(
           element !== null && gradientColorThemesEnabled,
           colorTheme,
+        );
+        applyTypefaceDocumentAttribute(
+          element !== null && geistTypefaceEnabled,
         );
       }}
       className="zero-app zero-viewport-shell flex w-full bg-background"

@@ -33,6 +33,7 @@ const OKOU_API_ORIGIN = "https://api.okou.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";
 const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
+const ASANA_OAUTH_TOKEN_URL = "https://app.asana.com/-/oauth_token";
 const BOX_OAUTH_TOKEN_URL = "https://api.box.com/oauth2/token";
 const BOX_CURRENT_USER_URL = "https://api.box.com/2.0/users/me";
 const CLOUDFLARE_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
@@ -43,14 +44,34 @@ const GITHUB_OAUTH_SCOPES = ["repo", "project", "workflow"] as const;
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_OPENID_USERINFO_URL =
   "https://openidconnect.googleapis.com/v1/userinfo";
+const GUMROAD_OAUTH_TOKEN_URL = "https://gumroad.com/oauth/token";
+const GUMROAD_USER_URL = "https://api.gumroad.com/v2/user";
 const HUBSPOT_OAUTH_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
 const HUBSPOT_TOKEN_INFO_URL = "https://api.hubapi.com/oauth/v1/access-tokens";
+const INTERVALS_ICU_OAUTH_TOKEN_URL = "https://intervals.icu/api/oauth/token";
+const LINEAR_OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token";
+const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
 const META_ADS_OAUTH_TOKEN_URL =
   "https://graph.facebook.com/v22.0/oauth/access_token";
 const META_ADS_USER_URL = "https://graph.facebook.com/v22.0/me";
+const MONDAY_OAUTH_TOKEN_URL = "https://auth.monday.com/oauth2/token";
+const MONDAY_GRAPHQL_URL = "https://api.monday.com/v2";
 const NOTION_OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
+const SENTRY_OAUTH_TOKEN_URL = "https://sentry.io/oauth/token/";
+const STRAVA_OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token";
+const STRAVA_ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
 const TIKTOK_ADS_OAUTH_TOKEN_URL =
   "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
+const TODOIST_OAUTH_TOKEN_URL = "https://todoist.com/oauth/access_token";
+const TODOIST_USER_URL = "https://api.todoist.com/api/v1/user";
+const VERCEL_OAUTH_TOKEN_URL = "https://api.vercel.com/v2/oauth/access_token";
+const VERCEL_USER_URL = "https://api.vercel.com/v2/user";
+// Stubbed at module-load time by src/__tests__/env-stub.ts.
+const VERCEL_INTEGRATION_SLUG = "okou-test-integration";
+const X_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
+const X_USERS_ME_URL = "https://api.x.com/2/users/me";
+const XERO_OAUTH_TOKEN_URL = "https://identity.xero.com/connect/token";
+const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 const AIRTABLE_OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
 const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_oauth_start_";
@@ -613,6 +634,8 @@ function mockLaunchGatedOAuthEnv(): void {
 
 function mockOAuthEnv(): void {
   mockLaunchGatedOAuthEnv();
+  mockOptionalEnv("ASANA_OAUTH_CLIENT_ID", "asana-test-client-id");
+  mockOptionalEnv("ASANA_OAUTH_CLIENT_SECRET", "asana-test-client-secret");
   mockOptionalEnv("BOX_OAUTH_CLIENT_ID", "box-test-client-id");
   mockOptionalEnv("BOX_OAUTH_CLIENT_SECRET", "box-test-client-secret");
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
@@ -629,8 +652,18 @@ function mockOAuthEnv(): void {
   );
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-test-client-id");
   mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-test-client-secret");
+  mockOptionalEnv("GUMROAD_OAUTH_CLIENT_ID", "gumroad-test-client-id");
+  mockOptionalEnv("GUMROAD_OAUTH_CLIENT_SECRET", "gumroad-test-client-secret");
   mockOptionalEnv("HUBSPOT_OAUTH_CLIENT_ID", "hubspot-test-client-id");
   mockOptionalEnv("HUBSPOT_OAUTH_CLIENT_SECRET", "hubspot-test-client-secret");
+  mockOptionalEnv(
+    "INTERVALS_ICU_OAUTH_CLIENT_ID",
+    "intervals-icu-test-client-id",
+  );
+  mockOptionalEnv(
+    "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
+    "intervals-icu-test-client-secret",
+  );
   mockOptionalEnv("LINEAR_OAUTH_CLIENT_ID", "linear-test-client-id");
   mockOptionalEnv("LINEAR_OAUTH_CLIENT_SECRET", "linear-test-client-secret");
   mockOptionalEnv("META_ADS_OAUTH_CLIENT_ID", "meta-ads-test-client-id");
@@ -638,17 +671,29 @@ function mockOAuthEnv(): void {
     "META_ADS_OAUTH_CLIENT_SECRET",
     "meta-ads-test-client-secret",
   );
+  mockOptionalEnv("MONDAY_OAUTH_CLIENT_ID", "monday-test-client-id");
+  mockOptionalEnv("MONDAY_OAUTH_CLIENT_SECRET", "monday-test-client-secret");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
   mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+  mockOptionalEnv("SENTRY_OAUTH_CLIENT_ID", "sentry-test-client-id");
+  mockOptionalEnv("SENTRY_OAUTH_CLIENT_SECRET", "sentry-test-client-secret");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "test-slack-client-id");
   mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
+  mockOptionalEnv("STRAVA_OAUTH_CLIENT_ID", "strava-test-client-id");
+  mockOptionalEnv("STRAVA_OAUTH_CLIENT_SECRET", "strava-test-client-secret");
   mockOptionalEnv("TIKTOK_ADS_OAUTH_CLIENT_ID", "tiktok-ads-test-client-id");
   mockOptionalEnv(
     "TIKTOK_ADS_OAUTH_CLIENT_SECRET",
     "tiktok-ads-test-client-secret",
   );
+  mockOptionalEnv("TODOIST_OAUTH_CLIENT_ID", "todoist-test-client-id");
+  mockOptionalEnv("TODOIST_OAUTH_CLIENT_SECRET", "todoist-test-client-secret");
+  mockOptionalEnv("VERCEL_OAUTH_CLIENT_ID", "vercel-test-client-id");
+  mockOptionalEnv("VERCEL_OAUTH_CLIENT_SECRET", "vercel-test-client-secret");
   mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+  mockOptionalEnv("XERO_OAUTH_CLIENT_ID", "xero-test-client-id");
+  mockOptionalEnv("XERO_OAUTH_CLIENT_SECRET", "xero-test-client-secret");
 }
 
 function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
@@ -718,17 +763,213 @@ function expectOkouOauthState(authorizationUrl: URL): string {
   return state!;
 }
 
-async function completeLaunchGatedOauthCallback(
-  providerCase: LaunchGatedDirectOkouCase,
+interface DirectOkouTokenExchangeCase {
+  readonly connectorSlug: string;
+  readonly label: string;
+  readonly authorizationEndpoint: string;
+  readonly clientId: string;
+  readonly tokenUrl: string;
+  readonly tokenResponse: JsonBodyType;
+  readonly mockUserInfo?: () => void;
+}
+
+// Providers whose token exchange replays the exact redirect URI persisted at
+// OAuth start. Airtable and X are covered separately because they also assert
+// PKCE behavior.
+const DIRECT_OKOU_TOKEN_EXCHANGE_CASES: readonly DirectOkouTokenExchangeCase[] =
+  [
+    {
+      connectorSlug: "asana",
+      label: "Asana",
+      authorizationEndpoint: "https://app.asana.com/-/oauth_authorize",
+      clientId: "asana-test-client-id",
+      tokenUrl: ASANA_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "asana-test-token",
+        refresh_token: "asana-refresh-token",
+        expires_in: 3600,
+        data: {
+          gid: "asana-user-123",
+          name: "Asana Test User",
+          email: "asana@example.test",
+        },
+      },
+    },
+    {
+      connectorSlug: "gumroad",
+      label: "Gumroad",
+      authorizationEndpoint: "https://gumroad.com/oauth/authorize",
+      clientId: "gumroad-test-client-id",
+      tokenUrl: GUMROAD_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "gumroad-test-token",
+        refresh_token: "gumroad-refresh-token",
+        scope: "view_profile view_sales",
+      },
+      mockUserInfo: () => {
+        server.use(
+          http.get(GUMROAD_USER_URL, () => {
+            return HttpResponse.json({
+              user: {
+                id: "gumroad-user-123",
+                name: "Gumroad Test User",
+                email: "gumroad@example.test",
+              },
+            });
+          }),
+        );
+      },
+    },
+    {
+      connectorSlug: "linear",
+      label: "Linear",
+      authorizationEndpoint: "https://linear.app/oauth/authorize",
+      clientId: "linear-test-client-id",
+      tokenUrl: LINEAR_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "linear-test-token",
+        refresh_token: "linear-refresh-token",
+        expires_in: 86_399,
+        scope: "read,write",
+      },
+      mockUserInfo: () => {
+        server.use(
+          http.post(LINEAR_GRAPHQL_URL, () => {
+            return HttpResponse.json({
+              data: {
+                viewer: {
+                  id: "linear-user-123",
+                  name: "Linear Test User",
+                  email: "linear@example.test",
+                },
+              },
+            });
+          }),
+        );
+      },
+    },
+    {
+      connectorSlug: "monday",
+      label: "Monday.com",
+      authorizationEndpoint: "https://auth.monday.com/oauth2/authorize",
+      clientId: "monday-test-client-id",
+      tokenUrl: MONDAY_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "monday-test-token",
+        refresh_token: "monday-refresh-token",
+        scope: "me:read boards:read boards:write",
+      },
+      mockUserInfo: () => {
+        server.use(
+          http.post(MONDAY_GRAPHQL_URL, () => {
+            return HttpResponse.json({
+              data: {
+                me: {
+                  id: "monday-user-123",
+                  name: "Monday Test User",
+                  email: "monday@example.test",
+                },
+              },
+            });
+          }),
+        );
+      },
+    },
+    {
+      connectorSlug: "sentry",
+      label: "Sentry",
+      authorizationEndpoint: "https://sentry.io/oauth/authorize/",
+      clientId: "sentry-test-client-id",
+      tokenUrl: SENTRY_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "sentry-test-token",
+        refresh_token: "sentry-refresh-token",
+        expires_in: 2_592_000,
+        scope: "org:read project:read event:read",
+        user: {
+          id: "sentry-user-123",
+          name: "Sentry Test User",
+          email: "sentry@example.test",
+        },
+      },
+    },
+    {
+      connectorSlug: "todoist",
+      label: "Todoist",
+      authorizationEndpoint: "https://todoist.com/oauth/authorize",
+      clientId: "todoist-test-client-id",
+      tokenUrl: TODOIST_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "todoist-test-token",
+        token_type: "Bearer",
+      },
+      mockUserInfo: () => {
+        server.use(
+          http.get(TODOIST_USER_URL, () => {
+            return HttpResponse.json({
+              id: "todoist-user-123",
+              full_name: "Todoist Test User",
+              email: "todoist@example.test",
+            });
+          }),
+        );
+      },
+    },
+    {
+      connectorSlug: "xero",
+      label: "Xero",
+      authorizationEndpoint:
+        "https://login.xero.com/identity/connect/authorize",
+      clientId: "xero-test-client-id",
+      tokenUrl: XERO_OAUTH_TOKEN_URL,
+      tokenResponse: {
+        access_token: "xero-test-token",
+        refresh_token: "xero-refresh-token",
+        expires_in: 1800,
+        scope: "openid profile email accounting.transactions offline_access",
+      },
+      mockUserInfo: () => {
+        server.use(
+          http.get(XERO_USERINFO_URL, () => {
+            return HttpResponse.json({
+              sub: "xero-user-123",
+              name: "Xero Test User",
+              email: "xero@example.test",
+            });
+          }),
+        );
+      },
+    },
+  ];
+
+// Every newly ready connector whose authorization URL carries the redirect URI.
+// Vercel is excluded because its Integration URL controls routing instead.
+const REDIRECTING_DIRECT_OKOU_CONNECTOR_SLUGS = [
+  "airtable",
+  "asana",
+  "gumroad",
+  "intervals-icu",
+  "linear",
+  "monday",
+  "sentry",
+  "strava",
+  "todoist",
+  "x",
+  "xero",
+] as const;
+
+async function completeAppOauthCallback(
+  connectorSlug: string,
   state: string,
+  callbackQuery: Readonly<Record<string, string>> = {},
 ): Promise<URL> {
   const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   const callback = await app.request(
-    `${OKOU_API_ORIGIN}/api/connectors/${providerCase.connectorSlug}/callback?${new URLSearchParams(
+    `${OKOU_API_ORIGIN}/api/connectors/${connectorSlug}/callback?${new URLSearchParams(
       {
-        code: `${providerCase.connectorSlug}-authorization-code`,
+        code: `${connectorSlug}-authorization-code`,
         state,
-        ...providerCase.callbackQuery,
+        ...callbackQuery,
       },
     )}`,
     { headers: { "x-vm0-web-origin": "https://okou.ai" } },
@@ -736,6 +977,17 @@ async function completeLaunchGatedOauthCallback(
 
   expect(callback.status).toBe(307);
   return new URL(callback.headers.get("location") ?? "");
+}
+
+async function completeLaunchGatedOauthCallback(
+  providerCase: LaunchGatedDirectOkouCase,
+  state: string,
+): Promise<URL> {
+  return await completeAppOauthCallback(
+    providerCase.connectorSlug,
+    state,
+    providerCase.callbackQuery ?? {},
+  );
 }
 
 async function rejectProviderAuthorization(
@@ -1081,7 +1333,7 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
     expect(vm0.pathname).toBe("/connector/error");
   });
 
-  it("reuses the persisted exact redirect URI for a PKCE token exchange", async () => {
+  it("uses the direct Okou App callback for Airtable and reuses its exact PKCE redirect URI", async () => {
     const tokenBodies: URLSearchParams[] = [];
     server.use(
       http.post(AIRTABLE_OAUTH_TOKEN_URL, async ({ request }) => {
@@ -1123,7 +1375,9 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
       "airtable-test-client-id",
     );
     const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
-    expect(redirectUri).toBe("https://app.vm0.ai/connectors/airtable/callback");
+    expect(redirectUri).toBe(
+      "https://app.okou.ai/connectors/airtable/callback",
+    );
     expect(authorizationUrl.searchParams.get("code_challenge")).toMatch(
       /^[A-Za-z0-9_-]+$/,
     );
@@ -1480,6 +1734,331 @@ describe("POST /api/connectors/:connectorSlug/oauth/start", () => {
   );
 
   it.each(["box", "hubspot", "meta-ads", "tiktok-ads"] as const)(
+    "keeps an omitted %s callback target on the existing Web callback",
+    async (connectorSlug) => {
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart(connectorSlug, {
+        headers: authHeaders(),
+        origin: OKOU_API_ORIGIN,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/connectors/${connectorSlug}/callback`,
+      );
+      expectOkouOauthState(authorizationUrl);
+      await rejectProviderAuthorization(authorizationUrl);
+    },
+  );
+
+  it.each(DIRECT_OKOU_TOKEN_EXCHANGE_CASES)(
+    "uses the direct Okou App callback for $label and reuses its exact redirect URI",
+    async (providerCase) => {
+      const tokenBodies: URLSearchParams[] = [];
+      server.use(
+        http.post(providerCase.tokenUrl, async ({ request }) => {
+          tokenBodies.push(new URLSearchParams(await request.text()));
+          return HttpResponse.json(providerCase.tokenResponse);
+        }),
+      );
+      providerCase.mockUserInfo?.();
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart(providerCase.connectorSlug, {
+        callbackTarget: "app",
+        headers: authHeaders(),
+        origin: OKOU_API_ORIGIN,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+        providerCase.authorizationEndpoint,
+      );
+      expect(authorizationUrl.searchParams.get("client_id")).toBe(
+        providerCase.clientId,
+      );
+      const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+      expect(redirectUri).toBe(
+        `https://app.okou.ai/connectors/${providerCase.connectorSlug}/callback`,
+      );
+      const state = expectOkouOauthState(authorizationUrl);
+
+      const location = await completeAppOauthCallback(
+        providerCase.connectorSlug,
+        state,
+      );
+
+      expect(location.origin).toBe("https://app.okou.ai");
+      expect(location.pathname).toBe("/connector/success");
+      expect(tokenBodies).toHaveLength(1);
+      expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+    },
+  );
+
+  it("uses the direct Okou App callback for X and reuses its exact PKCE redirect URI", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(X_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "x-test-token",
+          refresh_token: "x-refresh-token",
+          expires_in: 7200,
+          scope: "tweet.read tweet.write users.read offline.access",
+        });
+      }),
+      http.get(X_USERS_ME_URL, () => {
+        return HttpResponse.json({
+          data: {
+            id: "x-user-123",
+            username: "x-test-user",
+            name: "X Test User",
+          },
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("x", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://x.com/i/oauth2/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "x-test-client-id",
+    );
+    const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+    expect(redirectUri).toBe("https://app.okou.ai/connectors/x/callback");
+    expect(authorizationUrl.searchParams.get("code_challenge")).toMatch(
+      /^[A-Za-z0-9_-]+$/u,
+    );
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
+      "S256",
+    );
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const location = await completeAppOauthCallback("x", state);
+
+    expect(location.origin).toBe("https://app.okou.ai");
+    expect(location.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBe(redirectUri);
+    expect(tokenBodies[0]?.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]+$/u);
+  });
+
+  it("uses the direct Okou App callback for Intervals.icu without adding a token redirect URI", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(INTERVALS_ICU_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "intervals-icu-test-token",
+          athlete: { id: "i123456", name: "Intervals Test Athlete" },
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("intervals-icu", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://intervals.icu/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "intervals-icu-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.okou.ai/connectors/intervals-icu/callback",
+    );
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const location = await completeAppOauthCallback("intervals-icu", state);
+
+    expect(location.origin).toBe("https://app.okou.ai");
+    expect(location.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBeNull();
+    expect(tokenBodies[0]?.get("code")).toBe(
+      "intervals-icu-authorization-code",
+    );
+  });
+
+  it("uses the direct Okou App callback for Strava without adding a token redirect URI", async () => {
+    const tokenBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(STRAVA_OAUTH_TOKEN_URL, async ({ request }) => {
+        tokenBodies.push(new URLSearchParams(await request.text()));
+        return HttpResponse.json({
+          access_token: "strava-test-token",
+          refresh_token: "strava-refresh-token",
+          expires_in: 21_600,
+          scope: "read,activity:read_all",
+          athlete: { id: 987_654, firstname: "Strava", lastname: "Athlete" },
+        });
+      }),
+      http.get(STRAVA_ATHLETE_URL, () => {
+        return HttpResponse.json({
+          id: 987_654,
+          firstname: "Strava",
+          lastname: "Athlete",
+        });
+      }),
+    );
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("strava", {
+      callbackTarget: "app",
+      headers: authHeaders(),
+      origin: OKOU_API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://www.strava.com/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "strava-test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://app.okou.ai/connectors/strava/callback",
+    );
+    const state = expectOkouOauthState(authorizationUrl);
+
+    const location = await completeAppOauthCallback("strava", state);
+
+    expect(location.origin).toBe("https://app.okou.ai");
+    expect(location.pathname).toBe("/connector/success");
+    expect(tokenBodies).toHaveLength(1);
+    expect(tokenBodies[0]?.get("redirect_uri")).toBeNull();
+    expect(tokenBodies[0]?.get("code")).toBe("strava-authorization-code");
+  });
+
+  // Vercel routes authorization through its Integration URL, so the
+  // authorization URL carries no redirect URI. Callback selection is only
+  // observable through the persisted URI replayed at token exchange.
+  it.each([
+    {
+      target: "the direct Okou App callback",
+      origin: OKOU_API_ORIGIN,
+      callbackTarget: "app" as const,
+      expectedRedirectUri: "https://app.okou.ai/connectors/vercel/callback",
+      expectedLocationOrigin: "https://app.okou.ai",
+      statePattern: /^okou\.[0-9a-f]{64}$/u,
+    },
+    {
+      target: "the VM0 App callback",
+      origin: API_ORIGIN,
+      callbackTarget: "app" as const,
+      expectedRedirectUri: "https://app.vm0.ai/connectors/vercel/callback",
+      expectedLocationOrigin: "https://app.vm0.ai",
+      statePattern: /^[0-9a-f]{64}$/u,
+    },
+    {
+      target: "the existing Web callback",
+      origin: OKOU_API_ORIGIN,
+      callbackTarget: undefined,
+      expectedRedirectUri: `${WEB_ORIGIN}/api/connectors/vercel/callback`,
+      expectedLocationOrigin: "https://app.okou.ai",
+      statePattern: /^okou\.[0-9a-f]{64}$/u,
+    },
+  ])(
+    "propagates $target through the Vercel token exchange",
+    async (routingCase) => {
+      const tokenBodies: URLSearchParams[] = [];
+      server.use(
+        http.post(VERCEL_OAUTH_TOKEN_URL, async ({ request }) => {
+          tokenBodies.push(new URLSearchParams(await request.text()));
+          return HttpResponse.json({
+            access_token: "vercel-test-token",
+            token_type: "Bearer",
+            team_id: "team_test",
+            installation_id: "icfg_test",
+          });
+        }),
+        http.get(VERCEL_USER_URL, () => {
+          return HttpResponse.json({
+            user: {
+              id: "vercel-user-123",
+              username: "vercel-test-user",
+              email: "vercel@example.test",
+            },
+          });
+        }),
+      );
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart("vercel", {
+        ...(routingCase.callbackTarget === undefined
+          ? {}
+          : { callbackTarget: routingCase.callbackTarget }),
+        headers: authHeaders(),
+        origin: routingCase.origin,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+        `https://vercel.com/integrations/${VERCEL_INTEGRATION_SLUG}/new`,
+      );
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBeNull();
+      const state = authorizationUrl.searchParams.get("state") ?? "";
+      expect(state).toMatch(routingCase.statePattern);
+
+      const location = await completeAppOauthCallback("vercel", state);
+
+      expect(location.origin).toBe(routingCase.expectedLocationOrigin);
+      expect(location.pathname).toBe("/connector/success");
+      expect(tokenBodies).toHaveLength(1);
+      expect(tokenBodies[0]?.get("redirect_uri")).toBe(
+        routingCase.expectedRedirectUri,
+      );
+    },
+  );
+
+  it.each(REDIRECTING_DIRECT_OKOU_CONNECTOR_SLUGS)(
+    "keeps the VM0 App callback for %s",
+    async (connectorSlug) => {
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      mockAuthenticatedSession();
+
+      const response = await requestOauthStart(connectorSlug, {
+        callbackTarget: "app",
+        headers: authHeaders(),
+        origin: API_ORIGIN,
+      });
+
+      expect(response.status).toBe(200);
+      const authorizationUrl = await authorizationUrlFromResponse(response);
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        `https://app.vm0.ai/connectors/${connectorSlug}/callback`,
+      );
+      expectOauthState(authorizationUrl);
+      await rejectProviderAuthorization(authorizationUrl);
+    },
+  );
+
+  it.each(REDIRECTING_DIRECT_OKOU_CONNECTOR_SLUGS)(
     "keeps an omitted %s callback target on the existing Web callback",
     async (connectorSlug) => {
       mockAuthenticatedSession();

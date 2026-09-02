@@ -28,6 +28,8 @@ import {
   connectorsMainContract,
 } from "@okouai/api-contracts/contracts/connectors";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
+import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -136,6 +138,40 @@ function threadArtifactFile(
   };
 }
 
+function officeUserFileMessages(
+  fileId: string,
+  filename: string,
+): MockChatEventInput[] {
+  return [
+    {
+      id: `msg-${fileId}`,
+      role: "user",
+      content: "Review this Office document",
+      fileParts: [
+        {
+          type: "file",
+          fileId,
+          filenameSnapshot: filename,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+      ],
+      runId: "run-sidebar",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    },
+    {
+      id: `msg-${fileId}-completed`,
+      role: "assistant",
+      content: null,
+      runId: "run-sidebar",
+      runLifecycleEvent: "completed",
+      seqId: 2,
+      createdAt: "2026-03-10T00:00:02Z",
+    },
+  ];
+}
+
 function googleDriveConnector(
   overrides: Partial<ConnectorResponse> = {},
 ): ConnectorResponse {
@@ -218,6 +254,7 @@ function setupArtifactCatalog(
 
 function setupChatThread({
   artifactFiles = [],
+  featureSwitches = {},
   messages = [
     {
       id: "msg-sidebar-user",
@@ -246,6 +283,7 @@ function setupChatThread({
   ],
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   messages?: MockChatEventInput[];
 } = {}) {
   let servedMessages = [...messages];
@@ -312,6 +350,7 @@ function setupChatThread({
 
   detachedSetupPage({
     context,
+    featureSwitches,
     path: THREAD_PATH,
   });
 
@@ -452,21 +491,31 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
-  it("opens an assistant generic file card in the preview dialog", async () => {
-    const filename = "revised-manuscript.docx";
+  it.each([
+    {
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      filename: "revised-manuscript.docx",
+    },
+    {
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      filename: "quarterly-review.pptx",
+    },
+  ])("previews $filename in the dialog and split view", async (fixture) => {
+    const { contentType, filename } = fixture;
     const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
     setupChatThread({
       artifactFiles: [
         threadArtifactFile(url, {
-          id: "artifact-revised-manuscript",
+          id: `artifact-${filename}`,
           filename,
-          contentType:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          contentType,
         }),
       ],
       messages: [
         {
-          id: "msg-revised-manuscript",
+          id: `msg-${filename}`,
           role: "assistant",
           content: `[${filename}](${url})`,
           runId: "run-sidebar",
@@ -474,7 +523,132 @@ describe("thread-owned utility sidebar", () => {
           createdAt: "2026-03-10T00:00:01Z",
         },
         {
-          id: "msg-revised-manuscript-completed",
+          id: `msg-${filename}-completed`,
+          role: "assistant",
+          content: null,
+          runId: "run-sidebar",
+          runLifecycleEvent: "completed",
+          seqId: 2,
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+      featureSwitches: {
+        [FeatureSwitchKey.OfficeDocumentPreview]: true,
+      },
+    });
+
+    const card = await screen.findByLabelText(`Preview ${filename}`);
+    expect(
+      screen.queryByLabelText(`Download ${filename}`),
+    ).not.toBeInTheDocument();
+    click(card);
+
+    const dialog = await screen.findByTestId("attachment-lightbox");
+    const dialogFrame = await within(dialog).findByTitle(`${filename} preview`);
+    const dialogFrameUrl = dialogFrame.getAttribute("src");
+    expect(dialogFrameUrl).not.toBeNull();
+    if (dialogFrameUrl === null) {
+      throw new Error("Office preview iframe is missing its source URL");
+    }
+    const parsedDialogFrameUrl = new URL(dialogFrameUrl);
+    expect(parsedDialogFrameUrl.origin).toBe(
+      "https://view.officeapps.live.com",
+    );
+    expect(parsedDialogFrameUrl.pathname).toBe("/op/embed.aspx");
+    expect(parsedDialogFrameUrl.searchParams.get("src")).toBe(url);
+
+    click(within(dialog).getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    const sidebarFrame = await within(sidebar).findByTitle(
+      `${filename} preview`,
+    );
+    const sidebarFrameUrl = sidebarFrame.getAttribute("src");
+    expect(sidebarFrameUrl).not.toBeNull();
+    if (sidebarFrameUrl === null) {
+      throw new Error("Office split-view iframe is missing its source URL");
+    }
+    expect(new URL(sidebarFrameUrl).searchParams.get("src")).toBe(url);
+  });
+
+  it("uses the public office attachment url instead of its presigned resource url", async () => {
+    const filename = "private-manuscript.docx";
+    const fileId = "office-with-distinct-public-url";
+    const resourceUrl = `https://r2.example.com/artifacts/${filename}?sig=test`;
+    const shareUrl = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
+    context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+      expect(query.file_id).toBe(fileId);
+      return respond(200, { url: resourceUrl, publicUrl: shareUrl });
+    });
+    setupChatThread({
+      featureSwitches: {
+        [FeatureSwitchKey.OfficeDocumentPreview]: true,
+      },
+      messages: officeUserFileMessages(fileId, filename),
+    });
+
+    click(await screen.findByLabelText(`Preview ${filename}`));
+
+    const dialog = await screen.findByTestId("attachment-lightbox");
+    const dialogFrame = await within(dialog).findByTitle(`${filename} preview`);
+    const dialogFrameUrl = dialogFrame.getAttribute("src");
+    expect(dialogFrameUrl).not.toBeNull();
+    if (dialogFrameUrl === null) {
+      throw new Error("Office preview iframe is missing its source URL");
+    }
+    expect(new URL(dialogFrameUrl).searchParams.get("src")).toBe(shareUrl);
+    expect(new URL(dialogFrameUrl).searchParams.get("src")).not.toBe(
+      resourceUrl,
+    );
+
+    click(within(dialog).getByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    const sidebarFrame = await within(sidebar).findByTitle(
+      `${filename} preview`,
+    );
+    const sidebarFrameUrl = sidebarFrame.getAttribute("src");
+    expect(sidebarFrameUrl).not.toBeNull();
+    if (sidebarFrameUrl === null) {
+      throw new Error("Office split-view iframe is missing its source URL");
+    }
+    expect(new URL(sidebarFrameUrl).searchParams.get("src")).toBe(shareUrl);
+    expect(new URL(sidebarFrameUrl).searchParams.get("src")).not.toBe(
+      resourceUrl,
+    );
+  });
+
+  it("keeps office files on the generic preview when the feature switch is disabled", async () => {
+    const filename = "revised-manuscript.docx";
+    const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
+    setupChatThread({
+      artifactFiles: [
+        threadArtifactFile(url, {
+          id: "artifact-office-disabled",
+          filename,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      ],
+      featureSwitches: {
+        [FeatureSwitchKey.OfficeDocumentPreview]: false,
+      },
+      messages: [
+        {
+          id: "msg-office-disabled",
+          role: "assistant",
+          content: `[${filename}](${url})`,
+          runId: "run-sidebar",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-office-disabled-completed",
           role: "assistant",
           content: null,
           runId: "run-sidebar",
@@ -485,27 +659,53 @@ describe("thread-owned utility sidebar", () => {
       ],
     });
 
-    const card = await screen.findByLabelText(`Preview ${filename}`);
-    expect(
-      screen.queryByLabelText(`Download ${filename}`),
-    ).not.toBeInTheDocument();
-    click(card);
+    click(await screen.findByLabelText(`Preview ${filename}`));
 
     const dialog = await screen.findByTestId("attachment-lightbox");
     expect(
       within(dialog).getByText("No inline preview available for this file."),
     ).toBeInTheDocument();
-    expect(within(dialog).getAllByText(filename).length).toBeGreaterThan(0);
+    expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
 
     click(within(dialog).getByLabelText("Open in split view"));
 
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("attachment-lightbox"),
-      ).not.toBeInTheDocument();
-    });
     const sidebar = await screen.findByTestId("artifact-sidebar");
-    expect(within(sidebar).getAllByText(filename).length).toBeGreaterThan(0);
+    expect(
+      within(sidebar).getByText("No inline preview available for this file."),
+    ).toBeInTheDocument();
+    expect(within(sidebar).queryByTitle(`${filename} preview`)).toBeNull();
+  });
+
+  it("does not send a presigned office attachment url to the viewer when the api omits its public url", async () => {
+    const filename = "legacy-api-document.docx";
+    const fileId = "office-without-public-url";
+    const resourceUrl = `https://r2.example.com/artifacts/${filename}?sig=test`;
+    context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
+      expect(query.file_id).toBe(fileId);
+      return respond(200, { url: resourceUrl });
+    });
+    setupChatThread({
+      featureSwitches: {
+        [FeatureSwitchKey.OfficeDocumentPreview]: true,
+      },
+      messages: officeUserFileMessages(fileId, filename),
+    });
+
+    click(await screen.findByLabelText(`Preview ${filename}`));
+
+    const dialog = await screen.findByTestId("attachment-lightbox");
+    await expect(
+      within(dialog).findByText("Preview unavailable."),
+    ).resolves.toBeInTheDocument();
+    expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
+
+    click(within(dialog).getByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await expect(
+      within(sidebar).findByText("Preview unavailable."),
+    ).resolves.toBeInTheDocument();
+    expect(within(sidebar).queryByTitle(`${filename} preview`)).toBeNull();
   });
 
   it("previews a public catalog document through the resolved resource url", async () => {
