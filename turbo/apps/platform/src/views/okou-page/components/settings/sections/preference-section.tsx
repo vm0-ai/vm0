@@ -93,7 +93,7 @@ function AppearanceBlock() {
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isActive
-                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                    ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -176,7 +176,7 @@ function EnterBlock() {
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isActive
-                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                    ? "border-primary/40 bg-primary/10 text-brand-text dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
                   saving !== null && "opacity-60 cursor-not-allowed",
                 )}

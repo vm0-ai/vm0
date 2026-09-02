@@ -513,7 +513,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
             iconSize="md"
             className={cn(
               "shrink-0 duration-150",
-              open && "bg-primary/10 text-primary hover:text-primary",
+              open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
@@ -571,7 +571,7 @@ export function AutomationMenuButton({
             iconSize="md"
             className={cn(
               "shrink-0 duration-150",
-              open && "bg-primary/10 text-primary hover:text-primary",
+              open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
             aria-label={
               ariaLabel ??
@@ -615,7 +615,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
             iconSize="md"
             className={cn(
               "shrink-0 duration-150",
-              open && "bg-primary/10 text-primary hover:text-primary",
+              open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;

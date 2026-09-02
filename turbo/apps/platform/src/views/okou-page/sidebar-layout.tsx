@@ -117,7 +117,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
       size="icon-sm"
       className={cn(
         "shrink-0",
-        open && "bg-primary/10 text-primary hover:text-primary",
+        open && "bg-primary/10 text-brand-text hover:text-brand-text",
       )}
       aria-label={t(($) => {
         return $.appShell.sidebar.mobile.openArtifacts;

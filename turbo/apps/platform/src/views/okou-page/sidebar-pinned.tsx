@@ -394,7 +394,7 @@ function PinnedAgentGridCard({
         <span
           aria-hidden="true"
           data-testid="pinned-agent-drop-caret"
-          className={`pointer-events-none absolute inset-y-0 z-10 w-0.5 rounded-full bg-[hsl(var(--primary-700))] ${
+          className={`pointer-events-none absolute inset-y-0 z-10 w-0.5 rounded-full bg-primary ${
             dropSide === "before" ? "-left-[3px]" : "-right-[3px]"
           }`}
         />

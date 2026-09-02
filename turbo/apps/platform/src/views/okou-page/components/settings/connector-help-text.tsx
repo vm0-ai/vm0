@@ -2,7 +2,7 @@ import { cn } from "@okouai/ui";
 import type { ReactNode } from "react";
 
 const DEFAULT_CONNECTOR_HELP_TEXT_CLASS =
-  "text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline";
+  "text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-brand-text [&_a]:underline";
 
 function renderBoldConnectorHelpMarkdown(
   text: string,
@@ -50,7 +50,7 @@ function renderInlineConnectorHelpMarkdown(
         href={match[2]}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary underline"
+        className="text-brand-text underline"
       >
         {renderBoldConnectorHelpMarkdown(
           match[1],

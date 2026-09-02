@@ -86,9 +86,14 @@ describe("global focus colors", () => {
       expect(ring).not.toBeNull();
       // The stop each theme reaches for is a design choice and moves with the
       // palette; what must hold is that it is a stop, not a loose literal.
-      expect(theme).toMatch(
-        new RegExp(`--${ring?.[1] ?? ""}:\\s*[\\d.]+ [\\d.]+% [\\d.]+%;`),
-      );
+      const declaration = theme
+        .split("\n")
+        .find((line) => {
+          return line.trimStart().startsWith(`--${ring?.[1] ?? ""}:`);
+        })
+        ?.trim();
+
+      expect(declaration).toMatch(/^--primary-\d+:\s*[\d.]+ [\d.]+% [\d.]+%;/);
     },
   );
 });

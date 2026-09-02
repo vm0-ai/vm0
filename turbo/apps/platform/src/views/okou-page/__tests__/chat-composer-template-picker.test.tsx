@@ -1174,7 +1174,7 @@ describe("chat composer templates", () => {
     });
     expect(voiceFiltersButton).not.toHaveClass(
       "border-primary/40",
-      "text-primary",
+      "text-brand-text",
     );
     await user.click(voiceFiltersButton);
     expect(screen.getByLabelText("Gender: Male")).toBeInTheDocument();

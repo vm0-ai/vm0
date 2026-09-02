@@ -642,7 +642,7 @@ function OnboardingConnectorCard({
         </p>
       </div>
       {connected ? (
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-brand-text">
           <CircleCheck size={16} aria-hidden="true" />
           {t(($) => {
             return $.connectors.card.connected;
