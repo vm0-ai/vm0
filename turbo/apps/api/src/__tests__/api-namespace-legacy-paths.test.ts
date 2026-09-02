@@ -13,11 +13,11 @@ const REQUEST_ORIGIN = "http://api.test";
 // contract paths #28701 stopped deriving a legacy form for and #30667 made
 // unconditional.
 //
-// A third contract used to sit alongside them, declaring a
-// `MIGRATED_BRANDED_PATHS` key so that a row's branded forms were driven
-// through the app factory too. #30668 made that subject
-// `/api/slack/oauth/install`, whose branded URL was handed to people rather
-// than emitted per request; #31088 removed that row along with the rest of the
+// A third contract used to sit alongside them, declaring a branded
+// compatibility key so that a row's branded forms were driven through the app
+// factory too. #30668 made that subject `/api/slack/oauth/install`, whose
+// branded URL was handed to people rather than emitted per request; #31088
+// removed that row along with the rest of the table, and #31090 removed the
 // table, so no key is left for such a contract to declare.
 const namespaceContract = c.router({
   unlisted: {

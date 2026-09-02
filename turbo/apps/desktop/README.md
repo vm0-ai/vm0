@@ -204,8 +204,9 @@ working for those builds:
 - **The Okou DMG route must keep resolving.** `Download Okou` opens
   `https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64/dmg`, the neutral
   path #28278 moved that route to. The API served the branded forms alongside it
-  through `MIGRATED_BRANDED_PATHS` in `apps/api/src/signals/route-entry.ts`, on
-  the reading that a build published before the move opens
+  through the branded compatibility table in
+  `apps/api/src/signals/route-entry.ts`, on the reading that a build published
+  before the move opens
   `https://api.vm0.ai/api/okou/desktop/updates/stable/darwin/arm64/dmg` instead.
   Measurement did not support it: across 2026-09-01 07:00Z to 2026-09-02 07:30Z
   every one of the 1,445 update requests, from 144 addresses, was on the neutral

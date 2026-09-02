@@ -67,16 +67,18 @@ function servesNamespaceAliasPath(
  * reporting behind it.
  *
  * #30667 then removed the table itself. Each of its six paths was named
- * directly by a `MIGRATED_BRANDED_PATHS` row below, so none of them lost a
- * registration, and nothing in this repository produces a `/api/zero/**` URL
- * any more — the last producer was `callbackRedirectUri` in
- * `routes/teams-oauth.ts`, unified onto the canonical path in the same commit.
+ * directly by a row of the branded compatibility table that used to sit below
+ * this function, so none of them lost a registration, and nothing in this
+ * repository produces a `/api/zero/**` URL any more — the last producer was
+ * `callbackRedirectUri` in `routes/teams-oauth.ts`, unified onto the canonical
+ * path in the same commit.
  *
- * #31088 then emptied `MIGRATED_BRANDED_PATHS`, so this expansion is the only
- * thing that can produce a branded registration. Every contract declares a
- * neutral path, `apiNamespaceAliasPaths` returns a neutral path unchanged, and
- * the legacy form is never derived, so neither branded namespace is registered
- * for anything.
+ * #31088 then emptied that compatibility table and #31090 deleted it along
+ * with the wrapper that applied it, so this expansion is the only thing left
+ * that can produce a branded registration. Every contract declares a neutral
+ * path, `apiNamespaceAliasPaths` returns a neutral path unchanged, and the
+ * legacy form is never derived, so neither branded namespace is registered for
+ * anything.
  */
 export function withApiNamespaceAliases(
   routes: readonly RouteEntry[],
@@ -89,68 +91,5 @@ export function withApiNamespaceAliases(
       .map((path) => {
         return routeEntryWithPath(entry, path);
       });
-  });
-}
-
-/**
- * The branded paths a migrated route still answers on, keyed by the neutral
- * canonical path its contract now declares.
- *
- * The table is empty. It was the only thing that registered a branded path,
- * and since #30667 the only thing that registered a `/api/zero/**` path at
- * all, so with no row left neither `/api/okou/**` nor `/api/zero/**` is served
- * for any path. #31090 removes this constant and `withMigratedBrandedPaths`
- * with it; the mechanism is kept here only so that #31088's behavioural change
- * and that structural one stay separately attributable.
- *
- * A row was compatibility debt under #26701's removal gate, retired only on
- * request-log evidence that its holder was gone or on an owner decision
- * recorded against the row. #28709 first applied that gate and took the table
- * from 314 rows to 184; #28711, #28974, #28917, #28916, #30668, #30804,
- * #30812, #30807 and #31068 then took it to six, and #31088 took those six.
- * The reading rules each of those removals left behind are on their issues,
- * and the rows themselves are in this file's history.
- *
- * Two of the last six are worth naming here, because the reasoning that had
- * held them was wrong rather than merely spent. #28715 kept the two
- * `desktop/updates` rows on the belief that a hard-stopped Zero Desktop
- * reaches the Okou DMG through the branded form. It does not: `Download Okou`
- * resolves through the neutral `/api/desktop/updates/stable/darwin/arm64/dmg`,
- * and across 2026-09-01 07:00Z to 2026-09-02 07:30Z all 1,445 update requests
- * from 144 addresses were on that neutral path while both branded forms took
- * none — including from the 107 to 108 Zero installs that have been polling
- * `desktop/migration-policy`, `feature-switches` and `auth/me` since the policy
- * went `hard` on 2026-08-31T02:26Z. Those rows were gated on nothing, and
- * #26364 governs the Zero install base rather than this surface.
- */
-type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
-
-const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {};
-
-/**
- * Registers the branded paths named in `MIGRATED_BRANDED_PATHS`, so a contract
- * that has moved to its neutral path keeps serving the branded paths released
- * callers still hold.
- *
- * Applied after `withApiNamespaceAliases` and never before it: these paths are
- * finished registrations, and passing a row's `/api/zero/**` form back through
- * the expansion would derive its canonical sibling a second time and register
- * that path twice.
- */
-export function withMigratedBrandedPaths(
-  routes: readonly RouteEntry[],
-  brandedPaths: MigratedBrandedPathTable = MIGRATED_BRANDED_PATHS,
-): readonly RouteEntry[] {
-  return routes.flatMap((entry) => {
-    const migrated = brandedPaths[entry.route.path];
-    if (migrated === undefined) {
-      return [entry];
-    }
-    return [
-      entry,
-      ...migrated.map((path) => {
-        return routeEntryWithPath(entry, path);
-      }),
-    ];
   });
 }

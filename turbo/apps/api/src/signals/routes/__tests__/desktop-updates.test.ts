@@ -137,8 +137,9 @@ describe("desktop update routes", () => {
   });
 
   // #28465 moved these two routes off `/api/okou/**` to the neutral path, and
-  // #31088 removed the `MIGRATED_BRANDED_PATHS` rows that kept the branded
-  // forms answering, so the neutral path is the only one either route serves.
+  // #31088 removed the branded compatibility rows that kept the branded forms
+  // answering — #31090 then removed the mechanism itself — so the neutral path
+  // is the only one either route serves.
   //
   // The update line is asserted alongside the path, because the move alone
   // would have changed it: the neutral path has to serve the Okou line the
