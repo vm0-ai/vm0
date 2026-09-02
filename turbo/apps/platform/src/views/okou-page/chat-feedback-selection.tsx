@@ -226,10 +226,19 @@ function TranslationLanguageSelect({
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent data-chat-selection-interaction className="max-h-64">
+      {/* Seven 32px rows plus their gaps, list padding, and popup borders. */}
+      <SelectContent
+        data-chat-selection-interaction
+        hideScrollButtons
+        className="max-h-[258px] overscroll-contain"
+      >
         {items.map((item) => {
           return (
-            <SelectItem key={item.value} value={item.value}>
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              className="h-8 whitespace-nowrap"
+            >
               {item.label}
             </SelectItem>
           );
