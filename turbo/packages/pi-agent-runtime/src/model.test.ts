@@ -122,9 +122,43 @@ describe("Pi agent model adapter", () => {
   });
 
   it.each([
+    {
+      provider: "deepseek",
+      catalogModel: "deepseek-v4-flash",
+      model: "company-deepseek-production",
+    },
+    {
+      provider: "openai",
+      catalogModel: "gpt-5.6-terra",
+      model: "company-terra-production",
+    },
+  ])(
+    "uses $provider/$catalogModel metadata for gateway request model $model",
+    (config) => {
+      expect(
+        resolvePiAgentModel({
+          ...config,
+          baseUrl: "https://gateway.example.com/v1",
+          apiKey: "unused",
+        }),
+      ).toMatchObject({
+        id: config.model,
+        provider: config.provider,
+        baseUrl: "https://gateway.example.com/v1",
+        api: "openai-responses",
+      });
+    },
+  );
+
+  it.each([
     { provider: "unknown", model: "gpt-5.6-terra" },
     { provider: "openai", model: "unknown-model" },
     { provider: "openrouter", model: "unknown/model" },
+    {
+      provider: "deepseek",
+      model: "company-model",
+      catalogModel: "unknown-catalog-model",
+    },
   ])("fails closed for unknown catalog pair $provider/$model", (config) => {
     expect(
       resolvePiAgentModel({

@@ -5100,8 +5100,13 @@
           "offline": "luring",
           "online": "daring",
           "recovery": "pemulihan",
+          "refresh": "Segarkan",
           "title": "Diagnostik koneksi waktu nyata",
-          "unavailable": "tidak tersedia"
+          "unavailable": "tidak tersedia",
+          "workerDescription": "Periksa rekaman diagnostik dari shared worker yang memegang koneksi realtime.",
+          "workerLoading": "Memuat",
+          "workerTitle": "Diagnostik koneksi shared worker",
+          "workerUnavailable": "Tidak tersedia"
         }
       },
       "language": {

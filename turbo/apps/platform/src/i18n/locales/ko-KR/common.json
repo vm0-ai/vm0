@@ -5100,8 +5100,13 @@
           "offline": "오프라인",
           "online": "온라인",
           "recovery": "복구",
+          "refresh": "새로 고침",
           "title": "실시간 연결 진단",
-          "unavailable": "사용 불가"
+          "unavailable": "사용 불가",
+          "workerDescription": "실시간 연결을 담당하는 공유 워커가 기록한 진단을 확인합니다.",
+          "workerLoading": "로딩 중",
+          "workerTitle": "공유 워커 연결 진단",
+          "workerUnavailable": "사용 불가"
         }
       },
       "language": {

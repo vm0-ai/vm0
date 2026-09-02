@@ -5108,8 +5108,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "Wiederherstellung",
+          "refresh": "Aktualisieren",
           "title": "Echtzeit-Verbindungsdiagnose",
-          "unavailable": "nicht verfügbar"
+          "unavailable": "nicht verfügbar",
+          "workerDescription": "Die Aufzeichnung des Shared Workers prüfen, der die Echtzeitverbindung hält.",
+          "workerLoading": "Laden",
+          "workerTitle": "Verbindungsdiagnose des Shared Workers",
+          "workerUnavailable": "Nicht verfügbar"
         }
       },
       "language": {

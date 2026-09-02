@@ -2562,6 +2562,18 @@ const specializedRuntimeFixtureAction$ = command(
         },
       };
     }
+    if (body.action === "set-run-model-provider") {
+      const [run] = await db
+        .update(agentRuns)
+        .set({ modelProvider: body.model_provider })
+        .where(eq(agentRuns.id, body.run_id))
+        .returning({ id: agentRuns.id });
+      signal.throwIfAborted();
+      if (!run) {
+        throw new Error("Expected the model-provider run fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
     return null;
   },
 );

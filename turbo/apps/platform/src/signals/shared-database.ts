@@ -13,6 +13,7 @@ import type {
   ListedComputerUseHost,
 } from "../shared-database/computed-key.ts";
 import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
+import type { ConnectionDiagnostics } from "./connection-diagnostics.ts";
 import {
   reloadChatIndicatorsCounter$,
   reloadChatIndicatorsLocally$,
@@ -48,17 +49,36 @@ const reloadQueueDataFromWorker$ = command(({ set }): void => {
   });
 });
 
+const internalReloadConnectionDiagnosticsFromWorker$ = state(0);
+
+export const reloadConnectionDiagnosticsFromWorker$ = command(
+  ({ set }): void => {
+    set(internalReloadConnectionDiagnosticsFromWorker$, (value) => {
+      return value + 1;
+    });
+  },
+);
+
 export const reloadComputedFromWorker$ = command(
   ({ set }, computedKey: ComputedKey): void => {
-    if (computedKey === "chat-thread-indicators") {
-      set(reloadChatIndicatorsLocally$);
-      return;
+    switch (computedKey) {
+      case "chat-thread-indicators": {
+        set(reloadChatIndicatorsLocally$);
+        return;
+      }
+      case "computer-use-hosts": {
+        set(reloadComputerUseHostsFromWorker$);
+        return;
+      }
+      case "connection-diagnostics": {
+        set(reloadConnectionDiagnosticsFromWorker$);
+        return;
+      }
+      case "queue-data": {
+        set(reloadQueueDataFromWorker$);
+        return;
+      }
     }
-    if (computedKey === "computer-use-hosts") {
-      set(reloadComputerUseHostsFromWorker$);
-      return;
-    }
-    set(reloadQueueDataFromWorker$);
   },
 );
 
@@ -84,6 +104,15 @@ export const queueDataFromWorker$ = computed(
   async (get): Promise<QueueResponse> => {
     get(internalReloadQueueDataFromWorker$);
     return await get(installedSharedDatabaseBridge$).getComputed("queue-data");
+  },
+);
+
+export const connectionDiagnosticsFromWorker$ = computed(
+  async (get): Promise<ConnectionDiagnostics> => {
+    get(internalReloadConnectionDiagnosticsFromWorker$);
+    return await get(installedSharedDatabaseBridge$).getComputed(
+      "connection-diagnostics",
+    );
   },
 );
 

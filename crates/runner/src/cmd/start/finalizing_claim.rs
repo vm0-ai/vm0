@@ -918,6 +918,7 @@ async fn complete_claimed_without_sandbox(
             CompleteRequest {
                 run_id: context.run_id,
                 exit_code: failure.exit_code,
+                failure_reason: None,
                 error: Some(failure.error),
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,

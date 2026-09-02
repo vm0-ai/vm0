@@ -5165,8 +5165,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "recuperação",
+          "refresh": "Atualizar",
           "title": "Diagnóstico de conexão em tempo real",
-          "unavailable": "indisponível"
+          "unavailable": "indisponível",
+          "workerDescription": "Inspecione a captura registrada pelo shared worker que mantém a conexão em tempo real.",
+          "workerLoading": "Carregando",
+          "workerTitle": "Diagnóstico de conexão do shared worker",
+          "workerUnavailable": "Indisponível"
         }
       },
       "language": {

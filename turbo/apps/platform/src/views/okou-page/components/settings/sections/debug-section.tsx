@@ -13,6 +13,7 @@ import {
 import { BuildInfoBlock } from "../build-info-block.tsx";
 import { ConnectionDiagnosticsBlock } from "../connection-diagnostics-block.tsx";
 import { ConnectorCatalogDiagnosticsBlock } from "../connector-catalog-diagnostics-block.tsx";
+import { WorkerConnectionDiagnosticsBlock } from "../worker-connection-diagnostics-block.tsx";
 import { BuiltInModelCooldownDiagnosticsBlock } from "../built-in-model-cooldown-diagnostics-block.tsx";
 
 const CAPTURE_RUN_COUNT = 3;
@@ -80,6 +81,7 @@ export function DebugSection() {
     <div className="flex flex-col gap-6">
       <BuildInfoBlock />
       <ConnectionDiagnosticsBlock />
+      <WorkerConnectionDiagnosticsBlock />
       <ConnectorCatalogDiagnosticsBlock />
       <BuiltInModelCooldownDiagnosticsBlock />
       <CaptureNetworkBodiesBlock />

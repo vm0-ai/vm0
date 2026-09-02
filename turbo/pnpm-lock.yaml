@@ -8,6 +8,7 @@ overrides:
   '@babel/core': '>=7.29.6'
   '@electron/get>undici': 7.28.0
   '@floating-ui/dom': 1.8.0
+  '@humanfs/node': 0.16.8
   '@esbuild-kit/core-utils>esbuild': ^0.25.4
   '@humanfs/node@<0.16.8': '>=0.16.8'
   '@isaacs/brace-expansion': '>=5.0.1'
@@ -18,11 +19,13 @@ overrides:
   '@tiptap/core': 3.31.0
   '@tiptap/extension-blockquote': 3.31.0
   '@tiptap/extension-bold': 3.31.0
+  '@tiptap/extension-bubble-menu': 3.31.0
   '@tiptap/extension-bullet-list': 3.31.0
   '@tiptap/extension-code': 3.31.0
   '@tiptap/extension-code-block': 3.31.0
   '@tiptap/extension-document': 3.31.0
   '@tiptap/extension-dropcursor': 3.31.0
+  '@tiptap/extension-floating-menu': 3.31.0
   '@tiptap/extension-gapcursor': 3.31.0
   '@tiptap/extension-hard-break': 3.31.0
   '@tiptap/extension-heading': 3.31.0
@@ -72,8 +75,7 @@ overrides:
   postcss: '>=8.5.23'
   protobufjs@>=7.5.0 <=7.6.4: 7.6.5
   protobufjs@>=8.0.0 <=8.6.5: 8.6.6
-  qs@>=2.2.5 <6.16.0: '>=6.16.0'
-  qs@>=6.14.2 <=6.15.3: '>=6.16.0'
+  qs: 6.16.0
   smol-toml: '>=1.6.1'
   svix: 1.92.2
   tar: '>=7.5.21'
@@ -1083,6 +1085,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.1
         version: 0.84.1(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
+      gpt-tokenizer:
+        specifier: ^3.4.0
+        version: 3.4.0
     devDependencies:
       '@okouai/eslint-config':
         specifier: workspace:*
@@ -1817,7 +1822,7 @@ packages:
     engines: {node: '>=22.12.0'}
 
   '@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2':
-    resolution: {gitHosted: true, integrity: sha512-MXgzlTDEEndJB3TBbvd5uFQO/8gaINo1Hfen8vef5rq/VHVPeB63uuv/uO5+8GFsAJ/rauu6XB79S6K4+aXc+w==, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
     version: 10.2.0-electron.1
     engines: {node: '>=12.13.0'}
     hasBin: true

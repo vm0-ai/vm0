@@ -744,6 +744,9 @@ export const secretConnectorMetadataMapSchema = z.record(
 );
 
 export const PI_MEMORY_ROOT = `${PI_AGENT_DIR}/memory`;
+export const PI_MEMORY_SUMMARY_PATH = `${PI_MEMORY_ROOT}/memory_summary.md`;
+export const PI_MEMORY_SUMMARY_MAX_BYTES = 64 * 1024;
+export const PI_MEMORY_SUMMARY_MAX_TOKENS = 2500;
 export const PI_SKILLS_ROOT = `${PI_AGENT_DIR}/skills`;
 export const PI_API_FIRST_TURN_SESSION_MAX_BYTES = 16 * 1024 * 1024;
 
@@ -758,38 +761,83 @@ const piSessionCheckpointSchema = z
   .strict()
   .readonly();
 
-export const piResourceSnapshotSchema = z
+const piResourceSnapshotAgentsFilesSchema = z
+  .array(
+    z
+      .object({
+        path: z.string().startsWith("/"),
+        content: z.string(),
+      })
+      .strict()
+      .readonly(),
+  )
+  .readonly();
+
+const piResourceSnapshotSkillsSchema = z
+  .array(
+    z
+      .object({
+        name: z.string().min(1),
+        description: z.string().min(1),
+        filePath: z.string().startsWith("/"),
+        baseDir: z.string().startsWith("/"),
+        scope: z.enum(["user", "project", "temporary"]),
+        disableModelInvocation: z.boolean(),
+      })
+      .strict()
+      .readonly(),
+  )
+  .readonly();
+
+const piMemoryRecallIdentityShape = {
+  memoryStorageId: z.string().min(1),
+  storageVersionId: z.string().min(1),
+};
+
+export const piMemoryRecallSelectionSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      ...piMemoryRecallIdentityShape,
+      status: z.literal("no-content"),
+    })
+    .strict()
+    .readonly(),
+  z
+    .object({
+      ...piMemoryRecallIdentityShape,
+      status: z.literal("ready"),
+      content: z.string().min(1).max(PI_MEMORY_SUMMARY_MAX_BYTES),
+      sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+      sourceSize: z.number().int().positive().max(PI_MEMORY_SUMMARY_MAX_BYTES),
+      tokenCount: z.number().int().positive().max(PI_MEMORY_SUMMARY_MAX_TOKENS),
+    })
+    .strict()
+    .readonly(),
+]);
+
+const piResourceSnapshotV1Schema = z
   .object({
     schemaVersion: z.literal(1),
-    agentsFiles: z
-      .array(
-        z
-          .object({
-            path: z.string().startsWith("/"),
-            content: z.string(),
-          })
-          .strict()
-          .readonly(),
-      )
-      .readonly(),
-    skills: z
-      .array(
-        z
-          .object({
-            name: z.string().min(1),
-            description: z.string().min(1),
-            filePath: z.string().startsWith("/"),
-            baseDir: z.string().startsWith("/"),
-            scope: z.enum(["user", "project", "temporary"]),
-            disableModelInvocation: z.boolean(),
-          })
-          .strict()
-          .readonly(),
-      )
-      .readonly(),
+    agentsFiles: piResourceSnapshotAgentsFilesSchema,
+    skills: piResourceSnapshotSkillsSchema,
   })
   .strict()
   .readonly();
+
+const piResourceSnapshotV2Schema = z
+  .object({
+    schemaVersion: z.literal(2),
+    agentsFiles: piResourceSnapshotAgentsFilesSchema,
+    skills: piResourceSnapshotSkillsSchema,
+    memoryRecall: piMemoryRecallSelectionSchema,
+  })
+  .strict()
+  .readonly();
+
+export const piResourceSnapshotSchema = z.discriminatedUnion("schemaVersion", [
+  piResourceSnapshotV1Schema,
+  piResourceSnapshotV2Schema,
+]);
 
 const piApiFirstTurnSessionSchema = z
   .object({
@@ -878,6 +926,31 @@ export const piApiFirstTurnConfigSchema = z
  * runtime environment entry used by the Sandbox, while `credentialSecretName`
  * names the API-owned encrypted secret that backs that entry.
  */
+const piCredentialHeaderSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z][A-Za-z0-9-]*$/),
+    valueTemplate: z
+      .string()
+      .min(1)
+      .max(1024)
+      .refine((value) => {
+        const staticTemplate = value.replace("{{secret}}", "");
+        return (
+          !value.includes("\r") &&
+          !value.includes("\n") &&
+          value.split("{{secret}}").length === 2 &&
+          !staticTemplate.includes("{{") &&
+          !staticTemplate.includes("}}")
+        );
+      }, "Credential header template must contain {{secret}} exactly once, no other template references, and no line breaks"),
+  })
+  .strict()
+  .readonly();
+
 export const piModelConfigSchema = z
   .object({
     provider: z.enum([
@@ -889,7 +962,10 @@ export const piModelConfigSchema = z
       "codex",
     ]),
     baseUrl: z.url(),
+    // Request identity can differ from the trusted Pi catalog entry for an
+    // organization-configured model provider gateway.
     model: z.string().min(1),
+    catalogModel: z.string().min(1).optional(),
     // Current writers emit openai-responses; readers normalize absent or legacy
     // values while the previous API can be rolled back, old runner/Sandbox
     // instances complete their two-hour drain plus finalization, and executable
@@ -908,6 +984,9 @@ export const piModelConfigSchema = z
       "CHATGPT_ACCESS_TOKEN",
     ]),
     credentialSecretName: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
+    // Non-secret gateway request policy. The credential itself remains in the
+    // encrypted secret named above and is resolved only at an execution edge.
+    credentialHeader: piCredentialHeaderSchema.optional(),
   })
   .strict()
   .readonly();
@@ -920,6 +999,7 @@ export const piLaunchConfigSchema = z
   .object({
     schemaVersion: z.literal(2),
     apiFirstTurn: piApiFirstTurnConfigSchema,
+    memoryRecall: piMemoryRecallSelectionSchema.optional(),
   })
   .strict()
   .readonly();
@@ -1490,6 +1570,9 @@ export type StoredExecutionContext = z.infer<
 >;
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
+export type PiMemoryRecallSelection = z.infer<
+  typeof piMemoryRecallSelectionSchema
+>;
 export type PiApiFirstTurnConfig = z.infer<typeof piApiFirstTurnConfigSchema>;
 export type PiApiFirstTurnOwnershipTransferMode = z.infer<
   typeof piApiFirstTurnOwnershipTransferModeSchema

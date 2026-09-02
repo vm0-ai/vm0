@@ -97,6 +97,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/extract-pi-memory-stage1",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/computer-use-screenshot-cleanup",
       "schedule": "30 2 * * *"
     },
