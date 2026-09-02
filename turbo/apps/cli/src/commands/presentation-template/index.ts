@@ -2,6 +2,7 @@ import { Command } from "commander";
 
 import { publishPresentationTemplate } from "../../lib/api/domains/presentation-templates";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
+import { screenshotCommand } from "./screenshot";
 
 interface PublishOptions {
   readonly title: string;
@@ -41,5 +42,8 @@ const publishCommand = new Command()
 
 export const presentationTemplateCommand = new Command()
   .name("presentation-template")
-  .description("Publish presentation templates extracted from a deck")
+  .description(
+    "Render and publish presentation templates extracted from a deck",
+  )
+  .addCommand(screenshotCommand)
   .addCommand(publishCommand);

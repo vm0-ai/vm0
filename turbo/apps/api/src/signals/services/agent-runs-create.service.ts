@@ -465,6 +465,7 @@ function buildAgentToolsPrompt(args: {
     ...buildIntegrationToolsPrompt(args.triggerSource),
     "- Maps, geocoding, directions, and places: use `okou maps --help`.",
     "- Current weather, forecasts, and recent history: use `okou weather --help`.",
+    "- HTML page screenshots: use `okou presentation-template screenshot --input <file.html|layouts-dir|url> --out <dir>` to render an HTML page, a directory of layouts, or an assembled deck to ordered `page-001.png` files at a fixed page size. It verifies every capture before keeping it, reloads and retakes a page that rendered as one flat colour, lost an edge band, or had not settled, and exits non-zero when a page never captures cleanly. Prefer it over driving `agent-browser` screenshot calls by hand for slide or page images, because an unverified capture of an unpainted page looks like a successful screenshot. Run `okou presentation-template screenshot --help` for the current interface.",
     "- Static web artifacts can be published with `okou host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `okou host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `okou connector search <keyword>`. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
     ...(args.connectorAccountsEnabled
