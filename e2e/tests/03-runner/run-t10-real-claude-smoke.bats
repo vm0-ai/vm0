@@ -19,9 +19,9 @@ setup_file() {
     local feature_switches
     feature_switches="$(runner_api_curl "/api/feature-switches" \
         -X POST \
-        -d '{"switches":{"realAgentInPreview":true,"piLoop":true}}')"
+        -d '{"switches":{"_realAgentInPreview":true,"piLoop":true}}')"
     jq -e '
-        .effectiveSwitches.realAgentInPreview == true and
+        .effectiveSwitches._realAgentInPreview == true and
         .effectiveSwitches.piLoop == true
     ' <<<"$feature_switches" >/dev/null
 

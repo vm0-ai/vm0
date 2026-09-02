@@ -2730,7 +2730,7 @@
         "prefixes": "उपसर्गों",
         "prefixesHint": "(प्रति पंक्ति एक, केवल https)",
         "redirectCopy": "रीडायरेक्ट URL कॉपी करें",
-        "redirectHint": "(इस URL को प्रोवाइडर के OAuth एप्लिकेशन में पंजीकृत करें।)",
+        "redirectHint": "(इस URL को प्रोवाइडर के OAuth ऐप्लिकेशन में रजिस्टर करें। पहले से रजिस्टर किया गया VM0 या Okou रीडायरेक्ट URL भी बनाए रखें।)",
         "redirectUrl": "URL को पुनर्निर्देशित करें",
         "removeApiAuthentication": "API प्रमाणीकरण हटाएँ",
         "removeNoAuthentication": "“कोई प्रमाणीकरण नहीं” हटाएँ",

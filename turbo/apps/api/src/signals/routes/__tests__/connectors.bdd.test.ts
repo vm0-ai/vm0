@@ -2138,16 +2138,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       queryInjections: [],
       authMode: "none" as const,
     };
-    const disabledCreate = await connectorsApi.requestCreateCustomConnector(
-      admin,
-      httpDefinition,
-      [403],
-    );
-    expectApiError(disabledCreate.body);
-    expect(disabledCreate.body.error.code).toBe("FORBIDDEN");
-
     await connectorsApi.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.CustomConnectorNoAuth]: true,
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
     const http = await connectorsApi.createCustomConnector(
@@ -2246,21 +2237,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       ]),
     ).resolves.toStrictEqual(expect.arrayContaining([http.id, mcp.id]));
 
-    await connectorsApi.updateFeatureSwitches(admin, {
-      [FeatureSwitchKey.CustomConnectorNoAuth]: false,
-    });
     await expect(
       connectorsApi.readCustomConnector(admin, http.id),
     ).resolves.toMatchObject({ authMode: "none", connected: true });
-    const blockedReconnect =
-      await connectorsApi.requestSetCustomConnectorValues(
-        admin,
-        http.id,
-        [{ key: "region", kind: "variable", value: "eu" }],
-        [403],
-      );
-    expectApiError(blockedReconnect.body);
-    expect(blockedReconnect.body.error.code).toBe("FORBIDDEN");
+    await expect(
+      connectorsApi.setCustomConnectorValues(admin, http.id, [
+        { key: "region", kind: "variable", value: "eu" },
+      ]),
+    ).resolves.toMatchObject({ authMode: "none", connected: true });
 
     const manualHttp = await connectorsApi.updateCustomConnector(
       admin,
@@ -2292,14 +2276,16 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       storageVersion: 2,
     });
-    const blockedNoneUpdate = await connectorsApi.requestUpdateCustomConnector(
+    const restoredNone = await connectorsApi.updateCustomConnector(
       admin,
       http.id,
       httpDefinition,
-      [403],
     );
-    expectApiError(blockedNoneUpdate.body);
-    expect(blockedNoneUpdate.body.error.code).toBe("FORBIDDEN");
+    expect(restoredNone).toMatchObject({
+      authMode: "none",
+      connected: false,
+      storageVersion: 3,
+    });
 
     await connectorsApi.disconnectSingleCustomConnectorAccount(admin, http.id);
     await connectorsApi.disconnectSingleCustomConnectorAccount(admin, mcp.id);

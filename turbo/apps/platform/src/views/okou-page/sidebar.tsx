@@ -804,14 +804,17 @@ function ThreeColumnNav() {
     <>
       <LabeledNavRail />
       {!chatListHidden && <ChatListColumn />}
-      <ThreeColumnSearchDialogContainer />
-      <PinnedAgentDialogs />
-      <ChatThreadDialogs />
-      <ExpandedSidebar />
     </>
   );
 }
 
-export function Sidebar() {
-  return <ThreeColumnNav />;
+export function Sidebar({ isDesktop }: { isDesktop: boolean }) {
+  return (
+    <>
+      {isDesktop ? <ThreeColumnNav /> : <ExpandedSidebar />}
+      <ThreeColumnSearchDialogContainer />
+      <PinnedAgentDialogs />
+      <ChatThreadDialogs />
+    </>
+  );
 }

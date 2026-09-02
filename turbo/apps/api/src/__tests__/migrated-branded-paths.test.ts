@@ -133,14 +133,10 @@ const MIGRATED_ROUTE_PATHS: Readonly<Record<string, readonly string[]>> = {
   // #28461. #30807 removed the four per-agent rows.
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
   // #28544: the two Feishu routes that left `FINAL_PROVIDER_CONSOLE_PATHS`.
-  // Both branded forms used to be the declared paths, so this row is the only
-  // thing registering them now — it is what keeps the two production Feishu
-  // installations delivering to the URL each of them holds in its own Feishu
-  // app console.
-  "/api/webhooks/feishu/events/:installationId": [
-    "/api/okou/feishu/events/:installationId",
-    "/api/zero/feishu/events/:installationId",
-  ],
+  // #28709 removed the OAuth callback, and #31068 removed the events row as an
+  // owner decision rather than on evidence: both production installations still
+  // hold the branded URL in their own Feishu app console, so removing it stops
+  // their deliveries, and the owner accepted that after notifying both holders.
   // #28565: the connector-account reads and writes and the managed SocialKit
   // request, the two contracts that were added while #28278 was in flight and
   // so appeared in no slice's inventory.
@@ -333,11 +329,11 @@ describe("branded paths for migrated neutral routes", () => {
   // rows that left 62, #30668 kept when it took the four Slack rows whose
   // producer moved and left 58, #30804 kept when it took the four Computer Use
   // host rows and `feature-switches` and left 53, #30812 kept when it took
-  // the Teams OAuth callback and the Slack connect start and left 51, and
-  // #30807 kept when it took forty-four rows as a class and left 7. None of
-  // them left a case asserting the removed rows now 404: `docs/fallback.md`
-  // section 1 rules that class out, and the route table already proves the
-  // registration is gone.
+  // the Teams OAuth callback and the Slack connect start and left 51, #30807
+  // kept when it took forty-four rows as a class and left 7, and #31068 kept
+  // when it took the Feishu events row and left 6. None of them left a case
+  // asserting the removed rows now 404: `docs/fallback.md` section 1 rules that
+  // class out, and the route table already proves the registration is gone.
   // What needs a test is the opposite direction — a row disappearing without
   // the request-log evidence #26701 requires — which is what this count and the
   // per-family cases catch.
@@ -349,7 +345,7 @@ describe("branded paths for migrated neutral routes", () => {
   // whole table. Raise the number only with that evidence; an unexplained edit
   // here is the failure this is for.
   it("holds the branded rows this suite has evidence for and no others", () => {
-    const MIGRATED_BRANDED_ROW_COUNT = 7;
+    const MIGRATED_BRANDED_ROW_COUNT = 6;
 
     expect(Object.keys(MIGRATED_ROUTE_PATHS)).toHaveLength(
       MIGRATED_BRANDED_ROW_COUNT,

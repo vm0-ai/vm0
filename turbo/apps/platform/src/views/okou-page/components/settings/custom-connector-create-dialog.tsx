@@ -31,10 +31,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { resolveApiBaseForTarget } from "../../../../signals/api-base.ts";
-import {
-  customConnectorMcpEnabled$,
-  customConnectorNoAuthEnabled$,
-} from "../../../../signals/external/feature-switch.ts";
+import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
@@ -1051,7 +1048,6 @@ function formCanSubmit(
   form: CustomConnectorCreateForm,
   connector: CustomConnectorResponse | undefined,
   mcpEnabled: boolean,
-  noAuthEnabled: boolean,
 ): boolean {
   const connectorKind = connector?.kind ?? form.kind;
   if (
@@ -1067,7 +1063,7 @@ function formCanSubmit(
     return false;
   }
   if (form.authMethodTypes.includes("none")) {
-    return noAuthEnabled;
+    return true;
   }
   const advancedApiDefinition =
     connector !== undefined &&
@@ -1096,7 +1092,6 @@ function formCanSubmit(
 interface AuthenticationFieldsProps extends CreateFormFieldProps {
   readonly editing: boolean;
   readonly advancedApiDefinition: boolean;
-  readonly noAuthEnabled: boolean;
   readonly addAuthMethod: (type: CustomConnectorAuthMethodType) => void;
   readonly removeAuthMethod: (type: CustomConnectorAuthMethodType) => void;
 }
@@ -1106,18 +1101,15 @@ function AuthenticationFields({
   setField,
   editing,
   advancedApiDefinition,
-  noAuthEnabled,
   addAuthMethod,
   removeAuthMethod,
 }: AuthenticationFieldsProps) {
   const { t } = useTranslation();
-  const availableAuthMethods = (
-    noAuthEnabled
-      ? (["none", "api", "oauth2"] as const)
-      : (["api", "oauth2"] as const)
-  ).filter((type) => {
-    return !form.authMethodTypes.includes(type);
-  });
+  const availableAuthMethods = (["none", "api", "oauth2"] as const).filter(
+    (type) => {
+      return !form.authMethodTypes.includes(type);
+    },
+  );
   return (
     <>
       {form.authMethodTypes.includes("none") && (
@@ -1207,7 +1199,6 @@ function CustomConnectorForm({
   editing,
   mcpEnabled,
   advancedApiDefinition,
-  noAuthEnabled,
   addAuthMethod,
   removeAuthMethod,
   submitting,
@@ -1237,7 +1228,6 @@ function CustomConnectorForm({
         setField={setField}
         editing={editing}
         advancedApiDefinition={advancedApiDefinition}
-        noAuthEnabled={noAuthEnabled}
         addAuthMethod={addAuthMethod}
         removeAuthMethod={removeAuthMethod}
       />
@@ -1297,7 +1287,6 @@ export function CustomConnectorCreateDialog({
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
   const mcpEnabled = useGet(customConnectorMcpEnabled$);
-  const noAuthEnabled = useGet(customConnectorNoAuthEnabled$);
   const setField = useSet(setCustomConnectorCreateField$);
   const setKind = useSet(setCustomConnectorCreateKind$);
   const addAuthMethod = useSet(addCustomConnectorAuthMethod$);
@@ -1322,8 +1311,7 @@ export function CustomConnectorCreateDialog({
   const submitting = editing
     ? updateLoadable.state === "loading"
     : createLoadable.state === "loading";
-  const canSubmit =
-    !submitting && formCanSubmit(form, connector, mcpEnabled, noAuthEnabled);
+  const canSubmit = !submitting && formCanSubmit(form, connector, mcpEnabled);
   const advancedApiDefinition = connectorHasAdvancedApiDefinition(connector);
 
   const close = () => {
@@ -1396,7 +1384,6 @@ export function CustomConnectorCreateDialog({
             setKind={setKind}
             editing={editing}
             mcpEnabled={mcpEnabled}
-            noAuthEnabled={noAuthEnabled}
             advancedApiDefinition={advancedApiDefinition}
             addAuthMethod={addAuthMethod}
             removeAuthMethod={removeAuthMethod}

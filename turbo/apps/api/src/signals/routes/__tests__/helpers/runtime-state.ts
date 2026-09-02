@@ -654,6 +654,16 @@ export async function setRunnerJobContextProfileAsPreviousApi(
   });
 }
 
+export async function setRunnerJobPiOwnershipTransferAsPreviousApi(
+  context: TestContext,
+  runId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-pi-ownership-transfer-as-previous-api",
+    run_id: runId,
+  });
+}
+
 export async function removeRunCanonicalStorageState(
   context: TestContext,
   runId: string,
