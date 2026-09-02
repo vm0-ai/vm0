@@ -34,6 +34,14 @@ REMOTE="${METAL_USER}@${HOST}"
 EXECUTION_KEY="${JOB_REF}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 REMOTE_BIN="/tmp/vm0-host-cpu-fairness-${EXECUTION_KEY}"
 
+cleanup_remote_binary() {
+  ssh "$REMOTE" bash -s -- "$REMOTE_BIN" 2>/dev/null <<'REMOTE_CLEANUP' || true
+set -euo pipefail
+rm -f -- "$1"
+REMOTE_CLEANUP
+}
+trap cleanup_remote_binary EXIT
+
 scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
 
 ssh "$REMOTE" bash -s -- \

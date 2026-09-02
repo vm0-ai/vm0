@@ -102,7 +102,14 @@ impl HostCpuCgroupManager {
         })?;
         let current_path = cgroup_mount.join(relative_membership);
         if membership_path.file_name().and_then(|name| name.to_str()) != Some(CONTROL_GROUP) {
-            if read_delegate_marker(&current_path)?.is_some() {
+            let parent_path = current_path.parent();
+            let delegation_present = read_delegate_marker(&current_path)?.is_some()
+                || parent_path
+                    .map(read_delegate_marker)
+                    .transpose()?
+                    .flatten()
+                    .is_some();
+            if delegation_present {
                 return Err(InitializationError::Invalid(format!(
                     "delegated cgroup does not use the required {CONTROL_GROUP} subgroup: {}",
                     membership_path.display()
@@ -649,6 +656,22 @@ mod tests {
                 mount.join("system.slice/vm0-runner.service/cgroup.subtree_control")
             )
             .unwrap(),
+            ""
+        );
+    }
+
+    #[test]
+    fn prefer_managed_rejects_wrong_delegated_subgroup() {
+        let (_temp, proc, mount) = fake_delegated_tree();
+        let root = mount.join("system.slice/vm0-runner.service");
+        fs::create_dir(root.join("worker")).unwrap();
+        fs::write(&proc, "0::/system.slice/vm0-runner.service/worker\n").unwrap();
+        let config =
+            HostCpuPlacementConfig::new(100, 9900, HostCpuPlacementMode::PreferManaged).unwrap();
+
+        assert!(HostCpuCgroupManager::initialize_with_paths(config, &proc, &mount).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join(CGROUP_SUBTREE_CONTROL)).unwrap(),
             ""
         );
     }
