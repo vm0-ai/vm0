@@ -249,6 +249,11 @@ pub use payloads::guest_storage_manifest::{
 pub use payloads::memory_snapshot::{
     MEMORY_SNAPSHOT_PAYLOAD_SIZE, MemorySnapshot, decode_memory_snapshot,
 };
+pub use payloads::workspace_drive_mount::{
+    WORKSPACE_DRIVE_MOUNT_OUTPUT_LIMIT_BYTES, decode_workspace_drive_mount_request,
+    decode_workspace_drive_mount_result, encode_workspace_drive_mount_request_frame_into,
+    encode_workspace_drive_mount_result, encode_workspace_drive_mount_result_frame_into,
+};
 pub use payloads::write_file::{
     WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,
     decode_write_files_result, encode_private_write_file, encode_private_write_file_frame_into,
@@ -265,7 +270,8 @@ pub use wire::{
     MSG_GUEST_STATE_RESTORE, MSG_GUEST_STATE_RESTORE_RESULT, MSG_GUEST_STORAGE_MANIFEST,
     MSG_GUEST_STORAGE_MANIFEST_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, MSG_WRITE_PRIVATE_FILES,
-    VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WORKSPACE_DRIVE_MOUNT,
+    MSG_WORKSPACE_DRIVE_MOUNT_RESULT, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
+    MSG_WRITE_FILES_RESULT, MSG_WRITE_PRIVATE_FILES, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };

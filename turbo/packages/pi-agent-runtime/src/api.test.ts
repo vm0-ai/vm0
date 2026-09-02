@@ -19,7 +19,14 @@ import { MemoryPiSession } from "./session-memory";
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
 const SESSION_TIMESTAMP = "2026-08-31T12:34:56.000Z";
 
-function responsesTextSse(response: ServerResponse, text: string): void {
+function responsesTextSse(
+  response: ServerResponse,
+  text: string,
+  options?: {
+    readonly fragmentTerminal?: boolean;
+    readonly serviceTier?: string | null;
+  },
+): void {
   const responseId = "resp_terra_api_first";
   const messageId = "msg_terra_api_first";
   const events = [
@@ -76,18 +83,28 @@ function responsesTextSse(response: ServerResponse, text: string): void {
             content: [{ type: "output_text", text, annotations: [] }],
           },
         ],
+        ...(options && "serviceTier" in options
+          ? { service_tier: options.serviceTier }
+          : {}),
         usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
       },
     },
   ];
   response.writeHead(200, { "content-type": "text/event-stream" });
-  response.end(
-    events
-      .map((event) => {
-        return `data: ${JSON.stringify(event)}\n\n`;
-      })
-      .join(""),
-  );
+  const body = events
+    .map((event) => {
+      return `data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
+  if (!options?.fragmentTerminal) {
+    response.end(body);
+    return;
+  }
+  const splitAt = body.lastIndexOf("service_tier") + 5;
+  response.write(body.slice(0, splitAt));
+  setImmediate(() => {
+    response.end(body.slice(splitAt));
+  });
 }
 
 describe("Pi API facade", () => {
@@ -201,6 +218,8 @@ describe("Pi API facade", () => {
       expect(priorityResult.assistantMessage.content).toStrictEqual([
         { type: "text", text: "Terra API-first answer" },
       ]);
+      expect(standardResult.observedServiceTier).toBeUndefined();
+      expect(priorityResult.observedServiceTier).toBeUndefined();
       expect(priorityResult.sessionJsonl).not.toContain("serviceTier");
       expect(priorityResult.sessionJsonl).not.toContain("service_tier");
       expect(
@@ -208,6 +227,282 @@ describe("Pi API facade", () => {
           priorityResult.sessionJsonl,
         ).buildSessionContext().thinkingLevel,
       ).toBe("low");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+  });
+
+  it("captures fragmented terminal OpenRouter tiers without persisting them", async () => {
+    const observedTiers = [
+      "priority",
+      "fast",
+      "default",
+      "flex",
+      null,
+      undefined,
+      "future-tier",
+    ] as const;
+    const requestBodies: unknown[] = [];
+    let responseIndex = 0;
+    const server = createServer((request, response) => {
+      void (async () => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        requestBodies.push(
+          JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+        );
+        const serviceTier = observedTiers[responseIndex];
+        responseIndex += 1;
+        responsesTextSse(response, "OpenRouter answer", {
+          fragmentTerminal: true,
+          ...(serviceTier === undefined ? {} : { serviceTier }),
+        });
+      })().catch((error: unknown) => {
+        response.destroy(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("OpenRouter tier test server has no TCP address");
+    }
+
+    try {
+      const results = [];
+      for (const _serviceTier of observedTiers) {
+        results.push(
+          await runPiApiFirstTurn({
+            cwd: "/home/user/workspace",
+            agentDir: "/home/user/.pi/agent",
+            sessionId: SESSION_ID,
+            prompt: "observe the terminal tier",
+            appendSystemPrompt: null,
+            model: {
+              provider: "openrouter",
+              baseUrl: `http://127.0.0.1:${address.port}/v1`,
+              apiKey: "test-key",
+              model: "openai/gpt-5.6-terra",
+              api: "openai-responses",
+              thinkingLevel: "low",
+              serviceTier: "priority",
+            },
+            resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+            ownership: createPiApiFirstTurnOwnership(),
+          }),
+        );
+      }
+
+      expect(requestBodies).toHaveLength(observedTiers.length);
+      for (const body of requestBodies) {
+        expect(body).toMatchObject({
+          model: "openai/gpt-5.6-terra",
+          service_tier: "priority",
+          store: false,
+        });
+      }
+      expect(
+        results.map((result) => {
+          return result.observedServiceTier;
+        }),
+      ).toStrictEqual(observedTiers);
+      for (const result of results) {
+        expect(result.sessionJsonl).not.toContain("serviceTier");
+        expect(result.sessionJsonl).not.toContain("service_tier");
+        expect(result.sessionJsonl).not.toContain("observedServiceTier");
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+  });
+
+  it("resumes pre-migration OpenRouter Chat JSONL through full-context Responses", async () => {
+    const providerRequests: Array<{
+      readonly url: string | undefined;
+      readonly body: unknown;
+    }> = [];
+    const server = createServer((request, response) => {
+      void (async () => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        providerRequests.push({
+          url: request.url,
+          body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+        });
+        responsesTextSse(response, "post-migration answer", {
+          serviceTier: "default",
+        });
+      })().catch((error: unknown) => {
+        response.destroy(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("OpenRouter migration test server has no TCP address");
+    }
+    const legacy = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    legacy.appendMessage({
+      role: "user",
+      content: "legacy user context",
+      timestamp: 1,
+    });
+    legacy.appendMessage({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "legacy reasoning context" },
+        { type: "text", text: "legacy answer context" },
+        {
+          type: "toolCall",
+          id: "legacy_tool_call",
+          name: "read",
+          arguments: { path: "/home/user/workspace/AGENTS.md" },
+        },
+      ],
+      api: "openai-completions",
+      provider: "openrouter",
+      model: "openai/gpt-5.6-terra",
+      usage: {
+        input: 4,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 7,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "toolUse",
+      timestamp: 2,
+    });
+    legacy.appendMessage({
+      role: "toolResult",
+      toolCallId: "legacy_tool_call",
+      toolName: "read",
+      content: [{ type: "text", text: "legacy tool output" }],
+      isError: false,
+      timestamp: 3,
+    });
+    legacy.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "legacy tool conclusion" }],
+      api: "openai-completions",
+      provider: "openrouter",
+      model: "openai/gpt-5.6-terra",
+      usage: {
+        input: 2,
+        output: 2,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 4,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 4,
+    });
+
+    try {
+      const result = await runPiApiFirstTurn({
+        cwd: "/home/user/workspace",
+        agentDir: "/home/user/.pi/agent",
+        sessionId: SESSION_ID,
+        sessionJsonl: legacy.toJsonl(),
+        prompt: "post-migration prompt",
+        appendSystemPrompt: null,
+        model: {
+          provider: "openrouter",
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          apiKey: "test-key",
+          model: "openai/gpt-5.6-terra",
+          api: "openai-responses",
+          thinkingLevel: "low",
+        },
+        resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
+        ownership: createPiApiFirstTurnOwnership(),
+      });
+
+      expect(providerRequests).toHaveLength(1);
+      expect(providerRequests[0]?.url).toBe("/v1/responses");
+      expect(providerRequests[0]?.body).toMatchObject({ store: false });
+      expect(providerRequests[0]?.body).not.toHaveProperty(
+        "previous_response_id",
+      );
+      const requestJson = JSON.stringify(providerRequests[0]?.body);
+      for (const marker of [
+        "legacy user context",
+        "legacy reasoning context",
+        "legacy answer context",
+        "legacy tool output",
+        "legacy tool conclusion",
+        "post-migration prompt",
+      ]) {
+        expect(requestJson.split(marker)).toHaveLength(2);
+      }
+      expect(result.observedServiceTier).toBe("default");
+      expect(result.assistantMessage.content).toStrictEqual([
+        { type: "text", text: "post-migration answer" },
+      ]);
+      expect(inspectPiSessionJsonl(result.sessionJsonl)).toMatchObject({
+        messageCount: 6,
+        hasPendingToolCalls: false,
+        isSettledCheckpoint: true,
+      });
+      for (const marker of [
+        "legacy reasoning context",
+        "legacy tool output",
+        "post-migration prompt",
+        "post-migration answer",
+      ]) {
+        expect(result.sessionJsonl.split(marker)).toHaveLength(2);
+      }
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

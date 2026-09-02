@@ -528,21 +528,27 @@ impl PiRpcProjection {
     }
 
     fn project_message_end(&mut self, event: Value) -> Result<Option<Value>, AgentError> {
-        let Some(message) = event.get("message") else {
+        let mut event = event;
+        let Some(message) = event.get_mut("message").map(Value::take) else {
             return Err(AgentError::Execution(
                 "Pi RPC message_end omitted its message".to_string(),
             ));
         };
-        match message.get("role").and_then(Value::as_str) {
-            Some("assistant") => self.project_assistant_message(message),
-            Some("toolResult") => self.project_tool_result_message(message).map(Some),
-            _ => Ok(None),
+        if message.get("role").and_then(Value::as_str) == Some("assistant") {
+            return self.project_assistant_message(message);
         }
+        if message.get("role").and_then(Value::as_str) == Some("toolResult") {
+            return self.project_tool_result_message(message).map(Some);
+        }
+        Ok(None)
     }
 
-    fn project_assistant_message(&mut self, message: &Value) -> Result<Option<Value>, AgentError> {
-        self.assistant_terminal = Some(PiAssistantTerminal::from_message(message));
-        let content = assistant_content(message)?;
+    fn project_assistant_message(
+        &mut self,
+        mut message: Value,
+    ) -> Result<Option<Value>, AgentError> {
+        self.assistant_terminal = Some(PiAssistantTerminal::from_message(&message));
+        let content = assistant_content(&mut message)?;
         if content.is_empty() {
             return Ok(None);
         }
@@ -559,45 +565,79 @@ impl PiRpcProjection {
             .and_then(Value::as_str)
             .map(ToString::to_string)
             .unwrap_or_else(|| format!("{}:{timestamp}:{model}", self.run_id));
-        Ok(Some(json!({
-            "type": "assistant",
-            "message": {
-                "id": id,
-                "role": "assistant",
-                "content": content,
-                "model": model,
-                "usage": {
-                    "input_tokens": message.pointer("/usage/input").and_then(Value::as_u64).unwrap_or(0),
-                    "output_tokens": message.pointer("/usage/output").and_then(Value::as_u64).unwrap_or(0),
-                    "cache_read_input_tokens": message.pointer("/usage/cacheRead").and_then(Value::as_u64).unwrap_or(0),
-                    "cache_creation_input_tokens": message.pointer("/usage/cacheWrite").and_then(Value::as_u64).unwrap_or(0),
-                },
-            },
-        })))
+        let usage = owned_object([
+            (
+                "input_tokens",
+                Value::from(
+                    message
+                        .pointer("/usage/input")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                ),
+            ),
+            (
+                "output_tokens",
+                Value::from(
+                    message
+                        .pointer("/usage/output")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                ),
+            ),
+            (
+                "cache_read_input_tokens",
+                Value::from(
+                    message
+                        .pointer("/usage/cacheRead")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                ),
+            ),
+            (
+                "cache_creation_input_tokens",
+                Value::from(
+                    message
+                        .pointer("/usage/cacheWrite")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                ),
+            ),
+        ]);
+        let projected_message = owned_object([
+            ("id", Value::String(id)),
+            ("role", Value::from("assistant")),
+            ("content", Value::Array(content)),
+            ("model", Value::String(model.to_string())),
+            ("usage", usage),
+        ]);
+        Ok(Some(owned_object([
+            ("type", Value::from("assistant")),
+            ("message", projected_message),
+        ])))
     }
 
-    fn project_tool_result_message(&self, message: &Value) -> Result<Value, AgentError> {
-        let tool_use_id = message
-            .get("toolCallId")
-            .and_then(Value::as_str)
+    fn project_tool_result_message(&self, mut message: Value) -> Result<Value, AgentError> {
+        let tool_use_id = take_string_field(&mut message, "toolCallId")
             .filter(|tool_use_id| !tool_use_id.is_empty())
             .ok_or_else(|| {
                 AgentError::Execution(
                     "Pi RPC toolResult message omitted its tool call id".to_string(),
                 )
             })?;
-        let content = message
-            .get("content")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                AgentError::Execution("Pi RPC toolResult message omitted its content".to_string())
-            })?
-            .iter()
-            .map(project_tool_result_content)
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let blocks = match message.get_mut("content").map(Value::take) {
+            Some(Value::Array(blocks)) => blocks,
+            _ => {
+                return Err(AgentError::Execution(
+                    "Pi RPC toolResult message omitted its content".to_string(),
+                ));
+            }
+        };
+        let mut content = Vec::with_capacity(blocks.len());
+        for block in blocks {
+            if let Some(projected) = project_tool_result_content(block)? {
+                content.push(projected);
+            }
+        }
         let is_error = message
             .get("isError")
             .and_then(Value::as_bool)
@@ -606,19 +646,21 @@ impl PiRpcProjection {
                     "Pi RPC toolResult message omitted its error status".to_string(),
                 )
             })?;
-        Ok(json!({
-            "type": "user",
-            "session_id": self.session_id,
-            "message": {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "content": content,
-                    "is_error": is_error,
-                }],
-            },
-        }))
+        let tool_result = owned_object([
+            ("type", Value::from("tool_result")),
+            ("tool_use_id", Value::String(tool_use_id)),
+            ("content", Value::Array(content)),
+            ("is_error", Value::Bool(is_error)),
+        ]);
+        let projected_message = owned_object([
+            ("role", Value::from("user")),
+            ("content", Value::Array(vec![tool_result])),
+        ]);
+        Ok(owned_object([
+            ("type", Value::from("user")),
+            ("session_id", Value::String(self.session_id.clone())),
+            ("message", projected_message),
+        ]))
     }
 
     fn project_agent_settled(&mut self) -> Value {
@@ -634,91 +676,100 @@ impl PiRpcProjection {
     }
 }
 
-fn assistant_content(message: &Value) -> Result<Vec<Value>, AgentError> {
+fn owned_object<const N: usize>(fields: [(&str, Value); N]) -> Value {
+    Value::Object(
+        fields
+            .into_iter()
+            .map(|(name, value)| (name.to_string(), value))
+            .collect(),
+    )
+}
+
+fn assistant_content(message: &mut Value) -> Result<Vec<Value>, AgentError> {
+    let blocks = match message.get_mut("content").map(Value::take) {
+        Some(Value::Array(blocks)) => blocks,
+        _ => return Ok(Vec::new()),
+    };
     let mut content = Vec::new();
-    for block in message
-        .get("content")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        match block.get("type").and_then(Value::as_str) {
-            Some("text") => {
-                if let Some(text) = block
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|text| !text.is_empty())
-                {
-                    content.push(json!({ "type": "text", "text": text }));
-                }
+    for block in blocks {
+        if block.get("type").and_then(Value::as_str) == Some("text") {
+            if let Some(text) = block
+                .get("text")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+            {
+                content.push(json!({ "type": "text", "text": text }));
             }
-            Some("toolCall") => content.push(project_tool_call(block)?),
-            _ => {}
+        } else if block.get("type").and_then(Value::as_str) == Some("toolCall") {
+            content.push(project_tool_call(block)?);
         }
     }
     Ok(content)
 }
 
-fn project_tool_call(block: &Value) -> Result<Value, AgentError> {
-    let id = block
-        .get("id")
-        .and_then(Value::as_str)
+fn project_tool_call(mut block: Value) -> Result<Value, AgentError> {
+    let id = take_string_field(&mut block, "id")
         .filter(|id| !id.is_empty())
         .ok_or_else(|| {
             AgentError::Execution("Pi RPC toolCall content omitted its id".to_string())
         })?;
-    let name = block
-        .get("name")
-        .and_then(Value::as_str)
+    let name = take_string_field(&mut block, "name")
         .filter(|name| !name.is_empty())
         .ok_or_else(|| {
             AgentError::Execution("Pi RPC toolCall content omitted its name".to_string())
         })?;
     let arguments = block
-        .get("arguments")
-        .and_then(Value::as_object)
+        .get_mut("arguments")
+        .filter(|arguments| arguments.is_object())
+        .map(Value::take)
         .ok_or_else(|| {
             AgentError::Execution("Pi RPC toolCall content omitted its arguments".to_string())
         })?;
-    Ok(json!({
-        "type": "tool_use",
-        "id": id,
-        "name": name,
-        "input": arguments,
-    }))
+    Ok(owned_object([
+        ("type", Value::from("tool_use")),
+        ("id", Value::String(id)),
+        ("name", Value::String(name)),
+        ("input", arguments),
+    ]))
 }
 
-fn project_tool_result_content(block: &Value) -> Result<Option<Value>, AgentError> {
-    match block.get("type").and_then(Value::as_str) {
-        Some("text") => Ok(Some(json!({
-            "type": "text",
-            "text": block
-                .get("text")
-                .and_then(Value::as_str)
-                .ok_or_else(|| AgentError::Execution(
-                    "Pi RPC toolResult text content omitted its text".to_string()
-                ))?,
-        }))),
-        Some("image") => Ok(Some(json!({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": block
-                    .get("mimeType")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| AgentError::Execution(
-                        "Pi RPC toolResult image content omitted its media type".to_string()
-                    ))?,
-                "data": block
-                    .get("data")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| AgentError::Execution(
-                        "Pi RPC toolResult image content omitted its data".to_string()
-                    ))?,
-            },
-        }))),
-        _ => Ok(None),
+fn project_tool_result_content(mut block: Value) -> Result<Option<Value>, AgentError> {
+    if block.get("type").and_then(Value::as_str) == Some("text") {
+        let text = take_string_field(&mut block, "text").ok_or_else(|| {
+            AgentError::Execution("Pi RPC toolResult text content omitted its text".to_string())
+        })?;
+        return Ok(Some(owned_object([
+            ("type", Value::from("text")),
+            ("text", Value::String(text)),
+        ])));
+    }
+    if block.get("type").and_then(Value::as_str) == Some("image") {
+        let media_type = take_string_field(&mut block, "mimeType").ok_or_else(|| {
+            AgentError::Execution(
+                "Pi RPC toolResult image content omitted its media type".to_string(),
+            )
+        })?;
+        let data = take_string_field(&mut block, "data").ok_or_else(|| {
+            AgentError::Execution("Pi RPC toolResult image content omitted its data".to_string())
+        })?;
+        let source = owned_object([
+            ("type", Value::from("base64")),
+            ("media_type", Value::String(media_type)),
+            ("data", Value::String(data)),
+        ]);
+        return Ok(Some(owned_object([
+            ("type", Value::from("image")),
+            ("source", source),
+        ])));
+    }
+    Ok(None)
+}
+
+fn take_string_field(value: &mut Value, field: &str) -> Option<String> {
+    match value.get_mut(field).map(Value::take) {
+        Some(Value::String(value)) => Some(value),
+        _ => None,
     }
 }
 
@@ -1115,6 +1166,95 @@ mod tests {
             .expect("agent_settled should emit result");
         assert_eq!(result["type"], "result");
         assert_eq!(result["result"], "done");
+    }
+
+    #[test]
+    fn projection_moves_large_tool_payload_allocations() {
+        const LARGE_PAYLOAD_BYTES: usize = 1024 * 1024;
+
+        let (responses, _rx) = mpsc::unbounded_channel();
+        let mut projection = PiRpcProjection::new("run", "session");
+        let tool_call = json!({
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "toolCall",
+                    "id": "tool-1",
+                    "name": "large_tool",
+                    "arguments": {
+                        "payload": "a".repeat(LARGE_PAYLOAD_BYTES),
+                    },
+                }],
+                "model": "model",
+                "timestamp": 1,
+                "usage": {},
+                "stopReason": "toolUse",
+            },
+        });
+        let argument = tool_call
+            .pointer("/message/content/0/arguments/payload")
+            .and_then(Value::as_str)
+            .expect("tool-call argument should be a string");
+        let argument_ptr = argument.as_ptr();
+
+        let tool_call = projection
+            .project(tool_call, &responses)
+            .expect("tool call should project")
+            .expect("tool call should emit an event");
+        let projected_argument = tool_call
+            .pointer("/message/content/0/input/payload")
+            .and_then(Value::as_str)
+            .expect("projected tool-call argument should be a string");
+        assert_eq!(projected_argument.len(), LARGE_PAYLOAD_BYTES);
+        assert!(std::ptr::eq(projected_argument.as_ptr(), argument_ptr));
+
+        let tool_result = json!({
+            "type": "message_end",
+            "message": {
+                "role": "toolResult",
+                "toolCallId": "tool-1",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "t".repeat(LARGE_PAYLOAD_BYTES),
+                    },
+                    {
+                        "type": "image",
+                        "mimeType": "image/png",
+                        "data": "i".repeat(LARGE_PAYLOAD_BYTES),
+                    },
+                ],
+                "isError": false,
+            },
+        });
+        let text = tool_result
+            .pointer("/message/content/0/text")
+            .and_then(Value::as_str)
+            .expect("tool-result text should be a string");
+        let text_ptr = text.as_ptr();
+        let image_data = tool_result
+            .pointer("/message/content/1/data")
+            .and_then(Value::as_str)
+            .expect("tool-result image data should be a string");
+        let image_data_ptr = image_data.as_ptr();
+
+        let tool_result = projection
+            .project(tool_result, &responses)
+            .expect("tool result should project")
+            .expect("tool result should emit an event");
+        let projected_text = tool_result
+            .pointer("/message/content/0/content/0/text")
+            .and_then(Value::as_str)
+            .expect("projected tool-result text should be a string");
+        assert_eq!(projected_text.len(), LARGE_PAYLOAD_BYTES);
+        assert!(std::ptr::eq(projected_text.as_ptr(), text_ptr));
+        let projected_image_data = tool_result
+            .pointer("/message/content/0/content/1/source/data")
+            .and_then(Value::as_str)
+            .expect("projected tool-result image data should be a string");
+        assert_eq!(projected_image_data.len(), LARGE_PAYLOAD_BYTES);
+        assert!(std::ptr::eq(projected_image_data.as_ptr(), image_data_ptr));
     }
 
     #[test]

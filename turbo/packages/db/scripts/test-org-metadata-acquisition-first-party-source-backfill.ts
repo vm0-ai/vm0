@@ -7,9 +7,9 @@ import { Client } from "pg";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
 import {
   ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_MIGRATION,
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION,
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER,
-  validatePermanentOrgMetadataAcquisitionFirstPartySourceState,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_FUNCTION,
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_TRIGGER,
+  validateTransitionOrgMetadataAcquisitionFirstPartySourceState,
 } from "./test-org-metadata-acquisition-first-party-source-permanent";
 
 export const ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_BACKFILL_MIGRATION =
@@ -22,7 +22,7 @@ const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
 const testDatabaseName =
   "migration_org_metadata_acquisition_first_party_source_backfill_30556";
 const bridgeTriggerName =
-  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER.triggerName;
+  ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_TRIGGER.triggerName;
 const partialFailureFunctionName =
   "fail_org_metadata_acquisition_first_party_source_backfill_30556";
 const partialFailureTriggerName =
@@ -163,8 +163,8 @@ export function validateOrgMetadataAcquisitionFirstPartySourceBackfillMigrationS
     "requires the exact enabled 1033 bridge",
     "found canonical-only rows",
     "found unequal dual rows",
-    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER.definition,
-    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION.bodyHash,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_TRIGGER.definition,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_FUNCTION.bodyHash,
   ]) {
     assert.ok(preflight.includes(expected));
   }
@@ -232,8 +232,8 @@ export function validateOrgMetadataAcquisitionFirstPartySourceBackfillMigrationS
     "left unequal dual rows",
     "did not preserve the exact enabled 1033 bridge",
     "backfill procedure still exists",
-    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER.definition,
-    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION.bodyHash,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_TRIGGER.definition,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_FUNCTION.bodyHash,
   ]) {
     assert.ok(postflight.includes(expected));
   }
@@ -411,11 +411,11 @@ async function readBridgeCatalogIdentity(
   assert.equal(result.rows.length, 1);
   assert.equal(
     result.rows[0]?.triggerDefinition,
-    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_TRIGGER.definition,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_TRIGGER.definition,
   );
   assert.equal(
     result.rows[0]?.bodyHash,
-    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_PERMANENT_FUNCTION.bodyHash,
+    ORG_METADATA_ACQUISITION_FIRST_PARTY_SOURCE_TRANSITION_FUNCTION.bodyHash,
   );
   return result.rows;
 }
@@ -776,7 +776,7 @@ export async function validateOrgMetadataAcquisitionFirstPartySourceBackfill(
       await client.end();
     }
 
-    await validatePermanentOrgMetadataAcquisitionFirstPartySourceState(dbUrl);
+    await validateTransitionOrgMetadataAcquisitionFirstPartySourceState(dbUrl);
     console.log(
       "   ✅ exact column and 1033 bridge drift fail before mutation",
     );

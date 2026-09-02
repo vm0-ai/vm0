@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.183.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.1...runner-rs-v0.183.2) (2026-09-02)
+
+## [0.183.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.183.0...runner-rs-v0.183.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **python:** reject invalid utf-8 catalog versions ([#30979](https://github.com/vm0-ai/vm0/issues/30979)) ([c76170d](https://github.com/vm0-ai/vm0/commit/c76170d52b7f96015d8b6c7223c8d54ab0f6764f))
+
+
+### Documentation
+
+* **python:** correct the connector parser Brotli contract ([#30977](https://github.com/vm0-ai/vm0/issues/30977)) ([8d3e0e2](https://github.com/vm0-ai/vm0/commit/8d3e0e23123386fc0f0772812870d92fda931408))
+
 ## [0.183.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.182.13...runner-rs-v0.183.0) (2026-09-02)
 
 

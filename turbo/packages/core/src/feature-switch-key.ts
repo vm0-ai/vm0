@@ -56,7 +56,6 @@ export enum FeatureSwitchKey {
   ConnectorAccounts = "connectorAccounts",
   ConcurrencyMemberUsage = "concurrencyMemberUsage",
   FeishuIntegration = "_feishuIntegration",
-  WorkflowConnectorReadiness = "workflowConnectorReadiness",
   CustomConnectorMcp = "customConnectorMcp",
   CustomConnectorNoAuth = "customConnectorNoAuth",
   SharedThreadSharing = "sharedThreadSharing",

@@ -1,5 +1,34 @@
 # Changelog
 
+## [9.305.0](https://github.com/vm0-ai/vm0/compare/cli-v9.304.5...cli-v9.305.0) (2026-09-02)
+
+
+### Features
+
+* **pi:** align openrouter codex routes on responses api ([#31032](https://github.com/vm0-ai/vm0/issues/31032)) ([eff60e8](https://github.com/vm0-ai/vm0/commit/eff60e8be002ff2150fdd7da4281e5f5b10abe66))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.11.0
+
+## [9.304.5](https://github.com/vm0-ai/vm0/compare/cli-v9.304.4...cli-v9.304.5) (2026-09-02)
+
+
+### Refactoring
+
+* remove Strapi integration feature switch ([#30965](https://github.com/vm0-ai/vm0/issues/30965)) ([603bbb7](https://github.com/vm0-ai/vm0/commit/603bbb7dafa7caa3619261d9b81047f96c763e38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.390.2
+    * @okouai/core bumped to 8.608.2
+
 ## [9.304.4](https://github.com/vm0-ai/vm0/compare/cli-v9.304.3...cli-v9.304.4) (2026-09-02)
 
 

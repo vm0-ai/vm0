@@ -8,6 +8,7 @@ use std::process::{Command, Output};
 use tempfile::TempDir;
 
 mod attribution;
+mod empty_artifact;
 mod manifest_input;
 mod redaction;
 mod runtime_paths;
