@@ -99,9 +99,13 @@ private func shareableContent(timeout: TimeInterval = 10) throws -> SCShareableC
     }
     let semaphore = DispatchSemaphore(value: 0)
     let box = ResultBox<SCShareableContent>()
+    // `onScreenWindowsOnly` is off because "on screen" means the active Space.
+    // With it on, a full-screen editor or browser living on its own Space was
+    // missing from the picker, and picking it later could not be resolved
+    // either. `recordableWindows` drops the system chrome the wider list adds.
     SCShareableContent.getExcludingDesktopWindows(
         true,
-        onScreenWindowsOnly: true
+        onScreenWindowsOnly: false
     ) { content, error in
         box.set(value: content, error: error)
         semaphore.signal()
@@ -195,6 +199,19 @@ private func handleRequestPermission() -> [String: Any] {
     return ["granted": CGRequestScreenCaptureAccess()]
 }
 
+/// The windows a person could plausibly mean to record.
+///
+/// `recorder.sources` and `recorder.windowPreviews` both go through this so the
+/// two lists line up by window id. `RecordableWindowPolicy` owns the rule.
+private func recordableWindows(_ content: SCShareableContent) -> [SCWindow] {
+    return content.windows.filter { window in
+        return RecordableWindowPolicy.isRecordable(
+            title: window.title,
+            windowLayer: window.windowLayer
+        )
+    }
+}
+
 private func handleSources() throws -> [String: Any] {
     let content = try shareableContent()
     var sources: [[String: Any]] = []
@@ -207,8 +224,8 @@ private func handleSources() throws -> [String: Any] {
         ])
     }
 
-    for window in content.windows {
-        guard let title = window.title, !title.isEmpty else {
+    for window in recordableWindows(content) {
+        guard let title = window.title else {
             continue
         }
         var source: [String: Any] = [
@@ -295,12 +312,9 @@ private func handleWindowPreviews() throws -> [String: Any] {
     let content = try shareableContent()
     let deadline = Date().addingTimeInterval(windowPreviewBudget)
     var previews: [[String: Any]] = []
-    for window in content.windows {
+    for window in recordableWindows(content) {
         guard previews.count < windowPreviewLimit, Date() < deadline else {
             break
-        }
-        guard let title = window.title, !title.isEmpty else {
-            continue
         }
         guard let dataUrl = windowPreview(window) else {
             continue

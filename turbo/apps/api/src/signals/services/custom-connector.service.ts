@@ -87,7 +87,6 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
-import { isCustomConnectorNoAuthEnabled } from "./custom-connector-no-auth-feature.service";
 import {
   type ConnectorConnectionMetadataArgs,
   replaceConnectorConnection,
@@ -1933,7 +1932,7 @@ export const createCustomConnector$ = command(
       return v;
     }
     const featureSwitchContext =
-      v.kind === "mcp" || v.authMode === "none"
+      v.kind === "mcp"
         ? await get(userFeatureSwitchContext(args.orgId, args.userId))
         : null;
     signal.throwIfAborted();
@@ -1943,13 +1942,6 @@ export const createCustomConnector$ = command(
       !isCustomConnectorMcpEnabled(featureSwitchContext)
     ) {
       return forbidden("MCP custom connector management is not enabled");
-    }
-    if (
-      v.authMode === "none" &&
-      featureSwitchContext &&
-      !isCustomConnectorNoAuthEnabled(featureSwitchContext)
-    ) {
-      return forbidden("No-auth custom connectors are not enabled");
     }
     const invalidPermissionBundle = await validatePermissionBundleRef(
       writeDb,
@@ -2377,13 +2369,6 @@ function customConnectorUpdateFeatureForbiddenMessage(args: {
   ) {
     return "MCP custom connector management is not enabled";
   }
-  if (
-    args.definition.authMode === "none" &&
-    (args.featureSwitchContext === null ||
-      !isCustomConnectorNoAuthEnabled(args.featureSwitchContext))
-  ) {
-    return "No-auth custom connectors are not enabled";
-  }
   return null;
 }
 
@@ -2470,8 +2455,7 @@ export const updateCustomConnectorDefinition$ = command(
       return invalidPermissionBundle;
     }
     const featureSwitchContext =
-      existingConnector.kind === "mcp" ||
-      prepared.definition.authMode === "none"
+      existingConnector.kind === "mcp"
         ? await get(userFeatureSwitchContext(args.orgId, args.userId))
         : null;
     signal.throwIfAborted();
@@ -3131,12 +3115,6 @@ export const setCustomConnectorValues$ = command(
       !isCustomConnectorMcpEnabled(featureSwitchContext)
     ) {
       return forbidden("MCP custom connector management is not enabled");
-    }
-    if (
-      connector.authMode === "none" &&
-      !isCustomConnectorNoAuthEnabled(featureSwitchContext)
-    ) {
-      return forbidden("No-auth custom connectors are not enabled");
     }
     const values = validateValueInputs({ connector, values: args.values });
     if (isBadRequest(values)) {

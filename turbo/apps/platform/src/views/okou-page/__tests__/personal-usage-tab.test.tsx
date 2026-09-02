@@ -279,11 +279,9 @@ async function openUsageSettings(
 }
 
 async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Test User");
-  const accountButton = accountName.closest("button");
-  if (!accountButton) {
-    throw new Error("Account menu trigger not found");
-  }
+  const accountButton = await waitFor(() => {
+    return buttonByAriaLabel("Test User");
+  });
   click(accountButton);
   const menu = await screen.findByRole("menu");
   click(within(menu).getByText("Settings"));

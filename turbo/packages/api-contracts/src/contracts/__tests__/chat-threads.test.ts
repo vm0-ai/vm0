@@ -265,6 +265,25 @@ describe("chat thread computer access contract", () => {
       }),
     ).toMatchObject({ success: false });
     expect(
+      chatEventsContract.send.body.safeParse({
+        agentId: "agent-1",
+        prompt: "Review this image",
+        hasTextContent: true,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "original-file",
+              filenameSnapshot: "billing.png",
+              contentType: "image/png",
+              annotatedFileId: "annotated-file",
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ success: false });
+    expect(
       chatThreadComputerUseHostContract.update.body.safeParse({
         computerUseHostId: hostId,
         cloudBrowserEnabled: true,
@@ -369,6 +388,60 @@ describe("chat thread generation template contract", () => {
         ],
       }),
     ).toMatchObject({ success: false });
+  });
+
+  it("stores editable image annotations in drafts and requires the rendered file for sends", () => {
+    const annotations = {
+      marks: [
+        {
+          id: "mark-1",
+          shape: "box" as const,
+          rect: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+          ink: "#5E6AD2" as const,
+          note: "Tighten this spacing",
+        },
+      ],
+    };
+    const draftUserMessage = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "file" as const,
+          fileId: "original-file",
+          filenameSnapshot: "billing.png",
+          contentType: "image/png",
+          annotations,
+        },
+      ],
+    };
+
+    expect(
+      userMessageInputDocumentSchema.safeParse(draftUserMessage),
+    ).toMatchObject({ success: true });
+    expect(
+      chatEventsContract.send.body.safeParse({
+        agentId: "agent-1",
+        prompt: "Review this image",
+        hasTextContent: true,
+        userMessage: draftUserMessage,
+      }),
+    ).toMatchObject({ success: false });
+    expect(
+      chatEventsContract.send.body.safeParse({
+        agentId: "agent-1",
+        prompt: "Review this image",
+        hasTextContent: true,
+        userMessage: {
+          ...draftUserMessage,
+          parts: [
+            {
+              ...draftUserMessage.parts[0],
+              annotatedFileId: "annotated-file",
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({ success: true });
   });
 
   it("accepts template parts inside feedback notes", () => {

@@ -270,9 +270,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.PiLoop]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "lancy@vm0.ai",
     description:
       "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PiMemoryRecall]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Mount the canonical user memory Storage for Pi runs without enabling memory generation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -298,6 +305,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer while the native capture helper is still
     // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+  },
+  [FeatureSwitchKey.IosPwaStartupImages]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Generate iOS PWA startup images from the inline bootstrap skeleton.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
@@ -328,16 +342,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
-      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
+      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
     // Scoped to the maintainer rather than the whole staff org while the
-    // flatten and two-file send are still unexercised outside tests.
+    // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.OfficeDocumentPreview]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Preview DOCX and PPTX attachments with the Microsoft Office viewer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -390,12 +411,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CustomConnectorNoAuth]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable credential-free authentication for organization Custom Connectors.",
-    enabled: false,
   },
 };
 

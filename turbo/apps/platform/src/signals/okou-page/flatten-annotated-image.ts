@@ -1,6 +1,7 @@
-import type {
-  ImageAnnotation,
-  ImageAnnotationMark,
+import {
+  annotatedImageFilename,
+  type ImageAnnotation,
+  type ImageAnnotationMark,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   HIGHLIGHT_FILL,
@@ -441,18 +442,10 @@ export async function flattenAnnotatedImage(
   }
 
   return {
-    file: new File([blob], annotatedFilename(filename), { type: "image/png" }),
+    file: new File([blob], annotatedImageFilename(filename), {
+      type: "image/png",
+    }),
     width,
     height,
   };
-}
-
-/**
- * The flattened copy keeps the original stem so the two files still read as a
- * pair in any list that shows them side by side.
- */
-export function annotatedFilename(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  const stem = dot > 0 ? filename.slice(0, dot) : filename;
-  return `${stem}.annotated.png`;
 }

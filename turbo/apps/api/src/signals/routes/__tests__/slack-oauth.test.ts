@@ -152,9 +152,9 @@ describe("Slack OAuth API routes", () => {
     });
   });
 
-  describe("GET /api/zero/slack/oauth/install", () => {
+  describe("GET /api/slack/oauth/install", () => {
     it("redirects to Slack OAuth with bot scopes and callback URI", async () => {
-      const response = await appRequest("/api/zero/slack/oauth/install");
+      const response = await appRequest("/api/slack/oauth/install");
 
       expect(response.status).toBe(307);
       const location = response.headers.get("location");
@@ -188,7 +188,7 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("serializes the Okou brand in install state", async () => {
-      const response = await appRequest("/api/zero/slack/oauth/install", {
+      const response = await appRequest("/api/slack/oauth/install", {
         origin: "https://okou.ai",
       });
 
@@ -225,7 +225,7 @@ describe("Slack OAuth API routes", () => {
     it("includes platform state and truncates prompt by codepoint", async () => {
       const prompt = "\u{1F600}".repeat(600);
       const response = await appRequest(
-        `/api/zero/slack/oauth/install?orgId=org_1&userId=user_1&reinstall=1&prompt=${encodeURIComponent(prompt)}`,
+        `/api/slack/oauth/install?orgId=org_1&userId=user_1&reinstall=1&prompt=${encodeURIComponent(prompt)}`,
       );
 
       const redirectUrl = new URL(response.headers.get("location")!);
@@ -244,7 +244,7 @@ describe("Slack OAuth API routes", () => {
 
     it("includes the pending prompt in install state when provided", async () => {
       const response = await appRequest(
-        `/api/zero/slack/oauth/install?orgId=org_1&userId=user_1&prompt=${encodeURIComponent("summarize my inbox")}`,
+        `/api/slack/oauth/install?orgId=org_1&userId=user_1&prompt=${encodeURIComponent("summarize my inbox")}`,
       );
 
       expect(response.status).toBe(307);
@@ -263,7 +263,7 @@ describe("Slack OAuth API routes", () => {
       const prompt = "x".repeat(1200);
 
       const response = await appRequest(
-        `/api/zero/slack/oauth/install?prompt=${encodeURIComponent(prompt)}`,
+        `/api/slack/oauth/install?prompt=${encodeURIComponent(prompt)}`,
       );
 
       expect(response.status).toBe(307);
@@ -274,7 +274,7 @@ describe("Slack OAuth API routes", () => {
 
     it("omits prompt from install state when absent", async () => {
       const response = await appRequest(
-        "/api/zero/slack/oauth/install?orgId=org_1&userId=user_1",
+        "/api/slack/oauth/install?orgId=org_1&userId=user_1",
       );
 
       expect(response.status).toBe(307);
@@ -284,7 +284,7 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("uses the VM0 API origin with production web baselines", async () => {
-      const response = await appRequest("/api/zero/slack/oauth/install", {
+      const response = await appRequest("/api/slack/oauth/install", {
         origin: API_ORIGIN,
         headers: { "x-vm0-web-origin": WEB_ORIGIN },
       });
@@ -297,7 +297,7 @@ describe("Slack OAuth API routes", () => {
     });
 
     it("selects the Okou API origin from the trusted API hostname", async () => {
-      const response = await appRequest("/api/zero/slack/oauth/install", {
+      const response = await appRequest("/api/slack/oauth/install", {
         origin: OKOU_API_ORIGIN,
       });
 
@@ -307,6 +307,42 @@ describe("Slack OAuth API routes", () => {
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
         `${OKOU_API_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
+    });
+
+    it("accepts the exact okou.ai web origin for a shared Okou start", async () => {
+      const response = await appRequest(
+        "/api/slack/oauth/install?publicBrand=okou",
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": "https://okou.ai" },
+        },
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.origin).toBe("https://slack.com");
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${OKOU_API_ORIGIN}/api/integrations/slack/oauth/callback`,
+      );
+      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("okou");
+    });
+
+    it("trusts okou.ai subdomains for shared Okou starts", async () => {
+      const response = await appRequest(
+        "/api/slack/oauth/install?publicBrand=okou",
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": "https://console.okou.ai" },
+        },
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.origin).toBe("https://slack.com");
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${OKOU_API_ORIGIN}/api/integrations/slack/oauth/callback`,
+      );
+      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("okou");
     });
 
     it("does not let the query override a trusted API hostname", async () => {
@@ -324,7 +360,7 @@ describe("Slack OAuth API routes", () => {
       );
     });
 
-    it("does not accept a callback host from request headers", async () => {
+    it("does not accept a callback host from untrusted request headers", async () => {
       const response = await appRequest(
         "/api/slack/oauth/install?publicBrand=okou",
         {
@@ -339,12 +375,33 @@ describe("Slack OAuth API routes", () => {
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
         `${API_ORIGIN}/api/integrations/slack/oauth/callback`,
       );
+      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("vm0");
+    });
+
+    it("does not trust lookalike okou.ai web origins", async () => {
+      const response = await appRequest(
+        "/api/slack/oauth/install?publicBrand=okou",
+        {
+          origin: API_ORIGIN,
+          headers: {
+            "x-vm0-web-origin": "https://okou.ai.evil.example",
+          },
+        },
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.origin).toBe("https://slack.com");
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${API_ORIGIN}/api/integrations/slack/oauth/callback`,
+      );
+      expect(signedOAuthState(redirectUrl).payload.publicBrand).toBe("vm0");
     });
 
     it("returns 503 when Slack client ID is not configured", async () => {
       mockEnv("SLACK_OAUTH_CLIENT_ID", "");
 
-      const response = await appRequest("/api/zero/slack/oauth/install");
+      const response = await appRequest("/api/slack/oauth/install");
 
       expect(response.status).toBe(503);
       await expect(response.json()).resolves.toStrictEqual({
@@ -792,7 +849,7 @@ describe("Slack OAuth API routes", () => {
       mockEnv("OKOU_API_BACKEND_URL", previewApiOrigin);
       mockEnv("APP_URL", previewAppOrigin);
 
-      const start = await appRequest("/api/zero/slack/oauth/install", {
+      const start = await appRequest("/api/slack/oauth/install", {
         origin: previewApiOrigin,
       });
       expect(start.status).toBe(307);

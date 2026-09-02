@@ -141,4 +141,5 @@ export {
   type KeyboardEventLike,
 } from "./lib/keyboard-shortcuts";
 export { useCompositionState } from "./lib/use-composition-state";
+export { useMediaQuery } from "./lib/use-media-query";
 export { Shortcut } from "./lib/keyboard-shortcut";

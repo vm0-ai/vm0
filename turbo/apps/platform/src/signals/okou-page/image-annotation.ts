@@ -84,37 +84,6 @@ export function isAnnotationMeaningful(
   return annotation.marks.length > 0 || annotation.crop !== undefined;
 }
 
-function markNote(mark: ImageAnnotationMark): string | undefined {
-  if (mark.shape === "text") {
-    return mark.text;
-  }
-  if (mark.shape === "highlight" || mark.shape === "redact") {
-    return undefined;
-  }
-  return mark.note;
-}
-
-function markLocation(mark: ImageAnnotationMark): string {
-  const percent = (value: number) => {
-    return `${Math.round(value * 100)}%`;
-  };
-  if (mark.shape === "arrow") {
-    return `pointing at ${percent(mark.to.x)}, ${percent(mark.to.y)}`;
-  }
-  if (mark.shape === "pen") {
-    const first = mark.points[0];
-    return first
-      ? `around ${percent(first.x)}, ${percent(first.y)}`
-      : "on the image";
-  }
-  if (mark.shape === "text") {
-    return `at ${percent(mark.at.x)}, ${percent(mark.at.y)}`;
-  }
-  return `at ${percent(mark.rect.x)}, ${percent(mark.rect.y)} sized ${percent(
-    mark.rect.width,
-  )} × ${percent(mark.rect.height)}`;
-}
-
 /**
  * The number drawn on a mark and quoted back to the agent.
  *
@@ -147,36 +116,6 @@ export function nextMarkOrdinal(marks: readonly ImageAnnotationMark[]): number {
   return candidate;
 }
 
-/**
- * The half of an annotation that reaches the agent as words.
- *
- * The flattened image alone leaves the model to work out what a box means; the
- * value of a mark is which region it encloses and what the user said about it,
- * so the numbered notes travel as text next to the pixels. Marks the user drew
- * without a note still get a line — the ordinal is what lets the agent match a
- * sentence in the prompt to a numbered pin in the image.
- */
-export function describeAnnotation(
-  filename: string,
-  annotation: ImageAnnotation,
-): string | null {
-  const lines = annotation.marks.flatMap((mark, index) => {
-    const note = markNote(mark)?.trim();
-    const ordinal = markOrdinal(mark, index);
-    return [
-      note
-        ? `${ordinal}. (${mark.shape} ${markLocation(mark)}) ${note}`
-        : `${ordinal}. (${mark.shape} ${markLocation(mark)})`,
-    ];
-  });
-
-  if (lines.length === 0) {
-    return null;
-  }
-
-  return [`Marks on ${filename}:`, ...lines].join("\n");
-}
-
 // ---------------------------------------------------------------------------
 // Editor session — one attachment at a time, with its own undo history
 // ---------------------------------------------------------------------------
@@ -191,8 +130,11 @@ export interface AnnotationTarget {
   readonly key: string;
   readonly filename: string;
   readonly url: string;
-  readonly annotation: ImageAnnotation | null;
-  readonly commit: (annotation: ImageAnnotation | null) => void;
+  readonly annotations: ImageAnnotation | null;
+  readonly commit: (
+    annotations: ImageAnnotation | null,
+    signal: AbortSignal,
+  ) => Promise<void>;
 }
 
 interface AnnotationSession {
@@ -261,298 +203,6 @@ export interface AnnotationDrag {
   };
 }
 
-const internalDrag$ = state<AnnotationDrag | null>(null);
-const internalZoom$ = state(1);
-const internalStroke$ = state<AnnotationStroke | null>(null);
-const internalSurface$ = state<HTMLElement | null>(null);
-
-export const annotationStroke$ = computed((get) => {
-  return get(internalStroke$);
-});
-
-export const annotationSurface$ = computed((get) => {
-  return get(internalSurface$);
-});
-
-export const annotationDrag$ = computed((get) => {
-  return get(internalDrag$);
-});
-
-export const annotationZoom$ = computed((get) => {
-  return get(internalZoom$);
-});
-
-export const setAnnotationDrag$ = command(
-  ({ set }, drag: AnnotationDrag | null) => {
-    set(internalDrag$, drag);
-  },
-);
-
-const ZOOM_STEP = 0.25;
-const ZOOM_MIN = 1;
-const ZOOM_MAX = 4;
-
-export const zoomAnnotation$ = command(({ get, set }, direction: 1 | -1) => {
-  const next = get(internalZoom$) + direction * ZOOM_STEP;
-  set(internalZoom$, Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next)));
-});
-
-export const resetAnnotationZoom$ = command(({ set }) => {
-  set(internalZoom$, ZOOM_MIN);
-});
-
-export const setAnnotationStroke$ = command(
-  ({ set }, stroke: AnnotationStroke | null) => {
-    set(internalStroke$, stroke);
-  },
-);
-
-export const bindAnnotationSurface$ = onRef<HTMLElement>(
-  command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-    set(internalSurface$, element);
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(internalSurface$, null);
-      },
-      { once: true },
-    );
-  }),
-);
-
-const internalSession$ = state<AnnotationSession | null>(null);
-const internalTool$ = state<AnnotationTool>("box");
-const internalInk$ = state<AnnotationInk>(DEFAULT_ANNOTATION_INK);
-/**
- * What is currently held: a mark, or the note label of a mark. One signal
- * rather than two, because the two are mutually exclusive and holding that
- * invariant by hand across every clear site is how a stale grip survives an
- * operation that was supposed to drop the selection.
- */
-interface AnnotationSelection {
-  readonly kind: "mark" | "note";
-  readonly id: string;
-}
-
-const internalSelection$ = state<AnnotationSelection | null>(null);
-
-export const annotationSessionTarget$ = computed((get) => {
-  return get(internalSession$)?.target ?? null;
-});
-
-export const annotationSessionActive$ = computed((get) => {
-  return get(internalSession$) !== null;
-});
-
-export const annotationDraft$ = computed((get) => {
-  return get(internalSession$)?.present ?? emptyAnnotation();
-});
-
-export const annotationTool$ = computed((get) => {
-  return get(internalTool$);
-});
-
-export const annotationInk$ = computed((get) => {
-  return get(internalInk$);
-});
-
-export const annotationSelectedMarkId$ = computed((get) => {
-  const selection = get(internalSelection$);
-  return selection?.kind === "mark" ? selection.id : null;
-});
-
-export const annotationSelectedNoteId$ = computed((get) => {
-  const selection = get(internalSelection$);
-  return selection?.kind === "note" ? selection.id : null;
-});
-
-export const selectAnnotationNote$ = command(({ set }, id: string | null) => {
-  set(internalSelection$, id === null ? null : { kind: "note", id });
-});
-
-export const moveAnnotationNoteBox$ = command(
-  ({ set }, id: string, box: { x: number; y: number; width: number }) => {
-    set(pushAnnotation$, (current) => {
-      return {
-        ...current,
-        marks: current.marks.map((mark) => {
-          if (
-            mark.id !== id ||
-            mark.shape === "text" ||
-            mark.shape === "redact" ||
-            mark.shape === "highlight"
-          ) {
-            return mark;
-          }
-          return { ...mark, noteBox: clampNoteBox(box) };
-        }),
-      };
-    });
-  },
-);
-
-/** Whether the session has anything worth attaching. */
-export const annotationDirty$ = computed((get) => {
-  const session = get(internalSession$);
-  return session !== null && session.present !== session.baseline;
-});
-
-export const annotationCanUndo$ = computed((get) => {
-  return (get(internalSession$)?.past.length ?? 0) > 0;
-});
-
-export const annotationCanRedo$ = computed((get) => {
-  return (get(internalSession$)?.future.length ?? 0) > 0;
-});
-
-export const openAnnotationEditor$ = command(
-  ({ set }, target: AnnotationTarget) => {
-    const opened = target.annotation ?? emptyAnnotation();
-    set(internalSession$, {
-      target,
-      baseline: opened,
-      past: [],
-      present: opened,
-      future: [],
-    });
-    set(internalTool$, "box");
-    set(internalZoom$, 1);
-    set(internalInk$, DEFAULT_ANNOTATION_INK);
-    set(internalSelection$, null);
-  },
-);
-
-export const closeAnnotationEditor$ = command(({ set }) => {
-  set(internalSession$, null);
-  set(internalSelection$, null);
-  set(internalStroke$, null);
-  set(internalDrag$, null);
-  set(internalZoom$, 1);
-});
-
-export const setAnnotationTool$ = command(({ set }, tool: AnnotationTool) => {
-  set(internalTool$, tool);
-  // Picking a drawing tool is a statement about the next mark, not the one
-  // currently selected, so the selection drops with its handles.
-  set(internalSelection$, null);
-});
-
-export const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
-  set(internalInk$, ink);
-
-  // Recolouring the active mark is what makes the swatch feel like a property
-  // of the selection rather than a mode for the next stroke.
-  const selectedId = get(annotationSelectedMarkId$);
-  if (selectedId === null) {
-    return;
-  }
-  set(pushAnnotation$, (current): ImageAnnotation => {
-    return {
-      ...current,
-      marks: current.marks.map((mark) => {
-        if (
-          mark.id !== selectedId ||
-          mark.shape === "highlight" ||
-          mark.shape === "redact"
-        ) {
-          return mark;
-        }
-        return { ...mark, ink };
-      }),
-    };
-  });
-});
-
-export const selectAnnotationMark$ = command(({ set }, id: string | null) => {
-  set(internalSelection$, id === null ? null : { kind: "mark", id });
-});
-
-/** Every mutation goes through here, so undo never has to be implemented twice. */
-export const pushAnnotation$ = command(
-  (
-    { get, set },
-    update: (current: ImageAnnotation) => ImageAnnotation,
-  ): void => {
-    const session = get(internalSession$);
-    if (!session) {
-      return;
-    }
-    const next = update(session.present);
-    set(internalSession$, {
-      target: session.target,
-      baseline: session.baseline,
-      past: [...session.past, session.present],
-      present: next,
-      future: [],
-    });
-  },
-);
-
-export const addAnnotationMark$ = command(
-  ({ set }, mark: ImageAnnotationMark) => {
-    set(pushAnnotation$, (current) => {
-      return {
-        ...current,
-        marks: [
-          ...current.marks,
-          { ...mark, ordinal: nextMarkOrdinal(current.marks) },
-        ],
-      };
-    });
-    set(internalSelection$, { kind: "mark", id: mark.id });
-  },
-);
-
-export const removeAnnotationMark$ = command(({ get, set }, id: string) => {
-  set(pushAnnotation$, (current) => {
-    return {
-      ...current,
-      marks: current.marks.filter((mark) => {
-        return mark.id !== id;
-      }),
-    };
-  });
-  // The note belongs to the mark, so removing the mark drops either hold.
-  if (get(internalSelection$)?.id === id) {
-    set(internalSelection$, null);
-  }
-});
-
-/** Deletes whatever is selected. Bound to Delete/Backspace in the editor. */
-export const removeSelectedAnnotationMark$ = command(({ get, set }) => {
-  const id = get(annotationSelectedMarkId$);
-  if (id === null) {
-    return;
-  }
-  set(removeAnnotationMark$, id);
-});
-
-export const moveAnnotationMarkRect$ = command(
-  (
-    { set },
-    id: string,
-    rect: { x: number; y: number; width: number; height: number },
-  ) => {
-    set(pushAnnotation$, (current) => {
-      return {
-        ...current,
-        marks: current.marks.map((mark) => {
-          if (mark.id !== id) {
-            return mark;
-          }
-          if (mark.shape === "box") {
-            return { ...mark, rect };
-          }
-          if (mark.shape === "text") {
-            return { ...mark, at: { x: rect.x, y: rect.y } };
-          }
-          return mark;
-        }),
-      };
-    });
-  },
-);
-
 /** A note narrower than this wraps every other word and reads as a column. */
 const MIN_NOTE_WIDTH = 0.18;
 const MAX_NOTE_WIDTH = 1;
@@ -612,17 +262,11 @@ export function defaultNoteBox(mark: ImageAnnotationMark): {
     Math.max(MIN_NOTE_WIDTH, bounds.width),
   );
   const below = bounds.y + bounds.height + NOTE_GAP;
-  // A mark low in the image has no room under it, and a note printed past the
-  // bottom edge is cropped out of the flattened copy — silently, because the
-  // text still travels in the prompt. Put it above the mark instead.
   const y = below > 1 - NOTE_ROOM ? bounds.y - NOTE_GAP - NOTE_ROOM : below;
   return clampNoteBox({ x: bounds.x, y, width });
 }
 
-/**
- * Roughly one line of note plus its padding, in normalized units. Used to
- * decide whether a note fits below its mark before the text is measured.
- */
+/** Roughly one line of note plus its padding, in normalized units. */
 const NOTE_ROOM = 0.06;
 
 /** Keeps a note inside the image, so the flatten cannot crop it away. */
@@ -656,78 +300,398 @@ export function noteOnImage(mark: ImageAnnotationMark): {
   if (!text) {
     return null;
   }
-  // Every shape that reaches here declares `ink` as required, so the colour is
-  // read from the narrowed mark rather than guessed by a caller.
   return { text, ink: mark.ink, box: mark.noteBox ?? defaultNoteBox(mark) };
 }
 
-export const setAnnotationMarkNote$ = command(
-  ({ set }, id: string, note: string) => {
-    set(pushAnnotation$, (current) => {
+const ZOOM_STEP = 0.25;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+
+interface AnnotationSelection {
+  readonly kind: "mark" | "note";
+  readonly id: string;
+}
+
+function createAnnotationViewportSignals() {
+  const drag$ = state<AnnotationDrag | null>(null);
+  const zoom$ = state(1);
+  const stroke$ = state<AnnotationStroke | null>(null);
+  const surface$ = state<HTMLElement | null>(null);
+  const annotationStroke$ = computed((get) => {
+    return get(stroke$);
+  });
+  const annotationSurface$ = computed((get) => {
+    return get(surface$);
+  });
+  const annotationDrag$ = computed((get) => {
+    return get(drag$);
+  });
+  const annotationZoom$ = computed((get) => {
+    return get(zoom$);
+  });
+  const setAnnotationDrag$ = command(({ set }, drag: AnnotationDrag | null) => {
+    set(drag$, drag);
+  });
+  const zoomAnnotation$ = command(({ get, set }, direction: 1 | -1) => {
+    const next = get(zoom$) + direction * ZOOM_STEP;
+    set(zoom$, Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next)));
+  });
+  const resetAnnotationZoom$ = command(({ set }) => {
+    set(zoom$, ZOOM_MIN);
+  });
+  const setAnnotationStroke$ = command(
+    ({ set }, stroke: AnnotationStroke | null) => {
+      set(stroke$, stroke);
+    },
+  );
+  const bindAnnotationSurface$ = onRef<HTMLElement>(
+    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+      set(surface$, element);
+      signal.addEventListener(
+        "abort",
+        () => {
+          set(surface$, null);
+        },
+        { once: true },
+      );
+    }),
+  );
+  return {
+    internal: { drag$, zoom$, stroke$ },
+    signals: {
+      annotationStroke$,
+      annotationSurface$,
+      annotationDrag$,
+      annotationZoom$,
+      setAnnotationDrag$,
+      zoomAnnotation$,
+      resetAnnotationZoom$,
+      setAnnotationStroke$,
+      bindAnnotationSurface$,
+    },
+  };
+}
+
+type AnnotationViewport = ReturnType<typeof createAnnotationViewportSignals>;
+
+function createAnnotationSessionSignals(viewport: AnnotationViewport) {
+  const session$ = state<AnnotationSession | null>(null);
+  const tool$ = state<AnnotationTool>("box");
+  const ink$ = state<AnnotationInk>(DEFAULT_ANNOTATION_INK);
+  const selection$ = state<AnnotationSelection | null>(null);
+  const annotationSessionTarget$ = computed((get) => {
+    return get(session$)?.target ?? null;
+  });
+  const annotationSessionActive$ = computed((get) => {
+    return get(session$) !== null;
+  });
+  const annotationDraft$ = computed((get) => {
+    return get(session$)?.present ?? emptyAnnotation();
+  });
+  const annotationTool$ = computed((get) => {
+    return get(tool$);
+  });
+  const annotationInk$ = computed((get) => {
+    return get(ink$);
+  });
+  const annotationSelectedMarkId$ = computed((get) => {
+    const selection = get(selection$);
+    return selection?.kind === "mark" ? selection.id : null;
+  });
+  const annotationSelectedNoteId$ = computed((get) => {
+    const selection = get(selection$);
+    return selection?.kind === "note" ? selection.id : null;
+  });
+  const annotationDirty$ = computed((get) => {
+    const session = get(session$);
+    return session !== null && session.present !== session.baseline;
+  });
+  const annotationCanUndo$ = computed((get) => {
+    return (get(session$)?.past.length ?? 0) > 0;
+  });
+  const annotationCanRedo$ = computed((get) => {
+    return (get(session$)?.future.length ?? 0) > 0;
+  });
+  const selectAnnotationNote$ = command(({ set }, id: string | null) => {
+    set(selection$, id === null ? null : { kind: "note", id });
+  });
+  const selectAnnotationMark$ = command(({ set }, id: string | null) => {
+    set(selection$, id === null ? null : { kind: "mark", id });
+  });
+  const setAnnotationTool$ = command(({ set }, tool: AnnotationTool) => {
+    set(tool$, tool);
+    set(selection$, null);
+  });
+  const openAnnotationEditor$ = command(({ set }, target: AnnotationTarget) => {
+    const opened = target.annotations ?? emptyAnnotation();
+    set(session$, {
+      target,
+      baseline: opened,
+      past: [],
+      present: opened,
+      future: [],
+    });
+    set(tool$, "box");
+    set(viewport.internal.zoom$, ZOOM_MIN);
+    set(ink$, DEFAULT_ANNOTATION_INK);
+    set(selection$, null);
+  });
+  const closeAnnotationEditor$ = command(({ set }) => {
+    set(session$, null);
+    set(selection$, null);
+    set(viewport.internal.stroke$, null);
+    set(viewport.internal.drag$, null);
+    set(viewport.internal.zoom$, ZOOM_MIN);
+  });
+  return {
+    internal: { session$, ink$, selection$ },
+    signals: {
+      annotationSessionTarget$,
+      annotationSessionActive$,
+      annotationDraft$,
+      annotationTool$,
+      annotationInk$,
+      annotationSelectedMarkId$,
+      annotationSelectedNoteId$,
+      annotationDirty$,
+      annotationCanUndo$,
+      annotationCanRedo$,
+      selectAnnotationNote$,
+      selectAnnotationMark$,
+      setAnnotationTool$,
+      openAnnotationEditor$,
+      closeAnnotationEditor$,
+    },
+  };
+}
+
+type AnnotationSessionSignals = ReturnType<
+  typeof createAnnotationSessionSignals
+>;
+
+function createAnnotationHistorySignals(session: AnnotationSessionSignals) {
+  const pushAnnotation$ = command(
+    (
+      { get, set },
+      update: (current: ImageAnnotation) => ImageAnnotation,
+    ): void => {
+      const current = get(session.internal.session$);
+      if (!current) {
+        return;
+      }
+      set(session.internal.session$, {
+        target: current.target,
+        baseline: current.baseline,
+        past: [...current.past, current.present],
+        present: update(current.present),
+        future: [],
+      });
+    },
+  );
+  const undoAnnotation$ = command(({ get, set }) => {
+    const current = get(session.internal.session$);
+    const previous = current?.past.at(-1);
+    if (!current || previous === undefined) {
+      return;
+    }
+    set(session.internal.session$, {
+      target: current.target,
+      baseline: current.baseline,
+      past: current.past.slice(0, -1),
+      present: previous,
+      future: [current.present, ...current.future],
+    });
+    set(session.internal.selection$, null);
+  });
+  const redoAnnotation$ = command(({ get, set }) => {
+    const current = get(session.internal.session$);
+    const next = current?.future[0];
+    if (!current || next === undefined) {
+      return;
+    }
+    set(session.internal.session$, {
+      target: current.target,
+      baseline: current.baseline,
+      past: [...current.past, current.present],
+      present: next,
+      future: current.future.slice(1),
+    });
+    set(session.internal.selection$, null);
+  });
+  return { pushAnnotation$, undoAnnotation$, redoAnnotation$ };
+}
+
+type AnnotationHistorySignals = ReturnType<
+  typeof createAnnotationHistorySignals
+>;
+
+function createAnnotationContentSignals(
+  session: AnnotationSessionSignals,
+  history: AnnotationHistorySignals,
+) {
+  const moveAnnotationNoteBox$ = command(
+    ({ set }, id: string, box: { x: number; y: number; width: number }) => {
+      set(history.pushAnnotation$, (current) => {
+        return {
+          ...current,
+          marks: current.marks.map((mark) => {
+            if (
+              mark.id !== id ||
+              mark.shape === "text" ||
+              mark.shape === "redact" ||
+              mark.shape === "highlight"
+            ) {
+              return mark;
+            }
+            return { ...mark, noteBox: clampNoteBox(box) };
+          }),
+        };
+      });
+    },
+  );
+  const setAnnotationInk$ = command(({ get, set }, ink: AnnotationInk) => {
+    set(session.internal.ink$, ink);
+    const selectedId = get(session.signals.annotationSelectedMarkId$);
+    if (selectedId === null) {
+      return;
+    }
+    set(history.pushAnnotation$, (current): ImageAnnotation => {
       return {
         ...current,
         marks: current.marks.map((mark) => {
           if (
-            mark.id !== id ||
+            mark.id !== selectedId ||
             mark.shape === "highlight" ||
             mark.shape === "redact"
           ) {
             return mark;
           }
-          if (mark.shape === "text") {
-            return { ...mark, text: note };
-          }
-          return { ...mark, note };
+          return { ...mark, ink };
         }),
       };
     });
-  },
-);
-
-export const undoAnnotation$ = command(({ get, set }) => {
-  const session = get(internalSession$);
-  const previous = session?.past.at(-1);
-  if (!session || previous === undefined) {
-    return;
-  }
-  set(internalSession$, {
-    target: session.target,
-    baseline: session.baseline,
-    past: session.past.slice(0, -1),
-    present: previous,
-    future: [session.present, ...session.future],
   });
-  set(internalSelection$, null);
-});
-
-export const redoAnnotation$ = command(({ get, set }) => {
-  const session = get(internalSession$);
-  const next = session?.future[0];
-  if (!session || next === undefined) {
-    return;
-  }
-  set(internalSession$, {
-    target: session.target,
-    baseline: session.baseline,
-    past: [...session.past, session.present],
-    present: next,
-    future: session.future.slice(1),
-  });
-  set(internalSelection$, null);
-});
-
-/**
- * Hands the marks back to whoever owns the attachment and closes the editor.
- * An annotation with nothing in it commits as `null` rather than as an empty
- * object, so a draft that was merely opened does not start looking annotated.
- */
-export const commitAnnotation$ = command(({ get, set }) => {
-  const session = get(internalSession$);
-  if (!session) {
-    return;
-  }
-  session.target.commit(
-    isAnnotationMeaningful(session.present) ? session.present : null,
+  const setAnnotationMarkNote$ = command(
+    ({ set }, id: string, note: string) => {
+      set(history.pushAnnotation$, (current) => {
+        return {
+          ...current,
+          marks: current.marks.map((mark) => {
+            if (
+              mark.id !== id ||
+              mark.shape === "highlight" ||
+              mark.shape === "redact"
+            ) {
+              return mark;
+            }
+            return mark.shape === "text"
+              ? { ...mark, text: note }
+              : { ...mark, note };
+          }),
+        };
+      });
+    },
   );
-  set(closeAnnotationEditor$);
-});
+  return { moveAnnotationNoteBox$, setAnnotationInk$, setAnnotationMarkNote$ };
+}
+
+function createAnnotationGeometrySignals(
+  session: AnnotationSessionSignals,
+  history: AnnotationHistorySignals,
+) {
+  const addAnnotationMark$ = command(({ set }, mark: ImageAnnotationMark) => {
+    set(history.pushAnnotation$, (current) => {
+      return {
+        ...current,
+        marks: [
+          ...current.marks,
+          { ...mark, ordinal: nextMarkOrdinal(current.marks) },
+        ],
+      };
+    });
+    set(session.internal.selection$, { kind: "mark", id: mark.id });
+  });
+  const removeAnnotationMark$ = command(({ get, set }, id: string) => {
+    set(history.pushAnnotation$, (current) => {
+      return {
+        ...current,
+        marks: current.marks.filter((mark) => {
+          return mark.id !== id;
+        }),
+      };
+    });
+    if (get(session.internal.selection$)?.id === id) {
+      set(session.internal.selection$, null);
+    }
+  });
+  const removeSelectedAnnotationMark$ = command(({ get, set }) => {
+    const id = get(session.signals.annotationSelectedMarkId$);
+    if (id !== null) {
+      set(removeAnnotationMark$, id);
+    }
+  });
+  const moveAnnotationMarkRect$ = command(
+    (
+      { set },
+      id: string,
+      rect: { x: number; y: number; width: number; height: number },
+    ) => {
+      set(history.pushAnnotation$, (current) => {
+        return {
+          ...current,
+          marks: current.marks.map((mark) => {
+            if (mark.id !== id) {
+              return mark;
+            }
+            if (mark.shape === "box") {
+              return { ...mark, rect };
+            }
+            return mark.shape === "text"
+              ? { ...mark, at: { x: rect.x, y: rect.y } }
+              : mark;
+          }),
+        };
+      });
+    },
+  );
+  return {
+    addAnnotationMark$,
+    removeAnnotationMark$,
+    removeSelectedAnnotationMark$,
+    moveAnnotationMarkRect$,
+  };
+}
+
+function createCommitAnnotationSignal(session: AnnotationSessionSignals) {
+  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const current = get(session.internal.session$);
+    if (!current) {
+      return;
+    }
+    const annotations = isAnnotationMeaningful(current.present)
+      ? current.present
+      : null;
+    set(session.signals.closeAnnotationEditor$);
+    await current.target.commit(annotations, signal);
+  });
+}
+
+export function createImageAnnotationSignals() {
+  const viewport = createAnnotationViewportSignals();
+  const session = createAnnotationSessionSignals(viewport);
+  const history = createAnnotationHistorySignals(session);
+  const content = createAnnotationContentSignals(session, history);
+  const geometry = createAnnotationGeometrySignals(session, history);
+  return {
+    ...viewport.signals,
+    ...session.signals,
+    ...history,
+    ...content,
+    ...geometry,
+    commitAnnotation$: createCommitAnnotationSignal(session),
+  };
+}
+
+export type ImageAnnotationSignals = ReturnType<
+  typeof createImageAnnotationSignals
+>;
