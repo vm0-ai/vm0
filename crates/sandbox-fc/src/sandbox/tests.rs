@@ -186,6 +186,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         is_parked: false,
         park_outcome: None,
         park_fence: None,
+        host_cpu_cgroup: None,
     }
 }
 
@@ -2619,6 +2620,51 @@ async fn apply_storage_manifest_preserves_terminal_metadata() {
 }
 
 #[tokio::test]
+async fn mount_workspace_drive_maps_empty_request_and_terminal_metadata() {
+    let sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+
+    let mount = sandbox.mount_workspace_drive();
+    let respond = async {
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, vsock_proto::MSG_WORKSPACE_DRIVE_MOUNT);
+        vsock_proto::decode_workspace_drive_mount_request(&request.payload).unwrap();
+
+        let payload = vsock_proto::encode_workspace_drive_mount_result(
+            vsock_proto::ExecTermination::WaitFailed,
+            17,
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"out",
+                truncated: true,
+            },
+            vsock_proto::ExecCapturedOutput::Captured {
+                bytes: b"err",
+                truncated: false,
+            },
+            "containment cleanup failed",
+        )
+        .unwrap();
+        let response = vsock_proto::encode(
+            vsock_proto::MSG_WORKSPACE_DRIVE_MOUNT_RESULT,
+            request.seq,
+            &payload,
+        )
+        .unwrap();
+        guest.write_all(&response).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(mount, respond);
+    let result = result.unwrap();
+
+    assert_eq!(result.termination, ExecTermination::WaitFailed);
+    assert_eq!(result.guest_duration_ms, Some(17));
+    assert_eq!(result.stdout, b"out");
+    assert_eq!(result.stderr, b"err");
+    assert!(result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+    assert_eq!(result.diagnostic, "containment cleanup failed");
+}
+
+#[tokio::test]
 async fn verify_session_history_identity_maps_fixed_request_and_terminal_metadata() {
     let sandbox = test_sandbox_with_state(SandboxState::Running);
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
@@ -3661,6 +3707,37 @@ async fn process_monitor_reports_unexpected_exit() {
 }
 
 #[tokio::test]
+async fn process_monitor_releases_guest_cpu_cgroup_after_reap() {
+    let temp = tempfile::tempdir().unwrap();
+    let leaf = temp.path().join("guest");
+    std::fs::create_dir(&leaf).unwrap();
+    let placement_file = std::fs::File::create(temp.path().join("placement")).unwrap();
+    let lease = GuestCpuCgroupLease::from_test_file(leaf.clone(), placement_file);
+    let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
+    let state_publish_lock = Arc::new(Mutex::new(()));
+    let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
+    let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+    let mut child = monitored_cat_process();
+    let stdin = child.stdin.take();
+    let context = ProcessMonitorContext {
+        state,
+        state_publish_lock,
+        state_tx,
+        guest,
+        runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: Some(lease),
+    };
+
+    let handle = monitor_process_with_context("test-sandbox", child, context);
+    assert!(leaf.exists());
+
+    drop(stdin);
+    handle.wait().await;
+
+    assert!(!leaf.exists());
+}
+
+#[tokio::test]
 async fn process_monitor_cancels_control_server_after_exit() {
     let dir = tempfile::tempdir().unwrap();
     let sock_path = dir.path().join("control.sock");
@@ -3749,6 +3826,7 @@ async fn process_monitor_aborts_stuck_log_reader_after_exit() {
         state_tx,
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
     let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
 
@@ -3788,6 +3866,7 @@ async fn process_monitor_wait_cancel_keeps_log_reader_cleanup_owned() {
         state_tx,
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
     let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
 
@@ -4062,6 +4141,7 @@ async fn stdout_eof_does_not_mark_running_process_crashed() {
         state_tx: state_tx.clone(),
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
 
     let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
@@ -4156,6 +4236,7 @@ async fn process_monitor_fallback_does_not_kill_group_after_parent_reap() {
         state_tx,
         guest,
         runtime_cancel: CancellationToken::new(),
+        guest_cpu_cgroup: None,
     };
 
     let handle = monitor_process_with_log_readers_and_exit_notifier(

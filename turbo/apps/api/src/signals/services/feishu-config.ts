@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { feishuOrgInstallations } from "@okouai/db/schema/feishu-org-installation";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import { apiUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  apiUrlForPublicBrand,
+  appUrlForPublicBrand,
+} from "@okouai/core/public-brand";
 
 import { apiBackendUrl } from "../../lib/api-backend-url";
 import { env } from "../../lib/env";
@@ -70,10 +73,11 @@ export async function loadFeishuInstallationConfig(
 
 /**
  * The event subscription URL an operator registers in their own Feishu Open
- * Platform app. #28278 step 3 switches this producer to the final path; the
- * branded paths stay routable, so installations that already hold the old URL
- * keep delivering events. The hostname carries the installation's product
- * brand while the path and installation ID remain provider-compatible.
+ * Platform app. #28278 step 3 switched this producer to the final path, and
+ * #31068 retired the branded row behind it, so an installation still holding
+ * the old URL in its own Feishu console stops delivering until its operator
+ * copies this one back. The hostname carries the installation's product brand
+ * while the path and installation ID remain provider-compatible.
  */
 export function feishuCallbackUrl(
   installationId: string,
@@ -100,12 +104,34 @@ export function feishuOAuthCallbackUrl(): string {
   ).toString();
 }
 
-export function feishuOAuthAppCallbackUrl(): string {
+export function feishuOAuthAppCallbackUrl(publicBrand: PublicBrand): string {
+  return new URL(
+    "/connectors/feishu/callback",
+    appUrlForPublicBrand(env("APP_URL"), publicBrand),
+  ).toString();
+}
+
+/**
+ * Redirect URI emitted before Feishu OAuth became brand-aware. Keep this only
+ * for the old-API-to-new-API rollout surface: in-flight signed state and
+ * persisted connector state created by a pre-#31030 API must replay the
+ * byte-for-byte URI that the provider received. Remove the compatibility
+ * readers tracked by #31061 after that API is no longer serving or retained as
+ * a rollback target and the longest state TTL (15 minutes) has elapsed. Keep
+ * the current VM0 callback URI and its historical routes.
+ */
+export function legacyFeishuOAuthAppCallbackUrl(): string {
   return new URL("/connectors/feishu/callback", env("APP_URL")).toString();
 }
 
-export function feishuOAuthConnectUrl(state: string): string {
-  const url = new URL("/api/feishu/oauth/connect", apiBackendUrl() ?? webUrl());
+export function feishuOAuthConnectUrl(
+  state: string,
+  publicBrand: PublicBrand,
+): string {
+  const url = new URL(
+    "/api/feishu/oauth/connect",
+    apiUrlForPublicBrand(apiBackendUrl() ?? webUrl(), publicBrand),
+  );
   url.searchParams.set("state", state);
   return url.toString();
 }

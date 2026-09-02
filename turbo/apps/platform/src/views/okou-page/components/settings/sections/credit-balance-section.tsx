@@ -32,6 +32,7 @@ import { orgMembers$ } from "../../../../../signals/external/org-members.ts";
 import { usagePackCreditsAsync$ } from "../../../../../signals/okou-page/billing.ts";
 import {
   openSettingsUsagePackConfiguration$,
+  settingsDialogSignal$,
   setSettingsActiveSection$,
 } from "../../../../../signals/okou-page/settings/settings-dialog.ts";
 import {
@@ -39,7 +40,9 @@ import {
   setBillingSubPage$,
 } from "../../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
-  setUsagePackMembersDialogOpen$,
+  closeUsagePackMembersDialog$,
+  completeUsagePackMembersDialogClose$,
+  openUsagePackMembersDialog$,
   toggleUsagePackMemberAdditions$,
   usagePackMemberAdditionsExpandedMemberId$,
   usagePackMembersDialogOpen$,
@@ -443,13 +446,32 @@ function UsagePackMemberBalancesDialog({
 }) {
   const { t } = useTranslation();
   const membersLoadable = useLoadable(orgMembers$);
+  const settingsDialogSignal = useGet(settingsDialogSignal$);
   const open = useGet(usagePackMembersDialogOpen$);
-  const setOpen = useSet(setUsagePackMembersDialogOpen$);
-  if (membersLoadable.state !== "hasData" || membersLoadable.data.length <= 1) {
+  const openDialog = useSet(openUsagePackMembersDialog$);
+  const closeDialog = useSet(closeUsagePackMembersDialog$);
+  const completeClose = useSet(completeUsagePackMembersDialogClose$);
+  if (
+    !settingsDialogSignal ||
+    membersLoadable.state !== "hasData" ||
+    membersLoadable.data.length <= 1
+  ) {
     return null;
   }
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          closeDialog();
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
       <TooltipProvider delayDuration={100}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -462,7 +484,7 @@ function UsagePackMemberBalancesDialog({
                 return $.billing.usage.usagePack.viewMembers;
               })}
               onClick={() => {
-                setOpen(true);
+                openDialog(settingsDialogSignal);
               }}
             >
               <Users size={15} />

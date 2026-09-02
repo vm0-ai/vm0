@@ -57,7 +57,6 @@ interface OpenRouterResponse {
 
 interface OpenRouterGenerateTextOptions {
   readonly reasoning?: { readonly effort: "none" };
-  readonly responseFormat?: { readonly type: "json_object" };
   readonly temperature?: number;
 }
 
@@ -226,9 +225,6 @@ export async function generateTextWithUsage(
       model,
       messages,
       ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
-      ...(options?.responseFormat === undefined
-        ? {}
-        : { response_format: options.responseFormat }),
       ...(options?.reasoning === undefined
         ? {}
         : { reasoning: options.reasoning }),

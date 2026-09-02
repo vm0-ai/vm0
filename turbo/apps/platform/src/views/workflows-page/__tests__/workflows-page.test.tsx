@@ -26,7 +26,6 @@ import {
   type OfficialWorkflowCatalogDetail,
 } from "@okouai/api-contracts/contracts/official-workflows";
 import { integrationsGithubContract } from "@okouai/api-contracts/contracts/integrations-github";
-import { strapiIntegrationsContract } from "@okouai/api-contracts/contracts/strapi-integrations";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
@@ -60,7 +59,6 @@ const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const MORNING_BRIEF_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000206";
-const CONNECTOR_DOCTOR_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000207";
 const GMAIL_AUTOMATION_ID = "workflow-automation-gmail-new-message";
 const GMAIL_LABEL_AUTOMATION_ID = "workflow-automation-gmail-label-applied";
 const GITHUB_PULL_REQUEST_AUTOMATION_ID =
@@ -77,13 +75,6 @@ type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
-}
-
-function connectorIcon(connectorSlug: string) {
-  return {
-    url: `https://icons.example.test/${connectorSlug}.svg`,
-    invertInDarkMode: false,
-  };
 }
 
 function detachedSetupWorkflowDetailPage(
@@ -724,32 +715,28 @@ function officialSalesResearch(
   };
 }
 
-function namedOfficialWorkflow(
-  definitionName: "morning-brief" | "connector-doctor",
-): WorkflowDetailResponse {
+function morningBriefWorkflow(): WorkflowDetailResponse {
   const base = officialSalesResearch();
   if (!base.official) {
     throw new Error("Expected an Official Workflow fixture");
   }
-  const morningBrief = definitionName === "morning-brief";
-  const displayName = morningBrief ? "Morning Brief" : "Connector Doctor";
   return {
     ...base,
-    id: morningBrief ? MORNING_BRIEF_WORKFLOW_ID : CONNECTOR_DOCTOR_WORKFLOW_ID,
-    name: definitionName,
-    displayName,
+    id: MORNING_BRIEF_WORKFLOW_ID,
+    name: "morning-brief",
+    displayName: "Morning Brief",
     official: {
       ...base.official,
-      definitionName,
+      definitionName: "morning-brief",
     },
     automations: base.automations.map((automation) => {
       return {
         ...automation,
-        id: `workflow-automation-${definitionName}`,
+        id: "workflow-automation-morning-brief",
         official: automation.official
           ? {
               ...automation.official,
-              blueprintKey: morningBrief ? "daily-delivery" : "weekly-check",
+              blueprintKey: "daily-delivery",
             }
           : null,
       };
@@ -1268,7 +1255,6 @@ function mockCreateWorkflowAutomation(
       body.eventConfig.provider === "github" ||
       body.eventConfig.provider === "google-forms" ||
       body.eventConfig.provider === "stripe" ||
-      body.eventConfig.provider === "strapi" ||
       body.eventConfig.provider === "chat"
     ) {
       return respond(201, mockConfiguredEventAutomation(body));
@@ -1564,17 +1550,12 @@ describe("workflows routes", () => {
   });
 
   it("hides Morning Brief from App workflow lists and counts without hiding other Official Workflows", async () => {
-    mockWorkflowApis([
-      salesResearch(),
-      namedOfficialWorkflow("morning-brief"),
-      namedOfficialWorkflow("connector-doctor"),
-    ]);
+    mockWorkflowApis([officialSalesResearch(), morningBriefWorkflow()]);
 
     detachedSetupPage({ context, path: "/workflows" });
 
     await screen.findByRole("heading", { name: "Workflows" });
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
-    expect(screen.getByText("Connector Doctor")).toBeInTheDocument();
     expect(screen.queryByText("Morning Brief")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Open Morning Brief"),
@@ -1582,15 +1563,15 @@ describe("workflows routes", () => {
   });
 
   it("redirects a cold Morning Brief workflow detail URL to the stable Preferences deep link", async () => {
-    mockWorkflowApis([namedOfficialWorkflow("morning-brief")]);
+    mockWorkflowApis([morningBriefWorkflow()]);
 
     detachedSetupWorkflowDetailPage(
       `/workflows/${MORNING_BRIEF_WORKFLOW_ID}/automations`,
     );
 
     await waitFor(() => {
-      expect(pathname()).toBe("/settings");
-      expect(search()).toBe("?tab=timezone&focus=morning-brief");
+      expect(pathname()).toBe("/agents");
+      expect(search()).toBe("?settings=preference&focus=morning-brief");
     });
     const preference = await screen.findByTestId("morning-brief-preference");
     expect(preference).toHaveFocus();
@@ -2111,9 +2092,6 @@ describe("workflow detail page", () => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
     expect(
-      screen.queryByRole("region", { name: "Connector readiness" }),
-    ).not.toBeInTheDocument();
-    expect(
       screen.getByText("This workflow belongs to this agent."),
     ).toBeInTheDocument();
     expect(screen.getByTitle("Research Bot")).toHaveTextContent("Research Bot");
@@ -2214,262 +2192,6 @@ describe("workflow detail page", () => {
     expect(search()).toBe(`?automationId=${GMAIL_AUTOMATION_ID}`);
     expect(document.querySelector('[aria-current="true"]')).toBeNull();
     expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it("checks connector readiness only on request and shows every status", async () => {
-    const workflow = {
-      ...salesResearch(),
-      canManage: false,
-      canPublish: false,
-    };
-    const requestStarted = context.mocks.deferred<void>();
-    const releaseResponse = context.mocks.deferred<void>();
-    let requestCount = 0;
-    mockWorkflowApis([workflow]);
-    context.mocks.api(
-      workflowsDetailContract.connectorReadiness,
-      async ({ params, respond }) => {
-        expect(params.workflowId).toBe(SALES_WORKFLOW_ID);
-        requestCount += 1;
-        requestStarted.resolve();
-        await releaseResponse.promise;
-        return respond(200, {
-          connectors: [
-            {
-              connectorSlug: "google-drive",
-              label: "Google Drive",
-              icon: connectorIcon("google-drive"),
-              reason: "The workflow reads account documents.",
-              status: "connected",
-            },
-            {
-              connectorSlug: "github",
-              label: "GitHub",
-              icon: connectorIcon("github"),
-              reason: "A GitHub automation requires this connector.",
-              status: "unavailable",
-            },
-            {
-              connectorSlug: "slack",
-              label: "Slack",
-              icon: connectorIcon("slack"),
-              reason: "The workflow posts a summary to Slack.",
-              status: "not-enabled-for-agent",
-            },
-            {
-              connectorSlug: "notion",
-              label: "Notion",
-              icon: connectorIcon("notion"),
-              reason: "The workflow updates a Notion page.",
-              status: "scope-mismatch",
-            },
-            {
-              connectorSlug: "gmail",
-              label: "Gmail",
-              reason: "The workflow reads outreach replies.",
-              status: "reconnect-required",
-              icon: {
-                url: "https://icons.example.test/gmail.svg",
-                invertInDarkMode: true,
-                scale: 1.25,
-              },
-            },
-            {
-              connectorSlug: "linear",
-              label: "Linear",
-              icon: connectorIcon("linear"),
-              reason: "The workflow creates follow-up issues.",
-              status: "not-connected",
-            },
-          ],
-        });
-      },
-    );
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("info"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
-
-    const readiness = await screen.findByRole("region", {
-      name: "Connector readiness",
-    });
-    expect(requestCount).toBe(0);
-    expect(within(readiness).queryByText("Gmail")).not.toBeInTheDocument();
-
-    click(buttonByText("Check connectors", readiness));
-    await requestStarted.promise;
-    expect(requestCount).toBe(1);
-    expect(buttonByText("Checking...", readiness)).toBeDisabled();
-
-    releaseResponse.resolve();
-    await waitFor(() => {
-      expect(within(readiness).getByText("Gmail")).toBeInTheDocument();
-    });
-    const rows = within(readiness).getAllByRole("listitem");
-    expect(
-      rows.map((row) => {
-        return row.querySelector("p")?.textContent;
-      }),
-    ).toStrictEqual([
-      "Gmail",
-      "Linear",
-      "Notion",
-      "Slack",
-      "GitHub",
-      "Google Drive",
-    ]);
-    expect(
-      within(readiness).getByText("Reconnect required"),
-    ).toBeInTheDocument();
-    expect(
-      within(readiness).getByText("Update permissions"),
-    ).toBeInTheDocument();
-    expect(within(readiness).getByText("Not connected")).toBeInTheDocument();
-    expect(
-      within(readiness).getByText("Not enabled for this agent"),
-    ).toBeInTheDocument();
-    expect(
-      within(readiness).getByText("Currently unavailable"),
-    ).toBeInTheDocument();
-    expect(within(readiness).getByText("Connected")).toBeInTheDocument();
-
-    const gmailRow = within(readiness).getByText("Gmail").closest("li");
-    if (!(gmailRow instanceof HTMLElement)) {
-      throw new Error("Gmail readiness row not found");
-    }
-    expect(gmailRow.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://icons.example.test/gmail.svg",
-    );
-    expect(gmailRow.querySelector("img")).toHaveClass("zero-icon-mono");
-    expect(gmailRow.querySelector("img")).toHaveStyle({
-      transform: "scale(1.25)",
-    });
-
-    const unavailableRow = within(readiness).getByText("GitHub").closest("li");
-    if (!(unavailableRow instanceof HTMLElement)) {
-      throw new Error("Unavailable readiness row not found");
-    }
-    expect(unavailableRow.querySelector("img")).toHaveAttribute(
-      "src",
-      "https://icons.example.test/github.svg",
-    );
-
-    expect(linkByText("Reconnect Gmail", readiness)).toHaveAttribute(
-      "href",
-      `/connectors/gmail/connect?agentId=${encodeURIComponent(AGENT_ID)}`,
-    );
-    expect(linkByText("Enable for agent Slack", readiness)).toHaveAttribute(
-      "href",
-      `/connectors/slack/authorize?agentId=${encodeURIComponent(AGENT_ID)}`,
-    );
-    for (const link of queryAllByRoleFast("link", readiness)) {
-      expect(link).toHaveAttribute("target", "_blank");
-      expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    }
-  });
-
-  it("shows actionable connector check errors and supports retry", async () => {
-    let requestCount = 0;
-    mockWorkflowApis([salesResearch()]);
-    context.mocks.api(
-      workflowsDetailContract.connectorReadiness,
-      ({ respond }) => {
-        requestCount += 1;
-        if (requestCount === 1) {
-          return respond(413, {
-            error: {
-              code: "PAYLOAD_TOO_LARGE",
-              message: "Workflow content is too long",
-            },
-          });
-        }
-        if (requestCount === 2) {
-          return respond(503, {
-            error: {
-              code: "CONNECTOR_READINESS_TIMEOUT",
-              message: "Connector check timed out",
-            },
-          });
-        }
-        return respond(200, { connectors: [] });
-      },
-    );
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("info"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
-
-    const readiness = await screen.findByRole("region", {
-      name: "Connector readiness",
-    });
-    click(buttonByText("Check connectors", readiness));
-    await expect(
-      within(readiness).findByText(
-        "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.",
-      ),
-    ).resolves.toBeInTheDocument();
-
-    click(buttonByText("Check again", readiness));
-    await expect(
-      within(readiness).findByText("The connector check timed out. Try again."),
-    ).resolves.toBeInTheDocument();
-
-    click(buttonByText("Check again", readiness));
-    await expect(
-      within(readiness).findByText("No required connectors detected"),
-    ).resolves.toBeInTheDocument();
-    expect(requestCount).toBe(3);
-  });
-
-  it("blocks checks for unsaved inputs and clears results after saving", async () => {
-    const workflow = salesResearch();
-    mockWorkflowApis([workflow]);
-    context.mocks.api(
-      workflowsDetailContract.connectorReadiness,
-      ({ respond }) => {
-        return respond(200, {
-          connectors: [
-            {
-              connectorSlug: "gmail",
-              label: "Gmail",
-              icon: connectorIcon("gmail"),
-              reason: "The workflow reads outreach replies.",
-              status: "connected",
-            },
-          ],
-        });
-      },
-    );
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("info"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
-
-    const readiness = await screen.findByRole("region", {
-      name: "Connector readiness",
-    });
-    click(buttonByText("Check connectors", readiness));
-    await expect(
-      within(readiness).findByText("Gmail"),
-    ).resolves.toBeInTheDocument();
-
-    await fill(screen.getByLabelText("Name"), "Updated display name");
-    expect(buttonByText("Check again", readiness)).toBeEnabled();
-
-    await fill(screen.getByLabelText("Description"), "Updated description");
-    expect(buttonByText("Check again", readiness)).toBeDisabled();
-    expect(
-      within(readiness).getByText(
-        "Save your changes before checking connectors.",
-      ),
-    ).toBeInTheDocument();
-
-    click(buttonByText("Save"));
-    await waitFor(() => {
-      expect(within(readiness).queryByText("Gmail")).not.toBeInTheDocument();
-    });
-    expect(buttonByText("Check connectors", readiness)).toBeEnabled();
   });
 
   it("ignores stale workflow instruction drafts without edit permission", async () => {
@@ -2650,9 +2372,7 @@ describe("workflow detail page", () => {
       },
     );
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
     await expect(
       screen.findByText("Official Workflow retired"),
     ).resolves.toBeInTheDocument();
@@ -2672,9 +2392,6 @@ describe("workflow detail page", () => {
     });
     expect(screen.getByLabelText("Slug")).toBeDisabled();
     expect(screen.getByLabelText("Description")).toBeDisabled();
-    expect(
-      screen.queryByRole("region", { name: "Connector readiness" }),
-    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: "Make workflow public" }),
     ).toHaveAttribute("aria-disabled", "true");
@@ -4148,73 +3865,6 @@ describe("workflow detail page", () => {
       "href",
       "/connectors",
     );
-  });
-
-  it("hides Strapi automation creation when the feature is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.StrapiIntegration]: false,
-    });
-
-    click(await screen.findByText("Add automation"));
-    const picker = await screen.findByRole("dialog");
-    click(buttonByText("Integrations", picker));
-    expect(
-      screen.queryByText("Strapi entry published"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("creates a Strapi entry-published automation behind the feature switch", async () => {
-    const integrationId = "00000000-0000-4000-8000-000000000092";
-    const createBodies: WorkflowAutomationCreateRequest[] = [];
-    mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowAutomation((body) => {
-      createBodies.push(body);
-    });
-    context.mocks.api(strapiIntegrationsContract.list, ({ respond }) => {
-      return respond(200, [
-        {
-          id: integrationId,
-          name: "Marketing CMS",
-          baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/strapi/events/${integrationId}`,
-          secretLastFour: "abcd",
-          lastTestedAt: "2026-07-28T04:00:00.000Z",
-          lastReceivedAt: null,
-          createdAt: "2026-07-28T03:00:00.000Z",
-        },
-      ]);
-    });
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.StrapiIntegration]: true,
-    });
-
-    click(await screen.findByText("Add automation"));
-    await screen.findByRole("dialog");
-    pickAutomation("Integrations", /^Strapi entry published/);
-    const form = await screen.findByRole("form", {
-      name: "Add Strapi entry published automation",
-    });
-    await fill(
-      within(form).getByLabelText("Content type UID (optional)"),
-      "api::article.article",
-    );
-    await fill(within(form).getByLabelText("Locale (optional)"), "en");
-    fireEvent.submit(form);
-
-    await waitFor(() => {
-      expect(createBodies.at(-1)).toStrictEqual({
-        kind: "event",
-        eventType: "strapi-entry-published",
-        eventConfig: {
-          provider: "strapi",
-          event: "entry_published",
-          integrationId,
-          contentTypeUid: "api::article.article",
-          locale: "en",
-        },
-      });
-    });
   });
 
   it("creates a webhook automation and shows one-time signing details", async () => {

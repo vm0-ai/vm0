@@ -9,24 +9,18 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import type {
-  DesktopRecorderArea,
-  DesktopRecorderSource,
-} from "../../desktop-recorder-types";
 
 type CaptureChoice =
-  | { readonly kind: "area"; readonly area: DesktopRecorderArea | null }
   | { readonly kind: "display" }
-  | { readonly kind: "window"; readonly sourceId: string | null };
+  | {
+      readonly kind: "window";
+      readonly sourceId: string;
+      readonly title: string;
+    };
 
 const recorder = window.vm0DesktopRecorder;
 
-function sourceLabel(source: DesktopRecorderSource): string {
-  return source.appName ? `${source.appName} — ${source.title}` : source.title;
-}
-
 export function RecorderBar(): React.ReactElement {
-  const [sources, setSources] = useState<readonly DesktopRecorderSource[]>([]);
   const [choice, setChoice] = useState<CaptureChoice>({ kind: "display" });
   const [systemAudio, setSystemAudio] = useState(true);
   const [microphone, setMicrophone] = useState(false);
@@ -38,33 +32,71 @@ export function RecorderBar(): React.ReactElement {
     if (!recorder) {
       return;
     }
+    // Capabilities only, deliberately: reading what is on screen would make
+    // the system demand the recording permission the moment the bar opens.
     void recorder
-      .listSources()
-      .then((listed) => {
-        setSources(listed.sources);
-        setMicrophoneSupported(listed.supportsMicrophone);
+      .getCapabilities()
+      .then((capabilities) => {
+        setMicrophoneSupported(capabilities.supportsMicrophone);
       })
-      .catch((listError: unknown) => {
+      .catch((capabilitiesError: unknown) => {
         setError(
-          listError instanceof Error
-            ? listError.message
-            : "Could not read what is on screen",
+          capabilitiesError instanceof Error
+            ? capabilitiesError.message
+            : "Could not read what this Mac can record",
         );
       });
+  }, []);
+
+  const chooseWindow = useCallback(() => {
+    if (!recorder) {
+      return;
+    }
+    setError(null);
+    // The picker takes over its own window, so the bar waits for a choice
+    // rather than trying to show a grid inside a row of controls.
+    void recorder
+      .selectWindow()
+      .then((chosen) => {
+        if (chosen) {
+          setChoice({
+            kind: "window",
+            sourceId: chosen.sourceId,
+            title: chosen.title,
+          });
+        }
+      })
+      .catch((pickError: unknown) => {
+        setError(
+          pickError instanceof Error
+            ? pickError.message
+            : "Could not list the open windows",
+        );
+      });
+  }, []);
+
+  /**
+   * Abandons an open window pick.
+   *
+   * `selectWindow` stays pending until something answers it. Leaving it open
+   * while the user moves on left the picker floating over every other choice,
+   * and tearing the bar down with the call still in flight surfaced Electron's
+   * "reply was never sent" as a recording error.
+   */
+  const abandonWindowChoice = useCallback(() => {
+    void recorder?.completeWindowSelection(null);
   }, []);
 
   const chooseArea = useCallback(() => {
     if (!recorder) {
       return;
     }
+    abandonWindowChoice();
     setError(null);
-    // The selector takes over the screen, so the bar has nothing useful to show
-    // until it comes back with a region.
+    // An area capture is started by the overlay that draws it, so the audio
+    // choices travel with the request rather than waiting for Start here.
     void recorder
-      .selectArea()
-      .then((area) => {
-        setChoice({ kind: "area", area });
-      })
+      .beginAreaSelection({ systemAudio, microphone })
       .catch((selectError: unknown) => {
         setError(
           selectError instanceof Error
@@ -72,68 +104,32 @@ export function RecorderBar(): React.ReactElement {
             : "Could not select a region",
         );
       });
-  }, []);
+  }, [abandonWindowChoice, microphone, systemAudio]);
 
   const start = useCallback(() => {
     if (!recorder) {
       return;
     }
-    if (choice.kind === "area") {
-      if (!choice.area) {
-        setError("Select a region first");
-        return;
-      }
-      setBusy(true);
-      void recorder
-        .startCapture({
-          sourceKind: "area",
-          systemAudio,
-          microphone,
-          area: choice.area,
-        })
-        .catch(reportStartFailure);
-      return;
-    }
-    if (choice.kind === "window") {
-      if (!choice.sourceId) {
-        setError("Choose a window");
-        return;
-      }
-      setBusy(true);
-      void recorder
-        .startCapture({
-          sourceKind: "window",
-          sourceId: choice.sourceId,
-          systemAudio,
-          microphone,
-        })
-        .catch(reportStartFailure);
-      return;
-    }
     setBusy(true);
-    void recorder
-      .startCapture({ sourceKind: "display", systemAudio, microphone })
-      .catch(reportStartFailure);
-
-    function reportStartFailure(startError: unknown): void {
+    setError(null);
+    const request =
+      choice.kind === "window"
+        ? {
+            sourceKind: "window" as const,
+            sourceId: choice.sourceId,
+            systemAudio,
+            microphone,
+          }
+        : { sourceKind: "display" as const, systemAudio, microphone };
+    void recorder.startCapture(request).catch((startError: unknown) => {
       setBusy(false);
       setError(
         startError instanceof Error
           ? startError.message
           : "Could not start recording",
       );
-    }
+    });
   }, [choice, microphone, systemAudio]);
-
-  const windows = sources.filter((source) => {
-    return source.kind === "window";
-  });
-  const chosenWindow =
-    choice.kind === "window"
-      ? windows.find((source) => {
-          return source.id === choice.sourceId;
-        })
-      : undefined;
 
   return (
     <div className="recorder-bar">
@@ -154,6 +150,7 @@ export function RecorderBar(): React.ReactElement {
           className="recorder-bar__source"
           aria-pressed={choice.kind === "display"}
           onClick={() => {
+            abandonWindowChoice();
             setChoice({ kind: "display" });
           }}
         >
@@ -161,51 +158,30 @@ export function RecorderBar(): React.ReactElement {
           <span className="recorder-bar__source-label">Display</span>
         </button>
 
-        {/* The picker covers the whole tile invisibly, so Window looks and
-            sits exactly like the buttons either side of it instead of growing
-            a control of its own. */}
-        <div
-          className="recorder-bar__source recorder-bar__source--window"
+        <button
+          type="button"
+          className="recorder-bar__source"
           aria-pressed={choice.kind === "window"}
+          title={choice.kind === "window" ? choice.title : undefined}
+          onClick={chooseWindow}
         >
           <AppWindow size={22} />
-          <span className="recorder-bar__source-label">
-            {chosenWindow ? sourceLabel(chosenWindow) : "Window"}
-          </span>
-          <select
-            className="recorder-bar__window-picker"
-            aria-label="Window to record"
-            value={choice.kind === "window" ? (choice.sourceId ?? "") : ""}
-            onChange={(event) => {
-              setChoice({ kind: "window", sourceId: event.target.value });
-            }}
-          >
-            <option value="">Window</option>
-            {windows.map((source) => {
-              return (
-                <option key={source.id} value={source.id}>
-                  {sourceLabel(source)}
-                </option>
-              );
-            })}
-          </select>
-        </div>
+          {/* The mode keeps its own name. Naming the button after the chosen
+              window made a pick titled "Menubar" read as a third capture mode
+              beside Display and Area; the target belongs under it. */}
+          <span className="recorder-bar__source-label">Window</span>
+          {choice.kind === "window" ? (
+            <span className="recorder-bar__source-target">{choice.title}</span>
+          ) : null}
+        </button>
 
         <button
           type="button"
           className="recorder-bar__source"
-          aria-pressed={choice.kind === "area"}
-          onClick={() => {
-            setChoice({ kind: "area", area: null });
-            chooseArea();
-          }}
+          onClick={chooseArea}
         >
           <SquareDashed size={22} />
-          <span className="recorder-bar__source-label">
-            {choice.kind === "area" && choice.area
-              ? `${choice.area.width.toString()} × ${choice.area.height.toString()}`
-              : "Area"}
-          </span>
+          <span className="recorder-bar__source-label">Area</span>
         </button>
       </div>
 
@@ -250,7 +226,20 @@ export function RecorderBar(): React.ReactElement {
         {busy ? "Starting…" : "Start recording"}
       </button>
 
-      {error ? <p className="recorder-bar__error">{error}</p> : null}
+      {error ? (
+        <p className="recorder-bar__error">
+          {error}
+          <button
+            type="button"
+            className="recorder-bar__error-action"
+            onClick={() => {
+              void recorder?.openScreenRecordingSettings();
+            }}
+          >
+            Open settings
+          </button>
+        </p>
+      ) : null}
     </div>
   );
 }

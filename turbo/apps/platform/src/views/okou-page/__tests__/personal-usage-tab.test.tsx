@@ -278,6 +278,16 @@ async function openUsageSettings(
   });
 }
 
+async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
+  const accountButton = await waitFor(() => {
+    return buttonByAriaLabel("Test User");
+  });
+  click(accountButton);
+  const menu = await screen.findByRole("menu");
+  click(within(menu).getByText("Settings"));
+  return screen.findByRole("dialog", { name: "Settings" });
+}
+
 describe("personal usage settings", () => {
   it("shows the member's usage pack credit breakdown", async () => {
     const user = userEvent.setup();
@@ -545,7 +555,7 @@ describe("personal usage settings", () => {
     ).toHaveTextContent("20,400 credits · 2% off");
   });
 
-  it("shows every member's usage pack balance to an admin", async () => {
+  it("shows every member's usage pack balance and closes it with the settings session", async () => {
     const user = userEvent.setup();
     mockPersonalUsageStory(usageRows(), "pro", false, "admin");
     context.mocks.data.orgMembers({
@@ -623,6 +633,7 @@ describe("personal usage settings", () => {
       within(card).getByTestId("usage-pack-credit-grants-section"),
     ).toBeInTheDocument();
 
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
     await user.click(buttonByAriaLabel("View member balances", card));
     const memberDialog = await screen.findByRole("dialog", {
       name: "Member usage pack credits",
@@ -716,6 +727,30 @@ describe("personal usage settings", () => {
     const orgCredits = await screen.findByTestId("credit-balance-info");
     expect(within(orgCredits).getByText("Org credits")).toBeInTheDocument();
     expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
+
+    click(within(settingsDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Member usage pack credits",
+        }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedSettingsDialog = await openSettingsFromAccountMenu();
+    click(within(reopenedSettingsDialog).getByText("Credit balance"));
+    const reopenedCard = await screen.findByTestId("usage-pack-credit-card");
+    await waitFor(() => {
+      expect(
+        buttonByAriaLabel("View member balances", reopenedCard),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Member usage pack credits" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows an illustrated empty state when the range has no usage", async () => {

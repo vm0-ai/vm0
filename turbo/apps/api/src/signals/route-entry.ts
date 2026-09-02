@@ -343,6 +343,21 @@ export function withApiNamespaceAliases(
  * also removed both halves of the loop this row completes, so that build can no
  * longer be handed a command to complete: the reader has outlived its producer,
  * which is `docs/fallback.md` section 5.
+ *
+ * #31068 then took the Feishu events row, leaving 6, and it is the one removal
+ * here that no evidence supports. #30817 held the row back for a reason that
+ * still holds: both production installations pasted the branded URL into their
+ * own Feishu app console, which we cannot edit, so their silence measures how
+ * quiet they are rather than whether the console moved. `feishuCallbackUrl`
+ * only began handing out the neutral path in `bc505642` (#28341, 2026-08-20),
+ * and both installations were created before it — 2026-07-27 and 2026-08-04,
+ * each with a `callback_verified_at` minutes later against the branded path and
+ * no re-verification since. Removing this row therefore stops delivery to both,
+ * and it fails silently: the bot goes quiet with no error surfaced to either
+ * holder. The owner made that call on 2026-09-02, notifying both holders
+ * directly, because recovery is one copy of the neutral URL from
+ * `app.okou.ai/settings/feishu` back into the Feishu console. This is an owner
+ * decision recorded on #31068, not a drain — do not cite it as one.
  */
 type MigratedBrandedPathTable = Readonly<Record<string, readonly string[]>>;
 
@@ -493,39 +508,6 @@ const MIGRATED_BRANDED_PATHS: Readonly<Record<string, readonly string[]>> = {
   // the contract moved. Both forms are owed, and both retire under #26701's
   // evidence rules rather than on either clock.
   "/api/workflows": ["/api/okou/workflows", "/api/zero/workflows"],
-  // #28544: the Feishu routes that were classified as console-held without a
-  // Feishu console actually holding them — the console registers the
-  // frontend-forwarding OAuth target from `feishuOAuthAppCallbackUrl()` rather
-  // than the API callback, and #28338 already moved the events URL shown to
-  // operators.
-  //
-  // The events row is the load-bearing one, and the reason it outlived the
-  // #28709 sweep with no traffic behind it. Each Feishu installation registered
-  // its event subscription URL in its own Feishu app console, which we cannot
-  // edit, so an installation created before #28338 still posts to the branded
-  // form it was given. That holder has no drain window at all — it changes when
-  // its operator edits their own console — so a week without a delivery says
-  // the installation was quiet, not that its console moved. It is also why
-  // #30807's class argument does not reach this row: the producer is a console
-  // we cannot edit rather than a build we ship, and unlike the published Slack
-  // install link #30812 retired, there is nowhere to go and look.
-  //
-  // The slice's other row, the OAuth callback, covered a time-boxed surface
-  // instead: `feishu-oauth-callback-page.ts` forwards the code it received from
-  // the Feishu console's `app.vm0.ai` target to whichever path the contract
-  // declared when that bundle was built, so an already-loaded platform tab kept
-  // posting the branded form for the ~2 day old-web-client window in
-  // `docs/fallback.md` section 7, and the `oauthRedirectUri()` branch behind it
-  // is reached only when `callbackTarget` is absent, which neither frontend
-  // entry point does. That window closed long before the retained log began, so
-  // #28709 removed it.
-  //
-  // The key holds its path parameter verbatim, because the lookup below matches
-  // `entry.route.path` exactly rather than an expanded request path.
-  "/api/webhooks/feishu/events/:installationId": [
-    "/api/okou/feishu/events/:installationId",
-    "/api/zero/feishu/events/:installationId",
-  ],
   // #28600 added the last branded contract paths — the Slack OAuth callback and
   // the three inbound Slack webhooks — and #30668 removed all four. They are
   // the first rows in this table to retire because their producer moved rather

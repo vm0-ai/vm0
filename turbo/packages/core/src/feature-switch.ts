@@ -299,6 +299,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // unproven outside CI; widen once it has run on real hardware.
     enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
+  [FeatureSwitchKey.IosPwaStartupImages]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Generate iOS PWA startup images from the inline bootstrap skeleton.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SocialDownloadDetectedMediaType]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -338,10 +345,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
-      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a flattened copy alongside the untouched original.",
+      "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
     // Scoped to the maintainer rather than the whole staff org while the
-    // flatten and two-file send are still unexercised outside tests.
+    // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
@@ -387,31 +394,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ConcurrencyMemberUsage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show active concurrency slot usage grouped by workspace member in the queue drawer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Feishu direct-message integration and Works page entry point.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.StrapiIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable Strapi integration settings and Strapi entry-published workflow automations.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowConnectorReadiness]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Show the manual connector readiness check on workflow settings pages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -421,12 +407,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.CustomConnectorNoAuth]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable credential-free authentication for organization Custom Connectors.",
-    enabled: false,
   },
 };
 

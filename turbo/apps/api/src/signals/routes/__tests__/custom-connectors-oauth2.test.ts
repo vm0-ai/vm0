@@ -1,0 +1,237 @@
+import { randomBytes, randomUUID } from "node:crypto";
+
+import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { describe, expect, it } from "vitest";
+
+import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
+import {
+  createConnectorBddApi,
+  mockCustomConnectorOAuth2Provider,
+} from "./helpers/api-bdd-connectors";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { seedCustomConnectorOAuthStateContext } from "./helpers/connector-credential-storage-state";
+
+const context = testContext();
+const connectors = createConnectorBddApi(context);
+
+type CustomOAuthProvider = ReturnType<typeof mockCustomConnectorOAuth2Provider>;
+
+function customOAuthConnectorBody(
+  provider: CustomOAuthProvider,
+): CreateCustomConnectorBody {
+  return {
+    displayName: `Branded OAuth ${randomUUID()}`,
+    prefixTemplates: [`https://${randomUUID()}.branded-oauth.example.test/v1/`],
+    fields: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "oauth",
+    oauthConfig: {
+      providerAdapter: "standard",
+      clientId: "branded-oauth-client-id",
+      clientSecret: "branded-oauth-client-secret",
+      authorizationUrl: provider.authorizationUrl,
+      tokenUrl: provider.tokenUrl,
+      tokenEndpointAuthMethod: "client_secret_post",
+      pkceMethod: "none",
+      scopes: ["read"],
+      authorizationParams: {},
+    },
+  };
+}
+
+function authorizationState(authorizationUrl: URL): string {
+  const state = authorizationUrl.searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected custom connector OAuth state");
+  }
+  return state;
+}
+
+function redirectLocation(response: { readonly headers: Headers }): URL {
+  const location = response.headers.get("location");
+  if (!location) {
+    throw new Error("Expected custom connector OAuth redirect");
+  }
+  return new URL(location);
+}
+
+function requiredOrgId(actor: ApiTestUser): string {
+  if (!actor.orgId) {
+    throw new Error("Expected custom connector OAuth actor organization");
+  }
+  return actor.orgId;
+}
+
+async function createCustomOAuthConnector(
+  actor: ApiTestUser,
+  provider: CustomOAuthProvider,
+) {
+  return await connectors.createCustomConnector(
+    actor,
+    customOAuthConnectorBody(provider),
+  );
+}
+
+describe("Custom connector OAuth public-brand callbacks", () => {
+  it.each([
+    {
+      publicBrand: "vm0",
+      apiOrigin: "https://api.vm0.ai",
+      appOrigin: "https://app.vm0.ai",
+      statePattern: /^[0-9a-f]{64}$/u,
+    },
+    {
+      publicBrand: "okou",
+      apiOrigin: "https://api.okou.ai",
+      appOrigin: "https://app.okou.ai",
+      statePattern: /^okou\.[0-9a-f]{64}$/u,
+    },
+  ] as const)(
+    "uses the $publicBrand App callback for authorization and token exchange",
+    async ({ apiOrigin, appOrigin, statePattern }) => {
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      const provider = mockCustomConnectorOAuth2Provider(context, {
+        initialScope: "read",
+      });
+      const actor = createBddApi(context).user({ orgRole: "org:admin" });
+      const connector = await createCustomOAuthConnector(actor, provider);
+      const callbackUri = `${appOrigin}/connectors/custom/callback`;
+
+      const authorizationUrl = new URL(
+        await connectors.startCustomConnectorOAuth2AtBaseUrl(
+          actor,
+          connector.id,
+          apiOrigin,
+        ),
+      );
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        callbackUri,
+      );
+      const state = authorizationState(authorizationUrl);
+      expect(state).toMatch(statePattern);
+
+      const callback = await connectors.completeCustomConnectorOAuth2Callback(
+        { code: `${actor.userId}-code`, state },
+        { baseUrl: apiOrigin },
+      );
+      expect(redirectLocation(callback).toString()).toBe(
+        `${callbackUri}/success`,
+      );
+      expect(provider.tokenBodies).toHaveLength(1);
+      expect(provider.tokenBodies[0]?.get("redirect_uri")).toBe(callbackUri);
+
+      await connectors.deleteCustomConnector(actor, connector.id);
+    },
+  );
+
+  it("does not derive the provider callback from an untrusted API host", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialScope: "read",
+    });
+    const actor = createBddApi(context).user({ orgRole: "org:admin" });
+    const connector = await createCustomOAuthConnector(actor, provider);
+    const callbackUri = "https://app.vm0.ai/connectors/custom/callback";
+
+    const authorizationUrl = new URL(
+      await connectors.startCustomConnectorOAuth2AtBaseUrl(
+        actor,
+        connector.id,
+        "https://api.okou.ai.attacker.example",
+      ),
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(callbackUri);
+    const state = authorizationState(authorizationUrl);
+    expect(state).toMatch(/^[0-9a-f]{64}$/u);
+
+    await connectors.completeCustomConnectorOAuth2Callback(
+      { code: "untrusted-host-code", state },
+      { baseUrl: "https://api.okou.ai.attacker.example" },
+    );
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("redirect_uri")).toBe(callbackUri);
+
+    await connectors.deleteCustomConnector(actor, connector.id);
+  });
+
+  it("replays a legacy Okou state callback and uses Okou on reconnect", async () => {
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialScope: "read",
+    });
+    const actor = createBddApi(context).user({ orgRole: "org:admin" });
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connector = await createCustomOAuthConnector(actor, provider);
+    const legacyRedirectUri = "https://app.vm0.ai/connectors/custom/callback";
+    const state = `okou.${randomBytes(32).toString("hex")}`;
+
+    // Reproduce an Okou authorization started before the branded callback fix.
+    await seedCustomConnectorOAuthStateContext(context, {
+      state,
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+      customConnectorId: connector.id,
+      storageVersion: connector.storageVersion,
+      redirectUri: legacyRedirectUri,
+      oauthContext: {
+        oauthSetup: "custom",
+        connectorId: connector.id,
+        storageVersion: connector.storageVersion,
+      },
+    });
+
+    const legacyCallback =
+      await connectors.completeCustomConnectorOAuth2Callback(
+        { code: "legacy-okou-code", state },
+        { baseUrl: "https://api.okou.ai" },
+      );
+    expect(redirectLocation(legacyCallback).toString()).toBe(
+      "https://app.okou.ai/connectors/custom/callback/success",
+    );
+    expect(provider.tokenBodies[0]?.get("redirect_uri")).toBe(
+      legacyRedirectUri,
+    );
+
+    const [account] = await connectors.listCustomConnectorAccounts(
+      actor,
+      connector.id,
+    );
+    if (!account) {
+      throw new Error("Expected legacy OAuth callback to create an account");
+    }
+    const reconnectAuthorization = new URL(
+      await connectors.startCustomConnectorOAuth2AtBaseUrl(
+        actor,
+        connector.id,
+        "https://api.okou.ai",
+        { intent: "reconnect", connectionId: account.id },
+      ),
+    );
+    const okouRedirectUri = "https://app.okou.ai/connectors/custom/callback";
+    expect(reconnectAuthorization.searchParams.get("redirect_uri")).toBe(
+      okouRedirectUri,
+    );
+
+    await connectors.completeCustomConnectorOAuth2Callback(
+      {
+        code: "reconnected-okou-code",
+        state: authorizationState(reconnectAuthorization),
+      },
+      { baseUrl: "https://api.okou.ai" },
+    );
+    expect(provider.tokenBodies).toHaveLength(2);
+    expect(provider.tokenBodies[1]?.get("redirect_uri")).toBe(okouRedirectUri);
+
+    await connectors.deleteCustomConnector(actor, connector.id);
+  });
+});

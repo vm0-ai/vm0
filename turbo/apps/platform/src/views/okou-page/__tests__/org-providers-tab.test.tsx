@@ -340,11 +340,9 @@ async function openModelSettings(): Promise<void> {
 }
 
 async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
-  const accountName = await screen.findByText("Test User");
-  const accountButton = accountName.closest("button");
-  if (!accountButton) {
-    throw new Error("Account menu trigger not found");
-  }
+  const accountButton = await waitFor(() => {
+    return buttonByLabel("Test User");
+  });
   click(accountButton);
   const menu = await screen.findByRole("menu");
   click(within(menu).getByText("Settings"));
@@ -381,6 +379,16 @@ function buttonByText(
   });
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -904,20 +912,21 @@ describe("organization model providers settings", () => {
     });
   });
 
-  it("adds a workspace Claude subscription model route", async () => {
+  it("adds a workspace Claude Fable 5.1 subscription model route", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
     await openProvidersTab();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Claude Opus 4.8");
+    await selectDialogModel("Claude Fable 5.1");
     click(screen.getByRole("radio", { name: /Claude subscription/u }));
     click(buttonByText("Add model"));
 
     const oauthRow = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-8",
+      "org-model-policy-row-claude-fable-5-1",
     );
-    expect(within(oauthRow).getByText("Claude Opus 4.8")).toBeInTheDocument();
+    expect(within(oauthRow).getByText("Claude Fable 5.1")).toBeInTheDocument();
     expect(
       within(oauthRow).getByText("Claude Code (OAuth token)"),
     ).toBeInTheDocument();

@@ -27,6 +27,10 @@ import {
   canonicalChatEventGoalId,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
+import type {
+  ApiDispatchTimingCollector,
+  ApiDispatchTimingDimensions,
+} from "./api-dispatch-timing.service";
 
 const goalInputRevoker = alias(chatEvents, "goal_input_revoker");
 
@@ -126,56 +130,75 @@ export async function admitGoalQueueEvent(
 /** Load the next runnable goal trigger. */
 export async function loadNextGoalQueueEvent(
   db: Db,
-  chatThreadId: string,
-  queueItemCreatedBefore?: Date,
+  args: {
+    readonly chatThreadId: string;
+    readonly queueItemCreatedBefore: Date | undefined;
+    readonly timing: ApiDispatchTimingCollector;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
+  },
 ): Promise<PendingGoalQueueEvent | null> {
   return await db.transaction(async (tx) => {
-    if (!(await lockChatQueueThread(tx, chatThreadId))) {
+    const threadExists = await args.timing.measure(
+      "api_dispatch_pre_create_zero_goal_drain_load_event_lock_thread",
+      "nested",
+      async () => {
+        return await lockChatQueueThread(tx, args.chatThreadId);
+      },
+      args.timingDimensions,
+    );
+    if (!threadExists) {
       return null;
     }
 
-    const [event] = await tx
-      .select({
-        id: chatEvents.id,
-        chatThreadId: chatEvents.chatThreadId,
-        userId: chatThreads.userId,
-        orgId: agents.orgId,
-        goalId: canonicalChatEventGoalId(),
-        createdAt: chatEvents.createdAt,
-      })
-      .from(chatEvents)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
-      .where(
-        and(
-          eq(chatEvents.chatThreadId, chatThreadId),
-          pendingChatQueueEventCondition(tx),
-          chatEventTypeIn(["input.goal"]),
-          queueItemCreatedBefore
-            ? lt(chatEvents.createdAt, queueItemCreatedBefore)
-            : undefined,
-          notExists(
-            tx
-              .select({ id: chatEvents.id })
-              .from(chatEvents)
-              .where(
-                and(
-                  eq(chatEvents.chatThreadId, chatThreadId),
-                  pendingChatQueueEventCondition(tx),
-                  chatEventTypeIn(["input.prompt", "input.automation"]),
-                  queueItemCreatedBefore
-                    ? lt(chatEvents.createdAt, queueItemCreatedBefore)
-                    : undefined,
-                ),
+    const [event] = await args.timing.measure(
+      "api_dispatch_pre_create_zero_goal_drain_load_event_select_candidate",
+      "nested",
+      async () => {
+        return await tx
+          .select({
+            id: chatEvents.id,
+            chatThreadId: chatEvents.chatThreadId,
+            userId: chatThreads.userId,
+            orgId: agents.orgId,
+            goalId: canonicalChatEventGoalId(),
+            createdAt: chatEvents.createdAt,
+          })
+          .from(chatEvents)
+          .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+          .innerJoin(agents, eq(agents.id, chatThreads.agentId))
+          .where(
+            and(
+              eq(chatEvents.chatThreadId, args.chatThreadId),
+              pendingChatQueueEventCondition(tx),
+              chatEventTypeIn(["input.goal"]),
+              args.queueItemCreatedBefore
+                ? lt(chatEvents.createdAt, args.queueItemCreatedBefore)
+                : undefined,
+              notExists(
+                tx
+                  .select({ id: chatEvents.id })
+                  .from(chatEvents)
+                  .where(
+                    and(
+                      eq(chatEvents.chatThreadId, args.chatThreadId),
+                      pendingChatQueueEventCondition(tx),
+                      chatEventTypeIn(["input.prompt", "input.automation"]),
+                      args.queueItemCreatedBefore
+                        ? lt(chatEvents.createdAt, args.queueItemCreatedBefore)
+                        : undefined,
+                    ),
+                  ),
               ),
-          ),
-          chatThreadAdmissionAllowedCondition(tx, {
-            threadId: chatThreadId,
-          }),
-        ),
-      )
-      .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id))
-      .limit(1);
+              chatThreadAdmissionAllowedCondition(tx, {
+                threadId: args.chatThreadId,
+              }),
+            ),
+          )
+          .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id))
+          .limit(1);
+      },
+      args.timingDimensions,
+    );
     if (!event) {
       return null;
     }

@@ -39,6 +39,7 @@ mod guest_dns_failure_diagnostics;
 mod guest_dns_probe;
 mod guest_dns_readiness;
 mod guest_operations;
+mod host_cpu_cgroup;
 mod leaked_resources;
 mod network;
 mod park_coordinator;

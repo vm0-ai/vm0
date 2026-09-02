@@ -47,6 +47,10 @@ import {
 } from "./chat-composer.ts";
 import { videoRunOptionsForSend } from "./video-run-options.ts";
 import {
+  createImageAnnotationSignals,
+  type ImageAnnotationSignals,
+} from "./image-annotation.ts";
+import {
   CREATE_WORKFLOW_WITH_CHAT_PROMPT,
   replaceWorkflowPromptDraftTarget$,
   setReplaceWorkflowPromptDraftTarget$,
@@ -264,6 +268,11 @@ export interface ComposerSignals {
   readonly queue: ComposerQueueSignals;
   readonly goal: ComposerGoalSignals;
   readonly template: ComposerTemplateSignals;
+  readonly imageAnnotation: ImageAnnotationSignals;
+  readonly setImageAnnotationLifecycleRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
 }
 
 interface CreateComposerSignalsOptions {
@@ -514,6 +523,34 @@ export function createComposerSignals(
     options,
     workflowComposer,
   );
+  const imageAnnotation = createImageAnnotationSignals();
+  /**
+   * Teardown owner for the annotation session and its in-flight derivative
+   * uploads. The element itself is not part of the work, but its committed
+   * presence is: `ImageAnnotationEditor` renders inside this exact subtree, so
+   * the subtree leaving the tree is what makes an open session and a pending
+   * upload unreachable. An abandoned upload would otherwise leave the
+   * attachment stuck in `pending`, blocking every later send on the restored
+   * draft with no retry affordance.
+   *
+   * `createComposerSignals` takes no lifecycle signal today, so this is the
+   * narrowest available owner. Replace it with an injected `AbortSignal` if
+   * the composer factory ever gains one.
+   */
+  const setImageAnnotationLifecycleRef$ = onRef<HTMLElement>(
+    command(({ get, set }, _element: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener(
+        "abort",
+        () => {
+          set(imageAnnotation.closeAnnotationEditor$);
+          for (const attachment of get(draft.attachments$)) {
+            set(attachment.cancelAnnotationUpload$);
+          }
+        },
+        { once: true },
+      );
+    }),
+  );
 
   return {
     agentId: options.agentId,
@@ -584,6 +621,8 @@ export function createComposerSignals(
       generationTemplate$: draft.generationTemplate$,
       setGenerationTemplate$: draft.setGenerationTemplate$,
     },
+    imageAnnotation,
+    setImageAnnotationLifecycleRef$,
   };
 }
 

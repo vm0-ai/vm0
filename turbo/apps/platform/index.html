@@ -11,22 +11,22 @@
       rel="icon"
       type="image/x-icon"
       sizes="16x16 32x32 48x48 64x64 128x128 256x256"
-      href="https://static.vm0.io/public/okou-transparent.ico"
-      integrity="sha384-arUP6RZ3+pTpC5fyAy4MZMAPloOdG9vLJWv2UidpXbcaltA32woK+3fz9RM+pAam"
+      href="https://static.vm0.io/public/okou-orange-tight-54b59259.ico"
+      integrity="sha384-bUQJy/UQAk1FcVkzup2e7SNQqpiQGcs45r9Ks0m7UojEASyqozPN2zpyiF7QwN0p"
     />
     <link
       rel="icon"
       type="image/svg+xml"
       sizes="any"
-      href="https://static.vm0.io/public/okou-transparent.svg"
-      integrity="sha384-7sRGMm24rKKTHtMbyppyRU6B5l19DDUT9SODgfPRocth+7AB5N8rXNAMwmvR5RQ1"
+      href="https://static.vm0.io/public/okou-orange-tight-9d65ae00.svg"
+      integrity="sha384-F55tDhzSPebdWbqpGV5fB6XIgV1W3uLmpKMCAsbVQQtYE90p0ljLeSJ98UKU6p6Z"
     />
     <link vite-ignore rel="manifest" href="/manifest.webmanifest" />
     <link
       rel="apple-touch-icon"
       sizes="180x180"
-      href="https://static.vm0.io/platform/apple-touch-icon.png"
-      integrity="sha384-zSbBEIKCuNnaTseqd2LFjJVhGDe+8P6ONra73YN0hk+HENpXlwMzMINQY+VBXrch"
+      href="https://static.vm0.io/platform/okou-pwa-be0be646-180.png"
+      integrity="sha384-A8vPZ6XPjFyg4cOXSE+wWCFl2m5p5SX8KPRw9CVJS2B1UJJ/pyTz2U6M8z0q5q+d"
     />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -175,6 +175,11 @@
         border-radius: 9999px;
         animation: app-bootstrap-skeleton-avatar-pulse 2s
           cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        animation-play-state: paused;
+      }
+
+      .app-bootstrap-skeleton__avatar--animated {
+        animation-play-state: running;
       }
 
       .app-bootstrap-skeleton__avatar-layers {

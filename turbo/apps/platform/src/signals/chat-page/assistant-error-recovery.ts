@@ -2,7 +2,10 @@ import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
 import { command, computed, type Computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isChatEventContentTextType } from "@okouai/api-contracts/contracts/chat-events";
-import { getCodexChatGptAccountUnsupportedModel } from "@okouai/api-contracts/contracts/errors";
+import {
+  getCodexChatGptAccountUnsupportedModel,
+  isAgentExecutionTimeoutRunError,
+} from "@okouai/api-contracts/contracts/errors";
 import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import {
   isSupportedRunModel,
@@ -23,7 +26,12 @@ import { runOptionsFromModelProviderSelection } from "./model-selection-request.
 export type AssistantErrorRecoveryKind =
   | "usage-limit"
   | "model-capacity"
-  | "model-unavailable";
+  | "model-unavailable"
+  | "execution-timeout";
+type ProviderAssistantErrorRecoveryKind = Exclude<
+  AssistantErrorRecoveryKind,
+  "execution-timeout"
+>;
 export type AssistantErrorRecoveryScope = "framework" | "model";
 export type AssistantErrorRecoveryWindow =
   | "five-hour"
@@ -31,16 +39,29 @@ export type AssistantErrorRecoveryWindow =
   | "model"
   | "unknown";
 
-export interface AssistantErrorRecovery {
+interface ClassifiedAssistantErrorBase {
   readonly sourceEventId: string;
   readonly providerMessage: string;
-  readonly kind: AssistantErrorRecoveryKind;
-  readonly framework: ModelProviderFramework;
   readonly scope: AssistantErrorRecoveryScope;
   readonly limitWindow: AssistantErrorRecoveryWindow | null;
-  readonly retryAt: string | null;
   readonly retryLabel: string | null;
   readonly failedModel: SupportedRunModel | null;
+}
+
+type ClassifiedAssistantError = ClassifiedAssistantErrorBase &
+  (
+    | {
+        readonly kind: "execution-timeout";
+        readonly framework: null;
+      }
+    | {
+        readonly kind: ProviderAssistantErrorRecoveryKind;
+        readonly framework: ModelProviderFramework;
+      }
+  );
+
+export type AssistantErrorRecovery = ClassifiedAssistantError & {
+  readonly retryAt: string | null;
   readonly actions: {
     readonly tryAgain: {
       readonly notBefore: string | null;
@@ -49,18 +70,7 @@ export interface AssistantErrorRecovery {
       readonly resetsRemaining: number;
     } | null;
   };
-}
-
-interface ClassifiedAssistantError {
-  readonly sourceEventId: string;
-  readonly providerMessage: string;
-  readonly kind: AssistantErrorRecoveryKind;
-  readonly framework: ModelProviderFramework;
-  readonly scope: AssistantErrorRecoveryScope;
-  readonly limitWindow: AssistantErrorRecoveryWindow | null;
-  readonly retryLabel: string | null;
-  readonly failedModel: SupportedRunModel | null;
-}
+};
 
 interface SubscriptionReset {
   readonly resetAt: string | null;
@@ -106,6 +116,19 @@ function classifyAssistantError(
   const normalized = normalizedProviderMessage(error);
   const retryLabel = resetLabelFromProviderMessage(normalized);
   const unsupportedModel = getCodexChatGptAccountUnsupportedModel(error);
+
+  if (isAgentExecutionTimeoutRunError(normalized)) {
+    return {
+      sourceEventId: event.id,
+      providerMessage: error,
+      kind: "execution-timeout",
+      framework: null,
+      scope: "framework",
+      limitWindow: null,
+      retryLabel: null,
+      failedModel: null,
+    };
+  }
 
   if (unsupportedModel !== undefined) {
     return {
@@ -318,6 +341,7 @@ function createAssistantErrorRecoveryComputed(
     }
     if (
       classified.kind !== "model-unavailable" &&
+      classified.kind !== "execution-timeout" &&
       !get(featureSwitch$)[FeatureSwitchKey.ChatErrorRecovery]
     ) {
       return null;

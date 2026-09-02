@@ -208,26 +208,36 @@ function expectVisibleText(text: string): void {
   expect(visibleMatch).toBeDefined();
 }
 
-async function openAccountMenu(): Promise<HTMLElement> {
-  const accountButton = await waitFor(() => {
-    const rail = screen.queryByTestId("labeled-nav-rail");
-    if (rail) {
-      return within(rail).getByLabelText("Alex Rivera");
-    }
+function accountMenuTrigger(userName = "Alex Rivera"): HTMLElement {
+  const rail = screen.queryByTestId("labeled-nav-rail");
+  if (rail) {
+    return within(rail).getByLabelText(userName);
+  }
 
-    const minimalSidebar = document.querySelector(
-      "aside.zero-nav:not(.zero-nav-rail)",
-    );
-    if (!(minimalSidebar instanceof HTMLElement)) {
-      throw new Error("Account menu container not found");
-    }
-    const accountName = within(minimalSidebar).getByText("Alex Rivera");
-    const button = accountName.closest("button");
-    if (!button) {
-      throw new Error("Account menu trigger not found");
-    }
-    return button;
+  const minimalSidebar = document.querySelector(
+    "aside.zero-nav:not(.zero-nav-rail)",
+  );
+  if (!(minimalSidebar instanceof HTMLElement)) {
+    throw new Error("Account menu container not found");
+  }
+  const accountName = within(minimalSidebar).getByText(userName);
+  const button = accountName.closest("button");
+  if (!button) {
+    throw new Error("Account menu trigger not found");
+  }
+  return button;
+}
+
+function findAccountMenuTrigger(
+  userName = "Alex Rivera",
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    return accountMenuTrigger(userName);
   });
+}
+
+async function openAccountMenu(): Promise<HTMLElement> {
+  const accountButton = await findAccountMenuTrigger();
   click(accountButton);
   return screen.findByRole("menu");
 }
@@ -351,11 +361,7 @@ describe("zero sidebar account menu", () => {
       },
     });
 
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
+    const accountButton = await findAccountMenuTrigger();
 
     await user.click(accountButton);
     const menu = await screen.findByRole("menu");
@@ -370,6 +376,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("shows realtime recovery status beside the expanded account only in debug mode", async () => {
+    context.mocks.browser.matchMedia(false);
     prepareDefaultAgent();
 
     await setupPageAndWaitForContent({
@@ -384,12 +391,13 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
     });
 
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
+    click(await screen.findByLabelText("Open menu"));
+    const accountButton = await findAccountMenuTrigger();
     await waitFor(() => {
+      expect(accountButton.closest("aside")).toHaveAttribute(
+        "data-sidebar-expanded",
+        "true",
+      );
       expect(within(accountButton).queryByRole("status")).toBeNull();
       expect(
         context.mocks.ably.hasChannelSubscriptionOnChannel(
@@ -433,6 +441,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("keeps realtime recovery status hidden when debug mode is disabled", async () => {
+    context.mocks.browser.matchMedia(false);
     prepareDefaultAgent();
 
     detachedSetupPage({
@@ -445,11 +454,14 @@ describe("zero sidebar account menu", () => {
       },
     });
 
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
+    click(await screen.findByLabelText("Open menu"));
+    const accountButton = await findAccountMenuTrigger();
+    await waitFor(() => {
+      expect(accountButton.closest("aside")).toHaveAttribute(
+        "data-sidebar-expanded",
+        "true",
+      );
+    });
     expect(within(accountButton).queryByRole("status")).toBeNull();
 
     act(() => {
@@ -1208,6 +1220,13 @@ describe("zero sidebar account menu", () => {
       expect(
         within(dialog).getByText("alex.rivera@example.test"),
       ).toBeInTheDocument();
+      const morningBrief = within(dialog).getByTestId(
+        "morning-brief-preference",
+      );
+      expect(morningBrief.previousElementSibling).toContainElement(
+        within(dialog).getByText("Time zone"),
+      );
+      expect(within(dialog).queryByText("Send now")).not.toBeInTheDocument();
     });
 
     const openedSettingsDialog = screen.getByRole("dialog", {

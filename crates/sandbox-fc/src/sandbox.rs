@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use guest_contracts::workspace_mount::WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE;
 use sandbox::{
     CodexSessionCleanupRequest, CopyFileOptions, CopyFileResult, ExecRequest, ExecResult,
     GuestAgentProcessHandle, GuestAgentStartTiming, GuestMemorySnapshot, GuestProcessCancelHandle,
@@ -29,6 +30,7 @@ use vsock_host::{
     ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver, GuestStateRestoreResult,
     GuestStorageManifestResult, NormalOperationFence, NormalOperationFenceRejection,
     SupervisedExecControl, SupervisedExecRequest, SupervisedExecStartTiming, VsockHost,
+    WorkspaceDriveMountResult,
 };
 use vsock_proto::{
     ExecOutputPolicy, ExecProcessRole, ExecTimeoutPolicy,
@@ -55,6 +57,7 @@ use crate::guest_dns_failure_diagnostics::{
 };
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
+use crate::host_cpu_cgroup::{GuestCpuCgroupLease, HostCpuCgroupManager};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::park_coordinator::{
@@ -472,6 +475,7 @@ struct ProcessMonitorContext {
     state_tx: watch::Sender<SandboxState>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     runtime_cancel: CancellationToken,
+    guest_cpu_cgroup: Option<GuestCpuCgroupLease>,
 }
 
 enum ProcessMonitorExit {
@@ -548,6 +552,8 @@ pub struct FirecrackerSandbox {
     park_outcome: Option<SandboxParkOutcome>,
     /// Host-side normal-operation fence held while this sandbox is parked.
     park_fence: Option<NormalOperationFence>,
+    /// Optional managed host CPU placement for the Firecracker process.
+    host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
 }
 
 pub(crate) struct FirecrackerSandboxInit {
@@ -559,6 +565,7 @@ pub(crate) struct FirecrackerSandboxInit {
     pub(crate) cow_device: PooledNbdCowDevice,
     pub(crate) device_rate_limits: Option<FirecrackerDeviceRateLimits>,
     pub(crate) leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
+    pub(crate) host_cpu_cgroup: Option<Arc<HostCpuCgroupManager>>,
 }
 
 pub(crate) struct SandboxNetwork {
@@ -635,6 +642,7 @@ impl FirecrackerSandbox {
             cow_device,
             device_rate_limits,
             leak_tx,
+            host_cpu_cgroup,
         } = init;
         let id = config.id.to_string();
         Self {
@@ -659,6 +667,7 @@ impl FirecrackerSandbox {
             is_parked: false,
             park_outcome: None,
             park_fence: None,
+            host_cpu_cgroup,
         }
     }
 
@@ -1109,25 +1118,37 @@ impl FirecrackerSandbox {
         runtime_cancel: CancellationToken,
         boot_mode: &str,
     ) -> sandbox::Result<ApiClient> {
-        let child = spawn_firecracker(command, self.sandbox_paths.workspace()).map_err(|e| {
-            SandboxError::Start {
+        let guest_cpu_cgroup = self
+            .host_cpu_cgroup
+            .as_ref()
+            .map(|manager| manager.acquire(self.config.id, self.config.resources.cpu_count))
+            .transpose()?;
+        let placement_file = guest_cpu_cgroup
+            .as_ref()
+            .map(GuestCpuCgroupLease::clone_placement_file)
+            .transpose()
+            .map_err(|e| SandboxError::Start {
+                message: format!("clone Guest CPU cgroup placement descriptor: {e}"),
+            })?;
+        let child = spawn_firecracker(command, self.sandbox_paths.workspace(), placement_file)
+            .map_err(|e| SandboxError::Start {
                 message: format!(
                     "spawn firecracker: {e} (boot_mode={boot_mode}, api_sock={})",
                     api_sock.display()
                 ),
-            }
-        })?;
+            })?;
 
         self.process_group_pid = child.id();
-        self.runtime.set_process(monitor_process(
-            &self.id,
-            child,
-            Arc::clone(&self.state),
-            Arc::clone(&self.state_publish_lock),
-            self.state_tx.clone(),
-            Arc::clone(&self.guest),
+        let context = ProcessMonitorContext {
+            state: Arc::clone(&self.state),
+            state_publish_lock: Arc::clone(&self.state_publish_lock),
+            state_tx: self.state_tx.clone(),
+            guest: Arc::clone(&self.guest),
             runtime_cancel,
-        ));
+            guest_cpu_cgroup,
+        };
+        self.runtime
+            .set_process(monitor_process_with_context(&self.id, child, context));
 
         let client = ApiClient::new(api_sock).map_err(|e| SandboxError::Start {
             message: format!(
@@ -1595,23 +1616,33 @@ impl Drop for FirecrackerSandbox {
 /// The process monitor owns the `Child`, so process exit is classified from
 /// `wait()` rather than from stdout/stderr pipe EOF. Stdout and stderr readers
 /// are only log forwarders.
+#[cfg(test)]
 fn monitor_process(
     id: &str,
-    mut child: tokio::process::Child,
+    child: tokio::process::Child,
     state: Arc<AtomicU8>,
     state_publish_lock: Arc<Mutex<()>>,
     state_tx: watch::Sender<SandboxState>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     runtime_cancel: CancellationToken,
 ) -> ProcessMonitorHandle {
-    let readers = ProcessLogReaders::from_child(id, &mut child);
     let context = ProcessMonitorContext {
         state,
         state_publish_lock,
         state_tx,
         guest,
         runtime_cancel,
+        guest_cpu_cgroup: None,
     };
+    monitor_process_with_context(id, child, context)
+}
+
+fn monitor_process_with_context(
+    id: &str,
+    mut child: tokio::process::Child,
+    context: ProcessMonitorContext,
+) -> ProcessMonitorHandle {
+    let readers = ProcessLogReaders::from_child(id, &mut child);
     monitor_process_with_log_readers(id, child, context, readers)
 }
 
@@ -1628,10 +1659,11 @@ fn monitor_process_with_log_readers(
 fn monitor_process_with_log_readers_and_exit_notifier(
     id: &str,
     mut child: tokio::process::Child,
-    context: ProcessMonitorContext,
+    mut context: ProcessMonitorContext,
     readers: ProcessLogReaders,
     exit_notifier: ChildExitNotifier,
 ) -> ProcessMonitorHandle {
+    let guest_cpu_cgroup = context.guest_cpu_cgroup.take();
     if let Some(reason) = exit_notifier.unavailable_reason() {
         warn!(
             id = %id,
@@ -1656,6 +1688,11 @@ fn monitor_process_with_log_readers_and_exit_notifier(
 
         if let Err(error) = &status {
             warn!(id = %id, %error, "process monitor failed to wait for child");
+        }
+        if let Some(guest_cpu_cgroup) = guest_cpu_cgroup
+            && let Err(error) = guest_cpu_cgroup.release()
+        {
+            warn!(id = %id, %error, "failed to release Guest CPU cgroup after process reap");
         }
         context.runtime_cancel.cancel();
 
@@ -2491,6 +2528,18 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
+    async fn mount_workspace_drive(&self) -> sandbox::Result<ExecResult> {
+        let operation = SandboxOperation::MountWorkspaceDrive;
+
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest
+                .mount_workspace_drive(WORKSPACE_DRIVE_MOUNT_REQUEST_DEADLINE)
+                .await
+                .map(workspace_drive_mount_exec_result)
+        })
+        .await
+    }
+
     async fn verify_session_history_identity(
         &self,
         request: &SessionHistoryIdentityVerifyRequest<'_>,
@@ -2766,6 +2815,18 @@ impl Sandbox for FirecrackerSandbox {
 }
 
 fn storage_manifest_exec_result(result: GuestStorageManifestResult) -> ExecResult {
+    ExecResult {
+        termination: exec_termination_from_vsock_termination(result.termination),
+        guest_duration_ms: Some(result.duration_ms),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        diagnostic: result.diagnostic,
+        stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
+    }
+}
+
+fn workspace_drive_mount_exec_result(result: WorkspaceDriveMountResult) -> ExecResult {
     ExecResult {
         termination: exec_termination_from_vsock_termination(result.termination),
         guest_duration_ms: Some(result.duration_ms),

@@ -8,7 +8,6 @@ import {
   EllipsisVertical,
   Download,
   Settings,
-  Webhook,
 } from "lucide-react";
 import { Button } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -860,46 +859,11 @@ function TelegramCard() {
   );
 }
 
-function StrapiCard() {
-  const { t } = useTranslation();
-  return (
-    <Link
-      pathname={ROUTES.settingsStrapi}
-      className="zero-card flex flex-col transition-colors hover:bg-state-hover"
-    >
-      <div className="flex items-center gap-4 p-4">
-        <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#4945ff]/10 text-[#4945ff]">
-          <Webhook size={18} />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {t(($) => {
-              return $.works.strapi.title;
-            })}
-          </div>
-          <div className="truncate text-sm text-muted-foreground">
-            {t(($) => {
-              return $.works.strapi.description;
-            })}
-          </div>
-        </div>
-        <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <Settings size={14} />
-          {t(($) => {
-            return $.works.actions.manage;
-          })}
-        </span>
-      </div>
-    </Link>
-  );
-}
-
 export function WorksPage() {
   const { t } = useTranslation();
   const assistantName = useGet(assistantName$);
   const features = useGet(featureSwitch$);
   const feishuEnabled = features[FeatureSwitchKey.FeishuIntegration] ?? false;
-  const strapiEnabled = features[FeatureSwitchKey.StrapiIntegration] ?? false;
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
@@ -935,7 +899,6 @@ export function WorksPage() {
           <TeamsCard displayName={displayName} />
           <GithubCard />
           {feishuEnabled ? <FeishuCard /> : null}
-          {strapiEnabled ? <StrapiCard /> : null}
           <TelegramCard />
           <AgentPhoneCard />
         </div>

@@ -67,6 +67,22 @@ interface BrowserUrlOptions {
   readonly apiOriginMarker?: string | null;
 }
 
+interface BrowserScreenOptions {
+  readonly height: number;
+  readonly pixelRatio: number;
+  readonly width: number;
+}
+
+interface CanvasRender {
+  readonly background: string;
+  readonly height: number;
+  readonly width: number;
+}
+
+interface CanvasRenderingMock {
+  readonly renders: CanvasRender[];
+}
+
 interface BrowserFedCmOptions {
   readonly credentials?: boolean;
   readonly identityCredential?: boolean;
@@ -120,6 +136,12 @@ interface BrowserDownloadMock {
 
 interface BrowserServiceWorkerMock {
   readonly dispatchMessage: (data: unknown) => void;
+}
+
+interface BrowserMatchMediaMock {
+  readonly setMatches: (
+    matches: boolean | ((query: string) => boolean),
+  ) => void;
 }
 
 interface ImageDimensionsMockValue {
@@ -291,8 +313,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       authWindow: (): MockWindow => {
         return createMockWindow();
       },
-      matchMedia: (matches: boolean | ((query: string) => boolean)): void => {
-        mockMatchMedia(matches);
+      matchMedia: (
+        matches: boolean | ((query: string) => boolean),
+      ): BrowserMatchMediaMock => {
+        return mockMatchMedia(matches);
       },
       standaloneDisplayMode: (enabled: boolean): void => {
         mockMatchMedia((query) => {
@@ -410,6 +434,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           maxTouchPoints,
         );
       },
+      screen: (options: BrowserScreenOptions): void => {
+        mockScreen(getSignal(), options);
+      },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
@@ -453,6 +480,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           | readonly ImageDimensionsMockResult[],
       ): ImageDimensionsMock => {
         return mockImageDimensions(getSignal(), results);
+      },
+      canvasRendering: (): CanvasRenderingMock => {
+        return mockCanvasRendering(getSignal());
       },
     },
     upload: {
@@ -538,20 +568,62 @@ function mockLocalStorageWrites(): StorageWriteMock {
   return { writes };
 }
 
-function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
+function mockMatchMedia(
+  initialMatches: boolean | ((query: string) => boolean),
+): BrowserMatchMediaMock {
+  let resolveMatches = (query: string): boolean => {
+    return typeof initialMatches === "function"
+      ? initialMatches(query)
+      : initialMatches;
+  };
+  const entries = new Set<{
+    readonly query: string;
+    readonly update: (matches: boolean) => void;
+  }>();
+
   vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    let currentMatches = resolveMatches(query);
+    const eventTarget = new EventTarget();
     const mediaQueryList: MediaQueryList = {
-      matches: typeof matches === "function" ? matches(query) : matches,
+      get matches() {
+        return currentMatches;
+      },
       media: query,
       onchange: null,
       addListener: vi.fn<MediaQueryList["addListener"]>(),
       removeListener: vi.fn<MediaQueryList["removeListener"]>(),
-      addEventListener: vi.fn<MediaQueryList["addEventListener"]>(),
-      removeEventListener: vi.fn<MediaQueryList["removeEventListener"]>(),
-      dispatchEvent: vi.fn<MediaQueryList["dispatchEvent"]>(),
+      addEventListener: eventTarget.addEventListener.bind(eventTarget),
+      removeEventListener: eventTarget.removeEventListener.bind(eventTarget),
+      dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
     };
+    entries.add({
+      query,
+      update(matches) {
+        if (matches === currentMatches) {
+          return;
+        }
+        currentMatches = matches;
+        const event = new MediaQueryListEvent("change", {
+          matches,
+          media: query,
+        });
+        mediaQueryList.dispatchEvent(event);
+        mediaQueryList.onchange?.call(mediaQueryList, event);
+      },
+    });
     return mediaQueryList;
   });
+
+  return {
+    setMatches(matches) {
+      resolveMatches = (query: string): boolean => {
+        return typeof matches === "function" ? matches(query) : matches;
+      };
+      for (const entry of entries) {
+        entry.update(resolveMatches(entry.query));
+      }
+    },
+  };
 }
 
 function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {
@@ -983,6 +1055,67 @@ function mockImageDimensions(
   });
 
   return { createdUrls, revokedUrls };
+}
+
+function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
+  const widthDescriptor = defineWindowProperty(screen, "width", options.width);
+  const heightDescriptor = defineWindowProperty(
+    screen,
+    "height",
+    options.height,
+  );
+  const pixelRatioDescriptor = defineWindowProperty(
+    window,
+    "devicePixelRatio",
+    options.pixelRatio,
+  );
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(screen, "width", widthDescriptor);
+    restoreWindowProperty(screen, "height", heightDescriptor);
+    restoreWindowProperty(window, "devicePixelRatio", pixelRatioDescriptor);
+  });
+}
+
+function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
+  const renders: CanvasRender[] = [];
+  const context = {
+    fillStyle: "",
+    imageSmoothingEnabled: false,
+    imageSmoothingQuality: "low",
+    arc() {},
+    beginPath() {},
+    clip() {},
+    drawImage() {},
+    fillRect() {},
+    restore() {},
+    save() {},
+  } as unknown as CanvasRenderingContext2D;
+
+  const getContext = vi
+    .spyOn(HTMLCanvasElement.prototype, "getContext")
+    .mockImplementation(function getContext(contextId: string) {
+      return contextId === "2d" ? context : null;
+    } as typeof HTMLCanvasElement.prototype.getContext);
+  const toDataURL = vi
+    .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+    .mockImplementation(function toDataURL(this: HTMLCanvasElement) {
+      renders.push({
+        background: String(context.fillStyle),
+        height: this.height,
+        width: this.width,
+      });
+      return renders.length === 1
+        ? "data:image/png;base64,AAAA"
+        : "data:image/png;base64,AAAB";
+    });
+
+  restoreOnAbort(signal, () => {
+    getContext.mockRestore();
+    toDataURL.mockRestore();
+  });
+
+  return { renders };
 }
 
 function defineWindowProperty(

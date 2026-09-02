@@ -786,7 +786,10 @@ function ChatListColumn() {
           showMarkAllRead
         />
       </div>
-      <div className="px-3 pb-3">
+      {/* Collapses to nothing when SidebarUpgradeCard renders null, so the
+          thread list reaches the column bottom instead of clipping its last
+          row above a reserved strip. */}
+      <div className="px-3 pb-3 empty:hidden">
         <SidebarUpgradeCard />
       </div>
     </aside>
@@ -799,14 +802,17 @@ function ThreeColumnNav() {
     <>
       <LabeledNavRail />
       {!chatListHidden && <ChatListColumn />}
-      <ThreeColumnSearchDialogContainer />
-      <PinnedAgentDialogs />
-      <ChatThreadDialogs />
-      <ExpandedSidebar />
     </>
   );
 }
 
-export function Sidebar() {
-  return <ThreeColumnNav />;
+export function Sidebar({ isDesktop }: { isDesktop: boolean }) {
+  return (
+    <>
+      {isDesktop ? <ThreeColumnNav /> : <ExpandedSidebar />}
+      <ThreeColumnSearchDialogContainer />
+      <PinnedAgentDialogs />
+      <ChatThreadDialogs />
+    </>
+  );
 }

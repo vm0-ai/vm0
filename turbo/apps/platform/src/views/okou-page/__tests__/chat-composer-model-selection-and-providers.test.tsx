@@ -96,6 +96,16 @@ beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
 });
 
+function buttonByLabel(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 async function navigateToChatThread(threadId: string): Promise<void> {
   const link = await waitFor(() => {
     const candidate = document.querySelector<HTMLAnchorElement>(
@@ -2006,8 +2016,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000704",
-        model: "claude-fable-5",
-        modelLabel: "Claude Fable 5",
+        model: "claude-fable-5-1",
+        modelLabel: "Claude Fable 5.1",
         defaultProviderType: "built-in",
         credentialScope: "org",
       }),
@@ -2033,7 +2043,7 @@ describe("chat composer models", () => {
     ).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("option", { name: /Claude Fable 5.*Pro/u }),
+      screen.getByRole("option", { name: /Claude Fable 5\.1.*Pro/u }),
     );
     await expect(
       screen.findByRole("heading", { name: "Choose a plan" }),
@@ -2435,11 +2445,9 @@ describe("chat composer models", () => {
     expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
-    const accountName = await screen.findByText("Alex Rivera");
-    const accountButton = accountName.closest("button");
-    if (!accountButton) {
-      throw new Error("Account menu trigger not found");
-    }
+    const accountButton = await waitFor(() => {
+      return buttonByLabel("Alex Rivera");
+    });
     await user.click(accountButton);
     const accountMenu = await screen.findByRole("menu");
     await user.click(within(accountMenu).getByText("Settings"));

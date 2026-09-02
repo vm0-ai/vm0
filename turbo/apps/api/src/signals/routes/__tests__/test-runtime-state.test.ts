@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@okouai/api-contracts/contracts/model-providers";
 import { ALL_RUN_STATUSES } from "@okouai/api-contracts/contracts/runs";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -11,7 +10,6 @@ import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
 import { holdBuiltInModelRouteLockFixture } from "../../../test-fixtures/built-in-model-runtime-route";
 import {
@@ -169,99 +167,6 @@ describe("POST /api/test/runtime-state/action", () => {
       });
     },
   );
-
-  it("keeps fast Terra on Codex when the managed route falls back to OpenRouter", async () => {
-    const selectedModel = "gpt-5.6-terra";
-    await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
-    const startedAt = Date.UTC(2026, 8, 1, 0, 0, 0);
-    const primary = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
-    });
-    if (!primary || primary.provider_type !== "openai-api-key") {
-      throw new Error("Expected the managed OpenAI Terra primary route");
-    }
-    await setVm0BuiltInCandidateCooldownFixture(
-      context,
-      selectedModel,
-      primary,
-      new Date(startedAt + 60_000),
-    );
-    const fallback = await withMockNowForTest(startedAt, async () => {
-      return await resolveVm0BuiltInModelRouteFixture(context, selectedModel);
-    });
-    if (!fallback || fallback.provider_type !== "openrouter-codex") {
-      throw new Error("Expected the managed OpenRouter Terra fallback route");
-    }
-
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected fast Terra fallback actor to have an org");
-    }
-    bdd.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    const runnerGroup = runs.configureRunnerGroup();
-    await runs.grantProEntitlement(actor);
-    const agent = await bdd.createAgent(actor, {
-      displayName: "BDD fast Terra fallback agent",
-    });
-    await runs.updateOrgModelPolicies(actor, [
-      {
-        model: selectedModel,
-        isDefault: true,
-        defaultProviderType: "built-in",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.CodexFastMode]: true,
-      },
-    );
-
-    const sent = await withMockNowForTest(startedAt, async () => {
-      return await chat.requestSendEvent(
-        actor,
-        {
-          agentId: agent.agentId,
-          prompt: "keep managed OpenRouter fast Terra on Codex",
-          model: selectedModel,
-          runOptions: { codexServiceTier: "fast" },
-        },
-        [201],
-      );
-    });
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected managed OpenRouter fast Terra to create a run");
-    }
-    const runId = sent.body.runId;
-    await runs.heartbeatRunner(runnerGroup);
-    const claim = await runs.claimRunnerJob(runId);
-    onTestFinished(async () => {
-      await runs.requestCancelRun(actor, runId, [200, 400]);
-    });
-
-    expect(claim.cliAgentType).toBe("codex");
-    expect(claim.piLaunchConfig).toBeUndefined();
-    expect(claim.piModelConfig).toBeUndefined();
-    expect(claim.codexRuntimeConfig).toBeNull();
-    expect(claim.environment?.OPENAI_BASE_URL).toBe(
-      "https://openrouter.ai/api/v1",
-    );
-    expect(claim.environment?.OPENAI_MODEL).toBe(fallback.upstream_model);
-    expect(claim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe("fast");
-    const detail = await reads.requestReadLogById(actor, runId, [200]);
-    expect(detail.body).toMatchObject({
-      modelProvider: "built-in",
-      selectedModel,
-      modelRuntimeProvider: "openrouter-codex",
-      modelRuntimeModel: fallback.upstream_model,
-    });
-  });
 
   it("isolates expiry-based cooldowns to exact built-in model routes", async () => {
     await seedVm0BuiltInModelCandidateKeys(context, "claude-fable-5");

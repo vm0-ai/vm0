@@ -6,6 +6,7 @@ import {
   userMessageInputDocumentSchema,
   type FeedbackNotePart,
   type GenerationTemplateRequest,
+  type ImageAnnotation,
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
@@ -27,9 +28,14 @@ export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
+export type MessageDocumentAttachment = PersistedAttachment & {
+  readonly annotatedFileId?: string;
+  readonly annotations?: ImageAnnotation;
+};
+
 export interface EditorDocumentContext {
   readonly selectedTemplate?: GenerationTemplateRequest;
-  readonly attachments?: readonly PersistedAttachment[];
+  readonly attachments?: readonly MessageDocumentAttachment[];
 }
 
 export interface EditorDocumentSnapshot {
@@ -180,7 +186,7 @@ function appendParagraphParts(
 
 function appendFileParts(
   parts: UserMessagePart[],
-  attachments: readonly PersistedAttachment[],
+  attachments: readonly MessageDocumentAttachment[],
 ): void {
   for (const attachment of attachments) {
     parts.push({
@@ -188,6 +194,12 @@ function appendFileParts(
       fileId: attachment.id,
       filenameSnapshot: attachment.filename,
       contentType: attachment.contentType,
+      ...(attachment.annotatedFileId
+        ? { annotatedFileId: attachment.annotatedFileId }
+        : {}),
+      ...(attachment.annotations
+        ? { annotations: attachment.annotations }
+        : {}),
     });
   }
 }
@@ -425,7 +437,7 @@ export function createEditorDocumentSnapshot(
 export function textToMessageDocument(
   text: string,
   template?: TextMessageTemplateSnapshot,
-  attachments: readonly PersistedAttachment[] = [],
+  attachments: readonly MessageDocumentAttachment[] = [],
 ): UserMessageInputDocument | null {
   const parts: UserMessagePart[] = [];
   if (template) {

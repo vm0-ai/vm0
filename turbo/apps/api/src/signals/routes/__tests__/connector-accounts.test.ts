@@ -1078,6 +1078,120 @@ describe("connector account lifecycle routes", () => {
     {
       label: "HTTP",
       body: {
+        displayName: "No-auth account HTTP",
+        prefixTemplates: ["https://no-auth-api.example.com/"],
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "none" as const,
+      } satisfies CreateCustomConnectorBody,
+    },
+    {
+      label: "MCP",
+      body: {
+        kind: "mcp" as const,
+        displayName: "No-auth account MCP",
+        endpoint: "https://no-auth-mcp.example.com/",
+        transport: "streamable-http" as const,
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "none" as const,
+      } satisfies CreateCustomConnectorBody,
+    },
+  ])(
+    "projects current no-auth custom $label accounts as connected",
+    async ({ body }) => {
+      const fixture = await seedFixture();
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      await accept(
+        featureClient().update({
+          headers: authHeaders(),
+          body: {
+            switches: {
+              [FeatureSwitchKey.ConnectorAccounts]: true,
+              [FeatureSwitchKey.CustomConnectorMcp]: true,
+            },
+          },
+        }),
+        [200],
+      );
+      const definition = await accept(
+        customConnectorClient().create({ headers: authHeaders(), body }),
+        [201],
+      );
+      const connected = await accept(
+        customConnectorValuesClient().set({
+          headers: authHeaders(),
+          params: { id: definition.body.id },
+          body: { values: [], account: { intent: "add" } },
+        }),
+        [200],
+      );
+      const accountId = connected.body.connectedAccountId;
+      if (!accountId) {
+        throw new Error("Expected a connected no-auth custom account");
+      }
+
+      const accounts = await accept(
+        accountClient().connections({
+          headers: authHeaders(),
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+            limit: 100,
+          },
+        }),
+        [200],
+      );
+      expect(accounts.body.connections).toMatchObject([
+        {
+          id: accountId,
+          authMethod: "none",
+          isDefault: true,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        },
+      ]);
+
+      const exact = await accept(
+        accountClient().connection({
+          headers: authHeaders(),
+          params: { connectionId: accountId },
+          query: {
+            kind: "custom",
+            customConnectorId: definition.body.id,
+          },
+        }),
+        [200],
+      );
+      expect(exact.body).toMatchObject({
+        id: accountId,
+        authMethod: "none",
+        connectionStatus: "connected",
+        reconnectReason: null,
+      });
+
+      const summaries = await accept(
+        accountClient().summaries({ headers: authHeaders() }),
+        [200],
+      );
+      expect(summaries.body.summaries).toContainEqual({
+        target: {
+          kind: "custom",
+          customConnectorId: definition.body.id,
+        },
+        accountCount: 1,
+        attentionCount: 0,
+        defaultConnection: exact.body,
+      });
+    },
+  );
+
+  it.each([
+    {
+      label: "HTTP",
+      body: {
         displayName: "Account HTTP",
         prefixTemplates: ["https://api.example.com/"],
         fields: [

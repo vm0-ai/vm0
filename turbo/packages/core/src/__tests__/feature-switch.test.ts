@@ -8,6 +8,24 @@ import {
   getFeatureSwitchMetadata,
 } from "../feature-switch";
 
+describe("FeatureSwitchKey", () => {
+  it("uses the canonical internal switch names", () => {
+    expect(FeatureSwitchKey.PersonalModelProviderAccounts).toBe(
+      "_multipleSubscriptions",
+    );
+    expect(FeatureSwitchKey.Dummy).toBe("_dummy");
+    expect(FeatureSwitchKey.Lab).toBe("_lab");
+    expect(FeatureSwitchKey.SidebarSubscriptionUsage).toBe(
+      "_sidebarSubscriptionUsage",
+    );
+    expect(FeatureSwitchKey.FeishuIntegration).toBe("_feishuIntegration");
+    expect(FeatureSwitchKey.CodexFastMode).toBe("_fastModel");
+    expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
+    expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
+    expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
+  });
+});
+
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
@@ -124,12 +142,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
@@ -149,12 +162,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.CustomConnectorMcp]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );

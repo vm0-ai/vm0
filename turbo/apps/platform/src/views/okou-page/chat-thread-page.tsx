@@ -5246,6 +5246,7 @@ function AssistantRecoveryActions({
   const resetting = resetLoadable.state === "loading";
   const hasResetAction = recovery.actions.resetAndTryAgain !== null;
   const hasRetryAction = recovery.actions.tryAgain !== null;
+  const hasModelSelectionAction = recovery.kind !== "execution-timeout";
   const handleModelSelection = (
     selection: ModelProviderSelection | null,
   ): void => {
@@ -5272,19 +5273,21 @@ function AssistantRecoveryActions({
           })}
         </Button>
       )}
-      <ModelProviderPicker
-        value={modelSelection}
-        onChange={handleModelSelection}
-        placeholder={t(($) => {
-          return $.chat.errors.recovery.selectModel;
-        })}
-        triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
-        compactTrigger
-        resolveDefaultSelection={false}
-        {...(recovery.failedModel
-          ? { excludedModel: recovery.failedModel }
-          : {})}
-      />
+      {hasModelSelectionAction && (
+        <ModelProviderPicker
+          value={modelSelection}
+          onChange={handleModelSelection}
+          placeholder={t(($) => {
+            return $.chat.errors.recovery.selectModel;
+          })}
+          triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
+          compactTrigger
+          resolveDefaultSelection={false}
+          {...(recovery.failedModel
+            ? { excludedModel: recovery.failedModel }
+            : {})}
+        />
+      )}
       {hasRetryAction && (
         <Button
           type="button"
@@ -5314,14 +5317,55 @@ function AssistantErrorRecoveryCard({
 }) {
   const { t } = useTranslation();
   const resetText = assistantRecoveryResetText(recovery);
-  const framework =
-    recovery.framework === "codex"
+  const title = (() => {
+    if (recovery.kind === "execution-timeout") {
+      return t(($) => {
+        return $.chat.errors.recovery.timeoutTitle;
+      });
+    }
+    if (recovery.kind === "model-unavailable") {
+      return t(($) => {
+        return $.chat.errors.recovery.unavailableTitle;
+      });
+    }
+    const framework =
+      recovery.framework === "codex"
+        ? t(($) => {
+            return $.chat.errors.recovery.codex;
+          })
+        : t(($) => {
+            return $.chat.errors.recovery.claudeCode;
+          });
+    return recovery.kind === "usage-limit"
+      ? t(
+          ($) => {
+            return $.chat.errors.recovery.usageTitle;
+          },
+          { framework },
+        )
+      : t(
+          ($) => {
+            return $.chat.errors.recovery.capacityTitle;
+          },
+          { framework },
+        );
+  })();
+  const description =
+    recovery.kind === "execution-timeout"
       ? t(($) => {
-          return $.chat.errors.recovery.codex;
+          return $.chat.errors.recovery.timeoutDescription;
         })
-      : t(($) => {
-          return $.chat.errors.recovery.claudeCode;
-        });
+      : recovery.kind === "usage-limit"
+        ? t(($) => {
+            return $.chat.errors.recovery.usageDescription;
+          })
+        : recovery.kind === "model-unavailable"
+          ? t(($) => {
+              return $.chat.errors.recovery.unavailableDescription;
+            })
+          : t(($) => {
+              return $.chat.errors.recovery.capacityDescription;
+            });
 
   return (
     <div
@@ -5331,44 +5375,17 @@ function AssistantErrorRecoveryCard({
     >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
-          {recovery.kind === "usage-limit" ? (
+          {recovery.kind === "usage-limit" ||
+          recovery.kind === "execution-timeout" ? (
             <Clock size={17} />
           ) : (
             <AlertCircle size={17} />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-medium leading-6">
-            {recovery.kind === "usage-limit"
-              ? t(
-                  ($) => {
-                    return $.chat.errors.recovery.usageTitle;
-                  },
-                  { framework },
-                )
-              : recovery.kind === "model-unavailable"
-                ? t(($) => {
-                    return $.chat.errors.recovery.unavailableTitle;
-                  })
-                : t(
-                    ($) => {
-                      return $.chat.errors.recovery.capacityTitle;
-                    },
-                    { framework },
-                  )}
-          </div>
+          <div className="font-medium leading-6">{title}</div>
           <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
-            {recovery.kind === "usage-limit"
-              ? t(($) => {
-                  return $.chat.errors.recovery.usageDescription;
-                })
-              : recovery.kind === "model-unavailable"
-                ? t(($) => {
-                    return $.chat.errors.recovery.unavailableDescription;
-                  })
-                : t(($) => {
-                    return $.chat.errors.recovery.capacityDescription;
-                  })}
+            {description}
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
@@ -5842,7 +5859,17 @@ function clipboardAttachmentsFromUserMessage(
       return [];
     }
     const attachment = attachmentById.get(part.fileId);
-    return attachment ? [attachment] : [];
+    return attachment
+      ? [
+          {
+            id: attachment.id,
+            url: attachment.url,
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+            size: attachment.size,
+          },
+        ]
+      : [];
   });
 }
 

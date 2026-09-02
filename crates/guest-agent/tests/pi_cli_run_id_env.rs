@@ -62,7 +62,7 @@ test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"
 test -n "${PI_FINAL_ASSISTANT_EVENT_PATH:-}"
 printf '%s' "$OKOU_RUN_ID" > "$RUN_ID_CAPTURE_PATH"
 printf '%s' "$OKOU_PI_LAUNCH_PAYLOAD_FILE" > "$PI_PAYLOAD_CAPTURE_PATH"
-printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":1,"sandboxEventSequenceStart":4}'
+printf '%s\n' '{"type":"vm0_pi_api_first_turn_boundary","schemaVersion":2,"sandboxEventSequenceStart":4,"ownershipTransferMode":"pending-tool-continuation"}'
 IFS= read -r state_command
 case "$state_command" in
   *'"type":"get_state"'*) ;;
