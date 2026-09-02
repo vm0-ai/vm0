@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { mockNow } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -56,10 +57,12 @@ function snapshotCronClient() {
 async function runSnapshotCron(
   chatThreadIds: readonly string[],
   r2ObjectKeys: readonly string[] = [],
+  signal?: AbortSignal,
 ) {
   const client = setupApp({
     context,
     routes: testChatEventSnapshotRoutes,
+    signal,
   })(testChatEventSnapshotContract);
   const response = await accept(
     client.snapshot({
@@ -455,28 +458,210 @@ describe("cron snapshot chat events", () => {
     ).toBeFalsy();
   }, 60_000);
 
-  it("does not log completion when snapshotting fails", async () => {
+  it("skips one failed candidate without blocking unrelated snapshots", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Failing snapshot agent",
     });
-    const threadId = await sendNoCreditMessage(owner, {
+    const failedThreadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       prompt: `failing-snapshot-${randomUUID()}`,
     });
-    await projectChatEventSearch(threadId);
+    const repairableThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `repairable-snapshot-${randomUUID()}`,
+    });
+    await projectChatEventSearch(failedThreadId, repairableThreadId);
 
     const snapshotFailure = new Error("Forced snapshot R2 write failure");
-    installFakeChatEventR2(context, recordedPuts, () => {
-      return Promise.reject(snapshotFailure);
+    installFakeChatEventR2(context, recordedPuts, (put) => {
+      return put.key.startsWith(`chat-events/${failedThreadId}/`)
+        ? Promise.reject(snapshotFailure)
+        : Promise.resolve();
     });
     context.mocks.axiom.ingest.mockClear();
 
-    await expect(runSnapshotCron([threadId])).rejects.toThrow(
-      "Unknown response status 500",
-    );
-    expect(snapshotCompletionEvents()).toHaveLength(0);
+    const result = await runSnapshotCron([failedThreadId, repairableThreadId]);
+    expect(result).toMatchObject({
+      success: true,
+      selectedCandidates: 2,
+      processedCandidates: 2,
+      deferredCandidates: 0,
+      snapshots: 1,
+      skippedFailedHeads: 1,
+      skippedTimedOutHeads: 0,
+    });
+    expect(putsForThread(failedThreadId)).toHaveLength(0);
+    expect(putsForThread(repairableThreadId)).toHaveLength(1);
+    expect(snapshotCompletionEvents()).toHaveLength(1);
+    expect(snapshotCompletionEvents()[0]).toMatchObject({
+      snapshots: 1,
+      selectedCandidates: 2,
+      processedCandidates: 2,
+      deferredCandidates: 0,
+      skippedFailedHeads: 1,
+      skippedTimedOutHeads: 0,
+    });
   }, 60_000);
+
+  it("bounds concurrency and resumes candidates deferred by the start budget", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Bounded snapshot agent",
+    });
+    const threadIds: string[] = [];
+    for (let index = 0; index < 9; index += 1) {
+      threadIds.push(
+        await sendNoCreditMessage(owner, {
+          agentId: agent.agentId,
+          prompt: `bounded-snapshot-${index.toString()}-${randomUUID()}`,
+        }),
+      );
+    }
+    await projectChatEventSearch(...threadIds);
+
+    const startedAt = new Date("2026-09-02T00:00:00.000Z");
+    mockNow(startedAt);
+    const firstWaveStarted = createDeferredPromise<void>(context.signal);
+    const releaseFirstWave = createDeferredPromise<void>(context.signal);
+    let active = 0;
+    let maxActive = 0;
+    installFakeChatEventR2(context, recordedPuts, async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (active === 8 && !firstWaveStarted.settled()) {
+        mockNow(new Date(startedAt.getTime() + 10 * 60 * 1000));
+        firstWaveStarted.resolve(undefined);
+      }
+      await releaseFirstWave.promise;
+      active -= 1;
+    });
+
+    const firstRun = runSnapshotCron(threadIds);
+    await firstWaveStarted.promise;
+    expect(maxActive).toBe(8);
+    releaseFirstWave.resolve(undefined);
+    const first = await firstRun;
+    expect(first).toMatchObject({
+      success: true,
+      selectedCandidates: 9,
+      processedCandidates: 8,
+      deferredCandidates: 1,
+      snapshots: 8,
+    });
+
+    installFakeChatEventR2(context, recordedPuts);
+    mockNow(new Date(startedAt.getTime() + 11 * 60 * 1000));
+    const resumed = await runSnapshotCron(threadIds);
+    expect(resumed).toMatchObject({
+      success: true,
+      selectedCandidates: 1,
+      processedCandidates: 1,
+      deferredCandidates: 0,
+      snapshots: 1,
+    });
+    expect(recordedPuts).toHaveLength(9);
+    expect(
+      new Set(
+        recordedPuts.map((put) => {
+          return put.key;
+        }),
+      ).size,
+    ).toBe(9);
+  }, 120_000);
+
+  it("times out one candidate and resumes it without duplicate publication", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Timed snapshot agent",
+    });
+    const threadIds = [
+      await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        prompt: `timed-snapshot-first-${randomUUID()}`,
+      }),
+      await sendNoCreditMessage(owner, {
+        agentId: agent.agentId,
+        prompt: `timed-snapshot-second-${randomUUID()}`,
+      }),
+    ];
+    await projectChatEventSearch(...threadIds);
+    context.mocks.abortSignal.timeout.mockReturnValueOnce(
+      AbortSignal.abort(
+        new DOMException("Snapshot candidate timed out", "TimeoutError"),
+      ),
+    );
+
+    const first = await runSnapshotCron(threadIds);
+    expect(first).toMatchObject({
+      success: true,
+      selectedCandidates: 2,
+      processedCandidates: 2,
+      deferredCandidates: 0,
+      snapshots: 1,
+      skippedFailedHeads: 0,
+      skippedTimedOutHeads: 1,
+    });
+
+    context.mocks.abortSignal.timeout.mockReset();
+    const resumed = await runSnapshotCron(threadIds);
+    expect(resumed).toMatchObject({
+      success: true,
+      selectedCandidates: 1,
+      processedCandidates: 1,
+      deferredCandidates: 0,
+      snapshots: 1,
+      skippedTimedOutHeads: 0,
+    });
+    expect(recordedPuts).toHaveLength(2);
+    expect(
+      new Set(
+        recordedPuts.map((put) => {
+          return put.key;
+        }),
+      ).size,
+    ).toBe(2);
+  }, 90_000);
+
+  it("propagates request cancellation without moving the exact pointer", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Cancelled snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `cancelled-snapshot-parent-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+    await runSnapshotCron([threadId]);
+    const parentHead = await readChatEventSnapshotHead(context, threadId);
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `cancelled-snapshot-tail-${randomUUID()}`,
+    });
+    await projectChatEventSearch(threadId);
+
+    const controller = new AbortController();
+    installFakeChatEventR2(context, recordedPuts, (put) => {
+      if (put.key.startsWith(`chat-events/${threadId}/`)) {
+        controller.abort(
+          new DOMException("Snapshot request cancelled", "AbortError"),
+        );
+      }
+      return Promise.resolve();
+    });
+    context.mocks.axiom.ingest.mockClear();
+
+    await expect(
+      runSnapshotCron([threadId], [], controller.signal),
+    ).rejects.toThrow("Unknown response status 500");
+    expect(controller.signal.aborted).toBeTruthy();
+    expect(snapshotCompletionEvents()).toHaveLength(0);
+    await expect(
+      readChatEventSnapshotHead(context, threadId),
+    ).resolves.toStrictEqual(parentHead);
+  }, 90_000);
 
   it("normalizes duplicate IDs and their resolved historical references deterministically", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
