@@ -48,7 +48,7 @@
 //! [`job discovery`](https://github.com/vm0-ai/vm0/blob/main/crates/runner/src/cmd/start/job_discovery.rs#L976-L1004),
 //! [`sandbox finalization`](https://github.com/vm0-ai/vm0/blob/main/crates/runner/src/cmd/start/sandbox_finalization.rs#L697-L732),
 //! and the focused
-//! [`cancellation tests`](https://github.com/vm0-ai/vm0/blob/main/crates/runner/src/run_cancellation.rs#L276-L349).
+//! [`cancellation tests`](https://github.com/vm0-ai/vm0/blob/main/crates/runner/src/run_cancellation.rs#L395-L494).
 //! The job-discovery-specific ownership lifecycle is described in
 //! [issue #30953](https://github.com/vm0-ai/vm0/issues/30953).
 
