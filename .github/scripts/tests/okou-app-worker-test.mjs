@@ -185,11 +185,24 @@ const builtIndexTemplate = indexTemplate
   )
   .replaceAll("__VM0_CLERK_PRODUCTION_PRIMARY_APP_DOMAIN__", "app.vm0.ai")
   .replaceAll("__VM0_CLERK_BROWSER_SCRIPT_URL__", clerkBrowserScriptUrl);
+const embeddedIndexTemplate = builtIndexTemplate
+  .replace(
+    "</head>",
+    [
+      '<link id="vm0-main-stylesheet" rel="preload" as="style" href="https://static.okou.io/okou-app/assets/index-Test1234.css" />',
+      '<link rel="modulepreload" href="https://static.okou.io/okou-app/assets/vendor-Test1234.js" />',
+      "</head>",
+    ].join("\n"),
+  )
+  .replace(
+    "</body>",
+    '<script type="module" src="https://static.okou.io/okou-app/assets/index-Test1234.js"></script>\n</body>',
+  );
 const embeddedWorker = workerModule.createWorker({
   icon192: new TextEncoder().encode("icon-192").buffer,
   icon512: new TextEncoder().encode("icon-512").buffer,
   icon512Maskable: new TextEncoder().encode("icon-maskable").buffer,
-  indexHtml: builtIndexTemplate.replace(
+  indexHtml: embeddedIndexTemplate.replace(
     '<meta name="vm0-api-origin" content="" />',
     `<meta name="vm0-api-origin" content="${previewOrigin}" />`,
   ),
@@ -541,6 +554,36 @@ assert.equal(
   previewOrigin,
 );
 assert.equal(htmlAttribute(embeddedHtml, "data-app-brand-name"), "Okou");
+assert.match(
+  embeddedHtml,
+  /https:\/\/pr-25304-app-okou-app-preview\.vm0\.workers\.dev\/okou-app\/assets\/index-Test1234\.js/u,
+);
+assert.match(
+  embeddedHtml,
+  /https:\/\/pr-25304-app-okou-app-preview\.vm0\.workers\.dev\/okou-app\/assets\/index-Test1234\.css/u,
+);
+assert.match(
+  embeddedHtml,
+  /https:\/\/pr-25304-app-okou-app-preview\.vm0\.workers\.dev\/okou-app\/assets\/vendor-Test1234\.js/u,
+);
+assert.doesNotMatch(
+  embeddedHtml,
+  /https:\/\/static\.okou\.io\/okou-app\/assets\//u,
+);
+
+const embeddedProductionPage = await embeddedWorker.fetch(
+  new Request("https://app.okou.ai/settings/profile"),
+  { PUBLIC_BRAND: "okou" },
+);
+const embeddedProductionHtml = await embeddedProductionPage.text();
+assert.match(
+  embeddedProductionHtml,
+  /https:\/\/static\.okou\.io\/okou-app\/assets\/index-Test1234\.js/u,
+);
+assert.doesNotMatch(
+  embeddedProductionHtml,
+  /https:\/\/app\.okou\.ai\/okou-app\/assets\/index-Test1234\.js/u,
+);
 
 const embeddedServiceWorker = await embeddedWorker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),

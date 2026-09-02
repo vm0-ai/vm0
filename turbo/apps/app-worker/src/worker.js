@@ -120,6 +120,23 @@ function staticAssetUrl(metadata, path) {
   return `${metadata.staticAssetsOrigin}/${path.replace(/^\/+/u, "")}`;
 }
 
+function previewAppAssetHtml(indexHtml, requestUrl) {
+  if (!requestUrl.hostname.toLowerCase().endsWith(".workers.dev")) {
+    return indexHtml;
+  }
+
+  const previewAssetBase = `${requestUrl.origin}${APP_ASSET_PATH_PREFIX}`;
+  return indexHtml
+    .replaceAll(
+      `${VM0_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
+      previewAssetBase,
+    )
+    .replaceAll(
+      `${OKOU_APP_METADATA.staticAssetsOrigin}${APP_ASSET_PATH_PREFIX}`,
+      previewAssetBase,
+    );
+}
+
 function rewriteStaticAssetAttribute(attributeName, staticAssetsOrigin) {
   return {
     element(element) {
@@ -385,7 +402,11 @@ function embeddedShellResponse(request, embeddedShell) {
     requestUrl.pathname,
   );
   const pathname = exactContentType ? requestUrl.pathname : "/index.html";
-  const body = embeddedShellAsset(pathname, embeddedShell);
+  const sourceBody = embeddedShellAsset(pathname, embeddedShell);
+  const body =
+    pathname === "/index.html" && typeof sourceBody === "string"
+      ? previewAppAssetHtml(sourceBody, requestUrl)
+      : sourceBody;
   if (
     (pathname.startsWith("/icons/") && !(body instanceof ArrayBuffer)) ||
     (!pathname.startsWith("/icons/") && typeof body !== "string")
