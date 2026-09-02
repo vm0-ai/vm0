@@ -23,7 +23,7 @@ const BROWSER_SESSION_CARD_SHELL_CLASS =
 const BROWSER_SESSION_CARD_CLASS =
   "zero-chat-card flex w-full flex-col overflow-hidden text-left text-foreground transition-all duration-200";
 const BROWSER_SESSION_CARD_HOVER_CLASS =
-  "hover:scale-[1.015] hover:border-foreground/20";
+  "zero-chat-card-interactive hover:scale-[1.015]";
 
 function BrowserSessionCardShell({
   children,

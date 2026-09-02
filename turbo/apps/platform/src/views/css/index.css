@@ -740,6 +740,13 @@ body {
 .zero-app .zero-chat-card {
   background-color: hsl(var(--card));
 }
+/* These rules are unlayered, so they outrank Tailwind's `utilities` layer: a
+   `hover:border-*` utility on the same element would never apply. Clickable
+   chat cards opt into their hover border here instead, mirroring
+   `.zero-card.cursor-pointer:hover` below. */
+.zero-app .zero-chat-card-interactive:hover {
+  border-color: hsl(var(--foreground) / 0.2);
+}
 
 /* White card: shared border, radius (all white cards except chat bubbles) */
 .zero-app .zero-card {

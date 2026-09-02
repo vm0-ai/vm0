@@ -2234,11 +2234,8 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
     expect(sentPrompt).toBeUndefined();
 
-    // The failed model is excluded from the menu, so the trigger must not
-    // present it as the current choice.
-    expect(
-      within(card).queryByRole("combobox", { name: "GPT 5.6 Sol" }),
-    ).not.toBeInTheDocument();
+    // The failed model is excluded from the menu, so the trigger offers the
+    // placeholder rather than a choice the user cannot make.
     click(within(card).getByRole("combobox", { name: "Switch model" }));
     await expect(
       screen.findByRole("option", { name: /GPT 5\.6 Luna/u }),
