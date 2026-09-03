@@ -1,8 +1,17 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { Sun, Moon, Monitor, Keyboard, Loader2, Palette } from "lucide-react";
+import {
+  Sun,
+  Moon,
+  Monitor,
+  Keyboard,
+  Loader2,
+  Palette,
+  Globe,
+} from "lucide-react";
 import { cn } from "@okouai/ui";
+import { Switch } from "@okouai/ui/components/ui/switch";
 import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -14,11 +23,16 @@ import {
   updateThemePreference$,
 } from "../../../../../signals/theme.ts";
 import { sendMode$ } from "../../../../../signals/send-mode.ts";
+import { cloudBrowserEnabledByDefault$ } from "../../../../../signals/cloud-browser-preference.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
 import {
   updateSendMode$,
   pendingSendMode$,
 } from "../../../../../signals/okou-page/settings/send-mode-preference.ts";
+import {
+  pendingCloudBrowserEnabledByDefault$,
+  updateCloudBrowserEnabledByDefault$,
+} from "../../../../../signals/okou-page/settings/cloud-browser-preference.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
 import { MorningBriefSettings } from "../morning-brief-settings.tsx";
 import { SettingsSectionHeading } from "../settings-section-heading.tsx";
@@ -196,9 +210,63 @@ function EnterBlock() {
   );
 }
 
+function CloudBrowserBlock() {
+  const { t } = useTranslation();
+  const preferenceLoadable = useLoadable(cloudBrowserEnabledByDefault$);
+  const current =
+    preferenceLoadable.state === "hasData" ? preferenceLoadable.data : true;
+  const pending = useGet(pendingCloudBrowserEnabledByDefault$);
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateCloudBrowserEnabledByDefault$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const mutating = updateLoadable.state === "loading";
+  const effective = pending ?? current;
+
+  const handleToggle = (checked: boolean) => {
+    detach(updatePreference(checked, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 bg-card p-4 rounded-xl zero-border sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 items-center gap-4 min-w-0">
+          <div className="shrink-0">
+            <div className="flex h-7 w-7 items-center justify-center">
+              <Globe size={22} className="text-muted-foreground" />
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.settings.preferences.chat.cloudBrowser.title;
+              })}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {t(($) => {
+                return $.settings.preferences.chat.cloudBrowser.description;
+              })}
+            </div>
+          </div>
+        </div>
+        <Switch
+          aria-label={t(($) => {
+            return $.settings.preferences.chat.cloudBrowser.title;
+          })}
+          checked={effective}
+          onCheckedChange={handleToggle}
+          disabled={preferenceLoadable.state !== "hasData" || mutating}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function PreferenceSection() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
+  const cloudBrowserPreferenceEnabled =
+    featureSwitches[FeatureSwitchKey.CloudBrowserPreference] ?? false;
 
   return (
     <div className="flex flex-col gap-8">
@@ -228,12 +296,17 @@ export function PreferenceSection() {
       <section className="flex flex-col gap-3">
         <SettingsSectionHeading
           title={t(($) => {
-            return $.settings.preferences.send.sectionTitle;
+            return cloudBrowserPreferenceEnabled
+              ? $.settings.preferences.chat.sectionTitle
+              : $.settings.preferences.send.sectionTitle;
           })}
           description={t(($) => {
-            return $.settings.preferences.send.description;
+            return cloudBrowserPreferenceEnabled
+              ? $.settings.preferences.chat.description
+              : $.settings.preferences.send.description;
           })}
         />
+        {cloudBrowserPreferenceEnabled ? <CloudBrowserBlock /> : null}
         <EnterBlock />
       </section>
 

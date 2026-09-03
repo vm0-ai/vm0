@@ -5144,6 +5144,14 @@
           "title": "Tema"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Consenti agli agenti di usare un browser cloud nelle nuove chat",
+          "title": "Browser cloud"
+        },
+        "description": "Scegli le impostazioni predefinite per le nuove chat e come inviare i messaggi.",
+        "sectionTitle": "Chat"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Annulla cooldown",

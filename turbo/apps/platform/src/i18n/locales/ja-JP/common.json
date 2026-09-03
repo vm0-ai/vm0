@@ -5078,6 +5078,14 @@
           "title": "テーマ"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "新しいチャットでエージェントがクラウドブラウザを使用できるようにします",
+          "title": "クラウドブラウザ"
+        },
+        "description": "新しいチャットの初期設定とメッセージの送信方法を選択します。",
+        "sectionTitle": "チャット"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "クールダウンを解除",
