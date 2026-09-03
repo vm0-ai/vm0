@@ -716,3 +716,124 @@ async fn active_lease_hides_cached_reuse_key_until_dropped() {
     drop(lease);
     assert_eq!(cache.held_workspace_states().await.len(), 1);
 }
+
+#[tokio::test]
+async fn lock_busy_checkout_reports_local_active_and_finalizing_owners() {
+    let (_dir, _paths, cache) = local_cache().await;
+    let reuse_key = "thread:local-lock-owner";
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let active_lease = cache
+        .lease_active(WorkspaceImageActiveLeaseRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_available: true,
+        })
+        .await;
+
+    let active_contender = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    assert_eq!(
+        active_contender.result(),
+        WorkspaceCacheCheckoutResult::LockBusy
+    );
+    assert_eq!(
+        active_contender.lock_outcome_and_reason(),
+        Some(("busy", Some("active")))
+    );
+
+    let promotion = active_lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id: RunId::new_v4(),
+            sandbox_id,
+            restored_session_identity: None,
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: "2026-09-03T00:00:00.000Z".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+        })
+        .expect("active lease should retain a promotion target");
+    let finalizing_contender = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    assert_eq!(
+        finalizing_contender.result(),
+        WorkspaceCacheCheckoutResult::LockBusy
+    );
+    assert_eq!(
+        finalizing_contender.lock_outcome_and_reason(),
+        Some(("busy", Some("finalizing")))
+    );
+    drop(promotion);
+}
+
+#[tokio::test]
+async fn lock_busy_checkout_reports_unknown_for_another_cache_instance() {
+    let (_dir, paths, owner_cache) = local_cache().await;
+    let contender_cache = WorkspaceImageCache::new_with_fs_stats(
+        paths,
+        FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: TEST_FS_TOTAL_BYTES,
+        },
+    );
+    let reuse_key = "thread:cross-instance-lock-owner";
+    let _active_lease = owner_cache
+        .lease_active(WorkspaceImageActiveLeaseRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_available: true,
+        })
+        .await;
+
+    let contender = contender_cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+
+    assert_eq!(contender.result(), WorkspaceCacheCheckoutResult::LockBusy);
+    assert_eq!(
+        contender.lock_outcome_and_reason(),
+        Some(("busy", Some("unknown")))
+    );
+}

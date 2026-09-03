@@ -127,8 +127,8 @@ use crate::executor::{
 };
 use crate::guest_timezone::{GuestTimezoneAssumption, GuestTimezoneIntent};
 use crate::idle_pool::{
-    DestroyOutcome, IdlePoolSnapshot, IdleUnparkResult, ReservedIdleSandbox,
-    RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
+    DestroyOutcome, ExactIdleReservationMiss, IdlePoolSnapshot, IdleUnparkResult,
+    ReservedIdleSandbox, RestoreReservedIdleResult, ReusableIdleSandbox, SpeculativeIdleSandbox,
     SpeculativeIdleUnparkResult, SpeculativeReparkResult,
 };
 use crate::ids::RunId;
@@ -1603,6 +1603,27 @@ pub(super) async fn reserve_reusable_idle_for_spawn(
         (reservation, snapshot)
     };
     Some(ReservedIdleActivation::new(reservation, snapshot))
+}
+
+pub(super) async fn reserve_exact_idle_for_spawn(
+    reuse_key: &str,
+    profile_name: &str,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    history_generation_run_id: RunId,
+    ctx: &SpawnContext,
+) -> Result<ReservedIdleActivation, ExactIdleReservationMiss> {
+    let (reservation, snapshot) = {
+        let mut pool = ctx.idle_pool.lock().await;
+        let reservation = pool.reserve_reusable_generation_with_reason(
+            reuse_key,
+            profile_name,
+            device_rate_limits,
+            history_generation_run_id,
+        )?;
+        let snapshot = pool.status_snapshot();
+        (reservation, snapshot)
+    };
+    Ok(ReservedIdleActivation::new(reservation, snapshot))
 }
 
 pub(super) async fn rollback_reserved_idle_for_spawn(
