@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.831.2](https://github.com/vm0-ai/vm0/compare/app-v0.831.1...app-v0.831.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agent:** lock default agent name ([#31440](https://github.com/vm0-ai/vm0/issues/31440)) ([1c40b16](https://github.com/vm0-ai/vm0/commit/1c40b16066635e282d31752e6ce654b1422f5ecb))
+* **platform:** prevent unsolicited video openings and endings ([#31484](https://github.com/vm0-ai/vm0/issues/31484)) ([9d237ab](https://github.com/vm0-ai/vm0/commit/9d237ab0d976d3a73278effb9a700f881d2bfe30))
+* **platform:** remove new chat from chat list menu ([#31473](https://github.com/vm0-ai/vm0/issues/31473)) ([4c05cd1](https://github.com/vm0-ai/vm0/commit/4c05cd11de063ed34f172572ae1ee2553103c1a9))
+* **platform:** use adaptive favicon ([#31451](https://github.com/vm0-ai/vm0/issues/31451)) ([4a4a164](https://github.com/vm0-ai/vm0/commit/4a4a16434653b58a5ee32a00f7a6ccb8409f1d1b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.2
+
 ## [0.831.1](https://github.com/vm0-ai/vm0/compare/app-v0.831.0...app-v0.831.1) (2026-09-03)
 
 
