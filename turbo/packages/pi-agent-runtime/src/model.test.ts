@@ -7,6 +7,7 @@ const OPENAI_TERRA = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "test-key",
   model: "gpt-5.6-terra",
+  dialect: "openai-responses",
 } as const;
 
 describe("Pi agent model adapter", () => {
@@ -93,6 +94,7 @@ describe("Pi agent model adapter", () => {
         ...config,
         apiKey: "test-key",
         api: "openai-completions",
+        dialect: "openai-responses",
       });
 
       expect(model).toMatchObject({
@@ -113,6 +115,7 @@ describe("Pi agent model adapter", () => {
         baseUrl: "https://openrouter.ai/api/v1",
         apiKey: "test-key",
         model: "openai/gpt-5.6-sol",
+        dialect: "openai-responses",
       }),
     ).toMatchObject({
       id: "openai/gpt-5.6-sol",
@@ -140,6 +143,7 @@ describe("Pi agent model adapter", () => {
           ...config,
           baseUrl: "https://gateway.example.com/v1",
           apiKey: "unused",
+          dialect: "openai-responses",
         }),
       ).toMatchObject({
         id: config.model,
@@ -165,6 +169,7 @@ describe("Pi agent model adapter", () => {
         ...config,
         baseUrl: "https://example.invalid/v1",
         apiKey: "test-key",
+        dialect: "openai-responses",
       }),
     ).toBeNull();
   });

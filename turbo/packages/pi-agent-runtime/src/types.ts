@@ -45,7 +45,7 @@ export interface PiAgentModelConfig {
   /** Execution-edge headers that override provider defaults case-insensitively. */
   readonly requestHeaders?: PiAgentRequestHeaders;
   /** Authoritative native adapter selected by the materialized route. */
-  readonly dialect?: PiAgentDialect;
+  readonly dialect: PiAgentDialect;
   /** Explicit ChatGPT account identity required by the Codex dialect. */
   readonly accountId?: string;
   /** Route-owned transport policy. Codex subscriptions are SSE-only. */

@@ -275,7 +275,7 @@ export function piAgentStreamForConfig(
         ? {}
         : { serviceTier: config.serviceTier }),
     };
-    if ((config.dialect ?? "openai-responses") === "openai-responses") {
+    if (config.dialect === "openai-responses") {
       if (!isResponsesModel(model)) {
         throw new Error(
           `Pi public Responses route received unexpected ${model.api} model`,
@@ -314,7 +314,7 @@ export function resolvePiAgentModel(
   if (!source) {
     return null;
   }
-  const dialect = config.dialect ?? "openai-responses";
+  const dialect = config.dialect;
   if (dialect === "openai-responses" && config.provider === "openai-codex") {
     return null;
   }
