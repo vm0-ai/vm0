@@ -571,6 +571,22 @@ function connectorAccountSearchIsVisible(
   );
 }
 
+function enrichedDefaultConnection(
+  accounts: ConnectorAccountList,
+  summarizedDefault: ConnectorAccountConnection | null,
+): ConnectorAccountConnection | null {
+  if (!summarizedDefault) {
+    return null;
+  }
+  // Summaries intentionally omit opt-in list enrichment. Prefer the matching
+  // list row so the pinned default account retains its scope review state.
+  return (
+    accounts.connections.find((account) => {
+      return account.id === summarizedDefault.id;
+    }) ?? summarizedDefault
+  );
+}
+
 export function ConnectorAccountManagerDialog({
   target,
   connectorLabel,
@@ -598,8 +614,11 @@ export function ConnectorAccountManagerDialog({
     summariesLoadable.state === "hasData" &&
     accountsLoadable.state === "hasData" &&
     accountsLoadable.data.available
-      ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
-          ?.defaultConnection ?? null)
+      ? enrichedDefaultConnection(
+          accountsLoadable.data,
+          summariesLoadable.data.get(connectorAccountTargetKey(target))
+            ?.defaultConnection ?? null,
+        )
       : null;
   const showSearch = connectorAccountSearchIsVisible(search, accountsLoadable);
   const leave = (next: () => void) => {
@@ -607,9 +626,8 @@ export function ConnectorAccountManagerDialog({
     next();
   };
   const reconnect = accountActionAfterLeave(leave, onReconnect);
-  const reviewScopes = onReviewScopes
-    ? accountActionAfterLeave(leave, onReviewScopes)
-    : undefined;
+  const reviewScopes =
+    onReviewScopes && accountActionAfterLeave(leave, onReviewScopes);
   return (
     <Dialog
       open

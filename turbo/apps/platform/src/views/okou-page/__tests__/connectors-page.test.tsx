@@ -2703,7 +2703,7 @@ describe("connectors page", () => {
         ...account,
         connectionStatus: "connected" as const,
         reconnectReason: null,
-        scopeMismatch: !account.isDefault,
+        scopeMismatch: true,
       };
     });
     const defaultAccount = accounts.find((account) => {
@@ -2715,12 +2715,15 @@ describe("connectors page", () => {
     if (!defaultAccount || !personalAccount) {
       throw new Error("Expected default and non-default GitHub accounts");
     }
+    const { scopeMismatch: defaultScopeMismatch, ...summaryDefaultAccount } =
+      defaultAccount;
+    expect(defaultScopeMismatch).toBeTruthy();
     let projectedDefaultId = defaultAccount.id;
     context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
       const defaultConnection =
         projectedDefaultId === personalAccount.id
           ? { ...personalAccount, isDefault: true }
-          : defaultAccount;
+          : summaryDefaultAccount;
       return respond(200, {
         summaries: [
           {
@@ -2801,6 +2804,8 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(listEnrichmentValues).toStrictEqual(["true"]);
     });
+    const defaultRow = accountRow(manager, "Unnamed account");
+    expect(within(defaultRow).getByText("Update permissions")).toBeVisible();
     const personalRow = await waitFor(() => {
       return accountRow(manager, personalAccount.displayName ?? "");
     });
