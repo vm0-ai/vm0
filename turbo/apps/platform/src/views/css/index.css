@@ -21,7 +21,6 @@
     "Noto Color Emoji", sans-serif;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
@@ -699,7 +698,6 @@ body {
 
 /* Zero left nav */
 .zero-nav {
-  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
 }
 .zero-app[data-gradient-color-themes] .zero-nav {
@@ -719,7 +717,7 @@ body {
   background-color: hsl(var(--zero-nav-rail));
 }
 :where([data-theme="dark"]) .zero-nav {
-  --color-sidebar: hsl(30 4.3% 10.5%);
+  --color-sidebar: hsl(var(--gray-0));
 }
 
 /* Morandi outline buttons */
