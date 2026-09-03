@@ -31,7 +31,11 @@
  * our own chroma. Rotating hue at fixed S and L cannot change chroma
  * (C = (1-|2L-1|)*S has no hue term), so each stop keeps its exact lightness and
  * its exact red-to-blue spread; only the green channel moves, by one or two.
- * Linen becomes #faf8f3 and survives unrotated as `--color-brand-linen`.
+ *
+ * Linen moves with them: the brand neutral is #faf8f3, and it is `--gray-100`.
+ * The published #faf5f3 is the same lightness and the same spread with green
+ * three lower, and is superseded rather than kept alongside -- a brand colour
+ * the ramp cannot contain is a brand colour the product cannot use.
  *
  * The other half of Slack's harmony is placement: it spends that saturated cream
  * on 3.6% of the frame and leaves 57% pure white. Warmth belongs on chrome, not
@@ -135,11 +139,6 @@
    * brand appears as a wash behind text or as text itself, and keep the raw
    * stops for fills that already pair with `--primary-foreground`.
    * =================================== */
-  /* The published brand neutral. The ramp is tuned for harmony rather than
-     pinned to it, so this is where #faf5f3 lives; reach for it on a surface
-     that should read as brand rather than as chrome. */
-  --color-brand-linen: #faf5f3;
-
   --color-brand-subtle: hsl(var(--brand-subtle));
   --color-brand-text: hsl(var(--brand-text));
   --color-brand-text-hover: hsl(var(--brand-text-hover));
