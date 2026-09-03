@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { initContract } from "./base";
 import { connectorRuntimeTargetsSchema } from "./runners";
-import { runFailureReasonSchema } from "./run-failure-reasons";
+import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 
 const c = initContract();
 
@@ -73,6 +73,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("read-run-failure-reason"),
     run_id: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("set-run-model-provider"),
+    run_id: z.uuid(),
+    model_provider: z.string().nullable(),
   }),
   z.object({
     action: z.literal("save-run-summary"),
@@ -296,10 +301,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     profile: z.string(),
   }),
   z.object({
-    action: z.literal("set-runner-job-pi-ownership-transfer-as-previous-api"),
-    run_id: z.uuid(),
-  }),
-  z.object({
     action: z.literal(
       "clear-workflow-automation-event-connector-as-previous-api",
     ),
@@ -325,7 +326,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   usage_pack_invitation_schema_available: z.boolean().optional(),
   usage_pack_purchase_serialization_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
-  failure_reason: runFailureReasonSchema.nullable().optional(),
+  failure_reason: runFailureReasonTokenSchema.nullable().optional(),
   workflow_automation_state: z
     .object({
       autonomy_budget: z.int().min(0).max(10),

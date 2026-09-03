@@ -19,7 +19,10 @@ import {
   type ObjectUrlResource,
 } from "../object-url-resource.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import type { ImageAnnotation } from "@okouai/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadArtifactGoogleDriveRecovery,
+  ImageAnnotation,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { createZoomableImageCanvasSignals } from "../zoomable-image-canvas.ts";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +32,7 @@ import { createZoomableImageCanvasSignals } from "../zoomable-image-canvas.ts";
 const LIGHTBOX_DIALOG_EXIT_DURATION_MS = 180;
 
 export type AttachmentArtifactMetadata = {
+  readonly googleDriveAccountReady: boolean;
   readonly agentId?: string | null;
   readonly artifactKind?: "hosted-site" | "presentation-html";
   readonly contentType: string;
@@ -36,6 +40,9 @@ export type AttachmentArtifactMetadata = {
   readonly fileId: string;
   readonly filename: string;
   readonly googleDriveDisconnected: boolean;
+  readonly googleDriveRecovery:
+    | ChatThreadArtifactGoogleDriveRecovery
+    | undefined;
   readonly googleDriveSynced: boolean;
   readonly onSyncSuccess?: () => void;
   readonly runId: string;

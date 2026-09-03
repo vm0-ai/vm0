@@ -150,11 +150,12 @@ async fn submit_serializes_env_and_secret_env() {
         "URL=https://example.test/path?a=1&b=2".into(),
         "EMPTY=".into(),
         "MULTILINE=line1\nline2".into(),
-        "VM0_STUCK_TOOL_TIMEOUT_SECS=3".into(),
+        "VM0_FUTURE_RUNNER_KEY=ordinary-vm0-value".into(),
     ];
     args.secret_env = vec![
         "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
         "PRIVATE_KEY=-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----".into(),
+        "VM0_TEST_VALUE=ordinary-vm0-secret".into(),
     ];
 
     let (code, request) = run_submit_and_write_success(args, home).await.unwrap();
@@ -173,10 +174,8 @@ async fn submit_serializes_env_and_secret_env() {
         Some("line1\nline2")
     );
     assert_eq!(
-        environment
-            .get("VM0_STUCK_TOOL_TIMEOUT_SECS")
-            .map(String::as_str),
-        Some("3")
+        environment.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
+        Some("ordinary-vm0-value")
     );
     assert_eq!(
         secret_environment
@@ -187,6 +186,10 @@ async fn submit_serializes_env_and_secret_env() {
     assert_eq!(
         secret_environment.get("PRIVATE_KEY").map(String::as_str),
         Some("-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----")
+    );
+    assert_eq!(
+        secret_environment.get("VM0_TEST_VALUE").map(String::as_str),
+        Some("ordinary-vm0-secret")
     );
 }
 
@@ -221,7 +224,7 @@ async fn rejects_invalid_env_entries_before_submit() {
             "NUL characters",
         ),
         (
-            vec!["VM0_PROMPT=value".to_string()],
+            vec!["USE_MOCK_CLAUDE=true".to_string()],
             Vec::new(),
             "runner-owned environment variables",
         ),
@@ -236,11 +239,6 @@ async fn rejects_invalid_env_entries_before_submit() {
             "runner-owned environment variables",
         ),
         (
-            Vec::new(),
-            vec!["VM0_STUCK_TOOL_TIMEOUT_SECS=3".to_string()],
-            "must be passed with --env",
-        ),
-        (
             vec!["FOO=1".to_string(), "FOO=2".to_string()],
             Vec::new(),
             "duplicate --env key 'FOO'",
@@ -251,7 +249,6 @@ async fn rejects_invalid_env_entries_before_submit() {
             "across --env and --secret-env",
         ),
     ];
-
     for (env, secret_env, expected) in cases {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());

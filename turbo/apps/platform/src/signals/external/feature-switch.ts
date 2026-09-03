@@ -127,6 +127,10 @@ export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
 
+export const voiceDraftEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.VoiceDraft] ?? false;
+});
+
 const hydrateFeatureSwitch$ = command(
   async (
     { get, set },
@@ -220,6 +224,16 @@ export const setFeatureSwitch$ = command(
       }),
       [200],
     );
+    signal.throwIfAborted();
+    await set(reloadFeatureSwitch$, signal);
+  },
+);
+
+export const resetFeatureSwitches$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const client = get(apiFeatureSwitchClient$);
+    signal.throwIfAborted();
+    await accept(client.delete({ fetchOptions: { signal } }), [200]);
     signal.throwIfAborted();
     await set(reloadFeatureSwitch$, signal);
   },

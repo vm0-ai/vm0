@@ -271,9 +271,13 @@ export function validateConnectorCatalogPublicProjection(
     new Set(),
   );
   for (const connector of artifact.connectors) {
+    // A connector slug is public identity even when a private storage name
+    // produces the same credential-like token. Exclude only the exact slug.
+    const sensitiveValues = new Set(connectorCatalogSensitiveValues(connector));
+    sensitiveValues.delete(connector.slug);
     assertPublicValueHasNoPrivateFields(
       publicConnector(connector),
-      connectorCatalogSensitiveValues(connector),
+      sensitiveValues,
       `$.connectors[${connector.slug}]`,
     );
   }

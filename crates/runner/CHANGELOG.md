@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.184.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.7...runner-rs-v0.184.8) (2026-09-03)
+
+## [0.184.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.6...runner-rs-v0.184.7) (2026-09-03)
+
+
+### Bug Fixes
+
+* **runner:** include legacy timezone links in guest images ([#31295](https://github.com/vm0-ai/vm0/issues/31295)) ([6aa441c](https://github.com/vm0-ai/vm0/commit/6aa441c1d7da92128d98a6d5f95364c7e69cb57b))
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
+## [0.184.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.5...runner-rs-v0.184.6) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
+## [0.184.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.4...runner-rs-v0.184.5) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** reclassify run payload field identifiers ([#31244](https://github.com/vm0-ai/vm0/issues/31244)) ([3b475f2](https://github.com/vm0-ai/vm0/commit/3b475f25121716295b2edcfefe3d4c9143c6d671))
+* **runtime:** remove retired working-directory environment tombstone ([#31239](https://github.com/vm0-ai/vm0/issues/31239)) ([9fbce0e](https://github.com/vm0-ai/vm0/commit/9fbce0e91a45dda92802f927d8a31539876d3f97))
+
+## [0.184.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.3...runner-rs-v0.184.4) (2026-09-02)
+
+
+### Refactoring
+
+* **pi:** remove ownership transfer capability marker ([#31216](https://github.com/vm0-ai/vm0/issues/31216)) ([fb22db1](https://github.com/vm0-ai/vm0/commit/fb22db17eca15ebfcd5479388ff9a163be0ef500))
+
+## [0.184.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.2...runner-rs-v0.184.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **runner:** report authoritative provider failure reasons ([#31163](https://github.com/vm0-ai/vm0/issues/31163)) ([b84e233](https://github.com/vm0-ai/vm0/commit/b84e2334f9e370b59a299b00250fc037d90538dd))
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
 ## [0.184.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.1...runner-rs-v0.184.2) (2026-09-02)
 
 

@@ -1234,6 +1234,9 @@ const registerUserMessageRenderPart$ = command(
       case "template": {
         return { type: "template", part };
       }
+      case "voice": {
+        return { type: "voice", part };
+      }
       case "automation": {
         return { type: "automation", part };
       }

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import {
@@ -390,7 +390,7 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {
+  it("preserves an optional V7 failure reason while appending a tail", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "No-conflict snapshot agent",
@@ -407,6 +407,32 @@ describe("cron snapshot chat events", () => {
       throw new Error("Expected a no-conflict parent snapshot");
     }
     const parentHead = await readChatEventSnapshotHead(context, threadId);
+    const parentRows = archivedLines(parentPut.body);
+    const firstParentRow = parentRows[0];
+    if (firstParentRow === undefined) {
+      throw new Error("Expected a non-empty parent snapshot");
+    }
+    const prefixBody = Buffer.from(
+      parentRows
+        .map((row) => {
+          return `${JSON.stringify(
+            row.id === firstParentRow.id
+              ? {
+                  ...row,
+                  eventType: "run.failed",
+                  runId: randomUUID(),
+                  payload: { error: "provider unavailable" },
+                  failureReason: "future_reason",
+                }
+              : row,
+          )}\n`;
+        })
+        .join(""),
+    );
+    const compressedPrefix = gzipSync(prefixBody);
+    const prefixObjectKey = `chat-events/${threadId}/${parentHead.last_seq_id.toString()}-r1-${createHash("sha256").update(compressedPrefix).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(prefixObjectKey, compressedPrefix);
+    await updateChatEventSnapshotHead(context, threadId, prefixObjectKey);
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId,
@@ -420,7 +446,7 @@ describe("cron snapshot chat events", () => {
 
     const expectedBody = gzipSync(
       Buffer.concat([
-        gunzipSync(parentPut.body),
+        prefixBody,
         Buffer.from(
           tailRows
             .map((row) => {
@@ -451,6 +477,13 @@ describe("cron snapshot chat events", () => {
       throw new Error("Expected a no-conflict child snapshot");
     }
     expect(nextPut.body).toStrictEqual(expectedBody);
+    expect(archivedLines(nextPut.body)).toContainEqual(
+      expect.objectContaining({
+        id: firstParentRow.id,
+        eventType: "run.failed",
+        failureReason: "future_reason",
+      }),
+    );
     expect(
       context.mocks.axiomLogging.warn.mock.calls.some((call) => {
         return call[0] === DUPLICATE_EVENT_ID_WARNING;

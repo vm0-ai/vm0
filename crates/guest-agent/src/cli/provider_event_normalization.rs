@@ -288,7 +288,7 @@ mod tests {
             managed[..envelope_end].to_string(),
             format!(
                 "exec {} --shell \"$0\"",
-                guest_contracts::process_containment::TOOL_EXEC_PATH
+                guest_contracts::guest_binary::TOOL_EXEC_PATH
             ),
         ];
         for command in invalid {
@@ -328,7 +328,7 @@ mod tests {
 
         let malformed = format!(
             "exec {} --command-envelope=vm0.command.v1.12.cHJpbnRm --shell \"$0\"",
-            guest_contracts::process_containment::TOOL_EXEC_PATH
+            guest_contracts::guest_binary::TOOL_EXEC_PATH
         );
         let event = json!({
             "type": "assistant",

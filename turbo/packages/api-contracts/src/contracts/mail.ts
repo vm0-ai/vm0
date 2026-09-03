@@ -34,6 +34,7 @@ const mailDraftBaseSchema = z.object({
   bodyHtml: z.string().optional(),
   inlineImages: z.array(mailInlineImageSchema).optional(),
   accessStatus: z.enum(["ready", "reconnect"]).optional(),
+  reconnectConnectionId: z.uuid().optional(),
   replyTo: z.string().optional(),
   inReplyTo: z.string().optional(),
   references: z.array(z.string()),

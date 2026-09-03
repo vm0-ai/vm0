@@ -23,6 +23,7 @@ import { cronReconcileSocialKitDownloadRoutes } from "./routes/cron-reconcile-so
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronMaterializeMemorySummariesRoutes } from "./routes/cron-materialize-memory-summaries";
+import { cronExtractPiMemoryStage1Routes } from "./routes/cron-extract-pi-memory-stage1";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronBrowserReconcileRoutes } from "./routes/cron-browser-reconcile";
 import { cronSteerRunTimeBudgetRoutes } from "./routes/cron-steer-run-time-budget";
@@ -34,7 +35,6 @@ import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
 import { githubOauthRoutes } from "./routes/github-oauth";
-import { modelStatsRoutes } from "./routes/model-stats";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { userExportRoutes } from "./routes/user-export";
@@ -186,6 +186,7 @@ import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { avatarVideoRoutes } from "./routes/avatar-video";
 import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
+import { voiceIoPolishRoutes } from "./routes/voice-io-polish";
 import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
 import { voiceIoSttRoutes } from "./routes/voice-io-stt";
 import { videoIoGenerateRoutes } from "./routes/video-io-generate";
@@ -240,6 +241,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronMaterializeMemorySummariesRoutes,
+  ...cronExtractPiMemoryStage1Routes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronBrowserReconcileRoutes,
   ...cronSteerRunTimeBudgetRoutes,
@@ -311,6 +313,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...meModelProvidersResetSubscriptionRoutes,
   ...meModelProvidersUpsertRoutes,
   ...voiceIoQuotaRoutes,
+  ...voiceIoPolishRoutes,
   ...voiceIoSpeechRoutes,
   ...voiceIoSttRoutes,
   ...webDownloadRoutes,
@@ -383,6 +386,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...registryResourceDownloadRoutes,
   ...usageMembersRoutes,
   ...usageRecordRoutes,
-  ...modelStatsRoutes,
   ...runnersRoutes,
 ];

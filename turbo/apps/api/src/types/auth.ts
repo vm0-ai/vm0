@@ -49,6 +49,7 @@ export type AgentAuthContext =
       readonly capabilities: readonly Capability[];
       readonly publicBrand: PublicBrand;
       readonly computerUseHostId?: string;
+      readonly customConnectorSourceIds?: Readonly<Record<string, string>>;
     }
   | {
       readonly tokenType: "agent";
@@ -87,6 +88,7 @@ export interface AgentAuth {
   readonly publicBrand: PublicBrand;
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: true;
+  readonly customConnectorSourceIds?: Readonly<Record<string, string>>;
 }
 
 export interface CliAuth {

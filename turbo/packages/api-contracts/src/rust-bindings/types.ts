@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { knownRunFailureReasonSchema } from "../contracts/run-failure-reasons";
 import { modelProviderCodexRuntimeConfigSchema } from "../contracts/model-providers";
 import {
   activeInputDeliveryReserveResponseSchema,
@@ -167,6 +168,25 @@ export const rustTypeBindings = [
         fields: {
           schemaVersion: ["Pi launch contract version."],
           apiFirstTurn: ["Configuration for the API-mediated first turn."],
+          memoryRecall: [
+            "Optional frozen memory-summary selection for API and Sandbox parity.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiLaunchConfigMemoryRecall",
+        rustDoc: ["Frozen exact-version Pi memory recall selection."],
+        fields: {
+          memoryStorageId: ["Canonical memory Storage identity."],
+          storageVersionId: ["Exact pinned Storage version identity."],
+          content: ["Authenticated frozen root summary content."],
+          sourceHash: ["Lowercase SHA-256 of the frozen summary bytes."],
+          sourceSize: ["Exact frozen summary byte size."],
+          tokenCount: ["Exact o200k token count of the frozen summary."],
+        },
+        variants: {
+          "no-content": ["The launch epoch intentionally contains no memory."],
+          ready: ["The launch epoch contains an authenticated summary."],
         },
       },
       {
@@ -184,18 +204,6 @@ export const rustTypeBindings = [
           sandboxEventSequenceStart: [
             "First sandbox event sequence number for the resumed session.",
           ],
-          ownershipTransfer: [
-            "Optional proof that the selected Sandbox supports ownership-transfer manifests.",
-          ],
-        },
-      },
-      {
-        rustTypeName: "PiLaunchConfigApiFirstTurnOwnershipTransfer",
-        rustDoc: [
-          "Sandbox capability for the versioned Pi ownership-transfer manifest.",
-        ],
-        fields: {
-          schemaVersion: ["Pi ownership-transfer capability version."],
         },
       },
       {
@@ -220,7 +228,10 @@ export const rustTypeBindings = [
         fields: {
           provider: ["Model provider selected for the Pi runtime."],
           baseUrl: ["Base URL used for model requests."],
-          model: ["Provider model identifier."],
+          model: ["Provider model identifier sent with requests."],
+          catalogModel: [
+            "Optional native Pi catalog model used only for trusted capabilities and limits.",
+          ],
           api: [
             "Cross-version transport input. Current writers emit OpenAI Responses; readers normalize absent or legacy values until the previous API rollback, runner/Sandbox drain, and pre-cutover context gates in #31085 pass.",
           ],
@@ -233,6 +244,19 @@ export const rustTypeBindings = [
           apiKeyEnv: ["Environment variable containing the provider key."],
           credentialSecretName: [
             "API-owned credential secret backing the environment entry.",
+          ],
+          credentialHeader: [
+            "Optional non-secret custom gateway credential header policy.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigCredentialHeader",
+        rustDoc: ["Non-secret custom gateway credential header policy."],
+        fields: {
+          name: ["Request header name."],
+          valueTemplate: [
+            "Header value template containing the credential placeholder exactly once.",
           ],
         },
       },
@@ -556,12 +580,45 @@ export const rustTypeBindings = [
     ],
   },
   {
+    schema: knownRunFailureReasonSchema,
+    rustModulePath: ["webhooks", "agent", "complete"],
+    rustTypeName: "RequestFailureReason",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "RequestFailureReason",
+        rustDoc: ["Known failure reason emitted by current Rust producers."],
+        variants: {
+          session_history_limit: ["Session history exceeded its size limit."],
+          insufficient_credits: ["The provider account lacks credits."],
+          invalid_api_key: ["The configured API key is invalid."],
+          invalid_credentials: ["The configured credentials are invalid."],
+          terms_acceptance_required: [
+            "The provider requires acceptance of updated terms.",
+          ],
+          context_window_exceeded: ["The model context window was exceeded."],
+          output_token_limit: ["The provider output-token limit was reached."],
+          provider_rate_limited: ["The provider rate limited the request."],
+          provider_overloaded: ["The provider reported overload."],
+          provider_stream_timeout: ["The provider stream timed out."],
+          provider_server_error: ["The provider returned a server error."],
+          response_connection_lost: ["The response connection was lost."],
+          safety_policy_refusal: ["The provider refused for safety policy."],
+          reconnect_required: ["The CLI requires reconnecting."],
+          unsupported_model: ["The selected model is unsupported."],
+          usage_limit: ["The provider reported a usage limit."],
+        },
+      },
+    ],
+  },
+  {
     schema: webhookCompleteContract.complete.body,
     rustModulePath: ["webhooks", "agent", "complete"],
     rustTypeName: "Request",
     direction: "request",
     fieldTypeOverrides: {
       exitCode: "i32",
+      failureReason: "String",
       lastEventSequence: "u32",
     },
     declarations: [
@@ -662,30 +719,6 @@ export const rustTypeBindings = [
         rustDoc: ["Volume versions captured by a final checkpoint."],
         fields: {
           versions: ["Volume names mapped to their captured versions."],
-        },
-      },
-      {
-        rustTypeName: "RequestFailureReason",
-        rustDoc: ["Detailed failure reason reported during completion."],
-        variants: {
-          session_history_limit: ["Session history exceeded its size limit."],
-          insufficient_credits: ["The provider account lacks credits."],
-          invalid_api_key: ["The configured API key is invalid."],
-          invalid_credentials: ["The configured credentials are invalid."],
-          terms_acceptance_required: [
-            "The provider requires acceptance of updated terms.",
-          ],
-          context_window_exceeded: ["The model context window was exceeded."],
-          output_token_limit: ["The provider output-token limit was reached."],
-          provider_rate_limited: ["The provider rate limited the request."],
-          provider_overloaded: ["The provider reported overload."],
-          provider_stream_timeout: ["The provider stream timed out."],
-          provider_server_error: ["The provider returned a server error."],
-          response_connection_lost: ["The response connection was lost."],
-          safety_policy_refusal: ["The provider refused for safety policy."],
-          reconnect_required: ["The CLI requires reconnecting."],
-          unsupported_model: ["The selected model is unsupported."],
-          usage_limit: ["The provider reported a usage limit."],
         },
       },
       {

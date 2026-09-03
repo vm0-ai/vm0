@@ -27,6 +27,7 @@ import {
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
@@ -418,6 +419,7 @@ function buildAgentToolsPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
   const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou`;
@@ -465,6 +467,11 @@ function buildAgentToolsPrompt(args: {
     ...buildIntegrationToolsPrompt(args.triggerSource),
     "- Maps, geocoding, directions, and places: use `okou maps --help`.",
     "- Current weather, forecasts, and recent history: use `okou weather --help`.",
+    ...(args.presentationScreenshotEnabled
+      ? [
+          "- Presentation page images: use `okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>` to render any presentation source to ordered `page-001.png` files at one fixed page size. PPT, PPTX, and PDF are rasterised through LibreOffice and Poppler; HTML pages, layout directories, and URLs are captured through a browser, one image per slide. It only writes local image files: it uploads nothing, publishes nothing, and is unrelated to `okou presentation-template publish`, so it is the right tool whenever page images are the goal, including deck-to-video work, review, and analysis. Prefer it over `pdftoppm`, `soffice`, or hand-driven `agent-browser` screenshot calls, because a screenshot of a page the browser never painted looks like a successful screenshot. Run `okou presentation screenshot --help` for the current interface.",
+        ]
+      : []),
     "- Static web artifacts can be published with `okou host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `okou host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `okou connector search <keyword>`. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
     ...(args.connectorAccountsEnabled
@@ -551,6 +558,7 @@ function buildAppendSystemPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
@@ -562,6 +570,7 @@ function buildAppendSystemPrompt(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
       connectorAccountsEnabled: args.connectorAccountsEnabled,
+      presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
@@ -742,6 +751,7 @@ function createRunBody(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
@@ -753,6 +763,7 @@ function createRunBody(args: {
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
     connectorAccountsEnabled: args.connectorAccountsEnabled,
+    presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
   return {
@@ -956,6 +967,10 @@ function buildZeroCreateAgentRunArgs(args: {
         FeatureSwitchKey.ConnectorAccounts,
         args.featureSwitchContext,
       ),
+      presentationScreenshotEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PresentationScreenshot,
+        args.featureSwitchContext,
+      ),
       presentationTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationTemplates,
         args.featureSwitchContext,
@@ -1041,6 +1056,40 @@ interface AgentRunAfterPreCreate {
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
+async function resolvePausedThreadGoalPrompt(
+  db: Db,
+  args: { readonly orgId: string; readonly threadId: string },
+): Promise<string | undefined> {
+  const [goal] = await db
+    .select({ objectiveBrief: threadGoals.objectiveBrief })
+    .from(threadGoals)
+    .where(
+      and(
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.chatThreadId, args.threadId),
+        eq(threadGoals.status, "paused"),
+      ),
+    )
+    .limit(1);
+
+  if (!goal) {
+    return undefined;
+  }
+
+  return `# Thread Goal
+
+Status: paused
+Objective: ${goal.objectiveBrief}
+
+A paused goal does not continue automatically.
+
+Goal CLI:
+- Check: \`okou goal get\`
+- Resume: \`okou goal resume\`
+- Block: \`okou goal block\`
+- Complete: \`okou goal complete\``;
+}
+
 async function resolveThreadSessionForAgentRun(
   db: Db,
   input: AgentRunAfterPreCreate,
@@ -1067,8 +1116,12 @@ async function resolveThreadSessionForAgentRun(
       });
     },
   );
+  const pausedThreadGoalPrompt = await resolvePausedThreadGoalPrompt(db, {
+    orgId: input.command.auth.orgId,
+    threadId,
+  });
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
-  const appendSystemPrompt = webChatSessionPromptContext
+  const sessionPrompt = webChatSessionPromptContext
     ? await measureZeroPreCreate(
         input.timing,
         "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context",
@@ -1082,6 +1135,16 @@ async function resolveThreadSessionForAgentRun(
         },
       )
     : input.command.appendSystemPrompt;
+  const appendSystemPromptParts = [
+    pausedThreadGoalPrompt,
+    sessionPrompt,
+  ].filter((part): part is string => {
+    return Boolean(part);
+  });
+  const appendSystemPrompt =
+    appendSystemPromptParts.length > 0
+      ? appendSystemPromptParts.join("\n\n")
+      : undefined;
   const body: AgentRunCreateBody = { ...input.command.body };
   if (resolution.sessionId) {
     body.sessionId = resolution.sessionId;

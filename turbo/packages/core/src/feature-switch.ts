@@ -233,8 +233,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable the first-class Morning Brief experience in Preferences.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -303,6 +302,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
     enabled: false,
   },
+  [FeatureSwitchKey.PresentationScreenshot]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable local presentation rendering to ordered page screenshots.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -315,16 +321,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
     enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DesktopScreenRecording]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
     enabled: false,
-    // Scoped to the maintainer while the native capture helper is still
-    // unproven outside CI; widen once it has run on real hardware.
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.IosPwaStartupImages]: {
     maintainer: "ethan@vm0.ai",
@@ -349,6 +353,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
+  [FeatureSwitchKey.VoiceDraft]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Keep raw voice transcription as a durable composer draft and polish it before sending.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -366,6 +377,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.BatchChatEventCatchUp]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Catch up unread, active, and recent ChatEvent threads through one throttled SharedWorker batch.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -189,12 +189,6 @@ fn validate_pi_launch_config(value: &serde_json::Value, session_id: &str) -> Res
     if !(1..=i32::MAX as u64).contains(&slot.sandbox_event_sequence_start) {
         return Err("Pi Sandbox event sequence start must be between 1 and 2147483647".to_string());
     }
-    if slot
-        .ownership_transfer
-        .is_some_and(|capability| capability.schema_version != 1)
-    {
-        return Err("Pi ownership-transfer capability schemaVersion must be 1".to_string());
-    }
     if slot.base_session.session_id != session_id {
         return Err("Pi H0 session id does not match pi_session_id".to_string());
     }
@@ -293,18 +287,27 @@ fn validate_codex_runtime_config_field(config: &CodexRuntimeConfig) -> Result<()
         config.env_key.as_str(),
         config.wire_api.as_str(),
     ] {
-        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+        validate_run_payload_field(
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
+            value,
+        )?;
     }
     for (name, value) in config.http_headers.iter().flatten() {
-        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, name)?;
-        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+        validate_run_payload_field(
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
+            name,
+        )?;
+        validate_run_payload_field(
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
+            value,
+        )?;
     }
     if let Some(model_catalog) = &config.model_catalog
         && json_value_contains_nul_string(model_catalog)
     {
         return Err(format!(
             "run payload contains NUL byte for {}",
-            guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV
+            guest_contracts::env::CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD
         ));
     }
     Ok(())
@@ -615,7 +618,6 @@ fn build_env_json_with_host_env_inner(
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),
     );
-    insert_guest_agent_tuning_env(&mut env, context);
     env.insert(
         guest_contracts::env::CANONICAL_API_START_TIME_ENV.into(),
         context
@@ -691,13 +693,16 @@ pub(super) fn prepare_run_payload_for_run(
     let mut settings = String::new();
     if effective_cli_framework(&context.cli_agent_type) == EffectiveCliFramework::ClaudeCode {
         if let Some(values) = &context.disallowed_tools {
-            disallowed_tools =
-                serialize_claude_tool_env(guest_contracts::env::DISALLOWED_TOOLS_ENV, values)?
-                    .unwrap_or_default();
+            disallowed_tools = serialize_claude_tool_env(
+                guest_contracts::env::DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
+                values,
+            )?
+            .unwrap_or_default();
         }
         if let Some(values) = &context.tools {
-            tools = serialize_claude_tool_env(guest_contracts::env::TOOLS_ENV, values)?
-                .unwrap_or_default();
+            tools =
+                serialize_claude_tool_env(guest_contracts::env::TOOLS_RUN_PAYLOAD_FIELD, values)?
+                    .unwrap_or_default();
         }
         if let Some(value) = &context.settings
             && !value.is_empty()
@@ -830,22 +835,6 @@ fn validate_run_payload_for_guest(
     Ok(())
 }
 
-pub(super) fn insert_guest_agent_tuning_env(
-    env: &mut HashMap<String, String>,
-    context: &ExecutionContext,
-) {
-    let Some(user_env) = &context.environment else {
-        return;
-    };
-    for (legacy_input, canonical_bootstrap_output) in
-        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
-    {
-        if let Some(value) = user_env.get(legacy_input) {
-            env.insert(canonical_bootstrap_output.into(), value.clone());
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct HostEnv {
     pub(super) vercel_automation_bypass_secret: Option<String>,
@@ -864,8 +853,8 @@ impl HostEnv {
 }
 
 pub(super) fn is_runner_owned_env_key(key: &str) -> bool {
-    // The entire OKOU_ and VM0_ namespaces are runner-owned. Bootstrap keys
-    // outside them must stay explicit.
+    // The entire OKOU_ namespace and the exact retained local timing inputs are
+    // runner-owned. Bootstrap keys outside that namespace must stay explicit.
     guest_contracts::env::is_runner_owned_env_key(key)
 }
 

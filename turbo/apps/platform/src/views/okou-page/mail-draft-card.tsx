@@ -188,8 +188,12 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
   const selectedMailDraftId = useGet(activeSidebarMailDraftId$);
   const openSidebar = useSet(openThreadMailDraft$);
   const reloadDraft = useSet(signals.reloadDraft$);
+  const reconnectConnectionId =
+    draftLoadable.state === "hasData"
+      ? draftLoadable.data?.reconnectConnectionId
+      : undefined;
   const { connectorIcon, reconnect, reconnectDisabled, reconnecting } =
-    useGmailReconnect(reloadDraft);
+    useGmailReconnect(reconnectConnectionId, reloadDraft);
 
   if (draftLoadable.state === "loading") {
     return (

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command, computed, type Command, type Computed } from "ccstate";
 import type {
+  ChatThreadArtifactGoogleDriveRecovery,
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -78,14 +79,28 @@ type DriveStatusLookup =
       readonly type: "ready";
       readonly syncedByKey: ReadonlyMap<string, DriveSyncResult>;
     }
-  | { readonly type: "disconnected" }
+  | {
+      readonly type: "disconnected";
+      readonly recovery: ChatThreadArtifactGoogleDriveRecovery;
+    }
   | { readonly type: "unknown" };
 
 interface ConnectorTokens {
   readonly accessToken: string;
   readonly connection: ConnectorCredentialConnection;
-  readonly needsReconnect: boolean;
 }
+
+type DriveConnectorAccountResolution =
+  | { readonly type: "resolved"; readonly connectorId: string }
+  | { readonly type: "connect" }
+  | { readonly type: "unavailable" };
+
+type DriveConnectionLoadResult =
+  | { readonly type: "ready"; readonly tokens: ConnectorTokens }
+  | {
+      readonly type: "disconnected";
+      readonly recovery: ChatThreadArtifactGoogleDriveRecovery;
+    };
 
 type DriveRefreshResult =
   | { readonly type: "ok"; readonly accessToken: string }
@@ -130,14 +145,14 @@ async function threadAllowsGoogleDriveArtifactSync(
   return authorization !== undefined;
 }
 
-async function resolveDriveConnectorId(
+async function resolveDriveConnectorAccount(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly threadId: string;
   },
-): Promise<string | null> {
+): Promise<DriveConnectorAccountResolution> {
   const [selection] = await db
     .select({ connectorId: chatThreadConnectorSelections.connectorId })
     .from(chatThreads)
@@ -169,24 +184,35 @@ async function resolveDriveConnectorId(
         : { kind: "default" },
     },
   });
-  return resolution.kind === "resolved" ? resolution.account.connectorId : null;
+  if (resolution.kind === "resolved") {
+    return {
+      type: "resolved",
+      connectorId: resolution.account.connectorId,
+    };
+  }
+  return !selection && resolution.kind === "missing-default"
+    ? { type: "connect" }
+    : { type: "unavailable" };
 }
 
-async function loadDriveTokens(args: {
+async function loadDriveConnection(args: {
   readonly db: ReadonlyDb;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly orgId: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly threadId: string;
   readonly userId: string;
-}): Promise<ConnectorTokens | null> {
-  const connectorId = await resolveDriveConnectorId(args.db, {
+}): Promise<DriveConnectionLoadResult> {
+  const resolution = await resolveDriveConnectorAccount(args.db, {
     orgId: args.orgId,
     userId: args.userId,
     threadId: args.threadId,
   });
-  if (connectorId === null) {
-    return null;
+  if (resolution.type !== "resolved") {
+    return {
+      type: "disconnected",
+      recovery: { action: resolution.type },
+    };
   }
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
@@ -194,18 +220,33 @@ async function loadDriveTokens(args: {
     orgId: args.orgId,
     userId: args.userId,
     connectorSlug: "google-drive",
-    connectorId,
+    connectorId: resolution.connectorId,
   });
   if (loaded.kind !== "ok") {
-    return null;
+    return {
+      type: "disconnected",
+      recovery: { action: "unavailable" },
+    };
   }
   const connection = loaded.connection;
+  if (connection.needsReconnect) {
+    return {
+      type: "disconnected",
+      recovery: {
+        action: "reconnect",
+        connectionId: connection.connectorId,
+      },
+    };
+  }
   const accessTokenValueRef = connectorCredentialRuntimeValueRef(
     connection,
     GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
   );
   if (accessTokenValueRef === null) {
-    return null;
+    return {
+      type: "disconnected",
+      recovery: { action: "unavailable" },
+    };
   }
   const values = await loadConnectorCredentialValues({
     connection,
@@ -215,12 +256,17 @@ async function loadDriveTokens(args: {
   });
   const accessToken = values.get(accessTokenValueRef);
   if (!accessToken) {
-    return null;
+    return {
+      type: "disconnected",
+      recovery: { action: "unavailable" },
+    };
   }
   return {
-    accessToken,
-    connection,
-    needsReconnect: connection.needsReconnect,
+    type: "ready",
+    tokens: {
+      accessToken,
+      connection,
+    },
   };
 }
 
@@ -373,13 +419,15 @@ function resolveGoogleDriveArtifactSyncStatus(
   fileId: string,
 ): ChatThreadArtifactGoogleDriveSync {
   if (lookup.type === "disconnected") {
-    return { status: "disconnected" };
+    return { status: "disconnected", recovery: lookup.recovery };
   }
   if (lookup.type === "unknown") {
-    return { status: "unknown" };
+    return { status: "unknown", accountReady: true };
   }
   const synced = lookup.syncedByKey.get(artifactKey(runId, fileId));
-  return synced ? { status: "synced", ...synced } : { status: "not_synced" };
+  return synced
+    ? { status: "synced", accountReady: true, ...synced }
+    : { status: "not_synced", accountReady: true };
 }
 
 export function applyGoogleDriveArtifactSyncStatuses(
@@ -417,19 +465,13 @@ export function googleDriveArtifactStatusLookup(args: {
 }): Command<Promise<DriveStatusLookup>, [AbortSignal]> {
   return command(async ({ get, set }, signal): Promise<DriveStatusLookup> => {
     if (!args.orgId) {
-      return { type: "disconnected" };
+      return {
+        type: "disconnected",
+        recovery: { action: "unavailable" },
+      };
     }
     const db = get(db$);
     const writeDb = set(writeDb$);
-    const authorized = await threadAllowsGoogleDriveArtifactSync(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      threadId: args.threadId,
-    });
-    signal.throwIfAborted();
-    if (!authorized) {
-      return { type: "disconnected" };
-    }
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
@@ -441,7 +483,7 @@ export function googleDriveArtifactStatusLookup(args: {
     };
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const tokens = await loadDriveTokens({
+    const connection = await loadDriveConnection({
       db,
       orgId: args.orgId,
       userId: args.userId,
@@ -450,9 +492,22 @@ export function googleDriveArtifactStatusLookup(args: {
       snapshot,
     });
     signal.throwIfAborted();
-    if (!tokens || tokens.needsReconnect) {
-      return { type: "disconnected" };
+    if (connection.type === "disconnected") {
+      return connection;
     }
+    const authorized = await threadAllowsGoogleDriveArtifactSync(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      threadId: args.threadId,
+    });
+    signal.throwIfAborted();
+    if (!authorized) {
+      return {
+        type: "disconnected",
+        recovery: { action: "authorize" },
+      };
+    }
+    const { tokens } = connection;
     // Schema-parse failure or transient network error — treat as "unknown"
     // rather than failing the whole artifacts response. Request aborts still
     // propagate; the status deadline remains an unknown provider outcome.
@@ -482,7 +537,13 @@ export function googleDriveArtifactStatusLookup(args: {
       return { type: "unknown" };
     }
     if (files === "reconnect-required") {
-      return { type: "disconnected" };
+      return {
+        type: "disconnected",
+        recovery: {
+          action: "reconnect",
+          connectionId: tokens.connection.connectorId,
+        },
+      };
     }
     return { type: "ready", syncedByKey: buildStatusMap(files) };
   });
@@ -1141,7 +1202,7 @@ export const syncArtifactToGoogleDrive$ = command(
     };
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const tokens = await loadDriveTokens({
+    const connection = await loadDriveConnection({
       db,
       orgId: args.orgId,
       userId: args.userId,
@@ -1150,9 +1211,10 @@ export const syncArtifactToGoogleDrive$ = command(
       snapshot,
     });
     signal.throwIfAborted();
-    if (!tokens || tokens.needsReconnect) {
+    if (connection.type === "disconnected") {
       return badRequestMessage("Connect Google Drive before syncing artifacts");
     }
+    const { tokens } = connection;
 
     const artifact = await loadArtifactFile(db, {
       threadId: args.threadId,

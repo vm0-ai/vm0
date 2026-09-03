@@ -7,6 +7,10 @@ import {
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadEventsContract,
@@ -58,6 +62,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
 const THREAD_PATH = `/chats/${THREAD_ID}`;
 const ARTIFACT_ID = "a0000000-0000-4000-a000-000000000001";
+const SELECTED_DRIVE_CONNECTION_ID = "22222222-2222-4222-8222-222222222222";
 
 type OfficePreviewFixture = {
   readonly filename: string;
@@ -228,6 +233,28 @@ function googleDriveConnector(
     oauthScopes: ["drive.file"],
     connectionStatus: "connected",
     reconnectReason: null,
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function googleDriveAccountConnection(
+  overrides: Partial<ConnectorAccountConnection> = {},
+): ConnectorAccountConnection {
+  return {
+    id: SELECTED_DRIVE_CONNECTION_ID,
+    target: { kind: "builtin", connectorSlug: "google-drive" },
+    authMethod: "oauth",
+    displayName: "Selected Drive",
+    isDefault: false,
+    externalId: "selected-drive-external-id",
+    externalUsername: "selected-drive-user",
+    externalEmail: "selected-drive@example.test",
+    oauthScopes: ["drive.file"],
+    connectionStatus: "reconnect-required",
+    reconnectReason: "authorization_expired_or_revoked",
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
@@ -899,7 +926,10 @@ describe("thread-owned utility sidebar", () => {
       threadArtifactFile(markdownUrl, {
         id: "artifact-drive-agent-notes",
         filename: "drive-agent-notes.md",
-        googleDriveSync: { status: "disconnected" },
+        googleDriveSync: {
+          status: "disconnected",
+          recovery: { action: "authorize" },
+        },
       }),
     ];
 
@@ -918,7 +948,14 @@ describe("thread-owned utility sidebar", () => {
         ],
       ]),
     );
-    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.data.connectors([
+      googleDriveConnector({
+        id: "22222222-2222-4222-8222-222222222222",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+      googleDriveConnector(),
+    ]);
     context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
       return respond(200, { connectors: [] });
     });
@@ -994,13 +1031,15 @@ describe("thread-owned utility sidebar", () => {
 
   it.each([
     {
-      intent: "add",
+      scenario: "legacy add",
       initialConnector: null,
       catalogStatus: googleDriveCatalogStatus(),
       account: { intent: "add" as const },
+      recovery: undefined,
+      accountAware: false,
     },
     {
-      intent: "reconnect",
+      scenario: "legacy reconnect",
       initialConnector: googleDriveConnector({
         connectionStatus: "reconnect-required",
         reconnectReason: "authorization_expired_or_revoked",
@@ -1020,10 +1059,26 @@ describe("thread-owned utility sidebar", () => {
         intent: "reconnect" as const,
         connectionId: googleDriveConnector().id,
       },
+      recovery: undefined,
+      accountAware: false,
+    },
+    {
+      scenario: "current connect",
+      initialConnector: null,
+      catalogStatus: googleDriveCatalogStatus(),
+      account: { intent: "add" as const },
+      recovery: { action: "connect" as const },
+      accountAware: true,
     },
   ])(
-    "connects Google Drive from an artifact with explicit $intent intent",
-    async ({ initialConnector, catalogStatus, account }) => {
+    "connects Google Drive from an artifact with $scenario recovery",
+    async ({
+      initialConnector,
+      catalogStatus,
+      account,
+      recovery,
+      accountAware,
+    }) => {
       const user = userEvent.setup({ delay: null });
       const markdownUrl =
         "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-connect-notes.md";
@@ -1032,7 +1087,10 @@ describe("thread-owned utility sidebar", () => {
         threadArtifactFile(markdownUrl, {
           id: "artifact-drive-connect-notes",
           filename: "drive-connect-notes.md",
-          googleDriveSync: { status: "disconnected" },
+          googleDriveSync: {
+            status: "disconnected",
+            ...(recovery ? { recovery } : {}),
+          },
         }),
       ];
 
@@ -1064,10 +1122,33 @@ describe("thread-owned utility sidebar", () => {
       let agentAuthorized = false;
       let oauthStarted = false;
       let artifactSynced = false;
+      let accountSummaryReadCount = 0;
+      context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+        accountSummaryReadCount += 1;
+        return respond(200, {
+          summaries: connectorConnected
+            ? [
+                {
+                  target: {
+                    kind: "builtin",
+                    connectorSlug: "google-drive",
+                  },
+                  accountCount: 1,
+                  attentionCount: 0,
+                  defaultConnection: null,
+                },
+              ]
+            : [],
+        });
+      });
       context.mocks.api(connectorsMainContract.list, ({ respond }) => {
         return respond(200, {
           connectors: connectorConnected
-            ? [googleDriveConnector()]
+            ? [
+                googleDriveConnector({
+                  updatedAt: "2026-01-01T00:00:01Z",
+                }),
+              ]
             : initialConnector
               ? [initialConnector]
               : [],
@@ -1156,9 +1237,316 @@ describe("thread-owned utility sidebar", () => {
       await waitFor(() => {
         expect(artifactSynced).toBeTruthy();
         expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+        expect(accountSummaryReadCount > 0).toBe(accountAware);
       });
     },
   );
+
+  it("uploads with the selected ready Drive account when the default needs reconnect", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-ready-selected-notes.md";
+    const summary = catalogArtifact({ title: "drive-ready-selected-notes.md" });
+    const artifactFiles = [
+      threadArtifactFile(markdownUrl, {
+        id: "artifact-drive-ready-selected-notes",
+        filename: "drive-ready-selected-notes.md",
+        googleDriveSync: {
+          status: "not_synced",
+          accountReady: true,
+        },
+      }),
+    ];
+
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/markdown",
+            filename: "drive-ready-selected-notes.md",
+            fileId: "f0000000-0000-4000-a000-000000000007",
+            summary,
+            url: markdownUrl,
+          }),
+        ],
+      ]),
+    );
+    context.mocks.data.connectors([
+      googleDriveConnector({
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    ]);
+    context.mocks.api(connectorCatalogContract.status, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(userConnectorsContract.update, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
+      return never();
+    });
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Selected notes\n\nReady for Drive.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+
+    let artifactSynced = false;
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          runId: "run-sidebar",
+          fileId: "artifact-drive-ready-selected-notes",
+        });
+        artifactFiles[0] = {
+          ...artifactFiles[0]!,
+          googleDriveSync: {
+            status: "synced",
+            accountReady: true,
+            id: "drive-file-ready-selected-notes",
+            name: "drive-ready-selected-notes.md",
+            webViewLink: "https://drive.test/drive-file-ready-selected-notes",
+          },
+        };
+        artifactSynced = true;
+        return respond(200, {
+          id: "drive-file-ready-selected-notes",
+          name: "drive-ready-selected-notes.md",
+          webViewLink: "https://drive.test/drive-file-ready-selected-notes",
+        });
+      },
+    );
+
+    setupChatThread({ artifactFiles });
+    await openCatalogArtifact("drive-ready-selected-notes.md");
+    await screen.findByText("Ready for Drive.");
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await user.click(await screen.findByText("Upload to Google Drive"));
+
+    await waitFor(() => {
+      expect(artifactSynced).toBeTruthy();
+      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+  });
+
+  it("reconnects the selected Drive account before syncing the artifact", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-selected-notes.md";
+    const summary = catalogArtifact({ title: "drive-selected-notes.md" });
+    const artifactFiles = [
+      threadArtifactFile(markdownUrl, {
+        id: "artifact-drive-selected-notes",
+        filename: "drive-selected-notes.md",
+        googleDriveSync: {
+          status: "disconnected",
+          recovery: {
+            action: "reconnect",
+            connectionId: SELECTED_DRIVE_CONNECTION_ID,
+          },
+        },
+      }),
+    ];
+
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/markdown",
+            filename: "drive-selected-notes.md",
+            fileId: "f0000000-0000-4000-a000-000000000005",
+            summary,
+            url: markdownUrl,
+          }),
+        ],
+      ]),
+    );
+    context.mocks.data.connectors([
+      googleDriveConnector(),
+      googleDriveConnector({
+        id: SELECTED_DRIVE_CONNECTION_ID,
+        externalId: "selected-drive-external-id",
+        externalUsername: "selected-drive-user",
+        externalEmail: "selected-drive@example.test",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    ]);
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [googleDriveCatalogStatus()],
+      });
+    });
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Selected notes\n\nReady for Drive.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+
+    let accountUpdatedAt = "2026-01-01T00:00:00Z";
+    let accountReadCount = 0;
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(SELECTED_DRIVE_CONNECTION_ID);
+        expect(query).toStrictEqual({
+          kind: "builtin",
+          connectorSlug: "google-drive",
+        });
+        accountReadCount += 1;
+        return respond(
+          200,
+          googleDriveAccountConnection({ updatedAt: accountUpdatedAt }),
+        );
+      },
+    );
+
+    let oauthStarted = false;
+    let artifactSynced = false;
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      connectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.connectorSlug).toBe("google-drive");
+        expect(body).toStrictEqual({
+          account: {
+            intent: "reconnect",
+            connectionId: SELECTED_DRIVE_CONNECTION_ID,
+          },
+          authMethod: "oauth",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+          callbackTarget: "app",
+        });
+        oauthStarted = true;
+        return respond(200, {
+          authorizationUrl: "https://accounts.google.test/drive/authorize",
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ body, respond }) => {
+        expect(accountUpdatedAt).toBe("2026-01-01T00:00:01Z");
+        expect(body).toStrictEqual({
+          runId: "run-sidebar",
+          fileId: "artifact-drive-selected-notes",
+        });
+        artifactFiles[0] = {
+          ...artifactFiles[0]!,
+          googleDriveSync: {
+            status: "synced",
+            id: "drive-file-selected-notes",
+            name: "drive-selected-notes.md",
+            webViewLink: "https://drive.test/drive-selected-notes",
+          },
+        };
+        artifactSynced = true;
+        return respond(200, {
+          id: "drive-file-selected-notes",
+          name: "drive-selected-notes.md",
+          webViewLink: "https://drive.test/drive-selected-notes",
+        });
+      },
+    );
+
+    setupChatThread({ artifactFiles });
+    await openCatalogArtifact("drive-selected-notes.md");
+    await screen.findByText("Ready for Drive.");
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await user.click(await screen.findByText("Connect Google Drive"));
+    await waitFor(() => {
+      expect(oauthStarted).toBeTruthy();
+    });
+
+    const readsBeforeSiblingEvent = accountReadCount;
+    context.mocks.ably.trigger("connector:changed", {
+      connectorSlug: "google-drive",
+    });
+    await waitFor(() => {
+      expect(accountReadCount).toBeGreaterThan(readsBeforeSiblingEvent);
+    });
+    expect(artifactSynced).toBeFalsy();
+
+    accountUpdatedAt = "2026-01-01T00:00:01Z";
+    context.mocks.ably.trigger("connector:changed", {
+      connectorSlug: "google-drive",
+    });
+    await waitFor(() => {
+      expect(artifactSynced).toBeTruthy();
+      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+  });
+
+  it("does not mutate a sibling when selected Drive recovery is unavailable", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-unavailable-notes.md";
+    const summary = catalogArtifact({ title: "drive-unavailable-notes.md" });
+
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/markdown",
+            filename: "drive-unavailable-notes.md",
+            fileId: "f0000000-0000-4000-a000-000000000006",
+            summary,
+            url: markdownUrl,
+          }),
+        ],
+      ]),
+    );
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [googleDriveCatalogStatus()],
+      });
+    });
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Unavailable notes\n\nNo safe recovery.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+
+    setupChatThread({
+      artifactFiles: [
+        threadArtifactFile(markdownUrl, {
+          id: "artifact-drive-unavailable-notes",
+          filename: "drive-unavailable-notes.md",
+          googleDriveSync: {
+            status: "disconnected",
+            recovery: { action: "unavailable" },
+          },
+        }),
+      ],
+    });
+    await openCatalogArtifact("drive-unavailable-notes.md");
+    await screen.findByText("No safe recovery.");
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    });
+  });
 
   it("shows empty and unavailable CSV states from catalog details", async () => {
     const emptyCsvUrl =

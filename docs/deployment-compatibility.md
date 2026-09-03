@@ -241,6 +241,12 @@ Prefer additive changes at cross-version boundaries:
 - Write data in a format that the previous deployed reader can ignore or safely
   process during the rollout window.
 
+An optional response or persisted field is not automatically compatible with
+strict readers. When retaining the same protocol version, deploy tolerant
+readers first while writers omit the field. Activate writers only after every
+old strict reader and rollback target has drained or is excluded by an enforced
+compatibility floor.
+
 Avoid one-shot protocol flips:
 
 - Do not require a new request field from frontend or runner in the same PR that

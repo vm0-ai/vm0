@@ -32,7 +32,10 @@ import { and, eq, or } from "drizzle-orm";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./model-policy.service";
-import { checkOrgCreditsForRunAdmission } from "./run-admission.service";
+import {
+  checkOrgCreditsForRunAdmission,
+  checkOrgPlanRunAdmission,
+} from "./run-admission.service";
 import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
@@ -71,7 +74,15 @@ interface ResolvedModelFirstPolicyRoute {
 interface PersistedModelFirstRouteResolution {
   readonly route: ResolvedModelFirstPolicyRoute | null;
   readonly selectedModelChanged: boolean;
+  readonly orgPlanCapabilities: OrgPlanCapabilities | null;
 }
+
+export type ExternalModelProviderPlanCapabilitiesSource =
+  | { readonly kind: "load-current" }
+  | {
+      readonly kind: "resolved";
+      readonly capabilities: OrgPlanCapabilities | null;
+    };
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -106,11 +117,9 @@ function isOAuthMemberProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
 }
 
-async function orgModelCapabilities(
-  db: Db,
-  orgId: string,
-): Promise<Pick<OrgPlanCapabilities, "restrictedVm0Models" | "supportByok">> {
-  const capabilities = await loadOrgPlanCapabilities(db, orgId);
+function modelRouteCapabilities(
+  capabilities: OrgPlanCapabilities | null,
+): Pick<OrgPlanCapabilities, "restrictedVm0Models" | "supportByok"> {
   if (capabilities?.status !== "active") {
     return {
       restrictedVm0Models: false,
@@ -350,7 +359,9 @@ export async function resolveDefaultModelFirstPin(
   if (userId !== "__no_preference__") {
     await ensureOrgModelPolicies(db, orgId, userId);
   }
-  const capabilities = await orgModelCapabilities(db, orgId);
+  const capabilities = modelRouteCapabilities(
+    await loadOrgPlanCapabilities(db, orgId),
+  );
   if (userId !== "__no_preference__") {
     const [preference] = await db
       .select({
@@ -445,7 +456,11 @@ export async function resolvePersistedModelFirstRoute(params: {
   readonly selectedModel: string | null;
 }): Promise<PersistedModelFirstRouteResolution> {
   await ensureOrgModelPolicies(params.db, params.orgId, params.userId);
-  const capabilities = await orgModelCapabilities(params.db, params.orgId);
+  const orgPlanCapabilities = await loadOrgPlanCapabilities(
+    params.db,
+    params.orgId,
+  );
+  const capabilities = modelRouteCapabilities(orgPlanCapabilities);
   const currentRoute = params.selectedModel
     ? await resolveValidPolicyRoute({
         db: params.db,
@@ -455,7 +470,11 @@ export async function resolvePersistedModelFirstRoute(params: {
       })
     : null;
   if (currentRoute) {
-    return { route: currentRoute, selectedModelChanged: false };
+    return {
+      route: currentRoute,
+      selectedModelChanged: false,
+      orgPlanCapabilities,
+    };
   }
 
   const defaultRoute = await resolveWorkspaceDefaultModelFirstRoute({
@@ -468,6 +487,7 @@ export async function resolvePersistedModelFirstRoute(params: {
     selectedModelChanged:
       defaultRoute !== null &&
       defaultRoute.selectedModel !== params.selectedModel,
+    orgPlanCapabilities,
   };
 }
 
@@ -505,7 +525,9 @@ export async function resolveModelSelectionPin(params: {
   | ReturnType<typeof insufficientCredits>
 > {
   const { db, orgId, userId, modelSelection } = params;
-  const capabilities = await orgModelCapabilities(db, orgId);
+  const capabilities = modelRouteCapabilities(
+    await loadOrgPlanCapabilities(db, orgId),
+  );
   if (
     !modelAllowedForOrgPlan({
       capabilities,
@@ -602,6 +624,7 @@ export async function resolveModelFirstProviderAdmission(params: {
   readonly userId: string;
   readonly modelPin: ModelFirstPin;
   readonly requestedModelProvider: string | undefined;
+  readonly externalPlanCapabilities: ExternalModelProviderPlanCapabilitiesSource;
 }): Promise<{
   readonly effectiveModelProvider: string | null | undefined;
   readonly cliAgentType: SupportedFramework | null;
@@ -666,13 +689,22 @@ export async function resolveModelFirstProviderAdmission(params: {
       ),
     };
   }
-  const error = await checkOrgCreditsForRunAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelProviderType: effectiveModelProvider,
-    selectedModel,
-  });
+  const error = isBuiltInModelProviderType(effectiveModelProvider)
+    ? await checkOrgCreditsForRunAdmission({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        modelProviderType: effectiveModelProvider,
+        selectedModel,
+      })
+    : checkOrgPlanRunAdmission({
+        capabilities:
+          params.externalPlanCapabilities.kind === "resolved"
+            ? params.externalPlanCapabilities.capabilities
+            : await loadOrgPlanCapabilities(params.db, params.orgId),
+        modelProviderType: effectiveModelProvider,
+        selectedModel,
+      });
   return { effectiveModelProvider, cliAgentType, error };
 }
 

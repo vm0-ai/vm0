@@ -63,8 +63,10 @@ export {
   type ApiErrorResponse,
 } from "./errors";
 export {
-  runFailureReasonSchema,
-  type RunFailureReason,
+  knownRunFailureReasonSchema,
+  runFailureReasonTokenSchema,
+  type KnownRunFailureReason,
+  type RunFailureReasonToken,
 } from "./run-failure-reasons";
 export {
   desktopAuthConsumeContract,
@@ -375,8 +377,6 @@ export {
   type TestTelegramStateResponse,
 } from "./test-telegram-state";
 export {
-  cronAggregateModelStatsContract,
-  cronAggregateModelStatsResponseSchema,
   cronCompactChatThreadSnapshotsContract,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronCleanupSandboxesContract,
@@ -403,7 +403,6 @@ export {
   cronTelegramCleanupResponseSchema,
   cleanupResultSchema,
   cleanupResponseSchema,
-  type CronAggregateModelStatsContract,
   type CronCompactChatThreadSnapshotsContract,
   type CronCleanupSandboxesContract,
   type CronConnectorOauthStateCleanupContract,
@@ -1768,6 +1767,15 @@ export {
   type BuiltInGenerationAcceptedResponse,
   type BuiltInGenerationResponse,
 } from "./built-in-generation";
+export {
+  voiceIoPolishContract,
+  voiceIoPolishRequestSchema,
+  voiceIoPolishResponseSchema,
+  VOICE_IO_POLISH_MAX_TEXT_CHARS,
+  type VoiceIoPolishContract,
+  type VoiceIoPolishRequest,
+  type VoiceIoPolishResponse,
+} from "./voice-io-polish";
 export {
   voiceIoQuotaContract,
   audioInputQuotaResponseSchema,

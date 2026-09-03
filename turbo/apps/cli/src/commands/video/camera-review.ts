@@ -1,23 +1,30 @@
 import {
-  cameraTransitionMidpointMs,
   createCameraFrameStates,
+  REACTION_DELAY_MS,
+  verifyPlanClicks,
 } from "./camera-plan";
 import type { CameraPlan, CameraFrameState } from "./camera-plan";
 
 const CLICK_BEFORE_MS = 300;
-const CLICK_AFTER_MS = [500, 1_500] as const;
 
 export type CameraCheckpointReason =
   | { readonly kind: "click-before"; readonly clickMs: number }
-  | { readonly kind: "click"; readonly clickMs: number }
   | {
+      readonly kind: "click";
+      readonly clickMs: number;
+      /** Whether the click point sits inside the rendered viewport at its own moment. */
+      readonly inFrame: boolean;
+    }
+  | {
+      /** The moment the plan compared with the click frame to decide on a pull-back. */
       readonly kind: "click-after";
       readonly clickMs: number;
-      readonly offsetMs: (typeof CLICK_AFTER_MS)[number];
+      readonly offsetMs: number;
+      readonly changedFraction?: number;
     }
-  | { readonly kind: "pan-midpoint"; readonly focusId: string }
-  | { readonly kind: "zoom-enter"; readonly rangeId: string }
-  | { readonly kind: "zoom-exit"; readonly rangeId: string }
+  | { readonly kind: "move-start"; readonly keyId: string }
+  | { readonly kind: "move-end"; readonly keyId: string }
+  | { readonly kind: "shot-end"; readonly shotId: string }
   | { readonly kind: "maximum-camera-speed" };
 
 export interface CameraReviewCheckpoint {
@@ -83,7 +90,6 @@ function maximumCameraSpeedTime(plan: CameraPlan): number | null {
 
 export function createCameraReviewCheckpoints(
   plan: CameraPlan,
-  clickTimes: readonly number[],
 ): readonly CameraReviewCheckpoint[] {
   const reasonsByTime = new Map<number, CameraCheckpointReason[]>();
   const add = (timeMs: number, reason: CameraCheckpointReason): void => {
@@ -91,26 +97,39 @@ export function createCameraReviewCheckpoints(
     reasonsByTime.set(bounded, [...(reasonsByTime.get(bounded) ?? []), reason]);
   };
 
-  for (const clickMs of clickTimes) {
+  const inFrameByClick = new Map(
+    verifyPlanClicks(plan).map((click) => {
+      return [click.tMs, click.inFrame] as const;
+    }),
+  );
+  for (const click of plan.clicks) {
+    const clickMs = click.tMs;
     if (clickMs > plan.source.durationMs) {
       continue;
     }
     add(clickMs - CLICK_BEFORE_MS, { kind: "click-before", clickMs });
-    add(clickMs, { kind: "click", clickMs });
-    for (const offsetMs of CLICK_AFTER_MS) {
-      add(clickMs + offsetMs, { kind: "click-after", clickMs, offsetMs });
-    }
+    add(clickMs, {
+      kind: "click",
+      clickMs,
+      inFrame: inFrameByClick.get(clickMs) ?? false,
+    });
+    add(clickMs + REACTION_DELAY_MS, {
+      kind: "click-after",
+      clickMs,
+      offsetMs: REACTION_DELAY_MS,
+      ...(click.reaction === undefined
+        ? {}
+        : { changedFraction: click.reaction }),
+    });
   }
 
-  const panHalfTimeMs = cameraTransitionMidpointMs(plan.source.frameRate);
-  for (const range of plan.ranges) {
-    add(range.startMs, { kind: "zoom-enter", rangeId: range.id });
-    add(range.endMs, { kind: "zoom-exit", rangeId: range.id });
-    for (const focus of range.focuses.slice(1)) {
-      add(Math.min(focus.startMs + panHalfTimeMs, range.endMs), {
-        kind: "pan-midpoint",
-        focusId: focus.id,
-      });
+  for (const shot of plan.shots) {
+    for (const key of shot.keys) {
+      add(Math.max(0, key.startMs), { kind: "move-start", keyId: key.id });
+      add(key.startMs + key.durationMs, { kind: "move-end", keyId: key.id });
+    }
+    if (shot.endMs < plan.source.durationMs) {
+      add(shot.endMs, { kind: "shot-end", shotId: shot.id });
     }
   }
 

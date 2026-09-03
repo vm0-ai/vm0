@@ -1,4 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -26,9 +27,13 @@ function formatDuration(durationMs: number): string {
 }
 
 function ConnectionDiagnosticsSummary({
+  description,
   diagnostics,
+  title,
 }: {
+  readonly description: string;
   readonly diagnostics: ConnectionDiagnostics;
+  readonly title: string;
 }) {
   const { t } = useTranslation();
   const unavailable = t(($) => {
@@ -43,17 +48,8 @@ function ConnectionDiagnosticsSummary({
         <RadioTower size={22} className="text-muted-foreground" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-sm font-medium text-foreground">
-          {t(($) => {
-            return $.settings.preferences.debug.connectionDiagnostics.title;
-          })}
-        </span>
-        <span className="text-sm text-muted-foreground">
-          {t(($) => {
-            return $.settings.preferences.debug.connectionDiagnostics
-              .description;
-          })}
-        </span>
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        <span className="text-sm text-muted-foreground">{description}</span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
           <span className="zero-badge rounded-md px-2 py-0.5">
             {t(($) => {
@@ -147,15 +143,20 @@ function ConnectionDiagnosticEventLog({
 }
 
 function ConnectionDiagnosticsDetails({
+  actions,
   diagnostics,
-  onClear,
-  onCopy,
 }: {
+  readonly actions: ReactNode;
   readonly diagnostics: ConnectionDiagnostics;
-  readonly onClear: () => void;
-  readonly onCopy: () => void;
 }) {
   const { t } = useTranslation();
+  const handleCopy = (): void => {
+    detach(
+      navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2)),
+      Reason.DomCallback,
+      "copy-connection-diagnostics",
+    );
+  };
   return (
     <div className="flex flex-col gap-4 border-t border-border/60 p-4">
       <div className="grid gap-2 font-mono text-[11px] sm:grid-cols-2">
@@ -208,7 +209,7 @@ function ConnectionDiagnosticsDetails({
             variant="outline"
             size="sm"
             className="h-8 gap-1.5 px-2.5 text-xs"
-            onClick={onCopy}
+            onClick={handleCopy}
           >
             <ClipboardCopy className="h-3.5 w-3.5" />
             {t(($) => {
@@ -216,18 +217,7 @@ function ConnectionDiagnosticsDetails({
                 .copyJson;
             })}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 px-2.5 text-xs"
-            onClick={onClear}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {t(($) => {
-              return $.settings.preferences.debug.connectionDiagnostics.clear;
-            })}
-          </Button>
+          {actions}
         </div>
       </div>
 
@@ -238,27 +228,63 @@ function ConnectionDiagnosticsDetails({
   );
 }
 
-export function ConnectionDiagnosticsBlock() {
-  const diagnostics = useGet(connectionDiagnostics$);
-  const writeDiagnostic = useSet(writeConnectionDiagnostic$);
-  const handleCopy = (): void => {
-    detach(
-      navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2)),
-      Reason.DomCallback,
-      "copy-connection-diagnostics",
-    );
-  };
-
+/** One expandable diagnostics capture: this tab's, or the Worker's. */
+export function ConnectionDiagnosticsPanel({
+  actions,
+  description,
+  diagnostics,
+  title,
+}: {
+  readonly actions: ReactNode;
+  readonly description: string;
+  readonly diagnostics: ConnectionDiagnostics;
+  readonly title: string;
+}) {
   return (
     <details className="group overflow-hidden rounded-xl bg-card zero-border">
-      <ConnectionDiagnosticsSummary diagnostics={diagnostics} />
-      <ConnectionDiagnosticsDetails
+      <ConnectionDiagnosticsSummary
+        description={description}
         diagnostics={diagnostics}
-        onClear={() => {
-          writeDiagnostic({ action: "clear" });
-        }}
-        onCopy={handleCopy}
+        title={title}
+      />
+      <ConnectionDiagnosticsDetails
+        actions={actions}
+        diagnostics={diagnostics}
       />
     </details>
+  );
+}
+
+export function ConnectionDiagnosticsBlock() {
+  const { t } = useTranslation();
+  const diagnostics = useGet(connectionDiagnostics$);
+  const writeDiagnostic = useSet(writeConnectionDiagnostic$);
+
+  return (
+    <ConnectionDiagnosticsPanel
+      actions={
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 px-2.5 text-xs"
+          onClick={() => {
+            writeDiagnostic({ action: "clear" });
+          }}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {t(($) => {
+            return $.settings.preferences.debug.connectionDiagnostics.clear;
+          })}
+        </Button>
+      }
+      description={t(($) => {
+        return $.settings.preferences.debug.connectionDiagnostics.description;
+      })}
+      diagnostics={diagnostics}
+      title={t(($) => {
+        return $.settings.preferences.debug.connectionDiagnostics.title;
+      })}
+    />
   );
 }

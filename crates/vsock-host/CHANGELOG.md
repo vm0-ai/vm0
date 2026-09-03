@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.132](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.131...vsock-host-v0.17.132) (2026-09-03)
+
+
+### Documentation
+
+* **rust:** document workspace mount cancellation semantics ([#31340](https://github.com/vm0-ai/vm0/issues/31340)) ([dacd853](https://github.com/vm0-ai/vm0/commit/dacd8531c5b2740a3d4e86c78b836031c232c335))
+
+## [0.17.131](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.130...vsock-host-v0.17.131) (2026-09-03)
+
+## [0.17.130](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.129...vsock-host-v0.17.130) (2026-09-03)
+
+## [0.17.129](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.128...vsock-host-v0.17.129) (2026-09-02)
+
+## [0.17.128](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.127...vsock-host-v0.17.128) (2026-09-02)
+
+## [0.17.127](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.126...vsock-host-v0.17.127) (2026-09-02)
+
 ## [0.17.126](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.125...vsock-host-v0.17.126) (2026-09-02)
 
 ## [0.17.125](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.124...vsock-host-v0.17.125) (2026-09-02)

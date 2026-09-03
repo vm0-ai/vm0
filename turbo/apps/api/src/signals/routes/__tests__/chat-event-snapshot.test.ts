@@ -250,6 +250,123 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
+  it("returns complete batch tails and partitions cursors that need a Snapshot", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Batch catch-up agent",
+    });
+    const firstThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `batch-catch-up-first-${randomUUID()}`,
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId: firstThreadId,
+      prompt: `batch-catch-up-tail-${randomUUID()}`,
+    });
+    const secondThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `batch-catch-up-second-${randomUUID()}`,
+    });
+
+    const stranger = bdd.user({ orgId: `org_${randomUUID()}` });
+    const strangerAgent = await bdd.createAgent(stranger, {
+      displayName: "Batch catch-up stranger agent",
+    });
+    const strangerThreadId = await sendNoCreditMessage(stranger, {
+      agentId: strangerAgent.agentId,
+      prompt: `batch-catch-up-stranger-${randomUUID()}`,
+    });
+    const firstRows = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId: firstThreadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    const secondRows = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId: secondThreadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    const firstCursor = firstRows.body.rows[0];
+    const secondCursor = secondRows.body.rows.at(-1);
+    if (!firstCursor || !secondCursor) {
+      throw new Error("Expected Chat Event batch cursor fixtures");
+    }
+    const missingThreadId = randomUUID();
+
+    const response = await accept(
+      eventsClient().catchUp({
+        headers: authenticate(owner),
+        body: [
+          [firstThreadId, firstCursor.seqId],
+          [secondThreadId, secondCursor.seqId],
+          [strangerThreadId, 0],
+          [missingThreadId, 0],
+        ],
+      }),
+      [200],
+    );
+    expect(response.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER)).toBe(
+      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
+    );
+    expect(response.body).toStrictEqual({
+      events: {
+        [firstThreadId]: firstRows.body.rows.filter((row) => {
+          return row.seqId > firstCursor.seqId;
+        }),
+        [secondThreadId]: [],
+      },
+      notFoundThreads: [strangerThreadId, missingThreadId],
+    });
+
+    await projectChatEventSearch(firstThreadId);
+    await runSnapshotCron([firstThreadId]);
+    const head = await readChatEventSnapshotHead(context, firstThreadId);
+    if (head.terminal_seq_id === null) {
+      throw new Error("Expected a terminal Chat Event Snapshot cursor");
+    }
+    const snapshotCursor = await accept(
+      eventsClient().catchUp({
+        headers: authenticate(owner),
+        body: [[firstThreadId, head.terminal_seq_id]],
+      }),
+      [200],
+    );
+    expect(snapshotCursor.body).toStrictEqual({
+      events: { [firstThreadId]: [] },
+      notFoundThreads: [],
+    });
+    expect(head.terminal_seq_id).toBeGreaterThan(firstCursor.seqId);
+    const snapshotCoveredCursor = await accept(
+      eventsClient().catchUp({
+        headers: authenticate(owner),
+        body: [[firstThreadId, firstCursor.seqId]],
+      }),
+      [200],
+    );
+    expect(snapshotCoveredCursor.body).toStrictEqual({
+      events: {},
+      notFoundThreads: [firstThreadId],
+    });
+    const expiredCursor = await accept(
+      eventsClient().catchUp({
+        headers: authenticate(owner),
+        body: [[firstThreadId, 0]],
+      }),
+      [200],
+    );
+    expect(expiredCursor.body).toStrictEqual({
+      events: {},
+      notFoundThreads: [firstThreadId],
+    });
+  }, 60_000);
+
   it("does not repair or publish a retired Morning Brief Snapshot object", async () => {
     const recordedPuts: RecordedChatEventPut[] = [];
     installFakeChatEventR2(context, recordedPuts);

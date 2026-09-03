@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import type { ConnectorRuntimeTargetRegistration } from "@okouai/api-contracts/contracts/runners";
 import type {
   TestRuntimeStateActionBody,
@@ -282,7 +282,7 @@ export async function readRunAutonomyBudgetFixture(
 export async function readRunFailureReasonFixture(
   context: TestContext,
   runId: string,
-): Promise<RunFailureReason | null> {
+): Promise<RunFailureReasonToken | null> {
   const response = await postAction(context, {
     action: "read-run-failure-reason",
     run_id: runId,
@@ -291,6 +291,18 @@ export async function readRunFailureReasonFixture(
     throw new Error("readRunFailureReasonFixture missing failure_reason");
   }
   return response.failure_reason ?? null;
+}
+
+export async function setRunModelProviderStateFixture(
+  context: TestContext,
+  runId: string,
+  modelProvider: string | null,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-run-model-provider",
+    run_id: runId,
+    model_provider: modelProvider,
+  });
 }
 
 /**
@@ -668,16 +680,6 @@ export async function setRunnerJobContextProfileAsPreviousApi(
     action: "set-runner-job-context-profile-as-previous-api",
     run_id: runId,
     profile,
-  });
-}
-
-export async function setRunnerJobPiOwnershipTransferAsPreviousApi(
-  context: TestContext,
-  runId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-runner-job-pi-ownership-transfer-as-previous-api",
-    run_id: runId,
   });
 }
 

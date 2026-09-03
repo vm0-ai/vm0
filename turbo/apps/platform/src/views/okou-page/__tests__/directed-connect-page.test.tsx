@@ -12,6 +12,7 @@ import {
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorOAuth2Contract,
   customConnectorValuesContract,
   customConnectorsContract,
@@ -24,6 +25,7 @@ import {
   connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -245,8 +247,10 @@ function customConnector(
   });
 }
 
-function mcpCustomConnector(): CustomConnectorMcpResponse {
-  return {
+function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     storageVersion: 1,
@@ -277,7 +281,8 @@ function mcpCustomConnector(): CustomConnectorMcpResponse {
     configuredFieldKeys: [],
     createdAt: "2026-08-11T00:00:00Z",
     updatedAt: "2026-08-11T00:00:00Z",
-  };
+    ...overrides,
+  });
 }
 
 function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
@@ -453,6 +458,200 @@ describe("directed connector connect page", () => {
       expect(screen.getByText("DeepWiki connected")).toBeInTheDocument();
     });
   });
+
+  it("authorizes the selected Agent when Automatic MCP resolves to no auth", async () => {
+    let connected = false;
+    const connectionId = crypto.randomUUID();
+    let grants: AgentCustomConnectorGrant[] = [];
+    const connector = mcpCustomConnector({
+      slug: "_automatic-mcp",
+      displayName: "Automatic MCP",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+      missingRequiredFields: ["automatic"],
+      configuredFieldKeys: [],
+    });
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          connected
+            ? {
+                ...connector,
+                connected: true,
+                connectedAccountId: connectionId,
+                connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+                missingRequiredFields: [],
+              }
+            : connector,
+        ],
+      });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        expect(body.account).toStrictEqual({ intent: "add" });
+        connected = true;
+        return respond(200, {
+          result: "connected",
+          connector: {
+            ...connector,
+            connected: true,
+            connectedAccountId: connectionId,
+            connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+            missingRequiredFields: [],
+          },
+          connectedAccountId: connectionId,
+        });
+      },
+    );
+    context.mocks.api(
+      agentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        grants = body.grants;
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    const heading = await screen.findByText(
+      "Zero needs Automatic MCP to proceed",
+    );
+    expect(heading).toBeInTheDocument();
+    click(getButtonByText("Connect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Automatic MCP",
+    });
+    expect(
+      within(dialog).getByText(
+        "Continue while Okou checks how this MCP server authenticates.",
+      ),
+    ).toBeVisible();
+    click(getButtonByText("Continue", dialog));
+
+    await waitFor(() => {
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
+      expect(screen.getByText("Automatic MCP connected")).toBeInTheDocument();
+    });
+    expect(authWindow.location.href).toBe("");
+    expect(authWindow.closed).toBeTruthy();
+  });
+
+  it.each([
+    { transition: "none to OAuth", result: "authorization" },
+    { transition: "OAuth to none", result: "connected" },
+  ] as const)(
+    "reconnects the exact Automatic MCP account from $transition",
+    async ({ result }) => {
+      const connectionId = crypto.randomUUID();
+      let connectedAccountUpdatedAt = "2026-09-03T00:00:00.000Z";
+      let submittedAccount: unknown;
+      let grants: AgentCustomConnectorGrant[] = [];
+      const connector = mcpCustomConnector({
+        slug: "_automatic-reconnect-mcp",
+        displayName: "Automatic Reconnect MCP",
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
+        connected: true,
+        connectedAccountId: connectionId,
+        connectedAccountUpdatedAt,
+        missingRequiredFields: [],
+        configuredFieldKeys: [],
+      });
+      const authWindow = context.mocks.browser.authWindow();
+      Object.defineProperty(authWindow, "location", {
+        value: { href: "" },
+        configurable: true,
+      });
+      context.mocks.browser.open(authWindow);
+      context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+        return respond(200, {
+          connectors: [{ ...connector, connectedAccountUpdatedAt }],
+        });
+      });
+      context.mocks.api(
+        customConnectorOAuth2Contract.start,
+        ({ body, params, respond }) => {
+          expect(params.id).toBe(connector.id);
+          submittedAccount = body.account;
+          connectedAccountUpdatedAt = "2026-09-03T00:00:01.000Z";
+          if (result === "authorization") {
+            authWindow.close();
+            return respond(200, {
+              result,
+              authorizationUrl:
+                "https://oauth.acme.test/authorize?state=automatic-reconnect",
+              connectionId,
+            });
+          }
+          return respond(200, {
+            result,
+            connector: {
+              ...connector,
+              connectedAccountUpdatedAt,
+            },
+            connectedAccountId: connectionId,
+          });
+        },
+      );
+      context.mocks.api(
+        agentCustomConnectorsContract.update,
+        ({ body, params, respond }) => {
+          expect(params.id).toBe(AGENT_ID);
+          grants = body.grants;
+          return respond(200, { grants });
+        },
+      );
+
+      detachedSetupPage({
+        context,
+        path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+        featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+      });
+
+      await screen.findByText("Automatic Reconnect MCP connected");
+      click(getButtonByText("Reconnect"));
+      const dialog = await screen.findByRole("dialog", {
+        name: "Connect Automatic Reconnect MCP",
+      });
+      click(getButtonByText("Continue", dialog));
+
+      await waitFor(() => {
+        expect(dialog).not.toBeInTheDocument();
+      });
+      expect(submittedAccount).toStrictEqual({
+        intent: "reconnect",
+        connectionId,
+      });
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
+      expect(authWindow.location.href).toBe(
+        result === "authorization"
+          ? "https://oauth.acme.test/authorize?state=automatic-reconnect"
+          : "",
+      );
+      expect(authWindow.closed).toBeTruthy();
+    },
+  );
 
   it("reconnects exact manual custom account without changing field status", async () => {
     const connectionId = crypto.randomUUID();
@@ -1152,6 +1351,127 @@ describe("directed connector connect page", () => {
     expect(startedAgentId).toBe(AGENT_ID);
     expect(startedAuthorizeAgent).toBeTruthy();
     expect(startedConnectionId).toBe(connectionId);
+  });
+
+  it("reconnects the route-selected account instead of the default account", async () => {
+    const defaultConnectionId = crypto.randomUUID();
+    const selectedConnectionId = crypto.randomUUID();
+    const connector = publicOAuthConnectorStatus({
+      slug: "github",
+      label: "Public GitHub",
+      singleAuthCodeAuthMethodId: null,
+    });
+    mockPublicConnectorStatus({
+      ...connector,
+      connected: true,
+      connectionStatus: "connected",
+      connection: {
+        id: defaultConnectionId,
+        authMethod: "oauth",
+        externalUsername: "default-account",
+        externalEmail: null,
+        reconnectReason: null,
+      },
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(selectedConnectionId);
+        expect(query).toStrictEqual({
+          kind: "builtin",
+          connectorSlug: "github",
+        });
+        return respond(200, {
+          id: selectedConnectionId,
+          target: { kind: "builtin", connectorSlug: "github" },
+          authMethod: "oauth",
+          displayName: "Selected account",
+          isDefault: false,
+          externalId: "selected-account",
+          externalUsername: "selected-account",
+          externalEmail: null,
+          oauthScopes: [],
+          connectionStatus: "reconnect-required",
+          reconnectReason: "authorization_expired_or_revoked",
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        });
+      },
+    );
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    let startedConnectionId: string | null = null;
+    context.mocks.api(
+      connectorOauthStartContract.start,
+      ({ body, respond }) => {
+        if (body.account.intent === "reconnect") {
+          startedConnectionId = body.account.connectionId;
+        }
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/github/reconnect",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/reconnect/${selectedConnectionId}?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Public GitHub connected");
+    click(getButtonByText("Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Public GitHub",
+    });
+    click(getButtonByText("Reconnect", dialog));
+
+    await waitFor(() => {
+      expect(startedConnectionId).toBe(selectedConnectionId);
+    });
+    expect(startedConnectionId).not.toBe(defaultConnectionId);
+  });
+
+  it("does not fall back when an exact reconnect account is unavailable", async () => {
+    const selectedConnectionId = crypto.randomUUID();
+    mockPublicConnectorStatus(
+      publicOAuthConnectorStatus({
+        slug: "github",
+        label: "Public GitHub",
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    );
+    let accountReads = 0;
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        accountReads += 1;
+        expect(params.connectionId).toBe(selectedConnectionId);
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Account not found" },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/reconnect/${selectedConnectionId}?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(accountReads).toBe(1);
+    });
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return ["Connect", "Reconnect"].includes(
+          button.textContent?.trim() ?? "",
+        );
+      }),
+    ).toStrictEqual([]);
   });
 
   it("asks the server to connect and authorize a manual grant", async () => {

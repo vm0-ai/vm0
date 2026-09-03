@@ -1,5 +1,15 @@
 # Domain glossary
 
+## Voice draft
+
+A composer-owned, durable block containing raw speech transcription that is
+not yet ready to send. It remains hidden while recording and during the first
+automatic cleanup attempt, becomes visible if cleanup fails, and turns into
+ordinary composer text only after cleanup succeeds. A composer containing a
+voice draft cannot be sent.
+
+_Avoid_: Voice loading state, live transcript
+
 ## Archived chat history
 
 The durable portion of a chat thread's complete event history that no longer
@@ -45,6 +55,30 @@ self-harm. It excludes non-graphic news, medical, educational, historical,
 safety, moderation, and ordinary fictional discussion.
 
 _Avoid_: 18+ content, adult content
+
+# Pi Model Routing Context
+
+This context separates Pi's trusted model metadata from the endpoint and model
+identity used for one provider request.
+
+## Language
+
+**Pi catalog model**:
+The native Pi provider/model entry used to source model capabilities and limits.
+It does not expand product admission and does not have to match a custom
+gateway's upstream model identifier.
+_Avoid_: Gateway model, requested model
+
+**Pi request model**:
+The model identifier sent to the selected provider endpoint. For a custom model
+provider gateway, this is the surface's upstream model mapping.
+_Avoid_: Catalog model, logical model
+
+**Pi credential header**:
+A non-secret header name and value template stored in Pi launch metadata. The
+credential is substituted only inside the API first-turn process or the
+Sandbox's protected runtime boundary.
+_Avoid_: API key header value, stored credential
 
 # Goal Automation Context
 

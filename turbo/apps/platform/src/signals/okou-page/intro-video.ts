@@ -14,7 +14,7 @@ import {
   type IntroVideoSourceKind,
 } from "../external/intro-video-draft-store.ts";
 import type { ComposerSignals } from "./composer-signals.ts";
-import { INTRO_VIDEO_AGENT_INSTRUCTIONS } from "./intro-video-agent-instructions.ts";
+import { introVideoAgentInstructions } from "./intro-video-agent-instructions.ts";
 import { settle } from "../utils.ts";
 
 export type IntroVideoWizardStep =
@@ -57,6 +57,9 @@ interface UploadedIntroVideoSource extends IntroVideoSourceFacts {
 
 export type IntroVideoSource = LocalIntroVideoSource | UploadedIntroVideoSource;
 
+/** The kinds a file dialog can produce. Only the desktop hands over a video. */
+type LocalIntroVideoSourceKind = "file" | "presentation";
+
 /**
  * Metadata for an already-uploaded recording the wizard adopts as its source.
  *
@@ -78,9 +81,7 @@ export type IntroVideoVoiceSelection =
 
 export type IntroVideoPlacement = "left" | "overlay" | "right";
 
-const DOCUMENT_EXTENSIONS = ["html", "pdf", "ppt", "pptx"] as const;
-const DEFAULT_INSTRUCTIONS =
-  "Create a concise 30 second product intro. Zoom in on important actions, remove pauses, and keep the pacing energetic.";
+const PRESENTATION_EXTENSIONS = ["html", "pdf", "ppt", "pptx"] as const;
 /**
  * Aspect ratio reported to the agent for the raw avatar take.
  *
@@ -94,9 +95,16 @@ function extensionForFilename(filename: string): string {
   return filename.split(".").pop()?.toLocaleLowerCase() ?? "";
 }
 
-export function isIntroVideoDocument(file: Pick<File, "name">): boolean {
+/**
+ * Whether a file may enter through the slide deck card.
+ *
+ * The extension is all this can check, so it decides which entry accepts the
+ * file, never whether the deck really holds slides. That is the agent's first
+ * job once it can open the attachment.
+ */
+export function isIntroVideoPresentation(file: Pick<File, "name">): boolean {
   const extension = extensionForFilename(file.name);
-  return DOCUMENT_EXTENSIONS.some((candidate) => {
+  return PRESENTATION_EXTENSIONS.some((candidate) => {
     return candidate === extension;
   });
 }
@@ -109,8 +117,7 @@ function sourceFromDraft(draft: IntroVideoDraftRecord): LocalIntroVideoSource {
     kind: draft.kind,
     name: draft.name,
     origin: "local",
-    previewUrl:
-      draft.kind === "document" ? null : URL.createObjectURL(draft.blob),
+    previewUrl: draft.kind === "video" ? URL.createObjectURL(draft.blob) : null,
     size: draft.blob.size,
   };
 }
@@ -179,7 +186,7 @@ function buildIntroVideoPrompt(args: {
     overlay: "Presenter over the slide, anchored to the bottom right",
     right: "Presenter on the right, slide on the left",
   };
-  const direction = args.instructions.trim() || DEFAULT_INSTRUCTIONS;
+  const instructions = args.instructions.trim();
   return [
     "Create a polished intro video from the attached source.",
     "",
@@ -195,7 +202,7 @@ function buildIntroVideoPrompt(args: {
     ...(args.avatar
       ? [
           "- Avatar background: transparent WebM (JoggAI screen_style 3, which requires captions off)",
-          ...(args.source.kind === "document"
+          ...(args.source.kind === "presentation"
             ? [
                 `- Presenter placement: ${placementDescription[args.placement]}`,
                 "- Presenter scale: scale the cutout proportionally to 14% of the frame width and align its bottom edge with the slide's bottom edge, for every presenter and every page",
@@ -203,9 +210,7 @@ function buildIntroVideoPrompt(args: {
             : []),
         ]
       : []),
-    "",
-    "Editing direction:",
-    direction,
+    ...(instructions ? ["", "Editing direction:", instructions] : []),
   ].join("\n");
 }
 
@@ -236,7 +241,7 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     busy$: state(false),
     draftDiscarded$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
-    instructions$: state(DEFAULT_INSTRUCTIONS),
+    instructions$: state(""),
     open$: state(false),
     placement$: state<IntroVideoPlacement>("left"),
     source$: state<IntroVideoSource | null>(null),
@@ -266,12 +271,15 @@ function createIntroVideoSelectors(internal: IntroVideoInternalState) {
   };
 }
 
-function sourceFromFile(file: File): LocalIntroVideoSource {
+function sourceFromFile(
+  file: File,
+  kind: LocalIntroVideoSourceKind,
+): LocalIntroVideoSource {
   return {
     blob: file,
     contentType: file.type || "application/octet-stream",
     durationSeconds: null,
-    kind: "document",
+    kind,
     name: file.name,
     origin: "local",
     previewUrl: null,
@@ -318,7 +326,7 @@ function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
     set(internal.avatar$, null);
     set(internal.voice$, null);
     set(internal.placement$, "left");
-    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.instructions$, "");
     set(internal.step$, "source");
     set(internal.busy$, false);
     set(internal.open$, false);
@@ -371,7 +379,7 @@ function createOpenWizardCommand(internal: IntroVideoInternalState) {
     set(internal.avatar$, null);
     set(internal.busy$, false);
     set(internal.error$, null);
-    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.instructions$, "");
     set(internal.sourceUploaded$, false);
     set(internal.placement$, "left");
     set(internal.voice$, null);
@@ -470,7 +478,7 @@ function createSourceCommands(
       set(internal.source$, {
         contentType: recording.contentType,
         durationSeconds: null,
-        kind: "recording",
+        kind: "video",
         name: recording.name,
         origin: "uploaded",
         previewUrl: recording.previewUrl,
@@ -486,8 +494,13 @@ function createSourceCommands(
     },
   );
   const setSourceFile$ = command(
-    async ({ get, set }, file: File, signal: AbortSignal): Promise<void> => {
-      const source = sourceFromFile(file);
+    async (
+      { get, set },
+      file: File,
+      kind: LocalIntroVideoSourceKind,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const source = sourceFromFile(file, kind);
       releasePreviewUrl(get(internal.source$));
       set(internal.source$, source);
       set(internal.sourceUploaded$, false);
@@ -647,7 +660,12 @@ function createSubmissionCommands(
       if (!(await set(uploadSourceIfNeeded$, composer, source, signal))) {
         return false;
       }
-      set(composer.draft.setAgentInstructions$, INTRO_VIDEO_AGENT_INSTRUCTIONS);
+      // A deck, a screen recording, and an unclassified upload become a video
+      // by entirely different means, so each entry sends its own workflow.
+      set(
+        composer.draft.setAgentInstructions$,
+        introVideoAgentInstructions(source.kind),
+      );
       set(
         composer.draft.setDraftInput$,
         buildIntroVideoPrompt({

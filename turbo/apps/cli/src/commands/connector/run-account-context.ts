@@ -81,6 +81,13 @@ export type RunConnectorAccountState =
       readonly connectionId: null;
     };
 
+export type RunConnectorAccountLookup =
+  | RunConnectorAccountState
+  | {
+      readonly state: "context-unavailable";
+      readonly reason: RunConnectorAccountContextUnavailableReason;
+    };
+
 export interface RunConnectorAccountEntry {
   readonly target: ConnectorAccountTarget;
   readonly slug: string;
@@ -208,6 +215,28 @@ function metadataKey(
   return `${connectorAccountTargetKey(target)}:${connectionId}`;
 }
 
+function accountState(
+  projected: RunConnectorAccountTarget | undefined,
+  metadata: ReadonlyMap<string, RunConnectorAccountMetadata>,
+): RunConnectorAccountState {
+  if (!projected?.connectionId) {
+    return { state: "not-admitted", connectionId: null };
+  }
+  const target = projectionTarget(projected);
+  const current = metadata.get(metadataKey(target, projected.connectionId));
+  return current
+    ? {
+        state: "available",
+        connectionId: projected.connectionId,
+        label: connectorAccountCliLabel(current),
+        metadata: current,
+      }
+    : {
+        state: "metadata-unavailable",
+        connectionId: projected.connectionId,
+      };
+}
+
 async function enrichTargets(
   targets: readonly RunConnectorAccountTarget[],
 ): Promise<ReadonlyMap<string, RunConnectorAccountMetadata>> {
@@ -269,6 +298,37 @@ export function isRunBoundConnectorContext(): boolean {
   return getOkouAgentId() !== undefined;
 }
 
+export async function resolveRunConnectorAccountLookups(
+  targets: readonly ConnectorAccountTarget[],
+): Promise<readonly RunConnectorAccountLookup[]> {
+  const projection = await readProjection();
+  if (projection.state === "unavailable") {
+    return targets.map(() => {
+      return {
+        state: "context-unavailable" as const,
+        reason: projection.reason,
+      };
+    });
+  }
+  const projectedByTarget = new Map(
+    projection.targets.map((projected) => {
+      return [
+        connectorAccountTargetKey(projectionTarget(projected)),
+        projected,
+      ] as const;
+    }),
+  );
+  const projectedTargets = targets.flatMap((target) => {
+    const projected = projectedByTarget.get(connectorAccountTargetKey(target));
+    return projected ? [projected] : [];
+  });
+  const metadata = await enrichTargets(projectedTargets);
+  return targets.map((target) => {
+    const projected = projectedByTarget.get(connectorAccountTargetKey(target));
+    return accountState(projected, metadata);
+  });
+}
+
 export async function resolveRunConnectorAccountView(): Promise<RunConnectorAccountView> {
   const projection = await readProjection();
   if (projection.state === "unavailable") {
@@ -291,30 +351,11 @@ export async function resolveRunConnectorAccountView(): Promise<RunConnectorAcco
     connectors: projection.targets.map((projected) => {
       const target = projectionTarget(projected);
       const identity = connectorIdentity(target, catalog, customConnectors);
-      if (!projected.connectionId) {
-        return {
-          target,
-          slug: identity.slug,
-          connectorLabel: identity.label,
-          account: { state: "not-admitted" as const, connectionId: null },
-        };
-      }
-      const current = metadata.get(metadataKey(target, projected.connectionId));
       return {
         target,
         slug: identity.slug,
         connectorLabel: identity.label,
-        account: current
-          ? {
-              state: "available" as const,
-              connectionId: projected.connectionId,
-              label: connectorAccountCliLabel(current),
-              metadata: current,
-            }
-          : {
-              state: "metadata-unavailable" as const,
-              connectionId: projected.connectionId,
-            },
+        account: accountState(projected, metadata),
       };
     }),
   };

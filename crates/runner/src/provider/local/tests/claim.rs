@@ -29,14 +29,14 @@ async fn claim_maps_secret_environment_into_context_and_masking() {
     write_job_with_environments(
         dir.path(),
         job_id,
-        Some(HashMap::from([(
-            "ANTHROPIC_MODEL".into(),
-            "claude-haiku-4-5".into(),
-        )])),
-        Some(HashMap::from([(
-            "ANTHROPIC_API_KEY".into(),
-            "sk-ant-local-secret".into(),
-        )])),
+        Some(HashMap::from([
+            ("ANTHROPIC_MODEL".into(), "claude-haiku-4-5".into()),
+            ("VM0_FUTURE_RUNNER_KEY".into(), "ordinary-vm0-value".into()),
+        ])),
+        Some(HashMap::from([
+            ("ANTHROPIC_API_KEY".into(), "sk-ant-local-secret".into()),
+            ("VM0_TEST_VALUE".into(), "ordinary-vm0-secret".into()),
+        ])),
     );
 
     let candidate = provider.discover().await.unwrap();
@@ -55,8 +55,27 @@ async fn claim_maps_secret_environment_into_context_and_masking() {
         environment.get("ANTHROPIC_API_KEY").map(String::as_str),
         Some("sk-ant-local-secret")
     );
-    assert_eq!(secret_values, &["sk-ant-local-secret".to_string()]);
+    assert_eq!(
+        environment.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
+        Some("ordinary-vm0-value")
+    );
+    assert_eq!(
+        environment.get("VM0_TEST_VALUE").map(String::as_str),
+        Some("ordinary-vm0-secret")
+    );
+    assert_eq!(secret_values.len(), 2);
+    assert!(
+        secret_values
+            .iter()
+            .any(|value| value == "sk-ant-local-secret")
+    );
+    assert!(
+        secret_values
+            .iter()
+            .any(|value| value == "ordinary-vm0-secret")
+    );
     assert!(local_secret_env_keys.contains("ANTHROPIC_API_KEY"));
+    assert!(local_secret_env_keys.contains("VM0_TEST_VALUE"));
 }
 
 #[tokio::test]

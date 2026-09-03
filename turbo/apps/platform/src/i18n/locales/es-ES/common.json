@@ -536,7 +536,6 @@
       "agentLoading": "El agente sigue cargando",
       "connect": "Conectar Google Drive",
       "connectTooltip": "Conecta Google Drive para subir artefactos",
-      "failedToOpenConnect": "No se pudo abrir la página de conexión de Google Drive",
       "noArtifacts": "No hay artefactos que sincronizar",
       "partial_one": "Se sincronizó {{synced}} de {{count}} archivo con Google Drive",
       "partial_many": "Se sincronizaron {{synced}} de {{count}} archivos con Google Drive",
@@ -2441,6 +2440,10 @@
     },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
+      "draft": "Borrador de voz",
+      "draftTooLong": "Este borrador de voz es demasiado largo. Inicia una nueva grabación.",
+      "finishDraft": "Finalizar",
+      "finishingDraft": "Finalizando...",
       "input": "Entrada de voz",
       "inputLimitReached": "Límite de entrada de voz alcanzado. Actualiza a Pro o Team para límites más altos.",
       "inputLimitReachedMember": "Límite de entrada de voz alcanzado. Pide a un administrador del espacio de trabajo que actualice el plan para obtener límites más altos.",
@@ -2449,6 +2452,7 @@
       "inputLimitReachedReset": "Límite de entrada de voz alcanzado. Espera a que se restablezca tu límite.",
       "microphoneAccessDenied": "Se ha denegado el acceso al micrófono. Permite el acceso al micrófono e inténtalo de nuevo.",
       "openingMicrophone": "Abriendo el micrófono...",
+      "removeDraft": "Eliminar borrador de voz",
       "starting": "Iniciando entrada de voz",
       "stopRecording": "Detener la grabación",
       "transcribing": "Transcribiendo",
@@ -2490,12 +2494,18 @@
       "deleteDescriptionWithCount_many": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "¿Eliminar {{account}}?",
-      "fallbackName": "Cuenta #{{id}}",
+      "fallbackByMethod": {
+        "api": "Clave de API",
+        "api-token": "Token de API",
+        "cli": "CLI"
+      },
+      "fallbackUnnamed": "Cuenta sin nombre",
       "find": "Buscar cuentas",
       "loading": "Cargando cuentas…",
       "loadingMore": "Cargando…",
       "loadMore": "Cargar más",
       "makeDefault": "Establecer como predeterminada",
+      "managerDescription": "Las nuevas ejecuciones usan tu cuenta predeterminada.",
       "managerTitle": "Gestionar cuentas de {{connector}}",
       "namePromptDescription": "Puedes omitir este paso y asignar un nombre a la cuenta más tarde.",
       "namePromptTitle": "Asigna un nombre a tu cuenta de {{connector}}",
@@ -2719,6 +2729,7 @@
         "connecting": "Conectando…",
         "continue": "Continuar",
         "continueToProvider": "Continúa con el proveedor para autorizar el acceso.",
+        "continueWithAutomatic": "Continúa mientras Okou comprueba cómo se autentica este servidor MCP.",
         "description": "Tu secreto se cifra en reposo y se inyecta en las solicitudes salientes por el cortafuegos. Nunca se expone al agente como una variable de entorno.",
         "save": "Guardar",
         "saving": "Guardando…",
@@ -2733,9 +2744,12 @@
         "authorizationParameters": "Parámetros de autorización",
         "authorizationParametersDescription": "Añade solo los parámetros que requiera tu proveedor.",
         "authorizationUrl": "URL de autorización",
+        "automatic": "Automática",
+        "automaticDescription": "Permite que Okou detecte si este servidor MCP no usa autenticación o usa OAuth.",
         "clientId": "ID de cliente",
         "clientSecret": "Secreto del cliente",
         "connectorType": "Tipo de conector",
+        "customOauthApp": "Aplicación OAuth personalizada",
         "displayName": "Nombre de visualización",
         "headerName": "Nombre de la cabecera",
         "headerTemplate": "Plantilla de cabecera",
@@ -2762,10 +2776,12 @@
         },
         "prefixes": "Prefijos",
         "prefixesHint": "(uno por línea, solo HTTPS)",
+        "recommended": "(Recomendado)",
         "redirectCopy": "Copiar URL de redirección",
         "redirectHint": "(Registra esta URL en la aplicación OAuth del proveedor. Mantén también registradas las URL de redirección existentes de VM0 u Okou.)",
         "redirectUrl": "URL de redirección",
         "removeApiAuthentication": "Eliminar la autenticación por API",
+        "removeAutomatic": "Eliminar autenticación automática",
         "removeNoAuthentication": "Quitar «Sin autenticación»",
         "removeOauth": "Eliminar OAuth 2.0",
         "scopes": "Alcances",
@@ -4855,14 +4871,22 @@
       "title": "Datos de exportación"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Restablecer todo",
+        "resetting": "Restableciendo..."
+      },
       "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
+      "filters": {
+        "all": "Todos"
+      },
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
         "internal": "Internas",
         "released": "Lanzadas"
       },
+      "maintainer": "Responsable: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {
@@ -5161,8 +5185,13 @@
           "offline": "sin conexión",
           "online": "en línea",
           "recovery": "recuperación",
+          "refresh": "Actualizar",
           "title": "Diagnóstico de conexión en tiempo real",
-          "unavailable": "no disponible"
+          "unavailable": "no disponible",
+          "workerDescription": "Inspecciona el registro del shared worker que mantiene la conexión en tiempo real.",
+          "workerLoading": "Cargando",
+          "workerTitle": "Diagnóstico de conexión del shared worker",
+          "workerUnavailable": "No disponible"
         }
       },
       "language": {

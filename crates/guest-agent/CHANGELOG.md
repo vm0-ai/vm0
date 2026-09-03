@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.84.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.8...guest-agent-v0.84.9) (2026-09-03)
+
+## [0.84.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.7...guest-agent-v0.84.8) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
+## [0.84.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.6...guest-agent-v0.84.7) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
+## [0.84.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.5...guest-agent-v0.84.6) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** reclassify run payload field identifiers ([#31244](https://github.com/vm0-ai/vm0/issues/31244)) ([3b475f2](https://github.com/vm0-ai/vm0/commit/3b475f25121716295b2edcfefe3d4c9143c6d671))
+
+## [0.84.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.4...guest-agent-v0.84.5) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
+## [0.84.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.3...guest-agent-v0.84.4) (2026-09-02)
+
+
+### Bug Fixes
+
+* **runner:** report authoritative provider failure reasons ([#31163](https://github.com/vm0-ai/vm0/issues/31163)) ([b84e233](https://github.com/vm0-ai/vm0/commit/b84e2334f9e370b59a299b00250fc037d90538dd))
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
 ## [0.84.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.2...guest-agent-v0.84.3) (2026-09-02)
 
 

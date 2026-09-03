@@ -208,6 +208,15 @@ function outputText(spy: ReturnType<typeof vi.spyOn>): string {
   return spy.mock.calls.flat().join("\n");
 }
 
+function insufficientScopeResponse(scope: string): Response {
+  return new HttpResponse(null, {
+    status: 403,
+    headers: {
+      "www-authenticate": `Bearer error="insufficient_scope", scope="${scope}", resource_metadata="https://untrusted.example.test/oauth-resource", error_description="upstream-secret-description"`,
+    },
+  });
+}
+
 describe("okou mcp command", () => {
   const exit = vi.spyOn(process, "exit").mockImplementation(processExit);
   const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -574,6 +583,152 @@ describe("okou mcp command", () => {
     expect(errors).toContain("MCP server request failed");
     expect(errors).not.toContain(upstreamSecret);
     expect(errors).not.toContain("Error POSTing");
+  });
+
+  it("requests exact-run reauthorization for a valid insufficient-scope challenge without retrying", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      listResponse: () => {
+        return insufficientScopeResponse("read write read");
+      },
+    });
+    let requestedScopes: unknown;
+    server.use(
+      http.post(
+        `http://localhost:3000/api/mcp-connectors/${CONNECTOR_ID}/oauth2/reauthorize`,
+        async ({ request }) => {
+          requestedScopes = await request.json();
+          return HttpResponse.json({
+            authorizationUrl: "https://authorize.example.test/consent",
+            expiresAt: "2026-09-03T12:15:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await expect(
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestedScopes).toStrictEqual({ scopes: ["read", "write"] });
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/list";
+      }),
+    ).toHaveLength(1);
+    const errors = outputText(consoleError);
+    expect(errors).toContain(
+      "[Authorize MCP connector](https://authorize.example.test/consent)",
+    );
+    expect(errors).toContain("The failed MCP request was not retried");
+    expect(errors).toContain("Start a new run after authorization");
+    expect(errors).not.toContain("upstream-secret-description");
+    expect(errors).not.toContain("untrusted.example.test");
+  });
+
+  it("reports an older API without retrying the insufficient-scope request", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      listResponse: () => {
+        return insufficientScopeResponse("admin");
+      },
+    });
+    server.use(
+      http.post(
+        `http://localhost:3000/api/mcp-connectors/${CONNECTOR_ID}/oauth2/reauthorize`,
+        () => {
+          return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        },
+      ),
+    );
+
+    await expect(
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain(
+      "MCP scope reauthorization is unavailable on the current API",
+    );
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/list";
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("keeps scope reauthorization inside the command deadline", async () => {
+    stubConnectorList();
+    const seen = stubMcpServer({
+      era: "modern",
+      listResponse: () => {
+        return insufficientScopeResponse("admin");
+      },
+    });
+    server.use(
+      http.post(
+        `http://localhost:3000/api/mcp-connectors/${CONNECTOR_ID}/oauth2/reauthorize`,
+        async () => {
+          await delay(2_000);
+          return HttpResponse.json({
+            authorizationUrl: "https://authorize.example.test/consent",
+            expiresAt: "2026-09-03T12:15:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await expect(
+      mcpCommand.parseAsync([
+        "node",
+        "okou",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "{}",
+        "--timeout",
+        "1s",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("timed out after 1s");
+    expect(
+      seen.filter((request) => {
+        return request.method === "tools/list";
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("keeps an oversized insufficient-scope challenge generic", async () => {
+    stubConnectorList();
+    stubMcpServer({
+      era: "modern",
+      listResponse: () => {
+        return insufficientScopeResponse("x".repeat(257));
+      },
+    });
+    let apiCalls = 0;
+    server.use(
+      http.post(
+        `http://localhost:3000/api/mcp-connectors/${CONNECTOR_ID}/oauth2/reauthorize`,
+        () => {
+          apiCalls += 1;
+          return HttpResponse.json({
+            authorizationUrl: "https://authorize.example.test/consent",
+            expiresAt: "2026-09-03T12:15:00.000Z",
+          });
+        },
+      ),
+    );
+
+    await expect(
+      mcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(apiCalls).toBe(0);
+    expect(outputText(consoleError)).toContain("MCP server request failed");
   });
 
   it("rejects an unknown tool without sending tools/call", async () => {

@@ -19,6 +19,7 @@ import {
   connectorManualGrantContract,
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
+import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 import {
   agentsMainContract,
   type AgentResponse,
@@ -288,25 +289,59 @@ function chooseTemplate(
 }
 
 describe("onboarding flow", () => {
-  it("leads with Slack and opens its setup after completing onboarding", async () => {
-    await openMakePage();
+  it.each([
+    {
+      browserTimezone: "Asia/Shanghai",
+      expectedTimezone: "Asia/Shanghai",
+      scenario: "browser-resolved",
+    },
+    {
+      browserTimezone: "",
+      expectedTimezone: "UTC",
+      scenario: "fallback",
+    },
+  ])(
+    "sends the $scenario timezone before opening Slack setup",
+    async ({ browserTimezone, expectedTimezone }) => {
+      const resolvedOptions = new Intl.DateTimeFormat().resolvedOptions();
+      vi.spyOn(
+        Intl.DateTimeFormat.prototype,
+        "resolvedOptions",
+      ).mockReturnValue({
+        ...resolvedOptions,
+        timeZone: browserTimezone,
+      });
+      let completionBody: unknown;
+      context.mocks.api(
+        onboardingCompleteContract.complete,
+        ({ body, respond }) => {
+          completionBody = body;
+          return respond(200, {
+            onboardingComplete: true,
+            needsOnboarding: false,
+          });
+        },
+      );
+      await openMakePage();
 
-    const slackOption = firstItem(screen.getAllByRole("radio"));
-    expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
-    expect(
-      screen.getByTestId("onboarding-slack-illustration"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
-      "src",
-      expect.stringContaining("slack-198390069136.svg"),
-    );
+      const slackOption = firstItem(screen.getAllByRole("radio"));
+      expect(slackOption).toHaveTextContent("Chat with Okou in Slack");
+      expect(
+        screen.getByTestId("onboarding-slack-illustration"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-slack-icon")).toHaveAttribute(
+        "src",
+        expect.stringContaining("slack-198390069136.svg"),
+      );
 
-    click(slackOption);
+      click(slackOption);
 
-    await waitFor(() => {
-      expect(pathname()).toBe(ROUTES.works);
-    });
-  });
+      await waitFor(() => {
+        expect(pathname()).toBe(ROUTES.works);
+      });
+      expect(completionBody).toStrictEqual({ timezone: expectedTimezone });
+    },
+  );
 
   it.each([
     ["Generate a presentation", "Generate slides and speaker", "Presentation"],

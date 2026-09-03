@@ -5,32 +5,13 @@
 //! through [`CANONICAL_USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
-//! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
-//! in sibling modules such as
-//! [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
-//! User env filtering should treat current and future `OKOU_` keys plus current,
-//! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
-//! namespaces are listed explicitly below.
-//!
-//! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
-//! selected runner-owned keys may cross the local user-env boundary as
-//! guest-agent timing overrides.
-
-/// Legacy backend API URL spelling retained outside Guest root capture.
-///
-/// Guest root capture reads only [`CANONICAL_API_URL_ENV`]. This spelling
-/// remains an independent compatibility input for the Runner operator and the
-/// managed CLI reader, and remains named by user-environment filtering and
-/// negative coverage. The production Runner and the guest-agent's curated
-/// managed CLI-child environment do not emit this alias.
-pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
+//! The `OKOU_` namespace is runner-owned, including keys defined in sibling
+//! modules such as [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
+//! User env filtering protects every current and future `OKOU_` key. Bootstrap
+//! keys outside that namespace are classified explicitly below.
 
 /// Canonical backend API URL spelling written by the production Runner, read at
 /// Guest root bootstrap, and exposed to managed CLI children.
-///
-/// The production Runner emits only this spelling and Guest root capture reads
-/// it without consulting [`API_URL_ENV`]. The Runner operator and downstream
-/// managed CLI reader retain independent compatibility contracts.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
@@ -56,12 +37,12 @@ pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT"
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
-pub const PROMPT_ENV: &str = "VM0_PROMPT";
+pub const PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_PROMPT";
 
 /// Logical run-payload field name for optional extra system prompt text.
 ///
 /// Unset or empty means there is no extra system prompt.
-pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
+pub const APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_APPEND_SYSTEM_PROMPT";
 
 /// Sensitive Vercel protection bypass secret for guest API calls.
 ///
@@ -97,26 +78,26 @@ pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTI
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
-pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
+pub const SECRET_VALUES_RUN_PAYLOAD_FIELD: &str = "VM0_SECRET_VALUES";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
-pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
+pub const DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_DISALLOWED_TOOLS";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
-pub const TOOLS_ENV: &str = "VM0_TOOLS";
+pub const TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_TOOLS";
 
 /// Logical run-payload field name for the raw Claude Code settings payload
 /// passed to the guest-agent.
 ///
 /// The runner treats this as an opaque string. Unset or empty means there is no
 /// settings override.
-pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
+pub const SETTINGS_RUN_PAYLOAD_FIELD: &str = "VM0_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
 ///
@@ -171,7 +152,7 @@ pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
-pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
+pub const ARTIFACTS_RUN_PAYLOAD_FIELD: &str = "VM0_ARTIFACTS";
 
 /// One artifact mount in the runner-to-guest run payload.
 ///
@@ -207,10 +188,10 @@ pub enum RunArtifactMissingRootPolicy {
 /// enabled states.
 ///
 /// Unset or empty means there are no feature flags.
-pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+pub const FEATURE_FLAGS_RUN_PAYLOAD_FIELD: &str = "VM0_FEATURE_FLAGS";
 
 /// Logical run-payload field name for API-owned Codex runtime metadata.
-pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
+pub const CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Logical run-payload field name for the schema-v2 Pi launch config marker.
 ///
@@ -316,39 +297,39 @@ impl RunPayload {
 
         [
             RunPayloadField {
-                name: PROMPT_ENV,
+                name: PROMPT_RUN_PAYLOAD_FIELD,
                 value: prompt,
             },
             RunPayloadField {
-                name: APPEND_SYSTEM_PROMPT_ENV,
+                name: APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
                 value: append_system_prompt,
             },
             RunPayloadField {
-                name: SECRET_VALUES_ENV,
+                name: SECRET_VALUES_RUN_PAYLOAD_FIELD,
                 value: secret_values,
             },
             RunPayloadField {
-                name: DISALLOWED_TOOLS_ENV,
+                name: DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
                 value: disallowed_tools,
             },
             RunPayloadField {
-                name: TOOLS_ENV,
+                name: TOOLS_RUN_PAYLOAD_FIELD,
                 value: tools,
             },
             RunPayloadField {
-                name: SETTINGS_ENV,
+                name: SETTINGS_RUN_PAYLOAD_FIELD,
                 value: settings,
             },
             RunPayloadField {
-                name: ARTIFACTS_ENV,
+                name: ARTIFACTS_RUN_PAYLOAD_FIELD,
                 value: artifacts,
             },
             RunPayloadField {
-                name: FEATURE_FLAGS_ENV,
+                name: FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
                 value: feature_flags,
             },
             RunPayloadField {
-                name: CODEX_RUNTIME_CONFIG_ENV,
+                name: CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
                 value: codex_runtime_config,
             },
             RunPayloadField {
@@ -375,91 +356,32 @@ impl RunPayload {
     }
 }
 
-/// Retained local input for the Guest Agent stuck-tool timeout in seconds.
+/// Canonical Guest Agent stuck-tool timeout bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`] for Guest bootstrap. The
-/// guest-agent parses the value as `u64`; unset or unparseable values use the
-/// compiled default.
-pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
-
-/// Canonical stuck-tool timeout bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// The Guest Agent parses the value as `u64`; unset or unparseable values use
+/// the compiled default.
 pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
 
-/// Retained local input for the Guest Agent SIGTERM grace period in seconds
-/// after the CLI reports a final result.
+/// Canonical Guest Agent post-result SIGTERM grace bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
-/// unparseable, or out-of-range values use the guest-agent's compiled default.
-pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
-
-/// Canonical post-result SIGTERM grace bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// Unset, unparseable, or out-of-range values use the Guest Agent's compiled
+/// default.
 pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
-/// Retained local input for the Guest Agent absolute cap in seconds before
-/// sending SIGTERM after the CLI reports a final result, regardless of later
-/// post-result stdout events.
+/// Canonical Guest Agent post-result total-cap bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV`] for Guest bootstrap. Unset,
-/// unparseable, or out-of-range values use the guest-agent's compiled default.
-pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
-
-/// Canonical post-result total-cap bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// The value is the absolute cap before SIGTERM after the CLI reports a final
+/// result. Unset, unparseable, or out-of-range values use the Guest Agent's
+/// compiled default.
 pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
 
-/// Retained local input for the Guest Agent grace period in seconds before
-/// escalating from SIGTERM to SIGKILL after the CLI reports a final result.
+/// Canonical Guest Agent post-result SIGKILL grace bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
-/// unparseable, or out-of-range values use the guest-agent's compiled default.
-pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
-
-/// Canonical post-result SIGKILL grace bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// Unset, unparseable, or out-of-range values use the Guest Agent's compiled
+/// default.
 pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
-
-/// Complete mapping from retained legacy local tuning inputs to canonical
-/// Guest bootstrap outputs.
-///
-/// Each tuple is `(legacy_input, canonical_bootstrap_output)`.
-pub const GUEST_AGENT_TUNING_ENV_MAPPINGS: [(&str, &str); 4] = [
-    (
-        STUCK_TOOL_TIMEOUT_SECS_ENV,
-        CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-    ),
-    (
-        POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    ),
-    (
-        POST_RESULT_TOTAL_CAP_SECS_ENV,
-        CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-    ),
-    (
-        POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-        CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ),
-];
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
@@ -486,23 +408,6 @@ pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
-
-/// Retired runner bootstrap key that must remain protected at the user-env
-/// boundary.
-pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
-
-/// Retained legacy Guest Agent tuning inputs that local user env may provide.
-///
-/// These are the only `VM0_` keys intentionally allowed to cross the local
-/// user-env boundary. The runner translates them to the corresponding canonical
-/// outputs in [`GUEST_AGENT_TUNING_ENV_MAPPINGS`] separately from the general
-/// user environment payload.
-pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[0].0,
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[1].0,
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[2].0,
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[3].0,
-];
 
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     RUN_ID_ENV,
@@ -539,25 +444,14 @@ pub fn is_shell_identifier_env_key(key: &str) -> bool {
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
-/// Returns whether `key` is a supported guest-agent tuning override.
-///
-/// Local submission uses this allowlist to permit selected runner-owned timing
-/// controls while continuing to reject general runner bootstrap keys from user
-/// env.
-pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
-    GUEST_AGENT_TUNING_ENV_KEYS.contains(&key)
-}
-
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
-/// This covers every `OKOU_` and `VM0_` key, including future and retired names,
-/// plus the explicit bootstrap keys required by established runner, guest-agent,
-/// or integration contracts. Runner and local-submit code use this predicate to
-/// scrub or reject user-provided env keys before the guest-agent starts.
+/// This covers every `OKOU_` key and the explicit bootstrap keys required by
+/// established runner, guest-agent, or integration contracts. Runner and
+/// local-submit code use this predicate to scrub or reject those keys before
+/// the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("OKOU_")
-        || key.starts_with("VM0_")
-        || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    key.starts_with("OKOU_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 /// Escapes and bounds an environment key for diagnostics.
@@ -648,7 +542,6 @@ mod tests {
 
     #[test]
     fn contract_names_match_wire_values() {
-        assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
@@ -762,39 +655,39 @@ mod tests {
             fields,
             [
                 RunPayloadField {
-                    name: PROMPT_ENV,
+                    name: PROMPT_RUN_PAYLOAD_FIELD,
                     value: "prompt"
                 },
                 RunPayloadField {
-                    name: APPEND_SYSTEM_PROMPT_ENV,
+                    name: APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
                     value: "system"
                 },
                 RunPayloadField {
-                    name: SECRET_VALUES_ENV,
+                    name: SECRET_VALUES_RUN_PAYLOAD_FIELD,
                     value: "secret"
                 },
                 RunPayloadField {
-                    name: DISALLOWED_TOOLS_ENV,
+                    name: DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
                     value: "WebFetch"
                 },
                 RunPayloadField {
-                    name: TOOLS_ENV,
+                    name: TOOLS_RUN_PAYLOAD_FIELD,
                     value: "Bash"
                 },
                 RunPayloadField {
-                    name: SETTINGS_ENV,
+                    name: SETTINGS_RUN_PAYLOAD_FIELD,
                     value: "{}"
                 },
                 RunPayloadField {
-                    name: ARTIFACTS_ENV,
+                    name: ARTIFACTS_RUN_PAYLOAD_FIELD,
                     value: "[]"
                 },
                 RunPayloadField {
-                    name: FEATURE_FLAGS_ENV,
+                    name: FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
                     value: r#"{"flag":true}"#
                 },
                 RunPayloadField {
-                    name: CODEX_RUNTIME_CONFIG_ENV,
+                    name: CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
                     value: r#"{"providerId":"deepseek"}"#
                 },
                 RunPayloadField {
@@ -820,7 +713,7 @@ mod tests {
             ..RunPayload::default()
         };
 
-        assert_eq!(payload.first_nul_field(), Some(SETTINGS_ENV));
+        assert_eq!(payload.first_nul_field(), Some(SETTINGS_RUN_PAYLOAD_FIELD));
     }
 
     #[test]
@@ -880,33 +773,27 @@ mod tests {
     }
 
     #[test]
-    fn runner_owned_key_detection_covers_bootstrap_namespaces() {
+    fn runner_owned_key_detection_covers_terminal_contract() {
         for key in [
-            API_URL_ENV,
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
-            "VM0_API_TOKEN",
             CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
-            "VM0_SANDBOX_ID",
-            "VM0_SANDBOX_REUSE_RESULT",
-            "VM0_WORKSPACE_REUSE_RESULT",
-            "VM0_RESUME_SESSION_ID",
-            "VM0_API_START_TIME",
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
-            WORKING_DIR_ENV,
-            "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
-            "VM0_RUN_PAYLOAD_FILE",
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
+            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
             USE_MOCK_CODEX_ENV,
@@ -916,57 +803,19 @@ mod tests {
         }
         assert!(is_runner_owned_env_key("OKOU_TOKEN"));
         assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-        assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
-    }
-
-    #[test]
-    fn guest_agent_tuning_mapping_and_local_inputs_are_explicit() {
-        assert_eq!(
-            GUEST_AGENT_TUNING_ENV_MAPPINGS,
-            [
-                (
-                    STUCK_TOOL_TIMEOUT_SECS_ENV,
-                    CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-                ),
-                (
-                    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                    CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                ),
-                (
-                    POST_RESULT_TOTAL_CAP_SECS_ENV,
-                    CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-                ),
-                (
-                    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-                    CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-                ),
-            ]
-        );
-        assert_eq!(
-            GUEST_AGENT_TUNING_ENV_KEYS,
-            [
-                STUCK_TOOL_TIMEOUT_SECS_ENV,
-                POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                POST_RESULT_TOTAL_CAP_SECS_ENV,
-                POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            ]
-        );
         for key in [
-            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            "VM0_API_TOKEN",
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
+            "VM0_RESUME_SESSION_ID",
+            "VM0_API_START_TIME",
+            "VM0_USER_ENV_FILE",
+            "VM0_RUN_PAYLOAD_FILE",
+            "VM0_FUTURE_RUNNER_KEY",
+            "CUSTOM_ENV",
         ] {
-            assert!(
-                !is_guest_agent_tuning_env_key(key),
-                "canonical bootstrap output {key} must not become a local tuning input"
-            );
-        }
-        for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {
-            assert!(
-                !is_guest_agent_tuning_env_key(key),
-                "API URL bootstrap key {key} must not become a local tuning input"
-            );
+            assert!(!is_runner_owned_env_key(key), "{key} should be user-owned");
         }
     }
 
@@ -1046,14 +895,14 @@ mod tests {
         }
 
         assert!(
-            total >= 37,
-            "expected at least 37 declared *_ENV keys across the contract sources, found {total}; \
+            total >= 29,
+            "expected at least 29 declared *_ENV keys across the contract sources, found {total}; \
              lower this bound only when a key is deliberately removed"
         );
         assert!(
             unprotected.is_empty(),
             "these bootstrap env keys are not protected from user env injection. Add each to \
-             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep an OKOU_/VM0_ prefix:\n  {}",
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS or keep an OKOU_ prefix:\n  {}",
             unprotected.join("\n  ")
         );
     }

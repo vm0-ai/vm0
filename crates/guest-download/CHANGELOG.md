@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.56](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.55...guest-download-v0.23.56) (2026-09-03)
+
+## [0.23.55](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.54...guest-download-v0.23.55) (2026-09-03)
+
+## [0.23.54](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.53...guest-download-v0.23.54) (2026-09-03)
+
+## [0.23.53](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.52...guest-download-v0.23.53) (2026-09-02)
+
+## [0.23.52](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.51...guest-download-v0.23.52) (2026-09-02)
+
+## [0.23.51](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.50...guest-download-v0.23.51) (2026-09-02)
+
 ## [0.23.50](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.49...guest-download-v0.23.50) (2026-09-02)
 
 ## [0.23.49](https://github.com/vm0-ai/vm0/compare/guest-download-v0.23.48...guest-download-v0.23.49) (2026-09-02)

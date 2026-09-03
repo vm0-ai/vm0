@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.21.123](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.122...guest-mock-claude-v0.21.123) (2026-09-03)
+
+## [0.21.122](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.121...guest-mock-claude-v0.21.122) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
+## [0.21.121](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.120...guest-mock-claude-v0.21.121) (2026-09-03)
+
+## [0.21.120](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.119...guest-mock-claude-v0.21.120) (2026-09-02)
+
+## [0.21.119](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.118...guest-mock-claude-v0.21.119) (2026-09-02)
+
+## [0.21.118](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.117...guest-mock-claude-v0.21.118) (2026-09-02)
+
 ## [0.21.117](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.116...guest-mock-claude-v0.21.117) (2026-09-02)
 
 ## [0.21.116](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.115...guest-mock-claude-v0.21.116) (2026-09-02)

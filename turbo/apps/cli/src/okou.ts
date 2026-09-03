@@ -2,6 +2,8 @@
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import {
   decodeSandboxTokenPayload,
@@ -60,6 +62,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   web: null,
   video: null,
   host: ["host:read", "host:write"],
+  presentation: null,
   "presentation-template": "presentation-template:write",
   maps: "maps:read",
   weather: "weather:read",
@@ -71,6 +74,12 @@ const COMMAND_CAPABILITY_MAP: Record<
   finance: "finance:read",
   seo: "seo:read",
   banking: "banking:read",
+};
+
+const COMMAND_FEATURE_SWITCH_MAP: Readonly<
+  Partial<Record<string, FeatureSwitchKey>>
+> = {
+  presentation: FeatureSwitchKey.PresentationScreenshot,
 };
 
 const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize"]);
@@ -285,6 +294,13 @@ const COMMAND_DEFINITIONS: readonly CommandDefinition[] = [
     },
   },
   {
+    name: "presentation",
+    description: "Render presentations to page images",
+    load: async () => {
+      return (await import("./commands/presentation")).presentationCommand;
+    },
+  },
+  {
     name: "presentation-template",
     description: "Publish presentation templates extracted from a deck",
     load: async () => {
@@ -383,6 +399,16 @@ function shouldHideCommand(
   payload: SandboxTokenPayload | undefined,
 ): boolean {
   if (name.startsWith("__")) return true;
+  const featureSwitch = COMMAND_FEATURE_SWITCH_MAP[name];
+  if (
+    featureSwitch !== undefined &&
+    !isFeatureEnabled(featureSwitch, {
+      userId: payload?.userId,
+      orgId: payload?.orgId,
+    })
+  ) {
+    return true;
+  }
   if (!payload) return RUN_ONLY_COMMANDS.has(name);
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;

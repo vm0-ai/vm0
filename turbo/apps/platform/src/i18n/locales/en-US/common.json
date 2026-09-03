@@ -521,7 +521,6 @@
       "agentLoading": "Agent is still loading",
       "connect": "Connect Google Drive",
       "connectTooltip": "Connect Google Drive to upload artifacts",
-      "failedToOpenConnect": "Failed to open Google Drive connection page",
       "noArtifacts": "No artifacts to sync",
       "partial_one": "Synced {{synced}} of {{count}} file to Google Drive",
       "partial_other": "Synced {{synced}} of {{count}} files to Google Drive",
@@ -2397,6 +2396,10 @@
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",
+      "draft": "Voice draft",
+      "draftTooLong": "This voice draft is too long to finish. Start a new recording.",
+      "finishDraft": "Finish",
+      "finishingDraft": "Finishing...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
       "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
@@ -2405,6 +2408,7 @@
       "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
+      "removeDraft": "Remove voice draft",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
       "transcribing": "Transcribing",
@@ -2443,12 +2447,18 @@
       "deleteDescription": "Threads using this account will return to default inheritance.",
       "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
       "deleteTitle": "Delete {{account}}?",
-      "fallbackName": "Account #{{id}}",
+      "fallbackByMethod": {
+        "api": "API key",
+        "api-token": "API token",
+        "cli": "CLI"
+      },
+      "fallbackUnnamed": "Unnamed account",
       "find": "Find accounts",
       "loading": "Loading accounts…",
       "loadingMore": "Loading…",
       "loadMore": "Load more",
       "makeDefault": "Make default",
+      "managerDescription": "New runs use your default account.",
       "managerTitle": "Manage {{connector}} accounts",
       "namePromptDescription": "You can skip this and name the account later.",
       "namePromptTitle": "Name your {{connector}} account",
@@ -2663,6 +2673,7 @@
         "connecting": "Connecting…",
         "continue": "Continue",
         "continueToProvider": "Continue to the provider to authorize access.",
+        "continueWithAutomatic": "Continue while Okou checks how this MCP server authenticates.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
         "save": "Save",
         "saving": "Saving…",
@@ -2677,9 +2688,12 @@
         "authorizationParameters": "Authorization parameters",
         "authorizationParametersDescription": "Add only the parameters your provider requires.",
         "authorizationUrl": "Authorization URL",
+        "automatic": "Automatic",
+        "automaticDescription": "Let Okou discover whether this MCP server uses no authentication or OAuth.",
         "clientId": "Client ID",
         "clientSecret": "Client secret",
         "connectorType": "Connector type",
+        "customOauthApp": "Custom OAuth app",
         "displayName": "Display name",
         "headerName": "Header name",
         "headerTemplate": "Header template",
@@ -2706,10 +2720,12 @@
         },
         "prefixes": "Prefixes",
         "prefixesHint": "(one per line, https only)",
+        "recommended": "(Recommended)",
         "redirectCopy": "Copy Redirect URL",
         "redirectHint": "(Register this URL in the provider's OAuth application. Keep any existing VM0 or Okou redirect URL registered too.)",
         "redirectUrl": "Redirect URL",
         "removeApiAuthentication": "Remove API authentication",
+        "removeAutomatic": "Remove Automatic authentication",
         "removeNoAuthentication": "Remove no authentication",
         "removeOauth": "Remove OAuth 2.0",
         "scopes": "Scopes",
@@ -4792,14 +4808,22 @@
       "title": "Export data"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Reset all",
+        "resetting": "Resetting…"
+      },
       "description": "See feature switches by rollout stage.",
       "documentTitle": "Lab",
+      "filters": {
+        "all": "All"
+      },
       "groups": {
         "alpha": "Alpha",
         "beta": "Beta",
         "internal": "Internal",
         "released": "Released"
       },
+      "maintainer": "Maintainer: {{maintainer}}",
       "title": "Lab"
     },
     "models": {
@@ -5096,8 +5120,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "recovery",
+          "refresh": "Refresh",
           "title": "Realtime connection diagnostics",
-          "unavailable": "unavailable"
+          "unavailable": "unavailable",
+          "workerDescription": "Inspect the capture recorded by the shared worker that owns the realtime connection.",
+          "workerLoading": "Loading",
+          "workerTitle": "Shared worker connection diagnostics",
+          "workerUnavailable": "Unavailable"
         }
       },
       "language": {

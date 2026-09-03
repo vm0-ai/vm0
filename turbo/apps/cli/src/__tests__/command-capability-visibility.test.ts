@@ -171,6 +171,40 @@ describe("registerCommands", () => {
     expect(visibleCommandNames(prog)).toContain("browser");
   });
 
+  it("should show presentation screenshots to staff workspaces", () => {
+    vi.stubEnv(
+      "OKOU_TOKEN",
+      buildOkouToken({
+        userId: "user-staff",
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+        scope: "okou",
+        capabilities: [],
+      }),
+    );
+    const prog = new Command();
+
+    registerCommands(prog, [new Command("presentation")]);
+
+    expect(visibleCommandNames(prog)).toContain("presentation");
+  });
+
+  it("should hide presentation screenshots while their rollout is off", () => {
+    vi.stubEnv(
+      "OKOU_TOKEN",
+      buildOkouToken({
+        userId: "user-external",
+        orgId: "org-external",
+        scope: "okou",
+        capabilities: [],
+      }),
+    );
+    const prog = new Command();
+
+    registerCommands(prog, [new Command("presentation")]);
+
+    expect(hiddenCommandNames(prog)).toContain("presentation");
+  });
+
   it("should hide unmapped commands and show capable ones with valid token", () => {
     const token = buildOkouToken({
       scope: "okou",

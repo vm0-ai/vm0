@@ -113,8 +113,8 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.27.1"
-CLAUDE_CODE_VERSION="2.1.258"
-CODEX_CLI_VERSION="0.152.1"
+CLAUDE_CODE_VERSION="2.1.259"
+CODEX_CLI_VERSION="0.153.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
 AGENT_BROWSER_VERSION="0.33.0-vm0.1"
@@ -353,7 +353,7 @@ install_packages() {
   apt-get install -y \
     procps wget git ripgrep jq file iproute2 sudo ffmpeg \
     fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
-    libnss3 p11-kit-modules unzip \
+    libnss3 p11-kit-modules tzdata-legacy unzip \
     nodejs \
     python3 python3-pip \
     ruby-full bundler \

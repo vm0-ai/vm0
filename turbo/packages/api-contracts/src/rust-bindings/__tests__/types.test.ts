@@ -108,6 +108,11 @@ const expectedBindings = [
     direction: "request",
   },
   {
+    rustModulePath: ["webhooks", "agent", "complete"],
+    rustTypeName: "RequestFailureReason",
+    direction: "request",
+  },
+  {
     rustModulePath: ["webhooks", "agent", "storages"],
     rustTypeName: "FileEntryWithHash",
     direction: "request",
@@ -271,9 +276,6 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub struct PiLaunchConfig {");
     expect(firstRender).toContain("pub struct PiLaunchConfigApiFirstTurn {");
     expect(firstRender).toContain(
-      "pub struct PiLaunchConfigApiFirstTurnOwnershipTransfer {",
-    );
-    expect(firstRender).toContain(
       "pub struct PiLaunchConfigApiFirstTurnBaseSession {",
     );
     expect(firstRender).toContain("pub struct PiModelConfig {");
@@ -335,9 +337,7 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub checkpoint: Option<RequestCheckpoint>,");
     expect(firstRender).toContain("pub exit_code: i32,");
     expect(firstRender).toContain("pub enum RequestFailureReason {");
-    expect(firstRender).toContain(
-      "pub failure_reason: Option<RequestFailureReason>,",
-    );
+    expect(firstRender).toContain("pub failure_reason: Option<String>,");
     expect(firstRender).toContain("pub last_event_sequence: Option<u32>,");
     expect(firstRender).toContain("pub enum SessionHistoryEncoding {");
     expect(firstRender).toContain(
@@ -428,12 +428,6 @@ describe("Rust type bindings", () => {
               minimum: 1,
               maximum: MAX_EVENT_SEQUENCE_NUMBER,
             },
-            ownershipTransfer: {
-              required: ["schemaVersion"],
-              properties: {
-                schemaVersion: { const: 1 },
-              },
-            },
             baseSession: {
               required: ["sessionId", "sha256"],
             },
@@ -476,6 +470,10 @@ describe("Rust type bindings", () => {
         },
         thinkingLevel: {
           enum: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+        },
+        catalogModel: { type: "string", minLength: 1 },
+        credentialHeader: {
+          required: ["name", "valueTemplate"],
         },
         serviceTier: {
           enum: ["priority"],

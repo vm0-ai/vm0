@@ -1,5 +1,9 @@
 import type { InboundMessage } from "ably";
 import { command, computed, state } from "ccstate";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { delay } from "signal-timers";
 
 import {
   derivePlatformServiceOrigin,
@@ -7,11 +11,14 @@ import {
 } from "../lib/platform-host.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
+import { now } from "../lib/time.ts";
+import { accept } from "../lib/accept.ts";
 import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
 import { setAuthenticatedIdentity$ } from "../signals/auth-context.ts";
 import {
+  connectionDiagnostics$,
   setupConnectionDiagnostics$,
   writeConnectionDiagnostic$,
 } from "../signals/connection-diagnostics.ts";
@@ -32,7 +39,7 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import { settle } from "../signals/utils.ts";
+import { settle, withCleanup } from "../signals/utils.ts";
 import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
 import {
   chatThreadIndicators$,
@@ -61,7 +68,6 @@ import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
-
 export interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
@@ -81,10 +87,31 @@ function requireRuntime(
   return runtime;
 }
 
-const workerChatThreadIndicators$ = computed(
-  async (get): Promise<ChatThreadIndicators> => {
-    const indicators = await get(chatThreadIndicators$);
+const CHAT_EVENT_CATCH_UP_THROTTLE_MS = 1000;
+const RECENT_CHAT_EVENT_CATCH_UP_THREAD_COUNT = 100;
+
+const batchChatEventCatchUpEnabled$ = computed(
+  async (get): Promise<boolean> => {
     const signal = get(rootSignal$);
+    signal.throwIfAborted();
+    const client = get(apiClient$)(featureSwitchesContract);
+    const response = await accept(
+      client.get({ fetchOptions: { signal } }),
+      [200],
+    );
+    return (
+      response.body.effectiveSwitches[FeatureSwitchKey.BatchChatEventCatchUp] ??
+      false
+    );
+  },
+);
+
+const catchUpLegacyChatEvents$ = command(
+  async (
+    { get },
+    indicators: ChatThreadIndicators,
+    signal: AbortSignal,
+  ): Promise<void> => {
     signal.throwIfAborted();
     const runtime = requireRuntime(get(workerRuntimeState$));
     await Promise.all(
@@ -99,7 +126,186 @@ const workerChatThreadIndicators$ = computed(
         );
       }),
     );
+  },
+);
+
+interface CatchUpChatEventThrottle {
+  lastStartedAt: number | null;
+  active: Promise<void> | null;
+  trailing: {
+    readonly owner: object;
+    readonly promise: Promise<void>;
+  } | null;
+}
+
+const catchUpChatEventThrottle$ = computed((get): CatchUpChatEventThrottle => {
+  get(rootSignal$).throwIfAborted();
+  return { lastStartedAt: null, active: null, trailing: null };
+});
+
+const executeCatchUpChatEvent$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    const runtime = requireRuntime(get(workerRuntimeState$));
+    const [indicators, threadEvents] = await Promise.all([
+      get(chatThreadIndicators$),
+      runtime.query(
+        {
+          dataKey: { kind: "chat-thread-event" },
+          afterSeqId: null,
+          consistency: "cache-only",
+        },
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+    const recentThreadIds = replayChatThreadEvents(
+      threadEvents.snapshot?.chatThreads ?? [],
+      threadEvents.events,
+    )
+      .sort((left, right) => {
+        const sortAt = right.sortAt.localeCompare(left.sortAt);
+        return sortAt === 0 ? right.id.localeCompare(left.id) : sortAt;
+      })
+      .slice(0, RECENT_CHAT_EVENT_CATCH_UP_THREAD_COUNT)
+      .map((thread) => {
+        return thread.id;
+      });
+    const threadIds = [
+      ...new Set([...Object.keys(indicators.threads), ...recentThreadIds]),
+    ];
+    const updatedThreadIds = await runtime.catchUpChatEvents(threadIds, signal);
+    signal.throwIfAborted();
+    for (const threadId of updatedThreadIds) {
+      set(broadcastSharedDatabaseWorkerMessage$, {
+        type: "invalidate",
+        dataKey: { kind: "chat-event", threadId },
+      });
+    }
+  },
+);
+
+const runCatchUpChatEventNow$ = command(
+  async (
+    { set },
+    throttle: CatchUpChatEventThrottle,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    throttle.lastStartedAt = now();
+    const execution = set(executeCatchUpChatEvent$, signal);
+    throttle.active = execution;
+    await withCleanup(execution, () => {
+      if (throttle.active === execution) {
+        throttle.active = null;
+      }
+    });
+  },
+);
+
+const runTrailingCatchUpChatEvent$ = command(
+  async (
+    { set },
+    throttle: CatchUpChatEventThrottle,
+    owner: object,
+    active: Promise<void> | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (active) {
+      await settle(active, signal);
+    }
+    const lastStartedAt = throttle.lastStartedAt;
+    if (lastStartedAt === null) {
+      throw new Error("Trailing ChatEvent catch-up has no prior start time");
+    }
+    const remaining = Math.max(
+      0,
+      lastStartedAt + CHAT_EVENT_CATCH_UP_THROTTLE_MS - now(),
+    );
+    if (remaining > 0) {
+      await delay(remaining, { signal });
+    }
+    if (throttle.trailing?.owner === owner) {
+      throttle.trailing = null;
+    }
+    await set(runCatchUpChatEventNow$, throttle, signal);
+  },
+);
+
+/** Globally serialize ChatEvent catch-up with leading and trailing throttle. */
+export const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
+  const signal = get(rootSignal$);
+  signal.throwIfAborted();
+  const throttle = get(catchUpChatEventThrottle$);
+  if (throttle.trailing) {
+    return throttle.trailing.promise;
+  }
+  if (
+    throttle.active === null &&
+    (throttle.lastStartedAt === null ||
+      now() - throttle.lastStartedAt >= CHAT_EVENT_CATCH_UP_THROTTLE_MS)
+  ) {
+    return set(runCatchUpChatEventNow$, throttle, signal);
+  }
+  const owner = {};
+  const promise = set(
+    runTrailingCatchUpChatEvent$,
+    throttle,
+    owner,
+    throttle.active,
+    signal,
+  );
+  throttle.trailing = { owner, promise };
+  return promise;
+});
+
+interface WorkerChatThreadIndicatorsCache {
+  source: Promise<ChatThreadIndicators> | null;
+  result: Promise<ChatThreadIndicators> | null;
+}
+
+const workerChatThreadIndicatorsCache$ = computed(
+  (get): WorkerChatThreadIndicatorsCache => {
+    get(rootSignal$).throwIfAborted();
+    return { source: null, result: null };
+  },
+);
+
+const loadWorkerChatThreadIndicators$ = command(
+  async (
+    { get, set },
+    source: Promise<ChatThreadIndicators>,
+    signal: AbortSignal,
+  ): Promise<ChatThreadIndicators> => {
+    const [indicators, batchCatchUpEnabled] = await Promise.all([
+      source,
+      get(batchChatEventCatchUpEnabled$),
+    ]);
+    signal.throwIfAborted();
+    if (batchCatchUpEnabled) {
+      await set(catchUpChatEvent$);
+    } else {
+      await set(catchUpLegacyChatEvents$, indicators, signal);
+    }
+    signal.throwIfAborted();
     return indicators;
+  },
+);
+
+const readWorkerChatThreadIndicators$ = command(
+  ({ get, set }): Promise<ChatThreadIndicators> => {
+    const source = get(chatThreadIndicators$);
+    const cache = get(workerChatThreadIndicatorsCache$);
+    if (cache.source === source && cache.result) {
+      return cache.result;
+    }
+    const result = set(
+      loadWorkerChatThreadIndicators$,
+      source,
+      get(rootSignal$),
+    );
+    cache.source = source;
+    cache.result = result;
+    return result;
   },
 );
 
@@ -253,15 +459,25 @@ export const handleSharedDatabaseRealtimeMessage$ = command(
 
 const reloadWorkerComputed$ = command(
   ({ set }, computedKey: ComputedKey): void => {
-    if (computedKey === "chat-thread-indicators") {
-      set(reloadChatThreadIndicators$);
-      return;
+    switch (computedKey) {
+      case "chat-thread-indicators": {
+        set(reloadChatThreadIndicators$);
+        return;
+      }
+      case "computer-use-hosts": {
+        set(reloadComputerUseHosts$);
+        return;
+      }
+      case "connection-diagnostics": {
+        // Diagnostics derive from Worker Store state, so there is no fetch to
+        // repeat: the next read already observes every recorded event.
+        return;
+      }
+      case "queue-data": {
+        set(reloadQueueData$);
+        return;
+      }
     }
-    if (computedKey === "computer-use-hosts") {
-      set(reloadComputerUseHosts$);
-      return;
-    }
-    set(reloadQueueData$);
   },
 );
 
@@ -274,10 +490,10 @@ export const refreshWorkerComputed$ = command(
 );
 
 const refreshWorkerChatIndicators$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+  async ({ set }, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "chat-thread-indicators");
-    await get(workerChatThreadIndicators$);
+    await set(readWorkerChatThreadIndicators$);
     signal.throwIfAborted();
   },
 );
@@ -484,9 +700,12 @@ export const getComputedStoreMessage$ = command(
     signal: AbortSignal,
   ): Promise<ComputedValue<ComputedKey>> => {
     set(requireConnectionSignal$, connectionId, signal);
+    if (message.computedKey === "connection-diagnostics") {
+      return get(connectionDiagnostics$);
+    }
     const value =
       message.computedKey === "chat-thread-indicators"
-        ? await get(workerChatThreadIndicators$)
+        ? await set(readWorkerChatThreadIndicators$)
         : message.computedKey === "computer-use-hosts"
           ? await get(computerUseHosts$)
           : await get(queueData$);

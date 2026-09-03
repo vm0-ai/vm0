@@ -110,6 +110,9 @@ import {
 } from "./test-org-plan-entitlement-restriction-permanent";
 import { validateSlackOfficialBrandMigration } from "./test-slack-official-brand-migration";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
+import { validatePiMemoryStage1SelectionWatermarkMigration } from "./test-pi-memory-stage1-selection-watermark-migration";
+import { validatePiMemoryPhase2JobMigration } from "./test-pi-memory-phase2-job-migration";
+import { validatePiMemoryPublicationMigration } from "./test-pi-memory-publication-migration";
 import { validateWorkflowCompatibilityViews } from "./test-workflow-compatibility-views";
 import { LEGACY_DATABASE_IDENTITY_MANIFEST } from "./legacy-database-identity-manifest";
 import {
@@ -11282,6 +11285,9 @@ async function main(): Promise<void> {
     await validateUsagePackPendingSnapshotSerializationMigration();
     await validateOkouDebugFeatureSwitchKeyRename();
     await validateSlackOfficialBrandMigration();
+    await validatePiMemoryStage1SelectionWatermarkMigration();
+    await validatePiMemoryPhase2JobMigration();
+    await validatePiMemoryPublicationMigration();
     await validateAgentDraftsCompatibilityRelation();
     await validateChatSearchDeleteCompatibility(dbUrl.toString());
     await validateWorkflowCompatibilityViews();

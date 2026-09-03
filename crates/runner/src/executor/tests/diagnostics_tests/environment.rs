@@ -39,10 +39,10 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
 
     assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 7);
     assert!(diagnostics.env_bytes >= big_value_len);
-    assert_eq!(diagnostics.runner_owned_count, 2);
+    assert_eq!(diagnostics.runner_owned_count, 1);
     assert_eq!(
         diagnostics.external_count,
-        AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 5
+        AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 6
     );
     assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
     assert_eq!(diagnostics.largest_entries[0].key, "BIG_VALUE");
@@ -86,4 +86,26 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
     assert!(!rendered.contains("stored-secret-value"));
     assert!(!rendered.contains("long-secret-value"));
     assert!(!rendered.contains("escaped-key-secret-value"));
+}
+
+#[test]
+fn agent_env_diagnostics_classifies_terminal_ownership_contract() {
+    let env = HashMap::from([
+        (
+            "OKOU_FUTURE_PLATFORM_KEY".to_string(),
+            "canonical".to_string(),
+        ),
+        (
+            guest_contracts::env::CLI_AGENT_TYPE_ENV.to_string(),
+            "explicit".to_string(),
+        ),
+        ("VM0_SECRET_VALUES".to_string(), "ordinary".to_string()),
+        ("CUSTOM_ENV".to_string(), "ordinary".to_string()),
+    ]);
+
+    let diagnostics = build_agent_env_diagnostics(&env, &HashMap::new());
+
+    assert_eq!(diagnostics.env_count, 4);
+    assert_eq!(diagnostics.runner_owned_count, 2);
+    assert_eq!(diagnostics.external_count, 2);
 }

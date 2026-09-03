@@ -583,9 +583,9 @@ describe("custom model provider gateway routes", () => {
 
       await runs.requestCancelRun(actor, deepseekRunId, [200]);
     }
-  });
+  }, 15_000);
 
-  it("keeps a DeepSeek custom gateway out of Pi execution", async () => {
+  it("admits an allowlisted DeepSeek custom gateway to Pi execution", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const actor = bdd.user();
@@ -651,7 +651,7 @@ describe("custom model provider gateway routes", () => {
       {
         clientEventId: randomUUID(),
         agentId: agent.agentId,
-        prompt: "keep the custom DeepSeek gateway on the standard runtime",
+        prompt: "run the custom DeepSeek gateway through Pi",
         model: "deepseek-v4-flash",
       },
       [201],
@@ -659,6 +659,31 @@ describe("custom model provider gateway routes", () => {
     if ("error" in sent.body || !sent.body.runId) {
       throw new Error("Expected the custom DeepSeek gateway run to start");
     }
-    await runs.requestCancelRun(actor, sent.body.runId, [200]);
+    expect(runContextSnapshotForRun(sent.body.runId)).toMatchObject({
+      cliAgentType: "pi",
+      environmentEntries: expect.arrayContaining([
+        {
+          name: "OPENAI_BASE_URL",
+          value: "https://gateway.example.com/openai/v1",
+        },
+        {
+          name: "OPENAI_MODEL",
+          value: "deepseek-v4-flash-0731",
+        },
+      ]),
+    });
+    const cancellation = await runs.requestCancelRun(
+      actor,
+      sent.body.runId,
+      [200, 400],
+    );
+    if (
+      cancellation.status === 400 &&
+      cancellation.body.error.code !== "RUN_NOT_CANCELLABLE"
+    ) {
+      throw new Error(
+        `Expected terminal cleanup error, received ${cancellation.body.error.code}`,
+      );
+    }
   }, 30_000);
 });

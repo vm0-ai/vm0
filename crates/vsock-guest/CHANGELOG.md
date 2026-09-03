@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.19.146](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.145...vsock-guest-v0.19.146) (2026-09-03)
+
+## [0.19.145](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.144...vsock-guest-v0.19.145) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
+## [0.19.144](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.143...vsock-guest-v0.19.144) (2026-09-03)
+
+## [0.19.143](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.142...vsock-guest-v0.19.143) (2026-09-02)
+
+## [0.19.142](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.141...vsock-guest-v0.19.142) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
+## [0.19.141](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.140...vsock-guest-v0.19.141) (2026-09-02)
+
 ## [0.19.140](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.139...vsock-guest-v0.19.140) (2026-09-02)
 
 ## [0.19.139](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.138...vsock-guest-v0.19.139) (2026-09-02)

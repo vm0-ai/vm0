@@ -44,6 +44,7 @@ interface RecordPiApiFirstTurnUsageArgs {
   readonly runId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
   readonly piProvider: PiModelConfig["provider"];
   readonly requestedServiceTier: PiModelConfig["serviceTier"];
@@ -125,7 +126,10 @@ export async function recordPiApiFirstTurnUsage(
   db: Db,
   args: RecordPiApiFirstTurnUsageArgs,
 ): Promise<void> {
-  if (args.modelUsageProvider !== TERRA_MODEL) {
+  const hasBillableModelProvider = args.billableFirewalls.some((firewall) => {
+    return firewall.startsWith("model-provider:");
+  });
+  if (!hasBillableModelProvider || args.modelUsageProvider !== TERRA_MODEL) {
     return;
   }
   const responseSourceId = sourceId(args.turn);

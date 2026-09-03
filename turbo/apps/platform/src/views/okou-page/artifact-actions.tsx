@@ -13,22 +13,16 @@ import {
   BrandGoogleDrive,
 } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { isConnectorAppOauthCallbackEnabled } from "@okouai/connectors/app-oauth-callback";
-import {
-  connectorOauthStartContract,
-  connectorOpenIdStartContract,
-} from "@okouai/api-contracts/contracts/connectors";
-import type { ChatThreadArtifactFile } from "@okouai/api-contracts/contracts/chat-threads";
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type {
+  ChatThreadArtifactFile,
+  ChatThreadArtifactGoogleDriveRecovery,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
-import {
-  OAUTH_API_BASE,
-  apiClient$,
-  type ApiClientFactory,
-} from "../../signals/api-client.ts";
+import { apiClient$ } from "../../signals/api-client.ts";
 import {
   connectorCatalogStatusBySlug$,
   connectors$,
@@ -44,14 +38,13 @@ import {
   startArtifactDownload$,
 } from "../../signals/okou-page/artifact-actions.ts";
 import {
+  authorizeGoogleDriveForAgent,
   syncArtifactFileToGoogleDrive,
-  waitForGoogleDriveAuthorization$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import {
+  connectConnectorOAuthAuthCodeAndSettle$,
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
-  type ConnectorCatalogBrowserAuthMethodDetail,
 } from "../../signals/okou-page/settings/connectors.ts";
-import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { defaultBuiltinConnectorAccountOptions } from "../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { copyAttachmentLinkToClipboard } from "./attachment-url.ts";
 import { useAttachmentShareUrl } from "./attachment-resource.ts";
@@ -91,22 +84,14 @@ function artifactDownloadFilename(
     : filename;
 }
 
-type WaitForGoogleDriveAuthorizationFn = (
-  params: {
-    readonly agentId: string;
-    readonly authorizeConnected?: boolean;
-  },
-  signal: AbortSignal,
-) => Promise<unknown>;
-
-type GoogleDriveReadyRun = () => Promise<void>;
-
 export type ArtifactDownloadSyncTarget = {
+  readonly accountReady: boolean;
   readonly agentId: string | null | undefined;
   readonly disconnected: boolean;
   readonly fileId: string;
   readonly filename: string;
   readonly onSyncSuccess: () => void;
+  readonly recovery: ChatThreadArtifactGoogleDriveRecovery | undefined;
   readonly runId: string;
   readonly synced: boolean;
   readonly threadId: string;
@@ -126,148 +111,6 @@ function isPlainPrimaryLinkClick(
     !event.metaKey &&
     !event.shiftKey
   );
-}
-
-function runWhenGoogleDriveReady(
-  params: {
-    agentId: string | null | undefined;
-    authorizeConnected: boolean;
-    run: GoogleDriveReadyRun;
-    waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-    operation: string;
-  },
-  pageSignal: AbortSignal,
-): void {
-  if (!params.agentId) {
-    toast.error(
-      i18n.t(($) => {
-        return $.artifacts.googleDrive.agentLoading;
-      }),
-    );
-    return;
-  }
-  const agentId = params.agentId;
-  detach(
-    (async () => {
-      await params.waitForGoogleDriveAuthorization(
-        { agentId, authorizeConnected: params.authorizeConnected },
-        pageSignal,
-      );
-      await params.run();
-    })(),
-    Reason.DomCallback,
-    params.operation,
-  );
-}
-
-function startGoogleDriveConnectAndRun(
-  params: {
-    agentId: string | null | undefined;
-    authMethod: ConnectorCatalogBrowserAuthMethodDetail;
-    connector: PlatformConnectorCatalogStatusItem;
-    createClient: ApiClientFactory;
-    run: GoogleDriveReadyRun;
-    waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-    operation: string;
-  },
-  pageSignal: AbortSignal,
-): void {
-  if (!params.agentId) {
-    toast.error(
-      i18n.t(($) => {
-        return $.artifacts.googleDrive.agentLoading;
-      }),
-    );
-    return;
-  }
-  const agentId = params.agentId;
-  const account = defaultBuiltinConnectorAccountOptions(
-    params.connector,
-  )?.account;
-  if (!account) {
-    return;
-  }
-  const authWindow = window.open(
-    "about:blank",
-    "_blank",
-    "width=600,height=700",
-  );
-  if (!authWindow) {
-    toast.error(
-      i18n.t(($) => {
-        return $.artifacts.googleDrive.failedToOpenConnect;
-      }),
-    );
-    return;
-  }
-  detach(
-    (async () => {
-      const request = {
-        params: { connectorSlug: params.connector.slug },
-        body: {
-          account,
-          authMethod: params.authMethod.id,
-          agentId,
-          authorizeAgent: true as const,
-        },
-        fetchOptions: { signal: pageSignal },
-      };
-      const result =
-        params.authMethod.grantKind === "openid-auth"
-          ? await accept(
-              params
-                .createClient(connectorOpenIdStartContract, {
-                  apiBase: "api",
-                })
-                .start(request),
-              [200],
-            )
-          : await accept(
-              params
-                .createClient(connectorOauthStartContract, {
-                  apiBase: OAUTH_API_BASE,
-                })
-                .start({
-                  ...request,
-                  body: {
-                    ...request.body,
-                    ...(isConnectorAppOauthCallbackEnabled(
-                      params.connector.slug,
-                    )
-                      ? { callbackTarget: "app" as const }
-                      : {}),
-                  },
-                }),
-              [200],
-            );
-      pageSignal.throwIfAborted();
-      authWindow.location.href = result.body.authorizationUrl;
-    })(),
-    Reason.DomCallback,
-    "artifact google drive oauth start",
-  );
-  runWhenGoogleDriveReady(
-    {
-      agentId,
-      authorizeConnected: false,
-      run: params.run,
-      waitForGoogleDriveAuthorization: params.waitForGoogleDriveAuthorization,
-      operation: params.operation,
-    },
-    pageSignal,
-  );
-}
-
-function authorizeGoogleDriveAndRun(
-  params: {
-    agentId: string | null | undefined;
-    run: GoogleDriveReadyRun;
-    waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-    operation: string;
-  },
-  pageSignal: AbortSignal,
-): void {
-  runWhenGoogleDriveReady({ ...params, authorizeConnected: true }, pageSignal);
 }
 
 function iconButtonClassName(className?: string): string {
@@ -389,15 +232,21 @@ function useGoogleDriveAvailability(
     googleDriveConnector === null
       ? null
       : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
+  const accountReady = syncTarget?.accountReady === true;
+  // Remove the default-connector fallback after pre-accountReady APIs are
+  // outside the serving and rollback window.
+  const legacyDefaultAccountReady =
+    googleDriveConnected && syncTarget?.disconnected !== true;
 
   return {
     connectorListLoaded:
-      connectorList !== undefined &&
-      (googleDriveConnected || catalogBySlug !== undefined),
+      accountReady ||
+      (connectorList !== undefined &&
+        (googleDriveConnected || catalogBySlug !== undefined)),
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,
-    googleDriveReady: googleDriveConnected && syncTarget?.disconnected !== true,
+    googleDriveReady: accountReady || legacyDefaultAccountReady,
   };
 }
 
@@ -429,24 +278,166 @@ function GoogleDriveDisabledMenuItem({
   );
 }
 
+type GoogleDrivePendingAction =
+  | { readonly kind: "authorize" }
+  | {
+      readonly kind: "connect";
+      readonly account: ConnectorAccountMutationIntent;
+      readonly useDefaultConnectorProjection: boolean;
+    }
+  | { readonly kind: "unavailable" };
+
+function resolveGoogleDrivePendingAction(args: {
+  readonly recovery: ChatThreadArtifactGoogleDriveRecovery | undefined;
+  readonly connected: boolean;
+  readonly legacyAccountOptions: ReturnType<
+    typeof defaultBuiltinConnectorAccountOptions
+  >;
+}): GoogleDrivePendingAction {
+  if (args.recovery) {
+    switch (args.recovery.action) {
+      case "authorize": {
+        return { kind: "authorize" };
+      }
+      case "connect": {
+        return {
+          kind: "connect",
+          account: { intent: "add" },
+          useDefaultConnectorProjection: false,
+        };
+      }
+      case "reconnect": {
+        return {
+          kind: "connect",
+          account: {
+            intent: "reconnect",
+            connectionId: args.recovery.connectionId,
+          },
+          useDefaultConnectorProjection: false,
+        };
+      }
+      case "unavailable": {
+        return { kind: "unavailable" };
+      }
+    }
+  }
+  if (args.connected) {
+    return { kind: "authorize" };
+  }
+  return args.legacyAccountOptions
+    ? { kind: "connect", ...args.legacyAccountOptions }
+    : { kind: "unavailable" };
+}
+
+function useGoogleDriveMenuAction(
+  syncTarget: ArtifactDownloadSyncTarget | undefined,
+  availability: ReturnType<typeof useGoogleDriveAvailability>,
+): () => void {
+  const createClient = useGet(apiClient$);
+  const pageSignal = useGet(pageSignal$);
+  const connectGoogleDrive = useSet(connectConnectorOAuthAuthCodeAndSettle$);
+
+  return () => {
+    if (!syncTarget) {
+      return;
+    }
+    const run = async () => {
+      const success = await syncArtifactFileToGoogleDrive(
+        {
+          createClient,
+          threadId: syncTarget.threadId,
+          runId: syncTarget.runId,
+          fileId: syncTarget.fileId,
+          filename: syncTarget.filename,
+        },
+        pageSignal,
+      );
+      if (success) {
+        syncTarget.onSyncSuccess();
+      }
+    };
+    if (availability.googleDriveReady) {
+      detach(run(), Reason.DomCallback, "artifact google drive sync");
+      return;
+    }
+    const action = resolveGoogleDrivePendingAction({
+      recovery: syncTarget.recovery,
+      connected: availability.googleDriveConnected,
+      legacyAccountOptions: defaultBuiltinConnectorAccountOptions(
+        availability.googleDriveConnector ?? undefined,
+      ),
+    });
+    if (action.kind === "unavailable") {
+      return;
+    }
+    if (!syncTarget.agentId) {
+      toast.error(
+        i18n.t(($) => {
+          return $.artifacts.googleDrive.agentLoading;
+        }),
+      );
+      return;
+    }
+    const agentId = syncTarget.agentId;
+    if (action.kind === "authorize") {
+      detach(
+        (async () => {
+          await authorizeGoogleDriveForAgent(
+            { agentId, createClient },
+            pageSignal,
+          );
+          await run();
+        })(),
+        Reason.DomCallback,
+        "artifact google drive authorize sync",
+      );
+      return;
+    }
+    if (
+      !availability.googleDriveConnector ||
+      !availability.googleDriveAuthMethod
+    ) {
+      return;
+    }
+    detach(
+      connectGoogleDrive(
+        {
+          connectorSlug: GOOGLE_DRIVE_CONNECTOR_SLUG,
+          method: availability.googleDriveAuthMethod,
+          onSuccess: run,
+          options: {
+            account: action.account,
+            agentId,
+            connectorIcon: availability.googleDriveConnector.icon,
+            connectorLabel: availability.googleDriveConnector.label,
+            ...(action.useDefaultConnectorProjection
+              ? { useDefaultConnectorProjection: true }
+              : {}),
+          },
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+      "artifact google drive connect sync",
+    );
+  };
+}
+
 function GoogleDriveMenuItem({
   syncTarget,
 }: {
   syncTarget?: ArtifactDownloadSyncTarget;
 }) {
   const { t } = useTranslation();
+  const availability = useGoogleDriveAvailability(syncTarget);
+  const syncOrConnect = useGoogleDriveMenuAction(syncTarget, availability);
   const {
     connectorListLoaded,
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,
     googleDriveReady,
-  } = useGoogleDriveAvailability(syncTarget);
-  const createClient = useGet(apiClient$);
-  const pageSignal = useGet(pageSignal$);
-  const waitForGoogleDriveAuthorization = useSet(
-    waitForGoogleDriveAuthorization$,
-  );
+  } = availability;
 
   if (!syncTarget) {
     return <GoogleDriveDisabledMenuItem kind="upload" />;
@@ -464,55 +455,6 @@ function GoogleDriveMenuItem({
       />
     );
   }
-
-  const syncOrConnect = () => {
-    const run = async () => {
-      const success = await syncArtifactFileToGoogleDrive(
-        {
-          createClient,
-          threadId: syncTarget.threadId,
-          runId: syncTarget.runId,
-          fileId: syncTarget.fileId,
-          filename: syncTarget.filename,
-        },
-        pageSignal,
-      );
-      if (success) {
-        syncTarget.onSyncSuccess();
-      }
-    };
-    if (googleDriveReady) {
-      detach(run(), Reason.DomCallback, "artifact google drive sync");
-      return;
-    }
-    if (googleDriveConnected) {
-      authorizeGoogleDriveAndRun(
-        {
-          agentId: syncTarget.agentId,
-          run,
-          waitForGoogleDriveAuthorization,
-          operation: "artifact google drive authorize sync",
-        },
-        pageSignal,
-      );
-      return;
-    }
-    if (!googleDriveConnector || !googleDriveAuthMethod) {
-      return;
-    }
-    startGoogleDriveConnectAndRun(
-      {
-        agentId: syncTarget.agentId,
-        authMethod: googleDriveAuthMethod,
-        connector: googleDriveConnector,
-        createClient,
-        run,
-        waitForGoogleDriveAuthorization,
-        operation: "artifact google drive connect sync",
-      },
-      pageSignal,
-    );
-  };
 
   if (googleDriveReady) {
     return (
@@ -532,8 +474,13 @@ function GoogleDriveMenuItem({
           render={
             <DropdownMenuItem
               disabled={
-                !googleDriveConnected &&
-                (!googleDriveConnector || !googleDriveAuthMethod)
+                syncTarget.recovery?.action === "unavailable" ||
+                ((syncTarget.recovery?.action === "connect" ||
+                  syncTarget.recovery?.action === "reconnect") &&
+                  (!googleDriveConnector || !googleDriveAuthMethod)) ||
+                (syncTarget.recovery === undefined &&
+                  !googleDriveConnected &&
+                  (!googleDriveConnector || !googleDriveAuthMethod))
               }
               onClick={syncOrConnect}
             >

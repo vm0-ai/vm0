@@ -9,7 +9,10 @@ import {
 } from "../../signals/okou-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
-export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
+export function useGmailReconnect(
+  connectionId: string | undefined,
+  onSuccess: () => void | Promise<void>,
+) {
   const catalogBySlug = useLastResolved(connectorCatalogStatusBySlug$);
   const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
   const connect = useSet(connectConnectorOAuthAuthCodeAndSettle$);
@@ -24,9 +27,17 @@ export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
     connectorIcon: connector?.icon,
     reconnecting,
     reconnectDisabled:
-      !connector || !authMethod || connectFlowConnectorSlug !== null,
+      !connectionId ||
+      !connector ||
+      !authMethod ||
+      connectFlowConnectorSlug !== null,
     reconnect() {
-      if (!connector || !authMethod || connectFlowConnectorSlug !== null) {
+      if (
+        !connectionId ||
+        !connector ||
+        !authMethod ||
+        connectFlowConnectorSlug !== null
+      ) {
         return;
       }
       detach(
@@ -39,6 +50,7 @@ export function useGmailReconnect(onSuccess: () => void | Promise<void>) {
               authorizeVisibleAgents: true,
               connectorLabel: connector.label,
               connectorIcon: connector.icon,
+              account: { intent: "reconnect", connectionId },
             },
           },
           signal,

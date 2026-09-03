@@ -6,7 +6,15 @@ import {
   type RunResult,
   type RunStatus,
 } from "@okouai/api-contracts/contracts/runs";
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import {
+  isBuiltInModelProviderType,
+  modelProviderTypeSchema,
+} from "@okouai/api-contracts/contracts/model-providers";
+import {
+  knownRunFailureReasonSchema,
+  type KnownRunFailureReason,
+  type RunFailureReasonToken,
+} from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -126,13 +134,14 @@ interface RunRecord {
   readonly chatThreadId: string | null;
   readonly triggerSource: string | null;
   readonly launchSnapshot: (typeof agentRuns.$inferSelect)["launchSnapshot"];
+  readonly modelProvider: string | null;
 }
 
 interface PreparedCompletion {
   readonly status: TerminalStatus;
   readonly result?: RunResult;
   readonly error?: string;
-  readonly failureReason?: RunFailureReason;
+  readonly failureReason?: RunFailureReasonToken;
   readonly failureKind?: "missing-checkpoint" | "reported";
 }
 
@@ -142,6 +151,7 @@ interface CompletionCommit {
   readonly responseStatus: TerminalStatus;
   readonly transitionError?: string;
   readonly transitionFailureKind?: PreparedCompletion["failureKind"];
+  readonly transitionFailureReason?: RunFailureReasonToken;
   readonly finalization: FinalizeActiveInputDeliveryResult;
   readonly piMemoryStage1Admission?: PiMemoryStage1Admission;
 }
@@ -156,6 +166,50 @@ type CompletionTransactionResult =
   | { readonly kind: "committed"; readonly commit: CompletionCommit };
 
 const L = logger("webhook:complete");
+
+function isSuppressibleNonBuiltInFailureReason(
+  failureReason: KnownRunFailureReason | undefined,
+): boolean {
+  switch (failureReason) {
+    case "insufficient_credits":
+    case "invalid_api_key":
+    case "invalid_credentials":
+    case "terms_acceptance_required":
+    case "context_window_exceeded":
+    case "output_token_limit":
+    case "provider_rate_limited":
+    case "provider_overloaded":
+    case "provider_stream_timeout":
+    case "provider_server_error":
+    case "response_connection_lost":
+    case "safety_policy_refusal":
+    case "reconnect_required":
+    case "usage_limit": {
+      return true;
+    }
+    case "session_history_limit":
+    case "unsupported_model":
+    case undefined: {
+      return false;
+    }
+  }
+}
+
+function shouldSuppressNonBuiltInProviderFailureLog(
+  run: RunRecord,
+  failureReason: RunFailureReasonToken | undefined,
+): boolean {
+  const knownFailureReason =
+    knownRunFailureReasonSchema.safeParse(failureReason);
+  if (
+    !knownFailureReason.success ||
+    !isSuppressibleNonBuiltInFailureReason(knownFailureReason.data)
+  ) {
+    return false;
+  }
+  const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);
+  return providerType.success && !isBuiltInModelProviderType(providerType.data);
+}
 
 function checkpointInputForCompletion(
   input: CompleteAgentRunInput,
@@ -228,6 +282,7 @@ async function loadCompletionRun(
       chatThreadId: agentRuns.chatThreadId,
       triggerSource: agentRuns.triggerSource,
       launchSnapshot: agentRuns.launchSnapshot,
+      modelProvider: agentRuns.modelProvider,
     })
     .from(agentRuns)
     .where(
@@ -297,6 +352,7 @@ async function lockCompletionRun(
       chatThreadId: agentRuns.chatThreadId,
       triggerSource: agentRuns.triggerSource,
       launchSnapshot: agentRuns.launchSnapshot,
+      modelProvider: agentRuns.modelProvider,
     })
     .from(agentRuns)
     .where(
@@ -453,6 +509,7 @@ async function completeActiveAgentRunTransition(
       responseStatus: prepared.status,
       transitionError: prepared.error,
       transitionFailureKind: prepared.failureKind,
+      transitionFailureReason: prepared.failureReason,
       finalization,
       piMemoryStage1Admission,
     },
@@ -893,11 +950,17 @@ export const completeAgentRun$ = command(
           runId: input.body.runId,
           error: commit.transitionError,
         });
-      } else {
+      } else if (
+        !shouldSuppressNonBuiltInProviderFailureLog(
+          commit.run,
+          commit.transitionFailureReason,
+        )
+      ) {
         L.warn("Run failed", {
           runId: input.body.runId,
           exitCode: input.body.exitCode,
           error: commit.transitionError,
+          failureReason: commit.transitionFailureReason,
         });
       }
     } else if (

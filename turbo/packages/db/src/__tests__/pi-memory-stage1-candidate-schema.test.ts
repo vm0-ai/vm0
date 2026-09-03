@@ -81,8 +81,25 @@ describe("Pi memory Stage 1 candidate schema", () => {
     expect(checks.pi_memory_stage1_candidates_counts_check).toContain(
       "usage_count",
     );
-    expect(checks.pi_memory_stage1_candidates_state_check).toContain(
-      "last_selected_source_history_hash",
+    expect(checks.pi_memory_stage1_candidates_selected_hash_check).toContain(
+      '"last_selected_source_history_hash" IS NULL OR',
+    );
+    expect(checks.pi_memory_stage1_candidates_selected_hash_check).toContain(
+      '"last_selected_source_history_hash" = "pi_memory_stage1_candidates"."source_history_hash"',
+    );
+    const stateCheck = checks.pi_memory_stage1_candidates_state_check;
+    expect(stateCheck).toBeDefined();
+    if (stateCheck === undefined) {
+      throw new Error("Expected the Stage 1 candidate state constraint");
+    }
+    expect(
+      stateCheck.match(/"last_selected_source_history_hash" IS NULL/gu),
+    ).toHaveLength(3);
+    expect(stateCheck).toMatch(
+      /"status" = 'succeeded'[\s\S]*?"generated_at" IS NOT NULL\s+\) OR \(/u,
+    );
+    expect(stateCheck).toMatch(
+      /"status" = 'succeeded_no_output'[\s\S]*?"generated_at" IS NOT NULL\s+\) OR \(/u,
     );
   });
 });

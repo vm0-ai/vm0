@@ -721,6 +721,8 @@ pub enum FailureReason {
     ContextWindowExceeded,
     /// The provider stopped because an output-token limit was reached.
     OutputTokenLimit,
+    /// The provider rejected the request because of a rate limit.
+    ProviderRateLimited,
     /// The provider reported overload.
     ProviderOverloaded,
     /// The provider stream timed out.
@@ -733,6 +735,8 @@ pub enum FailureReason {
     SafetyPolicyRefusal,
     /// The CLI requires reconnecting or re-authentication.
     ReconnectRequired,
+    /// The selected model is unsupported for the authenticated provider account.
+    UnsupportedModel,
     /// The provider reported a usage limit.
     UsageLimit,
 }
@@ -749,13 +753,40 @@ impl FailureReason {
             Self::TermsAcceptanceRequired => "terms_acceptance_required",
             Self::ContextWindowExceeded => "context_window_exceeded",
             Self::OutputTokenLimit => "output_token_limit",
+            Self::ProviderRateLimited => "provider_rate_limited",
             Self::ProviderOverloaded => "provider_overloaded",
             Self::ProviderStreamTimeout => "provider_stream_timeout",
             Self::ProviderServerError => "provider_server_error",
             Self::ResponseConnectionLost => "response_connection_lost",
             Self::SafetyPolicyRefusal => "safety_policy_refusal",
             Self::ReconnectRequired => "reconnect_required",
+            Self::UnsupportedModel => "unsupported_model",
             Self::UsageLimit => "usage_limit",
+        }
+    }
+}
+
+impl From<FailureReason>
+    for api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason
+{
+    fn from(reason: FailureReason) -> Self {
+        match reason {
+            FailureReason::SessionHistoryLimit => Self::SessionHistoryLimit,
+            FailureReason::InsufficientCredits => Self::InsufficientCredits,
+            FailureReason::InvalidApiKey => Self::InvalidApiKey,
+            FailureReason::InvalidCredentials => Self::InvalidCredentials,
+            FailureReason::TermsAcceptanceRequired => Self::TermsAcceptanceRequired,
+            FailureReason::ContextWindowExceeded => Self::ContextWindowExceeded,
+            FailureReason::OutputTokenLimit => Self::OutputTokenLimit,
+            FailureReason::ProviderRateLimited => Self::ProviderRateLimited,
+            FailureReason::ProviderOverloaded => Self::ProviderOverloaded,
+            FailureReason::ProviderStreamTimeout => Self::ProviderStreamTimeout,
+            FailureReason::ProviderServerError => Self::ProviderServerError,
+            FailureReason::ResponseConnectionLost => Self::ResponseConnectionLost,
+            FailureReason::SafetyPolicyRefusal => Self::SafetyPolicyRefusal,
+            FailureReason::ReconnectRequired => Self::ReconnectRequired,
+            FailureReason::UnsupportedModel => Self::UnsupportedModel,
+            FailureReason::UsageLimit => Self::UsageLimit,
         }
     }
 }
@@ -1419,6 +1450,47 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_reason_maps_exhaustively_to_the_public_completion_contract() {
+        for (reason, expected) in [
+            (FailureReason::SessionHistoryLimit, "session_history_limit"),
+            (FailureReason::InsufficientCredits, "insufficient_credits"),
+            (FailureReason::InvalidApiKey, "invalid_api_key"),
+            (FailureReason::InvalidCredentials, "invalid_credentials"),
+            (
+                FailureReason::TermsAcceptanceRequired,
+                "terms_acceptance_required",
+            ),
+            (
+                FailureReason::ContextWindowExceeded,
+                "context_window_exceeded",
+            ),
+            (FailureReason::OutputTokenLimit, "output_token_limit"),
+            (FailureReason::ProviderRateLimited, "provider_rate_limited"),
+            (FailureReason::ProviderOverloaded, "provider_overloaded"),
+            (
+                FailureReason::ProviderStreamTimeout,
+                "provider_stream_timeout",
+            ),
+            (FailureReason::ProviderServerError, "provider_server_error"),
+            (
+                FailureReason::ResponseConnectionLost,
+                "response_connection_lost",
+            ),
+            (FailureReason::SafetyPolicyRefusal, "safety_policy_refusal"),
+            (FailureReason::ReconnectRequired, "reconnect_required"),
+            (FailureReason::UnsupportedModel, "unsupported_model"),
+            (FailureReason::UsageLimit, "usage_limit"),
+        ] {
+            let public_reason: api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason =
+                reason.into();
+
+            assert_eq!(reason.as_str(), expected);
+            assert_eq!(serde_json::to_value(reason).unwrap(), expected);
+            assert_eq!(serde_json::to_value(public_reason).unwrap(), expected);
+        }
     }
 
     #[test]

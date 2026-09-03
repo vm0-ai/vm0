@@ -857,6 +857,7 @@ async fn complete_execution(
                     runtime,
                     0,
                     None,
+                    None,
                     state.last_event_sequence,
                     state.active_input_delivery_ids,
                     checkpoint,
@@ -927,6 +928,10 @@ async fn complete_execution(
                         match complete::report_checkpoint_for_run(
                             runtime,
                             exit_code,
+                            state
+                                .failure_diagnostic
+                                .as_ref()
+                                .and_then(|diagnostic| diagnostic.failure_reason),
                             state.failure_message,
                             state.last_event_sequence,
                             state.active_input_delivery_ids,
@@ -1222,7 +1227,6 @@ mod tests {
 
     unsafe fn clear_test_env() {
         for key in [
-            guest_contracts::env::API_URL_ENV,
             guest_contracts::env::RUN_ID_ENV,
             "VM0_API_TOKEN",
             guest_contracts::env::CANONICAL_API_TOKEN_ENV,
@@ -1232,31 +1236,27 @@ mod tests {
             guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             "VM0_WORKSPACE_REUSE_RESULT",
             guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-            guest_contracts::env::PROMPT_ENV,
-            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+            guest_contracts::env::PROMPT_RUN_PAYLOAD_FIELD,
+            guest_contracts::env::APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
             "VM0_RESUME_SESSION_ID",
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
             "VM0_API_START_TIME",
             guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-            guest_contracts::env::SECRET_VALUES_ENV,
-            guest_contracts::env::DISALLOWED_TOOLS_ENV,
-            guest_contracts::env::TOOLS_ENV,
-            guest_contracts::env::SETTINGS_ENV,
+            guest_contracts::env::SECRET_VALUES_RUN_PAYLOAD_FIELD,
+            guest_contracts::env::DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
+            guest_contracts::env::TOOLS_RUN_PAYLOAD_FIELD,
+            guest_contracts::env::SETTINGS_RUN_PAYLOAD_FIELD,
             guest_contracts::env::CLI_AGENT_TYPE_ENV,
             "VM0_USER_ENV_FILE",
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
             "VM0_RUN_PAYLOAD_FILE",
             guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-            guest_contracts::env::ARTIFACTS_ENV,
-            guest_contracts::env::FEATURE_FLAGS_ENV,
-            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+            guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD,
+            guest_contracts::env::FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
             guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
             guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,
@@ -1265,9 +1265,7 @@ mod tests {
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             guest_contracts::process_containment::CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
             guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV,
-            guest_contracts::process_containment::TOOL_CGROUP_PROCS_ENDPOINT_ENV,
             "MOCK_CODEX_APP_SERVER_SCENARIO",
         ] {
             unsafe {
@@ -2029,7 +2027,7 @@ mod tests {
             when.method(POST)
                 .path("/api/webhooks/agent/complete")
                 .json_body_includes(
-                    r#"{"exitCode":1,"error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
+                    r#"{"exitCode":1,"failureReason":"usage_limit","error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
                 );
             then.status(completion_status)
                 .header("Content-Type", "application/json")
@@ -2055,6 +2053,7 @@ mod tests {
             PromptMetadata::from_prompt("plain prompt"),
         )
         .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::UsageLimit)
         .with_session_history_status(SessionHistoryStatus::Present);
         let exit_code = complete_execution(
             1,

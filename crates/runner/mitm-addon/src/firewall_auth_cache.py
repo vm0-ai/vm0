@@ -368,8 +368,8 @@ def _build_token_meta(
 ) -> dict:
     payload = cache_entry.payload
     token_meta: dict = {
-        "headers": payload.headers,
-        "resolved_secrets": payload.resolved_secrets,
+        "headers": dict(payload.headers),
+        "resolved_secrets": list(payload.resolved_secrets),
         "cache_hit": cache_hit,
         "cache_entry_identity": cache_entry.identity,
     }
@@ -380,7 +380,7 @@ def _build_token_meta(
     if payload.base is not None:
         token_meta["base"] = payload.base
     if payload.query is not None:
-        token_meta["query"] = payload.query
+        token_meta["query"] = dict(payload.query)
     if payload.aws_sigv4 is not None:
         token_meta["aws_sigv4"] = payload.aws_sigv4
     return token_meta
