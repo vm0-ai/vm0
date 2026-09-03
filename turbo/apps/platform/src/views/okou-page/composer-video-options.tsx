@@ -234,7 +234,7 @@ function VideoDurationField({
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[13px] text-muted-foreground">{label}</span>
-        <span className="text-[13px] font-medium tabular-nums text-primary">
+        <span className="text-[13px] font-medium tabular-nums text-brand-text">
           {value}
         </span>
       </div>

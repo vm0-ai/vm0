@@ -82,6 +82,7 @@ export const userPreferencesResponseSchema = z.object({
   // canonical order and ignores client-provided order on writes.
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
+  cloudBrowserEnabledByDefault: z.boolean(),
   theme: themePreferenceSchema.nullable(),
   colorTheme: colorThemeSchema.nullable(),
   captureNetworkBodiesRemaining: z.number().int().min(0),
@@ -99,6 +100,7 @@ export const updateUserPreferencesRequestSchema = z
     // Membership update only; request order is not used for display ordering.
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    cloudBrowserEnabledByDefault: z.boolean().optional(),
     theme: themePreferenceSchema.optional(),
     colorTheme: colorThemeSchema.optional(),
     captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
@@ -111,6 +113,7 @@ export const updateUserPreferencesRequestSchema = z
         data.translationLanguage !== undefined ||
         data.pinnedAgentIds !== undefined ||
         data.sendMode !== undefined ||
+        data.cloudBrowserEnabledByDefault !== undefined ||
         data.theme !== undefined ||
         data.colorTheme !== undefined ||
         data.captureNetworkBodiesRemaining !== undefined

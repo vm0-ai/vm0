@@ -397,6 +397,9 @@ describe.sequential("Official Automation result email callbacks", () => {
         ? send.html
         : "";
     expect(html).toContain(
+      '<img src="https://static.okou.io/public/okou-agent-email-avatar-5c997967b68e.png" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none">',
+    );
+    expect(html).toContain(
       'href="https://app.okou.ai/agents?settings=preference&amp;focus=morning-brief"',
     );
     expect(html).toContain(
@@ -566,7 +569,7 @@ describe.sequential("Official Automation result email callbacks", () => {
         : "";
     expect(html).not.toContain("<script>alert");
     expect(html).not.toContain("<style>");
-    expect(html).not.toContain("<img");
+    expect(html).not.toContain('<img src="x"');
     expect(html).not.toContain("<svg");
     expect(html).not.toContain("<iframe");
     expect(html).not.toMatch(/<[^>]+\son(?:click|error|load)=/u);

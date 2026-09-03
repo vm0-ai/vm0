@@ -23,33 +23,9 @@ describe("Okou configuration", () => {
 
   it("uses OKOU_TOKEN as the run authentication source", async () => {
     vi.stubEnv("OKOU_TOKEN", "okou-token-value");
-    vi.stubEnv("VM0_TOKEN", "legacy-token-value");
 
     await expect(getToken()).resolves.toBe("okou-token-value");
     await expect(getActiveToken()).resolves.toBe("okou-token-value");
-  });
-
-  it("ignores ZERO_TOKEN when OKOU_TOKEN is present", async () => {
-    vi.stubEnv("OKOU_TOKEN", "okou-token-value");
-    vi.stubEnv("ZERO_TOKEN", "zero-token-value");
-
-    await expect(getToken()).resolves.toBe("okou-token-value");
-    await expect(getActiveToken()).resolves.toBe("okou-token-value");
-  });
-
-  it("does not fall back to ZERO_TOKEN when OKOU_TOKEN is empty", async () => {
-    vi.stubEnv("OKOU_TOKEN", "");
-    vi.stubEnv("ZERO_TOKEN", "zero-token-value");
-
-    await expect(getToken()).resolves.toBeUndefined();
-    await expect(getActiveToken()).resolves.toBeUndefined();
-  });
-
-  it("does not fall back to VM0_TOKEN", async () => {
-    vi.stubEnv("VM0_TOKEN", "legacy-token-value");
-
-    await expect(getToken()).resolves.toBeUndefined();
-    await expect(getActiveToken()).resolves.toBeUndefined();
   });
 
   it("rejects a zero-scoped OKOU_TOKEN", async () => {

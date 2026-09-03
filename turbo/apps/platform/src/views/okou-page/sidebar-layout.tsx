@@ -51,6 +51,7 @@ import { lightboxUrl$ } from "../../signals/okou-page/attachment-chips.ts";
 import { AttachmentLightbox } from "./attachment-chips.tsx";
 import {
   applyColorThemeDocumentAttributes,
+  applyNewUiDocumentAttribute,
   applyTypefaceDocumentAttribute,
   colorTheme$,
 } from "../../signals/theme.ts";
@@ -119,7 +120,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
       size="icon-sm"
       className={cn(
         "shrink-0",
-        open && "bg-primary/10 text-primary hover:text-primary",
+        open && "bg-primary/10 text-brand-text hover:text-brand-text",
       )}
       aria-label={t(($) => {
         return $.appShell.sidebar.mobile.openArtifacts;
@@ -374,6 +375,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
     features[FeatureSwitchKey.GradientColorThemes] ?? false;
   const geistTypefaceEnabled =
     features[FeatureSwitchKey.GeistTypeface] ?? false;
+  const newUiEnabled = features[FeatureSwitchKey.NewUi] ?? false;
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
 
   return (
@@ -386,6 +388,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         applyTypefaceDocumentAttribute(
           element !== null && geistTypefaceEnabled,
         );
+        applyNewUiDocumentAttribute(element !== null && newUiEnabled);
       }}
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
@@ -399,7 +402,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <AttachmentLightboxMount />
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}

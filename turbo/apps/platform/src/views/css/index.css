@@ -21,7 +21,6 @@
     "Noto Color Emoji", sans-serif;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
@@ -703,8 +702,19 @@ body {
 
 /* Zero left nav */
 .zero-nav {
-  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
+}
+
+/* Shell surfaces, gated on the `newUi` switch. Off, both sidebars sit on the
+   flats they had before the workspace became a card. On, they take the site's
+   own two greys and the chat column doubles as the frame around that card. */
+.zero-app {
+  --color-sidebar: hsl(var(--gray-0));
+  --color-sidebar-rail: hsl(var(--gray-50));
+}
+:where([data-new-ui]) .zero-app {
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-rail: hsl(var(--sidebar-rail));
 }
 .zero-app[data-gradient-color-themes] .zero-nav {
   --color-sidebar: hsl(var(--sidebar));
@@ -724,6 +734,9 @@ body {
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
+}
+:where([data-new-ui][data-theme="dark"]) .zero-nav {
+  --color-sidebar: hsl(var(--sidebar));
 }
 
 /* Morandi outline buttons */
@@ -807,6 +820,7 @@ body {
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
 .zero-app .zero-composer {
+  --zero-composer-ring: var(--gray-500);
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-composer-radius);
@@ -819,7 +833,7 @@ body {
   content: "";
   position: absolute;
   inset: -0.7px;
-  border: 0.7px solid hsl(var(--gray-500));
+  border: 0.7px solid hsl(var(--zero-composer-ring));
   border-radius: inherit;
   box-shadow: var(--zero-composer-focus-veil);
   opacity: 0;
@@ -1958,4 +1972,203 @@ html:has(.zero-dialog-overlay)
     .owf-diagram-beam
   ):not(.zero-dialog-content *) {
   animation-play-state: paused;
+}
+
+/* Workspace card: the routed page is a white sheet laid over the shell's grey
+   rather than a white half of the window. The gap runs on all four sides, so
+   the chat column's surface continues around the sheet and reads as one frame.
+   Padding insets the content and `inset` insets the paint by the same amount,
+   which is why the sheet needs no clipping: nothing lays out in the gutter, and
+   only the corner triangles could ever escape the radius.
+
+   Desktop only. Below the sidebar breakpoint the columns are gone and a frame
+   would just spend width the page does not have. */
+@media (min-width: 48rem) {
+  [data-new-ui] .zero-workspace-card {
+    --zero-workspace-card-gap: 8px;
+    background-color: hsl(var(--sidebar));
+    padding: var(--zero-workspace-card-gap);
+  }
+
+  [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
+    inset: var(--zero-workspace-card-gap);
+    border: 0.7px solid hsl(var(--border));
+    border-radius: 12px;
+  }
+}
+
+/* Under the `newUi` switch dark carries the brand hue instead of a lighter
+   neutral. The light ring can stay neutral because there it darkens, and
+   darker-than-the-border already reads as emphasis. Lifting a neutral against a
+   dark card does not: it lands on a bright grey that reads as a white outline
+   rather than as focus, which is what `--ring` means on every other control.
+   Saturation, not lightness, does the work, so the ring stays quieter than the
+   full Amber stop. */
+:where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
+  --zero-composer-ring: 38.8 38% 38%;
+}
+
+/* ===================================================================
+   Sand / Amber, behind the `newUi` switch.
+
+   `packages/ui`'s globals gate the whole base palette by scoping the token
+   blocks to `[data-new-ui]`, and every `@theme` alias follows because it is a
+   lazy `hsl(var(--x))` reference. What is left here is the handful of values
+   this sheet hardcodes instead of deriving, plus the two colour-theme ladders,
+   which carry their own selector and so need their own gated copy.
+
+   Delete this whole section when the palette graduates.
+   =================================================================== */
+
+:root[data-new-ui] {
+  /* Credit balance breakdown segments, drawn from the palette. */
+  --color-credit-free: #008d76;
+  --color-credit-promotional: #ff6030;
+  --color-credit-plan-pro: #ffa500;
+  --color-credit-plan-team: #3462d3;
+
+  /* Usage record kind segments, drawn from the palette's categorical set.
+     Model keeps a cool blue so the dominant LLM segment separates cleanly
+     from the image hue; image and video also sit far apart (blossom vs jade). */
+  --color-usage-kind-model: #3462d3;
+  --color-usage-kind-image: #ce9cb5;
+  --color-usage-kind-video: #008d76;
+  --color-usage-kind-connector: #779aad;
+  --color-usage-kind-other: #c8b800;
+}
+
+/* Shadows carry a hue of their own, so a cool one greys the warm surfaces. */
+:root[data-new-ui] {
+  --zero-card-shadow:
+    0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025);
+  --zero-chat-card-shadow: 0 1px 2px hsl(30 6% 45% / 0.05);
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
+}
+
+/* Markdown links move to the palette's Cobalt. */
+[data-new-ui] .wmde-markdown a {
+  color: hsl(222.6 64.4% 51.6%);
+}
+[data-new-ui] .wmde-markdown a:hover {
+  color: hsl(222.2 57.3% 40.4%);
+}
+:where([data-theme="dark"][data-new-ui]) .wmde-markdown a {
+  color: hsl(220.5 100% 84.3%);
+}
+:where([data-theme="dark"][data-new-ui]) .wmde-markdown a:hover {
+  color: hsl(220.4 100% 90.4%);
+}
+
+/* Colour themes realigned to the new ramp's lightness steps. */
+:root[data-new-ui][data-gradient-color-themes][data-color-theme] {
+  --gray-0: var(--zero-color-theme-hue) 24% 98.3%;
+  --gray-50: var(--zero-color-theme-hue) 22% 97.7%;
+  --gray-100: var(--zero-color-theme-hue) 20% 96.7%;
+  --gray-200: var(--zero-color-theme-hue) 18% 86.9%;
+  --gray-300: var(--zero-color-theme-hue) 17% 79.4%;
+  --gray-400: var(--zero-color-theme-hue) 16% 71.2%;
+  --gray-500: var(--zero-color-theme-hue) 16% 62.2%;
+
+  --divider: var(--gray-200);
+  --background: var(--zero-color-theme-hue) 24% 98.8%;
+  --card: var(--zero-color-theme-hue) 30% 99.4%;
+  --popover: var(--card);
+  --secondary: var(--zero-color-theme-hue) 22% 96.7%;
+  --muted: var(--gray-100);
+  --accent: var(--zero-color-theme-hue) 24% 96.7%;
+  --border: var(--gray-200);
+  --input: var(--card);
+  --ring: var(--zero-color-theme-ring);
+  /* Halved with the neutral sidebar: this surface now frames the workspace
+     card as well as backing the chat column, and a full-strength tint around a
+     white sheet overpowers it. The rail keeps its depth and stays the anchor. */
+  --sidebar: var(--zero-color-theme-hue) 30% 98.4%;
+  --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
+  --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
+  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
+  --background-50: var(--gray-50);
+  --state-layer: var(--zero-color-theme-ring);
+  --segment-selected: var(--card);
+  --zero-color-theme-selected: color-mix(
+    in srgb,
+    #ffffff 84%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor) 82%,
+        var(--zero-color-theme-companion)
+      )
+      16%
+  );
+}
+
+:root[data-new-ui]:is(
+    .dark,
+    [data-theme="dark"]
+  )[data-gradient-color-themes][data-color-theme] {
+  --gray-0: var(--zero-color-theme-hue) 5% 10.5%;
+  --gray-50: var(--zero-color-theme-hue) 6% 13.5%;
+  --gray-100: var(--zero-color-theme-hue) 8% 18.5%;
+  --gray-200: var(--zero-color-theme-hue) 9% 22.5%;
+  --gray-300: var(--zero-color-theme-hue) 10% 26.5%;
+  --gray-400: var(--zero-color-theme-hue) 11% 30.5%;
+  --gray-500: var(--zero-color-theme-hue) 12% 36.5%;
+
+  --divider: var(--gray-200);
+  --background: var(--gray-50);
+  --card: var(--zero-color-theme-hue) 8% 16.5%;
+  --popover: var(--gray-100);
+  --secondary: var(--zero-color-theme-hue) 9% 20.5%;
+  --muted: var(--gray-200);
+  --accent: var(--zero-color-theme-hue) 12% 26.5%;
+  --border: var(--gray-200);
+  --input: var(--gray-200);
+  --ring: var(--zero-color-theme-hue) 45% 62%;
+  --sidebar: var(--zero-color-theme-hue) 14% 12%;
+  --zero-nav-rail: var(--zero-color-theme-hue) 18% 8%;
+  --zero-nav-foreground: var(--zero-color-theme-hue) 22% 90%;
+  --zero-nav-muted-foreground: var(--zero-color-theme-hue) 16% 64%;
+  --background-50: var(--gray-50);
+  --state-layer: var(--zero-color-theme-hue) 35% 82%;
+  --segment-selected: var(--gray-400);
+  --zero-color-theme-selected: color-mix(
+    in srgb,
+    hsl(var(--card)) 86%,
+    color-mix(
+        in srgb,
+        var(--zero-color-theme-anchor) 82%,
+        var(--zero-color-theme-companion)
+      )
+      14%
+  );
+}
+
+/* Brand washes and markdown accents. The Amber scale is not mirrored between
+   themes, so a raw stop that reads as a pale tint in light stays pale in dark
+   and blows out. These reach for the palette's own theme-aware brand tokens
+   instead; the ungated rules above keep the orange ramp's raw stops, which do
+   mirror. */
+[data-new-ui] ::selection {
+  background-color: hsl(var(--brand-subtle));
+}
+[data-new-ui] .wmde-markdown[data-color-mode*="light"],
+[data-new-ui] .wmde-markdown[data-color-mode*="dark"] {
+  --color-accent-fg: hsl(var(--brand-text));
+  --color-accent-emphasis: hsl(var(--brand-text));
+  --color-attention-subtle: hsl(var(--brand-subtle));
+  --color-attention-fg: hsl(var(--brand-text));
+  --color-attention-emphasis: hsl(var(--brand-text));
+  --color-prettylights-syntax-markup-heading: hsl(var(--brand-text));
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--brand-subtle));
+}
+[data-new-ui] .wmde-markdown mark {
+  background-color: hsl(var(--brand-subtle));
+}
+[data-new-ui] .wmde-markdown .markdown-alert.markdown-alert-note {
+  border-left-color: hsl(var(--brand-text));
+}
+[data-new-ui]
+  .wmde-markdown
+  .markdown-alert.markdown-alert-note
+  .markdown-alert-title {
+  color: hsl(var(--brand-text));
 }

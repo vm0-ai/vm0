@@ -84,7 +84,6 @@ fn clear_api_url_env() {
 
 fn clear_api_token_env() {
     remove_test_env(guest_contracts::env::CANONICAL_API_TOKEN_ENV);
-    remove_test_env("VM0_API_TOKEN");
 }
 
 fn capture_raw(log_path: &Path) -> Result<GuestConfigRaw, String> {
