@@ -946,7 +946,7 @@ mod tests {
         }
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
 
-        tokio::time::advance(Duration::from_secs(59)).await;
+        tokio::time::advance(interval - Duration::from_nanos(1)).await;
         tokio::select! {
             biased;
             _ = &mut future => panic!("periodic refresh should wait for the next interval"),
@@ -954,7 +954,7 @@ mod tests {
         }
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
 
-        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::time::advance(Duration::from_nanos(1)).await;
         tokio::select! {
             biased;
             _ = &mut future => panic!("periodic refresh should keep running after recovery"),
