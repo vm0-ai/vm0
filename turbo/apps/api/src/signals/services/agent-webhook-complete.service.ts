@@ -10,7 +10,11 @@ import {
   isBuiltInModelProviderType,
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import {
+  knownRunFailureReasonSchema,
+  type KnownRunFailureReason,
+  type RunFailureReasonToken,
+} from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { webhookCompleteContract } from "@okouai/api-contracts/contracts/webhooks";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
@@ -137,7 +141,7 @@ interface PreparedCompletion {
   readonly status: TerminalStatus;
   readonly result?: RunResult;
   readonly error?: string;
-  readonly failureReason?: RunFailureReason;
+  readonly failureReason?: RunFailureReasonToken;
   readonly failureKind?: "missing-checkpoint" | "reported";
 }
 
@@ -147,7 +151,7 @@ interface CompletionCommit {
   readonly responseStatus: TerminalStatus;
   readonly transitionError?: string;
   readonly transitionFailureKind?: PreparedCompletion["failureKind"];
-  readonly transitionFailureReason?: RunFailureReason;
+  readonly transitionFailureReason?: RunFailureReasonToken;
   readonly finalization: FinalizeActiveInputDeliveryResult;
   readonly piMemoryStage1Admission?: PiMemoryStage1Admission;
 }
@@ -164,7 +168,7 @@ type CompletionTransactionResult =
 const L = logger("webhook:complete");
 
 function isSuppressibleNonBuiltInFailureReason(
-  failureReason: RunFailureReason | undefined,
+  failureReason: KnownRunFailureReason | undefined,
 ): boolean {
   switch (failureReason) {
     case "insufficient_credits":
@@ -193,9 +197,14 @@ function isSuppressibleNonBuiltInFailureReason(
 
 function shouldSuppressNonBuiltInProviderFailureLog(
   run: RunRecord,
-  failureReason: RunFailureReason | undefined,
+  failureReason: RunFailureReasonToken | undefined,
 ): boolean {
-  if (!isSuppressibleNonBuiltInFailureReason(failureReason)) {
+  const knownFailureReason =
+    knownRunFailureReasonSchema.safeParse(failureReason);
+  if (
+    !knownFailureReason.success ||
+    !isSuppressibleNonBuiltInFailureReason(knownFailureReason.data)
+  ) {
     return false;
   }
   const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);
