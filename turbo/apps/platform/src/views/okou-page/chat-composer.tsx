@@ -221,6 +221,7 @@ import {
 } from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
+  composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
@@ -8896,6 +8897,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const transcribing = useGet(sttTranscribing$);
   const voiceLevel = useGet(sttVoiceLevel$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
+  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const toggleVoiceInput = useSet(signals.voice.toggle$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
@@ -8931,7 +8933,11 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             onClick={handleClick}
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
-            aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
+            aria-keyshortcuts={
+              voiceInputShortcutEnabled
+                ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
+                : undefined
+            }
           >
             {starting || transcribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
@@ -8954,8 +8960,10 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {micButtonTooltip(status)} (
-          {getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})
+          {micButtonTooltip(status)}
+          {voiceInputShortcutEnabled
+            ? ` (${getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})`
+            : null}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -8985,6 +8993,7 @@ function VoiceDraftFooter({
   const recordingStartedAt = useGet(sttRecordingStartedAt$);
   const toggleVoiceInput = useSet(signals.voice.toggle$);
   const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
+  const voiceInputShortcutEnabled = useGet(composerVoiceInputShortcutEnabled$);
   const signal = useGet(pageSignal$);
   const processing = transcribing || status === "processing";
 
@@ -9032,7 +9041,11 @@ function VoiceDraftFooter({
         size="sm"
         className="ml-auto min-w-14 shrink-0 bg-background"
         aria-label={stopRecordingLabel}
-        aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
+        aria-keyshortcuts={
+          voiceInputShortcutEnabled
+            ? COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS
+            : undefined
+        }
         disabled={starting || !recording}
         onClick={() => {
           detach(toggleVoiceInput(signal), Reason.DomCallback);

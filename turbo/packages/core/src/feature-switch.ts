@@ -355,6 +355,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerVoiceInputShortcut]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Start or stop composer voice input with Mod+Shift+E.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

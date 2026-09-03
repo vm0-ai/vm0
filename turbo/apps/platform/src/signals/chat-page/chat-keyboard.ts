@@ -22,6 +22,7 @@ import {
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { composerVoiceInputShortcutEnabled$ } from "../external/feature-switch.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
@@ -297,6 +298,9 @@ const setupChatPageShortcutActions$ = command(
             }
           },
           toggleVoiceInput: async () => {
+            if (!get(composerVoiceInputShortcutEnabled$)) {
+              return;
+            }
             const thread = focusedThread();
             if (thread) {
               await set(thread.composer.voice.toggle$, signal);

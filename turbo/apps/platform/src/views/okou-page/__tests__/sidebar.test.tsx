@@ -2894,7 +2894,13 @@ describe("zero sidebar", () => {
   it("opens shortcut help from the agent chat page when composer is not focused", async () => {
     prepareAgents();
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();

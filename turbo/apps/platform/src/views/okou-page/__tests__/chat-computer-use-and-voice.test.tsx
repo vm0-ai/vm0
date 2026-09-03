@@ -1097,6 +1097,9 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${mainThreadId}?sidebar=${sideThreadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      },
     });
 
     await waitFor(() => {
@@ -1175,7 +1178,13 @@ describe("chat lifecycle", () => {
       });
     });
 
-    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      },
+    });
 
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
     await enabledVoiceInputButton();
