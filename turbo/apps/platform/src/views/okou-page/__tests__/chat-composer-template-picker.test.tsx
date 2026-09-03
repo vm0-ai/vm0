@@ -82,7 +82,7 @@ function sentInlineTemplate(
 
 function activeImportedTemplateImage(media: HTMLElement): HTMLImageElement {
   const image = media.querySelector(
-    "[data-imported-presentation-template-image]",
+    '[data-imported-presentation-template-image][data-active="true"]',
   );
   if (!(image instanceof HTMLImageElement)) {
     throw new Error("Active imported template image not found");
@@ -90,11 +90,11 @@ function activeImportedTemplateImage(media: HTMLElement): HTMLImageElement {
   return image;
 }
 
-async function loadImportedTemplateImage(
+async function requestedImportedTemplateImage(
   media: HTMLElement,
   url: string,
 ): Promise<HTMLImageElement> {
-  const image = await waitFor(() => {
+  return await waitFor(() => {
     const found = Array.from(
       media.querySelectorAll<HTMLImageElement>(
         "[data-imported-presentation-template-image]",
@@ -107,65 +107,18 @@ async function loadImportedTemplateImage(
     }
     return found;
   });
+}
+
+async function loadImportedTemplateImage(
+  media: HTMLElement,
+  url: string,
+): Promise<HTMLImageElement> {
+  const image = await requestedImportedTemplateImage(media, url);
   fireEvent.load(image);
   await waitFor(() => {
     expect(image).toHaveAttribute("data-loaded-image-url", url);
   });
   return image;
-}
-
-function controlImportedTemplateImageDecodes(
-  heldImageUrls: readonly string[],
-): {
-  complete: (imageUrl: string) => Promise<void>;
-  hold: (imageUrl: string) => void;
-} {
-  const held = new Set(heldImageUrls);
-  const pending = new Map<string, TestDeferred[]>();
-
-  class ControlledImage {
-    decoding = "auto";
-    loading = "eager";
-    fetchPriority = "auto";
-    #src = "";
-
-    get src(): string {
-      return this.#src;
-    }
-
-    set src(value: string) {
-      this.#src = value;
-    }
-
-    decode(): Promise<void> {
-      if (!held.has(this.#src)) {
-        return Promise.resolve();
-      }
-      const deferred = context.mocks.deferred<void>();
-      const requests = pending.get(this.#src) ?? [];
-      requests.push(deferred);
-      pending.set(this.#src, requests);
-      return deferred.promise;
-    }
-  }
-
-  vi.stubGlobal("Image", ControlledImage as unknown as typeof Image);
-
-  return {
-    complete: async (imageUrl) => {
-      const request = await waitFor(() => {
-        const found = pending.get(imageUrl)?.shift();
-        if (found === undefined) {
-          throw new Error(`Decoded image request not found: ${imageUrl}`);
-        }
-        return found;
-      });
-      request.resolve();
-    },
-    hold: (imageUrl) => {
-      held.add(imageUrl);
-    },
-  };
 }
 
 type TestPresentationTemplateDetail = Omit<
@@ -3839,12 +3792,14 @@ describe("chat composer templates", () => {
       "https://example.com/prefetch-primary-page-2.png",
     );
     fireEvent.mouseLeave(preview);
-    await waitFor(() => {
-      expect(within(preview).getByRole("img")).toHaveAttribute(
-        "src",
-        "https://example.com/prefetch-primary-page-1.png",
-      );
-    });
+    await loadImportedTemplateImage(
+      preview,
+      "https://example.com/prefetch-primary-page-1.png",
+    );
+    expect(within(preview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/prefetch-primary-page-1.png",
+    );
     expect(catalogRequestCount).toBe(1);
     expect(primaryDetailRequestCount).toBe(0);
     expect(secondaryDetailRequestCount).toBe(0);
@@ -3977,9 +3932,6 @@ describe("chat composer templates", () => {
       width: 708,
       height: 398,
     });
-    const imageDecodes = controlImportedTemplateImageDecodes([
-      highResolutionUrl,
-    ]);
     const template = {
       id: templateId,
       title: "Edge resized deck",
@@ -4041,17 +3993,25 @@ describe("chat composer templates", () => {
     const detailPreview = await screen.findByTestId(
       "Edge resized deck imported detail image preview",
     );
-    const detailImage = activeImportedTemplateImage(detailPreview);
-    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
-    expect(detailImage).not.toHaveAttribute("src", highResolutionUrl);
+    const lowResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      cardCoverUrl,
+    );
+    expect(lowResolutionImage).not.toHaveAttribute("src", highResolutionUrl);
     await loadImportedTemplateImage(detailPreview, cardCoverUrl);
-    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
-    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
-    await imageDecodes.complete(highResolutionUrl);
+    expect(activeImportedTemplateImage(detailPreview)).toBe(lowResolutionImage);
+    const highResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      highResolutionUrl,
+    );
+    expect(activeImportedTemplateImage(detailPreview)).toBe(lowResolutionImage);
+    fireEvent.load(highResolutionImage);
     await waitFor(() => {
-      expect(detailImage).toHaveAttribute("src", highResolutionUrl);
+      expect(activeImportedTemplateImage(detailPreview)).toBe(
+        highResolutionImage,
+      );
     });
-    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
+    expect(highResolutionImage).toHaveAttribute("src", highResolutionUrl);
 
     const thumbnailCases = [
       { slideNumber: 1, loading: "eager", priority: "high" },
@@ -4070,7 +4030,10 @@ describe("chat composer templates", () => {
         width: 224,
         height: 126,
       });
-      const thumbnailImage = activeImportedTemplateImage(thumbnailButton);
+      const thumbnailImage = await requestedImportedTemplateImage(
+        thumbnailButton,
+        thumbnailUrl,
+      );
       expect(thumbnailImage).toHaveAttribute("src", thumbnailUrl);
       expect(thumbnailImage).toHaveAttribute("loading", loading);
       expect(thumbnailImage).toHaveAttribute("fetchpriority", priority);
@@ -4243,9 +4206,6 @@ describe("chat composer templates", () => {
 
   it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
     const user = userEvent.setup({ delay: null });
-    const imageDecodes = controlImportedTemplateImageDecodes([
-      "https://example.com/imported-page-3.png",
-    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const templateId = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
     setMockPresentationTemplates([
@@ -4316,40 +4276,52 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/imported-page-2.png",
     );
+    const stalePageThreeImage = await requestedImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-3.png",
+    );
     await user.click(screen.getByLabelText("Preview slide 2"));
-    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    fireEvent.load(stalePageThreeImage);
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-2.png",
     );
     await user.click(screen.getByLabelText("Preview slide 3"));
-    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    await loadImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-3.png",
+    );
     await waitFor(() => {
       expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
         "src",
         "https://example.com/imported-page-3.png",
       );
     });
-    imageDecodes.hold("https://example.com/imported-page-2.png");
-    imageDecodes.hold("https://example.com/imported-cover.png");
     await user.click(screen.getByLabelText("Preview slide 2"));
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-3.png",
+    );
+    const stalePageTwoImage = await requestedImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-2.png",
     );
     await user.click(screen.getByLabelText("Preview slide 1"));
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-3.png",
     );
-    await imageDecodes.complete("https://example.com/imported-cover.png");
+    await loadImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-cover.png",
+    );
     await waitFor(() => {
       expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
         "src",
         "https://example.com/imported-cover.png",
       );
     });
-    await imageDecodes.complete("https://example.com/imported-page-2.png");
+    fireEvent.load(stalePageTwoImage);
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-cover.png",
