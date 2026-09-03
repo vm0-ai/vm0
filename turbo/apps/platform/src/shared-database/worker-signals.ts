@@ -39,7 +39,6 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
-import { logger } from "../signals/log.ts";
 import { settle, withCleanup } from "../signals/utils.ts";
 import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
 import {
@@ -69,8 +68,6 @@ import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
-const L = logger("SharedDatabaseWorker");
-
 export interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
@@ -98,20 +95,13 @@ const batchChatEventCatchUpEnabled$ = computed(
     const signal = get(rootSignal$);
     signal.throwIfAborted();
     const client = get(apiClient$)(featureSwitchesContract);
-    const response = await settle(
-      accept(client.get({ fetchOptions: { signal } }), [200]),
-      signal,
+    const response = await accept(
+      client.get({ fetchOptions: { signal } }),
+      [200],
     );
-    if (!response.ok) {
-      L.error("feature-switch.load", response.error, {
-        feature: FeatureSwitchKey.BatchChatEventCatchUp,
-      });
-      return false;
-    }
     return (
-      response.value.body.effectiveSwitches[
-        FeatureSwitchKey.BatchChatEventCatchUp
-      ] ?? false
+      response.body.effectiveSwitches[FeatureSwitchKey.BatchChatEventCatchUp] ??
+      false
     );
   },
 );
@@ -223,11 +213,13 @@ const runTrailingCatchUpChatEvent$ = command(
     if (active) {
       await settle(active, signal);
     }
+    const lastStartedAt = throttle.lastStartedAt;
+    if (lastStartedAt === null) {
+      throw new Error("Trailing ChatEvent catch-up has no prior start time");
+    }
     const remaining = Math.max(
       0,
-      (throttle.lastStartedAt ?? now()) +
-        CHAT_EVENT_CATCH_UP_THROTTLE_MS -
-        now(),
+      lastStartedAt + CHAT_EVENT_CATCH_UP_THROTTLE_MS - now(),
     );
     if (remaining > 0) {
       await delay(remaining, { signal });

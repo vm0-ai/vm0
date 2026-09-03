@@ -1,5 +1,7 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatThreadsContract,
@@ -378,6 +380,74 @@ describe("shared database direct Platform bridge", () => {
     });
     expect(requestedThreadIds).not.toContain(cachedThreadId);
     expect(batchRequestCount).toBe(0);
+  });
+
+  it("propagates a worker feature-switch failure without falling back", async () => {
+    const workerAppVersion = "worker-feature-switch-failure";
+    let workerFeatureSwitchRequestCount = 0;
+    let chatEventRequestCount = 0;
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    context.mocks.api(featureSwitchesContract.get, ({ request, respond }) => {
+      if (request.headers.get(CLIENT_VERSION_HEADER) === workerAppVersion) {
+        workerFeatureSwitchRequestCount += 1;
+        return respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Worker feature switches are unavailable",
+          },
+        });
+      }
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: {},
+        threads: { [crypto.randomUUID()]: "unread" },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      chatEventRequestCount += 1;
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      chatEventRequestCount += 1;
+      return respond(200, chatEventRowsResponse([], query));
+    });
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ respond }) => {
+      chatEventRequestCount += 1;
+      return respond(200, { events: {}, notFoundThreads: [] });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      sharedWorkerAppVersion: workerAppVersion,
+      sharedWorkerTestTransport: "message-port",
+      withoutRender: true,
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      org: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(workerFeatureSwitchRequestCount).toBeGreaterThan(0);
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "[W][Realtime]",
+        "transient error in ably notification",
+        expect.objectContaining({
+          message: "Worker feature switches are unavailable",
+          status: 500,
+        }),
+      );
+    });
+    expect(chatEventRequestCount).toBe(0);
   });
 
   it("does not turn a healthy SharedWorker connection red when the tab is hidden", () => {
