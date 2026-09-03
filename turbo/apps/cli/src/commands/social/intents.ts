@@ -282,8 +282,12 @@ function hasQueryValue(url: URL, key: string): boolean {
 
 function hasLegacyFacebookPostQuery(
   url: URL,
-  path: string | undefined,
+  segments: readonly string[],
 ): boolean {
+  if (segments.length !== 1) {
+    return false;
+  }
+  const [path] = segments;
   return (
     (path !== undefined &&
       FACEBOOK_STORY_QUERY_PATHS.has(path) &&
@@ -305,6 +309,7 @@ function facebookTargetKind(url: URL): SocialTargetKind {
   });
   const watchIndex = segments.indexOf("watch");
   const legacyVideoQuery =
+    segments.length === 1 &&
     (segments[0] === "watch" || segments[0] === "video.php") &&
     hasQueryValue(url, "v");
   if (
@@ -319,7 +324,7 @@ function facebookTargetKind(url: URL): SocialTargetKind {
   });
   if (
     (postIndex >= 0 && segments[postIndex + 1]) ||
-    hasLegacyFacebookPostQuery(url, segments[0])
+    hasLegacyFacebookPostQuery(url, segments)
   ) {
     return "post";
   }

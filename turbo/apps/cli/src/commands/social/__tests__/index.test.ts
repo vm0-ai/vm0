@@ -917,6 +917,13 @@ describe("okou social command", () => {
     ["transcript", "https://facebook.com/marketplace?v=example"],
     ["transcript", "https://facebook.com/marketplace?fbid=example"],
     ["transcript", "https://facebook.com/marketplace?story_fbid=example"],
+    ["transcript", "https://facebook.com/video.php/extra?v=example"],
+    ["transcript", "https://facebook.com/photo.php/extra?fbid=example"],
+    [
+      "transcript",
+      "https://facebook.com/permalink.php/extra?story_fbid=example",
+    ],
+    ["transcript", "https://facebook.com/story.php/extra?story_fbid=example"],
     ["transcript", "https://youtube.com/results?v=example"],
     ["transcript", "https://youtu.be/example/extra"],
     ["transcript", "https://youtube.com/playlist/extra?list=example"],
