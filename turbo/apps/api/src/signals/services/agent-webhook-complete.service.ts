@@ -491,13 +491,13 @@ async function completeActiveAgentRunTransition(
     userId: run.userId,
     status: prepared.status,
     framework: launchSnapshot?.framework ?? null,
-    // V1/null launch snapshots can finish under the V2 API during rollout.
-    // Keep generation disabled for them until #31067 confirms that pre-V2
-    // active runs have drained; historical snapshots remain readable.
+    // Historical V1/null snapshots remain disabled. V2 retains its persisted
+    // rollout decision; V3 Pi runs have already passed the PiLoop launch policy.
     generationEnabled:
       launchSnapshot?.schemaVersion === 2
         ? launchSnapshot.piMemoryGenerationEnabled
-        : false,
+        : launchSnapshot?.schemaVersion === 3 &&
+          launchSnapshot.framework === "pi",
     triggerSource: run.triggerSource,
     chatThreadId: run.chatThreadId,
     completedAt,

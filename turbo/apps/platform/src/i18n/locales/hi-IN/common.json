@@ -2397,6 +2397,7 @@
     },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
+      "confirmRecording": "OK",
       "draft": "वॉइस ड्राफ़्ट",
       "draftTooLong": "यह वॉइस ड्राफ़्ट बहुत लंबा है। नई रिकॉर्डिंग शुरू करें।",
       "finishDraft": "पूरा करें",
@@ -5086,6 +5087,14 @@
           "system": "सिस्टम",
           "title": "थीम"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "नए चैट में एजेंटों को क्लाउड ब्राउज़र का उपयोग करने दें",
+          "title": "क्लाउड ब्राउज़र"
+        },
+        "description": "नए चैट के लिए डिफ़ॉल्ट सेटिंग और संदेश भेजने का तरीका चुनें।",
+        "sectionTitle": "चैट"
       },
       "debug": {
         "builtInModelCooldown": {

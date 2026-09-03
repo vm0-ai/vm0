@@ -3,10 +3,11 @@
 ## Voice draft
 
 A composer-owned, durable block containing raw speech transcription that is
-not yet ready to send. It remains hidden while recording and during the first
-automatic cleanup attempt, becomes visible if cleanup fails, and turns into
-ordinary composer text only after cleanup succeeds. A composer containing a
-voice draft cannot be sent.
+not yet ready to send. The block remains hidden while a composer-owned footer
+shows recording and automatic cleanup progress, becomes visible if cleanup
+fails, and turns into selected ordinary composer text at the last editor
+selection only after cleanup succeeds. A composer containing a voice draft
+cannot be sent.
 
 _Avoid_: Voice loading state, live transcript
 

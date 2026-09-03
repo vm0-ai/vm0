@@ -1,4 +1,5 @@
 import { waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 import { setupPageAndWaitForContent } from "../../../__tests__/page-helper.ts";
 import { context } from "./chat-lifecycle-test-helpers.ts";
@@ -106,7 +107,9 @@ function recordRenderedLabelText(): string[] {
   return rendered;
 }
 
-async function setupThinkingRun(): Promise<string[]> {
+async function setupThinkingRun(
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+): Promise<string[]> {
   stubLabelTextMeasurement();
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
@@ -143,6 +146,7 @@ async function setupThinkingRun(): Promise<string[]> {
   await setupPageAndWaitForContent({
     context,
     path: `/chats/${THREAD_ID}`,
+    featureSwitches,
   });
   return rendered;
 }
@@ -160,6 +164,40 @@ async function waitForTypedLines(rendered: readonly string[]): Promise<void> {
 }
 
 describe("chat thinking indicator", () => {
+  it("keeps the three-block loader when the spinner switch is off", async () => {
+    await setupThinkingRun();
+
+    expect(
+      document.querySelector(
+        '[data-thinking-indicator] [data-thinking-loader="blocks"]',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        '[data-thinking-indicator] [data-thinking-loader="spinner"]',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses the Okou mark for the active-run loader", async () => {
+    await setupThinkingRun({
+      [FeatureSwitchKey.ChatThinkingSpinner]: true,
+    });
+
+    const spinner = document.querySelector<HTMLImageElement>(
+      '[data-thinking-indicator] [data-thinking-loader="spinner"] img',
+    );
+    expect(spinner).toHaveAttribute(
+      "src",
+      "https://static.vm0.io/public/okou-transparent.svg",
+    );
+    expect(
+      document.querySelector(
+        '[data-thinking-indicator] [data-thinking-loader="blocks"]',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("discards an overflowing line remainder before showing the next explicit line", async () => {
     const rendered = await setupThinkingRun();
     await waitForTypedLines(rendered);

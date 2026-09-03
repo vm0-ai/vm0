@@ -132,7 +132,8 @@ function installAndCaptureUpdateOptions(
       notifyUser: true,
       updateInterval: "30 minutes",
       updateSource: expect.objectContaining({
-        baseUrl: "https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64",
+        baseUrl:
+          "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/arm64",
       }),
     }),
   );

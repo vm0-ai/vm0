@@ -2441,6 +2441,7 @@
     },
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
+      "confirmRecording": "OK",
       "draft": "Brouillon vocal",
       "draftTooLong": "Ce brouillon vocal est trop long. Démarrez un nouvel enregistrement.",
       "finishDraft": "Finaliser",
@@ -5143,6 +5144,14 @@
           "system": "Système",
           "title": "Thème"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Autorisez les agents à utiliser un navigateur cloud dans les nouvelles discussions",
+          "title": "Navigateur cloud"
+        },
+        "description": "Choisissez les paramètres par défaut des nouvelles discussions et le mode d’envoi des messages.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

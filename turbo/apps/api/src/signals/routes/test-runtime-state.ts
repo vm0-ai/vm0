@@ -1006,6 +1006,49 @@ async function mutateRunnerJobSecretValueEnvironmentKeys(
   signal.throwIfAborted();
 }
 
+type SetRunnerJobPiContextAsV2WriterAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-runner-job-pi-context-as-v2-writer" }
+>;
+
+async function setRunnerJobPiContextAsV2Writer(
+  db: Db,
+  body: SetRunnerJobPiContextAsV2WriterAction,
+  signal: AbortSignal,
+): Promise<void> {
+  // Current production writers stay legacy-only. This fixture models a queued
+  // row emitted by the later V2 activation slice so claim compatibility can be
+  // verified before that writer exists.
+  const piContext = {
+    cliAgentType: "pi",
+    piSessionId: body.run_id,
+    piLaunchConfig: {
+      schemaVersion: 2,
+      apiFirstTurn: {
+        schemaVersion: 1,
+        resourceSnapshotDigest: "0".repeat(64),
+        manifestUrl: "https://example.test/pi/manifest.json",
+        sessionUrl: "https://example.test/pi/session.jsonl",
+        deadlineAt: 4_102_444_800_000,
+        baseSession: { sessionId: body.run_id, sha256: null },
+        sandboxEventSequenceStart: 1,
+      },
+    },
+    piModelConfig: body.pi_model_config,
+  };
+  const [updated] = await db
+    .update(runnerJobQueue)
+    .set({
+      executionContext: sql`${runnerJobQueue.executionContext} || ${JSON.stringify(piContext)}::jsonb`,
+    })
+    .where(eq(runnerJobQueue.runId, body.run_id))
+    .returning({ runId: runnerJobQueue.runId });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a queued runner job for Pi V2 context update");
+  }
+}
+
 type ConnectorPermissionBaselineMutationAction = Extract<
   TestRuntimeStateActionBody,
   { action: "mutate-runner-job-connector-permission-baseline" }
@@ -2589,6 +2632,10 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "set-runner-job-pi-context-as-v2-writer": {
+        await setRunnerJobPiContextAsV2Writer(db, body, signal);
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "set-runner-job-connector-runtime-targets": {

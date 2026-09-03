@@ -344,6 +344,7 @@ describe("Pi memory Stage 1 runtime", () => {
           baseUrl: `http://127.0.0.1:${address.port}/v1`,
           apiKey: "test-key",
           model: "gpt-5.6-terra",
+          dialect: "openai-responses",
         },
         projectedHistory: '{"role":"user","content":"work"}',
         requestId: "00000000-0000-4000-8000-000000000999",

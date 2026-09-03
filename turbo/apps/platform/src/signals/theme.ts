@@ -266,6 +266,9 @@ export const initTheme$ = command(({ get, set }) => {
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
   applyTheme(resolved);
+  if (isOkou) {
+    writeOkouThemePreferenceToDocument(preference);
+  }
 
   // Listen for system theme changes when preference is "system"
   window

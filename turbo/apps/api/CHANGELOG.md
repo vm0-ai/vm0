@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.541.0](https://github.com/vm0-ai/vm0/compare/api-v1.540.0...api-v1.541.0) (2026-09-03)
+
+
+### Features
+
+* add cloud browser preference ([#31522](https://github.com/vm0-ai/vm0/issues/31522)) ([99b4589](https://github.com/vm0-ai/vm0/commit/99b4589022738a463640e019b97f31c150e50850))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.0
+    * @okouai/core bumped to 8.617.0
+    * @okouai/db bumped to 1.240.0
+    * @okouai/pi-agent-runtime bumped to 1.15.4
+
+## [1.540.0](https://github.com/vm0-ai/vm0/compare/api-v1.539.1...api-v1.540.0) (2026-09-03)
+
+
+### Features
+
+* **api:** show okou avatar in automation emails ([#31518](https://github.com/vm0-ai/vm0/issues/31518)) ([ae9d20f](https://github.com/vm0-ai/vm0/commit/ae9d20f90604814af0d5f4f800d4e93476455f88))
+* **artifacts:** add short okou artifact urls ([#31483](https://github.com/vm0-ai/vm0/issues/31483)) ([9d20d76](https://github.com/vm0-ai/vm0/commit/9d20d76b88d3097f279084fcfb452d8b86e7ef55))
+
+
+### Bug Fixes
+
+* **api:** improve recommended follow-up choices ([#31527](https://github.com/vm0-ai/vm0/issues/31527)) ([06cc869](https://github.com/vm0-ai/vm0/commit/06cc86955be1685df879da6d37d8aa419beab549))
+* **pi-memory:** promote terminal lifecycle telemetry ([#31512](https://github.com/vm0-ai/vm0/issues/31512)) ([35a2e51](https://github.com/vm0-ai/vm0/commit/35a2e51eebeed869c189609f49b5b4e46b630ae6))
+
+
+### Refactoring
+
+* **pi-memory:** make piloop the single product switch ([#31496](https://github.com/vm0-ai/vm0/issues/31496)) ([709e1a2](https://github.com/vm0-ai/vm0/commit/709e1a26703eac64d7501e777d802d80af19430c))
+* **pi:** add dialect-aware credential runtime contract ([#31493](https://github.com/vm0-ai/vm0/issues/31493)) ([9464fb3](https://github.com/vm0-ai/vm0/commit/9464fb3e99138707f242b1fe789cf0e375602973))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.2
+    * @okouai/core bumped to 8.616.0
+    * @okouai/db bumped to 1.239.2
+    * @okouai/pi-agent-runtime bumped to 1.15.3
+
+## [1.539.1](https://github.com/vm0-ai/vm0/compare/api-v1.539.0...api-v1.539.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+    * @okouai/db bumped to 1.239.1
+    * @okouai/pi-agent-runtime bumped to 1.15.2
+
 ## [1.539.0](https://github.com/vm0-ai/vm0/compare/api-v1.538.2...api-v1.539.0) (2026-09-03)
 
 

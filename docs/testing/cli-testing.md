@@ -31,12 +31,10 @@ src/commands/
 
 Product CLI requests read `OKOU_TOKEN` and nothing else. `getToken()` in
 `src/lib/api/config.ts` delegates to `getOkouToken()` in `src/lib/okou-env.ts`,
-which reads only `OKOU_TOKEN`. The retired `ZERO_TOKEN` and `VM0_TOKEN` names
-are not honored, and there is no fallback to them when `OKOU_TOKEN` is unset or
-empty. Routing reads only `OKOU_API_BACKEND_URL`; when it is unset or empty,
-the CLI defaults to `https://api.okou.ai`. A configured host without a protocol
-receives `https://`, while an explicit protocol and trailing slash are
-preserved.
+which reads only `OKOU_TOKEN`. Routing reads only `OKOU_API_BACKEND_URL`; when
+it is unset or empty, the CLI defaults to `https://api.okou.ai`. A configured
+host without a protocol receives `https://`, while an explicit protocol and
+trailing slash are preserved.
 
 Set the canonical token explicitly together with the API URL:
 
@@ -51,44 +49,9 @@ afterEach(() => {
 });
 ```
 
-Do not create `~/.vm0/config.json`, set `VM0_TOKEN`, or mock the config module.
-Tests for missing authentication should leave every token name unset and assert
-the resulting guidance.
-
-Do not write a test that asserts a legacy token name still reaches the Okou
-path. No such fallback exists, so the test fails.
-
-Token acceptance is a fail-closed credential boundary, so rejecting a legacy
-token name is the product behavior and negative assertions belong here. This is
-the narrow exception in [Fallbacks to Avoid](../fallback.md) §1; do not
-generalize it. Everywhere else, a test that only asserts removed behavior stays
-removed is a tombstone and should not be written.
-`src/lib/api/__tests__/config.test.ts` holds the pattern for this boundary:
-
-```typescript
-it("ignores ZERO_TOKEN when OKOU_TOKEN is present", async () => {
-  vi.stubEnv("OKOU_TOKEN", "okou-token-value");
-  vi.stubEnv("ZERO_TOKEN", "zero-token-value");
-
-  await expect(getToken()).resolves.toBe("okou-token-value");
-  await expect(getActiveToken()).resolves.toBe("okou-token-value");
-});
-
-it("does not fall back to ZERO_TOKEN when OKOU_TOKEN is empty", async () => {
-  vi.stubEnv("OKOU_TOKEN", "");
-  vi.stubEnv("ZERO_TOKEN", "zero-token-value");
-
-  await expect(getToken()).resolves.toBeUndefined();
-  await expect(getActiveToken()).resolves.toBeUndefined();
-});
-
-it("does not fall back to VM0_TOKEN", async () => {
-  vi.stubEnv("VM0_TOKEN", "legacy-token-value");
-
-  await expect(getToken()).resolves.toBeUndefined();
-  await expect(getActiveToken()).resolves.toBeUndefined();
-});
-```
+Do not create a local authentication config file or mock the config module.
+Tests for missing authentication should leave `OKOU_TOKEN` unset and assert the
+resulting guidance.
 
 ## Command integration pattern
 

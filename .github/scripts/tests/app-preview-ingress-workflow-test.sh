@@ -59,6 +59,10 @@ end
 unless deploy_step.dig("env", "CLOUDFLARE_API_TOKEN") == "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
   raise "Worker preview deployment must use the isolated Worker deploy token"
 end
+unless deploy_step.dig("env", "CLERK_PUBLISHABLE_KEY") == "${{ github.event_name == 'pull_request' && vars.CLERK_PUBLISHABLE_KEY_PREVIEW || '' }}" &&
+    deploy_step.dig("env", "CLERK_SECRET_KEY") == "${{ github.event_name == 'pull_request' && secrets.CLERK_SECRET_KEY || '' }}"
+  raise "Only PR Worker previews may receive the Clerk test instance bindings"
+end
 deploy_source = deploy_step.fetch("run")
 unless deploy_source.include?("wrangler versions upload") &&
     deploy_source.include?('--preview-alias "$WORKER_PREVIEW_ALIAS"') &&
@@ -79,6 +83,32 @@ unless preview_enable_index && bootstrap_index && preview_upload_index &&
 end
 unless deploy_source.include?("Cloudflare-Workers-Script-Api-Date: 2025-08-01")
   raise "Worker preview configuration must use Cloudflare's current script API"
+end
+unless deploy_source.include?('case "$CLERK_PUBLISHABLE_KEY" in') &&
+    deploy_source.include?("pk_test_*") &&
+    deploy_source.include?('case "$CLERK_SECRET_KEY" in') &&
+    deploy_source.include?("sk_test_*")
+  raise "Worker preview deployment must reject non-test Clerk keys"
+end
+unless deploy_source.include?('worker_secrets="$(mktemp)"') &&
+    deploy_source.include?("umask 077") &&
+    deploy_source.include?('if [[ "$EVENT_NAME" == "pull_request" ]]') &&
+    deploy_source.include?('CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: env.EXPECTED_PREVIEW_URL') &&
+    deploy_source.include?('unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY')
+  raise "Worker preview deployment must create an ephemeral exact-origin secrets file"
+end
+bootstrap_source = deploy_source[bootstrap_index...preview_upload_index]
+version_source = deploy_source[preview_upload_index..]
+unless deploy_source.include?('worker_secret_args=(--secrets-file "$worker_secrets")') &&
+    version_source.include?('"${worker_secret_args[@]}"') &&
+    deploy_source.scan('"${worker_secret_args[@]}"').length == 1
+  raise "Only the PR version upload may use encrypted Clerk bindings"
+end
+if bootstrap_source.include?("worker_secret_args")
+  raise "The shared preview bootstrap must not receive PR Clerk bindings"
+end
+if deploy_source.include?("--var CLERK_SECRET_KEY")
+  raise "Worker preview deployment must not expose the Clerk secret on the command line"
 end
 
 readiness_step = find_step.call("Wait for standalone app Worker readiness")

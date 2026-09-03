@@ -211,6 +211,7 @@ const mockChatEventOverrides = {
     return {
       runId: message.runId ?? `mock-run-${id}`,
       error: message.error,
+      failureReason: message.failureReason,
       runLifecycleEvent: "failed",
     };
   },
@@ -421,6 +422,9 @@ export function mockChatEventRows(
       contextId: goalContextId,
       runEventSequenceNumber: event.sequenceNumber ?? null,
       runEventId: event.runEventId ?? null,
+      ...(event.eventType === "run.failed" && event.failureReason !== undefined
+        ? { failureReason: event.failureReason }
+        : {}),
       seqId: event.seqId,
       createdAt: event.createdAt,
     });

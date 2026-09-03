@@ -14,9 +14,15 @@ export interface AgentRunLaunchSnapshotV2 {
   runnerProfile: string;
   piMemoryGenerationEnabled: boolean;
 }
+export interface AgentRunLaunchSnapshotV3 {
+  schemaVersion: 3;
+  framework: "claude-code" | "codex" | "pi";
+  runnerProfile: string;
+}
 export type AgentRunLaunchSnapshot =
   | AgentRunLaunchSnapshotV1
-  | AgentRunLaunchSnapshotV2;
+  | AgentRunLaunchSnapshotV2
+  | AgentRunLaunchSnapshotV3;
 export interface AgentRunOfficialWorkflowDefinitionProvenance {
   readonly name: string;
   readonly revision: string;

@@ -8,6 +8,7 @@ import { devArtifactFetchProxy } from "./dev-artifact-fetch-proxy.ts";
 import { server as mockServer } from "./src/mocks/server.ts";
 
 const ALLOWED_OKOU_TARGETS = [
+  "https://a.okou.io/0123456789.html",
   "https://cdn.okou.io/artifacts/user_1/artifact_1/report.html",
   "https://static.okou.io/web/assets/presentation.html",
   "https://demo.okou.app/",
@@ -46,7 +47,7 @@ describe("development artifact fetch proxy", () => {
           return passthrough();
         }),
         http.get(
-          /^https:\/\/(?:cdn\.okou\.io|static\.okou\.io|demo\.okou\.app)\//,
+          /^https:\/\/(?:a\.okou\.io|cdn\.okou\.io|static\.okou\.io|demo\.okou\.app)\//,
           ({ request }) => {
             const target = new URL(request.url);
             return new HttpResponse(target.hostname, {

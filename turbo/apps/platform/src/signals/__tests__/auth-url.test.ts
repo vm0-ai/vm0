@@ -1,5 +1,5 @@
 import { waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
@@ -170,6 +170,43 @@ describe("platform auth URLs", () => {
         isSatellite: true,
         satelliteAutoSync: true,
       });
+    } finally {
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+    }
+  });
+
+  it("moves VM0 auth routes to Okou after the configured cutover", async () => {
+    Reflect.set(window, "__vm0ClerkBootstrap", {
+      productionPrimaryAppDomain: "app.okou.ai",
+    });
+    try {
+      const path = "/sign-in/factor-one?attempt=1#verification";
+      setBrowserUrl(`https://app.vm0.ai${path}`);
+      const replace = vi
+        .spyOn(window.location, "replace")
+        .mockImplementation(() => {});
+
+      await setupPage({
+        context,
+        path,
+        session: null,
+        user: null,
+        withoutRender: true,
+      });
+
+      expect(replace).toHaveBeenCalledOnce();
+      const replacement = replace.mock.calls[0]?.[0];
+      if (!replacement) {
+        throw new Error("Expected the VM0 auth route to be replaced");
+      }
+      const redirectUrl = new URL(String(replacement));
+      expect(redirectUrl.origin).toBe("https://app.okou.ai");
+      expect(redirectUrl.pathname).toBe("/sign-in/factor-one");
+      expect(redirectUrl.searchParams.get("attempt")).toBe("1");
+      expect(redirectUrl.searchParams.get("redirect_url")).toBe(
+        "https://app.vm0.ai",
+      );
+      expect(redirectUrl.hash).toBe("#verification");
     } finally {
       Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
     }

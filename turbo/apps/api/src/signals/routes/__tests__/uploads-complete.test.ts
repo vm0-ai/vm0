@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { deleteAgentRunFixture } from "../../../test-fixtures/chat-events";
@@ -283,7 +284,51 @@ describe("POST /api/uploads/complete", () => {
     expect(response.body).toMatchObject({
       id: prepared.id,
       filename: "okou-report.pdf",
-      url: expect.stringMatching(/^https:\/\/cdn\.okou\.io\//u),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.pdf$/u),
+    });
+  });
+
+  it("keeps completion idempotent while an Okou artifact adopts its short URL", async () => {
+    const fixture = await createRunUploadFixture();
+    const prepared = await chat.prepareUpload(fixture.actor, {
+      filename: "okou-cutover.pdf",
+      contentType: "application/pdf",
+      size: 17,
+    });
+    const key = new URL(prepared.url).pathname.replace(/^\/+/, "");
+    fixture.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key,
+      size: 17,
+      contentType: "application/pdf",
+      metadata: {
+        "artifact-id": prepared.id,
+        filename: "okou-cutover.pdf",
+        "public-brand": "okou",
+        "user-id": encodeURIComponent(fixture.actor.userId),
+      },
+    });
+
+    mockEnv("OKOU_PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.okou.io");
+    const legacy = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [200],
+    );
+    expect(legacy.body).toMatchObject({
+      url: expect.stringMatching(
+        /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.pdf$/u,
+      ),
+    });
+
+    mockEnv("OKOU_PUBLIC_ARTIFACTS_BASE_URL", "https://a.okou.io");
+    const shortened = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [200],
+    );
+    expect(shortened.body).toMatchObject({
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.pdf$/u),
     });
   });
 

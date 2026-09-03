@@ -48,6 +48,8 @@ import {
 } from "./chat-page.ts";
 import {
   newThreadComputerAccess$,
+  newThreadCloudBrowserEnabled$,
+  newThreadComputerUseHostId$,
   resetNewThreadComputerAccess$,
   setNewThreadCloudBrowserEnabled$,
   setNewThreadComputerUseHostId$,
@@ -139,12 +141,9 @@ const setImageModel$ = command(
 );
 
 const computerUseHostId$ = computed((get): string | null => {
-  const selection = get(newThreadComputerAccess$);
-  return selection.kind === "computerUse" ? selection.hostId : null;
+  return get(newThreadComputerUseHostId$);
 });
-const cloudBrowserEnabled$ = computed((get): boolean => {
-  return get(newThreadComputerAccess$).kind === "cloudBrowser";
-});
+const cloudBrowserEnabled$ = newThreadCloudBrowserEnabled$;
 const setComputerUseHostId$ = command(
   ({ set }, hostId: string | null, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
@@ -193,7 +192,8 @@ function createAgentSubmitMessage(
       if (action !== "send") {
         return false;
       }
-      const access = get(newThreadComputerAccess$);
+      const access = await get(newThreadComputerAccess$);
+      signal.throwIfAborted();
       const [hosts, imageModelPin, videoModelPin, connectorPreference] =
         await Promise.all([
           get(computerUseHostsFromWorker$),

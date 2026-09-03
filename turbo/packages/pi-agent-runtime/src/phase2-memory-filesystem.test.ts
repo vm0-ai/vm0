@@ -112,6 +112,7 @@ function consolidationArgs(
       apiKey: "unused-test-key",
       model: "gpt-5.6-terra",
       api: "openai-responses",
+      dialect: "openai-responses",
     },
     heartbeat: async () => {
       return true;
