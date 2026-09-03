@@ -326,6 +326,27 @@ def _assert_current_denial(flow: http.HTTPFlow, mutation: RegistryMutation) -> N
     assert "_usage_flow_tracked" not in flow.metadata
 
 
+def _assert_auth_base_forward_rejected(
+    flow: http.HTTPFlow,
+    *,
+    original_path: str,
+    registry_mutation: RegistryMutation,
+) -> None:
+    assert flow.request.headers["Host"] == "placeholder.example.com"
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.request.path == original_path
+    for key in (
+        metadata_keys.AUTH_RESOLVED_SECRETS,
+        metadata_keys.AUTH_REFRESHED_CONNECTORS,
+        metadata_keys.AUTH_REFRESHED_SECRETS,
+        metadata_keys.AUTH_CACHE_HIT,
+        metadata_keys.AUTH_URL_REWRITE,
+    ):
+        assert key not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+    _assert_current_denial(flow, registry_mutation)
+
+
 @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
 @pytest.mark.parametrize(
     "registry_mutation",
@@ -721,19 +742,11 @@ async def test_auth_base_registry_change_during_auth_blocks_resolved_forward(
 
     auth_fetch.assert_awaited_once()
     forward_request.assert_not_awaited()
-    assert flow.request.headers["Host"] == "placeholder.example.com"
-    assert flow.request.headers.get("Authorization") is None
-    assert flow.request.path == original_path
-    for key in (
-        metadata_keys.AUTH_RESOLVED_SECRETS,
-        metadata_keys.AUTH_REFRESHED_CONNECTORS,
-        metadata_keys.AUTH_REFRESHED_SECRETS,
-        metadata_keys.AUTH_CACHE_HIT,
-        metadata_keys.AUTH_URL_REWRITE,
-    ):
-        assert key not in flow.metadata
-    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
-    _assert_current_denial(flow, registry_mutation)
+    _assert_auth_base_forward_rejected(
+        flow,
+        original_path=original_path,
+        registry_mutation=registry_mutation,
+    )
 
 
 @pytest.mark.parametrize(
@@ -814,12 +827,11 @@ async def test_auth_base_registry_change_while_waiting_for_active_slot_blocks_fo
             assert upstream.resolve_calls == ["occupied.example.com", "webhook.example.com"]
 
     auth_fetch.assert_awaited_once()
-    assert flow.request.headers["Host"] == "placeholder.example.com"
-    assert flow.request.headers.get("Authorization") is None
-    assert flow.request.path == original_path
-    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
-    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
-    _assert_current_denial(flow, registry_mutation)
+    _assert_auth_base_forward_rejected(
+        flow,
+        original_path=original_path,
+        registry_mutation=registry_mutation,
+    )
 
 
 @pytest.mark.parametrize(
@@ -878,12 +890,11 @@ async def test_auth_base_registry_change_while_waiting_for_dns_blocks_forward(
         assert upstream.socket_calls == []
 
     auth_fetch.assert_awaited_once()
-    assert flow.request.headers["Host"] == "placeholder.example.com"
-    assert flow.request.headers.get("Authorization") is None
-    assert flow.request.path == original_path
-    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
-    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
-    _assert_current_denial(flow, registry_mutation)
+    _assert_auth_base_forward_rejected(
+        flow,
+        original_path=original_path,
+        registry_mutation=registry_mutation,
+    )
 
 
 async def test_auth_base_unrelated_policy_change_keeps_equivalent_authorization(
