@@ -306,7 +306,7 @@ function logOutcome(args: {
   readonly errorClass?: string;
   readonly versionId?: string;
 }): void {
-  log.debug("Pi memory Phase 2 work completed", {
+  log.info("Pi memory Phase 2 work completed", {
     orgId: args.claim.orgId,
     userId: args.claim.userId,
     memoryStorageId: args.claim.memoryStorageId,
