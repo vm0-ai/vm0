@@ -35,7 +35,8 @@ zero-team, and zero-default-agent route tests:
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
-const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
+const DEFAULT_AGENT_AVATAR_URL =
+  "https://static.vm0.io/public/default-agent-avatar-ceb298b79964.svg";
 
 class ClerkApiResponseTestError extends Error {
   static readonly kind = "ClerkAPIResponseError";
@@ -999,7 +1000,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     expect(defaultEntry).toMatchObject({
       id: defaultAgentId,
       ownerId: admin.userId,
-      displayName: "BDD Team Default",
+      displayName: "Okou",
       description: null,
       sound: "calm",
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,

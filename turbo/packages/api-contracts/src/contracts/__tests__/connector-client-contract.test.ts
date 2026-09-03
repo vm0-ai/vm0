@@ -235,6 +235,12 @@ describe("custom connector response contracts", () => {
     expect(() => {
       customConnectorResponseSchema.parse(customHttpConnectorPayloadBase);
     }).toThrow();
+    expect(() => {
+      customConnectorResponseSchema.parse({
+        ...customHttpConnectorPayload,
+        oauthSetup: "custom",
+      });
+    }).toThrow();
   });
 
   it("parses canonical OAuth HTTP responses", () => {
@@ -253,17 +259,14 @@ describe("custom connector response contracts", () => {
       },
     } as const;
 
-    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual({
-      ...payload,
-      oauthSetup: "custom",
-    });
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
 
     expect(
       customConnectorResponseSchema.parse({
         ...payload,
         oauthSetup: "custom",
       }),
-    ).toStrictEqual({ ...payload, oauthSetup: "custom" });
+    ).toStrictEqual(payload);
   });
 
   it("parses top-level Automatic MCP authentication", () => {
@@ -290,6 +293,12 @@ describe("custom connector response contracts", () => {
     } as const;
 
     expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
+    expect(() => {
+      customConnectorResponseSchema.parse({
+        ...payload,
+        oauthSetup: "automatic",
+      });
+    }).toThrow();
   });
 
   it("rejects responses without an auth mode", () => {
@@ -433,13 +442,13 @@ describe("connector client request contracts", () => {
         prefixTemplates: ["https://api.example.test"],
       });
     }).toThrow();
-    expect(() => {
+    expect(
       createCustomConnectorBodySchema.parse({
         ...manualDefinition,
         authMode: "manual",
         oauthSetup: "custom",
-      });
-    }).toThrow();
+      }),
+    ).toStrictEqual({ ...manualDefinition, authMode: "manual" });
   });
 
   it("accepts canonical connector check requests", () => {

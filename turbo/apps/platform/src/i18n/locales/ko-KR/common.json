@@ -5007,10 +5007,12 @@
       },
       "reset": {
         "confirmDescription": "현재 사용량 창을 재설정하려면 Codex 재설정 1회를 사용하세요. 남은 횟수: {{remaining}}.",
+        "expiresAt": "가장 빠른 재설정 만료: {{date}}",
         "progress": "재설정 중...",
         "remaining_one": "{{value}}회 재설정 가능",
         "remaining_other": "{{value}}회 재설정 가능",
         "remainingUnavailable": "재설정 가능 횟수 없음",
+        "remainingWithExpiry_other": "{{value}}회 재설정 가능 · {{expiry}} 만료",
         "title": "Codex 사용량을 재설정하시겠습니까?"
       },
       "stale": {

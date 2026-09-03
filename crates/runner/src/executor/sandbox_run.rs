@@ -44,13 +44,14 @@ use crate::network_log_manager::NetworkLogSession;
 use crate::provider::ConnectorRuntimeSyncRegistration;
 use crate::proxy;
 use crate::restored_session_identity::RestoredSessionIdentity;
-use crate::storage_cache::PreparedFreshStorage;
+use crate::storage_cache::PreparedStorage;
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::storage_plan::build_storage_plan;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
-    WorkspaceImagePrepareRequest,
+    WorkspaceImagePrepareLockPolicy, WorkspaceImagePrepareRequest,
 };
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
@@ -394,24 +395,20 @@ pub(super) async fn execute_new_sandbox(
     .await
 }
 
-async fn prepare_fresh_storage(
+async fn prepare_storage(
     context: &ExecutionContext,
-    workspace_image: Option<&WorkspaceImageLease>,
+    previous_storage: Option<&StorageFingerprints>,
     config: &ExecutorConfig,
     cancel: &CancellationToken,
     telemetry: &mut JobTelemetry,
-) -> RunnerResult<Option<PreparedFreshStorage>> {
+) -> RunnerResult<Option<PreparedStorage>> {
     let Some(manifest) = &context.storage_manifest else {
         return Ok(None);
     };
     let apply_started = Instant::now();
-    let result: RunnerResult<Option<PreparedFreshStorage>> = async {
+    let result: RunnerResult<Option<PreparedStorage>> = async {
         let runtime_dir = super::guest_runtime_dir(context.run_id)?;
-        let plan = build_storage_plan(
-            manifest,
-            runtime_dir.as_str(),
-            workspace_image.and_then(WorkspaceImageLease::previous_storage),
-        )?;
+        let plan = build_storage_plan(manifest, runtime_dir.as_str(), previous_storage)?;
         let delivery = crate::storage_cache::prepare_fresh_archive_delivery(
             &plan,
             &config.home,
@@ -420,7 +417,7 @@ async fn prepare_fresh_storage(
             telemetry,
         )
         .await?;
-        Ok(Some(PreparedFreshStorage { plan, delivery }))
+        Ok(Some(PreparedStorage { plan, delivery }))
     }
     .await;
     if let Err(error) = &result {
@@ -501,12 +498,15 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         config,
         &params.profile_name,
         params.workspace_disk_mb,
+        params.workspace_image_prepare_lock_policy,
         telemetry,
     )
     .await;
-    let prepared_storage = prepare_fresh_storage(
+    let prepared_storage = prepare_storage(
         context,
-        workspace_image.as_ref(),
+        workspace_image
+            .as_ref()
+            .and_then(WorkspaceImageLease::previous_storage),
         config,
         &controls.cancel,
         telemetry,
@@ -681,7 +681,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 None,
             );
             workspace_image = None;
-            match prepare_fresh_storage(context, None, config, &controls.cancel, telemetry).await {
+            match prepare_storage(context, None, config, &controls.cancel, telemetry).await {
                 Ok(prepared_storage) => controls.prepared_storage = prepared_storage,
                 Err(error) => {
                     if let Some(replacement) = dns_replacement.take() {
@@ -822,24 +822,29 @@ pub(super) async fn prepare_workspace_image(
     config: &ExecutorConfig,
     profile_name: &str,
     workspace_disk_mb: u32,
+    lock_policy: WorkspaceImagePrepareLockPolicy,
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
     let cache = config.workspace_cache.as_ref()?;
     let prepare_started = Instant::now();
     let reuse_key = context.reuse_key();
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id: context.run_id,
-                sandbox_id,
-                profile_name,
-                reuse_key,
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
-            },
-            workspace_drive_required: true,
-        })
-        .await;
+    let request = WorkspaceImagePrepareRequest {
+        identity: WorkspaceImageLeaseIdentity {
+            run_id: context.run_id,
+            sandbox_id,
+            profile_name,
+            reuse_key,
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+        },
+        workspace_drive_required: true,
+    };
+    let lease = match lock_policy {
+        WorkspaceImagePrepareLockPolicy::WaitForTransientContention => cache.prepare(request).await,
+        WorkspaceImagePrepareLockPolicy::ImmediateFallback => {
+            cache.prepare_with_lock_policy(request, lock_policy).await
+        }
+    };
     let prepare_error = workspace_image_prepare_error(lease.result());
     telemetry.record(
         RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE,
@@ -1409,7 +1414,8 @@ pub(super) async fn destroy_sandbox_panic_safe(
 
 /// Run a job inside a reused (kept-alive) sandbox.
 ///
-/// Skips create + start. Re-registers proxy, fixes clock/entropy, then runs.
+/// Skips create + start. Starts bounded archive delivery, re-registers the
+/// proxy, fixes clock/entropy, then runs.
 pub(super) async fn execute_reused_sandbox(
     sandbox: Box<dyn Sandbox>,
     source_ip: &str,
@@ -1417,7 +1423,7 @@ pub(super) async fn execute_reused_sandbox(
     config: &ExecutorConfig,
     prev_storage: &crate::storage_fingerprints::StorageFingerprints,
     telemetry: &mut JobTelemetry,
-    inputs: PreparedRunInputs,
+    mut inputs: PreparedRunInputs,
 ) -> ExecuteOutcome {
     info!(
         run_id = %context.run_id,
@@ -1427,30 +1433,49 @@ pub(super) async fn execute_reused_sandbox(
 
     let source_ip = source_ip.to_string();
     let prepare_started = Instant::now();
-    let network_log_session = match register_proxy(config, context, &source_ip).await {
-        Ok(session) => session,
-        Err(e) => {
+    let prepared_storage = prepare_storage(
+        context,
+        Some(prev_storage),
+        config,
+        &inputs.controls.cancel,
+        telemetry,
+    )
+    .await;
+    match prepared_storage {
+        Ok(prepared_storage) => inputs.controls.prepared_storage = prepared_storage,
+        Err(error) => {
             telemetry.record(
                 "runner_reused_sandbox_prepare",
                 prepare_started.elapsed(),
                 false,
-                Some(&e.to_string()),
+                Some(&error.to_string()),
             );
-            return ExecuteOutcome {
-                failure: Some(ExecutionFailure::from_error(e.to_string())),
-                active_input_delivery_ids: Vec::new(),
-                sandbox_reuse_disposition: SandboxReuseDisposition::default(),
-                sandbox: Some(sandbox),
+            return ExecuteOutcome::reused_sandbox_failure(
+                ExecutionFailure::from_error(error.to_string()),
+                sandbox,
                 source_ip,
-                network_log_session: None,
-                workspace_image: None,
-                workspace_reuse_result: None,
-                discovered_cli_agent_session_id: None,
-                restored_session_identity: None,
-            };
+                None,
+            );
+        }
+    }
+    let network_log_session = match register_proxy(config, context, &source_ip).await {
+        Ok(session) => session,
+        Err(error) => {
+            cancel_prepared_storage(&mut inputs.controls, telemetry).await;
+            telemetry.record(
+                "runner_reused_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return ExecuteOutcome::reused_sandbox_failure(
+                ExecutionFailure::from_error(error.to_string()),
+                sandbox,
+                source_ip,
+                None,
+            );
         }
     };
-
     telemetry.record(
         "runner_reused_sandbox_prepare",
         prepare_started.elapsed(),

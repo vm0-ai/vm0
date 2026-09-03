@@ -6,7 +6,10 @@ import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
-import { AVATAR_PRESET_COUNT } from "@okouai/core/agent-avatar";
+import {
+  AVATAR_PRESET_COUNT,
+  DEFAULT_AGENT_AVATAR_URL,
+} from "@okouai/core/agent-avatar";
 
 import {
   click,
@@ -54,12 +57,15 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function prepareAgentProfile(avatarUrl = "preset:0"): void {
+function prepareAgentProfile(
+  avatarUrl = "preset:0",
+  displayName = "Research Agent",
+): void {
   let detail: AgentResponse = {
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     description: "A helpful agent",
-    displayName: "Research Agent",
+    displayName,
     sound: "professional",
     avatarUrl,
     visibility: "public",
@@ -81,7 +87,7 @@ function prepareAgentProfile(avatarUrl = "preset:0"): void {
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
-      displayName: detail.displayName,
+      displayName,
       description: detail.description,
       sound: detail.sound,
       avatarUrl: detail.avatarUrl,
@@ -161,6 +167,39 @@ function prepareMatchingAgentProfiles(): void {
 }
 
 describe("zero settings tab", () => {
+  it("renders the default agent avatar without customization controls", async () => {
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    prepareAgentProfile(DEFAULT_AGENT_AVATAR_URL);
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+    const avatarRow = avatarLabel.parentElement?.parentElement;
+    if (!avatarRow) {
+      throw new Error("Avatar profile row not found");
+    }
+    const avatarImages = avatarRow.querySelectorAll<HTMLImageElement>("img");
+
+    expect(avatarImages).toHaveLength(1);
+    expect(avatarImages[0]).toHaveAttribute("src", DEFAULT_AGENT_AVATAR_URL);
+    expect(screen.queryByLabelText("Create custom avatar")).toBeNull();
+    expect(screen.queryByLabelText("Customize avatar")).toBeNull();
+  });
+
+  it("renders the default agent name as text without an input", async () => {
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    prepareAgentProfile("preset:0", "Renamed default agent");
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    const nameLabel = await screen.findByText("Name", { selector: "p" });
+    const nameRow = nameLabel.parentElement?.parentElement;
+    if (!nameRow) {
+      throw new Error("Name profile row not found");
+    }
+
+    expect(nameRow).toHaveTextContent("Okou");
+    expect(nameRow.querySelector("input")).toBeNull();
+  });
+
   it("renders the highest preset the API can assign", async () => {
     prepareAgentProfile(`preset:${AVATAR_PRESET_COUNT - 1}`);
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });

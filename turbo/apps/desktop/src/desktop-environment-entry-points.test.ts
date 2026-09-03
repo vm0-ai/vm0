@@ -68,6 +68,17 @@ if (
 }
 `;
 
+const forgeConfigHarnessSource = `
+const path = require("node:path");
+const config = require(process.env.TEST_FORGE_CONFIG);
+if (
+  path.basename(config.packagerConfig.icon) !==
+  process.env.TEST_EXPECTED_APP_ICON_BASE_NAME
+) {
+  throw new Error("Desktop package icon changed");
+}
+`;
+
 const platformOverrideSource = `
 Object.defineProperty(process, "platform", { value: "darwin" });
 `;
@@ -231,6 +242,23 @@ function runInstalledConfig(testCase: InstalledSurfaceCase): EntryPointResult {
     { cwd: turboDirectory, encoding: "utf8", env: environment },
   );
   return { process: processResult, trace: trace(fixture) };
+}
+
+function runForgeConfig(
+  product: "zero" | "okou" | undefined,
+  expectedAppIconBaseName: "icon-zero" | "icon",
+): SpawnSyncReturns<string> {
+  const environment = baseEnvironment();
+  environment.TEST_FORGE_CONFIG = join(desktopDirectory, "forge.config.js");
+  environment.TEST_EXPECTED_APP_ICON_BASE_NAME = expectedAppIconBaseName;
+  if (product) {
+    environment.OKOU_DESKTOP_PRODUCT = product;
+  }
+  return spawnSync(process.execPath, ["--eval", forgeConfigHarnessSource], {
+    cwd: desktopDirectory,
+    encoding: "utf8",
+    env: environment,
+  });
 }
 
 function preparePackagedApp(
@@ -591,5 +619,19 @@ describe("packaged Desktop wrapper entry points", () => {
 
     expectSuccessfulEntryPoint(result);
     expect(result.trace).toBe("selected\n");
+  });
+});
+
+describe("Desktop package brand assets", () => {
+  it("uses the Okou app icon by default", () => {
+    const result = runForgeConfig(undefined, "icon");
+
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it("retains the legacy icon for explicit Zero builds", () => {
+    const result = runForgeConfig("zero", "icon-zero");
+
+    expect(result.status, result.stderr).toBe(0);
   });
 });

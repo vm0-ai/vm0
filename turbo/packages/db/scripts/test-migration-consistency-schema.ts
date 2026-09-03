@@ -41,6 +41,7 @@ import {
 } from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { validateClaudeFable51Migration } from "./test-claude-fable-5-1-migration";
 import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
 import {
   CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
@@ -2522,7 +2523,7 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "38dbed0f0e2d06ff139fcdcc17c87344",
+    bodyHash: "a6f14e53ce5185c90693c5655a6c712f",
     functionName: "assert_org_custom_connector_oauth_mode",
     identityArguments: "target_connector_id uuid, target_org_id text",
     kind: "f",
@@ -3847,7 +3848,7 @@ async function validateCustomConnectorOauthModeConstraints(
       'none'
     )
   `;
-  const insertAutomaticConnector = `
+  const insertLegacyAutomaticConnector = `
     INSERT INTO "org_custom_connectors" (
       "id",
       "org_id",
@@ -3871,6 +3872,34 @@ async function validateCustomConnectorOauthModeConstraints(
       '[]'::jsonb,
       '[]'::jsonb,
       'automatic',
+      'automatic',
+      'https://mcp.example.test',
+      'streamable-http',
+      $5
+    )
+  `;
+  const insertAutomaticConnector = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "fields",
+      "header_injections",
+      "query_injections",
+      "auth_mode",
+      "mcp_endpoint",
+      "mcp_transport",
+      "created_by"
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      '[]'::jsonb,
+      '[]'::jsonb,
+      '[]'::jsonb,
       'automatic',
       'https://mcp.example.test',
       'streamable-http',
@@ -3956,7 +3985,7 @@ async function validateCustomConnectorOauthModeConstraints(
     ]);
     await client.query("COMMIT");
 
-    await client.query(insertAutomaticConnector, [
+    await client.query(insertLegacyAutomaticConnector, [
       fixture.automaticConnectorId,
       fixture.orgId,
       "_migration_automatic_oauth",
@@ -3969,6 +3998,22 @@ async function validateCustomConnectorOauthModeConstraints(
       "_migration_other_automatic_oauth",
       "Migration Other Automatic OAuth Connector",
       fixture.createdBy,
+    ]);
+    const automaticWriterOverlap = await client.query<{
+      id: string;
+      oauthSetup: string | null;
+    }>(
+      `
+        SELECT "id", "oauth_setup" AS "oauthSetup"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [fixture.automaticConnectorId, fixture.otherAutomaticConnectorId],
+    );
+    assert.deepEqual(automaticWriterOverlap.rows, [
+      { id: fixture.automaticConnectorId, oauthSetup: "automatic" },
+      { id: fixture.otherAutomaticConnectorId, oauthSetup: null },
     ]);
 
     await expectDatabaseError(client, {
@@ -3995,7 +4040,7 @@ async function validateCustomConnectorOauthModeConstraints(
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes: "custom connector OAuth setup and config do not match",
+      messageIncludes: "custom connector OAuth mode and config do not match",
       statements: [
         {
           query: insertConnector,
@@ -4012,7 +4057,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes: "custom connector OAuth setup and config do not match",
+      messageIncludes: "custom connector OAuth mode and config do not match",
       statements: [
         {
           query: insertOauthConfig,
@@ -4022,7 +4067,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes: "custom connector OAuth setup and config do not match",
+      messageIncludes: "custom connector OAuth mode and config do not match",
       statements: [
         {
           query: `
@@ -4036,7 +4081,7 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes: "custom connector OAuth setup and config do not match",
+      messageIncludes: "custom connector OAuth mode and config do not match",
       statements: [
         {
           query: `
@@ -4086,7 +4131,7 @@ async function validateCustomConnectorOauthModeConstraints(
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes: "custom connector OAuth setup and config do not match",
+      messageIncludes: "custom connector OAuth mode and config do not match",
       statements: [
         {
           query: insertCustomConnectorWithoutConfig,
@@ -4102,22 +4147,13 @@ async function validateCustomConnectorOauthModeConstraints(
     });
     await expectDeferredDatabaseError(client, {
       code: "23514",
-      messageIncludes: "custom connector OAuth setup and config do not match",
+      messageIncludes: "custom connector OAuth mode and config do not match",
       statements: [
         {
           query: insertOauthConfig,
           values: [fixture.automaticConnectorId, fixture.orgId],
         },
       ],
-    });
-    await expectDatabaseError(client, {
-      code: "23514",
-      query: `
-        UPDATE "org_custom_connectors"
-        SET "oauth_setup" = 'custom'
-        WHERE "id" = $1
-      `,
-      values: [fixture.manualConnectorId],
     });
     await expectDatabaseError(client, {
       code: "23514",
@@ -4734,6 +4770,7 @@ async function addCurrentChatEventPayloadStorage(
     ADD COLUMN "payload" jsonb
   `);
   await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+  await addCurrentChatEventFailureReasonStorage(client);
 }
 
 async function addCurrentChatEventOfficialWorkflowQueueStorage(
@@ -4751,6 +4788,24 @@ async function removeCurrentChatEventOfficialWorkflowQueueStorage(
   await client.query(`
     ALTER TABLE "chat_events"
     DROP COLUMN "required_official_workflow_ids"
+  `);
+}
+
+async function addCurrentChatEventFailureReasonStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "failure_reason" text
+  `);
+}
+
+async function removeCurrentChatEventFailureReasonStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    DROP COLUMN "failure_reason"
   `);
 }
 
@@ -8208,6 +8263,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     await client.connect();
     try {
       await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+      await addCurrentChatEventFailureReasonStorage(client);
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -8327,9 +8383,11 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         threadId: fixture.threadId,
       });
       // Migration 0910 intentionally asserts its historical exact column set.
-      // The private queue column arrived later, so remove the test-only current
-      // ORM shim while 0910 runs and restore it for the post-migration probe.
+      // The private queue and failure-reason columns arrived later, so remove
+      // the test-only current ORM shims while 0910 runs and restore them for
+      // the post-migration probe.
       await removeCurrentChatEventOfficialWorkflowQueueStorage(client);
+      await removeCurrentChatEventFailureReasonStorage(client);
 
       await client.query(
         `
@@ -8358,6 +8416,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
       );
       await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+      await addCurrentChatEventFailureReasonStorage(client);
 
       const retained = await client.query<{ row: Record<string, unknown> }>(
         `
@@ -8375,6 +8434,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         "context_type",
         "created_at",
         "event_type",
+        "failure_reason",
         "id",
         "payload",
         "required_official_workflow_ids",
@@ -11269,6 +11329,7 @@ async function main(): Promise<void> {
     await validateRetiredRunModelStateMigration();
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
+    await validateClaudeFable51Migration();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();

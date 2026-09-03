@@ -8,10 +8,11 @@ import {
   agentsMainContract,
   type AgentVisibility,
 } from "@okouai/api-contracts/contracts/agents";
-import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { randomPresetAvatar } from "@okouai/core/agent-avatar";
-import { publicBrandPresentation } from "@okouai/core/public-brand";
+import {
+  DEFAULT_AGENT_AVATAR_URL,
+  randomPresetAvatar,
+} from "@okouai/core/agent-avatar";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
@@ -67,7 +68,6 @@ interface ExistingAgentVisibility {
 
 interface ExistingAgentForUpdate extends ExistingAgentVisibility {
   readonly id: string;
-  readonly displayName: string | null;
   readonly defaultAgentId: string | null;
 }
 
@@ -136,20 +136,19 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
   };
 }
 
-function normalizeProjectedDefaultAgentName(
+function normalizeDefaultAgentProfile(
   body: AgentUpdateBody,
   existing: ExistingAgentForUpdate,
-  publicBrand: PublicBrand,
 ): AgentUpdateBody {
-  if (
-    existing.id !== existing.defaultAgentId ||
-    existing.displayName !== DEFAULT_AGENT_DISPLAY_NAME ||
-    body.displayName !== publicBrandPresentation(publicBrand).assistantName
-  ) {
+  if (existing.id !== existing.defaultAgentId) {
     return body;
   }
 
-  return { ...body, displayName: DEFAULT_AGENT_DISPLAY_NAME };
+  return {
+    ...body,
+    displayName: DEFAULT_AGENT_DISPLAY_NAME,
+    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+  };
 }
 
 async function findAgentForUpdate(
@@ -162,7 +161,6 @@ async function findAgentForUpdate(
       id: agents.id,
       owner: agents.owner,
       visibility: agents.visibility,
-      displayName: agents.displayName,
       defaultAgentId: orgMetadata.defaultAgentId,
     })
     .from(agents)
@@ -182,7 +180,6 @@ async function findAgentMetadataForUpdate(
       id: agents.id,
       owner: agents.owner,
       visibility: agents.visibility,
-      displayName: agents.displayName,
       defaultAgentId: orgMetadata.defaultAgentId,
     })
     .from(agents)
@@ -542,11 +539,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (!existing) {
       return { response: agentNotFound(params.id) };
     }
-    const updateBody = normalizeProjectedDefaultAgentName(
-      body.data,
-      existing,
-      publicBrand,
-    );
+    const updateBody = normalizeDefaultAgentProfile(body.data, existing);
 
     const permissionError = requireAgentConfigurationPermission(
       existing,
@@ -631,11 +624,7 @@ const updateAgentMetadataInner$ = command(
       if (!existing) {
         return { response: agentNotFound(params.id) };
       }
-      const updateBody = normalizeProjectedDefaultAgentName(
-        body.data,
-        existing,
-        publicBrand,
-      );
+      const updateBody = normalizeDefaultAgentProfile(body.data, existing);
 
       const permissionError = requireAgentPermission(
         existing.owner,

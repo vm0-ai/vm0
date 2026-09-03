@@ -97,10 +97,10 @@ pub(crate) use types::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCacheInspection,
     WorkspaceImageCacheInspectionEntry, WorkspaceImageCacheInspectionStatus,
     WorkspaceImageCacheInspectionSummary, WorkspaceImageLeaseIdentity,
-    WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentityMismatch,
-    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
-    WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarPromotionSource,
-    WorkspaceSessionHistorySidecarRepresentation,
+    WorkspaceImagePrepareLockPolicy, WorkspaceImagePrepareRequest,
+    WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
+    WorkspaceImagePromotionRequest, WorkspaceSessionHistorySidecar,
+    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarRepresentation,
 };
 pub(crate) use watcher::{WorkspaceCacheChange, WorkspaceCacheWatcher};
 

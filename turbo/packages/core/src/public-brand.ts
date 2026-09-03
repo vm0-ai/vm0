@@ -1,5 +1,8 @@
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
+/** Canonical name of the organization default agent on every public brand. */
+export const DEFAULT_AGENT_DISPLAY_NAME = "Okou";
+
 export interface PublicBrandPresentation {
   readonly [key: string]: string;
   readonly assistantName: "Zero" | "Okou";
@@ -35,14 +38,11 @@ export function agentDisplayNameForPublicBrand(args: {
   readonly displayName: string | null;
   readonly publicBrand: PublicBrand;
 }): string | null {
-  if (
-    args.agentId !== args.defaultAgentId ||
-    args.displayName !== PUBLIC_BRAND_PRESENTATION.vm0.assistantName
-  ) {
+  if (args.agentId !== args.defaultAgentId) {
     return args.displayName;
   }
 
-  return PUBLIC_BRAND_PRESENTATION[args.publicBrand].assistantName;
+  return DEFAULT_AGENT_DISPLAY_NAME;
 }
 
 export function appUrlForPublicBrand(

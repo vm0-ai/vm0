@@ -66,7 +66,6 @@ ruby -e '
   preview = build.fetch("steps").find { |step| step["id"] == "preview" }
   preview_env = preview.fetch("env")
   raise "Desktop preview must use the Workers subdomain" unless preview_env.fetch("CF_WORKERS_SUBDOMAIN") == "${{ vars.CF_WORKERS_SUBDOMAIN }}"
-  raise "Desktop preview must not use the retired Pages domain" if preview_env.key?("CF_PAGES_PREVIEW_DOMAIN")
   raise "Desktop preview URL must pass the Workers subdomain" unless preview.fetch("run").include?("$CF_WORKERS_SUBDOMAIN")
 
   artifact_step = deploy.fetch("steps").find { |step| step["id"] == "artifact" }

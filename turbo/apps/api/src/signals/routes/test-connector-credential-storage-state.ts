@@ -19,6 +19,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
+import { safeJsonParse } from "../utils";
 import { connectorOAuthStateExpiresAt } from "../../lib/connector-oauth-state";
 import type { RouteEntry } from "../route-entry";
 import { parseCustomConnectorOAuthStateContext } from "../services/custom-connector-oauth2.service";
@@ -143,39 +144,27 @@ async function readCustomParent(
   body: ConnectorCredentialStorageAction<"read-custom-parent">,
   signal: AbortSignal,
 ) {
-  const [[connector], [definition]] = await Promise.all([
-    db
-      .select({
-        id: connectors.id,
-        storageVersion: connectors.storageVersion,
-        authMethod: connectors.authMethod,
-        externalId: connectors.externalId,
-        externalUsername: connectors.externalUsername,
-        externalEmail: connectors.externalEmail,
-        oauthScopes: connectors.oauthScopes,
-        oauthGrantedScopes: connectors.oauthGrantedScopes,
-        tokenExpiresAt: connectors.tokenExpiresAt,
-      })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, body.org_id),
-          eq(connectors.userId, body.user_id),
-          eq(connectors.customConnectorId, body.custom_connector_id),
-        ),
-      )
-      .limit(1),
-    db
-      .select({ oauthSetup: orgCustomConnectors.oauthSetup })
-      .from(orgCustomConnectors)
-      .where(
-        and(
-          eq(orgCustomConnectors.id, body.custom_connector_id),
-          eq(orgCustomConnectors.orgId, body.org_id),
-        ),
-      )
-      .limit(1),
-  ]);
+  const [connector] = await db
+    .select({
+      id: connectors.id,
+      storageVersion: connectors.storageVersion,
+      authMethod: connectors.authMethod,
+      externalId: connectors.externalId,
+      externalUsername: connectors.externalUsername,
+      externalEmail: connectors.externalEmail,
+      oauthScopes: connectors.oauthScopes,
+      oauthGrantedScopes: connectors.oauthGrantedScopes,
+      tokenExpiresAt: connectors.tokenExpiresAt,
+    })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .limit(1);
   signal.throwIfAborted();
   const secretRows = connector
     ? await db
@@ -203,7 +192,6 @@ async function readCustomParent(
     : [];
   signal.throwIfAborted();
   return actionOk({
-    definition_oauth_setup: definition?.oauthSetup ?? null,
     connector: connector
       ? {
           id: connector.id,
@@ -253,13 +241,21 @@ async function readCustomOAuthState(
     return actionOk({ custom_oauth_state: null });
   }
   const context = parseCustomConnectorOAuthStateContext(state.oauthContext);
+  const rawContext = safeJsonParse(state.oauthContext ?? "null");
+  const contextFormat =
+    typeof rawContext === "object" &&
+    rawContext !== null &&
+    "version" in rawContext &&
+    rawContext.version === 2
+      ? "canonical"
+      : "legacy";
   return actionOk({
     custom_oauth_state: {
       storage_version: state.storageVersion,
       context_storage_version: context?.storageVersion ?? null,
       context_valid: context !== null,
       ...(context
-        ? { oauth_setup: context.oauthSetup ?? ("custom" as const) }
+        ? { auth_mode: context.authMode, context_format: contextFormat }
         : {}),
     },
   });
@@ -280,7 +276,6 @@ async function seedAutomaticOAuthBinding(
       headerInjections: [],
       queryInjections: [],
       authMode: "automatic",
-      oauthSetup: "automatic",
       mcpEndpoint: "https://mcp.example.test",
       mcpTransport: "streamable-http",
       createdBy: body.user_id,

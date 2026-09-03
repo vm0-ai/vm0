@@ -2,6 +2,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const packageMetadata = require("./package.json");
+const desktopBrandAssets = require("./src/desktop-brand-assets.json");
 const { resolveDesktopBuildConfig } = require("./scripts/desktop-build-config");
 const {
   resolveDesktopNotarizeApiEnvironment,
@@ -51,7 +52,9 @@ function desktopNotarizeOptions() {
   };
 }
 
-const { identity: desktopIdentity } = resolveDesktopBuildConfig();
+const { identity: desktopIdentity, product: desktopProduct } =
+  resolveDesktopBuildConfig();
+const desktopAssets = desktopBrandAssets[desktopProduct];
 const osxNotarize = desktopNotarizeOptions();
 
 // Forge 7 bundles Packager 18, whose CommonJS signing adapter cannot call osx-sign v2.
@@ -98,7 +101,7 @@ module.exports = {
     name: desktopIdentity.displayName,
     executableName: desktopIdentity.displayName,
     appBundleId: desktopIdentity.bundleId,
-    icon: path.join(__dirname, "assets", "icon"),
+    icon: path.join(__dirname, "assets", desktopAssets.appIconBaseName),
     extendInfo: {
       CFBundleIconFile: "icon.icns",
       LSMinimumSystemVersion: MINIMUM_MACOS_VERSION,

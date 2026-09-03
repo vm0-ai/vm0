@@ -65,6 +65,29 @@ fn elapsed_since_api_start_ms_rejects_seconds_shaped_start() {
 }
 
 #[test]
+fn pre_finalization_deadline_records_bounded_handoff_outcome() {
+    let mut telemetry = new_telemetry();
+
+    FinalizingHandoffOutcome::PreFinalizationDeadline.record(&mut telemetry);
+
+    assert_action_outcome(
+        &telemetry,
+        "runner_claim_finalizing_handoff",
+        false,
+        Some("pre_finalization_deadline"),
+    );
+    assert!(
+        telemetry
+            .pending_ops_with_outcome_snapshot()
+            .iter()
+            .any(|operation| {
+                operation.0 == "runner_claim_finalizing_handoff"
+                    && operation.2.as_deref() == Some("pre_finalization_deadline")
+            })
+    );
+}
+
+#[test]
 fn api_startup_boundaries_record_the_effective_path_and_exact_reuse_result() {
     for (reuse_result, workspace_reuse_result, expected_path) in [
         (

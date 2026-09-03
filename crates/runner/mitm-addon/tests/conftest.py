@@ -550,6 +550,11 @@ def fresh_usage_executor():
         pytest.param("https://[::1", id="unmatched-ipv6-bracket"),
         pytest.param("https://api.vm0.ai:not-a-port", id="non-numeric-port"),
         pytest.param("https://api.vm0.ai:65536", id="out-of-range-port"),
+        pytest.param(
+            "https://user:secret@api.vm0.ai/base",
+            id="userinfo",
+        ),
+        pytest.param("https://api.vm0.ai:/base", id="empty-port"),
     ]
 )
 def malformed_platform_api_url(request: pytest.FixtureRequest) -> str:

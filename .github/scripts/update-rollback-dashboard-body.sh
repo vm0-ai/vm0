@@ -257,7 +257,8 @@ render_body() {
 
   {
     printf 'This issue is automatically maintained by CI. Do not edit manually.\n\n'
-    printf '[Rollback](%s)\n\n' "$rollback_url"
+    printf '[Rollback Runner and API](%s)\n\n' "$rollback_url"
+    printf 'App Worker versions are rolled back manually in Cloudflare.\n\n'
     printf '<!-- ROLLBACK_ENTRIES_START -->\n'
     for entry_file in "$entries_dir"/*.md; do
       command cat "$entry_file"

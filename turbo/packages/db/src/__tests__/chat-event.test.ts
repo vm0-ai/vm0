@@ -44,6 +44,7 @@ describe("chatEvents schema", () => {
       "revokes_event_id",
       "event_type",
       "payload",
+      "failure_reason",
       "required_official_workflow_ids",
       "context_type",
       "context_id",
@@ -54,6 +55,8 @@ describe("chatEvents schema", () => {
     ]);
     expect(chatEvents.payload.notNull).toBeFalsy();
     expect(chatEvents.payload.hasDefault).toBeFalsy();
+    expect(chatEvents.failureReason.notNull).toBeFalsy();
+    expect(chatEvents.failureReason.hasDefault).toBeFalsy();
     expect(chatEvents.requiredOfficialWorkflowIds.notNull).toBeFalsy();
     expect(chatEvents.requiredOfficialWorkflowIds.hasDefault).toBeFalsy();
     expect(
@@ -82,6 +85,7 @@ describe("chatEvents schema", () => {
       expect.arrayContaining([
         "chat_events_input_user_message_payload_check",
         "chat_events_input_payload_content_check",
+        "chat_events_failure_reason_event_type_check",
         "chat_events_official_workflow_queue_claim_check",
         "chat_events_goal_open_payload_check",
         "chat_events_goal_close_payload_check",
@@ -105,6 +109,22 @@ describe("chatEvents schema", () => {
       '"chat_events"."event_type" = \'input.prompt\'',
     );
     expect(officialWorkflowQueueClaimSql).toContain("cardinality");
+    const failureReasonEventTypeCheck = config.checks.find((check) => {
+      return check.name === "chat_events_failure_reason_event_type_check";
+    });
+    expect(failureReasonEventTypeCheck).toBeDefined();
+    if (!failureReasonEventTypeCheck) {
+      throw new Error("Missing Chat Event failure reason event-type check");
+    }
+    const failureReasonEventTypeSql = new PgDialect().sqlToQuery(
+      failureReasonEventTypeCheck.value,
+    ).sql;
+    expect(failureReasonEventTypeSql).toContain(
+      '"chat_events"."failure_reason" IS NULL',
+    );
+    expect(failureReasonEventTypeSql).toContain(
+      '"chat_events"."event_type" = \'run.failed\'',
+    );
     expect(checkNames).not.toEqual(
       expect.arrayContaining([
         "chat_events_input_user_message_check",

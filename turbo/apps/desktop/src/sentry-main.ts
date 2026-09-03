@@ -41,18 +41,39 @@ export function captureDesktopNativeHelperError(
   }
 
   Sentry.withScope((scope) => {
+    const pendingRequestCount = context.pendingRequestCount ?? 0;
+    const queuedRequestCount = context.queuedRequestCount ?? 0;
+    const impact =
+      pendingRequestCount > 0 ? "request_interrupted" : "no_active_request";
     scope.setTags({
       app: "desktop",
       component: "computer-use-helper",
       nativeHelperMode: context.mode,
       nativeHelperStage: context.stage,
       nativeHelperRequestKind: context.requestKind,
+      nativeHelperTerminationReason:
+        context.terminationReason ?? "not_applicable",
+      nativeHelperSignal: context.signal ?? "none",
+      nativeHelperExitCode: context.exitCode ?? "none",
+      nativeHelperImpact: impact,
+      nativeHelperHasQueuedRequests: queuedRequestCount > 0,
     });
+    scope.setFingerprint([
+      "{{ default }}",
+      `mode:${context.mode}`,
+      `stage:${context.stage}`,
+      `termination:${context.terminationReason ?? "not_applicable"}`,
+      `signal:${context.signal ?? "none"}`,
+      `exit:${context.exitCode ?? "none"}`,
+    ]);
     scope.setContext("computerUseHelper", {
       helperPath: context.helperPath,
       exitCode: context.exitCode,
       signal: context.signal,
       stderr: context.stderr,
+      terminationReason: context.terminationReason,
+      pendingRequestCount: context.pendingRequestCount,
+      queuedRequestCount: context.queuedRequestCount,
     });
     Sentry.captureException(error);
   });

@@ -24,7 +24,6 @@ fn runtime_bootstrap_scrubs_runner_env_and_installs_explicit_paths() {
             &runtime_dir,
         );
         std::env::set_var(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "");
-        std::env::remove_var("VM0_USER_ENV_FILE");
     }
 
     let missing_payload_error = match guest_agent::run_context::GuestRuntime::from_process_env() {

@@ -109,7 +109,7 @@ import type {
   WorkflowSchedule,
 } from "@okouai/api-contracts/contracts/workflows";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
-import { emptyChatImg } from "./platform-assets.ts";
+import { emptyChatImg, thinkingSpinnerImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
@@ -3105,6 +3105,16 @@ function ChatThreadRenderedEventGroups({
   const visibleGroups = runWorkFoldingEnabled
     ? (runWorkFolding?.visibleGroups ?? runGroupVisibleGroups)
     : (completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups);
+  const thinkingIndicatorMode =
+    useLastResolved(thread.thinkingIndicatorMode$) ?? null;
+  const runGroupFoldPlacements = resolveRunGroupFoldPlacements({
+    groups: visibleGroups,
+    runGroupFolding,
+    onToggleRunGroup: toggleRunGroupExpanded,
+    thinkingIndicatorCanHostFold:
+      thinkingIndicatorMode === "waiting" ||
+      thinkingIndicatorMode === "waiting-queued",
+  });
 
   return (
     <>
@@ -3112,8 +3122,7 @@ function ChatThreadRenderedEventGroups({
         thread={thread}
         groups={visibleGroups}
         modelChanges={modelChanges}
-        runGroupFolding={runGroupFolding}
-        onToggleRunGroup={toggleRunGroupExpanded}
+        runGroupFoldPlacements={runGroupFoldPlacements}
         runWorkFoldingEnabled={runWorkFoldingEnabled}
         completedWorkFolding={completedWorkFolding}
         completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
@@ -3125,6 +3134,11 @@ function ChatThreadRenderedEventGroups({
       <ChatThreadScrollCommitMarker
         thread={thread}
         renderedGroups={resolvedRenderedGroups}
+      />
+      <ChatThreadThinkingIndicator
+        thread={thread}
+        mode={thinkingIndicatorMode}
+        runGroupFolds={runGroupFoldPlacements.thinkingIndicatorRunGroupFolds}
       />
     </>
   );
@@ -3193,15 +3207,28 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         <ChatThreadSessionError thread={thread} />
         <ChatThreadEmptyState thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
-        <ChatThreadThinkingIndicator thread={thread} />
         <ChatThreadNextRunModelNotice thread={thread} />
       </div>
     </main>
   );
 }
 
-function ChatThreadThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
-  return <ThinkingIndicator thread={thread} />;
+function ChatThreadThinkingIndicator({
+  thread,
+  mode,
+  runGroupFolds,
+}: {
+  thread: ChatPanelSignals;
+  mode: ThinkingIndicatorMode;
+  runGroupFolds: readonly RunGroupFoldControl[];
+}) {
+  return (
+    <ThinkingIndicator
+      thread={thread}
+      mode={mode}
+      runGroupFolds={runGroupFolds}
+    />
+  );
 }
 
 function ChatThreadNextRunModelNotice({
@@ -3287,8 +3314,7 @@ function ChatThreadEventGroups({
   thread,
   groups,
   modelChanges,
-  runGroupFolding,
-  onToggleRunGroup,
+  runGroupFoldPlacements,
   runWorkFoldingEnabled,
   completedWorkFolding,
   completedWorkExpandedKeys,
@@ -3300,8 +3326,7 @@ function ChatThreadEventGroups({
   thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
   modelChanges: ReadonlyMap<string, RunModelChange>;
-  runGroupFolding: RunGroupFolding | null;
-  onToggleRunGroup: (key: string, expanded: boolean) => void;
+  runGroupFoldPlacements: RunGroupFoldPlacements;
   runWorkFoldingEnabled: boolean;
   completedWorkFolding: CompletedWorkFolding | null;
   completedWorkExpandedKeys: ReadonlySet<string>;
@@ -3311,11 +3336,7 @@ function ChatThreadEventGroups({
   onToggleRunWork: (key: string) => void;
 }) {
   const { embeddedRunGroupFolds, externalRunGroupFolds } =
-    resolveRunGroupFoldPlacements({
-      groups,
-      runGroupFolding,
-      onToggleRunGroup,
-    });
+    runGroupFoldPlacements;
   // A run that ends re-forms the groups around it, so the messages the user
   // sent back to back can land in separate groups with nothing rendered in
   // between. Tracking the last group that actually put something on screen
@@ -3411,23 +3432,33 @@ interface RunGroupFoldControl {
   onToggle: () => void;
 }
 
+interface RunGroupFoldPlacements {
+  embeddedRunGroupFolds: Map<string, RunGroupFoldControl[]>;
+  externalRunGroupFolds: Map<string, RunGroupFoldControl[]>;
+  thinkingIndicatorRunGroupFolds: RunGroupFoldControl[];
+}
+
 function resolveRunGroupFoldPlacements({
   groups,
   runGroupFolding,
   onToggleRunGroup,
+  thinkingIndicatorCanHostFold,
 }: {
   groups: readonly ChatEventGroup[];
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
-}): {
-  embeddedRunGroupFolds: Map<string, RunGroupFoldControl[]>;
-  externalRunGroupFolds: Map<string, RunGroupFoldControl[]>;
-} {
+  thinkingIndicatorCanHostFold: boolean;
+}): RunGroupFoldPlacements {
   const embeddedRunGroupFolds = new Map<string, RunGroupFoldControl[]>();
   const externalRunGroupFolds = new Map<string, RunGroupFoldControl[]>();
+  const thinkingIndicatorRunGroupFolds: RunGroupFoldControl[] = [];
 
   if (runGroupFolding === null) {
-    return { embeddedRunGroupFolds, externalRunGroupFolds };
+    return {
+      embeddedRunGroupFolds,
+      externalRunGroupFolds,
+      thinkingIndicatorRunGroupFolds,
+    };
   }
 
   for (const [index, group] of groups.entries()) {
@@ -3444,6 +3475,15 @@ function resolveRunGroupFoldPlacements({
           onToggleRunGroup(fold.key, fold.expanded);
         },
       };
+      if (
+        !control.expanded &&
+        isGoalGroupFold(fold) &&
+        thinkingIndicatorCanHostFold &&
+        waitingIndicatorCanHostCollapsedRunGroupFold(groups, index)
+      ) {
+        thinkingIndicatorRunGroupFolds.push(control);
+        continue;
+      }
       const embeddedGroupId = control.expanded
         ? undefined
         : inlineGroupIdForCollapsedRunGroupFold(groups, index);
@@ -3460,7 +3500,39 @@ function resolveRunGroupFoldPlacements({
     }
   }
 
-  return { embeddedRunGroupFolds, externalRunGroupFolds };
+  return {
+    embeddedRunGroupFolds,
+    externalRunGroupFolds,
+    thinkingIndicatorRunGroupFolds,
+  };
+}
+
+function waitingIndicatorCanHostCollapsedRunGroupFold(
+  groups: readonly ChatEventGroup[],
+  index: number,
+): boolean {
+  const group = groups[index];
+  if (!group || group.role !== "user") {
+    return false;
+  }
+  const runId = firstRunIdForEvents(group.events);
+  if (runId === undefined) {
+    return false;
+  }
+  for (const candidate of groups.slice(index + 1)) {
+    const candidateRunId = firstRunIdForEvents(candidate.events);
+    if (candidateRunId !== undefined && candidateRunId !== runId) {
+      return false;
+    }
+    if (
+      candidateRunId === runId &&
+      candidate.role === "assistant" &&
+      candidate.events.some(isRenderableAssistantEvent)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function inlineGroupIdForCollapsedRunGroupFold(
@@ -4729,24 +4801,58 @@ function ThinkingLabel({
   return <ShimmerText>{thinkingLabel}</ShimmerText>;
 }
 
+function ThinkingLoader({
+  blockStyle,
+  spinnerEnabled,
+}: {
+  blockStyle: CSSProperties;
+  spinnerEnabled: boolean;
+}) {
+  if (spinnerEnabled) {
+    return (
+      <span
+        aria-hidden
+        data-thinking-loader="spinner"
+        className="zero-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
+      >
+        <img
+          src={thinkingSpinnerImg}
+          alt=""
+          className="zero-thinking-spinner size-3.5 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      data-thinking-loader="blocks"
+      className="zero-blocks shrink-0"
+      style={blockStyle}
+    >
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function InlineThinkingRow({
   blockStyle,
   isQueued,
+  spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
 }: {
   blockStyle: CSSProperties;
   isQueued: boolean;
+  spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
-      <span className="zero-blocks shrink-0" style={blockStyle}>
-        <span />
-        <span />
-        <span />
-      </span>
+      <ThinkingLoader blockStyle={blockStyle} spinnerEnabled={spinnerEnabled} />
       <ThinkingLabel
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -4805,14 +4911,18 @@ function WaitingForAssistantResponse({
   thread,
   blockStyle,
   isQueued,
+  spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
+  runGroupFolds,
 }: {
   thread: ChatPanelSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
+  spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
+  runGroupFolds: readonly RunGroupFoldControl[];
 }) {
   const thinkingIndicatorProps = isQueued
     ? {}
@@ -4824,20 +4934,26 @@ function WaitingForAssistantResponse({
       data-role="assistant"
       className="zero-thinking-enter flex flex-col gap-1"
     >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <div className={CHAT_THREAD_ASSISTANT_MESSAGE_ROW_CLASS}>
         <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
-          <div className="flex h-5 min-w-0 items-center gap-2">
-            <span className="zero-blocks shrink-0" style={blockStyle}>
-              <span />
-              <span />
-              <span />
-            </span>
-            <ThinkingLabel
-              isQueued={isQueued}
-              thinkingLabel={thinkingLabel}
-              serverThinkingLabel={serverThinkingLabel}
-            />
+        <div className="relative flex min-w-0 flex-col gap-2">
+          {runGroupFolds.map((fold) => {
+            return (
+              <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
+            );
+          })}
+          <div className="zero-chat-bubble-assistant min-w-0 overflow-hidden rounded-xl py-4 text-[0.9375rem] leading-[1.7]">
+            <div className="flex h-5 min-w-0 items-center gap-2">
+              <ThinkingLoader
+                blockStyle={blockStyle}
+                spinnerEnabled={spinnerEnabled}
+              />
+              <ThinkingLabel
+                isQueued={isQueued}
+                thinkingLabel={thinkingLabel}
+                serverThinkingLabel={serverThinkingLabel}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -4856,6 +4972,7 @@ function AssistantThinkingStatusRow({
   active,
   blockStyle,
   isQueued,
+  spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
   thread,
@@ -4864,6 +4981,7 @@ function AssistantThinkingStatusRow({
   active: boolean;
   blockStyle: CSSProperties;
   isQueued: boolean;
+  spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
   thread: ChatPanelSignals;
@@ -4884,6 +5002,7 @@ function AssistantThinkingStatusRow({
           <InlineThinkingRow
             blockStyle={blockStyle}
             isQueued={isQueued}
+            spinnerEnabled={spinnerEnabled}
             thinkingLabel={thinkingLabel}
             serverThinkingLabel={serverThinkingLabel}
           />
@@ -4920,16 +5039,26 @@ function equalRecommendedFollowupSources(
   );
 }
 
-function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
+function ThinkingIndicator({
+  thread,
+  mode,
+  runGroupFolds,
+}: {
+  thread: ChatPanelSignals;
+  mode: ThinkingIndicatorMode;
+  runGroupFolds: readonly RunGroupFoldControl[];
+}) {
+  const featureSwitches = useGet(featureSwitch$);
   const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+  const spinnerEnabled =
+    featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
     "--zb-c2": c2,
     "--zb-c3": c3,
   } as CSSProperties;
-  const mode = useLastResolved(thread.thinkingIndicatorMode$) ?? null;
   const thinkingText = useLastResolved(thread.thinkingText$);
   const recommendedFollowupSource =
     useLastResolved(thread.recommendedFollowupSource$, {
@@ -4973,6 +5102,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
         active={active}
         blockStyle={blockStyle}
         isQueued={isQueued}
+        spinnerEnabled={spinnerEnabled}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
         thread={thread}
@@ -4987,8 +5117,10 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       thread={thread}
       blockStyle={blockStyle}
       isQueued={isQueued}
+      spinnerEnabled={spinnerEnabled}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
+      runGroupFolds={runGroupFolds}
     />
   );
 }

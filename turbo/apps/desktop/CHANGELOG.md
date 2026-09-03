@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.46.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.46.0...desktop-v0.46.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+
+## [0.46.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.45.1...desktop-v0.46.0) (2026-09-03)
+
+
+### Features
+
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
+## [0.45.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.45.0...desktop-v0.45.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **desktop:** classify native helper lifecycle exits ([#31449](https://github.com/vm0-ai/vm0/issues/31449)) ([0398905](https://github.com/vm0-ai/vm0/commit/0398905ec0cfc6af00e931e0d74ea305d0720491))
+
+## [0.45.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.5...desktop-v0.45.0) (2026-09-03)
+
+
+### Features
+
+* **desktop:** replace legacy branding with okou assets ([#31429](https://github.com/vm0-ai/vm0/issues/31429)) ([5b4c6e7](https://github.com/vm0-ai/vm0/commit/5b4c6e7cade280daefa1b45744684cbba3e66550))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+
 ## [0.44.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.4...desktop-v0.44.5) (2026-09-03)
 
 

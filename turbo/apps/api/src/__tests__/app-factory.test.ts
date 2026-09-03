@@ -996,22 +996,6 @@ describe("createApp", () => {
       );
     });
 
-    it("allows immutable okou Pages deployment origins in preview", async () => {
-      mockEnv("ENV", "preview");
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const origin = "https://3508a2f5.okou-app.pages.dev";
-      const response = await app.request("/health", {
-        method: "GET",
-        headers: { origin },
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("access-control-allow-origin")).toBe(origin);
-    });
-
     it("allows standalone okou app Worker origins in preview", async () => {
       mockEnv("ENV", "preview");
       const app = createApp({
@@ -1046,21 +1030,6 @@ describe("createApp", () => {
         expect(response.status).toBe(200);
         expect(response.headers.get("access-control-allow-origin")).toBeNull();
       }
-    });
-
-    it("does not allow okou Pages deployment origins in production", async () => {
-      mockEnv("ENV", "production");
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const response = await app.request("/health", {
-        method: "GET",
-        headers: { origin: "https://3508a2f5.okou-app.pages.dev" },
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("access-control-allow-origin")).toBeNull();
     });
 
     it("does not allow lookalike okou preview origins", async () => {
@@ -1127,7 +1096,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the user-org realtime floor before route matching", async () => {
+    it("force-upgrades app clients below the failure-reason reader floor before route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1136,11 +1105,11 @@ describe("createApp", () => {
         method: "DELETE",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.812.2",
+          [CLIENT_VERSION_HEADER]: "0.829.5",
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.812.3");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.830.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",

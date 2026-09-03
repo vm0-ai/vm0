@@ -251,6 +251,12 @@ export function clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacement
   clearConnectorCatalogRuntimeProjectionIdentityReadHookForTest();
 }
 
+export function setApiTestConnectorCatalogExternalReaderIdentityReadHook(
+  hook: () => Promise<void>,
+): void {
+  setConnectorCatalogExternalReaderIdentityReadHookForTest(hook);
+}
+
 export function setApiTestConnectorCatalogExternalReaderIdentityReplacements(
   catalogVersions: readonly [first: string, second: string],
 ): void {

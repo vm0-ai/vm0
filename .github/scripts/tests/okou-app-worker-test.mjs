@@ -162,7 +162,6 @@ const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
   readFile(manifestPath, "utf8"),
   import(pathToFileURL(workerPath).href),
 ]);
-const worker = workerModule.default;
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
 const clerkJsVersion = "6.25.8";
@@ -207,6 +206,7 @@ const embeddedWorker = workerModule.createWorker({
   robots: "User-agent: *\nAllow: /\n",
   serviceWorker: 'self.addEventListener("install", () => {});',
 });
+const worker = embeddedWorker;
 const expectedClerkCoreScript = clerkCoreScript(builtIndexTemplate);
 const expectedClerkBootstrap = clerkBootstrap(builtIndexTemplate);
 const vm0Description =
@@ -218,12 +218,7 @@ function publishableKey(environment, host) {
   return `pk_${environment}_${Buffer.from(`${host}$`).toString("base64")}`;
 }
 
-function requestUrl(input) {
-  return new URL(input instanceof Request ? input.url : input.toString());
-}
-
 function assetEnvironment(publicBrand) {
-  const indexHtml = builtIndexTemplate;
   return {
     ...(publicBrand ? { PUBLIC_BRAND: publicBrand } : {}),
     STATIC_ASSETS_BUCKET: {
@@ -249,49 +244,6 @@ function assetEnvironment(publicBrand) {
             headers.set("Content-Type", "application/javascript");
           },
         });
-      },
-    },
-    ASSETS: {
-      fetch(input) {
-        const url = requestUrl(input);
-        if (url.pathname === "/manifest.webmanifest") {
-          return Promise.resolve(
-            new Response(manifestTemplate, {
-              headers: {
-                "Content-Encoding": "gzip",
-                "Content-Type": "application/manifest+json",
-                ETag: '"manifest-etag"',
-              },
-            }),
-          );
-        }
-        if (url.pathname === "/assets/app.js") {
-          return Promise.resolve(
-            new Response("export const app = true;", {
-              headers: {
-                "Content-Type": "application/javascript",
-                ETag: '"asset-etag"',
-              },
-            }),
-          );
-        }
-        if (url.pathname === "/sw.js") {
-          return Promise.resolve(
-            new Response('self.addEventListener("install", () => {});', {
-              headers: { "Content-Type": "application/javascript" },
-            }),
-          );
-        }
-        return Promise.resolve(
-          new Response(indexHtml, {
-            status: 200,
-            headers: {
-              "Content-Encoding": "gzip",
-              "Content-Type": "text/html; charset=UTF-8",
-              ETag: '"index-etag"',
-            },
-          }),
-        );
       },
     },
   };
@@ -369,11 +321,8 @@ function assertBootstrapAvatar(html) {
       html,
     )?.[0];
   assert.ok(avatar, "bootstrap avatar must remain inline");
-  assert.equal(parseAttributes(avatar).get("viewBox"), "0 0 480 480");
-  assert.equal([...avatar.matchAll(/<path\b/giu)].length, 10);
-  assert.match(avatar, /id="bootstrap-avatar-head-clip"/u);
-  assert.match(avatar, /id="bootstrap-avatar-face-clip"/u);
-  assert.match(avatar, /id="bootstrap-avatar-hair-clip"/u);
+  assert.equal(parseAttributes(avatar).get("viewBox"), "0 0 518 512");
+  assert.equal([...avatar.matchAll(/<path\b/giu)].length, 20);
   assert.doesNotMatch(html, /data-app-bootstrap-avatar-layer/u);
   assert.doesNotMatch(html, /assets\/avatar-svg\//u);
 }
@@ -414,12 +363,12 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(vm0Page.html, "link", "href").includes(
-    "https://static.vm0.io/public/okou-logo-mark-dark-00337dd44485.svg",
+    "https://static.vm0.io/public/okou-favicon-adaptive-b4eda9221bb7.svg",
   ),
 );
 assert.equal(
   tagAttribute(vm0Page.html, "link", "rel", "apple-touch-icon", "href"),
-  "/icons/icon-192.png",
+  "https://static.vm0.io/platform/okou-pwa-be0be646-180.png",
 );
 assertBootstrapAvatar(vm0Page.html);
 assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
@@ -439,12 +388,12 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io/public/okou-logo-mark-dark-00337dd44485.svg",
+    "https://static.okou.io/public/okou-favicon-adaptive-b4eda9221bb7.svg",
   ),
 );
 assert.equal(
   tagAttribute(okouPage.html, "link", "rel", "apple-touch-icon", "href"),
-  "/icons/icon-192.png",
+  "https://static.okou.io/platform/okou-pwa-be0be646-180.png",
 );
 assert.equal(
   tagAttributeValues(okouPage.html, "link", "href").some(
@@ -484,7 +433,7 @@ assert.equal(okouPreview.html.includes("/npm/@clerk/ui@"), false);
 
 const serviceWorker = await worker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),
-  assetEnvironment(previewOrigin, "okou"),
+  assetEnvironment("okou"),
 );
 assert.equal(
   serviceWorker.headers.get("cache-control"),
@@ -579,14 +528,6 @@ for (const [origin, brandName, description] of [
   assert.equal(manifest.description, description);
   assert.equal(manifest.icons.length, 3);
 }
-
-const staticAsset = await worker.fetch(
-  new Request("https://app.okou.ai/assets/app.js"),
-  assetEnvironment(),
-);
-assert.equal(await staticAsset.text(), "export const app = true;");
-assert.equal(staticAsset.headers.get("etag"), '"asset-etag"');
-assert.equal(staticAsset.headers.get("x-robots-tag"), null);
 
 let observedR2Key = null;
 let observedR2Options = null;

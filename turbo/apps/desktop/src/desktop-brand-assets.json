@@ -1,0 +1,16 @@
+{
+  "zero": {
+    "appIconBaseName": "icon-zero",
+    "appIconFileName": "icon-zero.png",
+    "trayIconFileName": "zero-tray-iconTemplate.png",
+    "trayIconDisabledFileName": "zero-tray-iconDisabled.png",
+    "trayIconRunningFileName": "zero-tray-iconRunning.png"
+  },
+  "okou": {
+    "appIconBaseName": "icon",
+    "appIconFileName": "icon.png",
+    "trayIconFileName": "tray-iconTemplate.png",
+    "trayIconDisabledFileName": "tray-iconDisabled.png",
+    "trayIconRunningFileName": "tray-iconRunning.png"
+  }
+}

@@ -70,8 +70,12 @@ import {
   requestComputerUseScreenRecordingPermission,
   setComputerUsePermissionNativeBackend,
 } from "./computer-use-permissions";
-import { createComputerUseNativeBackend } from "./computer-use-native";
+import {
+  createComputerUseNativeBackend,
+  type ComputerUseNativeShutdownReason,
+} from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
+import desktopBrandAssets from "./desktop-brand-assets.json";
 import { checkForDesktopUpdates } from "./desktop-auto-updates";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { DesktopMainModule } from "./desktop-main-module";
@@ -168,6 +172,9 @@ const MAC_SCREEN_RECORDING_SETTINGS_URL =
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
 let computerUseNativeBackendDisposed = false;
+let computerUseNativeBackendDisposePromise: Promise<void> | null = null;
+let computerUseQuitPreparationPromise: Promise<void> | null = null;
+let computerUseQuitPreparationComplete = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
 
@@ -508,20 +515,32 @@ function preloadPath(): string {
   return path.join(__dirname, "preload.js");
 }
 
+function desktopAssetPath(filename: string): string {
+  return path.join(__dirname, "..", "assets", filename);
+}
+
 function appIconPath(): string {
-  return path.join(__dirname, "..", "assets", "icon.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].appIconFileName,
+  );
 }
 
 function trayIconPath(): string {
-  return path.join(__dirname, "..", "assets", "tray-iconTemplate.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].trayIconFileName,
+  );
 }
 
 function trayIconDisabledPath(): string {
-  return path.join(__dirname, "..", "assets", "tray-iconDisabled.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].trayIconDisabledFileName,
+  );
 }
 
 function trayIconRunningPath(): string {
-  return path.join(__dirname, "..", "assets", "tray-iconRunning.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].trayIconRunningFileName,
+  );
 }
 
 function desktopPreferencesPath(): string {
@@ -956,12 +975,20 @@ function refreshComputerUsePermissionsForState(): void {
     });
 }
 
-function disposeComputerUseNativeBackend(): void {
+function disposeComputerUseNativeBackend(
+  reason: ComputerUseNativeShutdownReason,
+): Promise<void> {
   if (computerUseNativeBackendDisposed) {
-    return;
+    return Promise.resolve();
   }
-  computerUseNativeBackendDisposed = true;
-  computerUseNativeBackend.dispose();
+  if (!computerUseNativeBackendDisposePromise) {
+    computerUseNativeBackendDisposePromise = computerUseNativeBackend
+      .dispose(reason)
+      .finally(() => {
+        computerUseNativeBackendDisposed = true;
+      });
+  }
+  return computerUseNativeBackendDisposePromise;
 }
 
 async function prepareForQuitAndInstall(): Promise<void> {
@@ -969,7 +996,7 @@ async function prepareForQuitAndInstall(): Promise<void> {
   appIsQuitting = true;
   releaseKeepAwake();
   await computerUseController.stopForQuit();
-  disposeComputerUseNativeBackend();
+  await disposeComputerUseNativeBackend("update_relaunch");
 }
 
 // Bootstrap contract: the auto-updater is owned by bootstrap.ts so it keeps
@@ -1629,15 +1656,29 @@ if (!hasSingleInstanceLock) {
     appIsQuitting = true;
     releaseKeepAwake();
     globalShortcut.unregisterAll();
-    if (!computerUseController.quitStopRequired()) {
-      disposeComputerUseNativeBackend();
+    if (
+      computerUseQuitPreparationComplete ||
+      (computerUseNativeBackendDisposed &&
+        !computerUseController.quitStopRequired())
+    ) {
       return;
     }
     event.preventDefault();
-    void computerUseController.stopForQuit().finally(() => {
-      disposeComputerUseNativeBackend();
-      app.quit();
-    });
+    if (!computerUseQuitPreparationPromise) {
+      computerUseQuitPreparationPromise = (async () => {
+        try {
+          if (computerUseController.quitStopRequired()) {
+            await computerUseController.stopForQuit();
+          }
+          await disposeComputerUseNativeBackend("app_quit");
+        } catch (error) {
+          console.error("Unable to prepare Computer Use for app quit", error);
+        } finally {
+          computerUseQuitPreparationComplete = true;
+          app.quit();
+        }
+      })();
+    }
   });
 
   void app.whenReady().then(async () => {

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly CHAT_EVENT_FAILURE_REASON_READER_COMMIT=c093e0ffdab988d2a8a071809f90d87fa3e79f20
+readonly CHAT_EVENT_FAILURE_REASON_READER_RELEASE=89c6a521944e2ac8550da424f164db08f4f80f0c
 
 fail() {
   echo "::error::$*" >&2
@@ -21,8 +23,6 @@ for name in \
   GITHUB_OUTPUT \
   GITHUB_REPOSITORY \
   METAL_USER \
-  R2_ACCOUNT_ID \
-  R2_BUCKET_NAME \
   TARGET_COMMIT \
   VERCEL_ORG_ID \
   VERCEL_PROJECT_ID \
@@ -38,6 +38,10 @@ git fetch --force --tags origin main
 git cat-file -e "${TARGET_COMMIT}^{commit}"
 if ! git merge-base --is-ancestor "$TARGET_COMMIT" origin/main; then
   fail "Target commit is not reachable from main: ${TARGET_COMMIT}"
+fi
+if ! git merge-base --is-ancestor \
+  "$CHAT_EVENT_FAILURE_REASON_READER_COMMIT" "$TARGET_COMMIT"; then
+  fail "Target commit predates the Chat Event failure-reason reader. The first compatible release is ${CHAT_EVENT_FAILURE_REASON_READER_RELEASE}."
 fi
 
 release_tags=$(git tag --points-at "$TARGET_COMMIT" | grep -E -- '-v[0-9]' || true)
@@ -65,18 +69,6 @@ if [ "$match_count" -ne 1 ]; then
   fail "Expected exactly one READY production API deployment for ${TARGET_COMMIT}, found ${match_count}."
 fi
 api_deployment_url="https://$(jq -r '.[0].url' <<<"$matches")"
-
-r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-app_artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}"
-app_artifact_dir=$(mktemp -d)
-trap 'rm -rf "$app_artifact_dir"' EXIT
-bash "${script_dir}/fetch-okou-app-artifact.sh" \
-  "$r2_endpoint" \
-  "$app_artifact_uri" \
-  "$app_artifact_dir"
-bash "${script_dir}/verify-okou-app-artifact.sh" \
-  "$app_artifact_dir" \
-  "$TARGET_COMMIT"
 
 . "${script_dir}/runner-image-target.sh"
 runner_version=$(git show "${TARGET_COMMIT}:crates/runner/Cargo.toml" \
@@ -127,6 +119,5 @@ done <<<"$runner_targets"
 echo "Release target: ${TARGET_COMMIT}"
 printf '%s\n' "$release_tags"
 echo "API target: ${api_deployment_url}"
-echo "App target: ${app_artifact_uri}/"
 echo "Runner target: ${runner_tag}"
 jq . <<<"$runner_matrix"

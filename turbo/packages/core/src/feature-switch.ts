@@ -233,7 +233,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable the first-class Morning Brief experience in Preferences.",
-    enabled: true,
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -301,6 +302,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PresentationScreenshot]: {
     maintainer: "bingjie@vm0.ai",
@@ -340,7 +342,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SocialDownloadDetectedMediaType]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "File a social download by the container detected from its leading bytes instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
+      "File a social download by the media kind detected from its leading file structure instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
     enabled: false,
     // Staff first: this decides the stored filename and content type, and the
     // extension is baked into the public artifact URL, so widen only after real
@@ -394,6 +396,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatThinkingSpinner]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Replace the three-block chat thinking loader with a rotating Okou mark.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -408,18 +417,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Use a concise, language-matched prompt for recommended chat follow-ups.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.OfficeDocumentPreview]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Preview DOCX and PPTX attachments with the Microsoft Office viewer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

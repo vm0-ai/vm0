@@ -58,6 +58,40 @@ export function formatSubscriptionUsageReset(
   };
 }
 
+interface ResetCreditExpiryDisplay {
+  readonly relativeText: string;
+  readonly absoluteText: string;
+}
+
+/**
+ * Reset credits are only worth a deadline while they are still redeemable, so
+ * an absent, unparseable, or already-passed expiry renders nothing at all
+ * rather than a stale "expired" label next to a positive credit count.
+ */
+export function formatCodexResetCreditExpiry(
+  expiresAt: string | null | undefined,
+): ResetCreditExpiryDisplay | null {
+  const text = expiresAt?.trim();
+  if (!text) {
+    return null;
+  }
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const remainingMs = date.getTime() - now();
+  if (remainingMs <= 0) {
+    return null;
+  }
+
+  return {
+    relativeText: formatRelativeResetTime(remainingMs),
+    absoluteText: formatAbsoluteResetDate(date),
+  };
+}
+
 function formatAbsoluteResetDate(date: Date): string {
   const options: Intl.DateTimeFormatOptions = {
     month: "short",

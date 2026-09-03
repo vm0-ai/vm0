@@ -101,6 +101,7 @@ describe("canonical chat event storage", () => {
     });
     expect(row(fixture.batch.runFailedId)).toMatchObject({
       payload: { content: "run failed", error: "runner error" },
+      failureReason: "future_reason",
     });
     expect(row(fixture.batch.browserCloseId).payload).toBeNull();
     expect(row(fixture.batch.goalCloseId).payload).toBeNull();

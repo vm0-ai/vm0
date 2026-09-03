@@ -1,5 +1,113 @@
 # Changelog
 
+## [1.539.1](https://github.com/vm0-ai/vm0/compare/api-v1.539.0...api-v1.539.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+    * @okouai/db bumped to 1.239.1
+    * @okouai/pi-agent-runtime bumped to 1.15.2
+
+## [1.539.0](https://github.com/vm0-ai/vm0/compare/api-v1.538.2...api-v1.539.0) (2026-09-03)
+
+
+### Features
+
+* **chat:** persist v7 run failure reasons ([#31419](https://github.com/vm0-ai/vm0/issues/31419)) ([8739601](https://github.com/vm0-ai/vm0/commit/873960155fa9fd61c1e4db80f3e4275672696ee0))
+* **cli:** redesign okou social around user intents ([#31333](https://github.com/vm0-ai/vm0/issues/31333)) ([1dafc7d](https://github.com/vm0-ai/vm0/commit/1dafc7d10900a2f1a5b7c6821090cc287b150093))
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
+
+### Performance Improvements
+
+* **api:** skip unchanged chat event catch-up reads ([#31492](https://github.com/vm0-ai/vm0/issues/31492)) ([eac0955](https://github.com/vm0-ai/vm0/commit/eac09551e159c571114c1dbfc9039ddaba11eb56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.615.0
+    * @okouai/db bumped to 1.239.0
+
+## [1.538.2](https://github.com/vm0-ai/vm0/compare/api-v1.538.1...api-v1.538.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agent:** lock default agent name ([#31440](https://github.com/vm0-ai/vm0/issues/31440)) ([1c40b16](https://github.com/vm0-ai/vm0/commit/1c40b16066635e282d31752e6ce654b1422f5ecb))
+* **cli:** make action url handoffs loss-resistant ([#31461](https://github.com/vm0-ai/vm0/issues/31461)) ([da3fa0d](https://github.com/vm0-ai/vm0/commit/da3fa0d9df45c76e052ff9d3c6a99e3cc7ffa040))
+* **social:** classify mp4 downloads by media tracks ([#31418](https://github.com/vm0-ai/vm0/issues/31418)) ([23dd595](https://github.com/vm0-ai/vm0/commit/23dd5951c24da38ea4c8e3cbfaa839a1de974e42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.2
+    * @okouai/db bumped to 1.238.6
+
+## [1.538.1](https://github.com/vm0-ai/vm0/compare/api-v1.538.0...api-v1.538.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **api:** bind mcp discovery to exact run accounts ([#31459](https://github.com/vm0-ai/vm0/issues/31459)) ([b021508](https://github.com/vm0-ai/vm0/commit/b0215087ca388de4ea1713b727617f74a4f686cf))
+* **core:** return morning brief to gated beta ([#31463](https://github.com/vm0-ai/vm0/issues/31463)) ([8bc5f29](https://github.com/vm0-ai/vm0/commit/8bc5f295f68bf600f1b97cf044ccad29d465b700))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.1
+    * @okouai/db bumped to 1.238.5
+
+## [1.538.0](https://github.com/vm0-ai/vm0/compare/api-v1.537.0...api-v1.538.0) (2026-09-03)
+
+
+### Features
+
+* **api:** optimize recommended follow-up prompts ([#31394](https://github.com/vm0-ai/vm0/issues/31394)) ([5f1b1f9](https://github.com/vm0-ai/vm0/commit/5f1b1f9de657d89315f60f2d573fe19a2084b938))
+* show when the soonest codex reset credit expires ([#31412](https://github.com/vm0-ai/vm0/issues/31412)) ([127bed8](https://github.com/vm0-ai/vm0/commit/127bed8e9ab803338c93fcb3ffaf5fa478cc0c6c))
+
+
+### Bug Fixes
+
+* **api:** explain BytePlus real-person image rejection ([#31416](https://github.com/vm0-ai/vm0/issues/31416)) ([0527941](https://github.com/vm0-ai/vm0/commit/0527941b660d29fe3a312cbd32e9e34a93de9cbb))
+* **api:** log morning brief onboarding outcomes ([#31396](https://github.com/vm0-ai/vm0/issues/31396)) ([c8317a3](https://github.com/vm0-ai/vm0/commit/c8317a366010f42f9c7bbb2d351b88a150618af8))
+* **api:** recover artifact preview navigation timeouts ([#31432](https://github.com/vm0-ai/vm0/issues/31432)) ([02c3df0](https://github.com/vm0-ai/vm0/commit/02c3df0adeeb309eed13de53b601e83fc43f06b3))
+* **guest-agent:** classify oversized codex turn inputs ([#31404](https://github.com/vm0-ai/vm0/issues/31404)) ([8cf7f4b](https://github.com/vm0-ai/vm0/commit/8cf7f4b60fde6c4c8239ff27f27a9cc24e90f124))
+* **pi-memory:** reject non-adjacent path collisions ([#31357](https://github.com/vm0-ai/vm0/issues/31357)) ([0aea850](https://github.com/vm0-ai/vm0/commit/0aea850c09d88dab810fa1941b21e738a774da08))
+
+
+### Refactoring
+
+* **api:** detach custom connectors from oauth setup persistence ([#31417](https://github.com/vm0-ai/vm0/issues/31417)) ([944b829](https://github.com/vm0-ai/vm0/commit/944b829570b4c69685f68d6dae159a75bd3c07f1))
+* **api:** require exact connector ids for credential loading ([#31397](https://github.com/vm0-ai/vm0/issues/31397)) ([6c076fd](https://github.com/vm0-ai/vm0/commit/6c076fdb60f64ab27b1584c1525c17fe6e11c86b))
+* remove obsolete vm0 migration tombstones ([#31401](https://github.com/vm0-ai/vm0/issues/31401)) ([7c530c6](https://github.com/vm0-ai/vm0/commit/7c530c63a3afc86db32a90757e155ed97dcf2dc0))
+
+
+### Performance Improvements
+
+* **api:** overlap attachment metadata resolution ([#31366](https://github.com/vm0-ai/vm0/issues/31366)) ([2081d93](https://github.com/vm0-ai/vm0/commit/2081d933272eb571065c80e37f04df2250f94509))
+* **api:** overlap request and session storage preparation ([#31363](https://github.com/vm0-ai/vm0/issues/31363)) ([9839acf](https://github.com/vm0-ai/vm0/commit/9839acf1329f77de5a419bf6939c60cfeb9dccbe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+    * @okouai/connectors bumped to 3.3.2
+    * @okouai/core bumped to 8.614.0
+    * @okouai/db bumped to 1.238.4
+    * @okouai/pi-agent-runtime bumped to 1.15.1
+
 ## [1.537.0](https://github.com/vm0-ai/vm0/compare/api-v1.536.0...api-v1.537.0) (2026-09-03)
 
 

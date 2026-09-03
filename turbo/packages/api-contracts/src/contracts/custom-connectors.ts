@@ -59,11 +59,6 @@ export type CustomConnectorAuthMode = z.infer<
   typeof customConnectorAuthModeSchema
 >;
 
-export const customConnectorOAuthSetupSchema = z.literal("custom");
-export type CustomConnectorOAuthSetup = z.infer<
-  typeof customConnectorOAuthSetupSchema
->;
-
 export const customConnectorOAuthProviderAdapterSchema = z.enum([
   "standard",
   "feishu",
@@ -172,50 +167,60 @@ const customConnectorResponseBaseSchema = z.object({
   updatedAt: z.string(),
 });
 
-const customConnectorManualAuthResponseSchema = z.object({
-  authMode: z.literal("manual"),
-  oauthSetup: z.never().optional(),
-  oauthConfig: z.never().optional(),
-});
+type CustomConnectorNonOAuthAuthResponse<
+  TMode extends "manual" | "none" | "automatic",
+> = {
+  readonly authMode: TMode;
+  readonly oauthConfig?: never;
+};
 
-const customConnectorNoAuthResponseSchema = z.object({
-  authMode: z.literal("none"),
-  oauthSetup: z.never().optional(),
-  oauthConfig: z.never().optional(),
-});
+const customConnectorManualAuthResponseSchema = z
+  .object({
+    authMode: z.literal("manual"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"manual"> => {
+    return { authMode: value.authMode };
+  });
 
-const customConnectorCustomOAuthResponseSchema = z.object({
-  authMode: z.literal("oauth"),
-  oauthSetup: z.literal("custom"),
-  oauthConfig: customConnectorOAuthConfigSchema,
-});
+const customConnectorNoAuthResponseSchema = z
+  .object({
+    authMode: z.literal("none"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"none"> => {
+    return { authMode: value.authMode };
+  });
 
-const customConnectorLegacyOAuthResponseSchema = z
+const customConnectorCustomOAuthResponseSchema = z
   .object({
     authMode: z.literal("oauth"),
-    oauthSetup: z.undefined().optional(),
+    oauthSetup: z.literal("custom").optional(),
     oauthConfig: customConnectorOAuthConfigSchema,
   })
   .transform((value) => {
-    return { ...value, oauthSetup: "custom" as const };
+    return {
+      authMode: value.authMode,
+      oauthConfig: value.oauthConfig,
+    };
   });
 
-const customConnectorAutomaticResponseSchema = z.object({
-  authMode: z.literal("automatic"),
-  oauthSetup: z.never().optional(),
-  oauthConfig: z.never().optional(),
-});
-
-const customConnectorOAuthResponseSchema = z.union([
-  customConnectorCustomOAuthResponseSchema,
-  customConnectorLegacyOAuthResponseSchema,
-]);
+const customConnectorAutomaticResponseSchema = z
+  .object({
+    authMode: z.literal("automatic"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"automatic"> => {
+    return { authMode: value.authMode };
+  });
 
 const customConnectorHttpAuthResponseSchema = z.union([
   customConnectorNoAuthResponseSchema,
   customConnectorManualAuthResponseSchema,
   customConnectorCustomOAuthResponseSchema,
-  customConnectorLegacyOAuthResponseSchema,
 ]);
 
 export const customConnectorHttpResponseCoreSchema =
@@ -244,7 +249,7 @@ export const customConnectorMcpResponseSchema = z.intersection(
   z.union([
     customConnectorNoAuthResponseSchema,
     customConnectorManualAuthResponseSchema,
-    customConnectorOAuthResponseSchema,
+    customConnectorCustomOAuthResponseSchema,
     customConnectorAutomaticResponseSchema,
   ]),
 );
@@ -286,7 +291,6 @@ const customConnectorDefinitionWriteBaseSchema = z.object({
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
   authMode: customConnectorAuthModeSchema.optional(),
-  oauthSetup: customConnectorOAuthSetupSchema.optional(),
   oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   storageVersion: z.number().int().positive().optional(),
@@ -297,7 +301,6 @@ interface CustomConnectorAuthWrite {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode?: CustomConnectorAuthMode;
-  readonly oauthSetup?: CustomConnectorOAuthSetup;
   readonly oauthConfig?: CustomConnectorOAuthConfigInput;
 }
 
@@ -313,10 +316,10 @@ function validateAutomaticAuthWrite(
       path: ["authMode"],
     });
   }
-  if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
+  if (value.oauthConfig !== undefined) {
     context.addIssue({
       code: "custom",
-      message: "Automatic authentication cannot include OAuth setup",
+      message: "Automatic authentication cannot include OAuth configuration",
       path: ["authMode"],
     });
   }
@@ -339,10 +342,10 @@ function validateNoAuthWrite(
   context: z.RefinementCtx,
   connectorKind: "http" | "mcp",
 ): void {
-  if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
+  if (value.oauthConfig !== undefined) {
     context.addIssue({
       code: "custom",
-      message: "No authentication cannot include OAuth setup",
+      message: "No authentication cannot include OAuth configuration",
       path: ["authMode"],
     });
   }
@@ -398,10 +401,10 @@ function validateCustomConnectorAuthWrite(
     });
   }
   if (authMode === "manual") {
-    if (value.oauthSetup !== undefined || value.oauthConfig !== undefined) {
+    if (value.oauthConfig !== undefined) {
       context.addIssue({
         code: "custom",
-        message: "Manual authentication cannot include OAuth setup",
+        message: "Manual authentication cannot include OAuth configuration",
         path: ["authMode"],
       });
     }

@@ -393,6 +393,26 @@ function scrollTo(container: HTMLElement, scrollTop: number): void {
   fireEvent.scroll(container);
 }
 
+function selectAssistantText(element: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  Object.defineProperty(range, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return domRect(120, 20);
+    },
+  });
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+  element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
 function buttonByName(name: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return (
@@ -1161,6 +1181,83 @@ describe("chat scroll position", () => {
     expect(container.scrollTop).toBe(820);
   });
 
+  it("keeps the selection toolbar through an automatic anchor restore", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000821";
+    const prefix = "selection-restore";
+    const runIds = Array.from({ length: 8 }, (_, index) => {
+      return `${prefix}-run-${index}`;
+    });
+    mockChatLifecycleWithoutBrowserSession({
+      threadId,
+      threadTitle: "Selection restore",
+      activeRunIds: runIds,
+      chatEvents: runIds.map((runId, index) => {
+        return {
+          id: `${prefix}-${index}`,
+          role: "assistant" as const,
+          content: `${prefix} message ${index}`,
+          runId,
+          createdAt: new Date(Date.UTC(2026, 6, 30, 10, index)).toISOString(),
+        };
+      }),
+    });
+    let contentGrowth = 0;
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return 1000 + contentGrowth;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100 + contentGrowth, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+    const resizeObserver = installResizeObserver();
+
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText(`${prefix} message 7`)).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+    scrollTo(container, 420);
+    selectAssistantText(screen.getByText(`${prefix} message 4`));
+    await screen.findByText("Quote");
+
+    contentGrowth = 400;
+    resizeObserver.trigger(messageContainer);
+    fireEvent.scroll(container);
+
+    expect(container.scrollTop).toBe(820);
+    expect(screen.getByText("Quote")).toBeInTheDocument();
+    expect(window.getSelection()?.toString()).toBe(`${prefix} message 4`);
+
+    scrollTo(container, 830);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps following the tail when a nested scroller scrolls after late content growth", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000810";
     const { publishAppendedEvents, growContent } = mockLateGrowingThread({
@@ -1252,16 +1349,20 @@ describe("chat scroll position", () => {
     expect(viewportOffsetTop("local-send-tail-4")).toBe(-20);
 
     const composer = await screen.findByRole("textbox", { name: "Message" });
-    await sendMessageInUI(user, composer, "Send from history");
-
-    await waitFor(() => {
-      expect(screen.getByText("Send from history")).toBeInTheDocument();
-      expect(container.scrollTop).toBe(
-        container.scrollHeight - container.clientHeight,
-      );
-    });
-
-    sendGate.resolve();
+    // Assert the optimistic row while the request is blocked, then release it
+    // without making the gate depend on the user interaction settling first.
+    await Promise.all([
+      sendMessageInUI(user, composer, "Send from history"),
+      (async () => {
+        await waitFor(() => {
+          expect(screen.getByText("Send from history")).toBeInTheDocument();
+          expect(container.scrollTop).toBe(
+            container.scrollHeight - container.clientHeight,
+          );
+        });
+        sendGate.resolve();
+      })(),
+    ]);
     await waitFor(() => {
       expect(sent).toBeTruthy();
     });

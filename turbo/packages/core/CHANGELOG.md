@@ -1,5 +1,52 @@
 # Changelog
 
+## [8.615.1](https://github.com/vm0-ai/vm0/compare/core-v8.615.0...core-v8.615.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+
+## [8.615.0](https://github.com/vm0-ai/vm0/compare/core-v8.614.2...core-v8.615.0) (2026-09-03)
+
+
+### Features
+
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
+## [8.614.2](https://github.com/vm0-ai/vm0/compare/core-v8.614.1...core-v8.614.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agent:** lock default agent name ([#31440](https://github.com/vm0-ai/vm0/issues/31440)) ([1c40b16](https://github.com/vm0-ai/vm0/commit/1c40b16066635e282d31752e6ce654b1422f5ecb))
+* **social:** classify mp4 downloads by media tracks ([#31418](https://github.com/vm0-ai/vm0/issues/31418)) ([23dd595](https://github.com/vm0-ai/vm0/commit/23dd5951c24da38ea4c8e3cbfaa839a1de974e42))
+
+## [8.614.1](https://github.com/vm0-ai/vm0/compare/core-v8.614.0...core-v8.614.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **core:** return morning brief to gated beta ([#31463](https://github.com/vm0-ai/vm0/issues/31463)) ([8bc5f29](https://github.com/vm0-ai/vm0/commit/8bc5f295f68bf600f1b97cf044ccad29d465b700))
+
+## [8.614.0](https://github.com/vm0-ai/vm0/compare/core-v8.613.0...core-v8.614.0) (2026-09-03)
+
+
+### Features
+
+* **api:** optimize recommended follow-up prompts ([#31394](https://github.com/vm0-ai/vm0/issues/31394)) ([5f1b1f9](https://github.com/vm0-ai/vm0/commit/5f1b1f9de657d89315f60f2d573fe19a2084b938))
+* **platform:** add elapsed run work folding ([#31321](https://github.com/vm0-ai/vm0/issues/31321)) ([134b069](https://github.com/vm0-ai/vm0/commit/134b0696c6fd26cc3e24234a7d0b433dff9241c9))
+* seed ppt avatar video skill ([#31403](https://github.com/vm0-ai/vm0/issues/31403)) ([095302a](https://github.com/vm0-ai/vm0/commit/095302af7aabd36f7bba5af46346ae56079d23c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+
 ## [8.613.0](https://github.com/vm0-ai/vm0/compare/core-v8.612.0...core-v8.613.0) (2026-09-03)
 
 

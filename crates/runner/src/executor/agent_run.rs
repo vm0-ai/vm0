@@ -1107,7 +1107,7 @@ pub(super) struct RunControls {
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
+    pub(super) prepared_storage: Option<crate::storage_cache::PreparedStorage>,
     pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
     pub(super) pre_spawn_admission_lease:
         Option<crate::pre_spawn_admission::PreSpawnAdmissionLease>,
@@ -1385,7 +1385,7 @@ async fn prepare_guest_storage(
     config: &ExecutorConfig,
     start: &RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    prepared_storage: &mut Option<crate::storage_cache::PreparedFreshStorage>,
+    prepared_storage: &mut Option<crate::storage_cache::PreparedStorage>,
 ) -> RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> {
     let Some(manifest) = &context.storage_manifest else {
         return Ok(None);
@@ -2075,11 +2075,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
-    debug_assert!(
-        !env_map.contains_key("VM0_USER_ENV_FILE")
-            && !env_map.contains_key("VM0_RUN_PAYLOAD_FILE"),
-        "legacy private payload pointers must be absent before canonical insertion"
-    );
     if let Some(path) = user_env_file {
         env_map.insert(
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),

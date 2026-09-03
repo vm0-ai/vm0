@@ -2531,30 +2531,6 @@ mod tests {
     }
 
     #[test]
-    fn codex_service_tier_ignores_retired_alias() {
-        let retired_key = "VM0_CODEX_SERVICE_TIER";
-        assert_codex_service_tier_fast_mode(
-            HashMap::from([(retired_key.to_string(), "fast".to_string())]),
-            false,
-        );
-
-        for (canonical, legacy, expected_fast_mode) in
-            [("fast", "priority", true), ("priority", "fast", false)]
-        {
-            assert_codex_service_tier_fast_mode(
-                HashMap::from([
-                    (
-                        super::CODEX_SERVICE_TIER_CANONICAL_ENV.to_string(),
-                        canonical.to_string(),
-                    ),
-                    (retired_key.to_string(), legacy.to_string()),
-                ]),
-                expected_fast_mode,
-            );
-        }
-    }
-
-    #[test]
     fn codex_service_tier_value_is_not_logged() {
         let _system_log_state_guard = crate::lock_system_log_test_state();
         let tmp = tempfile::tempdir().unwrap();

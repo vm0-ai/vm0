@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.184.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.11...runner-rs-v0.184.12) (2026-09-03)
+
+
+### Performance Improvements
+
+* **runner:** overlap reused archive delivery ([#31480](https://github.com/vm0-ai/vm0/issues/31480)) ([9f7e0d2](https://github.com/vm0-ai/vm0/commit/9f7e0d232cead371148717413f08e0d07b2e9da4))
+
+## [0.184.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.10...runner-rs-v0.184.11) (2026-09-03)
+
+
+### Refactoring
+
+* **python:** centralize platform API URL parsing ([#31467](https://github.com/vm0-ai/vm0/issues/31467)) ([6f4de0a](https://github.com/vm0-ai/vm0/commit/6f4de0a4283aba741648f691092ab84a669d8a35))
+
+
+### Performance Improvements
+
+* **mitm-addon:** skip parsing canonical chat completion deltas ([#31460](https://github.com/vm0-ai/vm0/issues/31460)) ([7ec84cd](https://github.com/vm0-ai/vm0/commit/7ec84cd49cbf5fc1632c7d65e0f4c48df10717aa))
+* **runner:** skip futile finalizing workspace lock wait ([#31479](https://github.com/vm0-ai/vm0/issues/31479)) ([0337ade](https://github.com/vm0-ai/vm0/commit/0337ade98cd47dadc7ce4ab52356e1e69f8439e9))
+
+## [0.184.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.9...runner-rs-v0.184.10) (2026-09-03)
+
+
+### Refactoring
+
+* **runner:** reuse shared gc lock removal ([#31444](https://github.com/vm0-ai/vm0/issues/31444)) ([555d557](https://github.com/vm0-ai/vm0/commit/555d557849b4ba8a46ad7df9005b7b2a1146669e))
+
+## [0.184.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.8...runner-rs-v0.184.9) (2026-09-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify oversized codex turn inputs ([#31404](https://github.com/vm0-ai/vm0/issues/31404)) ([8cf7f4b](https://github.com/vm0-ai/vm0/commit/8cf7f4b60fde6c4c8239ff27f27a9cc24e90f124))
+* **python:** detect dict constructor pair keys ([#31391](https://github.com/vm0-ai/vm0/issues/31391)) ([b7e93eb](https://github.com/vm0-ai/vm0/commit/b7e93ebb7d3b40f66b86b4343bb831c9d79ac81b))
+* **runner:** preserve claimed cancel markers ([#31353](https://github.com/vm0-ai/vm0/issues/31353)) ([0c802aa](https://github.com/vm0-ai/vm0/commit/0c802aae2f7000522665acf9daec33af3a9ee4be))
+
+
+### CI
+
+* **runner:** synchronize process containment pressure completion ([#31375](https://github.com/vm0-ai/vm0/issues/31375)) ([df32def](https://github.com/vm0-ai/vm0/commit/df32def6943fadc20e18c98888c8cc3f2a709350))
+
+
+### Documentation
+
+* **mitm-addon:** document SSE end-of-stream callbacks ([#31380](https://github.com/vm0-ai/vm0/issues/31380)) ([d5096da](https://github.com/vm0-ai/vm0/commit/d5096da7ccd23700ecf400a117670c738b9b5996))
+
+
+### Performance Improvements
+
+* **mitm-addon:** stream oversized firewall path matching ([#31390](https://github.com/vm0-ai/vm0/issues/31390)) ([e57d06d](https://github.com/vm0-ai/vm0/commit/e57d06dd13326f18057786a1a6595cd43483d11e))
+
 ## [0.184.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.7...runner-rs-v0.184.8) (2026-09-03)
 
 ## [0.184.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.6...runner-rs-v0.184.7) (2026-09-03)

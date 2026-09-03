@@ -5,16 +5,11 @@ import {
   agentSessions,
 } from "@okouai/db/schema/agent-run-session-conversation";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
-import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
-import {
-  customConnectorDefinitionConnectedAccount,
-  loadCurrentCustomConnectorValueMarkers,
-  loadConnectedCustomConnectorConnections,
-} from "./custom-connector-credential-access.service";
+import { loadCurrentCustomConnectorStoredValues } from "./custom-connector-credential-access.service";
 import {
   normaliseCustomConnectorRow,
   serialiseCustomConnector,
@@ -24,8 +19,16 @@ export function runMcpConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string;
+  readonly customConnectorSourceIds?: Readonly<Record<string, string>>;
 }): Computed<Promise<readonly McpConnector[]>> {
   return computed(async (get): Promise<readonly McpConnector[]> => {
+    const memberConnectorIdsByCustomConnectorId = new Map(
+      Object.entries(args.customConnectorSourceIds ?? {}),
+    );
+    const connectorIds = [...memberConnectorIdsByCustomConnectorId.keys()];
+    if (connectorIds.length === 0) {
+      return [];
+    }
     const db = get(db$);
     const rows = await db
       .select({ connector: customConnectorDefinitionSelection() })
@@ -39,18 +42,10 @@ export function runMcpConnectorList(args: {
         ),
       )
       .innerJoin(
-        userCustomConnectors,
-        and(
-          eq(userCustomConnectors.agentId, agentSessions.agentId),
-          eq(userCustomConnectors.orgId, args.orgId),
-          eq(userCustomConnectors.userId, args.userId),
-        ),
-      )
-      .innerJoin(
         orgCustomConnectors,
         and(
-          eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
-          eq(orgCustomConnectors.orgId, args.orgId),
+          eq(orgCustomConnectors.orgId, agentRuns.orgId),
+          inArray(orgCustomConnectors.id, connectorIds),
         ),
       )
       .where(
@@ -64,32 +59,45 @@ export function runMcpConnectorList(args: {
       )
       .orderBy(orgCustomConnectors.slug);
 
-    const connectorIds = rows.map(({ connector }) => {
-      return connector.id;
+    const definitions = rows.map(({ connector }) => {
+      return {
+        id: connector.id,
+        authMode: connector.authMode,
+        storageVersion: connector.storageVersion,
+      };
     });
-    const [valueMarkers, connectedConnections] = await Promise.all([
-      loadCurrentCustomConnectorValueMarkers(db, {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorIds,
-      }),
-      loadConnectedCustomConnectorConnections(db, {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorIds,
-      }),
-    ]);
+    const storage = await loadCurrentCustomConnectorStoredValues(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      definitions,
+      memberConnectorIdsByCustomConnectorId,
+    });
 
     return rows.map(({ connector }) => {
-      const connectedAccount = customConnectorDefinitionConnectedAccount({
-        connectedConnections,
-        definition: connector,
+      const access = storage.accesses.get(connector.id);
+      if (!access) {
+        throw new Error("Expected MCP connector credential access");
+      }
+      const valueMarkers = storage.values.flatMap((value) => {
+        return value.connectorId === connector.id
+          ? [
+              {
+                connectorId: connector.id,
+                authMode: connector.authMode,
+                storageVersion: connector.storageVersion,
+                kind: value.kind,
+                key: value.key,
+              },
+            ]
+          : [];
       });
       const response = serialiseCustomConnector({
         row: normaliseCustomConnectorRow(connector),
         valueMarkers,
-        connectedAccountId: connectedAccount?.id ?? null,
-        connectedAccountUpdatedAt: connectedAccount?.updatedAt,
+        connectedAccountId:
+          access.kind === "current" && access.connected
+            ? access.memberConnectorId
+            : null,
       });
       if (response.kind !== "mcp") {
         throw new Error("Run MCP connector query returned a non-MCP connector");

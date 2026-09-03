@@ -75,7 +75,8 @@ const TERMINAL_RUN_STATUSES = [
 const api = createWebhookCallbackApi(context);
 const store = createStore();
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
+const DEFAULT_AGENT_AVATAR_URL =
+  "https://static.vm0.io/public/default-agent-avatar-ceb298b79964.svg";
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -761,7 +762,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       hasOrg: true,
       hasDefaultAgent: true,
       defaultAgentMetadata: {
-        displayName: "Zero",
+        displayName: "Okou",
         sound: "professional",
         avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
@@ -771,7 +772,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const agents = await bdd.listAgents(admin);
     expect(
       agents.filter((agent) => {
-        return agent.displayName === "Zero";
+        return agent.displayName === "Okou";
       }),
     ).toHaveLength(1);
 

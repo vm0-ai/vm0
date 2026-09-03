@@ -80,10 +80,12 @@ pub(crate) struct DevicePoolSnapshot {
     pub(super) waiting_acquires: usize,
 }
 
-/// Demand-only NBD device claim pool.
+/// NBD device claim pool.
 ///
-/// Production callers should share it through [`crate::pool::DevicePoolHandle`] so pool
-/// release authority stays tied to owned device leases.
+/// Successful acquisitions use either a demand scan for a new claim or a
+/// cooled claim retained from a clean release. Production callers should share
+/// the pool through [`crate::pool::DevicePoolHandle`] so release authority stays
+/// tied to owned device leases.
 pub struct DevicePool {
     pub(super) active: bool,
     /// Recently released device claims waiting for cooldown to expire.

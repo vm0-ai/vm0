@@ -2519,7 +2519,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(created).toMatchObject({
       authMode: "oauth",
-      oauthSetup: "custom",
       storageVersion: 1,
       oauthConfig: {
         clientId,
@@ -2527,6 +2526,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
       connected: false,
     });
+    expect(created).not.toHaveProperty("oauthSetup");
     expectNoVisibleSecret(created, clientSecret);
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
@@ -2534,7 +2534,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         userId: admin.userId,
         customConnectorId: created.id,
       }),
-    ).resolves.toMatchObject({ definition_oauth_setup: null });
+    ).resolves.not.toHaveProperty("definition_oauth_setup");
     const expectedGrant = {
       customConnectorId: created.id,
       permissionNames: ["chat:write"],
@@ -3227,7 +3227,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(created).toMatchObject({
       kind: "mcp",
       authMode: "oauth",
-      oauthSetup: "custom",
       endpoint: definition.endpoint,
       storageVersion: 1,
       connected: false,
@@ -3955,6 +3954,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(createdDefinition).toMatchObject({
       authMode: "automatic",
     });
+    expect(createdDefinition).not.toHaveProperty("oauthSetup");
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: createdDefinition.id,
+      }),
+    ).resolves.not.toHaveProperty("definition_oauth_setup");
     await connectorsApi.deleteCustomConnector(admin, createdDefinition.id);
 
     const customConnectorId = randomUUID();
@@ -4095,7 +4102,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toMatchObject({
       custom_oauth_state: {
         context_valid: true,
-        oauth_setup: "automatic",
+        auth_mode: "automatic",
+        context_format: "legacy",
       },
     });
     const callback =
@@ -4109,6 +4117,52 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       message: "OAuth token exchange failed - please try again",
     });
 
+    const canonicalState = `canonical-automatic-oauth-${randomUUID()}`;
+    await seedCustomConnectorOAuthStateContext(context, {
+      state: canonicalState,
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId,
+      storageVersion: 1,
+      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      oauthContext: {
+        version: 2,
+        authMode: "automatic",
+        connectorId: customConnectorId,
+        storageVersion: 1,
+        issuer: "https://issuer.example.test",
+        resource: seededEndpoint,
+        resourceMetadataUrl:
+          "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
+        authorizationEndpoint: "https://issuer.example.test/authorize",
+        tokenEndpoint: "https://issuer.example.test/token",
+        authorizationResponseIssParameterSupported: true,
+        clientId: "automatic-dcr-client",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        registrationMethod: "dcr",
+        dcrRegistrationId,
+      },
+    });
+    await expect(
+      readCustomConnectorOAuthStorageState(context, canonicalState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        context_valid: true,
+        auth_mode: "automatic",
+        context_format: "canonical",
+      },
+    });
+    const canonicalCallback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "canonical-automatic-oauth-code",
+        state: canonicalState,
+        iss: "https://issuer.example.test",
+      });
+    expect(canonicalCallback.body).toStrictEqual({
+      status: "error",
+      message: "OAuth token exchange failed - please try again",
+    });
+
     const malformedState = `malformed-automatic-oauth-${randomUUID()}`;
     await seedCustomConnectorOAuthStateContext(context, {
       state: malformedState,
@@ -4118,9 +4172,22 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       storageVersion: 1,
       redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
       oauthContext: {
+        version: 2,
+        authMode: "automatic",
         oauthSetup: "automatic",
         connectorId: customConnectorId,
         storageVersion: 1,
+        issuer: "https://issuer.example.test",
+        resource: seededEndpoint,
+        resourceMetadataUrl:
+          "https://automatic-mcp.example.test/.well-known/oauth-protected-resource",
+        authorizationEndpoint: "https://issuer.example.test/authorize",
+        tokenEndpoint: "https://issuer.example.test/token",
+        authorizationResponseIssParameterSupported: true,
+        clientId: "automatic-dcr-client",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        registrationMethod: "dcr",
+        dcrRegistrationId,
       },
     });
     await expect(
@@ -4135,7 +4202,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       {
         ...definition,
         authMode: "oauth",
-        oauthSetup: "custom",
         headerInjections: [
           {
             name: "Authorization",
@@ -4156,20 +4222,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     );
     expect(updated).toMatchObject({
-      oauthSetup: "custom",
+      authMode: "oauth",
       storageVersion: 2,
       connected: false,
     });
+    expect(updated).not.toHaveProperty("oauthSetup");
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requiredOrgId(admin),
         userId: admin.userId,
         customConnectorId,
       }),
-    ).resolves.toMatchObject({
-      definition_oauth_setup: null,
-      connector: { storage_version: 1 },
-    });
+    ).resolves.toMatchObject({ connector: { storage_version: 1 } });
     await expect(
       readAutomaticOAuthBindingState(context, connectorAccountId),
     ).resolves.toStrictEqual({

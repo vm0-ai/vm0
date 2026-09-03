@@ -17,7 +17,8 @@ use crate::provider::{
 };
 use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::SandboxReuseResult;
-use crate::workspace_image_cache::WorkspaceImageCache;
+use crate::types::WorkspaceReuseResult;
+use crate::workspace_image_cache::{WorkspaceImageCache, WorkspaceImagePrepareLockTestGate};
 
 const NON_SELECTED_RUNNER_ID: u128 = 1;
 const FINALIZING_TEST_PREFERENCE_LIFETIME: Duration = Duration::from_secs(30);
@@ -1561,12 +1562,12 @@ async fn finalizing_immediate_handoff_reuses_matching_sandbox_past_preference_de
 }
 
 #[tokio::test(start_paused = true)]
-async fn finalizing_handoff_grace_starts_when_claim_returns() {
+async fn pre_finalization_wait_ends_at_preference_deadline() {
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
-    let reuse_key = "thread:claim-relative-handoff-grace";
+    let reuse_key = "thread:pre-finalization-preference-deadline";
     let predecessor_run_id = RunId::new_v4();
     let predecessor_guard = env.active_runs.register(
         predecessor_run_id,
@@ -1598,29 +1599,96 @@ async fn finalizing_handoff_grace_starts_when_claim_returns() {
             .any(|candidate| candidate.run_id() == run_id)
     );
 
-    tokio::time::advance(
-        super::super::super::finalizing_claim::FINALIZING_HANDOFF_ACCEPTANCE_GRACE
-            - Duration::from_millis(1),
-    )
-    .await;
+    tokio::time::advance(Duration::from_millis(99)).await;
     tokio::task::yield_now().await;
     assert_eq!(
         wait_gate.entered_count(),
         0,
-        "fresh fallback must not start inside the claim-relative handoff grace"
+        "fresh fallback must not start before the API preference deadline"
     );
 
     tokio::time::advance(Duration::from_millis(2)).await;
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("fresh fallback should start after the handoff grace expires");
+        .expect("fresh fallback should start when pre-finalization outlives the preference");
     wait_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await
-        .expect("fallback run should complete after the claim-relative grace");
+        .expect("fallback run should complete after the preference deadline");
+    assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn finalizing_handoff_grace_starts_when_predecessor_enters_finalization() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
+    let reuse_key = "thread:producer-relative-handoff-grace";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    let finalization_started = tokio::time::Instant::now().into_std();
+    assert!(predecessor_reuse.mark_finalizing(finalization_started));
+    tokio::time::advance(Duration::from_millis(500)).await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            predecessor_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + Duration::from_secs(5),
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id)
+    );
+
+    let finalization_deadline = finalization_started
+        + super::super::super::finalizing_claim::FINALIZING_HANDOFF_ACCEPTANCE_GRACE;
+    let remaining =
+        finalization_deadline.saturating_duration_since(tokio::time::Instant::now().into_std());
+    tokio::time::advance(remaining - Duration::from_millis(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(
+        wait_gate.entered_count(),
+        0,
+        "fresh fallback must not start inside the producer-relative finalization grace"
+    );
+
+    tokio::time::advance(Duration::from_millis(2)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should start after the finalization grace expires");
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fallback run should complete after the finalization grace");
     assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
 
     drop(predecessor_guard);
@@ -1854,6 +1922,83 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
         .expect("expired finalizing preference should enter ordinary admission");
     assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
 
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn pending_finalizing_fallback_skips_workspace_cache_lock_retry() {
+    let reuse_key = "thread:pending-finalizing-workspace-lock";
+    let image_size_bytes = 1024 * 1024;
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+    let (mut config, env) = mock_run_config(profiles, 2, 4096, 1);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let prepare_lock_gate = WorkspaceImagePrepareLockTestGate::default();
+    let workspace_cache =
+        WorkspaceImageCache::shared(runner_paths, &config.paths.home, &config.runner.group)
+            .with_prepare_lock_test_gate(prepare_lock_gate);
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &config.runner.group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        image_size_bytes,
+    );
+    let held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
+        &config.paths.home.locks_dir(),
+        &cache_key,
+    ))
+    .await
+    .unwrap();
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + FINALIZING_TEST_PREFERENCE_LIFETIME,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id),
+        "finalizing successor should be claimed before its deadline"
+    );
+
+    tokio::time::advance(FINALIZING_TEST_PREFERENCE_LIFETIME + Duration::from_millis(1)).await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("known long-lived workspace lock should not enter bounded retry");
+    assert_eq!(
+        completion.workspace_reuse_result,
+        Some(WorkspaceReuseResult::LockBusy),
+    );
+
+    drop(held_lock);
     drop(predecessor_guard);
     shutdown(&env, run_handle).await;
 }

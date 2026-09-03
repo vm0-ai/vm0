@@ -26,6 +26,7 @@ import {
   AlertTitle,
 } from "@okouai/ui/components/ui/alert";
 import { type Tone, TONE_OPTIONS } from "./tone-constants.ts";
+import { DEFAULT_AGENT_DISPLAY_NAME } from "@okouai/core/public-brand";
 import { detach, Reason } from "../../signals/utils.ts";
 import { UnsavedBar } from "./unsaved-bar.tsx";
 import type { Command } from "ccstate";
@@ -36,10 +37,14 @@ import {
   type AgentDeleteCopyTarget,
 } from "./components/delete-agent-dialog.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { serializeAvatarSvgConfig } from "./avatar-svg-utils.ts";
+import {
+  serializeAvatarSvgConfig,
+  type AvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { AvatarMaker } from "./avatar-maker.tsx";
+import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
   settingsFormDraft$,
   patchSettingsForm$,
@@ -85,6 +90,95 @@ interface SettingsTabProps {
   onDelete?: () => Promise<void>;
 }
 
+function AvatarSettingsControl({
+  isDefaultAgent,
+  avatarUrl,
+  alt,
+  onConfirm,
+}: {
+  isDefaultAgent: boolean;
+  avatarUrl: string | null;
+  alt: string;
+  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+}) {
+  if (isDefaultAgent) {
+    return (
+      <AvatarFromUrl
+        avatarUrl={avatarUrl}
+        alt={alt}
+        className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
+      />
+    );
+  }
+
+  const resolved = resolveAvatarSvgConfig(avatarUrl);
+  return (
+    <>
+      {resolved && (
+        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
+          <AvatarSvgPreview
+            config={resolved}
+            className="h-full w-full rounded-full"
+          />
+        </div>
+      )}
+      <AvatarMaker onConfirm={onConfirm} />
+    </>
+  );
+}
+
+function resolveAgentName(name: string, isDefaultAgent: boolean): string {
+  if (isDefaultAgent) {
+    return DEFAULT_AGENT_DISPLAY_NAME;
+  }
+  return name;
+}
+
+function omitForDefaultAgent<T>(
+  value: T,
+  isDefaultAgent: boolean,
+): T | undefined {
+  if (isDefaultAgent) {
+    return undefined;
+  }
+  return value;
+}
+
+function AgentNameControl({
+  name,
+  isDefaultAgent,
+  inputId,
+  label,
+  placeholder,
+  onChange,
+}: {
+  name: string;
+  isDefaultAgent: boolean;
+  inputId: string;
+  label: string;
+  placeholder: string;
+  onChange: (name: string) => void;
+}) {
+  if (isDefaultAgent) {
+    return (
+      <p className="flex h-9 items-center text-sm text-foreground">{name}</p>
+    );
+  }
+
+  return (
+    <Input
+      id={inputId}
+      value={name}
+      onChange={(event) => {
+        onChange(event.target.value);
+      }}
+      placeholder={placeholder}
+      className="h-9 w-full"
+      aria-label={label}
+    />
+  );
+}
+
 export function SettingsTab({
   agentId,
   displayName: resolvedAgentName,
@@ -102,8 +196,12 @@ export function SettingsTab({
   onCopyWorkflowBeforeDelete,
 }: SettingsTabProps) {
   const { t } = useTranslation("agents");
+  const presentedAgentName = resolveAgentName(
+    resolvedAgentName,
+    isDefaultAgent,
+  );
   const defaults = {
-    name: resolvedAgentName,
+    name: presentedAgentName,
     description: initialDescription,
     tone: initialSound,
     avatarUrl: initialAvatarUrl,
@@ -113,12 +211,13 @@ export function SettingsTab({
   const values =
     draft?.agentId === agentId ? { ...defaults, ...draft.patch } : defaults;
   const {
-    name: agentName,
+    name: draftAgentName,
     description: desc,
     tone,
     avatarUrl,
     visibility,
   } = values;
+  const agentName = resolveAgentName(draftAgentName, isDefaultAgent);
   const isSettingsDirty =
     agentName !== defaults.name ||
     desc !== defaults.description ||
@@ -244,28 +343,21 @@ export function SettingsTab({
               label={t(($) => {
                 return $.profile.fields.avatar.label;
               })}
-              description={t(($) => {
-                return $.profile.fields.avatar.description;
-              })}
+              description={
+                isDefaultAgent
+                  ? undefined
+                  : t(($) => {
+                      return $.profile.fields.avatar.description;
+                    })
+              }
               wideControls
             >
               <div className="min-w-0 w-full">
                 <div className="flex flex-wrap gap-2 items-center">
-                  {(() => {
-                    const resolved = resolveAvatarSvgConfig(avatarUrl);
-                    if (resolved) {
-                      return (
-                        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
-                          <AvatarSvgPreview
-                            config={resolved}
-                            className="h-full w-full rounded-full"
-                          />
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  <AvatarMaker
+                  <AvatarSettingsControl
+                    isDefaultAgent={isDefaultAgent}
+                    avatarUrl={avatarUrl}
+                    alt={resolvedAgentName}
                     onConfirm={async (cfg) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
                       patchForm({
@@ -297,28 +389,28 @@ export function SettingsTab({
               label={t(($) => {
                 return $.profile.fields.name.label;
               })}
-              description={t(($) => {
-                return $.profile.fields.name.description;
-              })}
+              description={omitForDefaultAgent(
+                t(($) => {
+                  return $.profile.fields.name.description;
+                }),
+                isDefaultAgent,
+              )}
               wideControls
             >
               <div className="min-w-0 w-full">
-                <Input
-                  id={inputId}
-                  value={agentName}
-                  onChange={(e) => {
-                    return patchForm({
-                      agentId,
-                      patch: { name: e.target.value },
-                    });
-                  }}
+                <AgentNameControl
+                  name={agentName}
+                  isDefaultAgent={isDefaultAgent}
+                  inputId={inputId}
+                  label={t(($) => {
+                    return $.profile.fields.name.label;
+                  })}
                   placeholder={t(($) => {
                     return $.profile.fields.name.placeholder;
                   })}
-                  className="h-9 w-full"
-                  aria-label={t(($) => {
-                    return $.profile.fields.name.label;
-                  })}
+                  onChange={(name) => {
+                    patchForm({ agentId, patch: { name } });
+                  }}
                 />
               </div>
             </InlineSettingsRow>
@@ -370,7 +462,7 @@ export function SettingsTab({
                   ($) => {
                     return $.profile.fields.tone.accessibilityLabel;
                   },
-                  { agentName: resolvedAgentName },
+                  { agentName: presentedAgentName },
                 )}
               >
                 <div
@@ -454,7 +546,7 @@ export function SettingsTab({
 
         {!isDefaultAgent && onDelete && (
           <AgentDeleteDialog
-            resolvedAgentName={resolvedAgentName}
+            resolvedAgentName={presentedAgentName}
             onDelete={onDelete}
             deleteWorkflows={deleteWorkflows}
             deleteCopyTargets={deleteCopyTargets}
@@ -492,7 +584,7 @@ export function SettingsTab({
                 ($) => {
                   return $.profile.makePrivate.title;
                 },
-                { agentName: resolvedAgentName },
+                { agentName: presentedAgentName },
               )}
             </DialogTitle>
             <DialogDescription>
@@ -513,7 +605,7 @@ export function SettingsTab({
                 ($) => {
                   return $.profile.makePrivate.warningDescription;
                 },
-                { agentName: resolvedAgentName },
+                { agentName: presentedAgentName },
               )}
             </AlertDescription>
           </Alert>

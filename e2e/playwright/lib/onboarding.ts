@@ -1,4 +1,11 @@
-import { expect, type Page } from "@playwright/test";
+import { errors, expect, type Page } from "@playwright/test";
+
+import {
+  captureClerkReadiness,
+  describeClerkReadiness,
+} from "./clerk-readiness";
+
+const VIDEO_TEMPLATE_BOOTSTRAP_TIMEOUTS_MS = [15_000, 30_000] as const;
 
 type AuthHeaders = Readonly<
   Record<"Authorization", string> &
@@ -90,14 +97,7 @@ export async function startVideoOnboardingCheckout(
     "/onboarding/video-template?choice=video",
     options.appUrl,
   );
-  await page.goto(videoTemplateUrl.toString(), {
-    waitUntil: "domcontentloaded",
-  });
-  await expect(
-    page.getByRole("heading", {
-      name: /pick a video template to start from/i,
-    }),
-  ).toBeVisible({ timeout: 30_000 });
+  await openVideoTemplatePicker(page, videoTemplateUrl);
   expect(new URL(page.url()).pathname).toBe("/onboarding/video-template");
 
   // The template pickers no longer pre-select a default, so a template must be
@@ -117,6 +117,47 @@ export async function startVideoOnboardingCheckout(
 
   await clickOnboardingButton(page, /^Upgrade Pro to run$/i);
   await expect(page).toHaveURL(/checkout\.stripe\.com/, { timeout: 60_000 });
+}
+
+async function openVideoTemplatePicker(page: Page, url: URL): Promise<void> {
+  const heading = page.getByRole("heading", {
+    name: /pick a video template to start from/i,
+  });
+
+  for (const [
+    attempt,
+    timeout,
+  ] of VIDEO_TEMPLATE_BOOTSTRAP_TIMEOUTS_MS.entries()) {
+    await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
+    try {
+      await heading.waitFor({ state: "visible", timeout });
+      return;
+    } catch (error: unknown) {
+      if (!(error instanceof errors.TimeoutError)) {
+        throw error;
+      }
+
+      const report = await captureClerkReadiness(page);
+      const currentUrl = new URL(page.url());
+      const shouldRetry =
+        attempt < VIDEO_TEMPLATE_BOOTSTRAP_TIMEOUTS_MS.length - 1 &&
+        currentUrl.origin === url.origin &&
+        currentUrl.pathname === url.pathname &&
+        report.kind === "observed" &&
+        report.state.bootstrapSkeleton === "active";
+      if (shouldRetry) {
+        console.warn(
+          `[e2e] Authenticated app bootstrap stalled; retrying video-template navigation. Observed Clerk state: ${describeClerkReadiness(report)}`,
+        );
+        continue;
+      }
+
+      throw new Error(
+        `Timed out waiting for the video-template page to render. Observed Clerk state: ${describeClerkReadiness(report)}`,
+        { cause: error },
+      );
+    }
+  }
 }
 
 export async function waitForPaidOnboardingCompletion(

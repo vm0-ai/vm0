@@ -28,7 +28,6 @@ use tokio::process::Command;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const SESSION_HISTORY_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
-const RETIRED_GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
 
 fn claude_history_fixture(
     root: &Path,
@@ -631,8 +630,7 @@ async fn export_session_history_sidecar_rejects_symlinked_metadata_without_openi
 }
 
 #[tokio::test]
-async fn default_identity_path_reads_only_canonical_runtime_without_protocol_output() -> TestResult
-{
+async fn default_identity_path_preserves_runtime_selection_without_protocol_output() -> TestResult {
     #[derive(Clone, Copy)]
     enum CanonicalInput {
         Absent,
@@ -643,7 +641,6 @@ async fn default_identity_path_reads_only_canonical_runtime_without_protocol_out
     struct Case {
         name: &'static str,
         canonical: CanonicalInput,
-        retired: bool,
         use_canonical: bool,
     }
 
@@ -665,25 +662,16 @@ async fn default_identity_path_reads_only_canonical_runtime_without_protocol_out
         Case {
             name: "canonical-only",
             canonical: CanonicalInput::Selected,
-            retired: false,
             use_canonical: true,
         },
         Case {
-            name: "canonical-is-not-overridden-by-retired",
-            canonical: CanonicalInput::Selected,
-            retired: true,
-            use_canonical: true,
-        },
-        Case {
-            name: "retired-only-is-ignored",
+            name: "canonical-absent",
             canonical: CanonicalInput::Absent,
-            retired: true,
             use_canonical: false,
         },
         Case {
-            name: "canonical-empty-does-not-fall-back-to-retired",
+            name: "canonical-empty",
             canonical: CanonicalInput::Empty,
-            retired: true,
             use_canonical: false,
         },
     ] {
@@ -694,7 +682,6 @@ async fn default_identity_path_reads_only_canonical_runtime_without_protocol_out
         };
         let home = dir.path().join(format!("{}-home", case.name));
         let canonical_dir = dir.path().join(format!("{}-canonical", case.name));
-        let retired_dir = dir.path().join(format!("{}-retired", case.name));
         let fallback_dir = if case.use_canonical {
             None
         } else {
@@ -733,10 +720,6 @@ async fn default_identity_path_reads_only_canonical_runtime_without_protocol_out
                 );
             }
         }
-        if case.retired {
-            command.env(RETIRED_GUEST_RUNTIME_DIR_ENV, &retired_dir);
-        }
-
         let output = common::command_output_with_timeout(
             &mut command,
             SESSION_HISTORY_HELPER_TIMEOUT,
@@ -755,10 +738,6 @@ async fn default_identity_path_reads_only_canonical_runtime_without_protocol_out
         );
         assert!(output.stdout.is_empty(), "{} changed stdout", case.name);
         assert!(output.stderr.is_empty(), "{} changed stderr", case.name);
-        assert!(
-            !guest_contracts::runtime_paths::final_session_history_identity_file(retired_dir)
-                .exists()
-        );
     }
 
     Ok(())

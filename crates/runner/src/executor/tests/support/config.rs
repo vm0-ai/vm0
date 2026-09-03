@@ -58,6 +58,7 @@ pub(in crate::executor::tests) fn default_params() -> JobParams {
         workspace_disk_mb: 16_384,
         restore_guest_state: false,
         device_rate_limits: None,
+        workspace_image_prepare_lock_policy: Default::default(),
     }
 }
 

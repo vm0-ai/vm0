@@ -6,8 +6,7 @@ script="${repo_root}/.github/scripts/resolve-production-rollback-target.sh"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 fake_bin="${tmp_dir}/bin"
-artifact_dir="${tmp_dir}/artifact"
-mkdir -p "$fake_bin" "${artifact_dir}/assets"
+mkdir -p "$fake_bin"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -16,33 +15,6 @@ fail() {
 
 target_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
-printf '<!doctype html>\n' >"${artifact_dir}/index.html"
-printf 'console.log("rollback");\n' >"${artifact_dir}/assets/app.js"
-index_sha=$(sha256sum "${artifact_dir}/index.html" | cut -d ' ' -f 1)
-index_size=$(stat -c '%s' "${artifact_dir}/index.html")
-asset_sha=$(sha256sum "${artifact_dir}/assets/app.js" | cut -d ' ' -f 1)
-asset_size=$(stat -c '%s' "${artifact_dir}/assets/app.js")
-jq -n \
-  --arg commit_sha "$target_commit" \
-  --arg index_sha "$index_sha" \
-  --argjson index_size "$index_size" \
-  --arg asset_sha "$asset_sha" \
-  --argjson asset_size "$asset_size" \
-  '{
-    version: 1,
-    commitSha: $commit_sha,
-    files: [
-      {path: "index.html", sha256: $index_sha, size: $index_size},
-      {path: "assets/app.js", sha256: $asset_sha, size: $asset_size}
-    ]
-  }' >"${artifact_dir}/manifest.json"
-manifest_sha=$(sha256sum "${artifact_dir}/manifest.json" | cut -d ' ' -f 1)
-jq -n \
-  --arg commit_sha "$target_commit" \
-  --arg manifest_sha "$manifest_sha" \
-  '{version: 1, commitSha: $commit_sha, manifestSha256: $manifest_sha}' \
-  >"${artifact_dir}/ready.json"
-
 cat >"${fake_bin}/git" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -50,7 +22,11 @@ printf 'git %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
 case "${1:-}" in
   fetch|cat-file) exit 0 ;;
   merge-base)
-    [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
+    if [ "${3:-}" = "c093e0ffdab988d2a8a071809f90d87fa3e79f20" ]; then
+      [ "${MOCK_READER_FLOOR_VALID:-1}" = "1" ]
+    else
+      [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
+    fi
     ;;
   tag)
     printf 'vm0-v1.2.3\n'
@@ -95,29 +71,6 @@ else
 fi
 SH
 
-cat >"${fake_bin}/aws" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'aws %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
-[ "${1:-}" = "s3" ] && [ "${2:-}" = "cp" ] || exit 2
-case "$3" in
-  */dist.tar.gz)
-    tar -czf "$4" \
-      -C "$MOCK_APP_ARTIFACT_DIR" \
-      --exclude=./manifest.json \
-      --exclude=./ready.json \
-      .
-    ;;
-  */manifest.json | */ready.json)
-    cp "${MOCK_APP_ARTIFACT_DIR}/$(basename "$3")" "$4"
-    ;;
-  *)
-    echo "unexpected App artifact object: $3" >&2
-    exit 2
-    ;;
-esac
-SH
-
 cat >"${fake_bin}/ssh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -130,7 +83,7 @@ case "$host" in
   *) exit 255 ;;
 esac
 SH
-chmod +x "${fake_bin}/git" "${fake_bin}/curl" "${fake_bin}/aws" "${fake_bin}/ssh"
+chmod +x "${fake_bin}/git" "${fake_bin}/curl" "${fake_bin}/ssh"
 
 run_resolver() {
   local output_file=$1
@@ -144,10 +97,7 @@ run_resolver() {
     GITHUB_OUTPUT="$output_file" \
     GITHUB_REPOSITORY=vm0-ai/vm0 \
     METAL_USER=ci \
-    MOCK_APP_ARTIFACT_DIR="$artifact_dir" \
     MOCK_BOUNDARY_LOG="${tmp_dir}/boundaries.log" \
-    R2_ACCOUNT_ID=test-account \
-    R2_BUCKET_NAME=test-bucket \
     TARGET_COMMIT="$target_commit" \
     VERCEL_ORG_ID=test-org \
     VERCEL_PROJECT_ID=test-project \
@@ -173,34 +123,14 @@ grep -qx "api_deployment_url=https://api-0.vercel.app" "$output_file" || fail "m
 grep -qx "runner_version=1.2.3" "$output_file" || fail "missing Runner version output"
 runner_matrix=$(sed -n 's/^runner_matrix=//p' "$output_file")
 jq -e 'length == 2 and .[0].id == "arm64" and .[1].id == "x86_64"' >/dev/null <<<"$runner_matrix" || fail "unexpected Runner matrix"
-grep -q "aws s3 cp s3://test-bucket/okou-app/${target_commit}/dist.tar.gz" "${tmp_dir}/boundaries.log" || fail "full App artifact was not downloaded"
-if grep -q -- '--recursive' "${tmp_dir}/boundaries.log"; then
-  fail "archived App artifacts must not be downloaded per file"
-fi
 
 : >"${tmp_dir}/boundaries.log"
 assert_failure "found 0" run_resolver "${tmp_dir}/zero.output" MOCK_VERCEL_MATCH_COUNT=0
 [ ! -s "${tmp_dir}/zero.output" ] || fail "failed resolution must not publish outputs"
-if grep -q '^aws ' "${tmp_dir}/boundaries.log"; then
-  fail "App preflight must not start after API resolution failure"
-fi
 
 : >"${tmp_dir}/boundaries.log"
 assert_failure "found 2" run_resolver "${tmp_dir}/multiple.output" MOCK_VERCEL_MATCH_COUNT=2
 [ ! -s "${tmp_dir}/multiple.output" ] || fail "ambiguous API resolution must not publish outputs"
-
-corrupt_artifact_dir="${tmp_dir}/corrupt-artifact"
-cp -a "$artifact_dir" "$corrupt_artifact_dir"
-printf 'corrupt\n' >>"${corrupt_artifact_dir}/assets/app.js"
-: >"${tmp_dir}/boundaries.log"
-artifact_dir_before=$artifact_dir
-artifact_dir=$corrupt_artifact_dir
-assert_failure "artifact file does not match manifest" run_resolver "${tmp_dir}/corrupt.output"
-artifact_dir=$artifact_dir_before
-[ ! -s "${tmp_dir}/corrupt.output" ] || fail "corrupt App artifact must not publish outputs"
-if grep -q 'api.github.com' "${tmp_dir}/boundaries.log"; then
-  fail "Runner asset resolution must not start after App preflight failure"
-fi
 
 : >"${tmp_dir}/boundaries.log"
 assert_failure "is missing runner-v1.2.3-x86_64-linux" run_resolver "${tmp_dir}/missing-runner.output" MOCK_RUNNER_ASSETS_VALID=0
@@ -213,6 +143,17 @@ target_commit=$invalid_commit
 assert_failure "must be a full lowercase SHA-1" run_resolver "${tmp_dir}/invalid.output"
 target_commit=$target_commit_before
 [ ! -s "${tmp_dir}/boundaries.log" ] || fail "invalid target must fail before external boundaries"
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure \
+  "first compatible release is 89c6a521944e2ac8550da424f164db08f4f80f0c" \
+  run_resolver \
+  "${tmp_dir}/reader-floor.output" \
+  MOCK_READER_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/reader-floor.output" ] || fail "incompatible reader target must not publish outputs"
+if grep -qE '^(curl|aws) ' "${tmp_dir}/boundaries.log"; then
+  fail "reader-floor rejection must happen before artifact resolution"
+fi
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
 ruby -e '
@@ -438,7 +379,6 @@ ruby -e '
     end
   end
   raise "rollback resolver must wait for queue" unless rollback.fetch("resolve-target").fetch("needs") == "queue-production-deploy"
-  raise "App must wait for resolver" unless rollback.fetch("rollback-app").fetch("needs") == "resolve-target"
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"
   raise "API must wait for resolver" unless rollback.fetch("rollback-api").fetch("needs") == "resolve-target"
   release_job = release.fetch("release-please")
@@ -492,12 +432,10 @@ ruby -e '
   raise "rollback dashboard must pass the current release tags to the helper" unless dashboard_step.fetch("run").include?("\"$RELEASE_TAGS\"")
 
   artifact_fetch_helper = "fetch-okou-app-artifact.sh"
-  release_app_step = release.fetch("promote-app-production").fetch("steps").find { |step| step["id"] == "pages-production" }
+  release_app_step = release.fetch("promote-app-worker-production").fetch("steps").find { |step| step["id"] == "worker-production" }
   release_app_run = release_app_step.fetch("run")
   raise "release App deployment must use the shared artifact fetcher" unless release_app_run.include?(artifact_fetch_helper)
   raise "release App deployment must not fall back to per-file artifacts" if release_app_run.include?("--recursive")
-  rollback_app_step = rollback.fetch("rollback-app").fetch("steps").find { |step| step["id"] == "app" }
-  raise "rollback App deployment must use the shared artifact fetcher" unless rollback_app_step.fetch("run").include?(artifact_fetch_helper)
 
   artifact_upload_step = turbo.fetch("deploy-app").fetch("steps").find { |step| step["name"] == "Upload canonical app artifact" }
   artifact_upload_run = artifact_upload_step.fetch("run")

@@ -1,5 +1,106 @@
 # Changelog
 
+## [0.832.1](https://github.com/vm0-ai/vm0/compare/app-v0.832.0...app-v0.832.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+
+## [0.832.0](https://github.com/vm0-ai/vm0/compare/app-v0.831.2...app-v0.832.0) (2026-09-03)
+
+
+### Features
+
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
+
+### Bug Fixes
+
+* **auth:** prevent decorative overflow from scrolling ([#31494](https://github.com/vm0-ai/vm0/issues/31494)) ([b13c2b2](https://github.com/vm0-ai/vm0/commit/b13c2b224df84165d74ea3e898ed6b68212bc931))
+* **platform:** hide account manager empty state for a single account ([#31453](https://github.com/vm0-ai/vm0/issues/31453)) ([0716f7b](https://github.com/vm0-ai/vm0/commit/0716f7b85d810f61186743c75388de969197a059))
+* **platform:** replace app skeleton illustration ([#31477](https://github.com/vm0-ai/vm0/issues/31477)) ([00930ff](https://github.com/vm0-ai/vm0/commit/00930ff193ac0e04eb4f3326d1bb07a1552982a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.615.0
+    * @okouai/ui bumped to 1.3.0
+
+## [0.831.2](https://github.com/vm0-ai/vm0/compare/app-v0.831.1...app-v0.831.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agent:** lock default agent name ([#31440](https://github.com/vm0-ai/vm0/issues/31440)) ([1c40b16](https://github.com/vm0-ai/vm0/commit/1c40b16066635e282d31752e6ce654b1422f5ecb))
+* **platform:** prevent unsolicited video openings and endings ([#31484](https://github.com/vm0-ai/vm0/issues/31484)) ([9d237ab](https://github.com/vm0-ai/vm0/commit/9d237ab0d976d3a73278effb9a700f881d2bfe30))
+* **platform:** remove new chat from chat list menu ([#31473](https://github.com/vm0-ai/vm0/issues/31473)) ([4c05cd1](https://github.com/vm0-ai/vm0/commit/4c05cd11de063ed34f172572ae1ee2553103c1a9))
+* **platform:** use adaptive favicon ([#31451](https://github.com/vm0-ai/vm0/issues/31451)) ([4a4a164](https://github.com/vm0-ai/vm0/commit/4a4a16434653b58a5ee32a00f7a6ccb8409f1d1b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.2
+
+## [0.831.1](https://github.com/vm0-ai/vm0/compare/app-v0.831.0...app-v0.831.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* stabilize pending goal run layout ([#31455](https://github.com/vm0-ai/vm0/issues/31455)) ([408975b](https://github.com/vm0-ai/vm0/commit/408975b3ecea67454883277ef13ada0f57b480ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.1
+
+## [0.831.0](https://github.com/vm0-ai/vm0/compare/app-v0.830.0...app-v0.831.0) (2026-09-03)
+
+
+### Features
+
+* **platform:** add elapsed run work folding ([#31321](https://github.com/vm0-ai/vm0/issues/31321)) ([134b069](https://github.com/vm0-ai/vm0/commit/134b0696c6fd26cc3e24234a7d0b433dff9241c9))
+* **platform:** use okou wordmarks across branded surfaces ([#31395](https://github.com/vm0-ai/vm0/issues/31395)) ([ff7b7e4](https://github.com/vm0-ai/vm0/commit/ff7b7e448c8dc0cbe03d04e94ad5985d22bdb6f9))
+* show when the soonest codex reset credit expires ([#31412](https://github.com/vm0-ai/vm0/issues/31412)) ([127bed8](https://github.com/vm0-ai/vm0/commit/127bed8e9ab803338c93fcb3ffaf5fa478cc0c6c))
+
+
+### Bug Fixes
+
+* **platform:** align intro video camera review instructions ([#31413](https://github.com/vm0-ai/vm0/issues/31413)) ([5629612](https://github.com/vm0-ai/vm0/commit/562961205485e5e46e47fa25828e5cc265b7dd87))
+* **platform:** derive ios startup images from skeleton layout ([#31204](https://github.com/vm0-ai/vm0/issues/31204)) ([d65a7b3](https://github.com/vm0-ai/vm0/commit/d65a7b3f4f6274e3ef432be14283ecd6044bcffa))
+* **platform:** keep the lightbox open when a drag ends on the backdrop ([#31374](https://github.com/vm0-ai/vm0/issues/31374)) ([62f5d27](https://github.com/vm0-ai/vm0/commit/62f5d27778894f81d3992f71bd11618493710b1e)), closes [#27173](https://github.com/vm0-ai/vm0/issues/27173)
+* **platform:** limit okou mark change to favicon ([#31428](https://github.com/vm0-ai/vm0/issues/31428)) ([aa6bf81](https://github.com/vm0-ai/vm0/commit/aa6bf812a0e39387de986ddea96a3a51ee809d2a))
+* **platform:** preserve selection menu during automatic scroll ([#31437](https://github.com/vm0-ai/vm0/issues/31437)) ([b94c65b](https://github.com/vm0-ai/vm0/commit/b94c65b4b6f439d1bf66f6c8e017699b5dead17f))
+* **platform:** rate-limit shared database reloads ([#31398](https://github.com/vm0-ai/vm0/issues/31398)) ([ef98200](https://github.com/vm0-ai/vm0/commit/ef982001164a89e08aae07cc3c330bf422b4571c))
+* **platform:** replace favicons with black okou mark ([#31400](https://github.com/vm0-ai/vm0/issues/31400)) ([0e6d79b](https://github.com/vm0-ai/vm0/commit/0e6d79bf8ae7e9101596b55c171b84614aa43b2a))
+* **platform:** stop one tap from blocking auth skeleton ([#31409](https://github.com/vm0-ai/vm0/issues/31409)) ([d240caf](https://github.com/vm0-ai/vm0/commit/d240caf2a3640e1a98256302e37bda895e22b980))
+* **platform:** use inbound agentphone connection flow ([#31308](https://github.com/vm0-ai/vm0/issues/31308)) ([2aacef1](https://github.com/vm0-ai/vm0/commit/2aacef15330f63d6391ac5e05febaceebe586d57))
+
+
+### Refactoring
+
+* **api:** detach custom connectors from oauth setup persistence ([#31417](https://github.com/vm0-ai/vm0/issues/31417)) ([944b829](https://github.com/vm0-ai/vm0/commit/944b829570b4c69685f68d6dae159a75bd3c07f1))
+* **platform:** route instatus status polling through the shared loop helper ([#31415](https://github.com/vm0-ai/vm0/issues/31415)) ([7bdcdf7](https://github.com/vm0-ai/vm0/commit/7bdcdf7fc590b4b0c8d808c509981fc198c33768))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+    * @okouai/connectors bumped to 3.3.2
+    * @okouai/core bumped to 8.614.0
+    * @okouai/ui bumped to 1.2.0
+
 ## [0.830.0](https://github.com/vm0-ai/vm0/compare/app-v0.829.5...app-v0.830.0) (2026-09-03)
 
 

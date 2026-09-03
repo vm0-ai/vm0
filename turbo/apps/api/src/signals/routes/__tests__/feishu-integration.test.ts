@@ -3700,9 +3700,7 @@ describe("Feishu integration", () => {
       );
     });
     expect(welcome?.msgType).toBe("interactive");
-    expect(welcome ? messageContent(welcome) : "").toContain(
-      "Feishu default agent",
-    );
+    expect(welcome ? messageContent(welcome) : "").toContain("Okou");
 
     const otherActor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -4666,9 +4664,7 @@ describe("Feishu integration", () => {
       `https://app.okou.ai/activities/${run.id}`,
     );
     expect(completedReplyContent).toContain("Claude Sonnet");
-    expect(completedReplyContent).toContain(
-      "Responded by Feishu default agent",
-    );
+    expect(completedReplyContent).toContain("Responded by Okou");
     expect(removedReactions).toHaveLength(1);
 
     const client = setupApp({ context, routes: feishuConnectRoutes })(

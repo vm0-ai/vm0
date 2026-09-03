@@ -89,6 +89,7 @@ import {
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
+import type { OpenTemplatePickerDialogCommand } from "./chat-composer.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -215,11 +216,10 @@ export interface WorkflowComposerSignals {
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
-  readonly readSelectedTemplate$: Command<
-    GenerationTemplateRequest | undefined,
-    []
+  readonly openTemplatePicker$: Command<
+    void,
+    [OpenComposerTemplatePickerIntent]
   >;
-  readonly prepareTemplateInsertion$: Command<void, []>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
   readonly selectOrAppendText$: Command<void, [string]>;
@@ -227,13 +227,14 @@ export interface WorkflowComposerSignals {
     Promise<WorkflowComposerSubmissionSnapshot>,
     [AbortSignal]
   >;
-  readonly setTemplateAttachmentLifecycleRef$: Command<
-    (() => void) | undefined,
-    [HTMLButtonElement | null]
-  >;
   readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: ComposerFeedbackSignals;
 }
+
+export type OpenComposerTemplatePickerIntent =
+  | { readonly kind: "insert"; readonly category: string }
+  | { readonly kind: "edit-selected"; readonly category: string }
+  | { readonly kind: "edit-legacy"; readonly category: string };
 
 export interface WorkflowComposerVoiceDraftSignals {
   readonly hasDraft$: Computed<boolean>;
@@ -1662,107 +1663,19 @@ function locateTemplateAttachment(
   return null;
 }
 
-function templateAttachmentsEqual(
-  first: ComposerTemplateAttachment,
-  second: ComposerTemplateAttachment,
-): boolean {
-  return (
-    first.type === second.type &&
-    first.title === second.title &&
-    first.category === second.category &&
-    first.previewImageUrl === second.previewImageUrl
-  );
-}
-
-function isComposerTemplateAttachmentType(
-  value: string | undefined,
-): value is ComposerTemplateAttachmentType {
-  return (
-    value === "presentation" ||
-    value === "illustration" ||
-    value === "video" ||
-    value === "avatar" ||
-    value === "workflow" ||
-    value === "website"
-  );
-}
-
-function templateAttachmentFromLifecycleElement(
-  element: HTMLButtonElement,
-): ComposerTemplateAttachment | undefined {
-  const { templateType, templateTitle, templateCategory, templatePreviewUrl } =
-    element.dataset;
-  if (
-    !isComposerTemplateAttachmentType(templateType) ||
-    templateTitle === undefined ||
-    templateCategory === undefined
-  ) {
-    return undefined;
-  }
-  return {
-    type: templateType,
-    title: templateTitle,
-    category: templateCategory,
-    previewImageUrl: templatePreviewUrl || undefined,
-  };
-}
-
-function templateAttachmentNode(
-  editor: Editor,
-  attachment: ComposerTemplateAttachment,
-): ProseMirrorNode {
-  return editor.schema.nodeFromJSON({
-    type: TEMPLATE_ATTACHMENT_NODE_NAME,
-    attrs: {
-      templateType: attachment.type,
-      title: attachment.title,
-      category: attachment.category,
-      previewImageUrl: attachment.previewImageUrl ?? null,
-    },
-  });
-}
-
-function setTemplateAttachmentNode(
-  editor: Editor,
-  attachment: ComposerTemplateAttachment | undefined,
-): void {
+function removeTemplateAttachmentNode(editor: Editor): void {
   const located = locateTemplateAttachment(editor.state.doc);
-  if (!attachment) {
-    if (!located) {
-      return;
-    }
-    const transaction = editor.state.tr.delete(
-      located.position,
-      located.position + located.node.nodeSize,
-    );
-    if (transaction.doc.childCount === 0) {
-      transaction.insert(0, editor.schema.node("paragraph"));
-    }
-    editor.view.dispatch(transaction.scrollIntoView());
+  if (!located) {
     return;
   }
-  if (located) {
-    const currentAttachment = templateAttachmentNodeAttributes(located.node);
-    if (templateAttachmentsEqual(currentAttachment, attachment)) {
-      return;
-    }
-    editor.view.dispatch(
-      editor.state.tr
-        .setNodeMarkup(located.position, undefined, {
-          templateType: attachment.type,
-          title: attachment.title,
-          category: attachment.category,
-          previewImageUrl: attachment.previewImageUrl ?? null,
-        })
-        .scrollIntoView(),
-    );
-    return;
-  }
-  editor.view.dispatch(
-    editor.state.tr
-      .insert(0, templateAttachmentNode(editor, attachment))
-      .scrollIntoView(),
+  const transaction = editor.state.tr.delete(
+    located.position,
+    located.position + located.node.nodeSize,
   );
+  if (transaction.doc.childCount === 0) {
+    transaction.insert(0, editor.schema.node("paragraph"));
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
 }
 
 function agentMentionInlineContent(value: string): JSONContent[] {
@@ -1973,10 +1886,8 @@ interface WorkflowComposerRuntime {
   selectionUpdate(editor: Editor): void;
   focus(editor: Editor): void;
   blur(): void;
-  templateAttachment: ComposerTemplateAttachment | undefined;
-  openTemplate(category: string): void;
+  openTemplate(intent: OpenComposerTemplatePickerIntent): void;
   removeTemplate(): void;
-  templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
@@ -2014,7 +1925,7 @@ function createTemplateAttachmentNode(
         return createTemplateAttachmentNodeView(
           node,
           (category) => {
-            runtime.openTemplate(category);
+            runtime.openTemplate({ kind: "edit-legacy", category });
           },
           () => {
             runtime.removeTemplate();
@@ -2022,31 +1933,6 @@ function createTemplateAttachmentNode(
           runtime.localizedUi,
         );
       };
-    },
-    addProseMirrorPlugins() {
-      return [
-        new Plugin({
-          key: new PluginKey("templateAttachmentGuard"),
-          appendTransaction(_transactions, _oldState, newState) {
-            const attachment = runtime.templateAttachment;
-            if (
-              attachment === undefined ||
-              locateTemplateAttachment(newState.doc) !== null
-            ) {
-              return null;
-            }
-            return newState.tr.insert(
-              0,
-              newState.schema.node(TEMPLATE_ATTACHMENT_NODE_NAME, {
-                templateType: attachment.type,
-                title: attachment.title,
-                category: attachment.category,
-                previewImageUrl: attachment.previewImageUrl ?? null,
-              }),
-            );
-          },
-        }),
-      ];
     },
   });
 }
@@ -2101,7 +1987,7 @@ function createInlineTemplateNode(
           {
             openTemplate: (category) => {
               if (selectSelf()) {
-                runtime.openTemplate(category);
+                runtime.openTemplate({ kind: "edit-selected", category });
               }
             },
           },
@@ -2347,6 +2233,8 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.selectionUpdate = () => {};
   runtime.focus = () => {};
   runtime.blur = () => {};
+  runtime.openTemplate = () => {};
+  runtime.removeTemplate = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
 }
@@ -2452,6 +2340,10 @@ interface MountEditorOptions {
   editor: Editor;
   draft: DraftSignals;
   runtime: WorkflowComposerRuntime;
+  legacyTemplateAttachment: ReturnType<
+    typeof createLegacyTemplateAttachmentControls
+  >;
+  openTemplatePicker$: WorkflowComposerSignals["openTemplatePicker$"];
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
@@ -2527,6 +2419,8 @@ function createMountEditorCommand({
   editor,
   draft,
   runtime,
+  legacyTemplateAttachment,
+  openTemplatePicker$,
   caretIndex$,
   editorFocusedState$,
   selectedSuggestionIndexState$,
@@ -2541,6 +2435,7 @@ function createMountEditorCommand({
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
+        set(legacyTemplateAttachment.sync$);
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
@@ -2572,6 +2467,12 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
+      runtime.openTemplate = (intent) => {
+        set(openTemplatePicker$, intent);
+      };
+      runtime.removeTemplate = () => {
+        set(legacyTemplateAttachment.remove$);
+      };
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
@@ -2586,6 +2487,7 @@ function createMountEditorCommand({
         draft.setEditorDocument$,
         createEditorDocumentSnapshot(editor.state.doc),
       );
+      set(legacyTemplateAttachment.sync$);
       editor.mount(element);
       mountLocalizationListener(editor, runtime, signal);
       mountCompositionListeners(editor, compositionGate, signal);
@@ -2596,6 +2498,7 @@ function createMountEditorCommand({
           runtime,
           setEditorDocument(snapshot) {
             set(draft.setEditorDocument$, snapshot);
+            set(legacyTemplateAttachment.sync$);
           },
           onDocumentChanged() {
             set(hasVoiceDraftState$, hasVoiceDraft(editor.state.doc));
@@ -2615,6 +2518,7 @@ function createMountEditorCommand({
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);
+        set(legacyTemplateAttachment.reset$);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         set(hasVoiceDraftState$, false);
@@ -2846,14 +2750,54 @@ function inlineTemplateNode(
   });
 }
 
-function createInsertTemplateCommand(editor: Editor) {
+function replaceLegacyTemplateAttachmentNode(
+  editor: Editor,
+  inlineTemplate: ProseMirrorNode,
+): boolean {
+  const located = locateTemplateAttachment(editor.state.doc);
+  if (!located) {
+    return false;
+  }
+  const transaction = editor.state.tr.delete(
+    located.position,
+    located.position + located.node.nodeSize,
+  );
+  const nextNode = transaction.doc.nodeAt(located.position);
+  if (nextNode?.type.name === "paragraph") {
+    transaction.insert(located.position + 1, inlineTemplate);
+  } else {
+    transaction.insert(
+      located.position,
+      editor.schema.nodeFromJSON({
+        type: "paragraph",
+        content: [inlineTemplate.toJSON()],
+      }),
+    );
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+
+function createInsertTemplateCommand(
+  editor: Editor,
+  draft: DraftSignals,
+  legacyReplacementPending$: State<boolean>,
+) {
   return command(
     (
-      _context,
+      { get, set },
       request: GenerationTemplateRequest,
       attachment: ComposerTemplateAttachment,
     ) => {
       const node = inlineTemplateNode(editor, request, attachment);
+      const replaceLegacy = get(legacyReplacementPending$);
+      set(legacyReplacementPending$, false);
+      if (replaceLegacy) {
+        set(draft.setGenerationTemplate$, undefined);
+        if (replaceLegacyTemplateAttachmentNode(editor, node)) {
+          return;
+        }
+      }
       const { selection } = editor.state;
       if (
         selection instanceof NodeSelection &&
@@ -2910,11 +2854,40 @@ function createReadSelectedTemplateCommand(editor: Editor) {
   });
 }
 
-function createTemplateInsertionCommands(editor: Editor) {
+function createTemplateCommands(
+  editor: Editor,
+  draft: DraftSignals,
+  openTemplatePickerDialog$: OpenTemplatePickerDialogCommand,
+) {
+  const legacyReplacementPending$ = state(false);
+  const readSelectedTemplate$ = createReadSelectedTemplateCommand(editor);
+  const prepareTemplateInsertion$ =
+    createPrepareTemplateInsertionCommand(editor);
+  const openTemplatePicker$ = command(
+    ({ get, set }, intent: OpenComposerTemplatePickerIntent): void => {
+      set(legacyReplacementPending$, intent.kind === "edit-legacy");
+      let referenceValue: GenerationTemplateRequest | null = null;
+      if (intent.kind === "edit-selected") {
+        referenceValue = set(readSelectedTemplate$) ?? null;
+      } else if (intent.kind === "edit-legacy") {
+        referenceValue = get(draft.generationTemplate$) ?? null;
+      }
+      if (intent.kind === "insert") {
+        set(prepareTemplateInsertion$);
+      }
+      set(openTemplatePickerDialog$, {
+        category: intent.category,
+        referenceValue,
+      });
+    },
+  );
   return {
-    insertTemplate$: createInsertTemplateCommand(editor),
-    readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
-    prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
+    insertTemplate$: createInsertTemplateCommand(
+      editor,
+      draft,
+      legacyReplacementPending$,
+    ),
+    openTemplatePicker$,
   };
 }
 
@@ -2980,63 +2953,61 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     selectionUpdate(_editor: Editor): void {},
     focus(_editor: Editor): void {},
     blur(): void {},
-    templateAttachment: undefined,
-    openTemplate(_category: string): void {},
+    openTemplate(_intent: OpenComposerTemplatePickerIntent): void {},
     removeTemplate(): void {},
-    templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
   };
 }
 
-function createTemplateAttachmentControls(
+/** Keeps attachment blocks from drafts created before inline templates interactive. */
+function createLegacyTemplateAttachmentControls(
   editor: Editor,
-  runtime: WorkflowComposerRuntime,
+  draft: DraftSignals,
 ) {
   const activeState$ = state(false);
-  runtime.removeTemplate = () => {
-    if (runtime.templateAttachment === undefined) {
+  const sync$ = command(({ set }) => {
+    set(activeState$, locateTemplateAttachment(editor.state.doc) !== null);
+  });
+  const remove$ = command(({ set }) => {
+    if (locateTemplateAttachment(editor.state.doc) === null) {
       return;
     }
-    runtime.templateAttachment = undefined;
-    setTemplateAttachmentNode(editor, undefined);
-    runtime.templateRemoved();
-  };
-  const setLifecycleRef$ = onRef(
-    command(({ set }, element: HTMLButtonElement, signal: AbortSignal) => {
-      const attachment = templateAttachmentFromLifecycleElement(element);
-      runtime.templateAttachment = attachment;
-      set(activeState$, attachment !== undefined);
-      setTemplateAttachmentNode(editor, attachment);
-      runtime.openTemplate = (category) => {
-        element.dataset.templateAction = "open";
-        element.dataset.templateCategory = category;
-        element.click();
-      };
-      runtime.templateRemoved = () => {
-        element.dataset.templateAction = "remove";
-        element.click();
-      };
-      signal.addEventListener("abort", () => {
-        runtime.templateAttachment = undefined;
-        runtime.openTemplate = () => {};
-        runtime.templateRemoved = () => {};
-        set(activeState$, false);
-        setTemplateAttachmentNode(editor, undefined);
-      });
-    }),
-  );
+    set(draft.setGenerationTemplate$, undefined);
+    removeTemplateAttachmentNode(editor);
+    set(activeState$, false);
+  });
+  const reset$ = command(({ set }) => {
+    set(activeState$, false);
+  });
   const active$ = computed((get) => {
     return get(activeState$);
   });
-  return { active$, setLifecycleRef$ };
+  return { active$, sync$, remove$, reset$ };
+}
+
+function createActiveSuggestionRange<T>(
+  editor: Editor,
+  caretIndex$: State<number>,
+  editorFocusedState$: State<boolean>,
+  findRange: (value: string, caretIndex: number) => T | null,
+): Computed<T | null> {
+  return computed((get) => {
+    const caretIndex = get(caretIndex$);
+    if (caretIndex < 0 || !get(editorFocusedState$)) {
+      return null;
+    }
+    const textblock = activeTextblock(editor);
+    return textblock ? findRange(textblock.value, textblock.caretIndex) : null;
+  });
 }
 
 export function createWorkflowComposerSignals<
   T extends AgentIdValue = Promise<string | null>,
 >(
   draft: DraftSignals,
+  openDialog$: OpenTemplatePickerDialogCommand,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
@@ -3062,33 +3033,26 @@ export function createWorkflowComposerSignals<
   const syncAgentMentionAvatars$ = createSyncAgentMentionAvatarsCommand(
     agentMentionAvatarRuntime,
   );
-  const templateAttachment = createTemplateAttachmentControls(editor, runtime);
+  const templateCommands = createTemplateCommands(editor, draft, openDialog$);
+  const legacyTemplateAttachment = createLegacyTemplateAttachmentControls(
+    editor,
+    draft,
+  );
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
-  const activeSlashRange$ = computed((get) => {
-    const caretIndex = get(caretIndex$);
-    if (caretIndex < 0 || !get(editorFocusedState$)) {
-      return null;
-    }
-    const textblock = activeTextblock(editor);
-    return textblock
-      ? findActiveSlashWorkflowRange(textblock.value, textblock.caretIndex)
-      : null;
-  });
-  const activeChatThreadSuggestionRange$ = computed((get) => {
-    const caretIndex = get(caretIndex$);
-    if (caretIndex < 0 || !get(editorFocusedState$)) {
-      return null;
-    }
-    const textblock = activeTextblock(editor);
-    return textblock
-      ? findActiveChatThreadSuggestionRange(
-          textblock.value,
-          textblock.caretIndex,
-        )
-      : null;
-  });
+  const activeSlashRange$ = createActiveSuggestionRange(
+    editor,
+    caretIndex$,
+    editorFocusedState$,
+    findActiveSlashWorkflowRange,
+  );
+  const activeChatThreadSuggestionRange$ = createActiveSuggestionRange(
+    editor,
+    caretIndex$,
+    editorFocusedState$,
+    findActiveChatThreadSuggestionRange,
+  );
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
     agentId$,
@@ -3106,6 +3070,8 @@ export function createWorkflowComposerSignals<
     editor,
     draft,
     runtime,
+    legacyTemplateAttachment,
+    openTemplatePicker$: templateCommands.openTemplatePicker$,
     caretIndex$,
     editorFocusedState$,
     selectedSuggestionIndexState$,
@@ -3123,7 +3089,6 @@ export function createWorkflowComposerSignals<
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
-  const templateCommands = createTemplateInsertionCommands(editor);
   const insertUserMessage$ = createInsertUserMessageCommand(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
@@ -3139,7 +3104,7 @@ export function createWorkflowComposerSignals<
     setContainerRef$,
     focus$,
     hasInput$,
-    hasTemplateAttachment$: templateAttachment.active$,
+    hasTemplateAttachment$: legacyTemplateAttachment.active$,
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,
@@ -3154,7 +3119,6 @@ export function createWorkflowComposerSignals<
     ...templateCommands,
     insertUserMessage$,
     readInputForSubmission$,
-    setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     voiceDraft,
     feedback: feedback.signals,
   };

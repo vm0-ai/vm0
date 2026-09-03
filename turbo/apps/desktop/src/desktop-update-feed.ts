@@ -27,9 +27,10 @@ export function desktopUpdateFeedBaseUrl(
   updateLine: DesktopConfig["identity"]["updateLine"],
 ): string {
   const url = new URL(apiBaseUrl);
-  const updateLinePath =
-    updateLine === "zero" ? "" : `/${encodeURIComponent(updateLine)}`;
-  url.pathname = `/api/desktop/updates${updateLinePath}/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
+  // The `zero` line used to be spelled as the unqualified path, which predates
+  // the `:product` routes. #31475 removed that route, so every line now names
+  // itself in the path.
+  url.pathname = `/api/desktop/updates/${encodeURIComponent(updateLine)}/${DESKTOP_UPDATE_CHANNEL}/${DESKTOP_UPDATE_PLATFORM}/${DESKTOP_UPDATE_ARCH}`;
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");

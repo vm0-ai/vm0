@@ -33,7 +33,6 @@ import {
 } from "@okouai/api-contracts/contracts/connectors";
 import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -324,7 +323,6 @@ function setupArtifactCatalog(
 
 function setupChatThread({
   artifactFiles = [],
-  featureSwitches = {},
   messages = [
     {
       id: "msg-sidebar-user",
@@ -353,7 +351,6 @@ function setupChatThread({
   ],
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   messages?: MockChatEventInput[];
 } = {}) {
   let servedMessages = [...messages];
@@ -420,7 +417,6 @@ function setupChatThread({
 
   detachedSetupPage({
     context,
-    featureSwitches,
     path: THREAD_PATH,
   });
 
@@ -465,9 +461,6 @@ function setupOfficePreviewAttachment(filename: string): string {
         createdAt: "2026-03-10T00:00:02Z",
       },
     ],
-    featureSwitches: {
-      [FeatureSwitchKey.OfficeDocumentPreview]: true,
-    },
   });
   return url;
 }
@@ -682,9 +675,6 @@ describe("thread-owned utility sidebar", () => {
       return respond(200, { url: resourceUrl, publicUrl: shareUrl });
     });
     setupChatThread({
-      featureSwitches: {
-        [FeatureSwitchKey.OfficeDocumentPreview]: true,
-      },
       messages: officeUserFileMessages(fileId, filename),
     });
 
@@ -719,59 +709,6 @@ describe("thread-owned utility sidebar", () => {
     );
   });
 
-  it("keeps office files on the generic preview when the feature switch is disabled", async () => {
-    const filename = "revised-manuscript.docx";
-    const url = `https://cdn.vm7.io/artifacts/test/run-sidebar/${filename}`;
-    setupChatThread({
-      artifactFiles: [
-        threadArtifactFile(url, {
-          id: "artifact-office-disabled",
-          filename,
-          contentType:
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        }),
-      ],
-      featureSwitches: {
-        [FeatureSwitchKey.OfficeDocumentPreview]: false,
-      },
-      messages: [
-        {
-          id: "msg-office-disabled",
-          role: "assistant",
-          content: `[${filename}](${url})`,
-          runId: "run-sidebar",
-          seqId: 1,
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-        {
-          id: "msg-office-disabled-completed",
-          role: "assistant",
-          content: null,
-          runId: "run-sidebar",
-          runLifecycleEvent: "completed",
-          seqId: 2,
-          createdAt: "2026-03-10T00:00:02Z",
-        },
-      ],
-    });
-
-    click(await screen.findByLabelText(`Preview ${filename}`));
-
-    const dialog = await screen.findByTestId("attachment-lightbox");
-    expect(
-      within(dialog).getByText("No inline preview available for this file."),
-    ).toBeInTheDocument();
-    expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
-
-    click(within(dialog).getByLabelText("Open in split view"));
-
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    expect(
-      within(sidebar).getByText("No inline preview available for this file."),
-    ).toBeInTheDocument();
-    expect(within(sidebar).queryByTitle(`${filename} preview`)).toBeNull();
-  });
-
   it("does not send a presigned office attachment url to the viewer when the api omits its public url", async () => {
     const filename = "legacy-api-document.docx";
     const fileId = "office-without-public-url";
@@ -781,9 +718,6 @@ describe("thread-owned utility sidebar", () => {
       return respond(200, { url: resourceUrl });
     });
     setupChatThread({
-      featureSwitches: {
-        [FeatureSwitchKey.OfficeDocumentPreview]: true,
-      },
       messages: officeUserFileMessages(fileId, filename),
     });
 

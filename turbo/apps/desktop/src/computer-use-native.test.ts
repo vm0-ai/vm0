@@ -270,6 +270,71 @@ process.stdin.on("data", (chunk) => {
   return { dir, helperPath, requestLogPath, startLogPath };
 }
 
+async function createStubbornSessionHelper(): Promise<{
+  readonly dir: string;
+  readonly helperPath: string;
+  readonly shutdownLogPath: string;
+}> {
+  const dir = await mkdtemp(path.join(tmpdir(), "computer-use-helper-"));
+  const helperPath = path.join(dir, "helper");
+  const shutdownLogPath = path.join(dir, "shutdown.log");
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+const shutdownLogPath = ${JSON.stringify(shutdownLogPath)};
+let buffer = "";
+setInterval(() => {}, 1_000);
+
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (buffer.includes("\\n")) {
+    const index = buffer.indexOf("\\n");
+    const line = buffer.slice(0, index);
+    buffer = buffer.slice(index + 1);
+    if (!line.trim()) continue;
+    const request = JSON.parse(line);
+    process.stdout.write(
+      JSON.stringify({ id: request.id, status: "succeeded", result: {} }) + "\\n"
+    );
+  }
+});
+process.stdin.on("end", () => {
+  fs.appendFileSync(shutdownLogPath, "eof\\n");
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { dir, helperPath, shutdownLogPath };
+}
+
+async function createRuntimeExitHelper(
+  outcome: { readonly code: number } | { readonly signal: "SIGTERM" },
+): Promise<{ readonly dir: string; readonly helperPath: string }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "computer-use-helper-"));
+  const helperPath = path.join(dir, "helper");
+  const exitStatement =
+    "signal" in outcome
+      ? `process.kill(process.pid, ${JSON.stringify(outcome.signal)});`
+      : `process.exit(${outcome.code.toString()});`;
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+let buffer = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  if (buffer.includes("\\n")) {
+    ${exitStatement}
+  }
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { dir, helperPath };
+}
+
 describe("computer use native backend", () => {
   it("reads permissions from the native helper", async () => {
     const helper = await createHelper({
@@ -338,7 +403,7 @@ describe("computer use native backend", () => {
         kind: "permissions.request_screen_recording",
       });
     } finally {
-      backend.dispose();
+      await backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
@@ -370,7 +435,7 @@ describe("computer use native backend", () => {
         payload: { target: "chrome" },
       });
     } finally {
-      backend.dispose();
+      await backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
@@ -710,7 +775,7 @@ describe("computer use native backend", () => {
         },
       });
     } finally {
-      backend.dispose();
+      await backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
@@ -767,7 +832,7 @@ describe("computer use native backend", () => {
         }),
       );
     } finally {
-      backend.dispose();
+      await backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
@@ -804,7 +869,187 @@ describe("computer use native backend", () => {
       }
       expect(failed.reason).toMatchObject({ code: "app_open_failed" });
     } finally {
-      backend.dispose();
+      await backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a normal EOF exit during disposal as expected", async () => {
+    const helper = await createSessionHelper();
+    const onRuntimeError = vi.fn();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+      shutdownGraceMs: 100,
+      onRuntimeError,
+    });
+
+    try {
+      await expect(backend.openApp("Safari")).resolves.toEqual({});
+      await backend.dispose("app_quit");
+
+      expect(onRuntimeError).not.toHaveBeenCalled();
+      await expect(backend.openApp("Mail")).rejects.toMatchObject({
+        code: "accessibility_unavailable",
+        message: expect.stringContaining("runtime is closed"),
+      });
+    } finally {
+      await backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["app_quit", "update_relaunch"] as const)(
+    "treats an owned SIGTERM escalation during %s as expected",
+    async (reason) => {
+      const helper = await createStubbornSessionHelper();
+      const onRuntimeError = vi.fn();
+      const backend = createComputerUseNativeBackend({
+        helperPath: helper.helperPath,
+        shutdownGraceMs: 50,
+        onRuntimeError,
+      });
+
+      try {
+        await expect(backend.openApp("Safari")).resolves.toEqual({});
+        await backend.dispose(reason);
+
+        expect(await readFile(helper.shutdownLogPath, "utf8")).toBe("eof\n");
+        expect(onRuntimeError).not.toHaveBeenCalled();
+      } finally {
+        await backend.dispose();
+        await rm(helper.dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("classifies an unowned SIGTERM as a genuine runtime interruption", async () => {
+    const helper = await createRuntimeExitHelper({ signal: "SIGTERM" });
+    const onRuntimeError = vi.fn();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+      onRuntimeError,
+    });
+
+    try {
+      await expect(backend.openApp("Safari")).rejects.toMatchObject({
+        code: "accessibility_unavailable",
+        message: expect.stringContaining("terminated by SIGTERM"),
+      });
+      expect(onRuntimeError).toHaveBeenCalledExactlyOnceWith(
+        expect.any(Error),
+        expect.objectContaining({
+          mode: "serve",
+          stage: "exit",
+          exitCode: null,
+          signal: "SIGTERM",
+          terminationReason: "unexpected_exit",
+          pendingRequestCount: 1,
+          queuedRequestCount: 0,
+        }),
+      );
+    } finally {
+      await backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("classifies an unowned status-zero exit as a runtime interruption", async () => {
+    const helper = await createRuntimeExitHelper({ code: 0 });
+    const onRuntimeError = vi.fn();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+      onRuntimeError,
+    });
+
+    try {
+      await expect(backend.openApp("Safari")).rejects.toMatchObject({
+        code: "accessibility_unavailable",
+        message: expect.stringContaining("exited with status 0"),
+      });
+      expect(onRuntimeError).toHaveBeenCalledExactlyOnceWith(
+        expect.any(Error),
+        expect.objectContaining({
+          mode: "serve",
+          stage: "exit",
+          exitCode: 0,
+          signal: null,
+          terminationReason: "unexpected_exit",
+          pendingRequestCount: 1,
+          queuedRequestCount: 0,
+        }),
+      );
+    } finally {
+      await backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a nonzero persistent-runtime exit as a genuine crash", async () => {
+    const helper = await createRuntimeExitHelper({ code: 9 });
+    const onRuntimeError = vi.fn();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+      onRuntimeError,
+    });
+
+    try {
+      await expect(backend.openApp("Safari")).rejects.toMatchObject({
+        code: "accessibility_unavailable",
+        message: expect.stringContaining("exited with status 9"),
+      });
+      expect(onRuntimeError).toHaveBeenCalledExactlyOnceWith(
+        expect.any(Error),
+        expect.objectContaining({
+          mode: "serve",
+          stage: "exit",
+          exitCode: 9,
+          signal: null,
+          terminationReason: "unexpected_exit",
+          pendingRequestCount: 1,
+        }),
+      );
+    } finally {
+      await backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not dispatch queued requests after disposal starts", async () => {
+    const helper = await createConcurrencyHelper(250);
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+      shutdownGraceMs: 20,
+    });
+    const resultsPromise = Promise.allSettled([
+      backend.openApp("active"),
+      backend.openApp("queued"),
+    ]);
+
+    try {
+      await vi.waitFor(async () => {
+        const requests = (await readFile(helper.requestLogPath, "utf8"))
+          .trim()
+          .split("\n");
+        expect(requests).toHaveLength(1);
+      });
+      await backend.dispose("app_quit");
+
+      const results = await resultsPromise;
+      expect(results.map((result) => result.status)).toStrictEqual([
+        "rejected",
+        "rejected",
+      ]);
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n");
+      const starts = (await readFile(helper.startLogPath, "utf8"))
+        .trim()
+        .split("\n");
+      expect(requests).toHaveLength(1);
+      expect(starts).toHaveLength(1);
+    } finally {
+      await backend.dispose();
+      await resultsPromise;
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
@@ -840,10 +1085,13 @@ describe("computer use native backend", () => {
           mode: "serve",
           requestKind: "app.open",
           stage: "timeout",
+          terminationReason: "timeout_replace",
+          pendingRequestCount: 1,
         }),
       );
+      expect(onRuntimeError).toHaveBeenCalledTimes(1);
     } finally {
-      backend.dispose();
+      await backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
@@ -922,7 +1170,7 @@ describe("computer use native backend", () => {
         foregroundRecovery: "always",
       });
     } finally {
-      backend.dispose();
+      await backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });
     }
   });
