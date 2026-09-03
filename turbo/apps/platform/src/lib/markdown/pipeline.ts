@@ -1,4 +1,4 @@
-import type { Data, ElementContent, Root, RootContent } from "hast";
+import type { Data, Element, ElementContent, Root, RootContent } from "hast";
 import { marked, Renderer, type Token, type Tokens } from "marked";
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import rehypeAttrs from "rehype-attr";
@@ -335,11 +335,31 @@ const rewriteUnknownTags = rehypeRewriteHandle((node, _index, parent) => {
   }
 });
 
-const COLOR_PREVIEW_EXCLUDED_TAGS: ReadonlySet<string> = new Set([
-  "a",
-  "code",
-  "pre",
-]);
+const COLOR_PREVIEW_EXCLUDED_TAGS: ReadonlySet<string> = new Set(["a", "pre"]);
+
+function colorPreviewNode(color: string): Element {
+  return {
+    type: "element",
+    tagName: "span",
+    properties: {},
+    data: { colorPreview: color },
+    children: [],
+  };
+}
+
+function inlineCodeColor(node: Element): string | undefined {
+  if (node.children.length !== 1) {
+    return undefined;
+  }
+  const child = node.children[0];
+  if (child.type !== "text") {
+    return undefined;
+  }
+  const [color] = findHexRgbColors(child.value);
+  return color?.start === 0 && color.end === child.value.length
+    ? color.color
+    : undefined;
+}
 
 function colorPreviewChildren(value: string): readonly ElementContent[] {
   const colors = findHexRgbColors(value);
@@ -353,16 +373,7 @@ function colorPreviewChildren(value: string): readonly ElementContent[] {
     if (start > offset) {
       children.push({ type: "text", value: value.slice(offset, start) });
     }
-    children.push(
-      { type: "text", value: color },
-      {
-        type: "element",
-        tagName: "span",
-        properties: {},
-        data: { colorPreview: color },
-        children: [],
-      },
-    );
+    children.push({ type: "text", value: color }, colorPreviewNode(color));
     offset = end;
   }
   if (offset < value.length) {
@@ -378,6 +389,19 @@ function rehypeColorPreviews() {
         node.type === "element" &&
         COLOR_PREVIEW_EXCLUDED_TAGS.has(node.tagName)
       ) {
+        return SKIP;
+      }
+      if (node.type === "element" && node.tagName === "code") {
+        const color = inlineCodeColor(node);
+        if (
+          color !== undefined &&
+          parent !== undefined &&
+          index !== undefined &&
+          (parent.type === "element" || parent.type === "root")
+        ) {
+          parent.children.splice(index + 1, 0, colorPreviewNode(color));
+          return [SKIP, index + 2];
+        }
         return SKIP;
       }
       if (node.type !== "text" || parent === undefined || index === undefined) {

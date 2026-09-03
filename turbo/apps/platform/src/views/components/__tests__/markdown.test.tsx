@@ -270,14 +270,16 @@ describe("assistant markdown", () => {
     expect(preview).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("only previews complete HEX colors in ordinary rich Markdown text", async () => {
+  it("previews complete HEX colors after ordinary text and inline code", async () => {
     mockThread(
       [
-        "**Brand** #A1b2C3 and `#112233`.",
+        "**Brand** #A1b2C3 and `#A8B5A2`.",
         "",
         "[#445566](https://example.com/#445566)",
         "",
         "Not #ABC, #12345678, or word#ABCDEF.",
+        "",
+        "```text\n#77736F\n```",
       ].join("\n"),
     );
 
@@ -290,15 +292,22 @@ describe("assistant markdown", () => {
     });
 
     await screen.findByText("Brand", { selector: "strong, b" });
+    const inlineCode = await screen.findByText("#A8B5A2", {
+      selector: "code",
+    });
     await waitFor(() => {
-      const previews = document.querySelectorAll(
+      const previews = document.querySelectorAll<HTMLElement>(
         "[data-markdown-color-preview]",
       );
-      expect(previews).toHaveLength(1);
-      expect(previews[0]).toHaveAttribute(
-        "data-markdown-color-preview",
-        "#A1b2C3",
-      );
+      expect(
+        [...previews].map((preview) => {
+          return preview.dataset.markdownColorPreview;
+        }),
+      ).toStrictEqual(["#A1b2C3", "#A8B5A2"]);
+      expect(
+        inlineCode.querySelector("[data-markdown-color-preview]"),
+      ).toBeNull();
+      expect(inlineCode.nextElementSibling).toBe(previews[1]);
     });
   });
 
