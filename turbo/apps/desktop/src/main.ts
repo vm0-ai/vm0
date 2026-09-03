@@ -72,6 +72,7 @@ import {
 } from "./computer-use-permissions";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
+import desktopBrandAssets from "./desktop-brand-assets.json";
 import { checkForDesktopUpdates } from "./desktop-auto-updates";
 import { createDesktopClientHeaderInjector } from "./desktop-client-headers";
 import type { DesktopMainModule } from "./desktop-main-module";
@@ -508,20 +509,32 @@ function preloadPath(): string {
   return path.join(__dirname, "preload.js");
 }
 
+function desktopAssetPath(filename: string): string {
+  return path.join(__dirname, "..", "assets", filename);
+}
+
 function appIconPath(): string {
-  return path.join(__dirname, "..", "assets", "icon.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].appIconFileName,
+  );
 }
 
 function trayIconPath(): string {
-  return path.join(__dirname, "..", "assets", "tray-iconTemplate.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].trayIconFileName,
+  );
 }
 
 function trayIconDisabledPath(): string {
-  return path.join(__dirname, "..", "assets", "tray-iconDisabled.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].trayIconDisabledFileName,
+  );
 }
 
 function trayIconRunningPath(): string {
-  return path.join(__dirname, "..", "assets", "tray-iconRunning.png");
+  return desktopAssetPath(
+    desktopBrandAssets[config.identity.product].trayIconRunningFileName,
+  );
 }
 
 function desktopPreferencesPath(): string {

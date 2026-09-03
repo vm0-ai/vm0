@@ -32,7 +32,7 @@ import {
   requestScreenRecordingPermission$,
   signOutDesktop$,
 } from "../computer-use-state";
-import { IconButton, OkouFace } from "../components";
+import { DesktopBrandMark, IconButton } from "../components";
 import { currentDesktopIdentity } from "../desktop-identity";
 
 const AUTOMATION_PERMISSION_STATUS_LABELS = {
@@ -88,7 +88,7 @@ export function AuthStepCard({
       <section className="step-card step-card-compact">
         <div className="compact-step-main">
           <StepIndex step={1} tone="ready" />
-          <OkouFace className="okou-face-chip" size={26} />
+          <DesktopBrandMark className="desktop-brand-mark-chip" size={26} />
           <span className="compact-step-copy">
             <strong>Signed in</strong>
             <span>
