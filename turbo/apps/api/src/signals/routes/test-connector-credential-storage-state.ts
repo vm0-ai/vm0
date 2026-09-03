@@ -241,9 +241,7 @@ async function readCustomOAuthState(
     return actionOk({ custom_oauth_state: null });
   }
   const context = parseCustomConnectorOAuthStateContext(state.oauthContext);
-  const rawContext = state.oauthContext
-    ? safeJsonParse(state.oauthContext)
-    : undefined;
+  const rawContext = safeJsonParse(state.oauthContext ?? "null");
   const contextFormat =
     typeof rawContext === "object" &&
     rawContext !== null &&
