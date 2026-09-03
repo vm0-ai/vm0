@@ -127,6 +127,10 @@ export const voiceDraftEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VoiceDraft] ?? false;
 });
 
+export const baseUiSidebarScrollAreaEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.BaseUiSidebarScrollArea] ?? false;
+});
+
 const hydrateFeatureSwitch$ = command(
   async (
     { get, set },
