@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   findManagedSocialKitTool,
   socialKitDownloadRequestSchema,
+  socialKitDownloadResponseSchema,
   socialKitRequestSchema,
   type SocialKitDownloadResponse,
   type SocialKitRequest,
@@ -179,6 +180,15 @@ function positiveInteger(value: string): number {
     throw new InvalidArgumentError("value must be a positive integer");
   }
   return parsed;
+}
+
+function parseDownloadId(value: string): string {
+  const parsed =
+    socialKitDownloadResponseSchema.shape.downloadId.safeParse(value);
+  if (!parsed.success) {
+    throw new InvalidArgumentError("value must be a valid download UUID");
+  }
+  return parsed.data;
 }
 
 function printJson(value: unknown, compact: boolean): void {
@@ -1091,13 +1101,22 @@ const downloadCommand = new Command()
     "240p, 360p, 480p, 720p, or 1080p (default: 720p)",
   )
   .option("--format <format>", "mp4 or m4a (default: mp4)")
-  .option("--resume <download-id>", "Resume polling an existing download")
+  .option(
+    "--resume <download-id>",
+    "Resume polling an existing download",
+    parseDownloadId,
+  )
   .option("--json", "Print compact JSON")
   .action(async (url: string | undefined, options: DownloadOptions) => {
     await runSocialAction(options.json === true, async () => {
-      if (options.resume) {
+      if (options.resume !== undefined) {
         const downloadId = options.resume;
-        if (url || options.maxDuration || options.quality || options.format) {
+        if (
+          url !== undefined ||
+          options.maxDuration !== undefined ||
+          options.quality !== undefined ||
+          options.format !== undefined
+        ) {
           throw new InvalidArgumentError(
             `--resume cannot be combined with a new download request; use: ${resumeDownloadCommand(downloadId)}`,
           );

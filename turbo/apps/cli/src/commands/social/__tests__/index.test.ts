@@ -854,6 +854,7 @@ describe("okou social command", () => {
     ],
     ["missing required option", ["search", "launch", "--json"]],
     ["invalid argument value", ["capabilities", "unsupported", "--json"]],
+    ["invalid resume ID", ["download", "--resume", "not-a-uuid", "--json"]],
     [
       "streaming option value",
       [
@@ -1228,6 +1229,32 @@ describe("okou social command", () => {
         message: expect.stringContaining(
           "okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
         ),
+      },
+    });
+  });
+
+  it.each([
+    ["quality", "--quality"],
+    ["format", "--format"],
+  ])("rejects an explicitly empty %s when resuming", async (_case, option) => {
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "okou",
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        option,
+        "",
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "invalid_input",
+        message: expect.stringContaining("--resume cannot be combined"),
       },
     });
   });
