@@ -3404,6 +3404,53 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("omits shortcut hints from three-column action tooltips", async () => {
+    const user = userEvent.setup();
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    const list = screen.getByTestId("chat-list-column");
+    const searchButton = within(list).getByLabelText("Search workspace");
+    const hideButton = within(list).getByLabelText("Hide chat list");
+
+    await user.hover(searchButton);
+    const searchTooltip = await waitFor(() => {
+      const popup = document.querySelector('[data-slot="tooltip-content"]');
+      if (!(popup instanceof HTMLElement)) {
+        throw new Error("Search workspace tooltip is not open");
+      }
+      return popup;
+    });
+    expect(searchTooltip).toHaveTextContent(/^Search workspace$/);
+    await user.unhover(searchButton);
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="tooltip-content"]'),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.hover(hideButton);
+    const hideTooltip = await waitFor(() => {
+      const popup = document.querySelector('[data-slot="tooltip-content"]');
+      if (!(popup instanceof HTMLElement)) {
+        throw new Error("Hide chat list tooltip is not open");
+      }
+      return popup;
+    });
+    expect(hideTooltip).toHaveTextContent(/^Hide chat list$/);
+
+    expect(searchButton).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+K Control+K",
+    );
+    expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+  });
+
   it("collapses the upgrade slot when the chat list has no upgrade card", async () => {
     prepareDefaultAgent();
     mockChatThreadSnapshot(() => {
