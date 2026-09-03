@@ -5211,7 +5211,7 @@ function ImportedPptImage({
             draggable={false}
             className={cn(
               className,
-              "opacity-0 transition-opacity duration-150 data-[active=true]:opacity-100",
+              "opacity-0 data-[active=true]:opacity-100",
             )}
             onLoad={(event) => {
               if (image !== null && event.currentTarget.isConnected) {
