@@ -9,7 +9,7 @@ use std::fmt;
 
 use base64::Engine as _;
 
-use crate::process_containment::TOOL_EXEC_PATH;
+use crate::guest_binary::TOOL_EXEC_PATH;
 
 /// Prefix of the executor argument carrying one managed command envelope.
 pub const COMMAND_ENVELOPE_ARGUMENT_PREFIX: &str = "--command-envelope=";

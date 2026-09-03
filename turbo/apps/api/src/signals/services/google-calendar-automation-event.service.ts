@@ -3690,6 +3690,36 @@ export const dispatchGoogleCalendarWebhook$ = command(
   },
 );
 
+async function renewGoogleCalendarWatchStates(
+  args: {
+    readonly db: Db;
+    readonly states: readonly {
+      readonly connectorId: string;
+      readonly calendarId: string;
+    }[];
+    readonly renewBefore: Date;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly renewed: number; readonly failed: number }> {
+  let renewed = 0;
+  let failed = 0;
+  for (const state of args.states) {
+    const result = await reconcileGoogleCalendarWatchState(
+      {
+        db: args.db,
+        connectorId: state.connectorId,
+        calendarId: state.calendarId,
+        renewBefore: args.renewBefore,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    renewed += result.kind === "renewed" ? 1 : 0;
+    failed += result.kind === "failed" ? 1 : 0;
+  }
+  return { renewed, failed };
+}
+
 export const renewGoogleCalendarWatches$ = command(
   async ({ set }, signal: AbortSignal) => {
     const db = set(writeDb$);
@@ -3758,22 +3788,57 @@ export const renewGoogleCalendarWatches$ = command(
       .from(googleCalendarWatchStates);
     signal.throwIfAborted();
 
-    let renewed = 0;
-    for (const state of states) {
-      const result = await reconcileGoogleCalendarWatchState(
-        {
-          db,
-          connectorId: state.connectorId,
-          calendarId: state.calendarId,
-          renewBefore,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      renewed += result.kind === "renewed" ? 1 : 0;
-      failed += result.kind === "failed" ? 1 : 0;
-    }
+    const renewedStates = await renewGoogleCalendarWatchStates(
+      { db, states, renewBefore },
+      signal,
+    );
+    return {
+      renewed: renewedStates.renewed,
+      failed: failed + renewedStates.failed,
+    };
+  },
+);
 
-    return { renewed, failed };
+export const renewGoogleCalendarWatchScope$ = command(
+  async (
+    { set },
+    owner: { readonly orgId: string; readonly userId: string },
+    signal: AbortSignal,
+  ) => {
+    const db = set(writeDb$);
+    const renewBefore = new Date(nowDate().getTime() + WATCH_RENEWAL_WINDOW_MS);
+    const prepared = await repairAndEnsureGoogleCalendarWatchesForOwner(
+      { db, ...owner, ensureRefreshRequired: false },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!prepared) {
+      log.warn("Google Calendar watch repair failed", {
+        provider: "google_calendar",
+        action: "repair",
+        result: "provider_error",
+      });
+    }
+    const states = await db
+      .select({
+        connectorId: googleCalendarWatchStates.connectorId,
+        calendarId: googleCalendarWatchStates.calendarId,
+      })
+      .from(googleCalendarWatchStates)
+      .where(
+        and(
+          eq(googleCalendarWatchStates.orgId, owner.orgId),
+          eq(googleCalendarWatchStates.userId, owner.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    const renewedStates = await renewGoogleCalendarWatchStates(
+      { db, states, renewBefore },
+      signal,
+    );
+    return {
+      renewed: renewedStates.renewed,
+      failed: renewedStates.failed + (prepared ? 0 : 1),
+    };
   },
 );

@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.535.0](https://github.com/vm0-ai/vm0/compare/api-v1.534.3...api-v1.535.0) (2026-09-03)
+
+
+### Features
+
+* **pi-memory:** add CAS-safe publication control plane ([#31267](https://github.com/vm0-ai/vm0/issues/31267)) ([300d105](https://github.com/vm0-ai/vm0/commit/300d105769122ccd06ad2f4e54a0bc8446f7a1f9))
+
+
+### Bug Fixes
+
+* surface paused goal context in thread runs ([#31265](https://github.com/vm0-ai/vm0/issues/31265)) ([35a1d9d](https://github.com/vm0-ai/vm0/commit/35a1d9d1e76a6b0135c4d73ea8b44a51531e1291))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.238.0
+
+## [1.534.3](https://github.com/vm0-ai/vm0/compare/api-v1.534.2...api-v1.534.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* **mail:** preserve exact reconnect account ([#31224](https://github.com/vm0-ai/vm0/issues/31224)) ([87a73d3](https://github.com/vm0-ai/vm0/commit/87a73d3f81fc8c7aa229a18d0c70c99a054bf121))
+* target selected google drive account for artifact recovery ([#31227](https://github.com/vm0-ai/vm0/issues/31227)) ([90388e8](https://github.com/vm0-ai/vm0/commit/90388e854981ba1d0eca0783ca84f477422445ce))
+
+
+### Refactoring
+
+* **api:** remove model rankings statistics runtime ([#31230](https://github.com/vm0-ai/vm0/issues/31230)) ([f9e93f9](https://github.com/vm0-ai/vm0/commit/f9e93f98006afbe7038c94005ad700b9e6abe51c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.2
+    * @okouai/core bumped to 8.611.5
+    * @okouai/db bumped to 1.237.1
+    * @okouai/pi-agent-runtime bumped to 1.14.2
+
 ## [1.534.2](https://github.com/vm0-ai/vm0/compare/api-v1.534.1...api-v1.534.2) (2026-09-03)
 
 

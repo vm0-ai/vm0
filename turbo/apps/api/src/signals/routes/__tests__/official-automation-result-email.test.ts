@@ -400,7 +400,7 @@ describe.sequential("Official Automation result email callbacks", () => {
       'href="https://app.okou.ai/agents?settings=preference&amp;focus=morning-brief"',
     );
     expect(html).toContain(
-      `>Manage this automation</a> &middot; <a href="${accountUnsubscribeUrl}"`,
+      `>Manage</a> &middot; <a href="${accountUnsubscribeUrl}"`,
     );
   });
 
@@ -575,6 +575,9 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(html).toContain("&lt;style&gt;");
     expect(html).toContain("&amp;");
     expect(html).toContain("&quot;");
+    expect(html).toContain(
+      "<title>Result from Official &lt;script&gt; &amp; &quot; result</title>",
+    );
     expect(html).toContain(">Priorities</h2>");
     expect(html).toContain("<ul style=");
     expect(html).toContain("<ol style=");
@@ -609,13 +612,12 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(html).toContain("Okou");
     expect(html).not.toContain("Zero");
     expect(html).not.toContain("VM0");
+    expect(html).toContain(">Open in Okou &rarr;</a>");
     expect(html).toContain(`https://app.okou.ai/activities/${runId}`);
-    expect(html).toContain(
-      "This result was sent by an Official Workflow automation.<br>",
-    );
+    expect(html).toContain("Sent by an Okou automation &middot;");
     expect(html).toContain(`href="${automationUrl}"`);
     expect(html).toContain(
-      `>Manage this automation</a> &middot; <a href="${accountUnsubscribeUrl}"`,
+      `>Manage</a> &middot; <a href="${accountUnsubscribeUrl}"`,
     );
     expect(html).toContain(">Unsubscribe</a>");
     expect(automationUrl).not.toBe(accountUnsubscribeUrl);
@@ -635,8 +637,9 @@ describe.sequential("Official Automation result email callbacks", () => {
     expect(text).toContain(longPlainText);
     expect(text).toContain("[Result truncated]");
     expect(text).toContain(`https://app.okou.ai/activities/${runId}`);
+    expect(text).not.toContain('Result from Official <script> & " result');
     expect(text).toContain(
-      `This result was sent by an Official Workflow automation.\nManage this automation [${automationUrl}] · Unsubscribe [${accountUnsubscribeUrl}]`,
+      `Sent by an Okou automation · Manage [${automationUrl}] · Unsubscribe [${accountUnsubscribeUrl}]`,
     );
   });
 

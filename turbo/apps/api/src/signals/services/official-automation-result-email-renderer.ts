@@ -9,15 +9,17 @@ const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
 
 const SAFE_LINK_INFO = "official-email-safe-link";
 const UNSAFE_LINK_INFO = "official-email-unsafe-link";
-const LINK_STYLE = "color:#d94801;text-decoration:underline";
+const LINK_STYLE =
+  "color:#d94801;text-decoration:underline;text-underline-offset:2px";
+const FOOTER_LINK_STYLE = "color:#6f7378;text-decoration:underline";
 const BODY_WRAP_STYLE =
-  "margin:0 0 24px;max-width:100%;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word";
 const PARAGRAPH_STYLE =
   "margin:0 0 14px;overflow-wrap:anywhere;word-break:break-word";
 const LIST_STYLE =
-  "margin:0 0 16px;padding-left:24px;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0 0 16px;padding-left:22px;overflow-wrap:anywhere;word-break:break-word";
 const LIST_ITEM_STYLE =
-  "margin:0 0 6px;overflow-wrap:anywhere;word-break:break-word";
+  "margin:0 0 8px;padding-left:1px;overflow-wrap:anywhere;word-break:break-word";
 const INLINE_CODE_STYLE =
   "padding:1px 4px;border-radius:4px;background-color:#f3f4f6;font-family:SFMono-Regular,Consolas,'Liberation Mono',monospace;font-size:0.92em;white-space:normal;overflow-wrap:anywhere;word-break:break-word";
 const CODE_BLOCK_STYLE =
@@ -26,12 +28,12 @@ const TABLE_CELL_STYLE =
   "padding:8px 10px;border:1px solid #d9dde1;text-align:left;vertical-align:top;overflow-wrap:anywhere;word-break:break-word";
 
 const HEADING_STYLES: Readonly<Record<string, string>> = {
-  h1: "margin:22px 0 10px;font-size:18px;line-height:1.35",
-  h2: "margin:20px 0 9px;font-size:17px;line-height:1.35",
-  h3: "margin:18px 0 8px;font-size:16px;line-height:1.4",
-  h4: "margin:16px 0 8px;font-size:15px;line-height:1.4",
-  h5: "margin:16px 0 8px;font-size:14px;line-height:1.45",
-  h6: "margin:16px 0 8px;font-size:13px;line-height:1.45",
+  h1: "margin:0 0 25px;font-size:23px;line-height:1.3;letter-spacing:-0.025em",
+  h2: "margin:24px 0 9px;font-size:16px;line-height:1.35;letter-spacing:-0.01em",
+  h3: "margin:20px 0 8px;font-size:15px;line-height:1.4",
+  h4: "margin:18px 0 8px;font-size:14px;line-height:1.4",
+  h5: "margin:16px 0 8px;font-size:13px;line-height:1.45",
+  h6: "margin:16px 0 8px;font-size:12px;line-height:1.45",
 };
 
 interface OfficialAutomationResultEmailRenderProps {
@@ -217,6 +219,7 @@ function officialAutomationResultEmailHtml(
 ): string {
   const presentation = publicBrandPresentation(publicBrand);
   const assistantMark = publicBrand === "okou" ? "O" : "0";
+  const automationArticle = publicBrand === "okou" ? "an" : "a";
   // During the API rollout and rollback window, persisted outbox rows from
   // the previous callback still carry the account-level confirmation URL in
   // manageUrl. Remove after those API targets and rows drain; tracked by
@@ -226,24 +229,28 @@ function officialAutomationResultEmailHtml(
     "/email/unsubscribe",
   );
   const footer = legacyManageUrl
-    ? `This result was sent by an Official Automation. <a href="${escapeHtml(
+    ? `Sent by ${automationArticle} ${escapeHtml(
+        presentation.assistantName,
+      )} automation &middot; <a href="${escapeHtml(
         props.manageUrl,
-      )}" style="${LINK_STYLE}">Manage email preferences</a>.`
-    : `This result was sent by an Official Workflow automation.<br><a href="${escapeHtml(
+      )}" style="${FOOTER_LINK_STYLE}">Manage email preferences</a>`
+    : `Sent by ${automationArticle} ${escapeHtml(
+        presentation.assistantName,
+      )} automation &middot; <a href="${escapeHtml(
         props.manageUrl,
-      )}" style="${LINK_STYLE}">Manage this automation</a> &middot; <a href="${escapeHtml(
+      )}" style="${FOOTER_LINK_STYLE}">Manage</a> &middot; <a href="${escapeHtml(
         unsubscribeUrl,
-      )}" style="${LINK_STYLE}">Unsubscribe</a>`;
+      )}" style="${FOOTER_LINK_STYLE}">Unsubscribe</a>`;
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background-color:#ffffff;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;border-collapse:collapse;background-color:#ffffff"><tr><td align="left" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:680px;border-collapse:collapse;text-align:left"><tr><td><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px"><tr><td width="40" height="40" align="center" valign="middle" bgcolor="#ffa500" style="width:40px;height:40px;border-radius:10px;color:#242121;font-size:17px;font-weight:700;line-height:40px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:12px;line-height:1.4"><strong>${escapeHtml(
-    presentation.assistantName,
-  )}</strong></td></tr></table><h1 style="margin:0 0 20px;font-size:22px;line-height:1.3">${escapeHtml(
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(
     props.title,
-  )}</h1><div style="${BODY_WRAP_STYLE}">${resultBodyHtml}</div><p style="margin:0 0 28px"><a href="${escapeHtml(
-    props.runUrl,
-  )}" style="${LINK_STYLE};font-weight:600">View run in ${escapeHtml(
+  )}</title></head><body style="margin:0;padding:0;background-color:#f7f7f5;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.58;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f7f5" style="width:100%;border-collapse:collapse;background-color:#f7f7f5"><tr><td align="center" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:650px;border:1px solid #e5e6e4;border-radius:16px;border-collapse:separate;background-color:#ffffff;text-align:left"><tr><td style="padding:30px 38px 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 18px"><tr><td width="32" height="32" align="center" valign="middle" bgcolor="#ffa500" style="width:32px;height:32px;border-radius:9px;color:#242321;font-size:14px;font-weight:700;line-height:32px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:10px;color:#303235;font-size:13px;font-weight:600;line-height:1.4">${escapeHtml(
     presentation.assistantName,
-  )} &rarr;</a></p><hr style="height:1px;margin:0 0 20px;border:0;background-color:#e4e6e8"><p style="margin:0;color:#737373;font-size:12px;line-height:1.45">${footer}</p></td></tr></table></td></tr></table></body></html>`;
+  )}</td></tr></table><div style="${BODY_WRAP_STYLE}">${resultBodyHtml}</div><p style="margin:24px 0 22px;font-size:13px;line-height:1.5"><a href="${escapeHtml(
+    props.runUrl,
+  )}" style="${LINK_STYLE};font-weight:600">Open in ${escapeHtml(
+    presentation.assistantName,
+  )} &rarr;</a></p><p style="margin:0;padding-top:17px;border-top:1px solid #e5e6e4;color:#8c9094;font-size:11px;line-height:1.5">${footer}</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 function plainTextFromHtml(html: string): string {
@@ -292,7 +299,7 @@ export function renderOfficialAutomationResultEmail(
   const fallbackHtml = officialAutomationResultEmailHtml(
     props,
     publicBrand,
-    `<pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(
+    `<pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.58;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(
       props.resultText,
     )}</pre>`,
     unsubscribeUrl,

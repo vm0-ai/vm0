@@ -3672,7 +3672,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("caches stable uploaded preview assets while preloading only covers", async () => {
+  it("caches stable uploaded preview assets without preloading closed picker covers", async () => {
     const user = userEvent.setup({ delay: null });
     mockNow(context.signal, new Date("2026-08-23T03:00:00.000Z").getTime());
     mockChatLifecycle(context, { threadId: THREAD_ID });
@@ -3766,37 +3766,13 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const preloadedCover = await waitFor(() => {
-      const found = document.querySelector(
-        'img[src="https://example.com/prefetch-primary-page-1.png"]',
-      );
-      if (!(found instanceof HTMLImageElement)) {
-        throw new Error("Uploaded template cover was not prefetched");
-      }
-      return found;
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(1);
     });
-    expect(preloadedCover).toHaveAttribute("loading", "eager");
-    expect(preloadedCover).toHaveAttribute("fetchpriority", "high");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    for (const coverUrl of [primaryPageUrls[0], secondaryPageUrls[0]]) {
-      const cover = document.querySelector(`img[src="${coverUrl}"]`);
-      expect(cover).toHaveAttribute("loading", "eager");
-      expect(cover).toHaveAttribute("fetchpriority", "high");
-    }
     expect(
       document.querySelectorAll('img[src^="https://example.com/prefetch-"]'),
-    ).toHaveLength(2);
-    expect(
-      document.querySelector(
-        'img[src="https://example.com/prefetch-primary-page-2.png"]',
-      ),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(
-        'img[src="https://example.com/prefetch-secondary-page-2.png"]',
-      ),
-    ).not.toBeInTheDocument();
-    expect(catalogRequestCount).toBe(1);
+    ).toHaveLength(0);
     expect(primaryDetailRequestCount).toBe(0);
     expect(secondaryDetailRequestCount).toBe(0);
     expect(previewUrlRequestCount).toBe(0);
@@ -3808,7 +3784,7 @@ describe("chat composer templates", () => {
         `[data-imported-presentation-template="${primaryTemplateId}"]`,
       );
       if (!(found instanceof HTMLElement)) {
-        throw new Error("Prefetched template card not found");
+        throw new Error("Uploaded template card not found");
       }
       return found;
     });
@@ -3955,11 +3931,12 @@ describe("chat composer templates", () => {
     });
 
     await waitFor(() => {
-      expect(document.querySelector(`img[src="${renewedUrl}"]`)).toBeTruthy();
+      expect(previewUrlRequestCount).toBe(1);
     });
+    expect(document.querySelector(`img[src="${oldUrl}"]`)).toBeNull();
+    expect(document.querySelector(`img[src="${renewedUrl}"]`)).toBeNull();
     expect(catalogRequestCount).toBe(1);
     expect(detailRequestCount).toBe(0);
-    expect(previewUrlRequestCount).toBe(1);
     expect(resolvedPreviewAssetIds).toStrictEqual([previewAssetId]);
 
     await user.click(screen.getByLabelText("Template"));
@@ -4015,7 +3992,9 @@ describe("chat composer templates", () => {
       createdAt: "2026-08-25T03:00:00.000Z",
       updatedAt: "2026-08-25T03:00:00.000Z",
     };
+    let catalogRequestCount = 0;
     context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+      catalogRequestCount += 1;
       return respond(200, [presentationTemplateCatalogEntry(template)]);
     });
     context.mocks.api(
@@ -4032,15 +4011,10 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const preloadedCover = await waitFor(() => {
-      const found = document.querySelector(`img[src="${cardCoverUrl}"]`);
-      if (!(found instanceof HTMLImageElement)) {
-        throw new Error("Resized uploaded template cover was not prefetched");
-      }
-      return found;
+    await waitFor(() => {
+      expect(catalogRequestCount).toBe(1);
     });
-    expect(preloadedCover).toHaveAttribute("loading", "eager");
-    expect(preloadedCover).toHaveAttribute("fetchpriority", "high");
+    expect(document.querySelector(`img[src="${cardCoverUrl}"]`)).toBeNull();
     expect(document.querySelector(`img[src="${coverUrl}"]`)).toBeNull();
 
     await user.click(screen.getByLabelText("Template"));

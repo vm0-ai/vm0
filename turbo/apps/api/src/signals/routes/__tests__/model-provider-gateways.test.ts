@@ -672,6 +672,18 @@ describe("custom model provider gateway routes", () => {
         },
       ]),
     });
-    await runs.requestCancelRun(actor, sent.body.runId, [200]);
+    const cancellation = await runs.requestCancelRun(
+      actor,
+      sent.body.runId,
+      [200, 400],
+    );
+    if (
+      cancellation.status === 400 &&
+      cancellation.body.error.code !== "RUN_NOT_CANCELLABLE"
+    ) {
+      throw new Error(
+        `Expected terminal cleanup error, received ${cancellation.body.error.code}`,
+      );
+    }
   }, 30_000);
 });

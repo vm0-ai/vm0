@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.829.3](https://github.com/vm0-ai/vm0/compare/app-v0.829.2...app-v0.829.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* **mail:** preserve exact reconnect account ([#31224](https://github.com/vm0-ai/vm0/issues/31224)) ([87a73d3](https://github.com/vm0-ai/vm0/commit/87a73d3f81fc8c7aa229a18d0c70c99a054bf121))
+* target selected google drive account for artifact recovery ([#31227](https://github.com/vm0-ai/vm0/issues/31227)) ([90388e8](https://github.com/vm0-ai/vm0/commit/90388e854981ba1d0eca0783ca84f477422445ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.2
+    * @okouai/core bumped to 8.611.5
+
 ## [0.829.2](https://github.com/vm0-ai/vm0/compare/app-v0.829.1...app-v0.829.2) (2026-09-03)
 
 

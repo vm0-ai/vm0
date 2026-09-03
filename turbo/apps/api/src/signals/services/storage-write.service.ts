@@ -1,4 +1,8 @@
 import { MAX_FILE_SIZE_BYTES } from "@okouai/api-contracts/contracts/storages";
+import {
+  MEMORY_ARTIFACT_NAME,
+  VOLUME_ORG_USER_ID,
+} from "@okouai/core/storage-names";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { storageVersionLineage } from "@okouai/db/schema/storage-version-lineage";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
@@ -24,6 +28,7 @@ import {
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
 import { enqueueMemorySummaryProjection } from "./memory-summary-projection.service";
+import { notifyPiMemoryPhase2ExternalHeadChange } from "./pi-memory-phase2-job.service";
 
 const ACTIVE_SANDBOX_STORAGE_RUN_STATUSES = ["pending", "running"] as const;
 
@@ -769,6 +774,52 @@ async function recordStorageLineage(args: {
   });
 }
 
+async function publishStorageHeadIfChanged(args: {
+  readonly tx: Tx;
+  readonly storage: StorageRow;
+  readonly versionId: string;
+  readonly size: number;
+  readonly fileCount: number;
+}): Promise<void> {
+  if (args.storage.headVersionId === args.versionId) {
+    return;
+  }
+  const changedAt = nowDate();
+  const [published] = await args.tx
+    .update(storages)
+    .set({
+      headVersionId: args.versionId,
+      size: args.size,
+      fileCount: args.fileCount,
+      updatedAt: changedAt,
+    })
+    .where(
+      and(
+        eq(storages.id, args.storage.id),
+        eq(storages.orgId, args.storage.orgId),
+        eq(storages.userId, args.storage.userId),
+        eq(storages.name, args.storage.name),
+      ),
+    )
+    .returning({ id: storages.id });
+  if (!published) {
+    throw new Error("Locked Storage HEAD could not be published");
+  }
+  if (
+    args.storage.name !== MEMORY_ARTIFACT_NAME ||
+    args.storage.userId === VOLUME_ORG_USER_ID
+  ) {
+    return;
+  }
+  await notifyPiMemoryPhase2ExternalHeadChange(args.tx, {
+    memoryStorageId: args.storage.id,
+    orgId: args.storage.orgId,
+    userId: args.storage.userId,
+    observedHeadVersionId: args.versionId,
+    changedAt,
+  });
+}
+
 async function commitActiveStorageVersion(
   args: {
     readonly tx: Tx;
@@ -779,6 +830,24 @@ async function commitActiveStorageVersion(
   },
   signal: AbortSignal,
 ): Promise<CommitStorageResponse> {
+  const [storage] = await args.tx
+    .select(storageRowSelection())
+    .from(storages)
+    .where(
+      and(
+        eq(storages.id, args.storage.id),
+        eq(storages.orgId, args.storage.orgId),
+        eq(storages.userId, args.storage.userId),
+        eq(storages.name, args.storage.name),
+      ),
+    )
+    .limit(1)
+    .for("update", { of: storages });
+  signal.throwIfAborted();
+  if (!storage) {
+    throw new Error("Storage disappeared before HEAD publication");
+  }
+
   if (args.version) {
     if (args.version.archiveSize !== args.verification.archiveSize) {
       await args.tx
@@ -787,36 +856,32 @@ async function commitActiveStorageVersion(
         .where(
           and(
             eq(storageVersions.id, args.version.id),
-            eq(storageVersions.storageId, args.storage.id),
+            eq(storageVersions.storageId, storage.id),
           ),
         );
     }
-    if (args.storage.headVersionId !== args.input.versionId) {
-      await args.tx
-        .update(storages)
-        .set({
-          headVersionId: args.input.versionId,
-          size: Number(args.version.size),
-          fileCount: args.version.fileCount,
-          updatedAt: nowDate(),
-        })
-        .where(eq(storages.id, args.storage.id));
-    }
+    await publishStorageHeadIfChanged({
+      tx: args.tx,
+      storage,
+      versionId: args.input.versionId,
+      size: Number(args.version.size),
+      fileCount: args.version.fileCount,
+    });
     await recordStorageLineage({
       tx: args.tx,
-      storageId: args.storage.id,
+      storageId: storage.id,
       input: args.input,
     });
     await enqueueMemorySummaryProjection(
       {
         db: args.tx,
-        storage: args.storage,
+        storage,
         storageVersionId: args.input.versionId,
       },
       signal,
     );
     return storageCommitSuccess({
-      storage: args.storage,
+      storage,
       versionId: args.input.versionId,
       size: Number(args.version.size),
       fileCount: args.version.fileCount,
@@ -830,7 +895,7 @@ async function commitActiveStorageVersion(
     .insert(storageVersions)
     .values({
       id: args.input.versionId,
-      storageId: args.storage.id,
+      storageId: storage.id,
       s3Key: args.verification.s3Key,
       size,
       archiveSize: args.verification.archiveSize,
@@ -848,7 +913,7 @@ async function commitActiveStorageVersion(
       .set({ archiveSize: args.verification.archiveSize })
       .where(
         and(
-          eq(storageVersions.storageId, args.storage.id),
+          eq(storageVersions.storageId, storage.id),
           eq(storageVersions.id, args.input.versionId),
         ),
       )
@@ -859,31 +924,29 @@ async function commitActiveStorageVersion(
     throw new Error(`Version ${args.input.versionId} not found after insert`);
   }
 
-  await args.tx
-    .update(storages)
-    .set({
-      headVersionId: args.input.versionId,
-      size,
-      fileCount,
-      updatedAt: nowDate(),
-    })
-    .where(eq(storages.id, args.storage.id));
+  await publishStorageHeadIfChanged({
+    tx: args.tx,
+    storage,
+    versionId: args.input.versionId,
+    size,
+    fileCount,
+  });
   await recordStorageLineage({
     tx: args.tx,
-    storageId: args.storage.id,
+    storageId: storage.id,
     input: args.input,
   });
   await enqueueMemorySummaryProjection(
     {
       db: args.tx,
-      storage: args.storage,
+      storage,
       storageVersionId: args.input.versionId,
     },
     signal,
   );
 
   return storageCommitSuccess({
-    storage: args.storage,
+    storage,
     versionId: args.input.versionId,
     size,
     fileCount,
