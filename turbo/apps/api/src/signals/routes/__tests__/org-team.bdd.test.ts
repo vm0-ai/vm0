@@ -35,7 +35,8 @@ zero-team, and zero-default-agent route tests:
 
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
-const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
+const DEFAULT_AGENT_AVATAR_URL =
+  "https://static.vm0.io/public/default-agent-avatar-ceb298b79964.svg";
 
 class ClerkApiResponseTestError extends Error {
   static readonly kind = "ClerkAPIResponseError";

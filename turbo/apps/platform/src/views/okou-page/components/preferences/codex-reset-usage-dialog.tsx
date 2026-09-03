@@ -10,15 +10,35 @@ import {
 import { useTranslation } from "react-i18next";
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import { i18n } from "../../../../i18n/index.ts";
+import { formatCodexResetCreditExpiry } from "../../subscription-usage-format.ts";
 
 export function formatCodexResetCredits(
   value: number | null | undefined,
+  expiresAt?: string | null,
 ): string {
   if (value === null || value === undefined) {
     return i18n.t(($) => {
       return $.settings.models.reset.remainingUnavailable;
     });
   }
+
+  // Nothing is left to expire once the count reaches zero, so the deadline is
+  // suppressed there instead of contradicting the count.
+  const expiry =
+    value > 0 ? formatCodexResetCreditExpiry(expiresAt ?? null) : null;
+  if (expiry) {
+    return i18n.t(
+      ($) => {
+        return $.settings.models.reset.remainingWithExpiry;
+      },
+      {
+        count: value,
+        value: formatLocalizedNumber(value),
+        expiry: expiry.relativeText,
+      },
+    );
+  }
+
   return i18n.t(
     ($) => {
       return $.settings.models.reset.remaining;

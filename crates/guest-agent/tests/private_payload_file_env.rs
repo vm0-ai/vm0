@@ -12,27 +12,21 @@ use guest_agent::env::{GuestConfig, GuestConfigRaw};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-const RETIRED_USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
-const RETIRED_RUN_PAYLOAD_FILE_ENV: &str = "VM0_RUN_PAYLOAD_FILE";
 const CANONICAL_POINTER: &str = "/private/canonical-pointer";
-const RETIRED_POINTER: &str = "/private/retired-pointer";
 
 #[derive(Clone, Copy)]
 struct PrivateFileEnv {
     canonical: &'static str,
-    retired: &'static str,
     value: fn(&GuestConfigRaw) -> &str,
 }
 
 const PRIVATE_FILE_ENVS: [PrivateFileEnv; 2] = [
     PrivateFileEnv {
         canonical: guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        retired: RETIRED_USER_ENV_FILE_ENV,
         value: |raw| &raw.user_env_file,
     },
     PrivateFileEnv {
         canonical: guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        retired: RETIRED_RUN_PAYLOAD_FILE_ENV,
         value: |raw| &raw.run_payload_file,
     },
 ];
@@ -113,7 +107,6 @@ fn reset_bootstrap_env() {
 fn clear_private_file_env() {
     for spec in PRIVATE_FILE_ENVS {
         remove_test_env(spec.canonical);
-        remove_test_env(spec.retired);
     }
 }
 
@@ -210,50 +203,18 @@ fn assert_canonical_capture_semantics() -> TestResult {
     reset_bootstrap_env();
     for spec in PRIVATE_FILE_ENVS {
         for case in CAPTURE_CASES {
-            for retired in [None, Some(RETIRED_POINTER)] {
-                clear_private_file_env();
-                if let Some(retired) = retired {
-                    set_test_env(spec.retired, retired);
-                }
-                apply_canonical_input(spec.canonical, case.input);
-                let raw = capture_raw()?;
-                assert_eq!(
-                    (spec.value)(&raw),
-                    case.expected,
-                    "{} captured the wrong value for {} with retired input {retired:?}",
-                    case.name,
-                    spec.canonical
-                );
-            }
+            clear_private_file_env();
+            apply_canonical_input(spec.canonical, case.input);
+            let raw = capture_raw()?;
+            assert_eq!(
+                (spec.value)(&raw),
+                case.expected,
+                "{} captured the wrong value for {}",
+                case.name,
+                spec.canonical
+            );
         }
     }
-    Ok(())
-}
-
-fn assert_retired_only_input_is_inert(root: &Path) -> TestResult {
-    let name = "retired-only";
-    let files = write_private_files(root, name)?;
-    configure_private_files(&files, name)?;
-    set_test_env(RETIRED_USER_ENV_FILE_ENV, &files.user_env_path);
-    set_test_env(RETIRED_RUN_PAYLOAD_FILE_ENV, &files.run_payload_path);
-
-    let raw = capture_raw()?;
-    assert!(raw.user_env_file.is_empty());
-    assert!(raw.run_payload_file.is_empty());
-    let error = expect_config_error(raw, name)?;
-    assert_eq!(
-        error,
-        format!(
-            "{} is required",
-            guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV
-        )
-    );
-    assert!(!error.contains(RETIRED_USER_ENV_FILE_ENV));
-    assert!(!error.contains(RETIRED_RUN_PAYLOAD_FILE_ENV));
-    assert!(files.user_env_path.exists());
-    assert!(files.user_env_dir.exists());
-    assert!(files.run_payload_path.exists());
-    assert!(files.run_payload_dir.exists());
     Ok(())
 }
 
@@ -263,15 +224,16 @@ fn assert_canonical_is_authoritative_and_captured_once(root: &Path) -> TestResul
     configure_private_files(&files, name)?;
     set_canonical_pointers(&files);
 
-    let retired_user_path = root.join("retired-user-pointer-must-remain");
-    let retired_payload_path = root.join("retired-payload-pointer-must-remain");
-    std::fs::write(&retired_user_path, "retired user pointer must not be read")?;
+    let replacement_user_path = root.join("replacement-user-pointer-must-remain");
+    let replacement_payload_path = root.join("replacement-payload-pointer-must-remain");
     std::fs::write(
-        &retired_payload_path,
-        "retired payload pointer must not be read",
+        &replacement_user_path,
+        "replacement user pointer must not be read",
     )?;
-    set_test_env(RETIRED_USER_ENV_FILE_ENV, &retired_user_path);
-    set_test_env(RETIRED_RUN_PAYLOAD_FILE_ENV, &retired_payload_path);
+    std::fs::write(
+        &replacement_payload_path,
+        "replacement payload pointer must not be read",
+    )?;
 
     let raw = capture_raw()?;
     assert_eq!(
@@ -286,11 +248,11 @@ fn assert_canonical_is_authoritative_and_captured_once(root: &Path) -> TestResul
     let retry = raw.clone();
     set_test_env(
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-        &retired_user_path,
+        &replacement_user_path,
     );
     set_test_env(
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
-        &retired_payload_path,
+        &replacement_payload_path,
     );
     let config = GuestConfig::from_raw(raw).map_err(std::io::Error::other)?;
 
@@ -301,13 +263,13 @@ fn assert_canonical_is_authoritative_and_captured_once(root: &Path) -> TestResul
     assert!(!files.user_env_dir.exists());
     assert!(!files.run_payload_path.exists());
     assert!(!files.run_payload_dir.exists());
-    assert!(retired_user_path.exists());
-    assert!(retired_payload_path.exists());
+    assert!(replacement_user_path.exists());
+    assert!(replacement_payload_path.exists());
 
     let retry_error = expect_config_error(retry, "second private-file consume")?;
     assert!(retry_error.contains(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV));
-    assert!(retired_user_path.exists());
-    assert!(retired_payload_path.exists());
+    assert!(replacement_user_path.exists());
+    assert!(replacement_payload_path.exists());
     Ok(())
 }
 
@@ -315,7 +277,6 @@ fn assert_user_env_remains_optional(root: &Path) -> TestResult {
     let name = "optional-user-env";
     let files = write_private_files(root, name)?;
     configure_private_files(&files, name)?;
-    set_test_env(RETIRED_USER_ENV_FILE_ENV, &files.user_env_path);
     set_test_env(
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         &files.run_payload_path,
@@ -339,7 +300,6 @@ fn assert_missing_run_payload_precedes_user_env(root: &Path) -> TestResult {
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
             &files.user_env_path,
         );
-        set_test_env(RETIRED_RUN_PAYLOAD_FILE_ENV, &files.run_payload_path);
         apply_canonical_input(
             guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             case.input,
@@ -380,7 +340,6 @@ fn assert_canonical_path_validation_and_failure_precedence(root: &Path) -> TestR
 
     let run_error = expect_config_error(capture_raw()?, run_name)?;
     assert!(run_error.contains(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV));
-    assert!(!run_error.contains(RETIRED_RUN_PAYLOAD_FILE_ENV));
     assert!(!run_error.contains(invalid_run_path.to_string_lossy().as_ref()));
     assert!(invalid_run_path.exists());
     assert!(run_files.user_env_path.exists());
@@ -402,7 +361,6 @@ fn assert_canonical_path_validation_and_failure_precedence(root: &Path) -> TestR
 
     let user_error = expect_config_error(capture_raw()?, user_name)?;
     assert!(user_error.contains(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV));
-    assert!(!user_error.contains(RETIRED_USER_ENV_FILE_ENV));
     assert!(!user_error.contains(invalid_user_path.to_string_lossy().as_ref()));
     assert!(invalid_user_path.exists());
     assert!(user_files.user_env_path.exists());
@@ -444,7 +402,7 @@ fn assert_json_validation_preserves_destructive_order(root: &Path) -> TestResult
 }
 
 #[test]
-fn private_payload_files_are_canonical_only_and_single_consume() -> TestResult {
+fn private_payload_files_are_captured_once_and_consumed_once() -> TestResult {
     assert_eq!(
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
         "OKOU_USER_ENV_FILE"
@@ -456,7 +414,6 @@ fn private_payload_files_are_canonical_only_and_single_consume() -> TestResult {
 
     let tmp = tempfile::tempdir()?;
     assert_canonical_capture_semantics()?;
-    assert_retired_only_input_is_inert(tmp.path())?;
     assert_canonical_is_authoritative_and_captured_once(tmp.path())?;
     assert_user_env_remains_optional(tmp.path())?;
     assert_missing_run_payload_precedes_user_env(tmp.path())?;

@@ -11,7 +11,7 @@ import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { putImmutableS3Object } from "../external/s3";
-import { tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
@@ -30,6 +30,18 @@ const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
 const PREVIEW_IMAGE_BASENAME = "preview-v3";
 const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
+const SNAPSHOT_ACTION_TIMEOUT_MS = 30_000;
+const PRIMARY_NAVIGATION_OPTIONS = {
+  gotoOptions: { waitUntil: "networkidle2", timeout: 20_000 },
+} as const;
+const NAVIGATION_TIMEOUT_RETRY_OPTIONS = {
+  gotoOptions: { waitUntil: "domcontentloaded", timeout: 15_000 },
+  waitForSelector: {
+    selector: "body > *",
+    visible: true,
+    timeout: 10_000,
+  },
+} as const;
 
 const browserSnapshotSchema = z.object({
   meta: z.object({
@@ -41,6 +53,15 @@ const browserSnapshotSchema = z.object({
     content: z.string().min(1),
     screenshot: z.string().min(1),
   }),
+});
+
+const browserSnapshotErrorSchema = z.object({
+  errors: z.array(
+    z.object({
+      code: z.number(),
+      detail: z.string().optional(),
+    }),
+  ),
 });
 
 // Poster versions are write-once. Renderer changes must use a new filename
@@ -127,25 +148,51 @@ function isCloudflareChallenge(content: string, title?: string): boolean {
   return hasChallengeCopy && hasChallengeImplementation;
 }
 
-async function renderArtifactSnapshot(
-  token: string,
-  wafSecret: string,
-  url: string,
-  signal: AbortSignal,
-): Promise<Buffer> {
-  const previewUrl = new URL(url);
-  const hostDomains = [env("ZERO_HOST_DOMAIN"), env("OKOU_PUBLIC_HOST_DOMAIN")];
-  if (
-    previewUrl.protocol !== "https:" ||
-    !hostDomains.some((hostDomain) => {
-      return previewUrl.hostname.endsWith(`.${hostDomain}`);
-    })
-  ) {
-    throw new Error("artifact preview URL must use a hosted-site domain");
+function isNavigationTimeoutResponse(
+  status: number,
+  responseBody: string,
+): boolean {
+  if (status !== 422) {
+    return false;
   }
+  const parsed = browserSnapshotErrorSchema.safeParse(
+    safeJsonParse(responseBody),
+  );
+  return (
+    parsed.success &&
+    parsed.data.errors.some((error) => {
+      return (
+        error.code === 6002 &&
+        error.detail?.startsWith("Navigation timeout") === true
+      );
+    })
+  );
+}
 
+type SnapshotNavigationOptions =
+  | typeof PRIMARY_NAVIGATION_OPTIONS
+  | typeof NAVIGATION_TIMEOUT_RETRY_OPTIONS;
+
+interface FetchArtifactSnapshotArgs {
+  readonly token: string;
+  readonly wafSecret: string;
+  readonly url: string;
+  readonly previewUrl: URL;
+  readonly navigationOptions: SnapshotNavigationOptions;
+}
+
+function fetchArtifactSnapshot(
+  {
+    token,
+    wafSecret,
+    url,
+    previewUrl,
+    navigationOptions,
+  }: FetchArtifactSnapshotArgs,
+  signal: AbortSignal,
+): Promise<Response> {
   const accountId = env("R2_ACCOUNT_ID");
-  const response = await fetch(
+  return fetch(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/browser-rendering/snapshot?cacheTTL=0`,
     {
       method: "POST",
@@ -167,12 +214,62 @@ async function renderArtifactSnapshot(
         ],
         formats: ["content", "screenshot"],
         viewport: PREVIEW_VIEWPORT,
-        gotoOptions: { waitUntil: "networkidle0" },
+        ...navigationOptions,
+        actionTimeout: SNAPSHOT_ACTION_TIMEOUT_MS,
         screenshotOptions: { type: "webp", quality: 80 },
       }),
       signal,
     },
   );
+}
+
+async function renderArtifactSnapshot(
+  token: string,
+  wafSecret: string,
+  url: string,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  const previewUrl = new URL(url);
+  const hostDomains = [env("ZERO_HOST_DOMAIN"), env("OKOU_PUBLIC_HOST_DOMAIN")];
+  if (
+    previewUrl.protocol !== "https:" ||
+    !hostDomains.some((hostDomain) => {
+      return previewUrl.hostname.endsWith(`.${hostDomain}`);
+    })
+  ) {
+    throw new Error("artifact preview URL must use a hosted-site domain");
+  }
+
+  let response = await fetchArtifactSnapshot(
+    {
+      token,
+      wafSecret,
+      url,
+      previewUrl,
+      navigationOptions: PRIMARY_NAVIGATION_OPTIONS,
+    },
+    signal,
+  );
+  if (!response.ok) {
+    const responseBody = await response.text();
+    // Keep the extra Browser Rendering request exclusive to navigation: action
+    // and request-stage timeouts need different fixes and should not double cost.
+    if (!isNavigationTimeoutResponse(response.status, responseBody)) {
+      throw new Error(
+        `browser-rendering snapshot failed (${response.status}): ${responseBody}`,
+      );
+    }
+    response = await fetchArtifactSnapshot(
+      {
+        token,
+        wafSecret,
+        url,
+        previewUrl,
+        navigationOptions: NAVIGATION_TIMEOUT_RETRY_OPTIONS,
+      },
+      signal,
+    );
+  }
   if (!response.ok) {
     throw new Error(
       `browser-rendering snapshot failed (${response.status}): ${await response.text()}`,

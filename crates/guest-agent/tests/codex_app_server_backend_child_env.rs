@@ -70,7 +70,6 @@ async fn codex_app_server_backend_uses_runtime_snapshot_and_preserves_large_prom
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "https://stale-canonical-api.example.invalid",
         );
-        std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("CUSTOM_USER_ENV", "stale-process-user-env");
     }
 

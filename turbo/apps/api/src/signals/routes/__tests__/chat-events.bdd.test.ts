@@ -102,8 +102,10 @@ import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-s
 import {
   API_TEST_CONNECTOR_CATALOG,
   apiTestConnectorCatalogValidationAuthority,
+  clearApiTestConnectorCatalogExternalReaderIdentityReplacements,
   installApiTestConnectorCatalog,
   replaceApiTestConnectorCatalogStoredBytes,
+  setApiTestConnectorCatalogExternalReaderIdentityReadHook,
 } from "../../../test-fixtures/connector-catalog";
 import {
   readRunChatThreadIdFixture,
@@ -170,6 +172,7 @@ import {
   readCustomConnectorCredentialStorageParent,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { verifyOkouToken } from "../../auth/tokens";
@@ -1338,7 +1341,223 @@ describe("CHAT-02: thread run admission invariant", () => {
   });
 });
 
+interface SelectedThreadConnectorFixture extends EntitledChatActor {
+  readonly connectionId: string;
+  readonly threadId: string;
+}
+
+async function selectedThreadConnectorFixture(
+  title: string,
+): Promise<SelectedThreadConnectorFixture> {
+  const entitled = await entitledChatActor();
+  const orgId = requireOrgId(entitled.actor);
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: entitled.actor.userId, orgId },
+    { [FeatureSwitchKey.ConnectorAccounts]: true },
+  );
+  await installApiTestConnectorCatalog({
+    catalogVersion: `api-test-thread-runtime-overlap-${randomUUID()}`,
+    runtimeProjection: true,
+  });
+  const connection = await connectors.connectManualGrant(
+    entitled.actor,
+    "openai",
+    "api-token",
+    { apiKey: `thread-runtime-overlap-${randomUUID()}` },
+    entitled.agentId,
+  );
+  const thread = await chat.createThread(entitled.actor, {
+    agentId: entitled.agentId,
+    title,
+  });
+  await accept(
+    chatThreadConnectorSelectionsClient().update({
+      headers: sessionHeaders(entitled.actor),
+      params: { id: thread.id },
+      body: {
+        connectionId: connection.id,
+        target: { kind: "builtin", connectorSlug: "openai" },
+      },
+    }),
+    [200],
+  );
+  return {
+    ...entitled,
+    connectionId: connection.id,
+    threadId: thread.id,
+  };
+}
+
+async function configureRuntimeContextGateway(
+  actor: ApiTestUser,
+): Promise<void> {
+  const gateway = await accept(
+    modelProviderConnectionsClient().create({
+      headers: sessionHeaders(actor),
+      body: {
+        displayName: "Runtime context priority gateway",
+        secret: "runtime-context-priority-secret",
+        surfaces: [
+          {
+            protocol: "anthropic-messages",
+            apiBaseUrl:
+              "https://runtime-context-priority.example.com/anthropic",
+            authHeaderName: "Authorization",
+            authHeaderTemplate: "Bearer {{secret}}",
+            modelMappings: {
+              "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
+            },
+          },
+        ],
+      },
+    }),
+    [201],
+  );
+  const surfaceId = gateway.body.surfaces[0]?.id;
+  if (!surfaceId) {
+    throw new Error("Expected the runtime context gateway to have a surface");
+  }
+  await api.updateOrgModelPolicies(actor, [
+    {
+      model: "claude-sonnet-5",
+      isDefault: true,
+      defaultProviderType: "custom-anthropic-messages",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: surfaceId,
+    },
+  ]);
+}
+
 describe("CHAT-02: thread connector account selection", () => {
+  it("overlaps stored thread selection with model-provider resolution", async () => {
+    const fixture = await selectedThreadConnectorFixture(
+      "Runtime context overlap thread",
+    );
+    await configureRuntimeContextGateway(fixture.actor);
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    });
+    const threadCatalogReadStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    onTestFinished(() => {
+      if (!threadCatalogReadStarted.settled()) {
+        threadCatalogReadStarted.resolve(undefined);
+      }
+    });
+    setApiTestConnectorCatalogExternalReaderIdentityReadHook(() => {
+      if (!threadCatalogReadStarted.settled()) {
+        threadCatalogReadStarted.resolve(undefined);
+      }
+      return Promise.resolve();
+    });
+    const kms = useSecretKmsProbe(undefined, async () => {
+      await threadCatalogReadStarted.promise;
+      return Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+    });
+
+    const run = await sendChatRun(fixture.actor, {
+      agentId: fixture.agentId,
+      threadId: fixture.threadId,
+      prompt: "Overlap stored thread selection with runtime context",
+    });
+    expect(threadCatalogReadStarted.settled()).toBeTruthy();
+    clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
+    expect(kms.decryptCalls).toBeGreaterThan(0);
+    expect(claimed.claim.environment).toMatchObject({
+      ANTHROPIC_BASE_URL:
+        "https://runtime-context-priority.example.com/anthropic",
+      ANTHROPIC_MODEL: "anthropic/claude-sonnet-4.6",
+    });
+    expect(
+      claimed.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+    ).toMatchObject({ sourceId: fixture.connectionId });
+    await cancelChatRun(fixture.actor, run.runId, claimed.sandboxHeaders);
+  });
+
+  it("keeps abort priority over a concurrent thread-selection failure", async () => {
+    const fixture = await selectedThreadConnectorFixture(
+      "Runtime context abort priority thread",
+    );
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    });
+    const abortError = new Error("runtime context priority abort");
+    abortError.name = "AbortError";
+    const abortThreadError = new Error("thread selection below abort");
+    const abortController = new AbortController();
+    setApiTestConnectorCatalogExternalReaderIdentityReadHook(() => {
+      abortController.abort(abortError);
+      return Promise.reject(abortThreadError);
+    });
+    context.mocks.sentry.captureException.mockClear();
+    await expect(
+      chat.requestSendEvent(
+        fixture.actor,
+        {
+          agentId: fixture.agentId,
+          threadId: fixture.threadId,
+          prompt: "Prefer abort over a thread-selection failure",
+          clientEventId: randomUUID(),
+        },
+        [201],
+        {},
+        abortController.signal,
+      ),
+    ).rejects.toThrow("Unknown response status 500");
+    expect(abortController.signal.reason).toBe(abortError);
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it("keeps thread-selection failure priority over a concurrent provider failure", async () => {
+    const fixture = await selectedThreadConnectorFixture(
+      "Runtime context thread priority thread",
+    );
+    await configureRuntimeContextGateway(fixture.actor);
+    onTestFinished(() => {
+      clearApiTestConnectorCatalogExternalReaderIdentityReplacements();
+    });
+    const providerFailureStarted = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!providerFailureStarted.settled()) {
+        providerFailureStarted.resolve(undefined);
+      }
+    });
+    const threadError = new Error("runtime thread selection priority failure");
+    const providerError = new Error("model provider below thread failure");
+    setApiTestConnectorCatalogExternalReaderIdentityReadHook(async () => {
+      await providerFailureStarted.promise;
+      throw threadError;
+    });
+    const kms = useSecretKmsProbe(undefined, () => {
+      if (!providerFailureStarted.settled()) {
+        providerFailureStarted.resolve(undefined);
+      }
+      return Promise.reject(providerError);
+    });
+    context.mocks.sentry.captureException.mockClear();
+    await expect(
+      chat.requestSendEvent(
+        fixture.actor,
+        {
+          agentId: fixture.agentId,
+          threadId: fixture.threadId,
+          prompt: "Prefer thread selection over provider failure",
+          clientEventId: randomUUID(),
+        },
+        [201],
+      ),
+    ).rejects.toThrow("Unknown response status 500");
+    expect(providerFailureStarted.settled()).toBeTruthy();
+    expect(kms.decryptCalls).toBeGreaterThan(0);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      threadError,
+    );
+  });
+
   it("uses the current default connector account without persisting an override", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {

@@ -14,10 +14,7 @@ import { getOkouAgentId } from "../../../lib/okou-env";
 import { isUuid } from "../../../lib/utils/uuid";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import { connectorAccountCliLabel } from "../account-label";
-import {
-  addRequestedCallbackSearchParams,
-  printCallbackTurnInstruction,
-} from "../action-url";
+import { finalizeActionUrl, printCallbackTurnInstruction } from "../action-url";
 import {
   connectorDiscoveryItems,
   isConnectorDiscoveryAuthorized,
@@ -119,13 +116,6 @@ Notes:
             "Connector account switches require the current web chat agent",
           );
         }
-        const params = new URLSearchParams();
-        addRequestedCallbackSearchParams(
-          params,
-          options.callbackPrompt,
-          agentId,
-        );
-
         const [{ connectors }, customConnectors, agentContext] =
           await Promise.all([
             listConnectorCatalogStatus(),
@@ -168,10 +158,15 @@ Notes:
           connector.slug,
           connectionId,
         );
-        addTargetSearchParams(params, target);
         const origin = await getPlatformOrigin();
         const path = `/agents/${encodeURIComponent(agentId)}/connector-accounts/${encodeURIComponent(connectionId)}/select`;
-        const url = `${origin}${path}?${params.toString()}`;
+        const actionUrl = new URL(path, origin);
+        addTargetSearchParams(actionUrl.searchParams, target);
+        const url = finalizeActionUrl(
+          actionUrl,
+          options.callbackPrompt,
+          agentId,
+        );
         const label = connectorAccountCliLabel({
           ...inspection,
           connectionId: inspection.connectionId,

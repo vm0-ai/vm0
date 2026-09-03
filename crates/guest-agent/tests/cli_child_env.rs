@@ -9,8 +9,6 @@ use guest_agent::run_context::GuestRuntime;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-const RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
-
 #[tokio::test]
 async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +33,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
             "300",
         );
-        std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
         std::env::set_var(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
             "runner-control-endpoint",
@@ -47,9 +44,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("CARGO_HTTP_CAINFO", "/etc/ssl/certs/ca-certificates.crt");
         std::env::set_var("NPM_CONFIG_UPDATE_NOTIFIER", "false");
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
-        std::env::set_var("VM0_APPEND_SYSTEM_PROMPT", "runner append prompt");
-        std::env::set_var("VM0_FEATURE_FLAGS", r#"{"flag":true}"#);
-        std::env::set_var(RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV, "59");
         std::env::set_var(
             guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             "60",
@@ -76,8 +70,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "VM0_FUTURE_RUNNER_KEY": "ordinary-vm0-value",
             "VM0_PROMPT": "ordinary-user-prompt",
             "VM0_API_TOKEN": "ordinary-user-token",
-            "VM0_USER_ENV_FILE": "/ordinary/user-env.json",
-            "VM0_RUN_PAYLOAD_FILE": "/ordinary/payload.json",
             "BASH_ENV": "/tmp/user-bash-env",
             "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
@@ -130,7 +122,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     );
 
     unsafe {
-        std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("VM0_API_TOKEN", "stale token after runtime construction");
         std::env::set_var(
             guest_contracts::env::CANONICAL_API_URL_ENV,
@@ -138,23 +129,16 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         );
         std::env::set_var("HOME", tmp.path().join("stale-home"));
         for key in [
-            "VM0_USER_ENV_FILE",
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-            "VM0_RUN_PAYLOAD_FILE",
             guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         ] {
             std::env::set_var(key, "/stale/private-file-pointer");
         }
         for key in [
-            "VM0_SANDBOX_ID",
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-            "VM0_SANDBOX_REUSE_RESULT",
             guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-            "VM0_WORKSPACE_REUSE_RESULT",
             guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-            "VM0_RESUME_SESSION_ID",
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-            "VM0_API_START_TIME",
             guest_contracts::env::CANONICAL_API_START_TIME_ENV,
         ] {
             std::env::set_var(key, "stale-run-metadata");
@@ -186,8 +170,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         ("VM0_FUTURE_RUNNER_KEY", "ordinary-vm0-value"),
         ("VM0_PROMPT", "ordinary-user-prompt"),
         ("VM0_API_TOKEN", "ordinary-user-token"),
-        ("VM0_USER_ENV_FILE", "/ordinary/user-env.json"),
-        ("VM0_RUN_PAYLOAD_FILE", "/ordinary/payload.json"),
     ] {
         assert_eq!(cli_env.get(key).map(String::as_str), Some(expected_value));
     }
@@ -237,7 +219,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     );
     assert!(cli_env.contains_key("PATH"));
 
-    assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
     for key in [
         guest_contracts::env::CANONICAL_API_TOKEN_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
@@ -249,7 +230,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     }
     for key in [
         guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
-        "VM0_GUEST_RUNTIME_DIR",
         guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
     ] {
@@ -259,7 +239,6 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         );
     }
     assert!(!cli_env.contains_key(guest_contracts::env::RUN_ID_ENV));
-    assert!(!cli_env.contains_key("VM0_RUN_ID"));
     for key in [
         guest_contracts::env::PI_SESSION_ID_ENV,
         guest_contracts::env::PI_LAUNCH_CONFIG_ENV,
@@ -271,17 +250,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "Claude child env contains {key}"
         );
     }
-    assert!(!cli_env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     for key in [
-        "VM0_SANDBOX_ID",
         guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        "VM0_SANDBOX_REUSE_RESULT",
         guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        "VM0_WORKSPACE_REUSE_RESULT",
         guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-        "VM0_RESUME_SESSION_ID",
         guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-        "VM0_API_START_TIME",
         guest_contracts::env::CANONICAL_API_START_TIME_ENV,
     ] {
         assert!(
@@ -289,10 +262,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "Claude child env contains run-metadata bootstrap key {key}"
         );
     }
-    assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
     for key in [
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
-        RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
         guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
         guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,

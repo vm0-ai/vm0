@@ -13,7 +13,7 @@ const APP_ASSET_REQUEST_HEADER_NAMES = [
   "If-None-Match",
   "Range",
 ];
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
+const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
 const PRODUCTION_API_ORIGINS = new Map([
   ["app.okou.ai", "https://api.okou.ai"],
   ["app-worker.okou.ai", "https://api.okou.ai"],
@@ -416,23 +416,9 @@ function embeddedShellResponse(request, embeddedShell) {
   });
 }
 
-function fetchShellAsset(request, env, embeddedShell) {
+function fetchShellAsset(request, embeddedShell) {
   const embeddedResponse = embeddedShellResponse(request, embeddedShell);
-  if (embeddedResponse) {
-    return Promise.resolve(embeddedResponse);
-  }
-
-  // Frontend provider migration: Pages still supplies the shell through
-  // env.ASSETS while standalone Worker deployments embed it. Remove this
-  // compatibility branch in vm0-ai/vm0#31133 after both Worker canaries pass
-  // browser verification, the App hostnames move to the Worker, and Pages is
-  // no longer retained as a rollback target. Already-open App clients (up to
-  // about two days) keep using the Worker/R2 asset path and do not extend this
-  // gate.
-  if (!env.ASSETS) {
-    return Promise.resolve(gatewayResponse(503));
-  }
-  return env.ASSETS.fetch(request);
+  return Promise.resolve(embeddedResponse ?? gatewayResponse(503));
 }
 
 function metaRequestHeaders(requestUrl, origin) {
@@ -548,7 +534,6 @@ async function handleRequest(request, env, requestUrl, embeddedShell) {
       const indexRequestUrl = new URL("/index.html", requestUrl);
       assetResponse = await fetchShellAsset(
         new Request(indexRequestUrl),
-        env,
         embeddedShell,
       );
       if (!assetResponse.ok) {
@@ -617,7 +602,7 @@ async function handleRequest(request, env, requestUrl, embeddedShell) {
     );
   }
 
-  const assetResponse = await fetchShellAsset(request, env, embeddedShell);
+  const assetResponse = await fetchShellAsset(request, embeddedShell);
   if (request.method !== "GET") {
     return assetResponse;
   }
@@ -651,5 +636,3 @@ export function createWorker(embeddedShell) {
     },
   };
 }
-
-export default createWorker();

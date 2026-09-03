@@ -275,7 +275,7 @@ describe("okou mail", () => {
         return HttpResponse.json(
           {
             mailDraftId: MAIL_DRAFT_ID,
-            mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
+            mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}?source=gmail`,
           },
           { status: 200 },
         );
@@ -293,13 +293,15 @@ describe("okou mail", () => {
 
     const reviewUrl = new URL(String(mockConsoleLog.mock.calls[0]?.[0]));
     expect(reviewUrl.pathname).toBe(`/mail/drafts/${MAIL_DRAFT_ID}`);
-    expect(reviewUrl.searchParams.get("agentId")).toBe(AGENT_ID);
-    expect(reviewUrl.searchParams.get("threadId")).toBe(THREAD_ID);
-    expect(reviewUrl.searchParams.get("callbackPrompt")).toBe(
-      "Confirm the email was sent",
-    );
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "end the current turn",
-    );
+    expect(Array.from(reviewUrl.searchParams.entries())).toStrictEqual([
+      ["source", "gmail"],
+      ["agentId", AGENT_ID],
+      ["threadId", THREAD_ID],
+      ["callbackPrompt", "Confirm the email was sent"],
+    ]);
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("end the current turn");
+    expect(output).toContain("exact callback URL above verbatim");
+    expect(output).toContain("omitting any query parameters");
   });
 });

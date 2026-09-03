@@ -18,4 +18,10 @@ export const handlers: readonly HttpHandler[] = [
   http.get("https://chatgpt.com/backend-api/wham/usage", () => {
     return HttpResponse.json({});
   }),
+  http.get(
+    "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+    () => {
+      return HttpResponse.json({ credits: [] });
+    },
+  ),
 ];

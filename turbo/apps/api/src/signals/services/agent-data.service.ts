@@ -13,6 +13,7 @@ import { userCustomConnectors } from "@okouai/db/schema/user-custom-connector";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, asc, desc, eq, or } from "drizzle-orm";
+import { agentAvatarUrlForDefaultAgent } from "@okouai/core/agent-avatar";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 
 import { db$ } from "../external/db";
@@ -44,7 +45,11 @@ export function agentResponse(
     }),
     description: row.description,
     sound: row.sound,
-    avatarUrl: row.avatarUrl,
+    avatarUrl: agentAvatarUrlForDefaultAgent({
+      agentId: row.agentId,
+      defaultAgentId: row.defaultAgentId,
+      avatarUrl: row.avatarUrl,
+    }),
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
@@ -249,7 +254,11 @@ export function teamComposeList(
         }),
         description: row.description,
         sound: row.sound,
-        avatarUrl: row.avatarUrl,
+        avatarUrl: agentAvatarUrlForDefaultAgent({
+          agentId: row.id,
+          defaultAgentId: row.defaultAgentId,
+          avatarUrl: row.avatarUrl,
+        }),
         visibility: row.visibility,
         updatedAt: row.updatedAt.toISOString(),
       };

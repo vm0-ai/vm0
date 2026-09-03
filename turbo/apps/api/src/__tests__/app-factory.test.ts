@@ -996,22 +996,6 @@ describe("createApp", () => {
       );
     });
 
-    it("allows immutable okou Pages deployment origins in preview", async () => {
-      mockEnv("ENV", "preview");
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const origin = "https://3508a2f5.okou-app.pages.dev";
-      const response = await app.request("/health", {
-        method: "GET",
-        headers: { origin },
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("access-control-allow-origin")).toBe(origin);
-    });
-
     it("allows standalone okou app Worker origins in preview", async () => {
       mockEnv("ENV", "preview");
       const app = createApp({
@@ -1046,21 +1030,6 @@ describe("createApp", () => {
         expect(response.status).toBe(200);
         expect(response.headers.get("access-control-allow-origin")).toBeNull();
       }
-    });
-
-    it("does not allow okou Pages deployment origins in production", async () => {
-      mockEnv("ENV", "production");
-      const app = createApp({
-        signal: context.signal,
-        routes: TEST_APP_ROUTES,
-      });
-      const response = await app.request("/health", {
-        method: "GET",
-        headers: { origin: "https://3508a2f5.okou-app.pages.dev" },
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("access-control-allow-origin")).toBeNull();
     });
 
     it("does not allow lookalike okou preview origins", async () => {

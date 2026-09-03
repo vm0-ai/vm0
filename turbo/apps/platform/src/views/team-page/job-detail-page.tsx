@@ -842,6 +842,7 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  isDefaultAgent,
 }: {
   displayName: string;
   description: string;
@@ -849,6 +850,7 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  isDefaultAgent: boolean;
 }) {
   const { t } = useTranslation("agents");
   const nav = useSet(detachedNavigateTo$);
@@ -864,7 +866,7 @@ function AgentHeader({
               alt={displayName}
               className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
             />
-            {showProfileAndInstructions && (
+            {showProfileAndInstructions && !isDefaultAgent && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1181,6 +1183,7 @@ export function JobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
+        isDefaultAgent={isDefaultAgent}
       />
       <DetailPageMain>
         <AgentTabContent

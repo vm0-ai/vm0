@@ -1253,6 +1253,16 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runGroupId,
           createdAt: "2026-06-09T10:02:00Z",
         },
+        {
+          id: "msg-goal-run-group-active-thinking-2",
+          eventType: "output.thinking",
+          role: "assistant",
+          content: null,
+          thinking: "Sketching the details",
+          runId: "f0000001-0000-4000-a000-00000000082d",
+          runGroupId,
+          createdAt: "2026-06-09T10:02:01Z",
+        },
       ],
     });
 
@@ -1279,13 +1289,25 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       "[data-thinking-indicator]",
     );
 
-    expect(thinkingIndicator).not.toBeNull();
+    if (!(thinkingIndicator instanceof HTMLElement)) {
+      throw new Error("Thinking indicator not found");
+    }
+    const waitingAssistantGroup = thinkingIndicator.closest(
+      '[data-role="assistant"]',
+    );
+    if (!(waitingAssistantGroup instanceof HTMLElement)) {
+      throw new Error("Waiting assistant group not found");
+    }
+    expect(waitingAssistantGroup).toContainElement(foldButton);
+    const thinkingLabel = within(waitingAssistantGroup).getByLabelText(
+      "Sketching the details",
+    );
     expect(
       goalText.compareDocumentPosition(foldButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      foldButton.compareDocumentPosition(thinkingIndicator!) &
+      foldButton.compareDocumentPosition(thinkingLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

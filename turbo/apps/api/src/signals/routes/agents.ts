@@ -10,7 +10,10 @@ import {
 } from "@okouai/api-contracts/contracts/agents";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { randomPresetAvatar } from "@okouai/core/agent-avatar";
+import {
+  DEFAULT_AGENT_AVATAR_URL,
+  randomPresetAvatar,
+} from "@okouai/core/agent-avatar";
 import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -136,20 +139,25 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
   };
 }
 
-function normalizeProjectedDefaultAgentName(
+function normalizeProjectedDefaultAgentProfile(
   body: AgentUpdateBody,
   existing: ExistingAgentForUpdate,
   publicBrand: PublicBrand,
 ): AgentUpdateBody {
+  const normalizedBody =
+    existing.id === existing.defaultAgentId
+      ? { ...body, avatarUrl: DEFAULT_AGENT_AVATAR_URL }
+      : body;
+
   if (
     existing.id !== existing.defaultAgentId ||
     existing.displayName !== DEFAULT_AGENT_DISPLAY_NAME ||
     body.displayName !== publicBrandPresentation(publicBrand).assistantName
   ) {
-    return body;
+    return normalizedBody;
   }
 
-  return { ...body, displayName: DEFAULT_AGENT_DISPLAY_NAME };
+  return { ...normalizedBody, displayName: DEFAULT_AGENT_DISPLAY_NAME };
 }
 
 async function findAgentForUpdate(
@@ -542,7 +550,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (!existing) {
       return { response: agentNotFound(params.id) };
     }
-    const updateBody = normalizeProjectedDefaultAgentName(
+    const updateBody = normalizeProjectedDefaultAgentProfile(
       body.data,
       existing,
       publicBrand,
@@ -631,7 +639,7 @@ const updateAgentMetadataInner$ = command(
       if (!existing) {
         return { response: agentNotFound(params.id) };
       }
-      const updateBody = normalizeProjectedDefaultAgentName(
+      const updateBody = normalizeProjectedDefaultAgentProfile(
         body.data,
         existing,
         publicBrand,

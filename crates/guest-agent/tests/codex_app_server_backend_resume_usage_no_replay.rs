@@ -24,7 +24,6 @@ async fn codex_app_server_backend_derives_resume_usage_without_replay()
                 resume_session_id: Some(resume_thread_id),
             },
         )?;
-        std::env::remove_var("VM0_RESUME_SESSION_ID");
         std::env::set_var(
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
             resume_thread_id,

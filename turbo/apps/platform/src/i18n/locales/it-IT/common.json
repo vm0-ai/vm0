@@ -5070,11 +5070,15 @@
       },
       "reset": {
         "confirmDescription": "Usa un ripristino Codex per reimpostare le finestre di utilizzo correnti. Te ne restano {{remaining}}.",
+        "expiresAt": "Il ripristino più vicino scade {{date}}",
         "progress": "Reimpostazione...",
         "remaining_one": "{{value}} ripristino rimasto",
         "remaining_many": "{{value}} ripristini rimasti",
         "remaining_other": "{{value}} ripristini rimasti",
         "remainingUnavailable": "Ripristini rimasti non disponibili",
+        "remainingWithExpiry_one": "{{value}} ripristino rimasto · scade {{expiry}}",
+        "remainingWithExpiry_many": "{{value}} ripristini rimasti · scadono {{expiry}}",
+        "remainingWithExpiry_other": "{{value}} ripristini rimasti · scadono {{expiry}}",
         "title": "Reimpostare l'utilizzo di Codex?"
       },
       "stale": {

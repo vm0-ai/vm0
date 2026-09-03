@@ -1447,6 +1447,10 @@ export const modelProviderResponseSchema = z.object({
     .nonnegative()
     .nullable()
     .optional(),
+  // Soonest expiry among the reset credits the account can still redeem. Null
+  // when nothing expires, and also when the upstream detail read degraded to a
+  // bare count, so the UI must treat it as decoration on top of the count.
+  subscriptionResetCreditsNextExpiresAt: z.string().nullable().optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's
   // refresh attempt fails (#11921 writes this on the model_providers row).
   // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`

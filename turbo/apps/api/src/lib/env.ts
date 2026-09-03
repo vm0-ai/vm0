@@ -167,6 +167,9 @@ const SCHEMA = {
     .int()
     .min(0)
     .default(30 * 60 * 1000),
+  PI_MEMORY_BACKGROUND_WORKERS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true"),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

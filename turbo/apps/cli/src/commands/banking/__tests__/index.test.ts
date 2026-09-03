@@ -172,11 +172,13 @@ describe("okou banking command", () => {
     }
     const url = new URL(urlText);
     expect(url.pathname).toBe(`/agents/${AGENT_ID}/banking`);
-    expect(url.searchParams.get("reason")).toBe("Review recent expenses");
-    expect(url.searchParams.get("threadId")).toBe(THREAD_ID);
-    expect(url.searchParams.get("callbackPrompt")).toBe(
-      "Continue the expense review",
-    );
+    expect(Array.from(url.searchParams.entries())).toStrictEqual([
+      ["reason", "Review recent expenses"],
+      ["threadId", THREAD_ID],
+      ["callbackPrompt", "Continue the expense review"],
+    ]);
     expect(output).toContain("end the current turn");
+    expect(output).toContain("exact callback URL above verbatim");
+    expect(output).toContain("omitting any query parameters");
   });
 });

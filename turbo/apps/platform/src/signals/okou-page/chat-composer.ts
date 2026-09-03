@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -78,6 +78,16 @@ export interface TemplateCardHtmlPreviewState {
   readonly frameUrl: string | null;
   readonly slideCount: number;
 }
+
+export interface OpenTemplatePickerDialogOptions {
+  readonly category: string;
+  readonly referenceValue: GenerationTemplateRequest | null;
+}
+
+export type OpenTemplatePickerDialogCommand = Command<
+  void,
+  [OpenTemplatePickerDialogOptions]
+>;
 
 interface TemplateCardHoverState {
   readonly slug: string;
@@ -495,6 +505,19 @@ function createTemplatePickerListSignals() {
   };
 }
 
+function createOpenTemplatePickerDialogCommand(
+  dialog: ReturnType<typeof createTemplatePickerDialogSignals>,
+  list: ReturnType<typeof createTemplatePickerListSignals>,
+): OpenTemplatePickerDialogCommand {
+  return command(({ set }, options: OpenTemplatePickerDialogOptions): void => {
+    set(list.signals.setTemplatePickerSearch$, "");
+    set(list.signals.setTemplatePickerPreviewSlug$, null);
+    set(dialog.setTemplatePickerReferenceValue$, options.referenceValue);
+    set(list.signals.setTemplatePickerCategory$, options.category);
+    set(dialog.setTemplatePickerOpen$, true);
+  });
+}
+
 function createTemplateCardSignals() {
   const internalTemplateCardHover$ = state<TemplateCardHoverState | null>(null);
   const templateCardHover$ = computed((get) => {
@@ -871,6 +894,7 @@ function createPresentationTemplateDetailNavigationSignals(
 
 export function createComposerUiSignals() {
   const basic = createBasicComposerUiSignals();
+  const dialog = createTemplatePickerDialogSignals();
   const list = createTemplatePickerListSignals();
   const cards = createTemplateCardSignals();
   const detail = createTemplateDetailStateSignals();
@@ -890,8 +914,12 @@ export function createComposerUiSignals() {
   return {
     model: basic.model,
     videoOptions: createVideoRunOptionsUiSignals(),
+    openTemplatePickerDialog$: createOpenTemplatePickerDialogCommand(
+      dialog,
+      list,
+    ),
     template: {
-      ...createTemplatePickerDialogSignals(),
+      ...dialog,
       ...list.signals,
       ...cards.signals,
       ...detail.signals,

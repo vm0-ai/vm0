@@ -17,8 +17,8 @@ import { createComputerUseAuthorizationRequest } from "../../lib/api/domains/com
 import { diagnoseConnectorCheck } from "../../lib/api/domains/connectors";
 import { getOkouAgentId, getOkouToken } from "../../lib/okou-env";
 import {
-  addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
+  finalizeActionUrl,
   printCallbackTurnInstruction,
 } from "./action-url";
 import {
@@ -259,15 +259,12 @@ async function outputPermissionRequestMessage(
 ): Promise<void> {
   const platformOrigin = await getPlatformOrigin();
 
-  const urlParams = new URLSearchParams({
-    connectorSlug,
-    permission,
-    action: "allow",
-  });
-  addRequestedCallbackSearchParams(urlParams, callbackPrompt, agentId);
-
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
-  const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
+  const actionUrl = new URL(pagePath, platformOrigin);
+  actionUrl.searchParams.set("connectorSlug", connectorSlug);
+  actionUrl.searchParams.set("permission", permission);
+  actionUrl.searchParams.set("action", "allow");
+  const url = finalizeActionUrl(actionUrl, callbackPrompt, agentId);
 
   printSensitivePermissionGuidance(connectorSlug, permission);
   printPermissionRequestMessage({

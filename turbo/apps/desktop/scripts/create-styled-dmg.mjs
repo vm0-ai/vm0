@@ -14,7 +14,7 @@ const desktopDir = path.resolve(scriptDir, "..");
 const defaultBackgroundSvg = path.join(
   desktopDir,
   "assets",
-  "dmg-background.svg",
+  "dmg-background-okou.svg",
 );
 
 const windowBounds = {
@@ -43,7 +43,7 @@ function usage() {
 
 function parseArgs(argv) {
   const options = {
-    volumeName: "Zero Computer Use",
+    volumeName: "Okou",
     backgroundSvg: defaultBackgroundSvg,
   };
 

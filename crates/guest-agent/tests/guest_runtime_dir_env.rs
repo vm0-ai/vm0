@@ -15,8 +15,6 @@ use tokio::process::Command;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(15);
-const RETIRED_GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
-const RETIRED_SOURCE_EVENT: &str = "guest_runtime_dir_env_source";
 static NEXT_ENDPOINT: AtomicU32 = AtomicU32::new(1);
 
 struct PrivateFiles {
@@ -83,18 +81,13 @@ fn guest_agent_command(root: &Path, run_id: &str, private_files: &PrivateFiles) 
     command
 }
 
-fn apply_runtime_env(command: &mut Command, canonical: Option<&OsStr>, retired: Option<&OsStr>) {
-    command
-        .env_remove(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
-        .env_remove(RETIRED_GUEST_RUNTIME_DIR_ENV);
+fn apply_runtime_env(command: &mut Command, canonical: Option<&OsStr>) {
+    command.env_remove(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV);
     if let Some(value) = canonical {
         command.env(
             guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV,
             value,
         );
-    }
-    if let Some(value) = retired {
-        command.env(RETIRED_GUEST_RUNTIME_DIR_ENV, value);
     }
 }
 
@@ -134,11 +127,10 @@ fn assert_listener_idle(listener: &std::os::unix::net::UnixListener, context: &s
 }
 
 #[tokio::test]
-async fn guest_agent_reads_only_the_canonical_runtime_override() -> TestResult {
+async fn guest_agent_uses_the_canonical_runtime_override() -> TestResult {
     struct Case {
         name: &'static str,
         canonical: RuntimeInput,
-        retired: RuntimeInput,
         use_canonical: bool,
     }
 
@@ -146,38 +138,17 @@ async fn guest_agent_reads_only_the_canonical_runtime_override() -> TestResult {
         Case {
             name: "absent",
             canonical: RuntimeInput::Absent,
-            retired: RuntimeInput::Absent,
             use_canonical: false,
         },
         Case {
             name: "canonical-empty",
             canonical: RuntimeInput::Empty,
-            retired: RuntimeInput::Absent,
             use_canonical: false,
         },
         Case {
             name: "canonical-absolute",
             canonical: RuntimeInput::Selected,
-            retired: RuntimeInput::Absent,
             use_canonical: true,
-        },
-        Case {
-            name: "retired-only-is-ignored",
-            canonical: RuntimeInput::Absent,
-            retired: RuntimeInput::Selected,
-            use_canonical: false,
-        },
-        Case {
-            name: "canonical-is-not-overridden-by-retired",
-            canonical: RuntimeInput::Selected,
-            retired: RuntimeInput::Selected,
-            use_canonical: true,
-        },
-        Case {
-            name: "canonical-empty-does-not-fall-back-to-retired",
-            canonical: RuntimeInput::Empty,
-            retired: RuntimeInput::Selected,
-            use_canonical: false,
         },
     ];
 
@@ -191,9 +162,6 @@ async fn guest_agent_reads_only_the_canonical_runtime_override() -> TestResult {
         let canonical_dir = root
             .path()
             .join(format!("{}-canonical-must-not-leak", case.name));
-        let retired_dir = root
-            .path()
-            .join(format!("{}-retired-must-not-leak", case.name));
         let expected_dir = if case.use_canonical {
             &canonical_dir
         } else {
@@ -201,11 +169,7 @@ async fn guest_agent_reads_only_the_canonical_runtime_override() -> TestResult {
         };
         let private_files = write_private_files(expected_dir, false)?;
         let mut command = guest_agent_command(root.path(), &run_id, &private_files);
-        apply_runtime_env(
-            &mut command,
-            input_value(case.canonical, &canonical_dir),
-            input_value(case.retired, &retired_dir),
-        );
+        apply_runtime_env(&mut command, input_value(case.canonical, &canonical_dir));
 
         let output = command_output(
             &mut command,
@@ -223,22 +187,11 @@ async fn guest_agent_reads_only_the_canonical_runtime_override() -> TestResult {
         let log = std::fs::read_to_string(guest_contracts::runtime_paths::system_log_file(
             expected_dir,
         ))?;
-        assert!(!log.contains(RETIRED_SOURCE_EVENT), "{}", case.name);
-        assert!(!stderr.contains(RETIRED_SOURCE_EVENT), "{}", case.name);
-        assert_value_free(
-            &stderr,
-            &["canonical-must-not-leak", "retired-must-not-leak"],
-            case.name,
-        );
-        assert_value_free(
-            &log,
-            &["canonical-must-not-leak", "retired-must-not-leak"],
-            case.name,
-        );
+        assert_value_free(&stderr, &["canonical-must-not-leak"], case.name);
+        assert_value_free(&log, &["canonical-must-not-leak"], case.name);
         if !case.use_canonical {
             assert!(!guest_contracts::runtime_paths::system_log_file(&canonical_dir).exists());
         }
-        assert!(!guest_contracts::runtime_paths::system_log_file(&retired_dir).exists());
     }
 
     Ok(())
@@ -250,17 +203,12 @@ async fn guest_agent_preserves_a_non_unicode_canonical_runtime_override() -> Tes
     let runtime_dir = root
         .path()
         .join(OsString::from_vec(b"canonical-runtime-\xff".to_vec()));
-    let retired_dir = root.path().join("retired-runtime-must-not-leak");
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
         .env_clear()
         .env(guest_contracts::env::RUN_ID_ENV, "non-unicode-runtime")
         .env("HOME", root.path().join("process-home"));
-    apply_runtime_env(
-        &mut command,
-        Some(runtime_dir.as_os_str()),
-        Some(retired_dir.as_os_str()),
-    );
+    apply_runtime_env(&mut command, Some(runtime_dir.as_os_str()));
 
     let output = command_output(
         &mut command,
@@ -274,9 +222,7 @@ async fn guest_agent_preserves_a_non_unicode_canonical_runtime_override() -> Tes
         "stderr: {stderr}"
     );
     assert!(!stderr.contains("OKOU_GUEST_RUNTIME_DIR must be an absolute path"));
-    assert!(!stderr.contains(RETIRED_SOURCE_EVENT));
     assert!(!guest_contracts::runtime_paths::system_log_file(&runtime_dir).exists());
-    assert!(!guest_contracts::runtime_paths::system_log_file(retired_dir).exists());
     Ok(())
 }
 
@@ -287,7 +233,6 @@ async fn guest_agent_rejects_relative_canonical_runtime_before_bootstrap_side_ef
     let run_id = "relative-runtime";
     let fallback_dir =
         guest_contracts::runtime_paths::run_dir_for_home(root.path().join("process-home"), run_id)?;
-    let retired_dir = root.path().join("retired-runtime-must-not-leak");
     let private_files = write_private_files(&fallback_dir, true)?;
     let process_endpoint = unique_endpoint(1);
     let workload_endpoint = unique_endpoint(2);
@@ -298,7 +243,6 @@ async fn guest_agent_rejects_relative_canonical_runtime_before_bootstrap_side_ef
     apply_runtime_env(
         &mut command,
         Some(OsStr::new("relative-runtime-must-not-leak")),
-        Some(retired_dir.as_os_str()),
     );
     command
         .env(
@@ -322,12 +266,10 @@ async fn guest_agent_rejects_relative_canonical_runtime_before_bootstrap_side_ef
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "stderr: {stderr}");
     assert!(stderr.contains("OKOU_GUEST_RUNTIME_DIR must be an absolute path"));
-    assert!(!stderr.contains(RETIRED_SOURCE_EVENT));
     assert_value_free(
         &stderr,
         &[
             "relative-runtime-must-not-leak",
-            "retired-runtime-must-not-leak",
             "tool-endpoint-must-not-leak",
             &process_endpoint,
             &workload_endpoint,
@@ -341,8 +283,5 @@ async fn guest_agent_rejects_relative_canonical_runtime_before_bootstrap_side_ef
     let relative_dir = root.path().join("relative-runtime-must-not-leak");
     assert!(!guest_contracts::runtime_paths::system_log_file(&relative_dir).exists());
     assert!(!guest_contracts::runtime_paths::sandbox_ops_log_file(&relative_dir).exists());
-    assert!(!guest_contracts::runtime_paths::system_log_file(&retired_dir).exists());
-    assert!(!guest_contracts::runtime_paths::sandbox_ops_log_file(&retired_dir).exists());
-
     Ok(())
 }

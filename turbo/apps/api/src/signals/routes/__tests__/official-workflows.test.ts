@@ -2078,7 +2078,7 @@ describe.sequential("Morning Brief preference", () => {
 });
 
 describe.sequential("Morning Brief default onboarding", () => {
-  it("uses the production boundary with Morning Brief released and Official Workflows off", async () => {
+  it("emits scoped installed and not-eligible outcomes with Official Workflows off", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();
     const activationAt = new Date("2026-09-07T01:00:00.000Z");
@@ -2091,11 +2091,17 @@ describe.sequential("Morning Brief default onboarding", () => {
     });
 
     for (const actor of [preActivationActor, eligibleCreator]) {
+      await setMorningBriefEnabled(actor, true);
       await setOfficialWorkflowsEnabled(actor, false);
     }
 
-    await deliverClerkOrganizationCreated(preActivationActor, beforeActivation);
-    await deliverClerkOrganizationCreated(eligibleCreator, activationAt);
+    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
+      await deliverClerkOrganizationCreated(
+        preActivationActor,
+        beforeActivation,
+      );
+      await deliverClerkOrganizationCreated(eligibleCreator, activationAt);
+    });
 
     await expect(
       readMorningBriefDefaultEligibilityFixture({

@@ -1779,6 +1779,27 @@
       "when": 1788399098548,
       "tag": "1061_faithful_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 1062,
+      "version": "7",
+      "when": 1788421025545,
+      "tag": "1062_detach_custom_connector_oauth_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 1063,
+      "version": "7",
+      "when": 1788421077587,
+      "tag": "1063_simple_norman_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 1064,
+      "version": "7",
+      "when": 1788426955070,
+      "tag": "1064_funny_hex",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.614.1](https://github.com/vm0-ai/vm0/compare/core-v8.614.0...core-v8.614.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **core:** return morning brief to gated beta ([#31463](https://github.com/vm0-ai/vm0/issues/31463)) ([8bc5f29](https://github.com/vm0-ai/vm0/commit/8bc5f295f68bf600f1b97cf044ccad29d465b700))
+
+## [8.614.0](https://github.com/vm0-ai/vm0/compare/core-v8.613.0...core-v8.614.0) (2026-09-03)
+
+
+### Features
+
+* **api:** optimize recommended follow-up prompts ([#31394](https://github.com/vm0-ai/vm0/issues/31394)) ([5f1b1f9](https://github.com/vm0-ai/vm0/commit/5f1b1f9de657d89315f60f2d573fe19a2084b938))
+* **platform:** add elapsed run work folding ([#31321](https://github.com/vm0-ai/vm0/issues/31321)) ([134b069](https://github.com/vm0-ai/vm0/commit/134b0696c6fd26cc3e24234a7d0b433dff9241c9))
+* seed ppt avatar video skill ([#31403](https://github.com/vm0-ai/vm0/issues/31403)) ([095302a](https://github.com/vm0-ai/vm0/commit/095302af7aabd36f7bba5af46346ae56079d23c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+
 ## [8.613.0](https://github.com/vm0-ai/vm0/compare/core-v8.612.0...core-v8.613.0) (2026-09-03)
 
 

@@ -22,6 +22,14 @@ use super::state::{DevicePool, DevicePoolConfig};
 /// The handle coordinates this process-local pool state, while cooperative
 /// cross-process safety still comes from shared per-index lock files and sysfs
 /// checks.
+///
+/// Successful acquisitions come either from a demand scan or from an expired
+/// clean-release claim. Demand scans acquire a per-index lock and re-check
+/// sysfs. Clean releases retain the claim and lock during cooldown; after
+/// cooldown, a queued waiter may receive that claim after a sysfs free check,
+/// without a new scan or lock acquisition. If no waiter is queued or the free
+/// check fails, the expired claim is dropped and its lock is released.
+///
 /// Dropping a handle is not normal device cleanup. Checked-out leases also carry
 /// return senders, so dropping every handle only stops the actor after
 /// outstanding leases release those senders. Successful pooled devices must

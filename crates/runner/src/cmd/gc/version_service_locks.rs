@@ -39,6 +39,14 @@ pub(super) async fn gc_orphaned_version_service_locks(
     home: &HomePaths,
     dry_run: bool,
 ) -> RunnerResult<GcReport> {
+    gc_orphaned_version_service_locks_with_observer(home, dry_run, || {}).await
+}
+
+async fn gc_orphaned_version_service_locks_with_observer(
+    home: &HomePaths,
+    dry_run: bool,
+    mut after_initial_missing_version_resource: impl FnMut(),
+) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
         return Ok(GcReport::default());
@@ -67,6 +75,8 @@ pub(super) async fn gc_orphaned_version_service_locks(
                 continue;
             }
         }
+
+        after_initial_missing_version_resource();
 
         let lock_path = entry.path();
         match probe_existing_lock(&lock_path) {
@@ -145,6 +155,31 @@ mod tests {
         assert!(
             !service_lock.exists(),
             "missing version bin dir should make its service lock stale"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_version_service_locks_keeps_lock_for_recreated_version_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let version = "v1.0.0";
+        let service_lock = create_test_version_service_lock(&home, version);
+        let version_bin = home.bin_dir().join(version);
+
+        let removed = gc_orphaned_version_service_locks_with_observer(&home, false, || {
+            std::fs::create_dir_all(&version_bin).unwrap();
+        })
+        .await
+        .unwrap();
+
+        assert!(
+            version_bin.is_dir(),
+            "test observer should recreate the version directory"
+        );
+        assert_eq!(removed.version_service_locks_removed, 0);
+        assert!(
+            service_lock.exists(),
+            "version recreated before the lock probe should keep its service lock"
         );
     }
 

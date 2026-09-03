@@ -2075,11 +2075,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
     let user_env_file = required_files.user_env_file;
     let run_payload_file = required_files.run_payload_file;
-    debug_assert!(
-        !env_map.contains_key("VM0_USER_ENV_FILE")
-            && !env_map.contains_key("VM0_RUN_PAYLOAD_FILE"),
-        "legacy private payload pointers must be absent before canonical insertion"
-    );
     if let Some(path) = user_env_file {
         env_map.insert(
             guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV.into(),
