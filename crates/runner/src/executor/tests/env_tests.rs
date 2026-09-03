@@ -298,7 +298,7 @@ fn execution_context_validation_rejects_prompt_nul_before_sandbox() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_PROMPT"));
+    assert!(error.contains("OKOU_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -312,7 +312,7 @@ fn execution_context_validation_rejects_append_system_prompt_nul_before_sandbox(
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_APPEND_SYSTEM_PROMPT"));
+    assert!(error.contains("OKOU_APPEND_SYSTEM_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -326,7 +326,7 @@ fn execution_context_validation_rejects_claude_settings_nul_before_sandbox() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_SETTINGS"));
+    assert!(error.contains("OKOU_SETTINGS"));
     assert!(!error.contains(secret));
 }
 
@@ -357,7 +357,7 @@ fn execution_context_validation_rejects_tool_nul_before_sandbox() {
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
-    assert!(error.contains("VM0_TOOLS"));
+    assert!(error.contains("OKOU_TOOLS"));
     assert!(error.contains("NUL"));
 }
 
@@ -1163,7 +1163,7 @@ fn build_run_payload_for_run_rejects_prompt_nul() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_PROMPT"));
+    assert!(error.contains("OKOU_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -1430,7 +1430,7 @@ fn execution_context_validation_rejects_codex_runtime_config_nul() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_CODEX_RUNTIME_CONFIG"));
+    assert!(error.contains("OKOU_CODEX_RUNTIME_CONFIG"));
     assert!(!error.contains(secret));
 }
 
@@ -1446,7 +1446,7 @@ fn execution_context_validation_rejects_codex_runtime_config_catalog_nul() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_CODEX_RUNTIME_CONFIG"));
+    assert!(error.contains("OKOU_CODEX_RUNTIME_CONFIG"));
     assert!(!error.contains(secret));
 }
 
@@ -1736,7 +1736,7 @@ fn build_env_json_rejects_invalid_disallowed_tools_entries() {
         let mut ctx = minimal_context();
         ctx.disallowed_tools = Some(vec![tool.into()]);
         let result = build_run_payload_for_run(&ctx);
-        assert_tool_env_error(result, "VM0_DISALLOWED_TOOLS", expected);
+        assert_tool_env_error(result, "OKOU_DISALLOWED_TOOLS", expected);
     }
 }
 
@@ -1753,7 +1753,7 @@ fn build_env_json_rejects_invalid_tools_entries() {
         let mut ctx = minimal_context();
         ctx.tools = Some(vec![tool.into()]);
         let result = build_run_payload_for_run(&ctx);
-        assert_tool_env_error(result, "VM0_TOOLS", expected);
+        assert_tool_env_error(result, "OKOU_TOOLS", expected);
     }
 }
 

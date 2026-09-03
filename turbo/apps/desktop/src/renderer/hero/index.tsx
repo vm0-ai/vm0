@@ -35,7 +35,7 @@ import {
   IconButton,
   Panel,
   STATUS_LABELS,
-  ZeroFace,
+  OkouFace,
   type HostStatus,
 } from "../components";
 import { PermissionAutoRefresh } from "../setup-wizard";
@@ -81,7 +81,7 @@ function Radar() {
       <span className="radar-wave radar-wave-3" />
       <span className="radar-wave radar-wave-2" />
       <span className="radar-wave radar-wave-1" />
-      <ZeroFace className="zero-face-hero" size={104} />
+      <OkouFace className="okou-face-hero" size={104} />
     </div>
   );
 }
@@ -264,7 +264,7 @@ function OfflineHero({
   return (
     <section className="hero hero-offline">
       <div className="hero-stage">
-        <ZeroFace className="zero-face-offline" size={108} />
+        <OkouFace className="okou-face-offline" size={108} />
         <p className="hero-name hero-name-muted">Offline</p>
         <button
           type="button"

@@ -124,6 +124,24 @@ function chatEventRow(threadId: string, seqId: number): ChatEventRow {
   };
 }
 
+function failedChatEventRow(threadId: string, seqId: number): ChatEventRow {
+  return {
+    id: crypto.randomUUID(),
+    chatThreadId: threadId,
+    runId: crypto.randomUUID(),
+    revokesEventId: null,
+    eventType: "run.failed",
+    payload: { error: `provider unavailable ${seqId}` },
+    failureReason: "future_reason",
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId,
+    createdAt: CREATED_AT,
+  };
+}
+
 function snapshotThread(title: string): ChatThreadSnapshotProjection {
   return {
     id: THREAD_ID,
@@ -621,8 +639,8 @@ describe("shared database worker runtime", () => {
   it("loads a ChatEvent snapshot plus tail and serves strict cursor reads from cache", async () => {
     const { runtime } = startRuntime();
     const dataKey = chatEventKey(crypto.randomUUID());
-    const snapshotRow = chatEventRow(dataKey.threadId, 2);
-    const tailRow = chatEventRow(dataKey.threadId, 3);
+    const snapshotRow = failedChatEventRow(dataKey.threadId, 2);
+    const tailRow = failedChatEventRow(dataKey.threadId, 3);
     const requestedSeqIds: number[] = [];
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {

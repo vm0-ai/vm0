@@ -1717,7 +1717,7 @@ async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
-    assert!(error.contains("VM0_TOOLS"));
+    assert!(error.contains("OKOU_TOOLS"));
     assert!(error.contains("must not contain commas"));
     assert!(outcome.sandbox.is_none());
     assert!(

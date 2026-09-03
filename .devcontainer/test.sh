@@ -97,6 +97,38 @@ run_setup() {
     bash "$workspace/.devcontainer/setup.sh"
 }
 
+prepare_dev_cli_fixture() {
+  local fixture="$1"
+  local fake_bin="$fixture/fake-bin"
+
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/git" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s|%s\n' "$PWD" "$*" >> "$GIT_CALLS_LOG"
+SCRIPT
+  cat > "$fake_bin/npx" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+redacted_args=()
+for arg in "$@"; do
+  if [[ "$arg" == OP_SERVICE_ACCOUNT_TOKEN=* ]]; then
+    test "$arg" = "OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN"
+    redacted_args+=("OP_SERVICE_ACCOUNT_TOKEN=<redacted>")
+  else
+    redacted_args+=("$arg")
+  fi
+done
+
+printf '%s\n' "${redacted_args[*]}" >> "$NPX_CALLS_LOG"
+if [[ " ${redacted_args[*]} " == *" mountpoint -q "* ]]; then
+  exit "${MOUNTPOINT_EXIT_CODE:-0}"
+fi
+SCRIPT
+  chmod +x "$fake_bin/git" "$fake_bin/npx"
+}
+
 test_skill_link_file_conflict() {
   local workspace="$TEST_ROOT/link-file-conflict"
   local output
@@ -228,6 +260,100 @@ test_devcontainer_postgresql_config() {
     || fail "PostgreSQL service should start with the container"
   jq -e '.customizations.vscode.settings."sqltools.connections"[0].password == "postgres"' "$config" > /dev/null \
     || fail "SQLTools password should match DATABASE_URL"
+  jq -e '.remoteEnv.OP_SERVICE_ACCOUNT_TOKEN == "${localEnv:OP_SERVICE_ACCOUNT_TOKEN}"' "$config" > /dev/null \
+    || fail "1Password service account token should pass directly from the host"
+}
+
+test_dcu_command_wiring() {
+  local fixture="$TEST_ROOT/dcu-command-wiring"
+  local workspaces="$fixture/custom-workspaces"
+  local dotfiles="https://example.com/okou/dotfiles.git"
+  local expected_without_extra
+  local expected_with_extra
+
+  prepare_dev_cli_fixture "$fixture"
+  mkdir -p "$fixture/home" "$workspaces/primary" "$workspaces/extra"
+
+  env -i \
+    HOME="$fixture/home" \
+    PATH="$fixture/fake-bin:/usr/bin:/bin" \
+    OKOU_WORKSPACES="$workspaces" \
+    OKOU_DOTFILES="$dotfiles" \
+    GIT_CALLS_LOG="$fixture/git.log" \
+    NPX_CALLS_LOG="$fixture/npx.log" \
+    bash "$REPO_ROOT/bin/dcu" primary
+  env -i \
+    HOME="$fixture/home" \
+    PATH="$fixture/fake-bin:/usr/bin:/bin" \
+    OKOU_WORKSPACES="$workspaces" \
+    OKOU_DOTFILES="$dotfiles" \
+    GIT_CALLS_LOG="$fixture/git.log" \
+    NPX_CALLS_LOG="$fixture/npx.log" \
+    bash "$REPO_ROOT/bin/dcu" primary extra
+
+  expected_without_extra="@devcontainers/cli up --workspace-folder $workspaces/primary --dotfiles-repository $dotfiles --remove-existing-container"
+  expected_with_extra="@devcontainers/cli up --workspace-folder $workspaces/primary --dotfiles-repository $dotfiles --mount type=bind,source=$workspaces/extra,target=/workspaces/extra --remove-existing-container"
+  grep -Fxq "$workspaces/primary|pull" "$fixture/git.log" \
+    || fail "dcu did not update the selected primary workspace"
+  grep -Fxq "$expected_without_extra" "$fixture/npx.log" \
+    || fail "dcu did not pass the configured workspace and dotfiles paths"
+  grep -Fxq "$expected_with_extra" "$fixture/npx.log" \
+    || fail "dcu did not pass the configured extra workspace mount"
+}
+
+test_dcz_command_wiring() {
+  local fixture="$TEST_ROOT/dcz-command-wiring"
+  local workspaces="$fixture/home/workspaces"
+  local dotfiles="https://example.com/okou/dotfiles.git"
+  local expected_mount_probe
+  local expected_recreate
+  local expected_exec
+
+  prepare_dev_cli_fixture "$fixture"
+  mkdir -p "$workspaces/primary" "$workspaces/extra"
+
+  env -i \
+    HOME="$fixture/home" \
+    PATH="$fixture/fake-bin:/usr/bin:/bin" \
+    OKOU_DOTFILES="$dotfiles" \
+    OP_SERVICE_ACCOUNT_TOKEN="fixture-only" \
+    NPX_CALLS_LOG="$fixture/npx.log" \
+    MOUNTPOINT_EXIT_CODE=1 \
+    bash "$REPO_ROOT/bin/dcz" primary extra
+
+  expected_mount_probe="@devcontainers/cli exec --workspace-folder $workspaces/primary mountpoint -q /workspaces/extra"
+  expected_recreate="@devcontainers/cli up --workspace-folder $workspaces/primary --dotfiles-repository $dotfiles --mount type=bind,source=$workspaces/extra,target=/workspaces/extra --remove-existing-container"
+  expected_exec="@devcontainers/cli exec --workspace-folder $workspaces/primary --remote-env OP_SERVICE_ACCOUNT_TOKEN=<redacted> zsh"
+  grep -Fxq "$expected_mount_probe" "$fixture/npx.log" \
+    || fail "dcz did not probe the default extra workspace mount"
+  grep -Fxq "$expected_recreate" "$fixture/npx.log" \
+    || fail "dcz did not recreate the container with configured dotfiles"
+  grep -Fxq "$expected_exec" "$fixture/npx.log" \
+    || fail "dcz did not pass the 1Password token under its vendor-standard name"
+}
+
+test_dev_cli_required_inputs() {
+  local fixture="$TEST_ROOT/dev-cli-required-inputs"
+  local workspaces="$fixture/home/workspaces"
+
+  prepare_dev_cli_fixture "$fixture"
+  mkdir -p "$workspaces/primary"
+
+  if env -i \
+    HOME="$fixture/home" \
+    PATH="$fixture/fake-bin:/usr/bin:/bin" \
+    GIT_CALLS_LOG="$fixture/git.log" \
+    NPX_CALLS_LOG="$fixture/npx.log" \
+    bash "$REPO_ROOT/bin/dcu" primary > /dev/null 2>&1; then
+    fail "dcu unexpectedly accepted missing dotfiles configuration"
+  fi
+  if env -i \
+    HOME="$fixture/home" \
+    PATH="$fixture/fake-bin:/usr/bin:/bin" \
+    NPX_CALLS_LOG="$fixture/npx.log" \
+    bash "$REPO_ROOT/bin/dcz" primary > /dev/null 2>&1; then
+    fail "dcz unexpectedly accepted a missing 1Password token"
+  fi
 }
 
 test_skill_link_file_conflict
@@ -238,5 +364,8 @@ test_uv_setup_installs_required_version
 test_uv_setup_rejects_invalid_requirement
 test_uv_setup_rejects_installed_version_mismatch
 test_devcontainer_postgresql_config
+test_dcu_command_wiring
+test_dcz_command_wiring
+test_dev_cli_required_inputs
 
 echo "Devcontainer integration tests passed"

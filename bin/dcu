@@ -7,10 +7,10 @@ if [ "$#" -lt 1 ]; then
     exit 2
 fi
 
-VM0_WORKSPACES="${VM0_WORKSPACES:-$HOME/workspaces}"
+OKOU_WORKSPACES="${OKOU_WORKSPACES:-$HOME/workspaces}"
 WORKSPACE="$1"
 shift
-FOLDER="$VM0_WORKSPACES/$WORKSPACE"
+FOLDER="$OKOU_WORKSPACES/$WORKSPACE"
 
 if [ ! -d "$FOLDER" ]; then
     echo "Workspace not found: $FOLDER" >&2
@@ -24,7 +24,7 @@ for EXTRA_WORKSPACE in "$@"; do
         exit 1
     fi
 
-    EXTRA_FOLDER="$VM0_WORKSPACES/$EXTRA_WORKSPACE"
+    EXTRA_FOLDER="$OKOU_WORKSPACES/$EXTRA_WORKSPACE"
     if [ ! -d "$EXTRA_FOLDER" ]; then
         echo "Extra workspace not found: $EXTRA_FOLDER" >&2
         exit 1
@@ -38,11 +38,11 @@ done
 (cd "$FOLDER" && git pull)
 if [ "${#MOUNT_ARGS[@]}" -gt 0 ]; then
     npx @devcontainers/cli up --workspace-folder "$FOLDER" \
-        --dotfiles-repository "$VM0_DOTFILES" \
+        --dotfiles-repository "$OKOU_DOTFILES" \
         "${MOUNT_ARGS[@]}" \
         --remove-existing-container
 else
     npx @devcontainers/cli up --workspace-folder "$FOLDER" \
-        --dotfiles-repository "$VM0_DOTFILES" \
+        --dotfiles-repository "$OKOU_DOTFILES" \
         --remove-existing-container
 fi

@@ -11,7 +11,7 @@ import {
   REDACT_FILL,
   STROKE_HALO_INNER,
 } from "./image-annotation.ts";
-import { createDeferredPromise } from "../utils.ts";
+import { createDeferredPromise, withCleanup } from "../utils.ts";
 
 /**
  * Stroke weights are expressed against a 1000px reference edge and scaled to
@@ -62,16 +62,38 @@ function px(scale: Scale, units: number): number {
   return Math.max(1, units * scale.unit);
 }
 
-function loadImage(
+/**
+ * Reads the original image as bytes, then decodes it from a same-origin blob.
+ *
+ * This used to be one `<img crossOrigin="anonymous">`, which made flattening the
+ * only step in the feature that needed a CORS handshake: the editor renders the
+ * very same URL as a plain `<img>`, and a plain `<img>` negotiates nothing. So
+ * the image a user had just been drawing on could still refuse to load here,
+ * and an image element reports that as a bare `error` event carrying no status,
+ * no headers and no reason — which is why the failure had nothing to show for
+ * itself.
+ *
+ * A `fetch` keeps the response observable, so a refused read fails with its HTTP
+ * status attached. Decoding through `URL.createObjectURL` then happens on a
+ * `blob:` URL, which is same-origin by definition: the canvas is never tainted
+ * and `toBlob` below stays readable without asking the CDN for permission.
+ */
+async function loadImage(
   url: string,
   signal: AbortSignal,
 ): Promise<HTMLImageElement> {
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to read image for flattening: ${response.status} ${response.statusText}`,
+    );
+  }
+  const blob = await response.blob();
+  signal.throwIfAborted();
+
+  const objectUrl = URL.createObjectURL(blob);
   const deferred = createDeferredPromise<HTMLImageElement>(signal);
   const image = new Image();
-  // The artifact CDN echoes the app origin back in `access-control-allow-origin`
-  // (production and per-PR preview alike), so the decoded bitmap stays readable
-  // and `toBlob` below does not throw on a tainted canvas.
-  image.crossOrigin = "anonymous";
   image.addEventListener(
     "load",
     () => {
@@ -82,12 +104,16 @@ function loadImage(
   image.addEventListener(
     "error",
     () => {
-      deferred.reject(new Error(`Failed to load image for flattening: ${url}`));
+      deferred.reject(
+        new Error(`Failed to decode image for flattening: ${blob.type}`),
+      );
     },
     { once: true, signal },
   );
-  image.src = url;
-  return deferred.promise;
+  image.src = objectUrl;
+  return await withCleanup(deferred.promise, () => {
+    URL.revokeObjectURL(objectUrl);
+  });
 }
 
 interface PixelRect {

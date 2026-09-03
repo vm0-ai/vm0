@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.308.1](https://github.com/vm0-ai/vm0/compare/cli-v9.308.0...cli-v9.308.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **cli:** use exact run accounts in diagnostics ([#31323](https://github.com/vm0-ai/vm0/issues/31323)) ([7f4d241](https://github.com/vm0-ai/vm0/commit/7f4d2413c008de50d1e35691fc0b78553102af51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.397.0
+    * @okouai/core bumped to 8.613.0
+    * @okouai/pi-agent-runtime bumped to 1.15.0
+
 ## [9.308.0](https://github.com/vm0-ai/vm0/compare/cli-v9.307.5...cli-v9.308.0) (2026-09-03)
 
 

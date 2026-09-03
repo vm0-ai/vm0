@@ -228,6 +228,17 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/onboarding.service.ts"],
+    rules: {
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: ["Morning Brief onboarding provisioning outcome"],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     ignores: [
       "src/**/__tests__/**",

@@ -1,6 +1,7 @@
 import type { Rule } from "eslint";
 
 type NodeWithCallee = Rule.Node & {
+  arguments?: readonly Rule.Node[];
   callee?: Rule.Node;
 };
 
@@ -14,6 +15,14 @@ type MemberExpressionNode = Rule.Node & {
   object?: Rule.Node;
   property?: Rule.Node;
 };
+
+type LiteralNode = Rule.Node & {
+  value?: unknown;
+};
+
+interface NoLoggerInfoOptions {
+  readonly allowedMessages?: readonly string[];
+}
 
 function isNamedIdentifier(node: Rule.Node | undefined, name: string): boolean {
   return node?.type === "Identifier" && node.name === name;
@@ -45,20 +54,46 @@ function getInfoObject(node: Rule.Node): Rule.Node | null {
   return null;
 }
 
+function getStaticMessage(node: Rule.Node): string | null {
+  const firstArgument = (node as NodeWithCallee).arguments?.[0] as
+    | LiteralNode
+    | undefined;
+  if (
+    firstArgument?.type === "Literal" &&
+    typeof firstArgument.value === "string"
+  ) {
+    return firstArgument.value;
+  }
+  return null;
+}
+
 export const noLoggerInfo: Rule.RuleModule = {
   meta: {
     type: "problem",
     docs: {
       description:
-        "Disallow info-level API logs; use debug, warn, error, or fatal instead",
+        "Disallow info-level API logs except explicitly allowed static audit messages",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          allowedMessages: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       noLoggerInfo:
         "Do not use logger.info() in API source. Use debug for routine diagnostics or warn/error/fatal for actionable issues.",
     },
   },
   create(context) {
+    const options = (context.options[0] ?? {}) as NoLoggerInfoOptions;
+    const allowedMessages = new Set(options.allowedMessages ?? []);
     const filename = context.filename ?? context.getFilename();
     if (filename.includes("/__tests__/")) {
       return {};
@@ -86,6 +121,10 @@ export const noLoggerInfo: Rule.RuleModule = {
           isLoggerCall(object) ||
           (object.type === "Identifier" && loggerVariables.has(object.name))
         ) {
+          const message = getStaticMessage(node);
+          if (message !== null && allowedMessages.has(message)) {
+            return;
+          }
           context.report({
             node,
             messageId: "noLoggerInfo",

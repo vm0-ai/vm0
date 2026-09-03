@@ -169,6 +169,51 @@ describe("Pi memory Phase 2 archive boundary", () => {
     );
   });
 
+  it("rejects non-adjacent ancestors and accepts valid near prefixes", () => {
+    const collisions = [
+      ["a", "a-", "a/b"],
+      ["E\u0301", "é-", "É/child"],
+    ] as const;
+    for (const paths of collisions) {
+      const prepared = result(
+        paths.map((path, index) => {
+          return { path, content: `collision-${index.toString()}` };
+        }),
+      );
+      for (const files of [prepared.files, [...prepared.files].reverse()]) {
+        expect(() => {
+          validatePiMemoryPhase2PreparedResult(STORAGE_ID, {
+            ...prepared,
+            files,
+          });
+        }).toThrow(
+          expect.objectContaining({
+            name: "PiMemoryPhase2ArchiveError",
+            errorClass: "path_invalid",
+          }),
+        );
+      }
+    }
+
+    const nearPrefixes = result([
+      { path: "a", content: "exact" },
+      { path: "a-/child", content: "hyphen" },
+      { path: "a.b", content: "dot" },
+      { path: "a0/b", content: "suffix" },
+      { path: "E\u0301", content: "decomposed" },
+      { path: "é-/child", content: "normalized hyphen" },
+    ]);
+    const canonical = buildPiMemoryPhase2Archive(STORAGE_ID, nearPrefixes);
+    const reordered = buildPiMemoryPhase2Archive(STORAGE_ID, {
+      ...nearPrefixes,
+      files: [...nearPrefixes.files].reverse(),
+    });
+
+    expect(reordered.versionId).toBe(canonical.versionId);
+    expect(reordered.manifestBytes).toStrictEqual(canonical.manifestBytes);
+    expect(reordered.archiveBytes).toStrictEqual(canonical.archiveBytes);
+  });
+
   it("rejects API-returned path collisions and identity mismatches", () => {
     const collision = result([
       { path: "Topic.md", content: "first" },

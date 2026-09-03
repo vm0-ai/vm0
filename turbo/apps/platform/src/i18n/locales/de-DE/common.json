@@ -2235,7 +2235,8 @@
       "viewLogs": "Ausführungsprotokolle anzeigen",
       "waitingIn": "Warten",
       "worked": "Ausgeführt",
-      "workedFor": "Ausgeführt in {{duration}}"
+      "workedFor": "Ausgeführt in {{duration}}",
+      "workingFor": "Seit {{duration}} in Arbeit"
     },
     "sharing": {
       "cancel": "Abbrechen",
@@ -2946,21 +2947,20 @@
       "agentphone": {
         "authorizedSender": "Autorisierter Absender",
         "connectAria": "Telefon anschließen",
-        "connectDescription": "Geben Sie Ihre Telefonnummer ein. Wir senden Ihnen einen Bestätigungslink per SMS, der diesen Arbeitsbereich verbindet.",
+        "connectDescription": "Senden Sie von dem Telefon, das Sie verbinden möchten, eine Nachricht an diese AgentPhone-Nummer.",
         "connectTitle": "Telefon anschließen",
         "copyAria": "Kopieren Sie {{phone}}",
         "copyError": "Telefonnummer konnte nicht kopiert werden",
         "copySuccess": "Telefonnummer kopiert",
         "description": "SMS-Zugriff auf {{assistantName}}",
         "destination": "iMessage oder SMS an",
-        "normalized": "Wir werden {{phone}} eine SMS senden.",
+        "messageInstruction": "Senden Sie „hi“",
+        "openMessages": "Nachrichten öffnen",
         "options": "Telefonoptionen",
         "phoneLabel": "Telefon",
-        "phoneNumber": "Telefonnummer",
-        "risk": "SMS- und MMS-Antworten werden möglicherweise nicht zuverlässig zugestellt. Für ein möglichst zuverlässiges Erlebnis verwenden Sie iMessage mit dieser AgentPhone-Nummer.",
-        "sending": "Senden...",
-        "sendVerification": "Bestätigung senden",
-        "verificationSent": "Bestätigungstext an {{phone}} gesendet. Öffnen Sie den Link in diesem Text, um die Verbindung abzuschließen."
+        "replyInstruction": "Öffnen Sie den Verbindungslink innerhalb von 10 Minuten, um die Verbindung abzuschließen.",
+        "replyTitle": "Öffnen Sie unsere Antwort",
+        "risk": "Verwenden Sie nach Möglichkeit iMessage. SMS- und MMS-Antworten kommen möglicherweise nicht zuverlässig an."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3023,7 +3023,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Geben Sie eine Telefonnummer mit Landesvorwahl ein, z. B. +1 555 555 1212.",
         "githubAuthorizationWindow": "Das Autorisierungsfenster konnte nicht geöffnet werden",
         "telegramDomain": "Die Domain ist für Telegram noch nicht sichtbar. Überprüfen Sie BotFather und versuchen Sie es erneut.",
         "telegramPrivacy": "Der Datenschutzmodus scheint immer noch aktiviert zu sein. Schalten Sie es in BotFather aus und versuchen Sie es dann erneut."
@@ -3229,7 +3228,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone verbunden",
         "agentphoneDisconnected": "AgentPhone getrennt",
-        "agentphoneVerificationSent": "Bestätigungstext gesendet",
         "feishuBotInstalled": "Der Feishu-Bot wurde erfolgreich installiert",
         "feishuBotUninstalled": "Feishu-Bot deinstalliert",
         "feishuConnected": "Feishu hat erfolgreich eine Verbindung hergestellt",

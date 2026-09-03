@@ -35,7 +35,7 @@ function resolveDesktopBuildConfig(options = {}) {
     options.product?.trim() ||
       readDesktopEnvironment("OKOU_DESKTOP_PRODUCT") ||
       fileConfig?.product ||
-      "zero",
+      "okou",
   );
   const platformUrl = new URL(
     options.platformUrl?.trim() ||

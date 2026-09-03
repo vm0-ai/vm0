@@ -718,8 +718,8 @@ def create_openai_responses_sse_usage_extractor(
     contain SSE framing to the callable *scanner* (or its ``feed()`` method) and
     retain *usage* as a live mutable accumulator. Usage extracted at a complete
     event boundary updates that same dict in place. After the final chunk,
-    callers invoke ``scanner.finish()`` to flush an event without a trailing
-    blank line.
+    callers invoke ``scanner.finish()`` to finalize a captured trailing event
+    when the stream ends without a blank-line terminator.
 
     When captured event JSON cannot be parsed or exceeds an extractor bound,
     ``on_parse_error(event_type, error)`` is called only if the final event

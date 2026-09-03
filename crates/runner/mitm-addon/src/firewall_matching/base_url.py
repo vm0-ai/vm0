@@ -17,7 +17,7 @@ from firewall_matching.patterns import (
     SegmentLiteral,
     SegmentParam,
     _match_compiled_host,
-    _match_compiled_path_prefix,
+    _match_compiled_path_prefix_text,
     _parse_segment,
     _split_path_segments,
 )
@@ -635,13 +635,10 @@ def _match_compiled_base_url_parts(
     base_path = base.parts.path
     clean_url_path = url_parts.path
     if base_path and base_path != "/":
-        url_path_segs = _split_path_segments(clean_url_path)
-        path_result = _match_compiled_path_prefix(url_path_segs, base.path_segments)
+        path_result = _match_compiled_path_prefix_text(clean_url_path, base.path_segments)
         if path_result is None:
             return None
-        path_params, consumed = path_result
-        remaining_segs = url_path_segs[consumed:]
-        rel_path = "/" + "/".join(remaining_segs) if remaining_segs else "/"
+        path_params, rel_path = path_result
         all_params = {**host_params, **path_params}
     else:
         rel_path = clean_url_path or "/"

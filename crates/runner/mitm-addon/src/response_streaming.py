@@ -39,6 +39,8 @@ _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_REDIRECT_MIN = 300
 _HTTP_STATUS_BAD_GATEWAY = 502
+_WEBSOCKET_KEY_BASE64_CHARS = 24
+_WEBSOCKET_ACCEPT_BASE64_CHARS = 28
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
@@ -91,7 +93,11 @@ def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
     return "anthropic_messages"
 
 
-def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
+def uses_model_json_fallback(
+    flow: http.HTTPFlow,
+    *,
+    websocket_header_work_limit: int,
+) -> bool:
     """Return whether terminal model usage may parse a buffered JSON body."""
     response = flow.response
     if (
@@ -102,7 +108,10 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
         return False
     if http_response_classification.has_event_stream_media_type(response):
         return False
-    return not is_confirmed_websocket_upgrade_response(flow)
+    return not is_confirmed_websocket_upgrade_response(
+        flow,
+        websocket_header_work_limit=websocket_header_work_limit,
+    )
 
 
 def _make_response_decode_session(
@@ -180,6 +189,8 @@ def _log_response_encoding_fail_closed(
 def _configure_response_inspection_stream(
     flow: http.HTTPFlow,
     failure_observer: model_provider_failure.HttpResponseFailureObserver | None,
+    *,
+    websocket_header_work_limit: int,
 ) -> _ResponseStreamSetup:
     # Set up model inspection or connector usage extraction for response classes
     # that need it. Parsers consume chunks separately from the optional buffer.
@@ -200,7 +211,10 @@ def _configure_response_inspection_stream(
     if (
         is_billable_model_provider
         and model_protocol == "openai_responses"
-        and is_confirmed_websocket_upgrade_response(flow)
+        and is_confirmed_websocket_upgrade_response(
+            flow,
+            websocket_header_work_limit=websocket_header_work_limit,
+        )
     ):
         model_websocket_usage.activate(flow)
         return _ResponseStreamSetup(None, False)
@@ -347,7 +361,13 @@ def _configure_response_inspection_stream(
                 response.headers
             ) and (
                 failure_observer is not None
-                or (is_billable_model_provider and uses_model_json_fallback(flow))
+                or (
+                    is_billable_model_provider
+                    and uses_model_json_fallback(
+                        flow,
+                        websocket_header_work_limit=websocket_header_work_limit,
+                    )
+                )
             )
             if not needs_buffered_fallback:
                 if failure_observer is not None:
@@ -467,7 +487,11 @@ def _configure_response_inspection_stream(
     return _ResponseStreamSetup(None, False)
 
 
-def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
+def is_confirmed_websocket_upgrade_response(
+    flow: http.HTTPFlow,
+    *,
+    websocket_header_work_limit: int,
+) -> bool:
     """Return whether ``flow`` completed a confirmed WebSocket upgrade.
 
     Confirmation requires a response with status 101, the exact ``True``
@@ -491,21 +515,32 @@ def is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
     if flow.metadata.get(metadata_keys.WEBSOCKET_UPGRADE_REQUEST) is not True:
         return False
     if not http_header_syntax.header_values_contain_token(
-        response.headers.get_all("Upgrade"), "websocket"
+        response.headers.get_all("Upgrade"),
+        "websocket",
+        max_work_units=websocket_header_work_limit,
     ):
         return False
     if not http_header_syntax.header_values_contain_token(
-        response.headers.get_all("Connection"), "upgrade"
+        response.headers.get_all("Connection"),
+        "upgrade",
+        max_work_units=websocket_header_work_limit,
     ):
         return False
 
     request_key = http_header_syntax.single_header_value(
-        flow.request.headers.get_all("Sec-WebSocket-Key")
+        flow.request.headers.get_all("Sec-WebSocket-Key"),
+        max_value_chars=websocket_header_work_limit,
     )
     response_accept = http_header_syntax.single_header_value(
-        response.headers.get_all("Sec-WebSocket-Accept")
+        response.headers.get_all("Sec-WebSocket-Accept"),
+        max_value_chars=websocket_header_work_limit,
     )
-    if request_key is None or response_accept is None:
+    if (
+        request_key is None
+        or len(request_key) != _WEBSOCKET_KEY_BASE64_CHARS
+        or response_accept is None
+        or len(response_accept) != _WEBSOCKET_ACCEPT_BASE64_CHARS
+    ):
         return False
     try:
         expected_accept = generate_accept_token(request_key.encode("ascii")).decode("ascii")
@@ -528,7 +563,11 @@ def _reject_uninspectable_response(flow: http.HTTPFlow) -> None:
     flow.response.stream = _discard_uninspectable_response_body
 
 
-def configure_response_stream(flow: http.HTTPFlow) -> None:
+def configure_response_stream(
+    flow: http.HTTPFlow,
+    *,
+    websocket_header_work_limit: int,
+) -> None:
     """Enable pass-through response streaming and body consumers.
 
     Every configured response records exact streamed bytes. A capped raw-wire
@@ -540,7 +579,11 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
 
     metrics = {"total_bytes": 0}
     failure_observer = model_provider_failure.configure_response_observer(flow)
-    setup = _configure_response_inspection_stream(flow, failure_observer)
+    setup = _configure_response_inspection_stream(
+        flow,
+        failure_observer,
+        websocket_header_work_limit=websocket_header_work_limit,
+    )
     if setup.reject_uninspectable:
         _log_response_encoding_fail_closed(flow, flow.response)
         _reject_uninspectable_response(flow)

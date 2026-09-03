@@ -1070,8 +1070,8 @@ button {
   }
 }
 
-/* ---- Zero avatar face ---- */
-.zero-face {
+/* ---- Okou avatar face ---- */
+.okou-face {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1081,7 +1081,7 @@ button {
   flex: 0 0 auto;
 }
 
-.zero-face img {
+.okou-face img {
   width: 92%;
   height: 92%;
   object-fit: cover;
@@ -1089,32 +1089,32 @@ button {
   user-select: none;
 }
 
-.zero-face-init {
+.okou-face-init {
   box-shadow:
     0 6px 20px -8px rgba(20, 23, 29, 0.2),
     0 0 0 1px rgba(20, 23, 29, 0.06);
-  animation: zero-breathe 4.5s ease-in-out infinite;
+  animation: okou-breathe 4.5s ease-in-out infinite;
 }
 
-.zero-face-chip {
+.okou-face-chip {
   background: var(--brand-soft);
 }
 
-.zero-face-hero {
+.okou-face-hero {
   position: relative;
   z-index: 3;
   box-shadow:
     0 8px 26px -8px rgba(237, 78, 1, 0.5),
     0 0 0 1px rgba(237, 78, 1, 0.12);
-  animation: zero-breathe 3.4s ease-in-out infinite;
+  animation: okou-breathe 3.4s ease-in-out infinite;
 }
 
-.zero-face-offline {
+.okou-face-offline {
   box-shadow: 0 0 0 1px rgba(20, 23, 29, 0.08);
   filter: grayscale(0.85) opacity(0.55);
 }
 
-@keyframes zero-breathe {
+@keyframes okou-breathe {
   0%,
   100% {
     transform: scale(1);
@@ -1476,8 +1476,8 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .zero-face-init,
-  .zero-face-hero,
+  .okou-face-init,
+  .okou-face-hero,
   .radar-aura,
   .radar-wave,
   .loading-dots span {
