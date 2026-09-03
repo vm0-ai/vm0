@@ -3070,17 +3070,18 @@ function ChatThreadRenderedEventGroups({
   const modelChanges = modelChangesByEventId(renderedActiveGroups);
   const scrollTargetEventId =
     useGet(thread.threadScrollPosition$)?.targetEventId ?? null;
+  const runWorkFoldingEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
   const runGroupFolding = buildRunGroupFolding(
     renderedActiveGroups,
     runGroupExpansionOverrides,
     scrollTargetEventId,
+    { preserveGoalRunsForWorkFolding: runWorkFoldingEnabled },
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const completedWorkFolding = runWorkFoldingEnabled
     ? null
     : buildCompletedWorkFolding(runGroupVisibleGroups);

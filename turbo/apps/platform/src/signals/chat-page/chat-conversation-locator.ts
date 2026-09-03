@@ -354,15 +354,16 @@ function createVisibleTurns(
   return computed((get): readonly LocatorTurn[] => {
     const activeGroups = activeGroupsForLocator(get(allChatGroups$));
     const targetEventId = get(threadScrollPosition$)?.targetEventId ?? null;
+    const runWorkFoldingEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
     const runGroupFolding = buildRunGroupFolding(
       activeGroups,
       get(runGroupExpansionOverrides$),
       targetEventId,
+      { preserveGoalRunsForWorkFolding: runWorkFoldingEnabled },
     );
     const runGroupVisibleGroups =
       runGroupFolding?.visibleGroups ?? activeGroups;
-    const runWorkFoldingEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
     if (!runWorkFoldingEnabled) {
       const completedWorkFolding = buildCompletedWorkFolding(
         runGroupVisibleGroups,
