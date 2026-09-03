@@ -256,7 +256,15 @@ def create_openai_chat_completions_sse_usage_extractor(
     include_usage: bool = True,
     failure_observer: ModelHttpFailureObserver | None = None,
 ) -> tuple[SseUsageScanner, dict]:
-    """Create an incremental usage parser for Chat Completions SSE bytes."""
+    """Create an incremental usage parser for Chat Completions SSE bytes.
+
+    Returns ``(scanner, usage)``. Callers feed arbitrary byte chunks that still
+    contain SSE framing to the callable *scanner* (or its ``feed()`` method) and
+    retain *usage* as a live mutable accumulator. Usage extracted at a complete
+    event boundary updates that same dict in place. After the final decoded
+    bytes have been fed, callers must invoke ``scanner.finish()`` to finalize a
+    captured trailing event when the stream ends without a blank-line terminator.
+    """
     usage: dict = {}
     parser = SseUsageScanner(
         _OpenAIChatCompletionsSseUsageHandler(
