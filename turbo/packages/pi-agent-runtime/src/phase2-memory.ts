@@ -65,6 +65,45 @@ interface Phase2RuntimeState {
   totalBytes: number;
 }
 
+interface Phase2ProviderResult {
+  readonly responseId: string;
+  readonly usage: PiMemoryPhase2ProviderUsage;
+}
+
+type Phase2ModelTerminal = Readonly<{
+  source: "model";
+  status: "completed" | "failed";
+}>;
+
+type Phase2HeartbeatTerminal =
+  | Readonly<{ source: "heartbeat"; status: "stopped" | "aborted" }>
+  | Readonly<{ source: "heartbeat"; status: "failed"; error: unknown }>;
+
+type Phase2CallerTerminal = Readonly<{
+  source: "caller";
+  status: "aborted" | "disposed";
+}>;
+
+type Phase2Terminal =
+  | Phase2ModelTerminal
+  | Phase2HeartbeatTerminal
+  | Phase2CallerTerminal;
+
+interface Phase2TerminalSettlement {
+  readonly model: Phase2ModelTerminal;
+  readonly heartbeat: Phase2HeartbeatTerminal;
+  readonly caller: Phase2CallerTerminal;
+}
+
+interface Phase2TerminalArbiter {
+  readonly selected: Promise<Phase2Terminal>;
+  settle(): Promise<Phase2TerminalSettlement>;
+}
+
+interface Phase2CapturedFailure {
+  readonly error: unknown;
+}
+
 export interface PiMemoryPhase2SessionSnapshot {
   readonly toolNames: readonly string[];
   readonly thinkingLevel: string;
@@ -87,6 +126,8 @@ export interface PiMemoryPhase2EngineTestHooks {
   readonly beforeOutputValidation?: (
     workspace: Phase2PrivateWorkspace,
   ) => Promise<void>;
+  readonly afterModelCompletionSelected?: () => Promise<void>;
+  readonly onSessionDisposed?: () => void;
   readonly beforeCleanup?: (root: string) => Promise<void>;
   readonly tools?: Phase2MemoryToolTestHooks;
 }
@@ -258,17 +299,22 @@ async function confirmHeartbeat(
 }
 
 function abortPromise(signal: AbortSignal): {
-  readonly promise: Promise<"aborted">;
+  readonly promise: Promise<"aborted" | "disposed">;
   dispose(): void;
 } {
   let listener: (() => void) | undefined;
-  const promise = new Promise<"aborted">((resolve) => {
+  let resolvePromise: ((status: "aborted" | "disposed") => void) | undefined;
+  let settled = false;
+  const promise = new Promise<"aborted" | "disposed">((resolve) => {
+    resolvePromise = resolve;
     if (signal.aborted) {
+      settled = true;
       resolve("aborted");
       return;
     }
     listener = () => {
-      return resolve("aborted");
+      settled = true;
+      resolve("aborted");
     };
     signal.addEventListener("abort", listener, { once: true });
   });
@@ -278,8 +324,136 @@ function abortPromise(signal: AbortSignal): {
       if (listener) {
         signal.removeEventListener("abort", listener);
       }
+      if (!settled) {
+        settled = true;
+        resolvePromise?.("disposed");
+      }
     },
   };
+}
+
+function createTerminalArbiter(args: {
+  readonly session: AgentSession;
+  readonly input: SnapshotPhase2Input;
+  readonly state: Phase2RuntimeState;
+  readonly startedAt: number;
+  readonly testHooks: PiMemoryPhase2EngineTestHooks | undefined;
+}): Phase2TerminalArbiter {
+  const model = args.session
+    .prompt("Consolidate the private Pi memory inputs now.", {
+      expandPromptTemplates: false,
+      source: "interactive",
+    })
+    .then(
+      (): Phase2ModelTerminal => {
+        return { source: "model", status: "completed" };
+      },
+      (): Phase2ModelTerminal => {
+        return { source: "model", status: "failed" };
+      },
+    );
+  const callerAbort = abortPromise(args.input.signal);
+  const caller = callerAbort.promise.then<Phase2CallerTerminal>((status) => {
+    return { source: "caller", status };
+  });
+  const heartbeatStop = new AbortController();
+  const heartbeatSignal = AbortSignal.any([
+    args.input.signal,
+    heartbeatStop.signal,
+  ]);
+  const heartbeat = (async (): Promise<Phase2HeartbeatTerminal> => {
+    while (!heartbeatStop.signal.aborted) {
+      try {
+        await (args.testHooks?.waitForHeartbeat ?? waitForHeartbeat)(
+          heartbeatSignal,
+          PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
+        );
+      } catch {
+        return {
+          source: "heartbeat",
+          status: heartbeatStop.signal.aborted ? "stopped" : "aborted",
+        };
+      }
+      try {
+        await confirmHeartbeat(args.input, args.state, args.startedAt);
+      } catch (error) {
+        return { source: "heartbeat", status: "failed", error };
+      }
+    }
+    return { source: "heartbeat", status: "stopped" };
+  })();
+  return {
+    selected: Promise.race([model, heartbeat, caller]),
+    async settle() {
+      heartbeatStop.abort();
+      callerAbort.dispose();
+      const [modelResult, heartbeatResult, callerResult] = await Promise.all([
+        model,
+        heartbeat,
+        caller,
+      ]);
+      return {
+        model: modelResult,
+        heartbeat: heartbeatResult,
+        caller: callerResult,
+      };
+    },
+  };
+}
+
+function terminalFailure(
+  terminal: Phase2Terminal,
+  input: SnapshotPhase2Input,
+  state: Phase2RuntimeState,
+): Phase2CapturedFailure | undefined {
+  switch (terminal.source) {
+    case "model": {
+      return terminal.status === "failed"
+        ? { error: engineError("model_failed", input, state) }
+        : undefined;
+    }
+    case "heartbeat": {
+      if (terminal.status === "failed") {
+        return { error: terminal.error };
+      }
+      return {
+        error: engineError(
+          terminal.status === "aborted" ? "aborted" : "session_failed",
+          input,
+          state,
+        ),
+      };
+    }
+    case "caller": {
+      return {
+        error: engineError(
+          terminal.status === "aborted" ? "aborted" : "session_failed",
+          input,
+          state,
+        ),
+      };
+    }
+  }
+}
+
+function settlementFailure(
+  settlement: Phase2TerminalSettlement,
+  input: SnapshotPhase2Input,
+  state: Phase2RuntimeState,
+): Phase2CapturedFailure | undefined {
+  if (settlement.heartbeat.status === "failed") {
+    return { error: settlement.heartbeat.error };
+  }
+  if (
+    settlement.heartbeat.status === "aborted" ||
+    settlement.caller.status === "aborted"
+  ) {
+    return { error: engineError("aborted", input, state) };
+  }
+  if (settlement.model.status === "failed") {
+    return { error: engineError("model_failed", input, state) };
+  }
+  return undefined;
 }
 
 async function abortMaintenanceSession(
@@ -300,85 +474,52 @@ async function runMaintenancePrompt(args: {
   readonly state: Phase2RuntimeState;
   readonly startedAt: number;
   readonly testHooks: PiMemoryPhase2EngineTestHooks | undefined;
-}): Promise<void> {
-  await confirmHeartbeat(args.input, args.state, args.startedAt);
-  args.input.signal.throwIfAborted();
-  emitLifecycle(args.input, args.state, args.startedAt, "model_started");
-
-  const completion = args.session
-    .prompt("Consolidate the private Pi memory inputs now.", {
-      expandPromptTemplates: false,
-      source: "interactive",
-    })
-    .then(
-      () => {
-        return { status: "completed" as const };
-      },
-      () => {
-        return { status: "failed" as const };
-      },
-    );
-  const callerAbort = abortPromise(args.input.signal);
-  const heartbeatStop = new AbortController();
-  const heartbeatSignal = AbortSignal.any([
-    args.input.signal,
-    heartbeatStop.signal,
-  ]);
-  const heartbeatLoop = (async () => {
-    while (!heartbeatStop.signal.aborted) {
-      try {
-        await (args.testHooks?.waitForHeartbeat ?? waitForHeartbeat)(
-          heartbeatSignal,
-          PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
-        );
-      } catch {
-        return {
-          status: heartbeatStop.signal.aborted
-            ? ("heartbeat_stopped" as const)
-            : ("aborted" as const),
-        };
-      }
-      try {
-        await confirmHeartbeat(args.input, args.state, args.startedAt);
-      } catch (error) {
-        return { status: "heartbeat_failed" as const, error };
-      }
-    }
-    return { status: "heartbeat_stopped" as const };
-  })();
+}): Promise<Phase2ProviderResult> {
+  let arbiter: Phase2TerminalArbiter | undefined;
+  let failure: Phase2CapturedFailure | undefined;
+  let provider: Phase2ProviderResult | undefined;
   try {
-    const event = await Promise.race([
-      completion,
-      heartbeatLoop,
-      callerAbort.promise.then(() => {
-        return { status: "aborted" as const };
-      }),
-    ]);
-    switch (event.status) {
-      case "completed": {
-        return;
-      }
-      case "failed": {
-        throw engineError("model_failed", args.input, args.state);
-      }
-      case "aborted": {
-        await abortMaintenanceSession(args.session, args.input, args.state);
-        throw engineError("aborted", args.input, args.state);
-      }
-      case "heartbeat_failed": {
-        await abortMaintenanceSession(args.session, args.input, args.state);
-        throw event.error;
-      }
-      case "heartbeat_stopped": {
-        throw engineError("session_failed", args.input, args.state);
-      }
+    await confirmHeartbeat(args.input, args.state, args.startedAt);
+    args.input.signal.throwIfAborted();
+    emitLifecycle(args.input, args.state, args.startedAt, "model_started");
+    args.input.signal.throwIfAborted();
+    arbiter = createTerminalArbiter(args);
+    const terminal = await arbiter.selected;
+    failure = args.input.signal.aborted
+      ? { error: engineError("aborted", args.input, args.state) }
+      : terminalFailure(terminal, args.input, args.state);
+    if (!failure) {
+      await args.testHooks?.afterModelCompletionSelected?.();
+      args.input.signal.throwIfAborted();
+      provider = providerResult(args.session, args.input, args.state);
     }
-  } finally {
-    heartbeatStop.abort();
-    callerAbort.dispose();
-    await heartbeatLoop;
-    await completion;
+  } catch (error) {
+    failure = { error };
   }
+
+  if (failure && arbiter) {
+    try {
+      await abortMaintenanceSession(args.session, args.input, args.state);
+    } catch (error) {
+      failure = { error };
+    }
+  }
+  args.session.dispose();
+  const settlement = arbiter ? await arbiter.settle() : undefined;
+  args.testHooks?.onSessionDisposed?.();
+
+  if (!failure && settlement) {
+    failure = settlementFailure(settlement, args.input, args.state);
+  }
+
+  if (failure) {
+    throw failure.error;
+  }
+  args.input.signal.throwIfAborted();
+  if (!provider) {
+    throw engineError("session_failed", args.input, args.state);
+  }
+  return provider;
 }
 
 function finalAssistantMessages(session: AgentSession): AssistantMessage[] {
@@ -391,10 +532,7 @@ function providerResult(
   session: AgentSession,
   input: SnapshotPhase2Input,
   state: Phase2RuntimeState,
-): {
-  readonly responseId: string;
-  readonly usage: PiMemoryPhase2ProviderUsage;
-} {
+): Phase2ProviderResult {
   const messages = finalAssistantMessages(session);
   const final = messages.at(-1);
   if (final?.stopReason === "error") {
@@ -573,6 +711,7 @@ async function executeConsolidation(
     0,
   );
   emitLifecycle(input, state, startedAt, "staged");
+  signal.throwIfAborted();
 
   if (
     mapsEqual(workspace.base, workspace.agentBaseline) &&
@@ -582,10 +721,7 @@ async function executeConsolidation(
       input.memoryStorageId,
       workspace.base,
     );
-    emitLifecycle(input, state, startedAt, "no_diff", {
-      outcome: "no_diff",
-      contentIdentity: prepared.contentIdentity,
-    });
+    signal.throwIfAborted();
     return Object.freeze({
       status: "no_diff",
       ...prepared,
@@ -605,56 +741,83 @@ async function executeConsolidation(
       testHooks,
     });
   } catch (error) {
+    signal.throwIfAborted();
     if (error instanceof Phase2InputInvalidError) {
       throw error;
     }
     throw engineError("session_failed", input, state);
   }
+  const provider = await runMaintenancePrompt({
+    session,
+    input,
+    state,
+    startedAt,
+    testHooks,
+  });
+  emitLifecycle(input, state, startedAt, "model_completed");
+  signal.throwIfAborted();
+  await testHooks?.beforeOutputValidation?.(workspace);
+  signal.throwIfAborted();
+  let prepared: Awaited<ReturnType<typeof validatePiMemoryPhase2Output>>;
   try {
-    await runMaintenancePrompt({
-      session,
-      input,
-      state,
-      startedAt,
-      testHooks,
-    });
-    const provider = providerResult(session, input, state);
-    emitLifecycle(input, state, startedAt, "model_completed");
-    await testHooks?.beforeOutputValidation?.(workspace);
-    const prepared = await validatePiMemoryPhase2Output(
+    prepared = await validatePiMemoryPhase2Output(
       workspace,
       input.memoryStorageId,
     );
-    state.fileCount = prepared.manifest.fileCount;
-    state.totalBytes = prepared.manifest.totalBytes;
-    emitLifecycle(input, state, startedAt, "validated", {
-      outcome: "prepared",
-      contentIdentity: prepared.contentIdentity,
-    });
-    try {
-      input.onUsage?.({
-        orgId: input.orgId,
-        userId: input.userId,
-        memoryStorageId: input.memoryStorageId,
-        claimedRevision: input.claimedRevision,
-        selectionDigest: input.selectionDigest,
-        responseId: provider.responseId,
-        usage: provider.usage,
-      });
-    } catch {
-      throw engineError("observer_failed", input, state);
-    }
-    return Object.freeze({
-      status: "prepared",
-      ...prepared,
-      diff: workspace.diff,
-      selectionDigest: input.selectionDigest,
-      responseId: provider.responseId,
-      usage: provider.usage,
-    });
-  } finally {
-    session.dispose();
+  } catch (error) {
+    signal.throwIfAborted();
+    throw error;
   }
+  signal.throwIfAborted();
+  state.fileCount = prepared.manifest.fileCount;
+  state.totalBytes = prepared.manifest.totalBytes;
+  return Object.freeze({
+    status: "prepared",
+    ...prepared,
+    diff: workspace.diff,
+    selectionDigest: input.selectionDigest,
+    responseId: provider.responseId,
+    usage: provider.usage,
+  });
+}
+
+function commitConsolidationResult(
+  input: SnapshotPhase2Input,
+  state: Phase2RuntimeState,
+  startedAt: number,
+  result: PiMemoryPhase2ConsolidationResult,
+  signal: AbortSignal,
+): PiMemoryPhase2ConsolidationResult {
+  signal.throwIfAborted();
+  if (result.status === "no_diff") {
+    emitLifecycle(input, state, startedAt, "no_diff", {
+      outcome: "no_diff",
+      contentIdentity: result.contentIdentity,
+    });
+    signal.throwIfAborted();
+    return result;
+  }
+
+  emitLifecycle(input, state, startedAt, "validated", {
+    outcome: "prepared",
+    contentIdentity: result.contentIdentity,
+  });
+  signal.throwIfAborted();
+  try {
+    input.onUsage?.({
+      orgId: input.orgId,
+      userId: input.userId,
+      memoryStorageId: input.memoryStorageId,
+      claimedRevision: input.claimedRevision,
+      selectionDigest: input.selectionDigest,
+      responseId: result.responseId,
+      usage: result.usage,
+    });
+  } catch {
+    throw engineError("observer_failed", input, state);
+  }
+  signal.throwIfAborted();
+  return result;
 }
 
 export async function runPiMemoryPhase2ConsolidationForTest(
@@ -704,6 +867,20 @@ export async function runPiMemoryPhase2ConsolidationForTest(
     }
     if (cleanupHookFailed) {
       failure = engineError("cleanup_failed", input, state);
+    }
+  }
+
+  if (!failure && result && input) {
+    try {
+      result = commitConsolidationResult(
+        input,
+        state,
+        startedAt,
+        result,
+        signal,
+      );
+    } catch (error) {
+      failure = normalizeFailure(error, input, state, signal);
     }
   }
 
