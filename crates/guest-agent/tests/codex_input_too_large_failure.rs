@@ -5,6 +5,8 @@ mod common;
 use guest_contracts::diagnostics::{
     AgentFramework, FailureClass, FailureDiagnostic, FailureReason,
 };
+use httpmock::prelude::*;
+use serde_json::json;
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -15,6 +17,7 @@ const UPSTREAM_ERROR_SENTINEL: &str = "do-not-expose-upstream-input-limit-messag
 async fn oversized_codex_input_writes_actionable_structured_failure()
 -> Result<(), Box<dyn std::error::Error>> {
     common::ensure_canonical_workspace_for_test()?;
+    let server = MockServer::start();
     let mock_codex = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
     let home = tmp.path().join("home");
@@ -27,6 +30,39 @@ async fn oversized_codex_input_writes_actionable_structured_failure()
             ..guest_contracts::env::RunPayload::default()
         },
     )?;
+    let _heartbeat = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/heartbeat");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({}));
+    });
+    let _events = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({}));
+    });
+    let _telemetry = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({}));
+    });
+    let prepare_history = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let complete = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .json_body_includes(
+                r#"{"runId":"codex-input-too-large","exitCode":1,"failureReason":"input_too_large","error":"execution: Codex input is too large: 101 characters provided, maximum is 100 characters. Reduce the input and try again.","checkpoint":{"cliAgentSessionHistoryDisposition":"unavailable"}}"#,
+            );
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"success": true, "status": "failed"}));
+    });
 
     let output = common::command_output_with_timeout(
         Command::new(env!("CARGO_BIN_EXE_guest-agent"))
@@ -41,9 +77,9 @@ async fn oversized_codex_input_writes_actionable_structured_failure()
             .env(guest_contracts::env::RUN_ID_ENV, "codex-input-too-large")
             .env(
                 guest_contracts::env::CANONICAL_API_URL_ENV,
-                "http://127.0.0.1:1",
+                server.base_url(),
             )
-            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "")
+            .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, "test-token")
             .env(
                 guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
                 "00000000-0000-4000-8000-000000000abc",
@@ -83,6 +119,8 @@ async fn oversized_codex_input_writes_actionable_structured_failure()
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    prepare_history.assert_calls_async(0).await;
+    complete.assert_calls_async(1).await;
 
     let paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir);
     let error = std::fs::read_to_string(paths.checkpoint_error_file())?;
