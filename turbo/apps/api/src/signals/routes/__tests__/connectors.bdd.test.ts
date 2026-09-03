@@ -2519,7 +2519,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(created).toMatchObject({
       authMode: "oauth",
-      oauthSetup: "custom",
       storageVersion: 1,
       oauthConfig: {
         clientId,
@@ -3227,7 +3226,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(created).toMatchObject({
       kind: "mcp",
       authMode: "oauth",
-      oauthSetup: "custom",
       endpoint: definition.endpoint,
       storageVersion: 1,
       connected: false,
@@ -3955,6 +3953,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(createdDefinition).toMatchObject({
       authMode: "automatic",
     });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: createdDefinition.id,
+      }),
+    ).resolves.toMatchObject({ definition_oauth_setup: null });
     await connectorsApi.deleteCustomConnector(admin, createdDefinition.id);
 
     const customConnectorId = randomUUID();
@@ -4156,7 +4161,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     );
     expect(updated).toMatchObject({
-      oauthSetup: "custom",
+      authMode: "oauth",
       storageVersion: 2,
       connected: false,
     });

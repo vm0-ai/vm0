@@ -253,17 +253,14 @@ describe("custom connector response contracts", () => {
       },
     } as const;
 
-    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual({
-      ...payload,
-      oauthSetup: "custom",
-    });
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
 
     expect(
       customConnectorResponseSchema.parse({
         ...payload,
         oauthSetup: "custom",
       }),
-    ).toStrictEqual({ ...payload, oauthSetup: "custom" });
+    ).toStrictEqual(payload);
   });
 
   it("parses top-level Automatic MCP authentication", () => {

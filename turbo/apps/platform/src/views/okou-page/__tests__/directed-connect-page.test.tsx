@@ -727,7 +727,6 @@ describe("directed connector connect page", () => {
       slug: "_acme-oauth",
       displayName: "Acme OAuth",
       authMode: "oauth",
-      oauthSetup: "custom",
       fields: [],
       missingRequiredFields: ["oauth"],
       headerInjections: [
@@ -823,7 +822,6 @@ describe("directed connector connect page", () => {
       slug: "_acme-oauth-reconnect",
       displayName: "Acme OAuth Reconnect",
       authMode: "oauth",
-      oauthSetup: "custom",
       connected: true,
       connectedAccountId: connectionId,
       connectedAccountUpdatedAt,
@@ -915,7 +913,6 @@ describe("directed connector connect page", () => {
       slug: "_acme-permissioned-oauth",
       displayName: "Acme Permissioned OAuth",
       authMode: "oauth",
-      oauthSetup: "custom",
       fields: [],
       missingRequiredFields: ["oauth"],
       permissionBundleRef: "builtin:feishu@1",

@@ -231,12 +231,11 @@ function validCustomFeishuState(
 function isFeishuCustomOAuthConnector(
   connector: CustomConnectorRow | null,
 ): connector is CustomConnectorHttpRow & {
-  readonly oauthSetup: "custom";
   readonly oauthConfig: NonNullable<CustomConnectorHttpRow["oauthConfig"]>;
 } {
   return (
     connector?.kind === "http" &&
-    connector.oauthSetup === "custom" &&
+    connector.authMode === "oauth" &&
     connector.oauthConfig?.providerAdapter === "feishu"
   );
 }
