@@ -1646,35 +1646,14 @@ function createVoiceDraftSignals(
         visible: mode === "retry",
       });
       const client = get(apiClient$)(voiceIoPolishContract);
-      const request =
+      const body =
         lastAssistantMessage === undefined
-          ? accept(
-              client.post({ body: { text }, fetchOptions: { signal } }),
-              [200],
-              signal,
-            )
-          : (async () => {
-              const contextualResponse = await accept(
-                client.post({
-                  body: { text, lastAssistantMessage },
-                  fetchOptions: { signal },
-                }),
-                [200, 400],
-                signal,
-              );
-              if (contextualResponse.status === 200) {
-                return contextualResponse;
-              }
-              // New app -> old API rollout fallback: older APIs enforce a
-              // strict `{ text }` schema. Remove with #31523 once APIs from
-              // before #31517 neither serve nor remain rollback targets.
-              return accept(
-                client.post({ body: { text }, fetchOptions: { signal } }),
-                [200],
-                signal,
-              );
-            })();
-      const result = await settle(request, signal);
+          ? { text }
+          : { text, lastAssistantMessage };
+      const result = await settle(
+        accept(client.post({ body, fetchOptions: { signal } }), [200], signal),
+        signal,
+      );
       signal.throwIfAborted();
       if (!result.ok) {
         setVoiceDraftAttributes(editor, id, {

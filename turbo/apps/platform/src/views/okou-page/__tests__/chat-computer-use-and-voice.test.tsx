@@ -1024,14 +1024,13 @@ describe("chat lifecycle", () => {
     expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
-  it("uses the latest assistant message with a legacy polish fallback", async () => {
+  it("uses the latest assistant message as polish context", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000026";
     const rawTranscript = "um ship the nebula release";
     const polishedTranscript = "Ship the Project Nebula release.";
     const lastAssistantMessage =
       "The current release is called Project Nebula.";
-    let polishCalls = 0;
     const polishBodies: unknown[] = [];
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, {
@@ -1062,16 +1061,7 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
-      polishCalls += 1;
       polishBodies.push(body);
-      if (polishCalls === 1) {
-        return respond(400, {
-          error: {
-            code: "BAD_REQUEST",
-            message: "Unexpected key lastAssistantMessage",
-          },
-        });
-      }
       return respond(200, { text: polishedTranscript });
     });
 
@@ -1093,10 +1083,8 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(composer).toHaveTextContent(polishedTranscript);
     });
-    expect(polishCalls).toBe(2);
     expect(polishBodies).toStrictEqual([
       { text: rawTranscript, lastAssistantMessage },
-      { text: rawTranscript },
     ]);
   });
 
