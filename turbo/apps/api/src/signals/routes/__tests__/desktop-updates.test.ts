@@ -14,10 +14,10 @@ import { testDesktopUpdateManifestStateRoutes } from "../test-desktop-update-man
 const TEST_APP_ROUTES = Object.freeze([...desktopUpdateRoutes]);
 
 const context = testContext();
-const DESKTOP_UPDATE_MANIFEST_URL =
-  "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
 const OKOU_DESKTOP_UPDATE_MANIFEST_URL =
   "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
+const LEGACY_OKOU_DESKTOP_UPDATE_MANIFEST_URL =
+  "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json";
 
 interface DesktopUpdateRelease {
   readonly version: string;
@@ -29,7 +29,7 @@ interface DesktopUpdateRelease {
 
 interface DesktopUpdateManifest {
   readonly schemaVersion: 1;
-  readonly product?: "zero" | "okou";
+  readonly product?: "okou";
   readonly channels: Record<
     string,
     { readonly latest: string; readonly blocked?: readonly string[] }
@@ -60,7 +60,7 @@ function appRequest(path: string): Promise<Response> {
 
 function mockDesktopUpdateManifest(
   manifest: DesktopUpdateManifest,
-  manifestUrl = DESKTOP_UPDATE_MANIFEST_URL,
+  manifestUrl = OKOU_DESKTOP_UPDATE_MANIFEST_URL,
 ): void {
   server.use(
     http.get(manifestUrl, () => {
@@ -76,6 +76,7 @@ function stableManifest(
 ): DesktopUpdateManifest {
   return {
     schemaVersion: 1,
+    product: "okou",
     channels: {
       stable: { latest, blocked: [...blocked] },
     },
@@ -83,17 +84,10 @@ function stableManifest(
   };
 }
 
-function darwinArm64Release(
-  version: string,
-  url: string,
-  productName = "Zero",
-) {
+function darwinArm64Release(version: string, url: string) {
   return {
     version,
-    name:
-      productName === "Okou"
-        ? `Okou ${version}`
-        : `Zero Computer Use ${version}`,
+    name: `Okou ${version}`,
     notes: `Release ${version}`,
     pubDate: "2026-06-08T00:00:00.000Z",
     platforms: {
@@ -107,7 +101,7 @@ function darwinArm64Release(
 function legacyDarwinX64Release(version: string, url: string) {
   return {
     version,
-    name: `Zero Computer Use ${version}`,
+    name: `Okou ${version}`,
     notes: `Release ${version}`,
     pubDate: "2026-06-08T00:00:00.000Z",
     platforms: {
@@ -116,6 +110,10 @@ function legacyDarwinX64Release(version: string, url: string) {
       },
     },
   };
+}
+
+function okouZipUrl(version: string): string {
+  return `https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v${version}/Okou-darwin-arm64-${version}.zip`;
 }
 
 describe("desktop update routes", () => {
@@ -142,36 +140,27 @@ describe("desktop update routes", () => {
   // is the only one either route serves.
   //
   // The update line is asserted alongside the path, because the move alone
-  // would have changed it: the neutral path has to serve the Okou line the
-  // `okou` form served rather than the Zero line. Both manifests are mocked, so
-  // reading the wrong one resolves to a Zero artifact and fails here rather
-  // than 404ing. Every expectation is written out rather than derived from the
-  // path under test, which would assert nothing.
+  // would have changed it: the neutral path has to serve the final
+  // `ai-okou-desktop` line rather than the pre-adoption `okou` line it
+  // succeeded. Both Okou manifests are mocked at different versions, so reading
+  // the wrong one resolves to the wrong release and fails here rather than
+  // 404ing. Every expectation is written out rather than derived from the path
+  // under test, which would assert nothing.
   //
-  // Two plainer redirect cases and an `/api/okou` cutover case used to sit
-  // beside this one. #31088 left them without a path of their own to drive, and
-  // what they asserted is covered here.
+  // The unqualified DMG route is what the Zero migration wall's `Download Okou`
+  // button opens and what the bridge compiled into installed Zero builds
+  // hard-codes, so this case guards a live migration dependency.
   it("serves the moved desktop routes on the neutral path", async () => {
     mockDesktopUpdateManifest(
       stableManifest("0.12.0", {
-        "0.12.0": darwinArm64Release(
-          "0.12.0",
-          "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-arm64-0.12.0.zip",
-        ),
+        "0.12.0": darwinArm64Release("0.12.0", okouZipUrl("0.12.0")),
       }),
+      LEGACY_OKOU_DESKTOP_UPDATE_MANIFEST_URL,
     );
     mockDesktopUpdateManifest(
-      {
-        ...stableManifest("1.2.3", {
-          "1.2.3": darwinArm64Release(
-            "1.2.3",
-            "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip",
-            "Okou",
-          ),
-        }),
-        product: "okou",
-      },
-      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+      stableManifest("1.2.3", {
+        "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+      }),
     );
 
     const releaseResponse = await appRequest(
@@ -195,56 +184,24 @@ describe("desktop update routes", () => {
     expect(dmgResponse.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("serves the current stable macOS arm64 update from the manifest", async () => {
-    const zipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
-    mockDesktopUpdateManifest(
-      stableManifest("0.2.1", {
-        "0.2.1": darwinArm64Release("0.2.1", zipUrl),
-      }),
-    );
-
-    const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      currentRelease: "0.2.1",
-      releases: [
-        {
-          version: "0.2.1",
-          updateTo: {
-            name: "Zero Computer Use 0.2.1",
-            version: "0.2.1",
-            pub_date: "2026-06-08T00:00:00.000Z",
-            url: zipUrl,
-            notes: "Release 0.2.1",
-          },
-        },
-      ],
-    });
-  });
-
   it("caches the desktop manifest until the 60-second ttl expires", async () => {
     const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
-    const firstZipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
-    const refreshedZipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.2/Zero-darwin-arm64-0.2.2.zip";
 
     await withMockNowForTest(initialNow, async () => {
       mockDesktopUpdateManifest(
         stableManifest("0.2.1", {
-          "0.2.1": darwinArm64Release("0.2.1", firstZipUrl),
+          "0.2.1": darwinArm64Release("0.2.1", okouZipUrl("0.2.1")),
         }),
       );
 
       const firstResponse = await accept(
-        client().feed({
-          params: { channel: "stable", platform: "darwin", arch: "arm64" },
+        client().productFeed({
+          params: {
+            product: "ai-okou-desktop",
+            channel: "stable",
+            platform: "darwin",
+            arch: "arm64",
+          },
         }),
         [200],
       );
@@ -252,14 +209,19 @@ describe("desktop update routes", () => {
 
       mockDesktopUpdateManifest(
         stableManifest("0.2.2", {
-          "0.2.2": darwinArm64Release("0.2.2", refreshedZipUrl),
+          "0.2.2": darwinArm64Release("0.2.2", okouZipUrl("0.2.2")),
         }),
       );
       mockNow(initialNow + 59_999);
 
       const cachedResponse = await accept(
-        client().feed({
-          params: { channel: "stable", platform: "darwin", arch: "arm64" },
+        client().productFeed({
+          params: {
+            product: "ai-okou-desktop",
+            channel: "stable",
+            platform: "darwin",
+            arch: "arm64",
+          },
         }),
         [200],
       );
@@ -268,8 +230,13 @@ describe("desktop update routes", () => {
       mockNow(initialNow + 60_000);
 
       const refreshedResponse = await accept(
-        client().feed({
-          params: { channel: "stable", platform: "darwin", arch: "arm64" },
+        client().productFeed({
+          params: {
+            product: "ai-okou-desktop",
+            channel: "stable",
+            platform: "darwin",
+            arch: "arm64",
+          },
         }),
         [200],
       );
@@ -278,16 +245,11 @@ describe("desktop update routes", () => {
   });
 
   it("serves an Okou release only from the isolated Okou manifest", async () => {
-    const zipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
+    const zipUrl = okouZipUrl("1.2.3");
     mockDesktopUpdateManifest(
-      {
-        ...stableManifest("1.2.3", {
-          "1.2.3": darwinArm64Release("1.2.3", zipUrl, "Okou"),
-        }),
-        product: "okou",
-      },
-      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+      stableManifest("1.2.3", {
+        "1.2.3": darwinArm64Release("1.2.3", zipUrl),
+      }),
     );
 
     const response = await accept(
@@ -320,16 +282,10 @@ describe("desktop update routes", () => {
   });
 
   it("redirects the final Okou line to final-identity release assets", async () => {
-    const zipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip";
     mockDesktopUpdateManifest(
-      {
-        ...stableManifest("1.2.3", {
-          "1.2.3": darwinArm64Release("1.2.3", zipUrl, "Okou"),
-        }),
-        product: "okou",
-      },
-      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+      stableManifest("1.2.3", {
+        "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+      }),
     );
 
     const releaseResponse = await appRequest(
@@ -349,30 +305,26 @@ describe("desktop update routes", () => {
     );
   });
 
-  it("returns not found for the retired pre-adoption Okou update line", async () => {
-    for (const path of [
-      "/api/desktop/updates/okou/stable/darwin/arm64/release",
-      "/api/desktop/updates/okou/stable/darwin/arm64/dmg",
-      "/api/desktop/updates/okou/stable/darwin/arm64/RELEASES.json",
-    ]) {
-      const response = await appRequest(`http://api.test${path}`);
+  it("returns not found for the retired desktop update lines", async () => {
+    for (const line of ["okou", "zero"]) {
+      for (const suffix of ["release", "dmg", "RELEASES.json"]) {
+        const response = await appRequest(
+          `http://api.test/api/desktop/updates/${line}/stable/darwin/arm64/${suffix}`,
+        );
 
-      expect(response.status).toBe(404);
+        expect(response.status).toBe(404);
+      }
     }
   });
 
   it("does not serve a Zero artifact from the final Okou feed", async () => {
     mockDesktopUpdateManifest(
-      {
-        ...stableManifest("1.2.3", {
-          "1.2.3": darwinArm64Release(
-            "1.2.3",
-            "https://github.com/vm0-ai/vm0/releases/download/desktop-v1.2.3/Zero-darwin-arm64-1.2.3.zip",
-          ),
-        }),
-        product: "okou",
-      },
-      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+      stableManifest("1.2.3", {
+        "1.2.3": darwinArm64Release(
+          "1.2.3",
+          "https://github.com/vm0-ai/vm0/releases/download/desktop-v1.2.3/Zero-darwin-arm64-1.2.3.zip",
+        ),
+      }),
     );
 
     const response = await accept(
@@ -390,38 +342,18 @@ describe("desktop update routes", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("does not serve an Okou artifact from the legacy Zero feed", async () => {
+  it("rejects the retired macOS x64 update feed", async () => {
     mockDesktopUpdateManifest(
-      stableManifest("1.2.3", {
-        "1.2.3": darwinArm64Release(
-          "1.2.3",
-          "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.zip",
-          "Okou",
+      stableManifest("0.2.1", {
+        "0.2.1": legacyDarwinX64Release(
+          "0.2.1",
+          "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v0.2.1/Okou-darwin-x64-0.2.1.zip",
         ),
       }),
     );
 
-    const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("rejects the retired macOS x64 update feed", async () => {
-    const zipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-x64-0.2.1.zip";
-    mockDesktopUpdateManifest(
-      stableManifest("0.2.1", {
-        "0.2.1": legacyDarwinX64Release("0.2.1", zipUrl),
-      }),
-    );
-
     const response = await appRequest(
-      "http://api.test/api/desktop/updates/stable/darwin/x64/RELEASES.json",
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/x64/RELEASES.json",
     );
 
     expect(response.status).toBe(400);
@@ -429,11 +361,12 @@ describe("desktop update routes", () => {
   });
 
   it("rejects the retired macOS x64 dmg download", async () => {
-    const zipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.12.0/Zero-darwin-x64-0.12.0.zip";
     mockDesktopUpdateManifest(
       stableManifest("0.12.0", {
-        "0.12.0": legacyDarwinX64Release("0.12.0", zipUrl),
+        "0.12.0": legacyDarwinX64Release(
+          "0.12.0",
+          "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v0.12.0/Okou-darwin-x64-0.12.0.zip",
+        ),
       }),
     );
 
@@ -446,29 +379,27 @@ describe("desktop update routes", () => {
   });
 
   it("does not return a blocked latest release", async () => {
-    const previousUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
+    const previousUrl = okouZipUrl("0.2.1");
     mockDesktopUpdateManifest(
       stableManifest(
         "0.2.2",
         {
           "0.2.1": darwinArm64Release("0.2.1", previousUrl),
-          "0.2.2": darwinArm64Release(
-            "0.2.2",
-            "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.2/Zero-darwin-arm64-0.2.2.zip",
-          ),
-          "0.3.0": darwinArm64Release(
-            "0.3.0",
-            "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.3.0/Zero-darwin-arm64-0.3.0.zip",
-          ),
+          "0.2.2": darwinArm64Release("0.2.2", okouZipUrl("0.2.2")),
+          "0.3.0": darwinArm64Release("0.3.0", okouZipUrl("0.3.0")),
         },
         ["0.2.2"],
       ),
     );
 
     const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
+      client().productFeed({
+        params: {
+          product: "ai-okou-desktop",
+          channel: "stable",
+          platform: "darwin",
+          arch: "arm64",
+        },
       }),
       [200],
     );
@@ -491,8 +422,13 @@ describe("desktop update routes", () => {
     );
 
     const response = await accept(
-      client().feed({
-        params: { channel: "stable", platform: "darwin", arch: "arm64" },
+      client().productFeed({
+        params: {
+          product: "ai-okou-desktop",
+          channel: "stable",
+          platform: "darwin",
+          arch: "arm64",
+        },
       }),
       [404],
     );
@@ -501,16 +437,10 @@ describe("desktop update routes", () => {
   });
 
   it("returns not found when no dmg release is available", async () => {
-    const zipUrl =
-      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v0.11.2/Okou-darwin-arm64-0.11.2.zip";
     mockDesktopUpdateManifest(
-      {
-        ...stableManifest("0.11.2", {
-          "0.11.2": darwinArm64Release("0.11.2", zipUrl, "Okou"),
-        }),
-        product: "okou",
-      },
-      OKOU_DESKTOP_UPDATE_MANIFEST_URL,
+      stableManifest("0.11.2", {
+        "0.11.2": darwinArm64Release("0.11.2", okouZipUrl("0.11.2")),
+      }),
     );
 
     const response = await appRequest(
