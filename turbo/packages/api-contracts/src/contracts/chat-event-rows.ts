@@ -56,7 +56,7 @@ const nonFailedChatEventRowSchema = chatEventRowBaseSchema
  * One canonical chat_events row and the strict output.tool-free outer wire
  * shape emitted by the Snapshot and Raw Event endpoints.
  */
-export const chatEventRowSchema = z.union([
+export const chatEventRowSchema = z.discriminatedUnion("eventType", [
   failedChatEventRowSchema,
   nonFailedChatEventRowSchema,
 ]);
