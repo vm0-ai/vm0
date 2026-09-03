@@ -30,6 +30,25 @@ const AVATAR_VIDEO_RESULT = {
   sourceUrl: "https://res.jogg.ai/avatar-video.mp4",
 } as const;
 
+const HEYGEN_AVATAR_VIDEO_RESULT = {
+  id: "avatar-video-file-id",
+  filename: "avatar-video-avatar-v.webm",
+  contentType: "video/webm",
+  size: 1234,
+  url: "http://localhost:3000/f/user-1/avatar-video-file-id/avatar-video-avatar-v.webm",
+  durationSeconds: 42,
+  creditsCharged: 623,
+  provider: "heygen",
+  model: "heygen-avatar-iv",
+  providerVideoId: "heygen-video-123",
+  avatarId: "Abigail_standing_office_front",
+  inputType: "audio",
+  aspectRatio: "landscape",
+  screenStyle: 3,
+  caption: false,
+  sourceUrl: "https://files.heygen.com/avatar-video.webm",
+} as const;
+
 function stubBillingStatus() {
   return http.get("http://localhost:3000/api/billing/status", () => {
     return HttpResponse.json({
@@ -260,6 +279,39 @@ describe("okou generate avatar-video command", () => {
 
     expect(mockConsoleLog.mock.calls).toEqual([
       [JSON.stringify(AVATAR_VIDEO_RESULT)],
+    ]);
+  });
+
+  it("submits an audio-driven HeyGen render for Intro Video", async () => {
+    server.use(
+      http.post(GENERATE_URL, async ({ request }) => {
+        expect(await request.json()).toStrictEqual({
+          avatarProvider: "heygen",
+          avatarId: "Abigail_standing_office_front",
+          audioUrl: "https://example.com/voice.mp3",
+          aspectRatio: "landscape",
+          screenStyle: 3,
+          caption: false,
+        });
+        return HttpResponse.json(HEYGEN_AVATAR_VIDEO_RESULT);
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "avatar-video",
+      "--avatar-provider",
+      "heygen",
+      "--avatar-id",
+      "Abigail_standing_office_front",
+      "--audio-url",
+      "https://example.com/voice.mp3",
+      "--json",
+    ]);
+
+    expect(mockConsoleLog.mock.calls).toEqual([
+      [JSON.stringify(HEYGEN_AVATAR_VIDEO_RESULT)],
     ]);
   });
 

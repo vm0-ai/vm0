@@ -298,7 +298,8 @@ describe("chat start cards", () => {
         "Do not add an opening or ending unless the user explicitly requests them.",
       );
       expect(sentPrompt).toContain("- Source: launch.pdf");
-      expect(sentPrompt).toContain("- Avatar: Amara (1785)");
+      expect(sentPrompt).toContain("- Avatar: Amara (joggai:1785)");
+      expect(sentPrompt).toContain("- Avatar provider: joggai");
       expect(sentPrompt).toContain("- Aspect ratio: 16:9");
       expect(sentPrompt).toContain(
         "- Avatar cutout (transparent still): https://static.vm0.io/platform/avatars/intro-video/v1/1785.webp",
@@ -334,6 +335,162 @@ describe("chat start cards", () => {
         "is a presentation",
       );
     });
+  });
+
+  it("keeps a HeyGen presenter independent from the selected voice", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+    context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [],
+        hasMore: false,
+      });
+    });
+
+    setupChatStartCards();
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    click(screen.getByTestId("intro-video-start-card"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-presentation-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video presentation input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+
+    await screen.findByText("Choose an avatar");
+    expect(
+      dialog.querySelectorAll('[data-heygen-avatar-placeholder=""]'),
+    ).toHaveLength(30);
+    click(await screen.findByLabelText("Select template Abigail Office Front"));
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Choose a voice");
+    click(buttonWithText("No voiceover", dialog, false));
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Review your intro video");
+    expect(screen.getByText("Abigail Office Front")).toBeInTheDocument();
+    expect(screen.getByText("No voiceover")).toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain(
+        "- Avatar: Abigail Office Front (heygen:Abigail_standing_office_front)",
+      );
+      expect(sentPrompt).toContain("- Avatar provider: heygen");
+      expect(sentPrompt).toContain("HeyGen POST /v3/videos");
+      expect(sentPrompt).toContain("output_format webm and Avatar IV");
+      expect(sentPrompt).toContain("- Voice: No voiceover");
+      expect(sentPrompt).toContain(
+        "create a duration-matched silent audio input only to drive the provider request",
+      );
+      expect(sentPrompt).toContain(
+        "--avatar-provider heygen --avatar-id Abigail_standing_office_front --audio-url <resolved-audio-url>",
+      );
+      expect(sentPrompt).toContain(
+        "require a non-empty decodable video with a real alpha channel",
+      );
+      expect(sentPrompt).toContain(
+        "attach exactly one permanent, playable video/mp4",
+      );
+    });
+    expect(sentPrompt).not.toContain("c4313f9f0b214a7a8189c134736ce897");
+    expect(sentPrompt).not.toContain("data-heygen-avatar-placeholder");
+  });
+
+  it("bridges the explicit catalog voice to a HeyGen presenter as audio", async () => {
+    const user = userEvent.setup({ delay: null });
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    context.mocks.upload.success({
+      id: "intro-video-source",
+      filename: "launch.pdf",
+      contentType: "application/pdf",
+      size: 4,
+      url: "https://example.com/launch.pdf",
+    });
+    context.mocks.api(avatarVideoContract.voices, ({ respond }) => {
+      return respond(200, {
+        voices: [
+          {
+            id: "en-US-RileyNeural",
+            name: "Riley",
+            sampleUrl: "https://example.com/riley.mp3",
+            language: "english",
+            gender: "female",
+          },
+        ],
+        hasMore: false,
+        filterOptions: { languages: ["english"], useCases: [] },
+      });
+    });
+
+    setupChatStartCards();
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    click(screen.getByTestId("intro-video-start-card"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create an intro video",
+    });
+    const fileInput = dialog.querySelector<HTMLInputElement>(
+      '[data-intro-video-presentation-input=""]',
+    );
+    if (!fileInput) {
+      throw new Error("Expected intro video presentation input");
+    }
+    await user.upload(
+      fileInput,
+      new File(["deck"], "launch.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText("Choose an avatar");
+    click(await screen.findByLabelText("Select template Abigail Office Front"));
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Choose a voice");
+    click(await screen.findByLabelText("Select voice Riley"));
+    click(buttonWithText("Next", dialog));
+    await screen.findByText("Review your intro video");
+    expect(screen.getByText("Riley")).toBeInTheDocument();
+    await user.click(buttonWithText("Create in chat", dialog));
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("- Voice: Riley (en-US-RileyNeural)");
+      expect(sentPrompt).toContain(
+        "synthesize exactly once with catalog voice ID en-US-RileyNeural in the voice's owning provider",
+      );
+      expect(sentPrompt).toContain(
+        "never send the catalog voice ID as a HeyGen voice_id",
+      );
+      expect(sentPrompt).toContain(
+        "reuse that exact audio for lip sync and the final mix",
+      );
+    });
+    expect(sentPrompt).not.toContain("c4313f9f0b214a7a8189c134736ce897");
   });
 
   it("sends an upload of unknown kind through the generic source workflow", async () => {

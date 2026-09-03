@@ -688,6 +688,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("video", "joggai-talking-avatar", [
     ["output_video_joggai_credits", videoUsd(399 / 800), 1],
   ]),
+  // HeyGen self-serve API cost for a 720p/1080p Studio Avatar rendered with
+  // the v3 default Avatar IV engine: $4 per output minute, billed by seconds.
+  // https://developers.heygen.com/docs/pricing
+  ...usageGroup("video", "heygen-avatar-iv", [
+    ["output_video_seconds", videoUsd(4), 60],
+  ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute raw provider cost = 15 credits/minute.

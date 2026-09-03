@@ -68,6 +68,7 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
   };
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
+  "heygen-avatar-iv": USAGE_DISPLAY_NAMES.avatar,
   "joggai-talking-avatar": USAGE_DISPLAY_NAMES.avatar,
   // Rows recorded before image tasks moved to task-scoped kinds carry
   // kind "model" with this provider; nothing else runs it as a chat model.

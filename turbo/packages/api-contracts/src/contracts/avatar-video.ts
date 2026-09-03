@@ -35,8 +35,16 @@ export const avatarVideoVoiceIdSchema = z
   .max(200)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
-export const avatarVideoGenerateRequestSchema = z
+const avatarVideoLookIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9._:-]+$/);
+
+const joggAiAvatarVideoGenerateRequestSchema = z
   .object({
+    avatarProvider: z.literal("joggai").optional(),
     avatarId: z.number().int().positive(),
     voiceId: avatarVideoVoiceIdSchema,
     script: z.string().trim().min(1).optional(),
@@ -55,7 +63,24 @@ export const avatarVideoGenerateRequestSchema = z
     },
   );
 
-export const avatarVideoGenerateResponseSchema = z.object({
+const heyGenAvatarVideoGenerateRequestSchema = z.object({
+  avatarProvider: z.literal("heygen"),
+  avatarId: avatarVideoLookIdSchema,
+  voiceId: z.never().optional(),
+  script: z.never().optional(),
+  audioUrl: z.url(),
+  aspectRatio: avatarVideoAspectRatioSchema.optional(),
+  screenStyle: z.literal(AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE).optional(),
+  caption: z.literal(false).optional(),
+  videoName: z.string().trim().min(1).optional(),
+});
+
+export const avatarVideoGenerateRequestSchema = z.union([
+  heyGenAvatarVideoGenerateRequestSchema,
+  joggAiAvatarVideoGenerateRequestSchema,
+]);
+
+const avatarVideoGenerateResponseBaseSchema = z.object({
   id: z.string(),
   filename: z.string(),
   contentType: z.string(),
@@ -63,17 +88,30 @@ export const avatarVideoGenerateResponseSchema = z.object({
   url: z.string(),
   durationSeconds: z.number(),
   creditsCharged: z.number(),
-  provider: z.literal("joggai"),
-  model: z.literal("joggai-talking-avatar"),
   providerVideoId: z.string(),
-  avatarId: z.number().int().positive(),
-  voiceId: z.string(),
-  inputType: z.enum(["script", "audio"]),
   aspectRatio: avatarVideoAspectRatioSchema,
   screenStyle: avatarVideoScreenStyleSchema,
   caption: z.boolean(),
   sourceUrl: z.url(),
 });
+
+export const avatarVideoGenerateResponseSchema = z.union([
+  avatarVideoGenerateResponseBaseSchema.extend({
+    provider: z.literal("joggai"),
+    model: z.literal("joggai-talking-avatar"),
+    avatarId: z.number().int().positive(),
+    voiceId: z.string(),
+    inputType: z.enum(["script", "audio"]),
+  }),
+  avatarVideoGenerateResponseBaseSchema.extend({
+    provider: z.literal("heygen"),
+    model: z.literal("heygen-avatar-iv"),
+    avatarId: avatarVideoLookIdSchema,
+    inputType: z.literal("audio"),
+    screenStyle: z.literal(AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE),
+    caption: z.literal(false),
+  }),
+]);
 
 export const avatarVideoAvatarSchema = z.object({
   id: z.number().int().positive(),
@@ -185,7 +223,7 @@ export const avatarVideoContract = c.router({
       503: apiErrorSchema,
       504: apiErrorSchema,
     },
-    summary: "Generate and persist a JoggAI talking-avatar video",
+    summary: "Generate and persist a built-in talking-avatar video",
   },
   avatars: {
     method: "GET",

@@ -1332,19 +1332,32 @@ function IntroVideoAvatarCard({
       <div
         className="flex w-full items-end justify-center overflow-hidden bg-gradient-to-b from-card to-muted"
         style={{
-          aspectRatio: `${avatar.cutoutWidth} / ${avatar.cutoutHeight}`,
+          aspectRatio: `${avatar.previewWidth} / ${avatar.previewHeight}`,
         }}
       >
-        <img
-          src={avatar.coverUrl}
-          alt={avatar.name}
-          width={avatar.cutoutWidth}
-          height={avatar.cutoutHeight}
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          className="h-full w-full object-contain"
-        />
+        {avatar.provider === "heygen" ? (
+          <span
+            data-heygen-avatar-placeholder=""
+            aria-hidden="true"
+            className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/70 to-muted"
+          >
+            <User
+              className="size-16 text-muted-foreground/55"
+              strokeWidth={1}
+            />
+          </span>
+        ) : (
+          <img
+            src={avatar.previewUrl}
+            alt={avatar.name}
+            width={avatar.previewWidth}
+            height={avatar.previewHeight}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className="h-full w-full object-contain"
+          />
+        )}
       </div>
       <div className="flex min-h-11 items-center justify-between gap-2 px-3 py-2.5">
         <p className="min-w-0 truncate text-sm font-semibold text-foreground">
@@ -1373,12 +1386,12 @@ function IntroVideoAvatarCard({
  * are framed anywhere between head-and-shoulders and full body.
  */
 export function AvatarLibraryContent({
-  selectedAvatarId,
+  selectedAvatarKey,
   onSelect,
   onClear,
 }: {
-  readonly selectedAvatarId: number | undefined;
-  readonly onSelect: (avatar: AvatarVideoAvatar) => void;
+  readonly selectedAvatarKey: string | undefined;
+  readonly onSelect: (avatar: IntroVideoAvatar) => void;
   readonly onClear: () => void;
 }) {
   return (
@@ -1393,15 +1406,15 @@ export function AvatarLibraryContent({
       */}
       <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
         <NoAvatarCard
-          selected={selectedAvatarId === undefined}
+          selected={selectedAvatarKey === undefined}
           onSelect={onClear}
         />
         {INTRO_VIDEO_AVATARS.map((avatar) => {
           return (
             <IntroVideoAvatarCard
-              key={avatar.id}
+              key={avatar.key}
               avatar={avatar}
-              selected={avatar.id === selectedAvatarId}
+              selected={avatar.key === selectedAvatarKey}
               onSelect={onSelect}
             />
           );

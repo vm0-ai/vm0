@@ -8,6 +8,7 @@ import {
   type AvatarVideoVoicesQuery,
 } from "@okouai/api-contracts/contracts/avatar-video";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { isHeyGenIntroVideoAvatarId } from "@okouai/core/intro-video-avatars";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import { usagePricing } from "@okouai/db/schema/usage-pricing";
 import { and, eq } from "drizzle-orm";
@@ -33,6 +34,8 @@ const L = logger("AvatarVideo");
 
 const JOGGAI_AVATAR_VIDEO_MODEL = "joggai-talking-avatar";
 const JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY = "output_video_joggai_credits";
+const HEYGEN_AVATAR_VIDEO_MODEL = "heygen-avatar-iv";
+const HEYGEN_AVATAR_VIDEO_PRICING_CATEGORY = "output_video_seconds";
 
 const JOGGAI_API_BASE_URL = "https://api.jogg.ai/v2";
 const JOGGAI_CREATE_AVATAR_VIDEO_URL = `${JOGGAI_API_BASE_URL}/create_video_from_avatar`;
@@ -54,21 +57,43 @@ interface AvatarVideoErrorResponse {
   readonly body: ErrorBody;
 }
 
-export interface AvatarVideoOptions {
-  readonly avatarId: number;
-  readonly voiceId: string;
-  readonly inputType: "script" | "audio";
-  readonly script: string | undefined;
-  readonly audioUrl: string | undefined;
+interface SharedAvatarVideoOptions {
   readonly aspectRatio: "portrait" | "landscape" | "square";
   readonly screenStyle: 1 | 2 | 3;
   readonly caption: boolean;
   readonly videoName: string | undefined;
 }
 
+export interface JoggAiAvatarVideoOptions extends SharedAvatarVideoOptions {
+  readonly provider: "joggai";
+  readonly avatarId: number;
+  readonly voiceId: string;
+  readonly inputType: "script" | "audio";
+  readonly script: string | undefined;
+  readonly audioUrl: string | undefined;
+}
+
+export interface HeyGenAvatarVideoOptions extends SharedAvatarVideoOptions {
+  readonly provider: "heygen";
+  readonly avatarId: string;
+  readonly inputType: "audio";
+  readonly script: undefined;
+  readonly audioUrl: string;
+  readonly screenStyle: typeof AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE;
+  readonly caption: false;
+}
+
+export type AvatarVideoOptions =
+  | JoggAiAvatarVideoOptions
+  | HeyGenAvatarVideoOptions;
+
 interface AvatarVideoPricingRow {
-  readonly provider: typeof JOGGAI_AVATAR_VIDEO_MODEL;
-  readonly category: typeof JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY;
+  readonly provider:
+    | typeof JOGGAI_AVATAR_VIDEO_MODEL
+    | typeof HEYGEN_AVATAR_VIDEO_MODEL;
+  readonly category:
+    | typeof JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY
+    | typeof HEYGEN_AVATAR_VIDEO_PRICING_CATEGORY;
   readonly unitPrice: number;
   readonly unitSize: number;
 }
@@ -130,7 +155,22 @@ interface ParsedAvatarVideoGeneration {
   readonly options: AvatarVideoOptions;
 }
 
-interface RecordedAvatarVideo {
+export function parsedHeyGenAvatarVideoGeneration(args: {
+  readonly videoBytes: Buffer;
+  readonly contentType: "video/webm";
+  readonly sourceUrl: string;
+  readonly providerVideoId: string;
+  readonly durationSeconds: number;
+  readonly options: HeyGenAvatarVideoOptions;
+}): ParsedAvatarVideoGeneration {
+  return {
+    ...args,
+    coverUrl: undefined,
+    billingQuantity: Math.max(1, Math.ceil(args.durationSeconds)),
+  };
+}
+
+type RecordedAvatarVideo = {
   readonly id: string;
   readonly filename: string;
   readonly contentType: string;
@@ -138,17 +178,28 @@ interface RecordedAvatarVideo {
   readonly url: string;
   readonly durationSeconds: number;
   readonly creditsCharged: number;
-  readonly provider: "joggai";
-  readonly model: typeof JOGGAI_AVATAR_VIDEO_MODEL;
   readonly providerVideoId: string;
-  readonly avatarId: number;
-  readonly voiceId: string;
-  readonly inputType: "script" | "audio";
   readonly aspectRatio: "portrait" | "landscape" | "square";
   readonly screenStyle: 1 | 2 | 3;
   readonly caption: boolean;
   readonly sourceUrl: string;
-}
+} & (
+  | {
+      readonly provider: "joggai";
+      readonly model: typeof JOGGAI_AVATAR_VIDEO_MODEL;
+      readonly avatarId: number;
+      readonly voiceId: string;
+      readonly inputType: "script" | "audio";
+    }
+  | {
+      readonly provider: "heygen";
+      readonly model: typeof HEYGEN_AVATAR_VIDEO_MODEL;
+      readonly avatarId: string;
+      readonly inputType: "audio";
+      readonly screenStyle: typeof AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE;
+      readonly caption: false;
+    }
+);
 
 function errorBody(message: string, code: string): ErrorBody {
   return { error: { message, code } };
@@ -230,6 +281,22 @@ export function parseAvatarVideoOptions(
   if (!parsed.success) {
     return badRequest(parsed.error.issues[0]?.message ?? "Invalid request");
   }
+  if (parsed.data.avatarProvider === "heygen") {
+    if (!isHeyGenIntroVideoAvatarId(parsed.data.avatarId)) {
+      return badRequest("HeyGen avatar is not available in Intro Video");
+    }
+    return {
+      provider: "heygen",
+      avatarId: parsed.data.avatarId,
+      inputType: "audio",
+      script: undefined,
+      audioUrl: parsed.data.audioUrl,
+      aspectRatio: parsed.data.aspectRatio ?? "landscape",
+      screenStyle: AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE,
+      caption: false,
+      videoName: parsed.data.videoName,
+    };
+  }
   const inputType = parsed.data.script ? "script" : "audio";
   const screenStyle = parsed.data.screenStyle ?? 1;
   // JoggAI documents that the alpha-channel WebM is only produced with captions
@@ -237,6 +304,7 @@ export function parseAvatarVideoOptions(
   // choice still wins; the provider owns the rule.
   const captionDefault = screenStyle !== AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE;
   return {
+    provider: "joggai",
     avatarId: parsed.data.avatarId,
     voiceId: parsed.data.voiceId,
     inputType,
@@ -249,42 +317,47 @@ export function parseAvatarVideoOptions(
   };
 }
 
-export const avatarVideoPricing$: Computed<
-  Promise<AvatarVideoPricingRow | null>
-> = computed(async (get): Promise<AvatarVideoPricingRow | null> => {
-  const db = get(db$);
-  const provider = resolveUsagePricingProvider(
-    get(usagePricingResolution$),
-    "video",
-    JOGGAI_AVATAR_VIDEO_MODEL,
-  );
-  const [row] = await db
-    .select({
-      provider: usagePricing.provider,
-      category: usagePricing.category,
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "video"),
-        eq(usagePricing.provider, provider),
-        eq(usagePricing.category, JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY),
-      ),
-    )
-    .limit(1);
+function createAvatarVideoPricing(
+  model: typeof JOGGAI_AVATAR_VIDEO_MODEL | typeof HEYGEN_AVATAR_VIDEO_MODEL,
+  category:
+    | typeof JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY
+    | typeof HEYGEN_AVATAR_VIDEO_PRICING_CATEGORY,
+): Computed<Promise<AvatarVideoPricingRow | null>> {
+  return computed(async (get): Promise<AvatarVideoPricingRow | null> => {
+    const db = get(db$);
+    const provider = resolveUsagePricingProvider(
+      get(usagePricingResolution$),
+      "video",
+      model,
+    );
+    const [row] = await db
+      .select({
+        unitPrice: usagePricing.unitPrice,
+        unitSize: usagePricing.unitSize,
+      })
+      .from(usagePricing)
+      .where(
+        and(
+          eq(usagePricing.kind, "video"),
+          eq(usagePricing.provider, provider),
+          eq(usagePricing.category, category),
+        ),
+      )
+      .limit(1);
 
-  if (!row) {
-    return null;
-  }
-  return {
-    provider: JOGGAI_AVATAR_VIDEO_MODEL,
-    category: JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY,
-    unitPrice: row.unitPrice,
-    unitSize: row.unitSize,
-  };
-});
+    return row ? { provider: model, category, ...row } : null;
+  });
+}
+
+export const joggAiAvatarVideoPricing$ = createAvatarVideoPricing(
+  JOGGAI_AVATAR_VIDEO_MODEL,
+  JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY,
+);
+
+export const heyGenAvatarVideoPricing$ = createAvatarVideoPricing(
+  HEYGEN_AVATAR_VIDEO_MODEL,
+  HEYGEN_AVATAR_VIDEO_PRICING_CATEGORY,
+);
 
 export const checkAvatarVideoCredits$ = command(
   async (
@@ -352,7 +425,7 @@ function joggAiEnvelopeError(
 }
 
 function joggAiVoiceInput(
-  options: AvatarVideoOptions,
+  options: JoggAiAvatarVideoOptions,
 ): Record<string, unknown> {
   if (options.inputType === "script") {
     return {
@@ -369,7 +442,7 @@ function joggAiVoiceInput(
 }
 
 export async function submitJoggAiAvatarVideo(
-  options: AvatarVideoOptions,
+  options: JoggAiAvatarVideoOptions,
   apiKey: string,
   signal: AbortSignal,
 ): Promise<JoggAiAvatarVideoHandle | AvatarVideoErrorResponse> {
@@ -691,7 +764,7 @@ function extensionForContentType(contentType: string): string {
 
 export async function downloadJoggAiAvatarVideo(
   payload: Extract<JoggAiWebhookPayload, { readonly kind: "completed" }>,
-  options: AvatarVideoOptions,
+  options: JoggAiAvatarVideoOptions,
   signal: AbortSignal,
 ): Promise<ParsedAvatarVideoGeneration | AvatarVideoErrorResponse> {
   const response = await fetch(payload.sourceUrl, { method: "GET", signal });
@@ -744,6 +817,10 @@ export const recordGeneratedAvatarVideo$ = command(
     signal: AbortSignal,
   ): Promise<RecordedAvatarVideo> => {
     const writeDb = set(writeDb$);
+    const model =
+      params.generation.options.provider === "heygen"
+        ? HEYGEN_AVATAR_VIDEO_MODEL
+        : JOGGAI_AVATAR_VIDEO_MODEL;
     const artifact = await set(
       storeGeneratedArtifactObject$,
       {
@@ -770,15 +847,21 @@ export const recordGeneratedAvatarVideo$ = command(
         s3Key: artifact.key,
         publicBrand: params.publicBrand,
         metadata: compactObject({
-          generatedBy: "zero-joggai-avatar-video",
-          provider: "joggai",
-          model: JOGGAI_AVATAR_VIDEO_MODEL,
+          generatedBy:
+            params.generation.options.provider === "heygen"
+              ? "zero-internal-avatar-video"
+              : "zero-joggai-avatar-video",
+          provider: params.generation.options.provider,
+          model,
           providerVideoId: params.generation.providerVideoId,
           sourceUrl: params.generation.sourceUrl,
           coverUrl: params.generation.coverUrl,
           durationSeconds: params.generation.durationSeconds,
           avatarId: params.generation.options.avatarId,
-          voiceId: params.generation.options.voiceId,
+          voiceId:
+            params.generation.options.provider === "joggai"
+              ? params.generation.options.voiceId
+              : undefined,
           inputType: params.generation.options.inputType,
           aspectRatio: params.generation.options.aspectRatio,
           screenStyle: params.generation.options.screenStyle,
@@ -802,7 +885,7 @@ export const recordGeneratedAvatarVideo$ = command(
         orgId: params.orgId,
         userId: params.userId,
         kind: "video",
-        provider: JOGGAI_AVATAR_VIDEO_MODEL,
+        provider: model,
         category: params.pricing.category,
         quantity: params.generation.billingQuantity,
       })
@@ -812,7 +895,7 @@ export const recordGeneratedAvatarVideo$ = command(
     await set(processOrgUsageEvents$, params.orgId, signal);
     signal.throwIfAborted();
 
-    return {
+    const common = {
       id: artifact.id,
       filename: artifact.filename,
       contentType: params.generation.contentType,
@@ -823,16 +906,30 @@ export const recordGeneratedAvatarVideo$ = command(
         params.generation.billingQuantity,
         params.pricing,
       ),
-      provider: "joggai",
-      model: JOGGAI_AVATAR_VIDEO_MODEL,
       providerVideoId: params.generation.providerVideoId,
-      avatarId: params.generation.options.avatarId,
-      voiceId: params.generation.options.voiceId,
-      inputType: params.generation.options.inputType,
       aspectRatio: params.generation.options.aspectRatio,
       screenStyle: params.generation.options.screenStyle,
       caption: params.generation.options.caption,
       sourceUrl: params.generation.sourceUrl,
+    };
+    if (params.generation.options.provider === "heygen") {
+      return {
+        ...common,
+        provider: "heygen",
+        model: HEYGEN_AVATAR_VIDEO_MODEL,
+        avatarId: params.generation.options.avatarId,
+        inputType: "audio",
+        screenStyle: AVATAR_VIDEO_TRANSPARENT_SCREEN_STYLE,
+        caption: false,
+      };
+    }
+    return {
+      ...common,
+      provider: "joggai",
+      model: JOGGAI_AVATAR_VIDEO_MODEL,
+      avatarId: params.generation.options.avatarId,
+      voiceId: params.generation.options.voiceId,
+      inputType: params.generation.options.inputType,
     };
   },
 );

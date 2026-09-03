@@ -1,5 +1,40 @@
 import type { AvatarVideoAvatar } from "@okouai/api-contracts/contracts/avatar-video";
 
+const HEYGEN_SUPPORTED_API_ENGINES = [
+  "avatar_v",
+  "avatar_iv",
+  "avatar_iii",
+] as const;
+
+interface IntroVideoAvatarBase {
+  readonly key: string;
+  readonly name: string;
+  readonly gender?: string;
+  readonly previewWidth: number;
+  readonly previewHeight: number;
+}
+
+export interface JoggAiIntroVideoAvatar extends IntroVideoAvatarBase {
+  readonly provider: "joggai";
+  readonly avatarId: number;
+  readonly previewUrl: string;
+  readonly cutoutUrl: string;
+  readonly cutoutWidth: number;
+  readonly cutoutHeight: number;
+}
+
+export interface HeyGenIntroVideoAvatar extends IntroVideoAvatarBase {
+  readonly provider: "heygen";
+  readonly avatarId: string;
+  readonly previewUrl?: never;
+  readonly groupId: string;
+  readonly defaultVoiceId: string;
+  readonly preferredOrientation: "landscape";
+  readonly renderEngine: "avatar_iv";
+  readonly supportedApiEngines: typeof HEYGEN_SUPPORTED_API_ENGINES;
+  readonly transparentBackgroundValidated: false;
+}
+
 /**
  * A curated intro-video presenter.
  *
@@ -12,11 +47,13 @@ import type { AvatarVideoAvatar } from "@okouai/api-contracts/contracts/avatar-v
  * lays the cards out as a masonry grid and needs the aspect ratio before the
  * image loads.
  */
-export interface IntroVideoAvatar extends AvatarVideoAvatar {
+interface JoggAiCatalogEntry extends AvatarVideoAvatar {
   readonly coverUrl: string;
   readonly cutoutWidth: number;
   readonly cutoutHeight: number;
 }
+
+export type IntroVideoAvatar = HeyGenIntroVideoAvatar | JoggAiIntroVideoAvatar;
 
 /**
  * Presenters offered by the intro-video wizard.
@@ -26,7 +63,7 @@ export interface IntroVideoAvatar extends AvatarVideoAvatar {
  * appear here, so this list is deliberately narrower than the full JoggAI
  * catalog used by the generic avatar-video template picker.
  */
-export const INTRO_VIDEO_AVATARS: readonly IntroVideoAvatar[] = [
+const JOGGAI_INTRO_VIDEO_AVATARS: readonly JoggAiCatalogEntry[] = [
   {
     id: 1785,
     name: "Amara",
@@ -588,3 +625,270 @@ export const INTRO_VIDEO_AVATARS: readonly IntroVideoAvatar[] = [
     cutoutHeight: 586,
   },
 ];
+
+/**
+ * HeyGen public Studio Avatar looks curated for Intro Video.
+ *
+ * Provider preview media is intentionally not persisted while usage rights are
+ * being confirmed. Every card uses one bundled placeholder; the provider IDs
+ * and capabilities below came from the read-only v3 catalog inventory on
+ * 2026-09-03. `defaultVoiceId` is diagnostic metadata only and never selects a
+ * product voice.
+ */
+export const HEYGEN_INTRO_VIDEO_AVATARS = [
+  {
+    avatarId: "Abigail_standing_office_front",
+    groupId: "1727646977",
+    name: "Abigail Office Front",
+    gender: "female",
+    defaultVoiceId: "c4313f9f0b214a7a8189c134736ce897",
+  },
+  {
+    avatarId: "Amelia_standing_business_training_front",
+    groupId: "1727642048",
+    name: "Amelia Business Training Front",
+    gender: "female",
+    defaultVoiceId: "a13e0ac19f484525ad9c781651cbd2d3",
+  },
+  {
+    avatarId: "Annie_Business_Casual_Standing_Front_public",
+    groupId: "e0e84faea390465896db75a83be45085",
+    name: "Annie Business Casual Standing Front",
+    gender: "female",
+    defaultVoiceId: "330290724a1b470fb63153f34d4c0183",
+  },
+  {
+    avatarId: "Blanka_sitting_lounge_front",
+    groupId: "1727648625",
+    name: "Blanka Lounge Front",
+    gender: "female",
+    defaultVoiceId: "02880d1c6fd94b7799d91135581ed810",
+  },
+  {
+    avatarId: "Caroline_Business_Standing_Front_public",
+    groupId: "977b1ab85dba4eefb159a6072677effd",
+    name: "Caroline Business Standing Front",
+    gender: "female",
+    defaultVoiceId: "9e563ad72b8c43b087be6c98a60fb7f4",
+  },
+  {
+    avatarId: "Chloe_standing_lounge_front",
+    groupId: "1727655152",
+    name: "Chloe Lounge Front",
+    gender: "female",
+    defaultVoiceId: "6e05e310c3f14ed4ba1545578ce82ff6",
+  },
+  {
+    avatarId: "Derya_standing_office_front",
+    groupId: "1726603925",
+    name: "Derya Office Front 2",
+    gender: "female",
+    defaultVoiceId: "fe0398ef5b0f425ebfa90cd9ef00750a",
+  },
+  {
+    avatarId: "Elenora_IT_Sitting_public",
+    groupId: "1732660983",
+    name: "Elenora Tech Expert",
+    gender: "female",
+    defaultVoiceId: "613f8304431144918ed6a83d4b3e3196",
+  },
+  {
+    avatarId: "Georgia_sitting_office_front",
+    groupId: "1727672614",
+    name: "Georgia Office Front",
+    gender: "female",
+    defaultVoiceId: "7186e6c16ea840e9b78bd40c07ad20b0",
+  },
+  {
+    avatarId: "Giulia_standing_office_front",
+    groupId: "1727071025",
+    name: "Giulia Office Front 2",
+    gender: "female",
+    defaultVoiceId: "d05627251174456fbf0b4f1542164d8d",
+  },
+  {
+    avatarId: "Ida_standing_lounge_front",
+    groupId: "1727400558",
+    name: "Ida Lounge Front",
+    gender: "female",
+    defaultVoiceId: "16a09e4706f74997ba4ed05ea11470f6",
+  },
+  {
+    avatarId: "Judy_Lawyer_Sitting2_public",
+    groupId: "1732323320",
+    name: "Judy Lawyer",
+    gender: "female",
+    defaultVoiceId: "b45b647c9a2649dba247ff275365df2c",
+  },
+  {
+    avatarId: "June_HR_public",
+    groupId: "1727686832",
+    name: "June HR",
+    gender: "female",
+    defaultVoiceId: "f081135e72934ddc82d4e9a26b513f91",
+  },
+  {
+    avatarId: "Kavya_standing_indoor_front",
+    groupId: "1727719709",
+    name: "Kavya Indoor Front",
+    gender: "female",
+    defaultVoiceId: "16a09e4706f74997ba4ed05ea11470f6",
+  },
+  {
+    avatarId: "Mireia_sitting_businessindoor_front",
+    groupId: "1727720778",
+    name: "Mireia Business Indoor Front",
+    gender: "female",
+    defaultVoiceId: "712534c680f94736aa0f5b47e4b58da9",
+  },
+  {
+    avatarId: "Bojan_standing_businesstraining_front",
+    groupId: "1727650283",
+    name: "Bojan Business Training Front",
+    gender: "male",
+    defaultVoiceId: "ba2015b057ca42bd8b8283b3f7ba5529",
+  },
+  {
+    avatarId: "Brandon_Business_Standing_Front_public",
+    groupId: "d08c85e6cff84d78b6dc41d83a2eccce",
+    name: "Brandon Business Standing Front",
+    gender: "male",
+    defaultVoiceId: "513b14b431b64a578c467c480dd0a9c3",
+  },
+  {
+    avatarId: "Emanuel_standing_office_front",
+    groupId: "1727056509",
+    name: "Emanuel Office Front",
+    gender: "male",
+    defaultVoiceId: "e13f92abd68a405e9ee9134a186d0706",
+  },
+  {
+    avatarId: "Fernando_sitting_businessindoor_front",
+    groupId: "1727657268",
+    name: "Fernando Business Indoor Front",
+    gender: "male",
+    defaultVoiceId: "bad86f2c05d843c3901e110fbddbe86a",
+  },
+  {
+    avatarId: "Gerardo_sitting_sofa_front",
+    groupId: "1727662464",
+    name: "Gerardo Sofa Front",
+    gender: "male",
+    defaultVoiceId: "eba73eba461b4655aa231ba342e3146b",
+  },
+  {
+    avatarId: "Leos_sitting_sofa_front",
+    groupId: "1727405873",
+    name: "Leos Sofa Front",
+    gender: "male",
+    defaultVoiceId: "ee8521b42662428c84560d22954effe1",
+  },
+  {
+    avatarId: "Leszek_sitting_sofa_front",
+    groupId: "1727720732",
+    name: "Leszek Sofa Front",
+    gender: "male",
+    defaultVoiceId: "cc6a378bd95c4421b9a2fcf1312c6ddb",
+  },
+  {
+    avatarId: "Max_sitting_indoor_front",
+    groupId: "1727705680",
+    name: "Max Indoor Front",
+    gender: "male",
+    defaultVoiceId: "acfca8ab4b444e80a9df9e8e3a897cb4",
+  },
+  {
+    avatarId: "Miles_sitting_sofa_front",
+    groupId: "1727042161",
+    name: "Miles Sofa Front 2",
+    gender: "male",
+    defaultVoiceId: "a5d0cef9f960416c8f5b970062ebb725",
+  },
+  {
+    avatarId: "Patrizio_standing_businesstraining_front",
+    groupId: "1727708884",
+    name: "Patrizio Business Training Front",
+    gender: "male",
+    defaultVoiceId: "8445e1a518c74304bcaa5b793d1b2f54",
+  },
+  {
+    avatarId: "Raul_Sitting_businesssofa_front_close",
+    groupId: "1727698066",
+    name: "Raul Business Sofa Front 2",
+    gender: "male",
+    defaultVoiceId: "791b008968c34a1797a50ba517c9e2dd",
+  },
+  {
+    avatarId: "Riley_sitting_office_front",
+    groupId: "1727693144",
+    name: "Riley Office Front",
+    gender: "male",
+    defaultVoiceId: "0f6610678bfa4a1eb827d128662dca11",
+  },
+  {
+    avatarId: "SilasHR_public",
+    groupId: "1727684386",
+    name: "Silas HR",
+    gender: "male",
+    defaultVoiceId: "08f561403ec846dbbd8c691cc448f45a",
+  },
+  {
+    avatarId: "Timothy_sitting_office_front",
+    groupId: "1727680915",
+    name: "Timothy Office Front",
+    gender: "male",
+    defaultVoiceId: "f6d92a5cacc2425ea1fabfe3b79df31a",
+  },
+  {
+    avatarId: "Vince_standing_businesstraining_front",
+    groupId: "1727676442",
+    name: "Vince Business Training Front",
+    gender: "male",
+    defaultVoiceId: "219a23d690fc48c7b3a24ea4a0ac651a",
+  },
+].map((avatar): HeyGenIntroVideoAvatar => {
+  return {
+    ...avatar,
+    key: `heygen:${avatar.avatarId}`,
+    provider: "heygen",
+    previewWidth: 16,
+    previewHeight: 9,
+    preferredOrientation: "landscape",
+    renderEngine: "avatar_iv",
+    supportedApiEngines: HEYGEN_SUPPORTED_API_ENGINES,
+    transparentBackgroundValidated: false,
+  };
+});
+
+const JOGGAI_INTRO_VIDEO_PRESENTERS: readonly JoggAiIntroVideoAvatar[] =
+  JOGGAI_INTRO_VIDEO_AVATARS.map((avatar) => {
+    return {
+      key: `joggai:${avatar.id}`,
+      provider: "joggai",
+      avatarId: avatar.id,
+      name: avatar.name,
+      gender: avatar.gender,
+      previewUrl: avatar.coverUrl,
+      previewWidth: avatar.cutoutWidth,
+      previewHeight: avatar.cutoutHeight,
+      cutoutUrl: avatar.coverUrl,
+      cutoutWidth: avatar.cutoutWidth,
+      cutoutHeight: avatar.cutoutHeight,
+    };
+  });
+
+export const INTRO_VIDEO_AVATARS: readonly IntroVideoAvatar[] = [
+  ...JOGGAI_INTRO_VIDEO_PRESENTERS,
+  ...HEYGEN_INTRO_VIDEO_AVATARS,
+];
+
+const HEYGEN_INTRO_VIDEO_AVATAR_IDS = new Set(
+  HEYGEN_INTRO_VIDEO_AVATARS.map((avatar) => {
+    return avatar.avatarId;
+  }),
+);
+
+/** Whether a provider look is currently enabled in Intro Video's curation. */
+export function isHeyGenIntroVideoAvatarId(avatarId: string): boolean {
+  return HEYGEN_INTRO_VIDEO_AVATAR_IDS.has(avatarId);
+}
