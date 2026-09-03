@@ -19,7 +19,7 @@ import {
   statSync,
   writeFileSync,
 } from "fs";
-import { homedir } from "os";
+import { homedir, hostname } from "os";
 import {
   basename,
   delimiter,
@@ -29,6 +29,7 @@ import {
   normalize,
   sep,
 } from "path";
+import { setTimeout as delay } from "timers/promises";
 import { pathToFileURL } from "url";
 
 import { Command, InvalidArgumentError } from "commander";
@@ -45,6 +46,9 @@ const RENDER_DPI = "150";
 const TIMEOUT_MS = 300_000;
 const DECK_EXTENSIONS = [".ppt", ".pptx", ".pdf"];
 const DEPENDENCY_CACHE_VERSION = "v1";
+const INSTALL_LOCK_POLL_MS = 250;
+const INSTALL_LOCK_TIMEOUT_MS = TIMEOUT_MS * 3;
+const INSTALL_LOCK_STALE_MS = TIMEOUT_MS * 4;
 
 interface DeckTool {
   readonly command: string;
@@ -64,7 +68,7 @@ interface DeckDependency {
 
 const LIBREOFFICE: DeckDependency = {
   binary: "soffice",
-  localPath: ["usr", "lib", "libreoffice", "program", "soffice.bin"],
+  localPath: ["usr", "bin", "soffice"],
   packageName: "libreoffice-impress",
 };
 const POPPLER: DeckDependency = {
@@ -204,6 +208,97 @@ function dependencyCacheRoot(): string {
     "presentation-screenshot",
     DEPENDENCY_CACHE_VERSION,
   );
+}
+
+function errorCode(error: unknown): string | undefined {
+  return error instanceof Error && "code" in error
+    ? String((error as NodeJS.ErrnoException).code)
+    : undefined;
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return errorCode(error) !== "ESRCH";
+  }
+}
+
+function installLockIsStale(lockDirectory: string): boolean {
+  let age: number;
+  try {
+    age = Date.now() - statSync(lockDirectory).mtimeMs;
+  } catch (error) {
+    return errorCode(error) === "ENOENT";
+  }
+  if (age > INSTALL_LOCK_STALE_MS) {
+    return true;
+  }
+
+  try {
+    const owner = JSON.parse(
+      readFileSync(childPath(lockDirectory, "owner.json"), "utf8"),
+    ) as { hostname?: unknown; pid?: unknown };
+    return (
+      owner.hostname === hostname() &&
+      typeof owner.pid === "number" &&
+      Number.isInteger(owner.pid) &&
+      owner.pid > 0 &&
+      !processExists(owner.pid)
+    );
+  } catch {
+    // The owner file is written immediately after the atomic directory create.
+    return false;
+  }
+}
+
+async function acquireInstallLock(): Promise<() => void> {
+  const cacheRoot = dependencyCacheRoot();
+  const lockDirectory = join(cacheRoot, ".install.lock");
+  const deadline = Date.now() + INSTALL_LOCK_TIMEOUT_MS;
+  let announcedWait = false;
+  mkdirSync(cacheRoot, { recursive: true });
+
+  for (;;) {
+    try {
+      mkdirSync(lockDirectory);
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST") {
+        throw error;
+      }
+      if (installLockIsStale(lockDirectory)) {
+        rmSync(lockDirectory, { force: true, recursive: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          "Timed out waiting for another presentation dependency installation",
+        );
+      }
+      if (!announcedWait) {
+        console.error(
+          "Waiting for another presentation dependency installation...",
+        );
+        announcedWait = true;
+      }
+      await delay(INSTALL_LOCK_POLL_MS);
+      continue;
+    }
+
+    try {
+      writeFileSync(
+        childPath(lockDirectory, "owner.json"),
+        JSON.stringify({ hostname: hostname(), pid: process.pid }),
+      );
+    } catch (error) {
+      rmSync(lockDirectory, { force: true, recursive: true });
+      throw error;
+    }
+    return () => {
+      rmSync(lockDirectory, { force: true, recursive: true });
+    };
+  }
 }
 
 function localToolEnvironment(installRoot: string): NodeJS.ProcessEnv {
@@ -398,19 +493,39 @@ function installLocalDependencies(
   console.error("Presentation dependencies installed.");
 }
 
-function ensureDeckTools(converts: boolean): DeckTools {
+function missingDeckPackages(
+  converts: boolean,
+  soffice: DeckTool | undefined,
+  pdftocairo: DeckTool | undefined,
+): string[] {
+  return [
+    ...(converts && soffice === undefined ? [LIBREOFFICE.packageName] : []),
+    ...(pdftocairo === undefined ? [POPPLER.packageName] : []),
+  ];
+}
+
+async function ensureDeckTools(converts: boolean): Promise<DeckTools> {
   const installRoot = join(dependencyCacheRoot(), "root");
   let soffice = converts
     ? resolveDeckTool(LIBREOFFICE, installRoot)
     : undefined;
   let pdftocairo = resolveDeckTool(POPPLER, installRoot);
-  const missingPackages = [
-    ...(converts && soffice === undefined ? [LIBREOFFICE.packageName] : []),
-    ...(pdftocairo === undefined ? [POPPLER.packageName] : []),
-  ];
+  let missingPackages = missingDeckPackages(converts, soffice, pdftocairo);
 
   if (missingPackages.length > 0) {
-    installLocalDependencies(missingPackages, installRoot);
+    const release = await acquireInstallLock();
+    try {
+      soffice = converts
+        ? resolveDeckTool(LIBREOFFICE, installRoot)
+        : undefined;
+      pdftocairo = resolveDeckTool(POPPLER, installRoot);
+      missingPackages = missingDeckPackages(converts, soffice, pdftocairo);
+      if (missingPackages.length > 0) {
+        installLocalDependencies(missingPackages, installRoot);
+      }
+    } finally {
+      release();
+    }
     soffice = converts ? resolveDeckTool(LIBREOFFICE, installRoot) : undefined;
     pdftocairo = resolveDeckTool(POPPLER, installRoot);
   }
@@ -454,13 +569,16 @@ function renumber(outDir: string): string[] {
   });
 }
 
-function captureDeck(options: Options, outDir: string): string[] {
+async function captureDeck(
+  options: Options,
+  outDir: string,
+): Promise<string[]> {
   const input = operatorPath(options.input);
   if (!existsSync(input) || !statSync(input).isFile()) {
     throw new Error(`Deck input is not a file: ${input}`);
   }
   const converts = extname(input).toLowerCase() !== ".pdf";
-  const tools = ensureDeckTools(converts);
+  const tools = await ensureDeckTools(converts);
   clearPages(outDir);
 
   const scratch = mkdtempSync(childPath(outDir, ".okou-convert-"));
@@ -472,7 +590,17 @@ function captureDeck(options: Options, outDir: string): string[] {
       }
       run(
         tools.soffice.command,
-        ["--headless", "--convert-to", "pdf", "--outdir", scratch, input],
+        [
+          `-env:UserInstallation=${
+            pathToFileURL(childPath(scratch, "libreoffice-profile")).href
+          }`,
+          "--headless",
+          "--convert-to",
+          "pdf",
+          "--outdir",
+          scratch,
+          input,
+        ],
         tools.soffice.environment,
       );
       const produced = readdirSync(scratch).find((name) => {
@@ -717,7 +845,7 @@ export const presentationScreenshotCommand = new Command()
         extname(options.input).toLowerCase(),
       );
       const files = isDeck
-        ? captureDeck(resolved, outDir)
+        ? await captureDeck(resolved, outDir)
         : captureHtml(resolved, outDir);
 
       if (options.json === true) {

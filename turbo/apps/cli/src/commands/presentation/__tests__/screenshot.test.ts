@@ -129,10 +129,14 @@ function fakeDpkgDeb(args: readonly string[]): string {
     fakeLibreOfficePackage(root);
   }
   if (basename(archive).startsWith("poppler-utils")) {
-    mkdirSync(join(root, "usr", "bin"), { recursive: true });
-    writeFileSync(join(root, "usr", "bin", "pdftocairo"), "fake");
+    fakePopplerPackage(root);
   }
   return "";
+}
+
+function fakePopplerPackage(root: string): void {
+  mkdirSync(join(root, "usr", "bin"), { recursive: true });
+  writeFileSync(join(root, "usr", "bin", "pdftocairo"), "fake");
 }
 
 function fakeSoffice(args: readonly string[]): string {
@@ -276,6 +280,14 @@ describe("okou presentation screenshot", () => {
         return call[0] === "apt-get";
       }),
     ).toBe(false);
+    const soffice = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return ["soffice", "soffice.bin"].includes(basename(String(call[0])));
+    });
+    expect(soffice?.[1]).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^-env:UserInstallation=file:\/\//u),
+      ]),
+    );
   });
 
   it("installs only Poppler when a pdf rasteriser is missing", async () => {
@@ -322,8 +334,60 @@ describe("okou presentation screenshot", () => {
     expect(installs[0]?.[1]).toEqual(
       expect.arrayContaining(["libreoffice-impress", "poppler-utils"]),
     );
+    const sofficeCommands = vi
+      .mocked(execFileSync)
+      .mock.calls.map((call) => {
+        return String(call[0]);
+      })
+      .filter((command) => {
+        return basename(command) === "soffice";
+      });
+    expect(sofficeCommands).toHaveLength(2);
+    expect(sofficeCommands[0]).toContain(join("root", "usr", "bin", "soffice"));
     expect(readdirSync(outDir)).toHaveLength(3);
     expect(stderr()).toContain("Presentation dependencies installed.");
+  });
+
+  it("waits for a concurrent install and reuses its completed cache", async () => {
+    state.installed = new Set(["apt-get", "dpkg-deb"]);
+    writeFileSync(join(workDir, "deck.pptx"), "fake");
+    const cacheRoot = join(
+      workDir,
+      "cache",
+      "okou",
+      "presentation-screenshot",
+      "v1",
+    );
+    const installRoot = join(cacheRoot, "root");
+    const lockDirectory = join(cacheRoot, ".install.lock");
+    mkdirSync(lockDirectory, { recursive: true });
+
+    const concurrentInstall = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        fakeLibreOfficePackage(installRoot);
+        fakePopplerPackage(installRoot);
+        writeFileSync(
+          join(installRoot, ".libreoffice-impress.ready"),
+          "ready\n",
+        );
+        writeFileSync(join(installRoot, ".poppler-utils.ready"), "ready\n");
+        rmSync(lockDirectory, { force: true, recursive: true });
+        resolve();
+      }, 25);
+    });
+
+    await run("--input", join(workDir, "deck.pptx"), "--out", outDir);
+    await concurrentInstall;
+
+    expect(
+      vi.mocked(execFileSync).mock.calls.some((call) => {
+        return call[0] === "apt-get" && call[1]?.includes("install") === true;
+      }),
+    ).toBe(false);
+    expect(stderr()).toContain(
+      "Waiting for another presentation dependency installation...",
+    );
+    expect(readdirSync(outDir)).toHaveLength(3);
   });
 
   it("explains how to recover when automatic installation fails", async () => {
