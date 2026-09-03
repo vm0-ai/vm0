@@ -2441,6 +2441,7 @@
     },
     "voice": {
       "checkingLimit": "Verificando limite da entrada de voz",
+      "confirmRecording": "OK",
       "draft": "Rascunho de voz",
       "draftTooLong": "Este rascunho de voz é muito longo. Inicie uma nova gravação.",
       "finishDraft": "Finalizar",

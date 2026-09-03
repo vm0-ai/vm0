@@ -436,7 +436,7 @@ function useVoiceDraftActionHandler(
     if (button.dataset.voiceDraftAction === "finish") {
       detach(
         (async () => {
-          await finishVoiceDraft(id, true, pageSignal);
+          await finishVoiceDraft(id, "retry", pageSignal);
           pageSignal.throwIfAborted();
           await saveDraft(pageSignal);
         })(),
