@@ -185,14 +185,12 @@ describe("okou social command", () => {
     ]);
 
     const result = JSON.parse(output()) as {
-      readonly schemaVersion: string;
       readonly capabilities: readonly {
         readonly platform: string;
         readonly operations: readonly string[];
       }[];
     };
     expect(result).toMatchObject({
-      schemaVersion: "social.v1",
       capabilities: [
         {
           platform: "instagram",
@@ -240,7 +238,6 @@ describe("okou social command", () => {
 
     expect(requestBody).toMatchObject({ tool: expectedTool });
     expect(JSON.parse(output()) as unknown).toMatchObject({
-      schemaVersion: "social.v1",
       status: "complete",
       operation: "inspect",
     });
@@ -646,7 +643,6 @@ describe("okou social command", () => {
 
     expect(requests).toBe(2);
     expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
-      schemaVersion: "social.v1",
       status: "error",
       error: {
         kind: "internal",
@@ -700,7 +696,6 @@ describe("okou social command", () => {
     expect(records[0]).toMatchObject({ kind: "page", page: 1 });
     expect(records[1]).toMatchObject({ kind: "page", page: 2 });
     expect(records[2]).toMatchObject({
-      schemaVersion: "social.v1",
       kind: "result",
       status: "complete",
       collection: { pages: 2 },
@@ -733,7 +728,6 @@ describe("okou social command", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(JSON.parse(errorOutput()) as unknown).toStrictEqual({
-      schemaVersion: "social.v1",
       status: "error",
       error: {
         kind: "provider_temporary",
@@ -869,7 +863,6 @@ describe("okou social command", () => {
       format: "mp4",
     });
     expect(JSON.parse(output()) as unknown).toMatchObject({
-      schemaVersion: "social.v1",
       status: "complete",
       operation: "download",
       platform: "youtube",

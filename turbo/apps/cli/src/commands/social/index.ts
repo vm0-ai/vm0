@@ -27,7 +27,6 @@ import {
   postsIntent,
   searchIntent,
   SOCIAL_CAPABILITIES,
-  SOCIAL_OUTPUT_SCHEMA_VERSION,
   summarizeIntent,
   transcriptIntent,
   type SocialCapability,
@@ -112,7 +111,6 @@ interface SocialCollectionOutput {
 }
 
 interface SocialOutput {
-  readonly schemaVersion: typeof SOCIAL_OUTPUT_SCHEMA_VERSION;
   readonly kind: "result";
   readonly status: SocialStatus;
   readonly operation: SocialOperation;
@@ -181,7 +179,6 @@ function successfulOutput(
   response: SocialKitResponse,
 ): SocialOutput {
   return {
-    schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
     kind: "result",
     status: "complete",
     operation: intent.operation,
@@ -225,7 +222,6 @@ function structuredError(error: unknown): Readonly<Record<string, unknown>> {
     error instanceof SocialCollectionError ? error.progress : undefined;
   if (root instanceof ApiRequestError) {
     return {
-      schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
       status: "error",
       error: {
         kind: apiErrorKind(root),
@@ -239,7 +235,6 @@ function structuredError(error: unknown): Readonly<Record<string, unknown>> {
   }
   if (root instanceof SocialDownloadError) {
     return {
-      schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
       status: "error",
       error: {
         kind: "download_failed",
@@ -252,7 +247,6 @@ function structuredError(error: unknown): Readonly<Record<string, unknown>> {
     };
   }
   return {
-    schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
     status: "error",
     error: {
       kind: root instanceof InvalidArgumentError ? "invalid_input" : "internal",
@@ -526,7 +520,6 @@ function printCollectionPage(
 ): void {
   printJson(
     {
-      schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
       kind: "page",
       operation: intent.operation,
       platform: intent.platform,
@@ -579,7 +572,6 @@ function terminalCollectionOutput(
       : {}),
   };
   return {
-    schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
     kind: "result",
     status: requestSatisfied || sourceComplete ? "complete" : "partial",
     operation: intent.operation,
@@ -613,7 +605,6 @@ function safetyLimitOutput(
     reason: "safety_page_ceiling",
   };
   return {
-    schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
     kind: "result",
     status: accumulator.items.length >= requestedItems ? "complete" : "partial",
     operation: intent.operation,
@@ -813,7 +804,6 @@ function downloadOutput(
     | { readonly kind: "download"; readonly downloadId: string },
 ): SocialOutput {
   return {
-    schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
     kind: "result",
     status: "complete",
     operation: "download",
@@ -840,7 +830,6 @@ const capabilitiesCommand = new Command()
   .action((platform: SocialPlatform | undefined, options: OutputOptions) => {
     printJson(
       {
-        schemaVersion: SOCIAL_OUTPUT_SCHEMA_VERSION,
         capabilities: capabilitiesFor(platform),
       },
       options.json === true,

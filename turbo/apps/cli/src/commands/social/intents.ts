@@ -5,8 +5,6 @@ import {
 } from "@okouai/api-contracts/contracts/social";
 import { InvalidArgumentError } from "commander";
 
-export const SOCIAL_OUTPUT_SCHEMA_VERSION = "social.v1" as const;
-
 export const SOCIAL_PLATFORMS = [
   "linkedin",
   "twitter",
