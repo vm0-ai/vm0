@@ -44,7 +44,7 @@ function createNativeBackend(
   overrides: Partial<ComputerUseNativeBackend> = {},
 ): ComputerUseNativeBackend {
   const defaults: ComputerUseNativeBackend = {
-    dispose: () => {},
+    dispose: async () => {},
     getPermissions: async () => {
       return { accessibility: true, screenRecording: true };
     },
