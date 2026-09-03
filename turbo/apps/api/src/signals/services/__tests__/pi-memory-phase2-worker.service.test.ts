@@ -1295,6 +1295,40 @@ describe("Pi memory Phase 2 worker composition", () => {
       failed: 1,
     });
     expect(provider.calls.value).toBe(1);
+    const terminalEvents = context.mocks.axiomLogging.info.mock.calls
+      .filter(([message]) => {
+        return message === "Pi memory Phase 2 work completed";
+      })
+      .map(([, fields]) => {
+        return fields as Record<string, unknown>;
+      });
+    expect(terminalEvents).toHaveLength(1);
+    expect(Object.keys(terminalEvents[0] ?? {}).sort()).toStrictEqual([
+      "claimedBaseVersionId",
+      "claimedRevision",
+      "durationMs",
+      "errorClass",
+      "leaseOwner",
+      "memoryStorageId",
+      "orgId",
+      "outcome",
+      "reconciliationLatencyMs",
+      "selectedCount",
+      "userId",
+      "versionId",
+    ]);
+    expect(terminalEvents[0]).toMatchObject({
+      outcome: "failed",
+      errorClass: "agent_output_invalid",
+      memoryStorageId: scope.memoryStorageId,
+    });
+    expect(JSON.stringify(terminalEvents)).not.toContain(MEMORY_SECRET);
+    expect(JSON.stringify(terminalEvents)).not.toContain(PATH_SECRET);
+    expect(JSON.stringify(terminalEvents)).not.toContain(PROVIDER_ID_SECRET);
+    expect(JSON.stringify(terminalEvents)).not.toContain(PROMPT_SECRET);
+    expect(JSON.stringify(terminalEvents)).not.toContain(
+      LAUNCH_SNAPSHOT_SECRET,
+    );
     const [storage] = await db()
       .select({ headVersionId: storages.headVersionId })
       .from(storages)

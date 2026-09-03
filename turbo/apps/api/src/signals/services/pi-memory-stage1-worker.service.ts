@@ -611,7 +611,8 @@ function logOutcome(args: {
   readonly outputTokens?: number;
   readonly errorClass?: string;
 }): void {
-  log.debug("Pi memory Stage 1 candidate processed", {
+  // eslint-disable-next-line api/no-logger-info -- terminal outcome is production diagnostic telemetry.
+  log.info("Pi memory Stage 1 candidate processed", {
     orgId: args.work.orgId,
     userId: args.work.userId,
     memoryStorageId: args.work.memoryStorageId,
