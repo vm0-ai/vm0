@@ -774,7 +774,9 @@ mod tests {
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         guest_common::log::clear_system_log_file();
 
-        let dir = tempfile::tempdir().unwrap();
+        // Use tmpfs so the descriptor-relative fixture is not constrained by
+        // an overlay filesystem's internal backing-path length.
+        let dir = tempfile::tempdir_in("/dev/shm").unwrap();
         let mount = dir.path().join("long-path");
         std::fs::create_dir(&mount).unwrap();
         let mut current = File::open(&mount).unwrap();
