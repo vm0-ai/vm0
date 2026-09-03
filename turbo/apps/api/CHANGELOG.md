@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.536.0](https://github.com/vm0-ai/vm0/compare/api-v1.535.1...api-v1.536.0) (2026-09-03)
+
+
+### Features
+
+* launch morning brief for future workspace creators ([#31289](https://github.com/vm0-ai/vm0/issues/31289)) ([8bf2a15](https://github.com/vm0-ai/vm0/commit/8bf2a154bdb38424d1e466280c86c123a3b89334))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.612.0
+    * @okouai/db bumped to 1.238.2
+    * @okouai/pi-agent-runtime bumped to 1.14.4
+
+## [1.535.1](https://github.com/vm0-ai/vm0/compare/api-v1.535.0...api-v1.535.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **models:** remove claude fable 5 from new workspace defaults ([#31281](https://github.com/vm0-ai/vm0/issues/31281)) ([699e37f](https://github.com/vm0-ai/vm0/commit/699e37fdc9986b5ded7108d7aa46060b12cfa43f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.3
+    * @okouai/core bumped to 8.611.6
+    * @okouai/db bumped to 1.238.1
+    * @okouai/pi-agent-runtime bumped to 1.14.3
+
 ## [1.535.0](https://github.com/vm0-ai/vm0/compare/api-v1.534.3...api-v1.535.0) (2026-09-03)
 
 

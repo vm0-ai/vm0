@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.26](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.25...guest-contracts-v0.12.26) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
 ## [0.12.25](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.24...guest-contracts-v0.12.25) (2026-09-03)
 
 

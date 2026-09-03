@@ -9,6 +9,7 @@ import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import {
+  chatQueueEventPriority,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
   pendingChatQueueEventCondition,
@@ -154,47 +155,55 @@ export async function loadNextGoalQueueEvent(
       "api_dispatch_pre_create_zero_goal_drain_load_event_select_candidate",
       "nested",
       async () => {
+        const queueHead = tx.$with("goal_queue_head").as(
+          tx
+            .select({
+              id: chatEvents.id,
+              chatThreadId: chatEvents.chatThreadId,
+              eventType: chatEvents.eventType,
+              goalId: canonicalChatEventGoalId().as("goal_id"),
+              createdAt: chatEvents.createdAt,
+            })
+            .from(chatEvents)
+            .where(
+              and(
+                eq(chatEvents.chatThreadId, args.chatThreadId),
+                pendingChatQueueEventCondition(tx),
+                args.queueItemCreatedBefore
+                  ? lt(chatEvents.createdAt, args.queueItemCreatedBefore)
+                  : undefined,
+              ),
+            )
+            .orderBy(
+              chatQueueEventPriority(),
+              asc(chatEvents.createdAt),
+              asc(chatEvents.id),
+            )
+            .limit(1),
+        );
         return await tx
+          .with(queueHead)
           .select({
-            id: chatEvents.id,
-            chatThreadId: chatEvents.chatThreadId,
+            id: queueHead.id,
+            chatThreadId: queueHead.chatThreadId,
             userId: chatThreads.userId,
             orgId: agents.orgId,
-            goalId: canonicalChatEventGoalId(),
-            createdAt: chatEvents.createdAt,
+            goalId: queueHead.goalId,
+            createdAt: queueHead.createdAt,
           })
-          .from(chatEvents)
-          .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+          .from(queueHead)
+          .innerJoin(chatThreads, eq(chatThreads.id, queueHead.chatThreadId))
           .innerJoin(agents, eq(agents.id, chatThreads.agentId))
+          // Keep admission lazy when a prompt or automation owns the queue.
           .where(
-            and(
-              eq(chatEvents.chatThreadId, args.chatThreadId),
-              pendingChatQueueEventCondition(tx),
-              chatEventTypeIn(["input.goal"]),
-              args.queueItemCreatedBefore
-                ? lt(chatEvents.createdAt, args.queueItemCreatedBefore)
-                : undefined,
-              notExists(
-                tx
-                  .select({ id: chatEvents.id })
-                  .from(chatEvents)
-                  .where(
-                    and(
-                      eq(chatEvents.chatThreadId, args.chatThreadId),
-                      pendingChatQueueEventCondition(tx),
-                      chatEventTypeIn(["input.prompt", "input.automation"]),
-                      args.queueItemCreatedBefore
-                        ? lt(chatEvents.createdAt, args.queueItemCreatedBefore)
-                        : undefined,
-                    ),
-                  ),
-              ),
-              chatThreadAdmissionAllowedCondition(tx, {
-                threadId: args.chatThreadId,
-              }),
-            ),
+            sql`CASE
+              WHEN ${queueHead.eventType} = 'input.goal' THEN
+                ${chatThreadAdmissionAllowedCondition(tx, {
+                  threadId: args.chatThreadId,
+                })}
+              ELSE FALSE
+            END`,
           )
-          .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id))
           .limit(1);
       },
       args.timingDimensions,

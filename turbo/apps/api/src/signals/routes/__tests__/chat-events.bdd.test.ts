@@ -88,7 +88,10 @@ import {
   setSyntheticPiMemoryStage1SelectionFixture,
 } from "../../../test-fixtures/pi-memory-stage1-candidates";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import {
+  deleteOrgPlanEntitlementFixture,
+  upsertOrgPlanEntitlementFixture,
+} from "../../../test-fixtures/org-plan-entitlement";
 import { setOrgModelPolicyProviderTypeFixture } from "../../../test-fixtures/org-model-policies";
 import {
   createUsagePricingFixture,
@@ -2218,6 +2221,62 @@ describe("CHAT-02: web chat send and client ids", () => {
     );
   }, 90_000);
 
+  it("projects a sent voice draft into the raw runner prompt and persisted message", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const clientEventId = randomUUID();
+    const voicePart = {
+      type: "voice" as const,
+      id: randomUUID(),
+      transcript: "um ship Friday no Monday",
+    };
+    const userMessage = {
+      version: 1 as const,
+      parts: [voicePart],
+    } satisfies UserMessageInputDocument;
+    await api.heartbeatRunner(runnerGroup);
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt: "client prompt must not replace the raw voice transcript",
+      userMessage,
+      clientEventId,
+    });
+    await flushWaitUntilForTest();
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.status).toBe("pending");
+    expect(run.prompt).toBe(voicePart.transcript);
+    const claimed = await claimChatRun(runnerGroup, sent.runId);
+    expect(claimed.claim.prompt).toBe(voicePart.transcript);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === clientEventId &&
+            message.runId === sent.runId
+          );
+        });
+      },
+    );
+    const persisted = userMessages(messages.events).find(
+      (message): message is PromptMessage => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.revokesEventId === clientEventId &&
+          message.runId === sent.runId
+        );
+      },
+    );
+    expect(persisted?.userMessage?.version).toBe(1);
+    expect(persisted?.userMessage?.parts).toContainEqual(voicePart);
+
+    await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
+  }, 90_000);
+
   it("rejects unauthenticated, unknown-agent, and foreign private-agent sends", async () => {
     const unauthenticated = await chat.requestSendEvent(
       null,
@@ -2463,6 +2522,55 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT-02: queueing and recalling messages", () => {
+  it("returns an empty active-input poll without waiting for the thread row", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "keep the empty active-input poll observational",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: active.threadId,
+      signal: context.signal,
+    });
+    let reserveSettled = false;
+    const reserveOutcome = api
+      .reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId)
+      .then(
+        (value) => {
+          reserveSettled = true;
+          return { ok: true as const, value };
+        },
+        (error: unknown) => {
+          reserveSettled = true;
+          return { ok: false as const, error };
+        },
+      );
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+      await reserveOutcome;
+    });
+
+    await expect
+      .poll(() => {
+        return reserveSettled;
+      })
+      .toBeTruthy();
+    const outcome = await reserveOutcome;
+    if (!outcome.ok) {
+      throw outcome.error;
+    }
+    expect(outcome.value).toStrictEqual({ outcome: "empty" });
+    await expect(threadLock.blockedWaiterCount()).resolves.toBe(0);
+
+    threadLock.release();
+    await threadLock.done;
+    await cancelChatRun(actor, active.runId);
+  }, 30_000);
+
   it("reserves rich inputs one at a time and settles concurrent receipts once", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -5175,14 +5283,6 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
-    // Restore spendable credits before exercising the built-in branch.
-    await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
-
-    // A vm0 provider pin in an entitled org passes the spendable-credits
-    // admission. The outcome past admission is race-dependent on the shared
-    // database: 503 when no vm0 execution key exists (no public provisioning
-    // surface), 201 when another suite's alive legacy test has seeded a
-    // global vm0 key. Both prove the credits-ok admission arm.
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-5",
@@ -5192,6 +5292,28 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
+    const insufficientVm0 = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "reject built-in admission without spendable credits",
+        model: "claude-sonnet-5",
+      },
+      [201],
+    );
+    if (insufficientVm0.status !== 201) {
+      throw new Error("Expected insufficient-credit send to return 201");
+    }
+    expect(insufficientVm0.body.runId).toBeNull();
+
+    // Restore spendable credits before exercising the built-in branch.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
+
+    // A vm0 provider pin in an entitled org passes the spendable-credits
+    // admission. The outcome past admission is race-dependent on the shared
+    // database: 503 when no vm0 execution key exists (no public provisioning
+    // surface), 201 when another suite's alive legacy test has seeded a
+    // global vm0 key. Both prove the credits-ok admission arm.
     await setOrgModelPolicyProviderTypeFixture({
       orgId,
       model: "claude-sonnet-5",
@@ -5220,6 +5342,237 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, vm0Body.runId, [200]);
       }
     }
+  }, 90_000);
+
+  it("preserves persisted external model plan-state outcomes", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = requireOrgId(actor);
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const initial = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish external plan capability admission",
+      model: "claude-sonnet-5",
+    });
+    const initialClaim = await claimChatRun(runnerGroup, initial.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(initial.runId, initialClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const activeFollowUp = await sendChatRun(actor, {
+      agentId,
+      threadId: initial.threadId,
+      prompt: "continue with active plan capabilities",
+    });
+    await cancelChatRun(actor, activeFollowUp.runId);
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId,
+      status: "suspended",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    const suspendedEventId = randomUUID();
+    const suspended = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: initial.threadId,
+        prompt: "reject suspended persisted admission",
+        clientEventId: suspendedEventId,
+      },
+      [201],
+    );
+    if (suspended.status !== 201) {
+      throw new Error("Expected suspended-plan send to return 201");
+    }
+    expect(suspended.body.runId).toBeNull();
+    const suspendedMessages = await chat.listThreadEvents(
+      actor,
+      initial.threadId,
+    );
+    expect(userMessages(suspendedMessages.events)).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.rejected",
+        revokesEventId: suspendedEventId,
+        error: "insufficient_credits",
+      }),
+    );
+
+    await deleteOrgPlanEntitlementFixture(orgId);
+    const missing = await requestSendEventRaw(actor, {
+      agentId,
+      threadId: initial.threadId,
+      prompt: "reject missing persisted plan authority",
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "reject missing persisted plan authority" },
+        ],
+      },
+      hasTextContent: true,
+    });
+    expect(missing.status).toBe(500);
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId,
+      status: "active",
+      supportByok: false,
+      restrictedVm0Models: false,
+    });
+    await seedVm0BuiltInModelKey("deepseek-v4-flash");
+    const byokDisabled = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: initial.threadId,
+        prompt: "fall back from a BYOK-disabled persisted route",
+      },
+      [201],
+    );
+    if (byokDisabled.status !== 201) {
+      throw new Error("Expected BYOK-disabled send to return 201");
+    }
+    if (!byokDisabled.body.runId) {
+      throw new Error("Expected BYOK-disabled policy fallback to create a run");
+    }
+    const byokDisabledPolicies = await misc.listModelPolicies(actor);
+    expect(byokDisabledPolicies.policies).toContainEqual(
+      expect.objectContaining({
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "built-in",
+        modelProviderId: null,
+      }),
+    );
+    await cancelChatRun(actor, byokDisabled.body.runId);
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await upsertOrgPlanEntitlementFixture({
+      orgId,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: true,
+    });
+    const restricted = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: initial.threadId,
+        prompt: "fall back from a restricted persisted model",
+      },
+      [201],
+    );
+    if (restricted.status !== 201) {
+      throw new Error("Expected restricted-model send to return 201");
+    }
+    if (!restricted.body.runId) {
+      throw new Error(
+        "Expected restricted-model policy fallback to create a run",
+      );
+    }
+    const restrictedPolicies = await misc.listModelPolicies(actor);
+    expect(restrictedPolicies.policies).toContainEqual(
+      expect.objectContaining({
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "built-in",
+        modelProviderId: null,
+      }),
+    );
+    await cancelChatRun(actor, restricted.body.runId);
+  }, 90_000);
+
+  it("reloads external plan capabilities at final admission", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = requireOrgId(actor);
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const initial = await sendChatRun(actor, {
+      agentId,
+      prompt: "establish final plan admission freshness",
+      model: "claude-sonnet-5",
+    });
+    const initialClaim = await claimChatRun(runnerGroup, initial.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(initial.runId, initialClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: initial.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+    const prompt = "reject plan changed after persisted preflight";
+    const followUp = chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: initial.threadId,
+        prompt,
+      },
+      [402],
+    );
+    await expect.poll(threadLock.blockedWaiterCount).toBe(1);
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId,
+      status: "suspended",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    threadLock.release();
+    const rejected = await followUp;
+    await threadLock.done;
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((run) => {
+        return run.prompt === prompt;
+      }),
+    ).toHaveLength(0);
   }, 90_000);
 
   it("keeps captured Pi admission after PiLoop turns off", async () => {

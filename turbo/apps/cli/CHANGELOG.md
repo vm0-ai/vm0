@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.308.0](https://github.com/vm0-ai/vm0/compare/cli-v9.307.5...cli-v9.308.0) (2026-09-03)
+
+
+### Features
+
+* **cli:** review the camera cut at the plan's own moments and record whether each click is in frame ([#31314](https://github.com/vm0-ai/vm0/issues/31314)) ([b2cf5b4](https://github.com/vm0-ai/vm0/commit/b2cf5b4f00404105c1ec5618bcfc314a9f94fc2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.612.0
+    * @okouai/pi-agent-runtime bumped to 1.14.4
+
+## [9.307.5](https://github.com/vm0-ai/vm0/compare/cli-v9.307.4...cli-v9.307.5) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.396.3
+    * @okouai/core bumped to 8.611.6
+    * @okouai/pi-agent-runtime bumped to 1.14.3
+
 ## [9.307.4](https://github.com/vm0-ai/vm0/compare/cli-v9.307.3...cli-v9.307.4) (2026-09-03)
 
 

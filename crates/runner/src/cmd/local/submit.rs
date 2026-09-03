@@ -377,8 +377,8 @@ impl SubmitPlan {
         };
 
         let feature_flags = Self::parse_feature_flags(&feature_flags)?;
-        let environment = Self::parse_env_entries("--env", &env, true)?;
-        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
+        let environment = Self::parse_env_entries("--env", &env)?;
+        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let timeout = Self::validate_timeout(timeout)?;
         let group_dir = home.groups_dir().join(&group);
@@ -560,7 +560,6 @@ impl SubmitPlan {
     fn parse_env_entries(
         flag: &str,
         entries: &[String],
-        allow_guest_agent_tuning_keys: bool,
     ) -> RunnerResult<Option<HashMap<String, String>>> {
         if entries.is_empty() {
             return Ok(None);
@@ -596,14 +595,7 @@ impl SubmitPlan {
                     "invalid {flag} key '{key}': the OKOU_ environment variable namespace is platform-reserved"
                 )));
             }
-            let is_guest_agent_tuning_key =
-                guest_contracts::env::is_guest_agent_tuning_env_key(key);
-            if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {
-                return Err(RunnerError::Config(format!(
-                    "invalid {flag} key '{key}': guest-agent tuning environment variables must be passed with --env"
-                )));
-            }
-            if guest_contracts::env::is_runner_owned_env_key(key) && !is_guest_agent_tuning_key {
+            if guest_contracts::env::is_runner_owned_env_key(key) {
                 return Err(RunnerError::Config(format!(
                     "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
                 )));

@@ -755,6 +755,19 @@ async function executeConsolidation(
     testHooks,
   });
   emitLifecycle(input, state, startedAt, "model_completed");
+  try {
+    await input.onUsage?.({
+      orgId: input.orgId,
+      userId: input.userId,
+      memoryStorageId: input.memoryStorageId,
+      claimedRevision: input.claimedRevision,
+      selectionDigest: input.selectionDigest,
+      responseId: provider.responseId,
+      usage: provider.usage,
+    });
+  } catch {
+    throw engineError("observer_failed", input, state);
+  }
   signal.throwIfAborted();
   await testHooks?.beforeOutputValidation?.(workspace);
   signal.throwIfAborted();
@@ -802,20 +815,6 @@ function commitConsolidationResult(
     outcome: "prepared",
     contentIdentity: result.contentIdentity,
   });
-  signal.throwIfAborted();
-  try {
-    input.onUsage?.({
-      orgId: input.orgId,
-      userId: input.userId,
-      memoryStorageId: input.memoryStorageId,
-      claimedRevision: input.claimedRevision,
-      selectionDigest: input.selectionDigest,
-      responseId: result.responseId,
-      usage: result.usage,
-    });
-  } catch {
-    throw engineError("observer_failed", input, state);
-  }
   signal.throwIfAborted();
   return result;
 }

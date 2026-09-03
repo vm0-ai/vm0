@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.612.0](https://github.com/vm0-ai/vm0/compare/core-v8.611.6...core-v8.612.0) (2026-09-03)
+
+
+### Features
+
+* launch morning brief for future workspace creators ([#31289](https://github.com/vm0-ai/vm0/issues/31289)) ([8bf2a15](https://github.com/vm0-ai/vm0/commit/8bf2a154bdb38424d1e466280c86c123a3b89334))
+
+## [8.611.6](https://github.com/vm0-ai/vm0/compare/core-v8.611.5...core-v8.611.6) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.3
+
 ## [8.611.5](https://github.com/vm0-ai/vm0/compare/core-v8.611.4...core-v8.611.5) (2026-09-03)
 
 

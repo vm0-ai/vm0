@@ -23,6 +23,63 @@ enum CodexHistoryMode {
     Paginated,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct OrdinalSequence {
+    first: Option<u64>,
+    last: Option<u64>,
+    valid: bool,
+}
+
+impl OrdinalSequence {
+    const fn empty() -> Self {
+        Self {
+            first: None,
+            last: None,
+            valid: true,
+        }
+    }
+
+    fn canonical(value: &Value) -> Self {
+        let mut sequence = Self::empty();
+        sequence.push(value);
+        if sequence.first != Some(0) {
+            sequence.valid = false;
+        }
+        sequence
+    }
+
+    fn push(&mut self, value: &Value) {
+        let Some(ordinal) = value.get("ordinal").and_then(Value::as_u64) else {
+            self.valid = false;
+            return;
+        };
+        if self.last.is_some_and(|previous| ordinal <= previous) {
+            self.valid = false;
+        }
+        if self.first.is_none() {
+            self.first = Some(ordinal);
+        }
+        self.last = Some(ordinal);
+    }
+
+    fn append(&mut self, suffix: Self) {
+        if self
+            .last
+            .zip(suffix.first)
+            .is_some_and(|(previous, next)| next <= previous)
+        {
+            self.valid = false;
+        }
+        self.valid &= suffix.valid;
+        if self.first.is_none() {
+            self.first = suffix.first;
+        }
+        if suffix.last.is_some() {
+            self.last = suffix.last;
+        }
+    }
+}
+
 /// Result of attempting to select a bounded Codex compact generation.
 #[derive(Debug, PartialEq, Eq)]
 #[must_use]
@@ -143,16 +200,18 @@ enum RolloutRecord<'a> {
 struct TurnState {
     id: String,
     start_offset: usize,
+    ordinals: Option<OrdinalSequence>,
     saw_user_message: bool,
     saw_compatible_context: bool,
     invalid: Option<CodexHistoryIneligibleReason>,
 }
 
 impl TurnState {
-    fn new(id: &str, start_offset: usize) -> Self {
+    fn new(id: &str, start_offset: usize, track_ordinals: bool) -> Self {
         Self {
             id: id.to_string(),
             start_offset,
+            ordinals: track_ordinals.then(OrdinalSequence::empty),
             saw_user_message: false,
             saw_compatible_context: false,
             invalid: None,
@@ -182,6 +241,7 @@ impl TurnState {
 struct CandidateState {
     selected_turn_id: String,
     selected_turn_delimited: bool,
+    ordinals: Option<OrdinalSequence>,
     invalid: Option<CodexHistoryIneligibleReason>,
 }
 
@@ -189,17 +249,26 @@ struct RecordProcessingContext<'a> {
     expected_thread_id: &'a str,
     body_max_bytes: usize,
     canonical_record_len: usize,
+    canonical_ordinals: Option<OrdinalSequence>,
 }
 
 impl CandidateState {
     fn from_compacting_turn(
         turn: &TurnState,
         compact_validation: Result<(), CodexHistoryIneligibleReason>,
+        canonical_ordinals: Option<OrdinalSequence>,
     ) -> Self {
         let invalid = turn.invalid.or_else(|| compact_validation.err());
+        let ordinals = canonical_ordinals.and_then(|mut canonical| {
+            turn.ordinals.map(|turn| {
+                canonical.append(turn);
+                canonical
+            })
+        });
         Self {
             selected_turn_id: turn.id.clone(),
             selected_turn_delimited: false,
+            ordinals,
             invalid,
         }
     }
@@ -274,21 +343,23 @@ fn select_with_limits_and_hook(
     limits: SelectionLimits,
     before_final_check: impl FnOnce(),
 ) -> io::Result<CodexHistorySelection> {
-    select_with_limits_and_observer(
+    select_with_limits_and_observers(
         source,
         expected_thread_id,
         limits,
         before_final_check,
         |_| {},
+        || {},
     )
 }
 
-fn select_with_limits_and_observer(
+fn select_with_limits_and_observers(
     source: &mut File,
     expected_thread_id: &str,
     limits: SelectionLimits,
     before_final_check: impl FnOnce(),
     mut observe_retained_bytes: impl FnMut(usize),
+    mut observe_json_parse: impl FnMut(),
 ) -> io::Result<CodexHistorySelection> {
     let source_size = source.metadata()?.len();
     if source_size <= limits.candidate_max_bytes {
@@ -315,6 +386,7 @@ fn select_with_limits_and_observer(
         }
     };
 
+    observe_json_parse();
     let canonical_value =
         match serde_json::from_slice::<Value>(strip_jsonl_line_ending(&canonical_record)) {
             Ok(value) => value,
@@ -328,6 +400,8 @@ fn select_with_limits_and_observer(
         Ok(history_mode) => history_mode,
         Err(reason) => return Ok(CodexHistorySelection::Ineligible(reason)),
     };
+    let canonical_ordinals = (history_mode == CodexHistoryMode::Paginated)
+        .then(|| OrdinalSequence::canonical(&canonical_value));
 
     let Some(body_max_bytes) = usize::try_from(limits.candidate_max_bytes)
         .ok()
@@ -372,6 +446,7 @@ fn select_with_limits_and_observer(
         expected_thread_id,
         body_max_bytes,
         canonical_record_len,
+        canonical_ordinals,
     };
     let mut retained_bytes = canonical_record;
     observe_retained_bytes(retained_bytes.len());
@@ -402,6 +477,7 @@ fn select_with_limits_and_observer(
                     &mut current_turn,
                     &mut candidate,
                     &mut observe_retained_bytes,
+                    &mut observe_json_parse,
                 );
             }
         }
@@ -441,7 +517,8 @@ fn select_with_limits_and_observer(
             CodexHistoryIneligibleReason::NoCompactBoundary,
         ));
     }
-    if history_mode == CodexHistoryMode::Paginated && !has_valid_paginated_ordinals(&retained_bytes)
+    if history_mode == CodexHistoryMode::Paginated
+        && candidate.ordinals.is_none_or(|ordinals| !ordinals.valid)
     {
         return Ok(CodexHistorySelection::Ineligible(
             CodexHistoryIneligibleReason::InvalidRecord,
@@ -461,7 +538,9 @@ fn process_record(
     current_turn: &mut Option<TurnState>,
     candidate: &mut Option<CandidateState>,
     observe_retained_bytes: &mut impl FnMut(usize),
+    observe_json_parse: &mut impl FnMut(),
 ) {
+    observe_json_parse();
     let parsed = serde_json::from_slice::<Value>(strip_jsonl_line_ending(raw_record))
         .map_err(|_| CodexHistoryIneligibleReason::InvalidRecord)
         .and_then(|value| {
@@ -473,8 +552,8 @@ fn process_record(
         Err(reason) => {
             append_to_retained_state(
                 raw_record,
-                context.body_max_bytes,
-                context.canonical_record_len,
+                None,
+                context,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -489,8 +568,8 @@ fn process_record(
         Err(reason) => {
             append_to_retained_state(
                 raw_record,
-                context.body_max_bytes,
-                context.canonical_record_len,
+                None,
+                context,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -510,11 +589,15 @@ fn process_record(
                 context.canonical_record_len,
                 observe_retained_bytes,
             );
-            *current_turn = Some(TurnState::new(turn_id, retained_bytes.len()));
+            *current_turn = Some(TurnState::new(
+                turn_id,
+                retained_bytes.len(),
+                context.canonical_ordinals.is_some(),
+            ));
             append_to_retained_state(
                 raw_record,
-                context.body_max_bytes,
-                context.canonical_record_len,
+                context.canonical_ordinals.is_some().then_some(&value),
+                context,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -524,8 +607,8 @@ fn process_record(
         record => {
             append_to_retained_state(
                 raw_record,
-                context.body_max_bytes,
-                context.canonical_record_len,
+                context.canonical_ordinals.is_some().then_some(&value),
+                context,
                 retained_bytes,
                 current_turn,
                 candidate,
@@ -536,6 +619,7 @@ fn process_record(
                     select_compacting_turn(
                         validation,
                         context.canonical_record_len,
+                        context.canonical_ordinals,
                         retained_bytes,
                         current_turn,
                         candidate,
@@ -607,8 +691,8 @@ fn process_record(
 
 fn append_to_retained_state(
     raw_record: &[u8],
-    body_max_bytes: usize,
-    canonical_record_len: usize,
+    value: Option<&Value>,
+    context: &RecordProcessingContext<'_>,
     retained_bytes: &mut Vec<u8>,
     current_turn: &mut Option<TurnState>,
     candidate: &mut Option<CandidateState>,
@@ -625,7 +709,7 @@ fn append_to_retained_state(
     }
     let Some(next_body_size) = retained_bytes
         .len()
-        .checked_sub(canonical_record_len)
+        .checked_sub(context.canonical_record_len)
         .and_then(|size| size.checked_add(raw_record.len()))
     else {
         invalidate_retained_state(
@@ -635,7 +719,7 @@ fn append_to_retained_state(
         );
         return;
     };
-    if next_body_size > body_max_bytes {
+    if next_body_size > context.body_max_bytes {
         invalidate_retained_state(
             current_turn,
             candidate,
@@ -644,12 +728,29 @@ fn append_to_retained_state(
         return;
     }
     retained_bytes.extend_from_slice(raw_record);
+    if let Some(value) = value {
+        if current_turn_retains
+            && let Some(ordinals) = current_turn
+                .as_mut()
+                .and_then(|turn| turn.ordinals.as_mut())
+        {
+            ordinals.push(value);
+        }
+        if candidate_retains
+            && let Some(ordinals) = candidate
+                .as_mut()
+                .and_then(|candidate| candidate.ordinals.as_mut())
+        {
+            ordinals.push(value);
+        }
+    }
     observe_retained_bytes(retained_bytes.len());
 }
 
 fn select_compacting_turn(
     compact_validation: Result<(), CodexHistoryIneligibleReason>,
     canonical_record_len: usize,
+    canonical_ordinals: Option<OrdinalSequence>,
     retained_bytes: &mut Vec<u8>,
     current_turn: &mut Option<TurnState>,
     candidate: &mut Option<CandidateState>,
@@ -659,6 +760,7 @@ fn select_compacting_turn(
         *candidate = Some(CandidateState {
             selected_turn_id: String::new(),
             selected_turn_delimited: false,
+            ordinals: canonical_ordinals,
             invalid: Some(CodexHistoryIneligibleReason::InvalidTurn),
         });
         return;
@@ -673,6 +775,7 @@ fn select_compacting_turn(
     *candidate = Some(CandidateState::from_compacting_turn(
         turn,
         compact_validation,
+        canonical_ordinals,
     ));
 }
 
@@ -818,28 +921,6 @@ fn validate_canonical_metadata(
         Some(Value::String(_)) => Err(CodexHistoryIneligibleReason::UnsupportedHistoryMode),
         Some(_) => Err(CodexHistoryIneligibleReason::InvalidCanonicalMetadata),
     }
-}
-
-fn has_valid_paginated_ordinals(candidate: &[u8]) -> bool {
-    let mut previous = None;
-    for raw_record in candidate
-        .split(|byte| *byte == b'\n')
-        .filter(|record| !record.is_empty())
-    {
-        let Some(ordinal) = serde_json::from_slice::<Value>(raw_record)
-            .ok()
-            .and_then(|record| record.get("ordinal").and_then(Value::as_u64))
-        else {
-            return false;
-        };
-        match previous {
-            None if ordinal == 0 => {}
-            Some(previous) if ordinal > previous => {}
-            None | Some(_) => return false,
-        }
-        previous = Some(ordinal);
-    }
-    previous.is_some()
 }
 
 fn validate_rollout_record(value: &Value) -> Result<(), CodexHistoryIneligibleReason> {
@@ -1213,8 +1294,17 @@ mod tests {
     }
 
     fn with_ordinal(record: &[u8], ordinal: u64) -> Vec<u8> {
+        with_ordinal_value(record, Some(json!(ordinal)))
+    }
+
+    fn with_ordinal_value(record: &[u8], ordinal: Option<Value>) -> Vec<u8> {
         let mut value = serde_json::from_slice::<Value>(strip_jsonl_line_ending(record)).unwrap();
-        value["ordinal"] = json!(ordinal);
+        match ordinal {
+            Some(ordinal) => value["ordinal"] = ordinal,
+            None => {
+                value.as_object_mut().unwrap().remove("ordinal");
+            }
+        }
         let mut bytes = serde_json::to_vec(&value).unwrap();
         bytes.push(b'\n');
         bytes
@@ -1320,13 +1410,32 @@ mod tests {
     }
 
     fn source_with_history_mode(records: &[Vec<u8>], history_mode: &str) -> NamedTempFile {
-        let mut file = NamedTempFile::new().unwrap();
         let canonical = canonical(Some(history_mode));
         let canonical = if history_mode == "paginated" {
             with_ordinal(&canonical, 0)
         } else {
             canonical
         };
+        let encoded_records = records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| {
+                if history_mode == "paginated" {
+                    with_ordinal(record, index as u64 + 2)
+                } else {
+                    record.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        source_with_encoded_records(canonical, &encoded_records, history_mode)
+    }
+
+    fn source_with_encoded_records(
+        canonical: Vec<u8>,
+        records: &[Vec<u8>],
+        history_mode: &str,
+    ) -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
         file.write_all(&canonical).unwrap();
         let retained_len: usize = records.iter().map(Vec::len).sum();
         let filler_len = TEST_LIMITS
@@ -1347,16 +1456,26 @@ mod tests {
             filler
         };
         file.write_all(&filler).unwrap();
-        for (index, record) in records.iter().enumerate() {
-            if history_mode == "paginated" {
-                file.write_all(&with_ordinal(record, index as u64 + 2))
-                    .unwrap();
-            } else {
-                file.write_all(record).unwrap();
-            }
+        for record in records {
+            file.write_all(record).unwrap();
         }
         file.flush().unwrap();
         file
+    }
+
+    fn paginated_source_with_ordinals(
+        canonical_ordinal: Option<Value>,
+        records: &[Vec<u8>],
+        ordinals: &[Option<Value>],
+    ) -> NamedTempFile {
+        assert_eq!(records.len(), ordinals.len());
+        let canonical = with_ordinal_value(&canonical(Some("paginated")), canonical_ordinal);
+        let encoded_records = records
+            .iter()
+            .zip(ordinals)
+            .map(|(record, ordinal)| with_ordinal_value(record, ordinal.clone()))
+            .collect::<Vec<_>>();
+        source_with_encoded_records(canonical, &encoded_records, "paginated")
     }
 
     fn complete_generation(summary: &str) -> Vec<Vec<u8>> {
@@ -1366,6 +1485,16 @@ mod tests {
             turn_context(TURN_ID),
             compacted(summary),
             turn_complete(TURN_ID),
+        ]
+    }
+
+    fn complete_paginated_generation(turn_id: &str, summary: &str) -> Vec<Vec<u8>> {
+        vec![
+            turn_started(turn_id),
+            paginated_user_message(turn_id),
+            turn_context(turn_id),
+            compacted(summary),
+            turn_complete(turn_id),
         ]
     }
 
@@ -1428,23 +1557,154 @@ mod tests {
 
     #[test]
     fn paginated_candidate_requires_present_increasing_ordinals() {
-        let canonical = with_ordinal(&canonical(Some("paginated")), 0);
-        let started = with_ordinal(&turn_started(TURN_ID), 10);
-        let completed = with_ordinal(&turn_complete(TURN_ID), 11);
-        assert!(has_valid_paginated_ordinals(
-            &[canonical.clone(), started.clone(), completed.clone()].concat()
+        let records = complete_paginated_generation(TURN_ID, "summary");
+        let valid_ordinals = [10_u64, 20, 30, 40, 50].map(|ordinal| Some(json!(ordinal)));
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &valid_ordinals);
+        assert!(matches!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Candidate(_)
         ));
-        assert!(!has_valid_paginated_ordinals(
-            &[canonical.clone(), turn_started(TURN_ID), completed].concat()
+
+        for canonical_ordinal in [None, Some(json!(1))] {
+            let file = paginated_source_with_ordinals(canonical_ordinal, &records, &valid_ordinals);
+            assert_eq!(
+                select(&file).unwrap(),
+                CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::InvalidRecord)
+            );
+        }
+
+        let mut boundary_reset = valid_ordinals.clone();
+        boundary_reset[0] = Some(json!(0));
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &boundary_reset);
+        assert_eq!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::InvalidRecord)
+        );
+
+        for invalid_ordinal in [
+            None,
+            Some(json!("40")),
+            Some(json!(-1)),
+            Some(json!(40.5)),
+            Some(json!(40)),
+            Some(json!(39)),
+            Some(json!(0)),
+        ] {
+            let mut ordinals = valid_ordinals.clone();
+            ordinals[4] = invalid_ordinal;
+            let file = paginated_source_with_ordinals(Some(json!(0)), &records, &ordinals);
+            assert_eq!(
+                select(&file).unwrap(),
+                CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::InvalidRecord)
+            );
+        }
+    }
+
+    #[test]
+    fn paginated_candidate_replaces_discarded_ordinal_state() {
+        let mut records = complete_paginated_generation(TURN_ID, "older");
+        let newer = complete_paginated_generation("turn-2", "newer");
+        records.extend(newer.clone());
+        let ordinals = [
+            Some(json!(100)),
+            None,
+            Some(json!(102)),
+            Some(json!(103)),
+            Some(json!(104)),
+            Some(json!(1)),
+            Some(json!(2)),
+            Some(json!(3)),
+            Some(json!(4)),
+            Some(json!(5)),
+        ];
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &ordinals);
+
+        let selected = candidate_bytes(select(&file).unwrap());
+        let expected = std::iter::once(with_ordinal(&canonical(Some("paginated")), 0))
+            .chain(
+                newer
+                    .iter()
+                    .enumerate()
+                    .map(|(index, record)| with_ordinal(record, index as u64 + 1)),
+            )
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(selected, expected);
+
+        let mut invalid_newer = ordinals;
+        invalid_newer[8] = Some(json!(2));
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &invalid_newer);
+        assert_eq!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::InvalidRecord)
+        );
+    }
+
+    #[test]
+    fn paginated_candidate_ignores_pre_candidate_ordinals_and_checks_later_turns() {
+        let pre_candidate = line("event_msg", json!({"type": "warning", "message": "old"}));
+        let generation = complete_paginated_generation(TURN_ID, "summary");
+        let mut records = vec![pre_candidate];
+        records.extend(generation);
+        let ordinals = [
+            None,
+            Some(json!(10)),
+            Some(json!(11)),
+            Some(json!(12)),
+            Some(json!(13)),
+            Some(json!(14)),
+        ];
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &ordinals);
+        assert!(matches!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Candidate(_)
         ));
-        assert!(!has_valid_paginated_ordinals(
-            &[
-                canonical,
-                started.clone(),
-                with_ordinal(&turn_complete(TURN_ID), 10)
-            ]
-            .concat()
-        ));
+
+        records.extend([
+            turn_started("turn-2"),
+            paginated_user_message("turn-2"),
+            turn_context("turn-2"),
+            turn_complete("turn-2"),
+        ]);
+        let later_reset = [
+            None,
+            Some(json!(10)),
+            Some(json!(11)),
+            Some(json!(12)),
+            Some(json!(13)),
+            Some(json!(14)),
+            Some(json!(15)),
+            Some(json!(16)),
+            Some(json!(2)),
+            Some(json!(18)),
+        ];
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &later_reset);
+        assert_eq!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::InvalidRecord)
+        );
+    }
+
+    #[test]
+    fn paginated_candidate_parses_each_retained_record_once() {
+        let generation = complete_paginated_generation(TURN_ID, "summary");
+        let file = source_with_history_mode(&generation, "paginated");
+        let mut source = file.reopen().unwrap();
+        let mut parsed_records = 0;
+
+        let selection = select_with_limits_and_observers(
+            &mut source,
+            THREAD_ID,
+            TEST_LIMITS,
+            || {},
+            |_| {},
+            || parsed_records += 1,
+        )
+        .unwrap();
+        let selected = candidate_bytes(selection);
+        let retained_records = selected.iter().filter(|byte| **byte == b'\n').count();
+
+        assert_eq!(parsed_records, retained_records);
     }
 
     #[test]
@@ -1538,7 +1798,7 @@ mod tests {
         let mut source = file.reopen().unwrap();
         let mut peak_retained_bytes = 0;
 
-        let selection = select_with_limits_and_observer(
+        let selection = select_with_limits_and_observers(
             &mut source,
             THREAD_ID,
             TEST_LIMITS,
@@ -1546,6 +1806,7 @@ mod tests {
             |retained_bytes| {
                 peak_retained_bytes = peak_retained_bytes.max(retained_bytes);
             },
+            || {},
         )
         .unwrap();
         let selected = candidate_bytes(selection);

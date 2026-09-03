@@ -36,6 +36,7 @@ import {
   createWorkflowComposerSignals,
   type WorkflowComposerSignals,
   type WorkflowComposerSubmissionSnapshot,
+  type WorkflowComposerVoiceDraftSignals,
 } from "./tiptap-workflow-composer.ts";
 import {
   createComposerConnectorSignals,
@@ -252,6 +253,7 @@ interface ComposerTemplateSignals
 export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
+  readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
   readonly suggestion: ComposerSuggestionSignals;
@@ -551,6 +553,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
+    voiceDraft: workflowComposer.voiceDraft,
     feedback: workflowComposer.feedback,
     workflow: {
       ...composerWorkflowSignals(workflowComposer),
@@ -745,6 +748,9 @@ function createComposerPrimaryActionSignal(args: {
     if (await get(eventSignals.actionsLoading$)) {
       return "disabled";
     }
+    if (get(workflowComposer.voiceDraft.hasDraft$)) {
+      return "disabled";
+    }
 
     const uploadsReady = get(draft.attachmentUploadsReady$);
     const attachments = get(draft.attachments$);
@@ -808,6 +814,9 @@ function createComposerSubmissionSignals(
         return false;
       }
       if (!get(draft.attachmentUploadsReady$)) {
+        return false;
+      }
+      if (get(workflowComposer.voiceDraft.hasDraft$)) {
         return false;
       }
       if (get(internalSubmissionPending$)) {

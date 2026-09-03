@@ -72,9 +72,11 @@ interface ClaimedPiMemoryPhase2BaseVersion {
 }
 
 interface ClaimedPiMemoryPhase2Job extends PiMemoryPhase2OwnerScope {
+  readonly s3Prefix: string;
   readonly leaseToken: string;
   readonly leaseExpiresAt: Date;
   readonly claimedRevision: number;
+  readonly reconciliationQueuedAt: Date | null;
   readonly baseVersion: ClaimedPiMemoryPhase2BaseVersion;
   readonly selected: readonly PiMemoryPhase2SelectedCandidate[];
 }
@@ -581,9 +583,14 @@ export async function claimPiMemoryPhase2Job(
     }
     return {
       ...scope,
+      s3Prefix: claimableStorage.s3Prefix,
       leaseToken,
       leaseExpiresAt,
       claimedRevision: job.inputRevision,
+      reconciliationQueuedAt:
+        job.reconciliationRevision > job.completedRevision
+          ? job.updatedAt
+          : null,
       baseVersion,
       selected,
     };
@@ -599,12 +606,15 @@ interface LockedClaimableJob extends PiMemoryPhase2OwnerScope {
     | "terminal_failure";
   readonly inputRevision: number;
   readonly completedRevision: number;
+  readonly reconciliationRevision: number;
   readonly claimedRevision: number | null;
   readonly retryCount: number;
+  readonly updatedAt: Date;
 }
 
 interface LockedClaimableStorage extends PiMemoryPhase2OwnerScope {
   readonly baseVersionId: string;
+  readonly s3Prefix: string;
 }
 
 function claimableJobCondition(args: ClaimPiMemoryPhase2JobArgs) {
@@ -646,6 +656,7 @@ async function lockNextClaimableStorage(
       orgId: piMemoryPhase2Jobs.orgId,
       userId: piMemoryPhase2Jobs.userId,
       baseVersionId: storages.headVersionId,
+      s3Prefix: storages.s3Prefix,
     })
     .from(piMemoryPhase2Jobs)
     .innerJoin(
@@ -680,6 +691,7 @@ async function lockNextClaimableStorage(
     orgId: storage.orgId,
     userId: storage.userId,
     baseVersionId: storage.baseVersionId,
+    s3Prefix: storage.s3Prefix,
   };
 }
 
@@ -696,8 +708,10 @@ async function lockClaimableJob(
       status: piMemoryPhase2Jobs.status,
       inputRevision: piMemoryPhase2Jobs.inputRevision,
       completedRevision: piMemoryPhase2Jobs.completedRevision,
+      reconciliationRevision: piMemoryPhase2Jobs.reconciliationRevision,
       claimedRevision: piMemoryPhase2Jobs.claimedRevision,
       retryCount: piMemoryPhase2Jobs.retryCount,
+      updatedAt: piMemoryPhase2Jobs.updatedAt,
     })
     .from(piMemoryPhase2Jobs)
     .where(

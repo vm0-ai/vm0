@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.829.5](https://github.com/vm0-ai/vm0/compare/app-v0.829.4...app-v0.829.5) (2026-09-03)
+
+
+### Bug Fixes
+
+* **connectors:** rework account manager dialog and drop opaque account names ([#31181](https://github.com/vm0-ai/vm0/issues/31181)) ([5706ac3](https://github.com/vm0-ai/vm0/commit/5706ac352dcad40e52c3a18827bf0f5a3ea253b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.612.0
+    * @okouai/ui bumped to 1.1.1
+
+## [0.829.4](https://github.com/vm0-ai/vm0/compare/app-v0.829.3...app-v0.829.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* **platform:** restore lab maintainer filters ([#31293](https://github.com/vm0-ai/vm0/issues/31293)) ([db97b7b](https://github.com/vm0-ai/vm0/commit/db97b7b3b95c66528d16206d0d1ec335eda16c31))
+* **platform:** stop hidden uploaded cover preloading ([#31284](https://github.com/vm0-ai/vm0/issues/31284)) ([1a41ae6](https://github.com/vm0-ai/vm0/commit/1a41ae663bc4ae1ed8cccbb0f47d93af308aba8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.3
+    * @okouai/core bumped to 8.611.6
+
 ## [0.829.3](https://github.com/vm0-ai/vm0/compare/app-v0.829.2...app-v0.829.3) (2026-09-03)
 
 

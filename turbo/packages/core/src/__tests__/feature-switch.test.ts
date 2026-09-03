@@ -96,32 +96,31 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should keep Morning Brief default-off with an independent staff rollout and user override", () => {
-    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+  it("should release Morning Brief independently from Official Workflows and preserve false overrides", () => {
+    const ordinaryOrgId = "org_nonexistent";
     expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
-    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: staffOrgId,
+        orgId: ordinaryOrgId,
       }),
     ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: staffOrgId,
+        orgId: ordinaryOrgId,
         overrides: { [FeatureSwitchKey.MorningBrief]: false },
       }),
     ).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: "org_nonexistent",
-        overrides: { [FeatureSwitchKey.MorningBrief]: true },
+      isFeatureEnabled(FeatureSwitchKey.OfficialWorkflows, {
+        orgId: ordinaryOrgId,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.MorningBrief]).toEqual({
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
-      rolloutStage: "beta",
+      rolloutStage: "released",
     });
   });
 
@@ -167,6 +166,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
@@ -180,6 +180,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
@@ -191,6 +192,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
@@ -204,11 +206,12 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
   });
 
   it("should enable intro video and desktop recording for staff", () => {

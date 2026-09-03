@@ -257,6 +257,7 @@ interface CapturedProviderRequest {
   readonly body: unknown;
   readonly authorization: string | undefined;
   readonly apiKey: string | undefined;
+  readonly userAgent: string | undefined;
 }
 
 async function startResponsesProvider(): Promise<{
@@ -276,6 +277,7 @@ async function startResponsesProvider(): Promise<{
         body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
         authorization: request.headers.authorization,
         apiKey: request.headers["x-api-key"] as string | undefined,
+        userAgent: request.headers["user-agent"],
       });
       responsesTextSse(response, "Sandbox answer");
     })().catch((error: unknown) => {
@@ -502,7 +504,7 @@ describe("official Pi AgentSession runtime", () => {
   );
 
   it.each(CUSTOM_GATEWAY_CREDENTIAL_CASES)(
-    "uses the custom gateway request model and $name credential header",
+    "uses the stable Pi identity with the custom gateway request model and $name credential header",
     async ({ sessionId, requestHeaders, authorization, apiKey }) => {
       const provider = await startResponsesProvider();
       const sessionManager = SessionManager.inMemory("/home/user/workspace", {
@@ -533,6 +535,7 @@ describe("official Pi AgentSession runtime", () => {
             url: "/v1/responses",
             authorization,
             apiKey,
+            userAgent: "okou-pi-agent/1.0",
             body: expect.objectContaining({
               model: "company-deepseek-production",
             }),
