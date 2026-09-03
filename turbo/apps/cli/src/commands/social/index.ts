@@ -1147,8 +1147,8 @@ const downloadCommand = new Command()
         platform: downloadPlatform(target),
         url: target.canonicalUrl,
         maxDuration: options.maxDuration,
-        ...(options.quality ? { quality: options.quality } : {}),
-        ...(options.format ? { format: options.format } : {}),
+        ...(options.quality === undefined ? {} : { quality: options.quality }),
+        ...(options.format === undefined ? {} : { format: options.format }),
       });
       if (!parsed.success) {
         throw new InvalidArgumentError(

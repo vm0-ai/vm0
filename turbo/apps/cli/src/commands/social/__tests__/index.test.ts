@@ -960,12 +960,38 @@ describe("okou social command", () => {
       "--sort",
       "likes",
     ],
+    ["search", "launch", "--platform", "youtube", "--sort", ""],
+    ["search", "launch", "--platform", "tiktok", "--date", ""],
+    ["search", "launch", "--platform", "youtube", "--type", ""],
+    ["comments", "https://facebook.com/posts/example", "--sort", ""],
+    ["comments", "https://instagram.com/p/example", "--sort", ""],
+    ["summarize", "https://youtu.be/example", "--prompt", ""],
+    [
+      "download",
+      "https://youtu.be/example",
+      "--max-duration",
+      "600",
+      "--quality",
+      "",
+    ],
+    [
+      "download",
+      "https://youtu.be/example",
+      "--max-duration",
+      "600",
+      "--format",
+      "",
+    ],
   ])("rejects mismatched %s options before managed work", async (...args) => {
     let apiRequests = 0;
     server.use(
       http.post("http://localhost:3000/api/social/request", () => {
         apiRequests += 1;
         return HttpResponse.json(socialResponse("youtube_stats", null, {}));
+      }),
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        apiRequests += 1;
+        return HttpResponse.json(completedDownload(), { status: 202 });
       }),
     );
 

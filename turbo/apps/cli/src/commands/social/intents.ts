@@ -755,7 +755,12 @@ function instagramSearchRequest(
   query: string,
   options: SearchOptions,
 ): SearchRequest {
-  if (options.hashtag || options.sort || options.date || options.type) {
+  if (
+    options.hashtag ||
+    options.sort !== undefined ||
+    options.date !== undefined ||
+    options.type !== undefined
+  ) {
     return unsupported(
       "Instagram search does not support hashtag, sort, date, or type filters",
     );
@@ -767,11 +772,11 @@ function tiktokSearchRequest(
   query: string,
   options: SearchOptions,
 ): SearchRequest {
-  if (options.type) {
+  if (options.type !== undefined) {
     return unsupported("TikTok search does not support --type");
   }
   if (options.hashtag) {
-    if (options.sort || options.date) {
+    if (options.sort !== undefined || options.date !== undefined) {
       return unsupported(
         "TikTok hashtag search does not support sort or date filters",
       );
@@ -793,8 +798,8 @@ function tiktokSearchRequest(
     input: {
       query,
       limit: Math.min(options.limit, 100),
-      ...(options.sort ? { sortBy: options.sort } : {}),
-      ...(options.date ? { datePosted: options.date } : {}),
+      ...(options.sort === undefined ? {} : { sortBy: options.sort }),
+      ...(options.date === undefined ? {} : { datePosted: options.date }),
     },
   };
 }
@@ -811,9 +816,9 @@ function youtubeSearchRequest(
     input: {
       query,
       limit: Math.min(options.limit, 100),
-      ...(options.sort ? { sortBy: options.sort } : {}),
-      ...(options.date ? { uploadDate: options.date } : {}),
-      ...(options.type ? { type: options.type } : {}),
+      ...(options.sort === undefined ? {} : { sortBy: options.sort }),
+      ...(options.date === undefined ? {} : { uploadDate: options.date }),
+      ...(options.type === undefined ? {} : { type: options.type }),
     },
   };
 }
@@ -872,7 +877,7 @@ export function commentsIntent(
   };
   switch (target.platform) {
     case "facebook": {
-      if (options.sort) {
+      if (options.sort !== undefined) {
         return unsupported("Facebook comments does not support --sort");
       }
       return urlIntent("comments", target, "facebook_comments", base);
@@ -880,11 +885,11 @@ export function commentsIntent(
     case "instagram": {
       return urlIntent("comments", target, "instagram_comments", {
         ...base,
-        ...(options.sort ? { sortBy: options.sort } : {}),
+        ...(options.sort === undefined ? {} : { sortBy: options.sort }),
       });
     }
     case "tiktok": {
-      if (options.sort) {
+      if (options.sort !== undefined) {
         return unsupported("TikTok comments does not support --sort");
       }
       return urlIntent("comments", target, "tiktok_comments", base);
@@ -892,7 +897,7 @@ export function commentsIntent(
     case "youtube": {
       return urlIntent("comments", target, "youtube_comments", {
         ...base,
-        ...(options.sort ? { sortBy: options.sort } : {}),
+        ...(options.sort === undefined ? {} : { sortBy: options.sort }),
       });
     }
     case "linkedin":
@@ -967,7 +972,7 @@ export function summarizeIntent(
   }
   return urlIntent("summarize", target, tool, {
     url: target.canonicalUrl,
-    ...(prompt ? { custom_prompt: prompt } : {}),
+    ...(prompt === undefined ? {} : { custom_prompt: prompt }),
   });
 }
 
