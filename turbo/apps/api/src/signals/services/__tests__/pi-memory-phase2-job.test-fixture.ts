@@ -94,15 +94,31 @@ async function insertFixtureBlobs(
 
 export async function createPhase2TestScope(
   label: string,
-  overrides: { readonly userId?: string } = {},
+  overrides: {
+    readonly userId?: string;
+    readonly emptyBase?: boolean;
+    readonly s3Prefix?: string;
+  } = {},
 ): Promise<Phase2TestScope> {
   const memoryStorageId = randomUUID();
   const orgId = `phase2-${label}-org-${randomUUID()}`;
   const userId = overrides.userId ?? `phase2-${label}-user-${randomUUID()}`;
-  const baseVersion = phase2TestVersion(
+  const generatedBaseVersion = phase2TestVersion(
     { memoryStorageId, orgId, userId },
     "base",
   );
+  const baseVersion = overrides.emptyBase
+    ? {
+        ...generatedBaseVersion,
+        versionId: createHash("sha256")
+          .update(`storage:${memoryStorageId}\n`)
+          .digest("hex"),
+        s3Key: `${orgId}/${memoryStorageId}/empty`,
+        size: 0,
+        archiveSize: 0,
+        fileCount: 0,
+      }
+    : generatedBaseVersion;
   const scope = {
     memoryStorageId,
     orgId,
@@ -123,7 +139,7 @@ export async function createPhase2TestScope(
       orgId: scope.orgId,
       userId: scope.userId,
       name: MEMORY_ARTIFACT_NAME,
-      s3Prefix: `${scope.orgId}/${scope.memoryStorageId}`,
+      s3Prefix: overrides.s3Prefix ?? `${scope.orgId}/${scope.memoryStorageId}`,
     });
   await db().insert(storageVersions).values(storageVersionRow(baseVersion));
   await db()
@@ -164,7 +180,7 @@ export async function createPhase2TestScope(
 function phase2TestVersion(
   scope: Pick<Phase2TestScope, "memoryStorageId" | "orgId" | "userId">,
   label: string,
-  overrides: Partial<Omit<Phase2TestVersion, "storageId" | "versionId">> = {},
+  overrides: Partial<Omit<Phase2TestVersion, "storageId">> = {},
 ): Phase2TestVersion {
   const versionId = createHash("sha256")
     .update(`${scope.memoryStorageId}:${label}:${randomUUID()}`)
@@ -198,7 +214,7 @@ function storageVersionRow(version: Phase2TestVersion) {
 export async function insertPhase2StorageVersion(
   scope: Phase2TestScope,
   label: string,
-  overrides: Partial<Omit<Phase2TestVersion, "storageId" | "versionId">> = {},
+  overrides: Partial<Omit<Phase2TestVersion, "storageId">> = {},
 ): Promise<Phase2TestVersion> {
   const version = phase2TestVersion(scope, label, overrides);
   await db().insert(storageVersions).values(storageVersionRow(version));

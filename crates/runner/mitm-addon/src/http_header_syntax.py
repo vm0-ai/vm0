@@ -40,30 +40,83 @@ def has_forbidden_header_value_control(value: str) -> bool:
     )
 
 
-def header_values_contain_token(values: Sequence[str], expected: str) -> bool:
+def header_values_contain_token(
+    values: Sequence[str],
+    expected: str,
+    *,
+    max_work_units: int,
+) -> bool:
     """Return whether any field value contains ``expected`` as a list token.
 
-    Each field value is split on commas. Each resulting token has only HTTP OWS
-    (SP and HTAB) stripped from its edges, then is lowercased before comparison.
-    Callers must provide ``expected`` in the desired lowercase comparison form;
-    this helper does not normalize that argument or apply other whitespace or
-    token validation.
+    Matching consumes one work unit per field value and one per inspected
+    character. It stops at ``max_work_units`` and fails closed without scanning
+    the remaining input. A complete early match returns before an irrelevant
+    suffix. Only HTTP OWS (SP and HTAB) is ignored at token edges, and comparison
+    is ASCII case-insensitive. Callers must provide ``expected`` in lowercase
+    ASCII and choose a work limit for their trust boundary.
     """
-    return any(
-        token.strip(_HTTP_OWS_CHARS).lower() == expected
-        for value in values
-        for token in value.split(",")
-    )
+    expected_upper = expected.upper()
+    work_units = 0
+
+    for value in values:
+        if work_units >= max_work_units:
+            return False
+        work_units += 1
+        token_matches = True
+        matched_chars = 0
+
+        value_index = 0
+        while value_index < len(value):
+            if work_units >= max_work_units:
+                return False
+            char = value[value_index]
+            value_index += 1
+            work_units += 1
+
+            if char == ",":
+                if token_matches and matched_chars == len(expected):
+                    return True
+                token_matches = True
+                matched_chars = 0
+                continue
+
+            if not token_matches:
+                continue
+            if matched_chars == 0 and char in _HTTP_OWS_CHARS:
+                continue
+            if matched_chars == len(expected):
+                if char not in _HTTP_OWS_CHARS:
+                    token_matches = False
+                continue
+            expected_char = expected[matched_chars]
+            if char == expected_char or char == expected_upper[matched_chars]:
+                matched_chars += 1
+            else:
+                token_matches = False
+
+        if token_matches and matched_chars == len(expected):
+            return True
+
+    return False
 
 
-def single_header_value(values: Sequence[str]) -> str | None:
+def single_header_value(
+    values: Sequence[str],
+    *,
+    max_value_chars: int,
+) -> str | None:
     """Return one header value with HTTP OWS stripped, or ``None`` if not singleton.
 
     ``None`` represents missing or repeated field values: ``values`` must contain
-    exactly one item. Only SP and HTAB are stripped from that item, so a blank
-    singleton returns an empty string and other whitespace is preserved. Callers
-    remain responsible for validating the returned value's content.
+    exactly one item. Values above ``max_value_chars`` are rejected before
+    stripping, which bounds the possible copy. Only SP and HTAB are stripped
+    from the item, so a blank singleton returns an empty string and other
+    whitespace is preserved. Callers remain responsible for validating the
+    returned value's content.
     """
     if len(values) != 1:
         return None
-    return values[0].strip(_HTTP_OWS_CHARS)
+    value = values[0]
+    if len(value) > max_value_chars:
+        return None
+    return value.strip(_HTTP_OWS_CHARS)

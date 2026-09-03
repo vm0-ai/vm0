@@ -917,17 +917,9 @@ jobs:
     needs:
       - detect
       - runner-build
-      - runner-behavior-lane-a
-      - runner-behavior-lane-b
-      - runner-behavior-lane-c
-      - runner-behavior-lane-d
     if: |
       !cancelled() &&
-      needs.runner-build.result == 'success' &&
-      needs.runner-behavior-lane-a.result == 'success' &&
-      needs.runner-behavior-lane-b.result == 'success' &&
-      needs.runner-behavior-lane-c.result == 'success' &&
-      needs.runner-behavior-lane-d.result == 'success' && (
+      needs.runner-build.result == 'success' && (
         needs.detect.outputs.sandbox-fc-changed == 'true' ||
         needs.detect.outputs.ci-changed == 'true'
       )

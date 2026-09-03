@@ -208,6 +208,41 @@ class TestForwardRequestAsyncWrapper:
         assert body == b"ok"
         assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
+    async def test_pre_submit_guard_rejection_after_dns_releases_capacity(self):
+        guard_threads: list[threading.Thread] = []
+
+        def reject_before_submit() -> bool:
+            guard_threads.append(threading.current_thread())
+            return False
+
+        event_loop_thread = threading.current_thread()
+        with fake_forwarder_upstream() as upstream:
+            with pytest.raises(
+                forwarder.ForwardRequestPreSubmitRejectedError,
+                match="rejected before worker submission",
+            ):
+                await forwarder.forward_request(
+                    "https://example.com",
+                    "GET",
+                    [],
+                    None,
+                    pre_submit_guard=reject_before_submit,
+                )
+
+            status, body, _headers = await forwarder.forward_request(
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        assert upstream.resolve_calls == ["example.com", "example.com"]
+        assert len(upstream.socket_calls) == 1
+        assert guard_threads == [event_loop_thread]
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
     async def test_deadline_cancels_async_dns_and_releases_capacity(self):
         lookup_entered = asyncio.Event()
         lookup_cancelled = asyncio.Event()

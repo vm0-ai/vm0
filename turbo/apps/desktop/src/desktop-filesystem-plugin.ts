@@ -457,7 +457,7 @@ export class DesktopFilesystemPluginManager {
       };
       const client = new Client(
         {
-          name: "zero-desktop-filesystem-plugin",
+          name: "okou-desktop-filesystem-plugin",
           version: COMPUTER_USE_FILESYSTEM_MCP_VERSION,
         },
         { capabilities: {} },

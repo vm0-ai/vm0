@@ -163,37 +163,34 @@ function comparePathHash(
   return pathOrder === 0 ? compareText(left.hash, right.hash) : pathOrder;
 }
 
+function foldedPath(path: string): string {
+  return path.normalize("NFC").toLocaleLowerCase("en");
+}
+
+function validatePathKeys(paths: readonly string[]): void {
+  const inventory = new Set(paths);
+  if (inventory.size !== paths.length) {
+    throw new Phase2InputInvalidError();
+  }
+  for (const path of paths) {
+    for (
+      let separator = path.indexOf("/");
+      separator !== -1;
+      separator = path.indexOf("/", separator + 1)
+    ) {
+      if (inventory.has(path.slice(0, separator))) {
+        throw new Phase2InputInvalidError();
+      }
+    }
+  }
+}
+
 function validatePathCollection(paths: readonly string[]): void {
-  const exact = new Set<string>();
-  const folded = new Set<string>();
   for (const path of paths) {
     assertSafeFilePath(path);
-    const lower = path.toLocaleLowerCase("en");
-    if (exact.has(path) || folded.has(lower)) {
-      throw new Phase2InputInvalidError();
-    }
-    exact.add(path);
-    folded.add(lower);
   }
-  const ordered = [...paths].sort(compareText);
-  for (let index = 1; index < ordered.length; index += 1) {
-    const previous = ordered[index - 1];
-    const current = ordered[index];
-    if (previous !== undefined && current?.startsWith(`${previous}/`)) {
-      throw new Phase2InputInvalidError();
-    }
-  }
-  const foldedOrdered = ordered
-    .map((path) => {
-      return path.toLocaleLowerCase("en");
-    })
-    .sort(compareText);
-  for (let index = 1; index < foldedOrdered.length; index += 1) {
-    const previous = foldedOrdered[index - 1];
-    const current = foldedOrdered[index];
-    if (previous !== undefined && current?.startsWith(`${previous}/`)) {
-      throw new Phase2InputInvalidError();
-    }
+  for (const collection of [paths, paths.map(foldedPath)]) {
+    validatePathKeys(collection);
   }
 }
 

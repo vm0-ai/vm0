@@ -6,7 +6,7 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "../chat-event-schema-version";
-import { chatThreadEventsContract } from "../chat-threads";
+import { chatEventSchema, chatThreadEventsContract } from "../chat-threads";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
 
@@ -150,6 +150,7 @@ describe("Chat Event Raw Event cursor contract", () => {
 
 describe("Chat Event versioned read contract", () => {
   it("requires the request version header and Snapshot terminal event ID", () => {
+    expect(CURRENT_CHAT_EVENT_SCHEMA_VERSION).toBe(7);
     const headersSchema = chatThreadEventsContract.snapshot.headers;
     expect(
       headersSchema.safeParse({ authorization: "Bearer test" }).success,
@@ -256,5 +257,38 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
       error: "runner error",
       runLifecycleEvent: "failed",
     });
+  });
+
+  it("accepts an optional V7 failure reason only on failed runs", () => {
+    const runId = "00000000-0000-4000-8000-000000000013";
+    const historical = chatEventFromRow(
+      canonicalRow({
+        eventType: "run.failed",
+        runId,
+        payload: { error: "historical runner error" },
+      }),
+    );
+    expect(historical).not.toHaveProperty("failureReason");
+
+    const withReason = chatEventFromRow(
+      canonicalRow({
+        eventType: "run.failed",
+        runId,
+        payload: { error: "provider unavailable" },
+        failureReason: "future_reason",
+      }),
+    );
+    expect(chatEventSchema.parse(withReason)).toMatchObject({
+      eventType: "run.failed",
+      runId,
+      failureReason: "future_reason",
+    });
+
+    expect(
+      chatEventRowSchema.safeParse({
+        ...canonicalRow({}),
+        failureReason: "future_reason",
+      }).success,
+    ).toBe(false);
   });
 });

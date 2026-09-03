@@ -24,3 +24,6 @@ pub use service::{ServiceArgs, run_service};
 pub use setup::run_setup;
 pub use start::{StartArgs, run_start};
 pub use workspace_image_cache::{WorkspaceImageCacheArgs, run_workspace_image_cache};
+
+#[cfg(test)]
+pub(crate) use local::submit::abandon_cancelled_submit_for_test;

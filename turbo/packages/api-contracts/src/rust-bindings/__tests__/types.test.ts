@@ -108,6 +108,11 @@ const expectedBindings = [
     direction: "request",
   },
   {
+    rustModulePath: ["webhooks", "agent", "complete"],
+    rustTypeName: "RequestFailureReason",
+    direction: "request",
+  },
+  {
     rustModulePath: ["webhooks", "agent", "storages"],
     rustTypeName: "FileEntryWithHash",
     direction: "request",
@@ -332,9 +337,7 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub checkpoint: Option<RequestCheckpoint>,");
     expect(firstRender).toContain("pub exit_code: i32,");
     expect(firstRender).toContain("pub enum RequestFailureReason {");
-    expect(firstRender).toContain(
-      "pub failure_reason: Option<RequestFailureReason>,",
-    );
+    expect(firstRender).toContain("pub failure_reason: Option<String>,");
     expect(firstRender).toContain("pub last_event_sequence: Option<u32>,");
     expect(firstRender).toContain("pub enum SessionHistoryEncoding {");
     expect(firstRender).toContain(

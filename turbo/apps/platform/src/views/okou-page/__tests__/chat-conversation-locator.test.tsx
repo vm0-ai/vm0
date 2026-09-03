@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -387,6 +388,7 @@ async function renderMeasuredThread({
   renderedText,
   minimumScrollTurns = 0,
   turnHeight = TURN_PX,
+  featureSwitches,
 }: {
   threadId: string;
   threadTitle: string;
@@ -394,6 +396,7 @@ async function renderMeasuredThread({
   renderedText: string;
   minimumScrollTurns?: number;
   turnHeight?: number;
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
 }): Promise<{
   rail: HTMLElement;
   resize: { automationAll: () => void };
@@ -409,6 +412,7 @@ async function renderMeasuredThread({
   detachedSetupPage({
     context,
     path: `/chats/${threadId}`,
+    featureSwitches,
   });
 
   await screen.findByText(renderedText);
@@ -858,67 +862,84 @@ describe("chat conversation locator", () => {
     });
   });
 
-  it("tracks the visible assistant event in folded completed work", async () => {
-    const { rail, resize } = await renderMeasuredThread({
-      threadId: COMPLETED_WORK_THREAD_ID,
-      threadTitle: "Completed work locator turns",
-      chatEvents: completedWorkConversation(),
-      renderedText: "Completed work is summarized in the locator",
-    });
+  it.each([
+    { name: "legacy folding", runWorkFoldingEnabled: false },
+    { name: "run-work folding", runWorkFoldingEnabled: true },
+  ])(
+    "tracks the visible assistant event with $name",
+    async ({ runWorkFoldingEnabled }) => {
+      const { rail, resize } = await renderMeasuredThread({
+        threadId: COMPLETED_WORK_THREAD_ID,
+        threadTitle: "Completed work locator turns",
+        chatEvents: completedWorkConversation(),
+        renderedText: "Completed work is summarized in the locator",
+        featureSwitches: {
+          [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+        },
+      });
 
-    expect(
-      screen.queryByText("Checking completed work in the locator"),
-    ).toBeNull();
-    expect(ticksOf(rail)).toHaveLength(12);
-
-    pointerAt(rail, 0, "pointerenter");
-    let assistantTick = ticksOf(rail).find((tick) => {
-      return tick.dataset.turnIndex === "11";
-    });
-    expect(assistantTick).toBeDefined();
-    pointerAt(rail, Number.parseFloat(assistantTick!.style.top), "pointermove");
-    await waitFor(() => {
-      expect(locatorPreview()).toHaveTextContent(
-        "Completed work is summarized in the locator",
-      );
-    });
-    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await waitFor(() => {
-      const anchor = document.querySelector<HTMLElement>(
-        '[data-chat-scroll-anchor-event-id="locator-work-final-assistant"]',
-      );
-      expect(anchor?.closest('[data-role="assistant"]')).toHaveAttribute(
-        "data-locator-landed",
-      );
-    });
-
-    fireEvent.click(screen.getByLabelText("Expand work history"));
-    await screen.findByText("Checking completed work in the locator");
-    resize.automationAll();
-    await waitFor(() => {
+      expect(
+        screen.queryByText("Checking completed work in the locator"),
+      ).toBeNull();
       expect(ticksOf(rail)).toHaveLength(12);
-    });
 
-    assistantTick = ticksOf(rail).find((tick) => {
-      return tick.dataset.turnIndex === "11";
-    });
-    expect(assistantTick).toBeDefined();
-    pointerAt(rail, Number.parseFloat(assistantTick!.style.top), "pointermove");
-    await waitFor(() => {
-      expect(locatorPreview()).toHaveTextContent(
-        "Checking completed work in the locator",
+      pointerAt(rail, 0, "pointerenter");
+      let assistantTick = ticksOf(rail).find((tick) => {
+        return tick.dataset.turnIndex === "11";
+      });
+      expect(assistantTick).toBeDefined();
+      pointerAt(
+        rail,
+        Number.parseFloat(assistantTick!.style.top),
+        "pointermove",
       );
-    });
-    rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await waitFor(() => {
-      const anchor = document.querySelector<HTMLElement>(
-        '[data-chat-scroll-anchor-event-id="locator-work-hidden-assistant"]',
+      await waitFor(() => {
+        expect(locatorPreview()).toHaveTextContent(
+          "Completed work is summarized in the locator",
+        );
+      });
+      rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await waitFor(() => {
+        const anchor = document.querySelector<HTMLElement>(
+          '[data-chat-scroll-anchor-event-id="locator-work-final-assistant"]',
+        );
+        expect(anchor?.closest('[data-role="assistant"]')).toHaveAttribute(
+          "data-locator-landed",
+        );
+      });
+
+      fireEvent.click(screen.getByLabelText("Expand work history"));
+      await screen.findByText("Checking completed work in the locator");
+      resize.automationAll();
+      await waitFor(() => {
+        expect(ticksOf(rail)).toHaveLength(12);
+      });
+
+      assistantTick = ticksOf(rail).find((tick) => {
+        return tick.dataset.turnIndex === "11";
+      });
+      expect(assistantTick).toBeDefined();
+      pointerAt(
+        rail,
+        Number.parseFloat(assistantTick!.style.top),
+        "pointermove",
       );
-      expect(anchor?.closest('[data-role="assistant"]')).toHaveAttribute(
-        "data-locator-landed",
-      );
-    });
-  });
+      await waitFor(() => {
+        expect(locatorPreview()).toHaveTextContent(
+          "Checking completed work in the locator",
+        );
+      });
+      rail.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await waitFor(() => {
+        const anchor = document.querySelector<HTMLElement>(
+          '[data-chat-scroll-anchor-event-id="locator-work-hidden-assistant"]',
+        );
+        expect(anchor?.closest('[data-role="assistant"]')).toHaveAttribute(
+          "data-locator-landed",
+        );
+      });
+    },
+  );
 
   it("smoothly jumps to a turn at 28% of the viewport", async () => {
     const { rail, scrollRequests } = await renderLongThread();

@@ -127,6 +127,10 @@ export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
 
+export const voiceDraftEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.VoiceDraft] ?? false;
+});
+
 const hydrateFeatureSwitch$ = command(
   async (
     { get, set },

@@ -1865,91 +1865,111 @@ describe("chat scroll position", () => {
     });
   });
 
-  it("keeps a completed-work scroll target expanded when its run finishes", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000804";
-    const runId = "scroll-completed-work-run";
-    const initialEvents: MockChatEventInput[] = [
-      {
-        id: "completed-work-user",
-        role: "user",
-        content: "Complete the release review",
-        runId,
-        createdAt: "2026-07-30T10:00:00Z",
-      },
-      {
-        id: "completed-work-intermediate",
-        role: "assistant",
-        content: "Intermediate release analysis",
-        runId,
-        createdAt: "2026-07-30T10:00:01Z",
-      },
-    ];
-    const appendedEvents: MockChatEventInput[] = [
-      {
-        id: "completed-work-final",
-        role: "assistant",
-        content: "Final release analysis",
-        runId,
-        runLifecycleEvent: "completed",
-        createdAt: "2026-07-30T10:00:02Z",
-      },
-    ];
-    const { publishAppendedEvents } = mockLiveThread({
-      threadId,
-      initialEvents,
-      appendedEvents,
-    });
-    const eventTops = new Map([
-      ["completed-work-user", 200],
-      ["completed-work-intermediate", 400],
-      ["completed-work-final", 600],
-    ]);
-    installChatLayout(
-      new Map([
-        [
-          threadId,
-          {
-            clientHeight: () => {
-              return 300;
+  it.each([
+    {
+      name: "legacy completed-work",
+      runWorkFoldingEnabled: false,
+      workSelector: "[data-chat-completed-work-fold]",
+    },
+    {
+      name: "run-work",
+      runWorkFoldingEnabled: true,
+      workSelector: "[data-chat-run-work]",
+    },
+  ])(
+    "keeps a $name scroll target expanded when its run finishes",
+    async ({ runWorkFoldingEnabled, workSelector }) => {
+      const threadId = "b0000000-0000-4000-a000-000000000804";
+      const runId = "scroll-completed-work-run";
+      const initialEvents: MockChatEventInput[] = [
+        {
+          id: "completed-work-user",
+          role: "user",
+          content: "Complete the release review",
+          runId,
+          createdAt: "2026-07-30T10:00:00Z",
+        },
+        {
+          id: "completed-work-intermediate",
+          role: "assistant",
+          content: "Intermediate release analysis",
+          runId,
+          createdAt: "2026-07-30T10:00:01Z",
+        },
+      ];
+      const appendedEvents: MockChatEventInput[] = [
+        {
+          id: "completed-work-final",
+          role: "assistant",
+          content: "Final release analysis",
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-07-30T10:00:02Z",
+        },
+      ];
+      const { publishAppendedEvents } = mockLiveThread({
+        threadId,
+        initialEvents,
+        appendedEvents,
+      });
+      const eventTops = new Map([
+        ["completed-work-user", 200],
+        ["completed-work-intermediate", 400],
+        ["completed-work-final", 600],
+      ]);
+      installChatLayout(
+        new Map([
+          [
+            threadId,
+            {
+              clientHeight: () => {
+                return 300;
+              },
+              scrollHeight: () => {
+                return 1000;
+              },
+              eventRect: (eventId) => {
+                const top = eventTops.get(eventId);
+                return top === undefined ? undefined : { top, height: 80 };
+              },
             },
-            scrollHeight: () => {
-              return 1000;
-            },
-            eventRect: (eventId) => {
-              const top = eventTops.get(eventId);
-              return top === undefined ? undefined : { top, height: 80 };
-            },
-          },
-        ],
-      ]),
-    );
+          ],
+        ]),
+      );
 
-    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
+      await setupVisibleChatPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+        },
+      });
 
-    const container = await waitFor(() => {
-      expect(
-        screen.getByText("Intermediate release analysis"),
-      ).toBeInTheDocument();
-      return chatScrollContainer();
-    });
-    scrollTo(container, 420);
-    expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
-
-    publishAppendedEvents();
-
-    await waitFor(() => {
-      expect(screen.getByText("Final release analysis")).toBeInTheDocument();
-      expect(
-        screen.getByText("Intermediate release analysis"),
-      ).toBeInTheDocument();
+      const container = await waitFor(() => {
+        expect(
+          screen.getByText("Intermediate release analysis"),
+        ).toBeInTheDocument();
+        return chatScrollContainer();
+      });
+      scrollTo(container, 420);
       expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
-      expect(
-        document.querySelector(
-          "[data-chat-completed-work-fold] button[aria-expanded='true']",
-        ),
-      ).not.toBeNull();
-    });
-  });
+
+      publishAppendedEvents();
+
+      await waitFor(() => {
+        expect(screen.getByText("Final release analysis")).toBeInTheDocument();
+        expect(
+          screen.getByText("Intermediate release analysis"),
+        ).toBeInTheDocument();
+        expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
+        expect(
+          document.querySelector(
+            `${workSelector} button[aria-expanded='true']`,
+          ),
+        ).not.toBeNull();
+      });
+    },
+  );
 
   it("preserves its visible anchor when composer or viewport resize changes layout", async () => {
     const threadId = "e8000000-0000-4000-a000-000000000002";

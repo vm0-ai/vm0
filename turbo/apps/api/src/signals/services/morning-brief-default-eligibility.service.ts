@@ -2,8 +2,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { singleton } from "../../lib/singleton";
 
-// Phase A ships inert. A reviewed Phase C change must set this instant.
-const MORNING_BRIEF_DEFAULT_ACTIVATION_AT: Date | null = null;
+// Monday 2026-09-07 09:00 Asia/Shanghai.
+const MORNING_BRIEF_DEFAULT_ACTIVATION_AT: Readonly<Date> = new Date(
+  "2026-09-07T01:00:00.000Z",
+);
 
 interface ScopedActivationInstant {
   readonly value: Date | null;

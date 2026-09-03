@@ -370,11 +370,11 @@ PRESSURE_SESSION_ID="e2e-process-containment-pressure"
 PRESSURE_SUBMIT_OUTPUT=$(mktemp)
 # The mock's readiness result is gated on the first forwarded follow-up, so
 # startup scheduling cannot close active input before the queue is observed.
-# Keep the final input after the pressure command so the mock turn cannot
-# finish first.
+# The final input is sent explicitly after both sideband execs finish so the
+# active turn owns the sandbox until their results are observed.
 exec {PRESSURE_SUBMIT_FD}>"$PRESSURE_SUBMIT_OUTPUT"
 sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
-  --timeout 35 \
+  --timeout 55 \
   --chat-thread-id "$PRESSURE_CHAT_THREAD_ID" \
   --session-id "$PRESSURE_SESSION_ID" \
   --feature-flag sandboxReuse=true \
@@ -383,7 +383,6 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --active-input 'after=2s,text=cpu-pressure-one' \
   --active-input 'after=4s,text=cpu-pressure-two' \
   --active-input 'after=6s,text=cpu-pressure-three' \
-  --active-input 'after=15s,text=pressure-finish' \
   >&"$PRESSURE_SUBMIT_FD" 2>&1 &
 PRESSURE_SUBMIT_PID=$!
 exec {PRESSURE_SUBMIT_FD}>&-
@@ -584,6 +583,12 @@ PID_CLEANUP_MS=$(sed -n 's/.*cleanup_ms=\([0-9][0-9]*\).*/\1/p' \
 LEAK_CLEANUP_MS=$PID_CLEANUP_MS
 [ "$LEAK_CLEANUP_MS" -le 2000 ] \
   || fail "mixed-identity descendant cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
+
+sudo "$BIN_DIR/runner" local input --group "$GROUP" \
+  --run "$PRESSURE_RUN_ID" \
+  --sequence 5 \
+  --text pressure-finish \
+  || fail "failed to release CPU-pressure submit after sideband execs"
 
 if wait "$PRESSURE_SUBMIT_PID"; then
   PRESSURE_SUBMIT_STATUS=0

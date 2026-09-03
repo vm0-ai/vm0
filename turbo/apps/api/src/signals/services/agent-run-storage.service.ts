@@ -3167,7 +3167,7 @@ function prepareStorageWithSessionOverlay(
         artifacts,
         persistedStorageMounts: args.persistedStorageMounts,
       });
-    const requestedEntries = await get(
+    const requestedEntriesPromise = get(
       buildPreparedStorageEntriesForRequest(
         args,
         bucket,
@@ -3175,20 +3175,35 @@ function prepareStorageWithSessionOverlay(
         remainingArtifacts,
       ),
     );
-    const entries =
+    const sessionWritebackEntriesPromise =
       canonicalWritebackMounts.length === 0
-        ? requestedEntries
+        ? Promise.resolve(undefined)
+        : get(
+            buildEntriesFromPersistedStorageMounts({
+              db: args.db,
+              bucket,
+              mounts: canonicalWritebackMounts,
+              timing: args.timing,
+              stats: args.stats,
+            }),
+          );
+    const [requestedEntriesResult, sessionWritebackEntriesResult] =
+      await Promise.allSettled([
+        requestedEntriesPromise,
+        sessionWritebackEntriesPromise,
+      ]);
+    if (requestedEntriesResult.status === "rejected") {
+      throw requestedEntriesResult.reason;
+    }
+    if (sessionWritebackEntriesResult.status === "rejected") {
+      throw sessionWritebackEntriesResult.reason;
+    }
+    const entries =
+      sessionWritebackEntriesResult.value === undefined
+        ? requestedEntriesResult.value
         : combinePreparedStorageEntries({
-            requested: requestedEntries,
-            sessionWriteback: await get(
-              buildEntriesFromPersistedStorageMounts({
-                db: args.db,
-                bucket,
-                mounts: canonicalWritebackMounts,
-                timing: args.timing,
-                stats: args.stats,
-              }),
-            ),
+            requested: requestedEntriesResult.value,
+            sessionWriteback: sessionWritebackEntriesResult.value,
           });
     return await finalizePreparedStorage({
       entries,

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { zeroAvatarDataUrl } from "./zero-avatar";
+import { okouAvatarDataUrl } from "./okou-avatar";
 import type { DesktopComputerUseState } from "../computer-use-types";
 import { previewValue } from "./format";
 
@@ -138,7 +138,7 @@ export function KeyValueList({
   );
 }
 
-export function ZeroFace({
+export function OkouFace({
   className,
   size,
 }: {
@@ -147,11 +147,11 @@ export function ZeroFace({
 }) {
   return (
     <span
-      className={`zero-face${className ? ` ${className}` : ""}`}
+      className={`okou-face${className ? ` ${className}` : ""}`}
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <img src={zeroAvatarDataUrl} alt="" draggable={false} />
+      <img src={okouAvatarDataUrl} alt="" draggable={false} />
     </span>
   );
 }
