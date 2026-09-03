@@ -76,6 +76,7 @@ fn lock_guard_matches_path(lock_path: &Path, lock: &Flock<std::fs::File>) -> boo
 async fn remove_lock_file(lock_path: &Path) -> bool {
     match tokio::fs::remove_file(lock_path).await {
         Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
         Err(e) => {
             warn!("cannot remove {}: {e}", lock_path.display());
             false
