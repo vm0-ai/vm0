@@ -102,8 +102,13 @@ const CommandInput = React.forwardRef<HTMLInputElement, CommandInputProps>(
         <Autocomplete.Input
           ref={ref}
           data-slot="command-input"
+          // No radius of its own: the input is transparent inside the rounded
+          // wrapper, so `rounded-md` painted nothing -- it only added a rounded
+          // clip. The caret sits at x=0 of this box (no horizontal padding),
+          // so that clip ate its top and bottom ends and left the caret looking
+          // notched.
           className={cn(
-            "flex h-full w-full rounded-md bg-transparent text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-full w-full bg-transparent text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
             className,
           )}
           {...props}
