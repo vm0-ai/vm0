@@ -815,7 +815,13 @@ body {
   content: "";
   position: absolute;
   inset: -0.7px;
-  border: 0.7px solid hsl(var(--gray-500));
+  /* Seven points below the resting border, which is the lift this ring has
+     always had. It cannot borrow `--gray-500`: that stop also draws syntax
+     gutter marks and the workflow diagram's grid dots, and it now sits far
+     enough below the lightened hairline to read as a hard outline rather than
+     as focus. The composer autofocuses on the chat home, so this ring is the
+     first border a user sees. */
+  border: 0.7px solid hsl(42.9 2.05% 77%);
   border-radius: inherit;
   box-shadow: var(--zero-composer-focus-veil);
   opacity: 0;
