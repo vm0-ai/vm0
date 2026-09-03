@@ -108,7 +108,7 @@ export function WorkspaceLogo({
     <div
       className={cn(
         base,
-        "flex items-center justify-center bg-[hsl(var(--gray-200))] font-bold text-[hsl(var(--primary-700))]",
+        "flex items-center justify-center bg-[hsl(var(--gray-200))] font-bold text-brand-text",
         THUMBNAIL_INITIAL_TEXT[size],
       )}
     >

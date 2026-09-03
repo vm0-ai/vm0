@@ -524,7 +524,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
             iconSize="md"
             className={cn(
               "shrink-0 duration-150",
-              open && "bg-primary/10 text-primary hover:text-primary",
+              open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
@@ -582,7 +582,7 @@ export function AutomationMenuButton({
             iconSize="md"
             className={cn(
               "shrink-0 duration-150",
-              open && "bg-primary/10 text-primary hover:text-primary",
+              open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
             aria-label={
               ariaLabel ??
@@ -626,7 +626,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
             iconSize="md"
             className={cn(
               "shrink-0 duration-150",
-              open && "bg-primary/10 text-primary hover:text-primary",
+              open && "bg-primary/10 text-brand-text hover:text-brand-text",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
@@ -5685,9 +5685,9 @@ function AssistantErrorRecoveryCard({
       <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2.5">
         {recovery.kind === "usage-limit" ||
         recovery.kind === "execution-timeout" ? (
-          <Clock size={16} className="shrink-0 text-primary-950" />
+          <Clock size={16} className="shrink-0 text-brand-text" />
         ) : (
-          <Coffee size={16} className="shrink-0 text-primary-950" />
+          <Coffee size={16} className="shrink-0 text-brand-text" />
         )}
         <span className="shrink-0 text-[0.9375rem] font-medium leading-6">
           {title}
