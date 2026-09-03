@@ -2,11 +2,13 @@
 
 ## Overview
 
-A chat card turns a specially recognized link inside a `ChatEvent` into a
+Most chat cards turn a specially recognized link inside a `ChatEvent` into a
 rich, interactive React surface. The message remains the transport: an agent or
 another producer can emit a normal URL, Markdown link, or relative platform
 path, and the platform upgrades that link into a typed card when its path
-matches a supported pattern.
+matches a supported pattern. Failure recovery cards are the main exception:
+they are derived from structured fields on a `run.failed` event instead of a
+link in the message body.
 
 The core pipeline is:
 
@@ -22,6 +24,30 @@ ChatEvent content
 This design keeps message content portable while allowing the platform to add
 loading states, live data, actions, and other rich interaction without putting
 state creation inside React render.
+
+## Failure Recovery Classification
+
+The authoritative error category for a failed run is its optional
+`failureReason` Chat Event field, persisted as `failure_reason` in storage. When
+the field is present, consumers must use it to select recovery behavior. They
+must not classify, replace, or override the category by matching the rendered
+`error` text, even when the reason is newer than the consumer's known taxonomy
+or does not select a recovery card. An unknown or non-recovery reason therefore
+fails closed instead of falling through to text classification.
+
+Text-based error classification is a legacy compatibility path. It may run only
+when `failureReason` is absent, which represents a historical event or a run
+completed by an older sender. After a structured reason has selected a recovery
+kind, the error text may still provide secondary presentation details such as
+the framework, model, usage window, reset label, or failed model. Raw masked
+error text also remains available for diagnostics, display, and integrations;
+none of those uses make it a classification authority.
+
+New error types must be classified at the authoritative guest or runner
+boundary and propagated through `failureReason`. Do not add a downstream error
+text matcher as the normal implementation of a new recovery category. See
+[Chat Event schema versioning](./chat-event-schema-versioning.md#optional-v7-failure-reasons)
+for the transport and rollout contract.
 
 ## Recognized Link Shapes
 
