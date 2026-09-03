@@ -15141,12 +15141,18 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     const claim = await api.claimRunnerJob(run.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain("okou social --help");
-    expect(appendSystemPrompt).toContain("okou social tools --json");
-    expect(appendSystemPrompt).toContain("okou social call --help");
     expect(appendSystemPrompt).toContain(
-      "optionally bounded full collection retrieval with `--all`, `--max-pages`, or `--max-items`",
+      "okou social capabilities [platform] --json",
     );
-    expect(appendSystemPrompt).toContain("okou social download --help");
+    expect(appendSystemPrompt).toContain(
+      "collection `--limit` applies to the total result",
+    );
+    expect(appendSystemPrompt).toContain(
+      "okou social download <url> --max-duration <seconds>",
+    );
+    expect(appendSystemPrompt).toContain(
+      "The platform is detected from the URL",
+    );
     expect(appendSystemPrompt).toContain(
       "downloads from YouTube, TikTok, Instagram, and Facebook",
     );
