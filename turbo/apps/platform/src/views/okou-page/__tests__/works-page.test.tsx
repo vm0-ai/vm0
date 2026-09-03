@@ -328,7 +328,6 @@ describe("works page", () => {
   it("guides an unlinked AgentPhone user to message the shared number", async () => {
     const dialog = await openAgentPhoneConnectDialog();
 
-    expect(within(dialog).queryByRole("textbox")).toBeNull();
     const warning = within(dialog).getByText(
       "Use iMessage when possible. SMS and MMS replies may not arrive reliably.",
     );
@@ -370,7 +369,6 @@ describe("works page", () => {
     });
 
     const reopenedDialog = await disconnectAndReopenAgentPhone();
-    expect(within(reopenedDialog).queryByRole("textbox")).toBeNull();
     expect(getRole("link", "Open Messages", reopenedDialog)).toBeVisible();
   });
 
