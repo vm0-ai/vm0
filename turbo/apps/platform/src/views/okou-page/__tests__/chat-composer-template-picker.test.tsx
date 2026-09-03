@@ -3913,6 +3913,80 @@ describe("chat composer templates", () => {
     expect(previewUrlRequestCount).toBe(1);
   });
 
+  it("stops retrying uploaded detail variants after both initial image loads fail", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const templateId = "0ce143a7-3920-4828-af4f-1fceae95df28";
+    const coverUrl =
+      "https://cdn.vm0.io/artifacts/user/template/unavailable-cover.png";
+    const lowResolutionUrl = r2ImageTransformUrl(coverUrl, {
+      width: 480,
+      height: 270,
+    });
+    const highResolutionUrl = r2ImageTransformUrl(coverUrl, {
+      width: 708,
+      height: 398,
+    });
+    setMockPresentationTemplates([
+      {
+        id: templateId,
+        title: "Unavailable deck",
+        sourceFilename: "unavailable-deck.pptx",
+        coverUrl,
+        pageCount: 1,
+        visibility: "private",
+        canManage: true,
+        pageUrls: [coverUrl],
+        createdAt: "2026-08-25T03:00:00.000Z",
+        updatedAt: "2026-08-25T03:00:00.000Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText("Preview Unavailable deck at current slide"),
+    );
+    const detailPreview = await screen.findByTestId(
+      "Unavailable deck imported detail image preview",
+    );
+    const lowResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      lowResolutionUrl,
+    );
+    fireEvent.error(lowResolutionImage);
+    const highResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      highResolutionUrl,
+    );
+    fireEvent.error(highResolutionImage);
+
+    await waitFor(() => {
+      const requestedSources = Array.from(
+        detailPreview.querySelectorAll<HTMLImageElement>(
+          "[data-imported-presentation-template-image]",
+        ),
+      )
+        .map((image) => {
+          return image.getAttribute("src");
+        })
+        .filter((source) => {
+          return source !== null;
+        });
+      expect(requestedSources).toStrictEqual([]);
+    });
+    expect(
+      detailPreview.querySelector(
+        '[data-imported-presentation-template-image][data-active="true"]',
+      ),
+    ).toBeNull();
+  });
+
   it("loads resized uploaded deck previews without a blank transition and with bounded thumbnail priority", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });

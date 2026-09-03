@@ -5085,6 +5085,16 @@ function importedPptImageLoadMatches(
   return image?.desiredUrl === desiredUrl && image.sourceUrl === sourceUrl;
 }
 
+function importedPptImageLoadFailed(
+  failedImages: readonly ImportedPresentationTemplateLoadedImage[],
+  desiredUrl: string,
+  sourceUrl: string,
+): boolean {
+  return failedImages.some((image) => {
+    return importedPptImageLoadMatches(image, desiredUrl, sourceUrl);
+  });
+}
+
 function importedPptImageCandidateSource(
   state: ImportedPresentationTemplateImageState,
   desiredUrl: string | null,
@@ -5102,7 +5112,7 @@ function importedPptImageCandidateSource(
   if (
     state.active === null &&
     resolvedPreviewSourceUrl !== desiredSourceUrl &&
-    !importedPptImageLoadMatches(
+    !importedPptImageLoadFailed(
       state.failed,
       desiredUrl,
       resolvedPreviewSourceUrl,
@@ -5110,7 +5120,7 @@ function importedPptImageCandidateSource(
   ) {
     return resolvedPreviewSourceUrl;
   }
-  return importedPptImageLoadMatches(state.failed, desiredUrl, desiredSourceUrl)
+  return importedPptImageLoadFailed(state.failed, desiredUrl, desiredSourceUrl)
     ? null
     : desiredSourceUrl;
 }

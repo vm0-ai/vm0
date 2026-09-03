@@ -215,7 +215,7 @@ export interface ImportedPresentationTemplateLoadedImage {
 
 export interface ImportedPresentationTemplateImageState {
   readonly active: ImportedPresentationTemplateLoadedImage | null;
-  readonly failed: ImportedPresentationTemplateLoadedImage | null;
+  readonly failed: readonly ImportedPresentationTemplateLoadedImage[];
 }
 
 export interface ImportedPresentationTemplateImageSignals {
@@ -265,7 +265,7 @@ function createImportedPresentationTemplateImageSignals(
 ): ImportedPresentationTemplateImageSignals {
   const internalState$ = state<ImportedPresentationTemplateImageState>({
     active: null,
-    failed: null,
+    failed: [],
   });
   const state$ = computed((get): ImportedPresentationTemplateImageState => {
     return get(internalState$);
@@ -289,11 +289,11 @@ function createImportedPresentationTemplateImageSignals(
           current.active,
           loadedImage,
         ) &&
-        current.failed === null
+        current.failed.length === 0
       ) {
         return;
       }
-      set(internalState$, { active: loadedImage, failed: null });
+      set(internalState$, { active: loadedImage, failed: [] });
     },
   );
   const failImageLoad$ = command(
@@ -309,11 +309,19 @@ function createImportedPresentationTemplateImageSignals(
       }
       const current = get(internalState$);
       if (
-        sameImportedPresentationTemplateLoadedImage(current.failed, failedImage)
+        current.failed.some((candidate) => {
+          return sameImportedPresentationTemplateLoadedImage(
+            candidate,
+            failedImage,
+          );
+        })
       ) {
         return;
       }
-      set(internalState$, { ...current, failed: failedImage });
+      set(internalState$, {
+        ...current,
+        failed: [...current.failed, failedImage],
+      });
     },
   );
   return { desiredUrl$, state$, commitLoadedImage$, failImageLoad$ };
