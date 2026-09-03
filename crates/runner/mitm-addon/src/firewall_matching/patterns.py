@@ -223,7 +223,12 @@ def _iter_path_segments(path: str) -> Iterator[str]:
 
 def _split_path_segments(path: str) -> list[str]:
     """Split path patterns and request paths without normalizing repeated slashes."""
-    return list(_iter_path_segments(path))
+    if path in ("", "/"):
+        return []
+    path_without_leading_slash = path[1:] if path.startswith("/") else path
+    if path_without_leading_slash == "":
+        return []
+    return path_without_leading_slash.split("/")
 
 
 def _split_path_prefix(path: str, segment_count: int) -> tuple[list[str], str]:

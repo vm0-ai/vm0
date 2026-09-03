@@ -1009,15 +1009,22 @@ def test_oversized_slash_paths_do_not_materialize_complete_segment_lists(monkeyp
         )
     )
     original_split = firewall_patterns._split_path_segments
+    original_iter = matching._iter_path_segments
 
     def reject_oversized_split(path):
         if len(path) > path_security.MAX_PATH_VALIDATION_CHARACTERS:
             raise AssertionError("oversized request path reached complete segment materialization")
         return original_split(path)
 
+    def reject_oversized_iteration(path):
+        if len(path) > path_security.MAX_PATH_VALIDATION_CHARACTERS:
+            raise AssertionError("static root lookup advanced the oversized path iterator")
+        yield from original_iter(path)
+
     monkeypatch.setattr(firewall_patterns, "_split_path_segments", reject_oversized_split)
     monkeypatch.setattr(firewall_base_url, "_split_path_segments", reject_oversized_split)
     monkeypatch.setattr(matching, "_split_path_segments", reject_oversized_split)
+    monkeypatch.setattr(matching, "_iter_path_segments", reject_oversized_iteration)
 
     oversized_path = "/tenant" + "/" * path_security.MAX_PATH_VALIDATION_CHARACTERS
     static_result = matching.match_compiled_firewall_request(
