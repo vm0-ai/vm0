@@ -1252,16 +1252,20 @@ describe("chat scroll position", () => {
     expect(viewportOffsetTop("local-send-tail-4")).toBe(-20);
 
     const composer = await screen.findByRole("textbox", { name: "Message" });
-    await sendMessageInUI(user, composer, "Send from history");
-
-    await waitFor(() => {
-      expect(screen.getByText("Send from history")).toBeInTheDocument();
-      expect(container.scrollTop).toBe(
-        container.scrollHeight - container.clientHeight,
-      );
-    });
-
-    sendGate.resolve();
+    // Assert the optimistic row while the request is blocked, then release it
+    // without making the gate depend on the user interaction settling first.
+    await Promise.all([
+      sendMessageInUI(user, composer, "Send from history"),
+      (async () => {
+        await waitFor(() => {
+          expect(screen.getByText("Send from history")).toBeInTheDocument();
+          expect(container.scrollTop).toBe(
+            container.scrollHeight - container.clientHeight,
+          );
+        });
+        sendGate.resolve();
+      })(),
+    ]);
     await waitFor(() => {
       expect(sent).toBeTruthy();
     });
