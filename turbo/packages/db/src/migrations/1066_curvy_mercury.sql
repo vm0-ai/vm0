@@ -1,0 +1,2 @@
+ALTER TABLE "chat_events" ADD COLUMN "failure_reason" text;--> statement-breakpoint
+ALTER TABLE "chat_events" ADD CONSTRAINT "chat_events_failure_reason_event_type_check" CHECK ("chat_events"."failure_reason" IS NULL OR "chat_events"."event_type" = 'run.failed');

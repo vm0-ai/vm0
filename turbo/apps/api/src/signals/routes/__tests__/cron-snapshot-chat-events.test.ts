@@ -15,13 +15,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockNow } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { testChatEventSnapshotRoutes } from "../test-chat-event-snapshot";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   installFakeChatEventR2,
   writeFakeChatEventObject,
@@ -37,6 +40,8 @@ const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
+const webhooks = createWebhookCallbackApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 
 const DUPLICATE_EVENT_ID_NAMESPACE = "46842b1d-a596-47fb-86b3-4f51962751c7";
 const DUPLICATE_EVENT_ID_WARNING =
@@ -275,7 +280,15 @@ function expectArchiveInvariants(
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
-    expect(Object.keys(line).sort()).toStrictEqual(CANONICAL_ARCHIVE_KEYS);
+    const expectedKeys = [
+      ...CANONICAL_ARCHIVE_KEYS,
+      ...(line.failureReason === undefined ? [] : ["failureReason"]),
+    ].sort();
+    expect(Object.keys(line).sort()).toStrictEqual(expectedKeys);
+    if (line.failureReason !== undefined) {
+      expect(line.eventType).toBe("run.failed");
+      expect(typeof line.failureReason).toBe("string");
+    }
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
@@ -489,6 +502,76 @@ describe("cron snapshot chat events", () => {
         return call[0] === DUPLICATE_EVENT_ID_WARNING;
       }),
     ).toBeFalsy();
+  }, 60_000);
+
+  it("archives a database-backed V7 failure reason", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    chatCallbacks.acceptChatObjectStorage();
+    chatCallbacks.disableVapid();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(owner);
+    await api.ensureOrgModelProvider(owner);
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Failure reason snapshot agent",
+    });
+    const sent = await chat.requestSendEvent(
+      owner,
+      {
+        agentId: agent.agentId,
+        prompt: "Archive a structured failure reason",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected a failure-reason chat run");
+    }
+    const { runId, threadId } = sent.body;
+    await api.heartbeatRunner(runnerGroup);
+    let claim:
+      | Awaited<ReturnType<typeof api.requestClaimRunnerJob>>
+      | undefined;
+    await expect
+      .poll(async () => {
+        claim = await api.requestClaimRunnerJob(true, runId, [200, 404]);
+        return claim.status;
+      })
+      .toBe(200);
+    if (claim?.status !== 200) {
+      throw new Error("Expected the failure-reason run to be claimable");
+    }
+    await webhooks.requestAgentComplete(
+      {
+        runId,
+        exitCode: 1,
+        error: "provider unavailable",
+        failureReason: "future_reason",
+      },
+      { authorization: `Bearer ${claim.body.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    installFakeChatEventR2(context, recordedPuts);
+    await projectChatEventSearch(threadId);
+
+    const result = await runSnapshotCron([threadId]);
+    expect(result.success).toBeTruthy();
+    const put = putsForThread(threadId)[0];
+    if (put === undefined) {
+      throw new Error("Expected a failure-reason snapshot object");
+    }
+    const rows = expectArchiveInvariants(put, threadId);
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        runId,
+        eventType: "run.failed",
+        failureReason: "future_reason",
+        payload: expect.objectContaining({ error: expect.any(String) }),
+      }),
+    );
   }, 60_000);
 
   it("skips one failed candidate without blocking unrelated snapshots", async () => {

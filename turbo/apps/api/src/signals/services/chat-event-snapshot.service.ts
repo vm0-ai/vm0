@@ -31,6 +31,7 @@ const chatEventRowSelection = {
   revokesEventId: chatEvents.revokesEventId,
   eventType: chatEvents.eventType,
   payload: chatEvents.payload,
+  failureReason: chatEvents.failureReason,
   contextType: chatEvents.contextType,
   contextId: chatEvents.contextId,
   runEventSequenceNumber: chatEvents.runEventSequenceNumber,

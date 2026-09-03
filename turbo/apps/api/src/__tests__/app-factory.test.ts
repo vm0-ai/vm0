@@ -1105,11 +1105,11 @@ describe("createApp", () => {
         method: "DELETE",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.812.2",
+          [CLIENT_VERSION_HEADER]: "0.829.5",
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.812.3");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.830.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",
