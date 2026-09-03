@@ -8,6 +8,8 @@
  */
 import { execFileSync } from "child_process";
 import {
+  cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -15,8 +17,18 @@ import {
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "fs";
-import { basename, extname, isAbsolute, normalize, sep } from "path";
+import { homedir } from "os";
+import {
+  basename,
+  delimiter,
+  extname,
+  isAbsolute,
+  join,
+  normalize,
+  sep,
+} from "path";
 import { pathToFileURL } from "url";
 
 import { Command, InvalidArgumentError } from "commander";
@@ -32,6 +44,34 @@ const RETRIES = 2;
 const RENDER_DPI = "150";
 const TIMEOUT_MS = 300_000;
 const DECK_EXTENSIONS = [".ppt", ".pptx", ".pdf"];
+const DEPENDENCY_CACHE_VERSION = "v1";
+
+interface DeckTool {
+  readonly command: string;
+  readonly environment?: NodeJS.ProcessEnv;
+}
+
+interface DeckTools {
+  readonly soffice?: DeckTool;
+  readonly pdftocairo: DeckTool;
+}
+
+interface DeckDependency {
+  readonly binary: string;
+  readonly localPath: readonly string[];
+  readonly packageName: string;
+}
+
+const LIBREOFFICE: DeckDependency = {
+  binary: "soffice",
+  localPath: ["usr", "lib", "libreoffice", "program", "soffice.bin"],
+  packageName: "libreoffice-impress",
+};
+const POPPLER: DeckDependency = {
+  binary: "pdftocairo",
+  localPath: ["usr", "bin", "pdftocairo"],
+  packageName: "poppler-utils",
+};
 
 /** Waits for fonts, images, and CSS background images, then two paint frames. */
 const SETTLE = `(async()=>{
@@ -101,12 +141,29 @@ function presentationScreenshotEnabled(): boolean {
   });
 }
 
-function run(command: string, args: readonly string[]): string {
+function run(
+  command: string,
+  args: readonly string[],
+  environment?: NodeJS.ProcessEnv,
+): string {
   return execFileSync(command, args, {
     encoding: "utf8",
+    env: environment,
     maxBuffer: 64 * 1024 * 1024,
     timeout: TIMEOUT_MS,
   }).trim();
+}
+
+function runStreaming(
+  command: string,
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv,
+): void {
+  execFileSync(command, args, {
+    env: environment,
+    stdio: ["ignore", "ignore", process.stderr],
+    timeout: TIMEOUT_MS,
+  });
 }
 
 /** PNG stores width and height in the IHDR chunk, always the first one. */
@@ -126,14 +183,244 @@ function clearPages(outDir: string): void {
 
 // --- deck sources -----------------------------------------------------------
 
-function requireTool(binary: string, packageName: string): void {
+function toolOnPath(binary: string): boolean {
   try {
     run("which", [binary]);
+    return true;
   } catch {
+    return false;
+  }
+}
+
+function dependencyCacheRoot(): string {
+  const configured = process.env.XDG_CACHE_HOME?.trim();
+  const cacheHome =
+    configured === undefined || configured === ""
+      ? join(homedir(), ".cache")
+      : configured;
+  return join(
+    cacheHome,
+    "okou",
+    "presentation-screenshot",
+    DEPENDENCY_CACHE_VERSION,
+  );
+}
+
+function localToolEnvironment(installRoot: string): NodeJS.ProcessEnv {
+  const program = join(installRoot, "usr", "lib", "libreoffice", "program");
+  const environment = { ...process.env };
+  const libraryDirectories = [program, join(installRoot, "usr", "lib")];
+  for (const parent of [
+    join(installRoot, "lib"),
+    join(installRoot, "usr", "lib"),
+  ]) {
+    if (!existsSync(parent)) {
+      continue;
+    }
+    for (const entry of readdirSync(parent, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.endsWith("-linux-gnu")) {
+        libraryDirectories.push(join(parent, entry.name));
+      }
+    }
+  }
+  if (
+    environment.LD_LIBRARY_PATH !== undefined &&
+    environment.LD_LIBRARY_PATH !== ""
+  ) {
+    libraryDirectories.push(environment.LD_LIBRARY_PATH);
+  }
+
+  const pathDirectories = [join(installRoot, "usr", "bin")];
+  if (environment.PATH !== undefined && environment.PATH !== "") {
+    pathDirectories.push(environment.PATH);
+  }
+
+  return {
+    ...environment,
+    LD_LIBRARY_PATH: libraryDirectories.join(delimiter),
+    PATH: pathDirectories.join(delimiter),
+    URE_BOOTSTRAP: `vnd.sun.star.pathname:${join(program, "fundamentalrc")}`,
+  };
+}
+
+function dependencyMarker(
+  dependency: DeckDependency,
+  installRoot: string,
+): string {
+  return join(installRoot, `.${dependency.packageName}.ready`);
+}
+
+function resolveDeckTool(
+  dependency: DeckDependency,
+  installRoot: string,
+): DeckTool | undefined {
+  if (toolOnPath(dependency.binary)) {
+    return { command: dependency.binary };
+  }
+  const command = join(installRoot, ...dependency.localPath);
+  return existsSync(dependencyMarker(dependency, installRoot)) &&
+    existsSync(command)
+    ? { command, environment: localToolEnvironment(installRoot) }
+    : undefined;
+}
+
+function replaceConfigPaths(
+  file: string,
+  replacements: readonly (readonly [string, string])[],
+): void {
+  let content = readFileSync(file, "utf8");
+  for (const [from, to] of replacements) {
+    content = content.replaceAll(from, to);
+  }
+  writeFileSync(file, content);
+}
+
+function configureLocalLibreOffice(installRoot: string): void {
+  const program = join(installRoot, "usr", "lib", "libreoffice", "program");
+  const brandBase = pathToFileURL(
+    join(installRoot, "usr", "lib", "libreoffice"),
+  ).href;
+  const registryTarget = join(installRoot, "etc", "libreoffice", "registry");
+  const registryUrl = pathToFileURL(registryTarget).href;
+  replaceConfigPaths(join(program, "fundamentalrc"), [
+    ["file:///usr/lib/libreoffice", brandBase],
+    ["file:///etc/libreoffice/registry", registryUrl],
+  ]);
+  replaceConfigPaths(join(program, "sofficerc"), [
+    [
+      "file:///etc/libreoffice/sofficerc",
+      pathToFileURL(join(installRoot, "etc", "libreoffice", "sofficerc")).href,
+    ],
+  ]);
+
+  const registrySource = join(
+    installRoot,
+    "usr",
+    "lib",
+    "libreoffice",
+    "share",
+    ".registry",
+  );
+  mkdirSync(registryTarget, { recursive: true });
+  for (const name of readdirSync(registrySource)) {
+    cpSync(childPath(registrySource, name), childPath(registryTarget, name), {
+      force: true,
+      recursive: true,
+    });
+  }
+}
+
+function installLocalDependencies(
+  packageNames: readonly string[],
+  installRoot: string,
+): void {
+  const manualCommand = `sudo apt-get install -y --no-install-recommends ${packageNames.join(" ")}`;
+  if (!toolOnPath("apt-get") || !toolOnPath("dpkg-deb")) {
     throw new Error(
-      `Rendering this deck needs ${packageName}. Install with: sudo apt-get install -y --no-install-recommends ${packageName}`,
+      `Automatic presentation dependency installation requires apt-get and dpkg-deb. Install manually with: ${manualCommand}`,
     );
   }
+
+  const aptRoot = join(dependencyCacheRoot(), "apt");
+  const lists = join(aptRoot, "lists");
+  const archives = join(aptRoot, "archives");
+  mkdirSync(join(lists, "partial"), { recursive: true });
+  mkdirSync(join(archives, "partial"), { recursive: true });
+
+  const aptOptions = [
+    "-o",
+    "Debug::NoLocking=1",
+    "-o",
+    `Dir::State::lists=${lists}`,
+    "-o",
+    `Dir::Cache::archives=${archives}`,
+    "-o",
+    "Dir::State::status=/var/lib/dpkg/status",
+  ];
+  const environment = { ...process.env, DEBIAN_FRONTEND: "noninteractive" };
+  console.error(
+    `Installing presentation dependencies (${packageNames.join(", ")}) into the Okou cache (one-time download)...`,
+  );
+
+  try {
+    runStreaming("apt-get", [...aptOptions, "update"], environment);
+    runStreaming(
+      "apt-get",
+      [
+        "-y",
+        "--download-only",
+        "--no-install-recommends",
+        ...aptOptions,
+        "install",
+        ...packageNames,
+      ],
+      environment,
+    );
+
+    const packages = readdirSync(archives)
+      .filter((name) => {
+        return name.endsWith(".deb");
+      })
+      .sort();
+    if (packages.length === 0) {
+      throw new Error("apt-get downloaded no Debian packages");
+    }
+    mkdirSync(installRoot, { recursive: true });
+    for (const name of packages) {
+      run(
+        "dpkg-deb",
+        ["-x", childPath(archives, name), installRoot],
+        environment,
+      );
+    }
+    if (packageNames.includes(LIBREOFFICE.packageName)) {
+      configureLocalLibreOffice(installRoot);
+    }
+    for (const dependency of [LIBREOFFICE, POPPLER]) {
+      if (!packageNames.includes(dependency.packageName)) {
+        continue;
+      }
+      const command = join(installRoot, ...dependency.localPath);
+      if (!existsSync(command)) {
+        throw new Error(`${dependency.packageName} did not provide ${command}`);
+      }
+      writeFileSync(dependencyMarker(dependency, installRoot), "ready\n");
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? ` ${error.message}` : "";
+    throw new Error(
+      `Could not automatically install presentation dependencies.${detail} Install manually with: ${manualCommand}`,
+      { cause: error },
+    );
+  }
+
+  rmSync(aptRoot, { force: true, recursive: true });
+  console.error("Presentation dependencies installed.");
+}
+
+function ensureDeckTools(converts: boolean): DeckTools {
+  const installRoot = join(dependencyCacheRoot(), "root");
+  let soffice = converts
+    ? resolveDeckTool(LIBREOFFICE, installRoot)
+    : undefined;
+  let pdftocairo = resolveDeckTool(POPPLER, installRoot);
+  const missingPackages = [
+    ...(converts && soffice === undefined ? [LIBREOFFICE.packageName] : []),
+    ...(pdftocairo === undefined ? [POPPLER.packageName] : []),
+  ];
+
+  if (missingPackages.length > 0) {
+    installLocalDependencies(missingPackages, installRoot);
+    soffice = converts ? resolveDeckTool(LIBREOFFICE, installRoot) : undefined;
+    pdftocairo = resolveDeckTool(POPPLER, installRoot);
+  }
+
+  if (pdftocairo === undefined || (converts && soffice === undefined)) {
+    throw new Error(
+      `Presentation dependencies are still unavailable after installation: ${missingPackages.join(", ")}`,
+    );
+  }
+  return { soffice, pdftocairo };
 }
 
 /**
@@ -168,25 +455,26 @@ function renumber(outDir: string): string[] {
 }
 
 function captureDeck(options: Options, outDir: string): string[] {
-  const converts = extname(options.input).toLowerCase() !== ".pdf";
-  if (converts) {
-    requireTool("soffice", "libreoffice-impress");
+  const input = operatorPath(options.input);
+  if (!existsSync(input) || !statSync(input).isFile()) {
+    throw new Error(`Deck input is not a file: ${input}`);
   }
-  requireTool("pdftocairo", "poppler-utils");
+  const converts = extname(input).toLowerCase() !== ".pdf";
+  const tools = ensureDeckTools(converts);
   clearPages(outDir);
 
   const scratch = mkdtempSync(childPath(outDir, ".okou-convert-"));
   try {
-    let pdf = options.input;
+    let pdf = input;
     if (converts) {
-      run("soffice", [
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        scratch,
-        options.input,
-      ]);
+      if (tools.soffice === undefined) {
+        throw new Error("LibreOffice is unavailable after installation");
+      }
+      run(
+        tools.soffice.command,
+        ["--headless", "--convert-to", "pdf", "--outdir", scratch, input],
+        tools.soffice.environment,
+      );
       const produced = readdirSync(scratch).find((name) => {
         return extname(name).toLowerCase() === ".pdf";
       });
@@ -195,17 +483,21 @@ function captureDeck(options: Options, outDir: string): string[] {
       }
       pdf = childPath(scratch, produced);
     }
-    run("pdftocairo", [
-      "-png",
-      "-r",
-      RENDER_DPI,
-      "-scale-to-x",
-      options.width.toString(),
-      "-scale-to-y",
-      options.height.toString(),
-      pdf,
-      childPath(outDir, "page"),
-    ]);
+    run(
+      tools.pdftocairo.command,
+      [
+        "-png",
+        "-r",
+        RENDER_DPI,
+        "-scale-to-x",
+        options.width.toString(),
+        "-scale-to-y",
+        options.height.toString(),
+        pdf,
+        childPath(outDir, "page"),
+      ],
+      tools.pdftocairo.environment,
+    );
     return renumber(outDir);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
