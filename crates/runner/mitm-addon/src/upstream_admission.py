@@ -1,7 +1,6 @@
 """TLS and upstream destination admission lifecycle owner."""
 
 import os
-import urllib.parse
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -11,6 +10,7 @@ import connection_endpoints
 import flow_metadata
 import matching
 import path_security
+import platform_api_url
 import registry
 import upstream_destination_binding
 from host_normalization import normalize_hostname
@@ -41,14 +41,7 @@ class TlsAdmission:
     sni: str | None = None
 
 
-@dataclass(frozen=True)
-class _ApiDestination:
-    scheme: Literal["http", "https"]
-    host: str
-    port: int
-
-
-_api_destination_cache: tuple[str, _ApiDestination | None] | None = None
+_api_destination_cache: tuple[str, platform_api_url.PlatformApiUrl | None] | None = None
 
 
 def _client_connection_id(client: object) -> str | None:
@@ -174,7 +167,7 @@ def _scheme_hostname_port_matches_api_destination(
     scheme: str,
     hostname: str,
     port: int,
-    api_destination: _ApiDestination,
+    api_destination: platform_api_url.PlatformApiUrl,
 ) -> bool:
     return (
         scheme.lower() == api_destination.scheme
@@ -185,50 +178,18 @@ def _scheme_hostname_port_matches_api_destination(
 
 def _api_destination(
     api_url: str,
-) -> _ApiDestination | None:
+) -> platform_api_url.PlatformApiUrl | None:
     global _api_destination_cache
     cached = _api_destination_cache
     if cached is not None and cached[0] == api_url:
         return cached[1]
 
-    api_destination = _derive_api_destination(api_url)
+    try:
+        api_destination = platform_api_url.parse_platform_api_url(api_url)
+    except (UnicodeError, ValueError):
+        api_destination = None
     _api_destination_cache = (api_url, api_destination)
     return api_destination
-
-
-def _derive_api_destination(
-    api_url: str,
-) -> _ApiDestination | None:
-    if not api_url:
-        return None
-    try:
-        parsed_api = urllib.parse.urlparse(api_url)
-        api_hostname_raw = parsed_api.hostname
-    except ValueError:
-        return None
-    if not api_hostname_raw:
-        return None
-    api_scheme = parsed_api.scheme.lower()
-    if api_scheme == "http":
-        default_port = 80
-    elif api_scheme == "https":
-        default_port = 443
-    else:
-        return None
-    try:
-        api_hostname = normalize_hostname(api_hostname_raw)
-    except (UnicodeError, ValueError):
-        return None
-    try:
-        explicit_port = parsed_api.port
-    except ValueError:
-        return None
-    api_port = explicit_port if explicit_port is not None else default_port
-    return _ApiDestination(
-        scheme=api_scheme,
-        host=api_hostname,
-        port=api_port,
-    )
 
 
 def _server_connect_binding_kinds(

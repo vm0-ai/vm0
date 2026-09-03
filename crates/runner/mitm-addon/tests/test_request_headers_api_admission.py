@@ -1,6 +1,5 @@
 """Platform API requestheaders upstream-admission tests."""
 
-import urllib.parse
 from pathlib import Path
 
 from mitmproxy import connection, http
@@ -8,6 +7,7 @@ from mitmproxy import connection, http
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import platform_api
+import platform_api_url
 import request_classification
 import upstream_admission
 import upstream_destination_binding
@@ -38,32 +38,18 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
 ):
     reg_path = _write_api_registry(tmp_path, capture_network_bodies=False)
     parsed_api_urls: list[str] = []
-    normalized_api_hosts: list[str] = []
-    parse_api_url = urllib.parse.urlparse
-    normalize_api_hostname = upstream_admission.normalize_hostname
+    parsed_api_hosts: list[str] = []
+    parse_api_url = platform_api_url.parse_platform_api_url
 
     def track_api_url_parse(
         api_url: str,
-        scheme: str = "",
-        allow_fragments: bool = True,
-    ) -> urllib.parse.ParseResult:
+    ) -> platform_api_url.PlatformApiUrl:
         parsed_api_urls.append(api_url)
-        return parse_api_url(
-            api_url,
-            scheme=scheme,
-            allow_fragments=allow_fragments,
-        )
+        parsed_url = parse_api_url(api_url)
+        parsed_api_hosts.append(parsed_url.host)
+        return parsed_url
 
-    def track_api_hostname_normalization(hostname: str) -> str:
-        normalized_api_hosts.append(hostname)
-        return normalize_api_hostname(hostname)
-
-    monkeypatch.setattr(upstream_admission.urllib.parse, "urlparse", track_api_url_parse)
-    monkeypatch.setattr(
-        upstream_admission,
-        "normalize_hostname",
-        track_api_hostname_normalization,
-    )
+    monkeypatch.setattr(platform_api_url, "parse_platform_api_url", track_api_url_parse)
 
     def api_flow(*, host: str, scheme: str = "https", port: int = 443) -> http.HTTPFlow:
         return real_flow(
@@ -91,7 +77,7 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
             assert flow.response is None
 
         assert parsed_api_urls == [initial_api_url]
-        assert normalized_api_hosts == ["api.vm0.ai"]
+        assert parsed_api_hosts == ["api.vm0.ai"]
 
         updated_api_url = "http://API.PREVIEW.VM0.AI:8080"
         mitm_addon.ctx.options.vm0_api_url = updated_api_url
@@ -111,7 +97,7 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
         assert updated_binding.port == 8080
         assert updated_binding.kinds == frozenset(("api_allow",))
         assert parsed_api_urls == [initial_api_url, updated_api_url]
-        assert normalized_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
+        assert parsed_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
 
         invalid_api_url = "ftp://api.invalid.vm0.ai"
         mitm_addon.ctx.options.vm0_api_url = invalid_api_url
@@ -127,7 +113,7 @@ async def test_api_destination_derivation_reuses_and_refreshes_effective_option(
     bindings = upstream_destination_binding.binding_snapshot_for_tests()
     assert all(flow.server_conn.id not in bindings for flow in invalid_flows)
     assert parsed_api_urls == [initial_api_url, updated_api_url, invalid_api_url]
-    assert normalized_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
+    assert parsed_api_hosts == ["api.vm0.ai", "api.preview.vm0.ai"]
 
 
 async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
