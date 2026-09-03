@@ -10,36 +10,25 @@
  * Typography: Noto Sans
  * Primary Color: #ffa500 (Amber)
  *
- * The two primitive scales below are the published palette:
+ * The two primitive scales below are derived from the published palette:
  * https://zero-design-color.sites.vm0.io
  *
- * `--gray-*` carries Sand, one neutral anchored at both ends (Linen and Ink) so
- * the product has no cool grey. `--primary-*` carries Amber, whose brand stop is
- * `--primary-300` (#ffa500) rather than the 700 the old orange used, because
- * that scale is adopted stop-for-stop from the palette.
+ * `--gray-*` is a neutral ramp anchored on Linen (#faf5f3) and Ink (#242321).
+ * Linen stays exact at light 100 and dark 950. Intermediate stops are generated
+ * in OKLab, with chroma tapering toward zero through the midtones. Every stop
+ * spans at most seven sRGB channel points, so the ramp keeps the brand anchors
+ * without laying a deliberate hue cast over the interface.
  *
- * Sand is the one deliberate deviation, and the reason is a ratio rather than a
- * quantity. Take any warm neutral and ask where green sits relative to the
- * midpoint of red and blue: above it the colour reads as cream, below it as
- * magenta. Slack's warm chrome is rgb(253,242,217) -- a red-to-blue spread of
- * 36, six times ours, and comfortable to look at because its green sits +7 above
- * that midpoint, a ratio of +0.19. Sand as published is the opposite sign:
- * Linen is #faf5f3, spread 7, green 1.5 *under*, a ratio of -0.21. Small, and
- * unmissable once it fills a surface.
+ * Contrast, rather than equal numeric spacing, sets the text end of each ramp.
+ * Light 600 clears 3:1 and 700 clears 4.5:1 against the darkest light surface;
+ * dark 600 clears 3:1 and semantic muted text at 800 clears 5.3:1 against the
+ * lightest common dark surface. Foreground anchors clear AAA in both themes.
+ * Surface steps are intentionally quieter: WCAG does not require decorative
+ * surface fills to contrast with one another.
  *
- * Every stop is therefore rotated to hue 42.9, which reproduces Slack's ratio at
- * our own chroma. Rotating hue at fixed S and L cannot change chroma
- * (C = (1-|2L-1|)*S has no hue term), so each stop keeps its exact lightness and
- * its exact red-to-blue spread; only the green channel moves, by one or two.
- *
- * Linen moves with them: the brand neutral is #faf8f3, and it is `--gray-100`.
- * The published #faf5f3 is the same lightness and the same spread with green
- * three lower, and is superseded rather than kept alongside -- a brand colour
- * the ramp cannot contain is a brand colour the product cannot use.
- *
- * The other half of Slack's harmony is placement: it spends that saturated cream
- * on 3.6% of the frame and leaves 57% pure white. Warmth belongs on chrome, not
- * on fields -- which is why the canvas is white and `--muted` is nearly so.
+ * `--primary-*` carries Amber, whose brand stop is `--primary-300` (#ffa500)
+ * rather than the 700 the old orange used, because that scale is adopted
+ * stop-for-stop from the palette.
  *
  * Amber is a light fill: it takes Ink text, never white (8.09:1 vs 1.97:1).
  * That is why `--primary-foreground` is Ink in both themes.
@@ -523,7 +512,7 @@
   }
 
   /* ===================================
-   * Sand / Amber, behind the `newUi` switch
+   * Neutral / Amber, behind the `newUi` switch
    *
    * Both selectors match the same <html> the blocks above do, and win on
    * specificity, so every `@theme` alias -- which is a lazy `hsl(var(--x))`
@@ -557,33 +546,32 @@
     --primary-900: 35.5 81.6% 17.1%; /* #4F3208 */
     --primary-950: 33.2 63.3% 11.8%; /* #31200B */
 
-    /* Background/Gray Color Scale (Sand — warm neutral, dual-anchored on
-       Linen and Ink, both rotated to hue 42.9 for harmony: #FAF8F3 and #242321.
-       Only `--gray-0` is generated, above the published 50. */
-    --gray-0: 42.9 41.2% 98.8%; /* #FDFCFB */
-    --gray-50: 42.9 17% 97.7%; /* #FAFAF8 - default neutral fill */
-    --gray-100: 42.9 41.2% 96.7%; /* #FAF8F3 */
-    --gray-200: 42.9 5.5% 92.9%; /* #EEEDEC */
-    --gray-300: 42.9 7.5% 86.9%; /* #E0DFDB */
-    --gray-400: 42.9 2.9% 84%; /* #D7D7D5 */
-    --gray-500: 42.9 1.6% 62.2%; /* #A09F9D */
-    --gray-600: 42.9 1.2% 52.7%; /* #888785 */
-    --gray-700: 42.9 1.4% 42.9%; /* #6F6E6C */
-    --gray-800: 42.9 1.8% 33.1%; /* #565553 */
-    --gray-900: 42.9 2.5% 23.3%; /* #3D3C3A */
-    --gray-950: 42.9 4.3% 13.5%; /* #242321 - Ink */
+    /* Neutral Gray Color Scale (Light). Linen is exact at 100, Ink at 950;
+       intermediate chroma tapers toward zero in OKLab. */
+    --gray-0: 0 33.3% 99.4%; /* #FEFDFD */
+    --gray-50: 15 40% 98%; /* #FCF9F8 */
+    --gray-100: 17.1 41.2% 96.7%; /* #FAF5F3 */
+    --gray-200: 20 16.7% 92.9%; /* #F0ECEA */
+    --gray-300: 15 6.1% 87.1%; /* #E0DDDC */
+    --gray-400: 15 4% 80.4%; /* #CFCCCB */
+    --gray-500: 0 1.1% 64.3%; /* #A5A3A3 */
+    --gray-600: 0 0.8% 52.2%; /* #868484 - 3.1:1 tier */
+    --gray-700: 30 1% 41.2%; /* #6A6968 - 4.5:1 AA tier */
+    --gray-800: 0 1.3% 30.2%; /* #4E4C4C - 7:1 tier */
+    --gray-900: 30 1.9% 20.8%; /* #363534 */
+    --gray-950: 40 4.3% 13.5%; /* #242321 */
 
     /* Divider Color */
-    --divider: 42.9 7.5% 94.8%; /* #F3F2F1 - between Sand 100 and 200 */
+    --divider: 17.1 28% 95.1%; /* #F6F1EF */
 
     /* Theme-aware Colors */
     --white: 0 0% 100%; /* #FFFFFF */
-    --black: 42.9 4.3% 13.5%; /* #242321 - Ink */
+    --black: 40 4.3% 13.5%; /* #242321 - Ink */
 
     /* Dialog scrim. Deliberately NOT theme-aware: --black inverts to #FFFFFF
        in dark, which would lighten the backdrop instead of dimming it. The
        dark theme reuses this value and only raises the alpha. */
-    --overlay: 42.9 4.3% 13.5%; /* #242321 - Ink */
+    --overlay: 40 4.3% 13.5%; /* #242321 - Ink */
 
     /* ===================================
      * Semantic Colors (Light Theme)
@@ -612,9 +600,9 @@
     --primary: var(--primary-300); /* primary-300 - brand */
     /* Amber is a light fill and cannot carry white text (1.97:1). Ink clears
        8.09:1 and is the same in both themes, because the fill is too. */
-    --primary-foreground: 42.9 4.3% 13.5%; /* #242321 - Ink on brand */
+    --primary-foreground: 40 4.3% 13.5%; /* #242321 - Ink */
 
-    --secondary: 42.9 41.2% 96.7%; /* gray-100 - direct value for opacity modifier support */
+    --secondary: 17.1 41.2% 96.7%; /* #FAF5F3 - Linen, tracking gray-100 */
     --secondary-foreground: var(--gray-950); /* gray-950 */
 
     --muted: var(--gray-100); /* gray-100 */
@@ -646,8 +634,8 @@
        full strength that frame overpowered the sheet it holds. Lightness moves
        to the midpoint with white while saturation holds, which halves the
        channel spread by the same factor and keeps the hue intact. */
-    --sidebar: 17.1 41.2% 98.4%; /* #FDFAF9 - half of the theme grey */
-    --sidebar-rail: 17.1 17.9% 92.4%; /* #EFEAE8 - the site's nav grey */
+    --sidebar: 15 50% 98.4%; /* #FDFAF9 */
+    --sidebar-rail: 20 15% 92.2%; /* #EEEAE8 */
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
@@ -662,12 +650,9 @@
        The layer colour is chosen so that compositing it onto a surface lands
        back on the neutral ramp rather than just darkening it. It is solved
        from the step it has to produce: at `--state-hover-alpha` over a white
-       card this colour composites to gray-100's lightness, so every state
-       keeps Sand's warm cast instead of washing out to a flat grey. Sand
-       desaturates as it darkens while a fixed layer holds its chroma, so the
-       pressed step runs slightly warmer than gray-300 -- tune here if it ever
-       reads too peach. */
-    --state-layer: 42.9 21% 37.3%;
+       card this colour composites to gray-100's lightness, while higher alphas
+       keep the states ordered without introducing another hue. */
+    --state-layer: 0 1% 41.2%; /* #6A6868 */
 
     --state-hover-alpha: 5%;
     --state-selected-alpha: 8.5%;
@@ -707,36 +692,27 @@
     --primary-900: 35.5 81.6% 17.1%; /* #4F3208 */
     --primary-950: 33.2 63.3% 11.8%; /* #31200B */
 
-    /* Background/Gray Color Scale (Sand - Dark).
-       The palette publishes four dark surfaces; this app needs eight distinct
-       elevations (page, nav, card, popover, input, border, hover, segment). So
-       the ramp keeps the step sizes that already separate them and shifts as a
-       whole until the page background lands on Ink, the published dark canvas.
-       Every stop is generated along Sand's own hue path, so nothing here is
-       off-palette -- 50 is Ink and 950 is Linen exactly, and 800 lands on
-       Sand 500, the published dark muted text. */
-    --gray-0: 42.9 4.3% 10.5%; /* #1C1B1A - deepest page bg */
-    --gray-50: 42.9 4.3% 13.5%; /* #242321 - Ink, page bg */
-    --gray-100: 42.9 3.4% 18.5%; /* #31302E - sidebar, popover */
-    --gray-200: 42.9 2.7% 22.5%; /* #3B3A38 - border, input */
-    --gray-300: 42.9 2.3% 26.5%; /* #454442 - accent hover */
-    --gray-400: 42.9 2% 30.5%; /* #4F4E4C - stronger border */
-    --gray-500: 42.9 1.6% 36.5%; /* #5F5E5C */
-    --gray-600: 42.9 1.3% 45.5%; /* #767573 */
-    --gray-700: 42.9 1.2% 52.5%; /* #878784 */
-    /* Raised from Sand 500 to clear 4.5:1 against `--muted`, which is the
-       segment-control track and the densest place secondary text lands.
-       On Sand 500 that pairing was 4.24:1 -- a failure this ramp inherited
-       rather than introduced; the old cool ramp was 4.14:1. */
-    --gray-800: 42.9 1.5% 64.5%; /* #A6A5A3 */
-    --gray-900: 42.9 4.1% 81.5%; /* #D2D1CE */
-    --gray-950: 42.9 41.2% 96.7%; /* #FAF8F3 */
+    /* Neutral Gray Color Scale (Dark). The existing shell and Ink canvas stay
+       fixed at 0 and 50; Linen is exact at 950. Text stops are measured against
+       gray-300, the lightest common neutral surface. */
+    --gray-0: 30 3.7% 10.6%; /* #1C1B1A - deepest shell surface */
+    --gray-50: 40 4.3% 13.5%; /* #242321 - Ink, page background */
+    --gray-100: 20 2.9% 20.2%; /* #353332 */
+    --gray-200: 30 1.6% 23.9%; /* #3E3D3C */
+    --gray-300: 30 1.4% 28.2%; /* #494847 */
+    --gray-400: 0 1.2% 33.3%; /* #565454 */
+    --gray-500: 30 0.8% 47.5%; /* #7A7978 */
+    --gray-600: 0 1% 59.2%; /* #989696 - 3.1:1 tier */
+    --gray-700: 30 1.3% 69%; /* #B1B0AF */
+    --gray-800: 30 3.4% 77.3%; /* #C7C5C3 - 5.3:1 muted text */
+    --gray-900: 12 7% 86.1%; /* #DEDAD9 */
+    --gray-950: 17.1 41.2% 96.7%; /* #FAF5F3 */
 
     /* Divider Color (Dark) */
-    --divider: 42.9 2.7% 22%; /* #3A3937 */
+    --divider: 30 1.8% 22.4%; /* #3A3938 */
 
     /* Theme-aware Colors (Dark - inverted) */
-    --white: 30 4.3% 13.5%; /* #242221 - Ink */
+    --white: 40 4.3% 13.5%; /* #242321 - Ink */
     --black: 0 0% 100%; /* #FFFFFF */
 
     /* ===================================
@@ -745,7 +721,7 @@
     --background: var(--gray-50); /* gray-50 */
     --foreground: var(--gray-950); /* gray-950 */
 
-    --card: 42.9 3.8% 16.5%; /* between gray-50 and gray-100 - card surface */
+    --card: 30 2.3% 16.9%; /* #2C2B2A */
     --card-foreground: var(--gray-950); /* gray-950 */
 
     --popover: var(--gray-100); /* gray-100 - dark background */
@@ -753,9 +729,9 @@
 
     --primary: var(--primary-300); /* primary-300 - brand */
     /* Same Amber fill as light, so the same Ink text (8.09:1). */
-    --primary-foreground: 42.9 4.3% 13.5%; /* #242321 - Ink on brand */
+    --primary-foreground: 40 4.3% 13.5%; /* #242321 - Ink */
 
-    --secondary: 42.9 3.1% 20.5%; /* gray-200 (dark) - lighter than card for inner elements */
+    --secondary: 30 1.9% 20.8%; /* #363534 */
     --secondary-foreground: var(--gray-950); /* gray-950 */
 
     --muted: var(
@@ -771,7 +747,7 @@
     /* Coral 400 rather than light's Coral 700: a dark page needs the lighter
        stop to stay legible, and that stop flips the label to Ink (7.21:1). */
     --destructive: 13.1 100% 72.2%; /* #FF9071 - Coral 400 */
-    --destructive-foreground: 42.9 4.3% 13.5%; /* #242321 - Ink on Coral 400 */
+    --destructive-foreground: 40 4.3% 13.5%; /* #242321 - Ink */
 
     --border: var(--gray-200); /* gray-200 - primary border color */
     --input: var(
@@ -805,10 +781,9 @@
 
     /* Interaction state ladder (dark).
        Dark surfaces need a wider ladder than light ones to read as the same
-       step, so the alphas are raised rather than mirrored. Sand's dark stops
-       are a very quiet warm neutral, so the layer takes Linen's hue and stays
-       just saturated enough to hold it as the alpha climbs. */
-    --state-layer: 42.9 100% 97%;
+       step, so the alphas are raised rather than mirrored. The layer stays
+       near-neutral so the states read as elevation rather than a hue shift. */
+    --state-layer: 20 42.9% 98.6%; /* #FDFBFA */
 
     --state-hover-alpha: 7%;
     --state-selected-alpha: 12%;
