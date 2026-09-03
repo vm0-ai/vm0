@@ -1297,7 +1297,10 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.VoiceDraft]: true,
+        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+      },
     });
 
     const composer = await waitFor(() => {

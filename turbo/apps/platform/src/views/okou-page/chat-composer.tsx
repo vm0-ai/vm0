@@ -260,7 +260,6 @@ import {
   sttTranscribing$,
   sttVoiceLevel$,
   sttVoiceLevelSamples$,
-  startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";

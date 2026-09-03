@@ -9,7 +9,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { onRef, withCleanup } from "../utils.ts";
+import { onDomEventFn, onRef, withCleanup } from "../utils.ts";
 import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
@@ -502,8 +502,8 @@ function createRemoveQueuedMessage(
 }
 
 function createComposerVoiceInputSignals(
-  draft: DraftSignals,
   workflowComposer: WorkflowComposerSignals,
+  draft: Pick<ComposerDraftSignals, "save$">,
 ): ComposerVoiceInputSignals {
   return {
     toggle$: command(async ({ get, set }, signal: AbortSignal) => {
@@ -530,7 +530,7 @@ function createComposerVoiceInputSignals(
         let voiceDraftId: string | null = null;
         await set(
           startRecording$,
-          async (text) => {
+          onDomEventFn(async (text: string) => {
             if (voiceDraftId === null) {
               return;
             }
@@ -540,7 +540,7 @@ function createComposerVoiceInputSignals(
               text,
             );
             await set(draft.save$, signal);
-          },
+          }),
           quota.limit === null,
           {
             started: () => {
@@ -574,10 +574,10 @@ function createComposerVoiceInputSignals(
 
       await set(
         startRecording$,
-        async (text) => {
-          set(workflowComposer.editor.appendText$, text);
+        onDomEventFn(async (text: string) => {
+          set(workflowComposer.appendText$, text);
           await set(draft.save$, signal);
-        },
+        }),
         quota.limit === null,
         undefined,
         signal,
@@ -613,7 +613,6 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const voice = createComposerVoiceInputSignals(draft, workflowComposer);
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,
@@ -657,7 +656,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
-    voice,
+    voice: createComposerVoiceInputSignals(workflowComposer, options.draft),
     voiceDraft: workflowComposer.voiceDraft,
     feedback: workflowComposer.feedback,
     workflow: {
