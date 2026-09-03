@@ -690,7 +690,6 @@ mod tests {
     use super::*;
     use std::ffi::{CString, OsStr};
     use std::io::Cursor;
-    use std::os::fd::AsRawFd;
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs as unix_fs;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -1362,50 +1361,6 @@ mod tests {
         // .git and .vm0 contents must NOT be present
         assert!(!paths.iter().any(|p| p.starts_with(".git")));
         assert!(!paths.iter().any(|p| p.starts_with(".vm0")));
-    }
-
-    #[test]
-    fn collect_file_metadata_rejects_active_path_above_limit_at_max_depth() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("root");
-        std::fs::create_dir(&root).unwrap();
-
-        let directory_name = "d".repeat(255);
-        let mut current = File::open(&root).unwrap();
-        for _ in 0..ARTIFACT_TRAVERSAL_MAX_DEPTH {
-            let child = PathBuf::from(format!("/proc/self/fd/{}", current.as_raw_fd()))
-                .join(&directory_name);
-            std::fs::create_dir(&child).unwrap();
-            current = File::open(child).unwrap();
-        }
-        let file_path = PathBuf::from(format!("/proc/self/fd/{}", current.as_raw_fd())).join("f");
-        std::fs::write(file_path, "data").unwrap();
-        drop(current);
-
-        let error = collect_file_metadata(root.to_str().unwrap()).unwrap_err();
-        let ArchiveError::TraversalLimitExceeded {
-            observed_entries,
-            max_entries,
-            observed_depth,
-            max_depth,
-            observed_path_bytes,
-            max_path_bytes,
-        } = error
-        else {
-            panic!("expected traversal limit error, got: {error}");
-        };
-        assert_eq!(
-            observed_entries,
-            ARTIFACT_TRAVERSAL_MAX_DEPTH.saturating_add(1)
-        );
-        assert_eq!(max_entries, ARTIFACT_TRAVERSAL_MAX_ENTRIES);
-        assert_eq!(observed_depth, ARTIFACT_TRAVERSAL_MAX_DEPTH);
-        assert_eq!(max_depth, ARTIFACT_TRAVERSAL_MAX_DEPTH);
-        assert_eq!(
-            observed_path_bytes,
-            ARTIFACT_TRAVERSAL_MAX_PATH_BYTES.saturating_add(1)
-        );
-        assert_eq!(max_path_bytes, ARTIFACT_TRAVERSAL_MAX_PATH_BYTES);
     }
 
     #[test]

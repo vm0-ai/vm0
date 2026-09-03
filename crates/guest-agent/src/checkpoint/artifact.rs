@@ -268,6 +268,14 @@ mod tests {
     use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
     use httpmock::prelude::*;
     use serde_json::json;
+    #[cfg(target_os = "linux")]
+    use std::ffi::CString;
+    #[cfg(target_os = "linux")]
+    use std::fs::File;
+    #[cfg(target_os = "linux")]
+    use std::os::fd::{AsRawFd, FromRawFd};
+    #[cfg(target_os = "linux")]
+    use std::os::unix::ffi::OsStrExt;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
@@ -308,6 +316,62 @@ mod tests {
             matching_failure,
             "missing failed artifact_hash_compute telemetry for {expected_error:?}"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    fn make_fifo(path: &std::path::Path) -> std::io::Result<()> {
+        let path = CString::new(path.as_os_str().as_bytes())
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+        // SAFETY: `path` is a NUL-terminated filesystem path owned for the call.
+        let result = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn create_and_open_child_dir(parent: &File, name: &CString) -> std::io::Result<File> {
+        // SAFETY: `parent` is a live directory descriptor and `name` is a
+        // NUL-terminated basename owned for the duration of both calls.
+        let created = unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o755) };
+        if created != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: the arguments satisfy `openat`, and a successful result is a
+        // newly owned descriptor transferred to `File` below.
+        let fd = unsafe {
+            libc::openat(
+                parent.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: `fd` is the newly owned descriptor returned by `openat`.
+        Ok(unsafe { File::from_raw_fd(fd) })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn create_child_file(parent: &File, name: &CString) -> std::io::Result<File> {
+        // SAFETY: `parent` is a live directory descriptor, `name` is a
+        // NUL-terminated basename, and `O_CREAT` supplies the explicit mode.
+        let fd = unsafe {
+            libc::openat(
+                parent.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: `fd` is the newly owned descriptor returned by `openat`.
+        Ok(unsafe { File::from_raw_fd(fd) })
     }
 
     async fn start_artifact_checkpoint_test_server(
@@ -612,7 +676,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn artifact_snapshot_enforces_traversal_entry_limit_before_storage_api_calls() {
-        const PARENT_COUNT: usize = 100;
+        const PARENT_COUNT: usize = 2;
 
         let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
         guest_common::log::clear_system_log_file();
@@ -622,17 +686,19 @@ mod tests {
         std::fs::create_dir(&mount).unwrap();
         std::fs::create_dir(mount.join(".git")).unwrap();
         let max_entries = usize::try_from(vas::ARTIFACT_TRAVERSAL_MAX_ENTRIES).unwrap();
-        let children_per_parent = (max_entries - PARENT_COUNT) / PARENT_COUNT;
+        let links_per_parent = (max_entries - PARENT_COUNT) / PARENT_COUNT - 1;
         assert_eq!(
-            PARENT_COUNT * (children_per_parent + 1),
+            PARENT_COUNT * (links_per_parent + 2),
             max_entries,
             "fixture must contain exactly the traversal limit before .git"
         );
         for parent_index in 0..PARENT_COUNT {
             let parent = mount.join(format!("p{parent_index:03}"));
             std::fs::create_dir(&parent).unwrap();
-            for child_index in 0..children_per_parent {
-                std::fs::create_dir(parent.join(format!("d{child_index:03}"))).unwrap();
+            let source = parent.join("source");
+            make_fifo(&source).unwrap();
+            for link_index in 0..links_per_parent {
+                std::fs::hard_link(&source, parent.join(format!("l{link_index:05}"))).unwrap();
             }
         }
 
@@ -688,6 +754,91 @@ mod tests {
         );
         assert!(
             message.contains(&format!("/{}", vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES)),
+            "got: {message}"
+        );
+        prepare.assert_calls(0);
+        upload.assert_calls(0);
+        commit.assert_calls(0);
+        assert_artifact_hash_failure(&telemetry_path, &message);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn artifact_snapshot_enforces_traversal_active_path_limit_before_storage_api_calls() {
+        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
+        guest_common::log::clear_system_log_file();
+
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("long-path");
+        std::fs::create_dir(&mount).unwrap();
+        let directory_name = CString::new("d".repeat(255)).unwrap();
+        let mut current = File::open(&mount).unwrap();
+        for _ in 0..vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
+            current = create_and_open_child_dir(&current, &directory_name).unwrap();
+        }
+        let file = create_child_file(&current, &CString::new("f").unwrap()).unwrap();
+        drop(file);
+        drop(current);
+
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: None,
+        }];
+
+        let error = snapshot_artifact_entries(&http, "test-run", &entries)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!(
+                "observed entries {}/{}",
+                vas::ARTIFACT_TRAVERSAL_MAX_DEPTH + 1,
+                vas::ARTIFACT_TRAVERSAL_MAX_ENTRIES
+            )),
+            "got: {message}"
+        );
+        assert!(
+            message.contains(&format!(
+                "directory depth {0}/{0}",
+                vas::ARTIFACT_TRAVERSAL_MAX_DEPTH
+            )),
+            "got: {message}"
+        );
+        assert!(
+            message.contains(&format!(
+                "active UTF-8 path bytes {}/{}",
+                vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES + 1,
+                vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES
+            )),
             "got: {message}"
         );
         prepare.assert_calls(0);
