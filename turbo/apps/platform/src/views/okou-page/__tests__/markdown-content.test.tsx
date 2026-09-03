@@ -1,4 +1,5 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
@@ -26,6 +27,12 @@ function markdownFrameFor(element: Element): HTMLElement {
     throw new Error("Expected content inside a Markdown frame");
   }
   return frame;
+}
+
+function colorPreviews(container: ParentNode = document) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>("[data-markdown-color-preview]"),
+  );
 }
 
 test("A blockquote remains recognizable when HTML is treated as text", async () => {
@@ -100,6 +107,95 @@ test("Common Markdown features remain recognizable", async () => {
   );
   expect(completedItem).not.toBeNull();
   expect(completedItem).toBeChecked();
+});
+
+test("A complete HEX color has a preview in a plain assistant response", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const source = "Primary color #12ABef is ready.";
+  const rows = completedMessageRows(chat, source);
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.MarkdownHexColorPreview]: true },
+  });
+
+  await waitFor(() => {
+    expect(colorPreviews()).toHaveLength(1);
+  });
+  const preview = colorPreviews()[0];
+  if (!preview) {
+    throw new Error("Expected a visible HEX color preview");
+  }
+  expect(preview).toHaveAttribute("data-markdown-color-preview", "#12ABef");
+  expect(preview).toBeVisible();
+  expect(markdownFrameFor(preview)).toHaveTextContent(source);
+});
+
+test("Rich Markdown previews colors without decorating links or code", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const source = [
+    "**Brand #112233**",
+    "",
+    "[`#445566`](https://example.com/palette) and `#778899`",
+    "",
+    "Incomplete #AABB and embedded shade#DDEEFFtail",
+  ].join("\n");
+  const rows = completedMessageRows(chat, source);
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.MarkdownHexColorPreview]: true },
+  });
+
+  const brand = await screen.findByText("Brand #112233");
+  const frame = markdownFrameFor(brand);
+  await waitFor(() => {
+    expect(colorPreviews(frame)).toHaveLength(1);
+  });
+  expect(colorPreviews(frame)[0]).toHaveAttribute(
+    "data-markdown-color-preview",
+    "#112233",
+  );
+  expect(frame).toHaveTextContent("#445566");
+  expect(frame).toHaveTextContent("#778899");
+  expect(frame).toHaveTextContent("#AABB");
+  expect(frame).toHaveTextContent("shade#DDEEFFtail");
+});
+
+test("HEX colors remain undecorated when previews are unavailable", async () => {
+  const chat = createMarkdownChatFixture(context);
+  const source = "Accent #ABCDEF remains readable.";
+  const rows = completedMessageRows(chat, source);
+  chat.install({
+    rows: () => {
+      return rows;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: chat.path,
+    host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.MarkdownHexColorPreview]: false },
+  });
+
+  const response = await screen.findByText(source);
+  expect(response).toBeVisible();
+  expect(colorPreviews(markdownFrameFor(response))).toHaveLength(0);
 });
 
 test("Fenced code stays readable for known and unknown languages", async () => {

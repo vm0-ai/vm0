@@ -360,6 +360,10 @@ test("Open an agent's management page from its card", async () => {
 test("Review an agent's profile and instructions", async () => {
   configureCatalog(
     [
+      agent(CORE_AGENT_ID, {
+        displayName: "Okou",
+        visibility: "public",
+      }),
       agent(RESEARCH_AGENT_ID, {
         description: "Collects and verifies evidence",
         displayName: "Research Agent",
@@ -367,6 +371,7 @@ test("Review an agent's profile and instructions", async () => {
       }),
     ],
     {
+      defaultAgentId: CORE_AGENT_ID,
       instructions: {
         [RESEARCH_AGENT_ID]:
           "# Research guidance\n\nVerify every source before writing conclusions.",

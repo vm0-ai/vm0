@@ -56,6 +56,31 @@ test("Artifact cards identify their kind and show available previews", async () 
   );
 });
 
+test("A video artifact without a poster uses its source as the catalog preview", async () => {
+  context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+    return respond(200, {
+      artifacts: [
+        artifact({
+          kind: "video",
+          title: "product-tour.mp4",
+          videoSourceUrl: "https://videos.example.test/product-tour.mp4",
+        }),
+      ],
+      nextCursor: null,
+    });
+  });
+
+  await setupArtifactCatalogPage(context, { path: "/artifacts?tab=video" });
+
+  const card = await findArtifactAction("product-tour.mp4");
+  expect(
+    within(card).getByTestId("artifact-catalog-video-source"),
+  ).toHaveAttribute(
+    "src",
+    "https://videos.example.test/product-tour.mp4#t=0.001",
+  );
+});
+
 test("Artifact catalog failure is announced clearly", async () => {
   context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
     return respond(403, {

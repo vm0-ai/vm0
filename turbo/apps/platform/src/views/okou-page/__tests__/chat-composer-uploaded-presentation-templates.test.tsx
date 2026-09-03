@@ -55,6 +55,41 @@ function importedTemplateMedia(templateId: string): HTMLElement {
   return media;
 }
 
+function pendingImportedTemplateImage(
+  container: ParentNode,
+  sourceFragment: string,
+): Promise<HTMLImageElement> {
+  return waitFor(() => {
+    const image = Array.from(
+      container.querySelectorAll<HTMLImageElement>(
+        'img[data-imported-presentation-template-image][data-active="false"]',
+      ),
+    ).find((candidate) => {
+      return candidate.getAttribute("src")?.includes(sourceFragment);
+    });
+    if (!image) {
+      throw new Error(`Pending imported image ${sourceFragment} not found`);
+    }
+    return image;
+  });
+}
+
+async function loadImportedTemplateImage(
+  container: ParentNode,
+  sourceFragment: string,
+): Promise<HTMLImageElement> {
+  fireEvent.load(await pendingImportedTemplateImage(container, sourceFragment));
+  return await waitFor(() => {
+    const image = container.querySelector<HTMLImageElement>(
+      'img[data-imported-presentation-template-image][data-active="true"]',
+    );
+    if (!image?.getAttribute("src")?.includes(sourceFragment)) {
+      throw new Error(`Imported image ${sourceFragment} did not become active`);
+    }
+    return image;
+  });
+}
+
 function buttonNamed(
   name: string,
   container: ParentNode = document.body,
@@ -96,6 +131,38 @@ function sentTemplate(capture: ReturnType<typeof mockTemplateChat>) {
   }
   return templatePart(message).template;
 }
+
+test("A closed composer does not load uploaded template covers", async () => {
+  mockNow(UPLOADED_TEMPLATE_NOW_MS, context.signal);
+  mockTemplateChat();
+  const uploaded = createUploadedTemplate({
+    id: UPLOADED_TEMPLATE_ID,
+    title: "Quarterly Board Review",
+  });
+  const library = mockPresentationTemplateLibrary([uploaded]);
+  const user = userEvent.setup();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    host: "app.vm0.ai",
+    featureSwitches: TEMPLATE_FEATURES,
+  });
+
+  await waitFor(() => {
+    expect(library.requests.listCount).toBeGreaterThan(0);
+  });
+  expect(
+    document.querySelector(`img[src*="${uploaded.id}"]`),
+  ).not.toBeInTheDocument();
+
+  await openTemplatePicker(user, "Presentation");
+  await waitFor(() => {
+    expect(
+      importedTemplateMedia(uploaded.id).querySelector("img"),
+    ).toHaveAttribute("src", expect.stringContaining(uploaded.id));
+  });
+});
 
 test("Use an uploaded presentation template", async () => {
   mockNow(UPLOADED_TEMPLATE_NOW_MS, context.signal);
@@ -162,6 +229,75 @@ test("Use an uploaded presentation template", async () => {
   });
 });
 
+test("Keep the loaded slide visible during rapid preview navigation", async () => {
+  mockNow(UPLOADED_TEMPLATE_NOW_MS, context.signal);
+  mockTemplateChat();
+  const uploaded = createUploadedTemplate({
+    id: UPLOADED_TEMPLATE_ID,
+    title: "Rapid Preview Deck",
+    pageCount: 3,
+  });
+  mockPresentationTemplateLibrary([uploaded]);
+  trackTemplatePreviewImagePreloads();
+  const user = userEvent.setup();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    host: "app.vm0.ai",
+    featureSwitches: TEMPLATE_FEATURES,
+  });
+
+  const picker = await openTemplatePicker(user, "Presentation");
+  click(
+    await waitFor(() => {
+      return buttonNamed(`Preview ${uploaded.title} at current slide`);
+    }),
+  );
+  const detail = await screen.findByRole("group", {
+    name: `${uploaded.title} slide preview`,
+  });
+  const firstSlide = await loadImportedTemplateImage(detail, "slide-1");
+
+  click(buttonNamed("Preview slide 2", picker));
+  const staleSecondSlide = await pendingImportedTemplateImage(
+    detail,
+    "slide-2",
+  );
+  expect(firstSlide).toHaveAttribute("data-active", "true");
+
+  click(buttonNamed("Preview slide 3", picker));
+  const pendingThirdSlide = await pendingImportedTemplateImage(
+    detail,
+    "slide-3",
+  );
+  expect(staleSecondSlide).not.toBeInTheDocument();
+  expect(firstSlide).toHaveAttribute("data-active", "true");
+
+  fireEvent.load(staleSecondSlide);
+  expect(firstSlide).toHaveAttribute("data-active", "true");
+  expect(firstSlide).not.toHaveAttribute(
+    "src",
+    expect.stringContaining("slide-2"),
+  );
+
+  fireEvent.load(pendingThirdSlide);
+  const thirdSlide = await waitFor(() => {
+    const image = detail.querySelector<HTMLImageElement>(
+      'img[data-imported-presentation-template-image][data-active="true"]',
+    );
+    if (!image?.getAttribute("src")?.includes("slide-3")) {
+      throw new Error("The latest selected slide did not become visible");
+    }
+    return image;
+  });
+  expect(thirdSlide).toHaveAttribute("data-active", "true");
+  expect(buttonNamed("Preview slide 3", picker)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
 test("Keep uploaded-template browsing stable during changes", async () => {
   mockNow(UPLOADED_TEMPLATE_NOW_MS, context.signal);
   mockTemplateChat();
@@ -200,9 +336,7 @@ test("Keep uploaded-template browsing stable during changes", async () => {
     name: `${viewed.title} slide preview`,
   });
   click(buttonNamed("Preview slide 2", picker));
-  const activeImage = within(detail).getByAltText(
-    `${viewed.title} slide preview`,
-  );
+  const activeImage = await loadImportedTemplateImage(detail, "slide-2");
   const activeImageUrl = activeImage.getAttribute("src");
   expect(buttonNamed("Preview slide 2", picker)).toHaveAttribute(
     "aria-pressed",

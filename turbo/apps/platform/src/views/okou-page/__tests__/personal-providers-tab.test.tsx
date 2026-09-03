@@ -60,7 +60,9 @@ function stalePersonalCodexProvider(): ModelProviderResponse {
   };
 }
 
-function connectedPersonalCodexProvider(): ModelProviderResponse {
+function connectedPersonalCodexProvider(
+  overrides: Partial<ModelProviderResponse> = {},
+): ModelProviderResponse {
   return {
     ...stalePersonalCodexProvider(),
     subscriptionUsage: {
@@ -80,6 +82,7 @@ function connectedPersonalCodexProvider(): ModelProviderResponse {
     subscriptionResetCredits: 2,
     needsReconnect: false,
     lastRefreshErrorCode: null,
+    ...overrides,
   };
 }
 
@@ -485,7 +488,9 @@ test("Review Claude and Codex personal subscription usage", async () => {
   });
   context.mocks.data.personalModelProviders([
     connectedPersonalClaudeCodeProvider(),
-    connectedPersonalCodexProvider(),
+    connectedPersonalCodexProvider({
+      subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:48:00.000Z",
+    }),
   ]);
 
   await openModelSettings();
@@ -526,6 +531,11 @@ test("Review Claude and Codex personal subscription usage", async () => {
   expect(within(codexRow).getByText("in 4h 12m")).toBeInTheDocument();
   expect(within(codexRow).getByText("55% left")).toBeInTheDocument();
   expect(within(codexRow).getByText("in 5d 23h")).toBeInTheDocument();
+  click(within(codexRow).getByLabelText("More options"));
+  const codexMenu = await screen.findByRole("menu");
+  expect(
+    within(codexMenu).getByText("2 resets left · expires in 3d"),
+  ).toBeInTheDocument();
   expect(
     within(codexRow).getByText(
       formatResetInTimeZone("2030-01-07T00:00:00.000Z", "America/New_York"),
@@ -534,6 +544,29 @@ test("Review Claude and Codex personal subscription usage", async () => {
   expect(
     within(codexRow).queryByText(/Account:|Plan:|Reset:|Connected .*resets/),
   ).not.toBeInTheDocument();
+});
+
+test("Do not show a reset-credit expiry after Codex resets are exhausted", async () => {
+  mockNow(new Date("2030-01-01T00:48:00.000Z"), context.signal);
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
+  });
+  context.mocks.data.personalModelProviders([
+    connectedPersonalCodexProvider({
+      subscriptionResetCredits: 0,
+      subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:48:00.000Z",
+    }),
+  ]);
+
+  await openModelSettings();
+
+  const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+  click(within(codexRow).getByLabelText("More options"));
+  const codexMenu = await screen.findByRole("menu");
+  expect(within(codexMenu).getByText("0 resets left")).toBeInTheDocument();
+  expect(within(codexMenu).queryByText(/expires/u)).not.toBeInTheDocument();
 });
 
 test("Localize personal provider usage", async () => {

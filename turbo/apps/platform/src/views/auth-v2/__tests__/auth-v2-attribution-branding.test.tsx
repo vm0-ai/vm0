@@ -100,9 +100,9 @@ function waitForRoleElement(
   });
 }
 
-function setupSignedOutPage(path: string, host = "app.vm0.ai"): Promise<void> {
+function setupSignedOutPage(path: string): Promise<void> {
   mockNow(ATTRIBUTION_NOW, context.signal);
-  return setupPage({ auth: null, context, host, path });
+  return setupPage({ auth: null, context, host: "app.vm0.ai", path });
 }
 
 function prepareAccountCreation(): void {
@@ -288,32 +288,6 @@ test("Sign-up campaign attribution survives verification and flow switches", asy
     "hero",
     "footer",
   ]);
-});
-
-test("Okou sign-up preserves a trusted primary-app destination", async () => {
-  const redirectUrl = "https://app.vm0.ai/agents?source=okou";
-  prepareAccountCreation();
-  await setupSignedOutPage(
-    `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`,
-    "app.okou.ai",
-  );
-
-  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
-  expect(
-    screen.getByRole("heading", { name: "Create your account" }),
-  ).toBeVisible();
-  const codeInput = await advanceToEmailVerification();
-
-  expect(codeInput).toBeEnabled();
-  expect(location.hostname).toBe("app.okou.ai");
-  expect(
-    screen.getByRole("region", { name: "Verify your email" }),
-  ).toHaveAccessibleDescription(
-    "Enter the verification code sent to your email",
-  );
-  expect(new URL(location.href).searchParams.get("redirect_url")).toBe(
-    redirectUrl,
-  );
 });
 
 test("A trusted Okou destination uses Okou authentication context", async () => {

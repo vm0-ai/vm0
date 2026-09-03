@@ -283,7 +283,9 @@ test("A short background period pauses and resumes live updates efficiently", as
 
   visibilityState = "hidden";
   document.dispatchEvent(new Event("visibilitychange"));
-  expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  await waitFor(() => {
+    expect(context.store.get(foregroundReady$).pending).toBeTruthy();
+  });
   expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
 
   visibilityState = "visible";
@@ -326,7 +328,7 @@ test("A long background period rebuilds the live connection", async () => {
 
   visibilityState = "hidden";
   document.dispatchEvent(new Event("visibilitychange"));
-  expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  context.mocks.ably.triggerConnectionClosed();
   await waitFor(() => {
     expect(
       context.store.get(realtimeSubscriptionSnapshot$).connectionState,
@@ -422,7 +424,9 @@ test("The latest return to a tab gets a final catch-up", async () => {
 
   visibilityState = "hidden";
   document.dispatchEvent(new Event("visibilitychange"));
-  expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  await waitFor(() => {
+    expect(context.store.get(foregroundReady$).pending).toBeTruthy();
+  });
 
   visibilityState = "visible";
   document.dispatchEvent(new Event("visibilitychange"));
@@ -435,7 +439,9 @@ test("The latest return to a tab gets a final catch-up", async () => {
 
   visibilityState = "hidden";
   document.dispatchEvent(new Event("visibilitychange"));
-  expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  await waitFor(() => {
+    expect(context.store.get(foregroundReady$).pending).toBeTruthy();
+  });
   visibilityState = "visible";
   document.dispatchEvent(new Event("visibilitychange"));
 

@@ -2,6 +2,7 @@ import {
   computerUseHostsContract,
   type ComputerUseHost,
 } from "@okouai/api-contracts/contracts/computer-use";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
@@ -199,6 +200,33 @@ test("Start a new chat with Cloud browser disabled", async () => {
 
   const sent = await waitForComputerSend(sends, 1);
   expect(sent.prompt).toBe("Summarize the product launch");
+  expect(sent.cloudBrowserEnabled).toBeUndefined();
+  expect(sent.computerUseHostId).toBeUndefined();
+});
+
+test("Use the saved Cloud browser default for an untouched new chat", async () => {
+  const sends: CapturedComputerSend[] = [];
+  context.mocks.data.userPreferences({
+    cloudBrowserEnabledByDefault: false,
+  });
+  installNewComputerChat(sends, []);
+
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    featureSwitches: { [FeatureSwitchKey.CloudBrowserPreference]: true },
+  });
+
+  await readyChat();
+  await openComputerMenu();
+  expect(
+    screen.getByRole("switch", { name: "Enable Cloud browser" }),
+  ).not.toBeChecked();
+
+  await sendText("Review the launch notes");
+
+  const sent = await waitForComputerSend(sends, 1);
+  expect(sent.prompt).toBe("Review the launch notes");
   expect(sent.cloudBrowserEnabled).toBeUndefined();
   expect(sent.computerUseHostId).toBeUndefined();
 });

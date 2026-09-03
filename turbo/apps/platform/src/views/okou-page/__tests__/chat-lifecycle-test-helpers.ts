@@ -181,7 +181,6 @@ export function parseChatClipboardPayload(html: string): {
 }
 
 export function mockPushBrowserSupport(): PushBrowserMock {
-  vi.stubEnv("VITE_VAPID_PUBLIC_KEY_PREVIEW", "AQIDBA");
   vi.stubGlobal("PushManager", class TestPushManager {});
   let notificationPermission: NotificationPermission = "default";
   vi.stubGlobal("Notification", {

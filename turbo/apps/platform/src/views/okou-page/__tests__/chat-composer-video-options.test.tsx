@@ -1,11 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
-import {
-  chatThreadsContract,
-  type ChatThreadEvent,
-  type ChatRunOptionsRequest,
-  type UserMessageDocument,
+import type {
+  ChatRunOptionsRequest,
+  UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { UserModelPreferenceResponse } from "@okouai/api-contracts/contracts/user-model-preference";
 import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core";
@@ -17,7 +15,6 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { changeChatThreadList } from "../../../mocks/mock-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
@@ -140,18 +137,14 @@ async function enterText(text: string): Promise<HTMLElement> {
   return editor;
 }
 
-async function sendCurrent(
-  user: ReturnType<typeof userEvent.setup>,
-  editor: HTMLElement,
-  text: string,
-): Promise<void> {
+async function sendCurrent(editor: HTMLElement, text: string): Promise<void> {
   const send = await waitFor(() => {
     expect(editor).toHaveTextContent(text);
     const currentSend = sendButton();
     expect(currentSend).toBeEnabled();
     return currentSend;
   });
-  await user.click(send);
+  click(send);
 }
 
 async function selectVideoTemplate(): Promise<
@@ -191,115 +184,76 @@ function videoTemplatePart(message: SubmittedMessage) {
   });
 }
 
-test("Keep video generation options under the user's control", async () => {
-  const user = userEvent.setup({ delay: null });
+function installVideoSubmissionCapture(): SubmittedMessage[] {
   const submissions: SubmittedMessage[] = [];
-  let createdThreadEvent: ChatThreadEvent | null = null;
   installVideoEnvironment();
   mockChatLifecycle(context, {
-    threadId: "video-template-options",
-    onThreadCreate: ({
-      clientThreadId,
-      eventId,
-      modelSelection,
-      serviceTier,
-      imageModel,
-      videoModel,
-    }) => {
-      if (!clientThreadId || !eventId) {
-        throw new Error("New chat thread identifiers are required");
-      }
-      createdThreadEvent = {
-        id: eventId,
-        seqId: 10_000,
-        kind: "created",
-        chatThreadId: clientThreadId,
-        agentId: AGENT_ID,
-        title: "Video options thread",
-        selectedModel: modelSelection.selectedModel,
-        serviceTier: serviceTier ?? null,
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: videoModel ?? null,
-        selectedImageModel: imageModel ?? null,
-        createdAt: "2026-06-13T00:00:00.000Z",
-      };
-    },
     onRunCreate: ({ userMessage, runOptions }) => {
       submissions.push({ userMessage, runOptions });
     },
-    onQueuedEventAppend: ({ userMessage, runOptions }) => {
-      submissions.push({ userMessage, runOptions });
-    },
   });
-  context.mocks.api(chatThreadsContract.events, ({ query, respond }) => {
-    const event = createdThreadEvent;
-    return respond(200, {
-      events: event && event.seqId > (query.sinceSeqId ?? 0) ? [event] : [],
-      hasMore: false,
-    });
-  });
+
+  return submissions;
+}
+
+test("Submit a video template with its default generation options", async () => {
+  const user = userEvent.setup({ delay: null });
+  const submissions = installVideoSubmissionCapture();
   await setupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-  const firstPrompt = "Generate the first cinematic clip.";
-  const firstEditor = await enterText(firstPrompt);
+  const prompt = "Generate the first cinematic clip.";
+  const editor = await enterText(prompt);
   await enterVideoMode("Claude Fable 5");
-  const firstTemplate = await selectVideoTemplate();
+  const template = await selectVideoTemplate();
   await expect(
     openVideoOptions("16:9 · 8s · 720p"),
   ).resolves.toBeInTheDocument();
   await user.keyboard("{Escape}");
-  await sendCurrent(user, firstEditor, firstPrompt);
+  await sendCurrent(editor, prompt);
 
   await waitFor(() => {
     expect(submissions).toHaveLength(1);
-    expect(firstEditor).toHaveTextContent(/^$/u);
+    expect(editor).toHaveTextContent(/^$/u);
     expect(videoTemplatePart(submissions[0]!)).toStrictEqual({
       type: "template",
-      titleSnapshot: firstTemplate.title,
+      titleSnapshot: template.title,
       template: {
         type: "video",
-        selection: { stylePresetId: firstTemplate.id },
+        selection: { stylePresetId: template.id },
       },
     });
     expect(submissions[0]?.runOptions).toBeUndefined();
   });
+});
 
-  await expect(screen.findByText(firstPrompt)).resolves.toBeVisible();
-  await expect(
-    screen.findByRole("region", { name: "Chat thread" }),
-  ).resolves.toBeVisible();
-  changeChatThreadList();
-  await waitFor(() => {
-    expect(document.title).toContain("Video options thread");
-  });
-  const threadEditor = await screen.findByRole("textbox", { name: "Message" });
-  expect(threadEditor).toBeVisible();
-  expect(threadEditor).toHaveAttribute("contenteditable", "true");
+test("Submit the video ratio selected by the user", async () => {
+  const user = userEvent.setup({ delay: null });
+  const submissions = installVideoSubmissionCapture();
+  await setupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-  const secondPrompt = "Generate the portrait cinematic clip.";
-  const secondEditor = await enterText(secondPrompt);
+  const prompt = "Generate the portrait cinematic clip.";
+  const editor = await enterText(prompt);
   await enterVideoMode("Claude Fable 5");
-  const secondTemplate = await selectVideoTemplate();
+  const template = await selectVideoTemplate();
   const options = await openVideoOptions("16:9 · 8s · 720p");
   const ratioGroup = screen.getByRole("radiogroup", { name: "Ratio" });
   expect(options).toContainElement(ratioGroup);
   click(optionRadio(ratioGroup, "9:16"));
   await user.keyboard("{Escape}");
-  await sendCurrent(user, secondEditor, secondPrompt);
+  await sendCurrent(editor, prompt);
 
   await waitFor(() => {
-    expect(submissions).toHaveLength(2);
-    expect(secondEditor).toHaveTextContent(/^$/u);
-    expect(videoTemplatePart(submissions[1]!)).toStrictEqual({
+    expect(submissions).toHaveLength(1);
+    expect(editor).toHaveTextContent(/^$/u);
+    expect(videoTemplatePart(submissions[0]!)).toStrictEqual({
       type: "template",
-      titleSnapshot: secondTemplate.title,
+      titleSnapshot: template.title,
       template: {
         type: "video",
-        selection: { stylePresetId: secondTemplate.id },
+        selection: { stylePresetId: template.id },
       },
     });
-    expect(submissions[1]?.runOptions).toStrictEqual({
+    expect(submissions[0]?.runOptions).toStrictEqual({
       video: { aspectRatio: "9:16" },
     });
   });

@@ -3,7 +3,6 @@ import type {
   ArtifactDetail,
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -103,7 +102,6 @@ function officeFileEvents(
 async function setupGeneratedOfficePreview(
   filename: string,
   contentType: string,
-  enabled = true,
 ): Promise<string> {
   const url = `https://cdn.vm7.io/artifacts/tests/office/${filename}`;
   mockArtifactConversation(context, {
@@ -142,7 +140,6 @@ async function setupGeneratedOfficePreview(
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.OfficeDocumentPreview]: enabled },
   });
   return url;
 }
@@ -280,6 +277,27 @@ test("Preview a PPTX attachment in the dialog and split view", async () => {
   expectOfficeViewerUrl(splitFrame, url);
 });
 
+test("Preview an XLSX attachment in the dialog and split view", async () => {
+  const filename = "launch-budget.xlsx";
+  const url = await setupGeneratedOfficePreview(
+    filename,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+
+  click(await screen.findByLabelText(`Preview ${filename}`));
+
+  const dialog = await screen.findByTestId("attachment-lightbox");
+  const dialogFrame = await within(dialog).findByTitle(`${filename} preview`);
+  expect(dialogFrame).toBeVisible();
+  expectOfficeViewerUrl(dialogFrame, url);
+  click(buttonNamed("Open in split view", dialog));
+
+  const splitView = await screen.findByTestId("artifact-sidebar");
+  const splitFrame = await within(splitView).findByTitle(`${filename} preview`);
+  expect(splitFrame).toBeVisible();
+  expectOfficeViewerUrl(splitFrame, url);
+});
+
 test("Use a public URL for a private Office attachment preview", async () => {
   const fileId = "office-private-file";
   const filename = "private-plan.docx";
@@ -299,7 +317,6 @@ test("Use a public URL for a private Office attachment preview", async () => {
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.OfficeDocumentPreview]: true },
   });
 
   click(await screen.findByLabelText(`Preview ${filename}`));
@@ -308,23 +325,6 @@ test("Use a public URL for a private Office attachment preview", async () => {
   const frame = await within(dialog).findByTitle(`${filename} preview`);
   expectOfficeViewerUrl(frame, publicUrl);
   expect(frame.getAttribute("src")).not.toContain(privateUrl);
-});
-
-test("Use the generic preview when Office previews are disabled", async () => {
-  const filename = "fallback-plan.docx";
-  await setupGeneratedOfficePreview(
-    filename,
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    false,
-  );
-
-  click(await screen.findByLabelText(`Preview ${filename}`));
-
-  const dialog = await screen.findByTestId("attachment-lightbox");
-  expect(
-    within(dialog).getByText("No inline preview available for this file."),
-  ).toBeVisible();
-  expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
 });
 
 test("Do not expose a private Office URL when no public URL exists", async () => {
@@ -344,7 +344,6 @@ test("Do not expose a private Office URL when no public URL exists", async () =>
     context,
     path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.OfficeDocumentPreview]: true },
   });
 
   click(await screen.findByLabelText(`Preview ${filename}`));

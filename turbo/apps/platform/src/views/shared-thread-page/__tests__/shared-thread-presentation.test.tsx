@@ -1,7 +1,8 @@
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
+import { platformOkouWordmarkLightImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   getLinkByName,
@@ -53,6 +54,9 @@ test("A missing public conversation uses neutral VM0 presentation", async () => 
 });
 
 test("A public conversation hides owner and agent identity", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(prefers-color-scheme: dark)";
+  });
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
     return respond(200, {
       ...sharedThread(),
@@ -106,8 +110,12 @@ test("A public conversation hides owner and agent identity", async () => {
     "STRONG",
   );
   expect(screen.queryByTestId("rich-content-loading")).not.toBeInTheDocument();
-  expect(getLinkByName("Okou")).toHaveTextContent("Okou");
-  expect(screen.getByRole("img", { name: "Okou" })).toBeInTheDocument();
+  const brandLink = getLinkByName("Okou");
+  expect(brandLink).toHaveAttribute("href", "https://app.okou.ai");
+  expect(within(brandLink).getByRole("img", { name: "Okou" })).toHaveAttribute(
+    "src",
+    platformOkouWordmarkLightImg,
+  );
   expect(screen.queryByText("Owner")).not.toBeInTheDocument();
   expect(screen.queryByText("Agent")).not.toBeInTheDocument();
 });

@@ -151,6 +151,50 @@ test("An image preview starts at its default zoom every time it opens", async ()
   });
 });
 
+test("A deliberate backdrop click closes an image preview", async () => {
+  const image = draftAttachment("photo.png");
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  click(await findNamedButton("Open image preview for photo.png"));
+  await expect(
+    screen.findByRole("dialog", { name: "photo.png preview" }),
+  ).resolves.toBeVisible();
+
+  fireEvent.click(screen.getByTestId("attachment-lightbox-backdrop"));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "photo.png preview" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("Dragging from an image preview onto its backdrop keeps it open", async () => {
+  const image = draftAttachment("photo.png");
+  mockAttachmentChat(context, {
+    draft: draftForAttachment(image, ""),
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  click(await findNamedButton("Open image preview for photo.png"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "photo.png preview",
+  });
+  const panel = screen.getByTestId("attachment-lightbox-panel");
+  const backdrop = screen.getByTestId("attachment-lightbox-backdrop");
+
+  fireEvent.mouseDown(panel, { button: 0 });
+  fireEvent.mouseUp(backdrop, { button: 0 });
+  fireEvent.click(dialog);
+
+  expect(dialog).toBeVisible();
+});
+
 test("Viewport pinch is blocked outside an image preview canvas", async () => {
   const image = draftAttachment("photo.png");
   mockAttachmentChat(context, {

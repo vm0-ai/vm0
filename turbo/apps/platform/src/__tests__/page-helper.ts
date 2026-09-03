@@ -4,7 +4,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
-import type { mockOrganization, mockUser } from "./mock-auth";
+import { mockedClerk, type mockOrganization, type mockUser } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
@@ -104,11 +104,51 @@ export interface SetupPageOptions {
   readonly locale?: SupportedLocale;
   readonly auth?: SetupPageAuth;
   readonly debugLoggers?: string[];
+  readonly env?: PageEnvironment;
   readonly cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
-  readonly afterSharedDatabaseWorkerHeartbeat?: () => Promise<void>;
   readonly sharedWorkerAppVersion?: string;
   readonly sharedWorkerTestTransport?: SharedWorkerTestTransport;
+}
+
+type EnvironmentValue = string | undefined;
+type PageEnvironment = Readonly<Record<string, EnvironmentValue>>;
+
+const originalEnvironmentBySignal = new WeakMap<
+  AbortSignal,
+  Map<string, EnvironmentValue>
+>();
+
+function applyPageEnvironment(
+  env: PageEnvironment | undefined,
+  signal: AbortSignal,
+): void {
+  if (!env) {
+    return;
+  }
+  let originals = originalEnvironmentBySignal.get(signal);
+  if (!originals) {
+    const originalValues = new Map<string, EnvironmentValue>();
+    originals = originalValues;
+    originalEnvironmentBySignal.set(signal, originalValues);
+    signal.addEventListener(
+      "abort",
+      () => {
+        for (const [key, value] of originalValues) {
+          vi.stubEnv(key, value);
+        }
+        originalEnvironmentBySignal.delete(signal);
+      },
+      { once: true },
+    );
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (!originals.has(key)) {
+      const current: unknown = import.meta.env[key];
+      originals.set(key, typeof current === "string" ? current : undefined);
+    }
+    vi.stubEnv(key, value);
+  }
 }
 
 const DEFAULT_USER: MockedUser = {
@@ -159,6 +199,7 @@ async function setupPageAsync(
   pageRendered: () => void,
 ): Promise<void> {
   ensureTestLocalStorage();
+  applyPageEnvironment(options.env, options.context.signal);
   await initializeI18n(options.locale ?? DEFAULT_LOCALE);
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any
@@ -221,15 +262,13 @@ async function setupPageAsync(
     setupSharedWorkerTestBootstrap$,
     {
       appVersion: options.sharedWorkerAppVersion ?? TEST_APP_VERSION,
+      clerk: Promise.resolve(mockedClerk),
       workerStore: options.context.workerStore,
       identity:
         auth.user && activeOrgId
           ? { userId: auth.user.id, orgId: activeOrgId }
           : null,
       transport: options.sharedWorkerTestTransport ?? "direct",
-      ...(options.afterSharedDatabaseWorkerHeartbeat
-        ? { afterHeartbeat: options.afterSharedDatabaseWorkerHeartbeat }
-        : {}),
     },
     options.context.signal,
   );
@@ -244,6 +283,7 @@ async function setupPageAsync(
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
   // act" warnings are suppressed in setup.ts.
+  options.context.signal.throwIfAborted();
   const runtime = options.context.store.set(
     bootstrap$,
     options.appVersion ?? TEST_APP_VERSION,

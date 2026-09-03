@@ -1,21 +1,20 @@
+// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+
 import { fireEvent, screen } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 
 import {
   mockedClerk,
   mockSignInResource,
 } from "../../../__tests__/mock-auth.ts";
 import { fill, setupPage } from "../../../__tests__/page-helper.ts";
-import { AUTH_V2_DIAGNOSTIC_EVENT } from "../../../lib/posthog.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
-vi.hoisted(() => {
-  const posthogKey = "phc_auth_v2_diagnostics_test";
-  vi.stubEnv("VITE_POSTHOG_KEY", posthogKey);
-  return { posthogKey };
-});
-
 const context = testContext();
+const AUTH_V2_DIAGNOSTIC_EVENT = "auth_v2_diagnostic";
+const PAGE_ENV = {
+  VITE_POSTHOG_KEY: "phc_platform_test",
+} as const;
 
 function diagnosticCalls(): unknown[][] {
   return context.mocks
@@ -38,7 +37,13 @@ function containingForm(element: HTMLElement): HTMLFormElement {
 
 function setupSignIn(path = "/sign-in"): Promise<void> {
   context.mocks.posthog();
-  return setupPage({ context, host: "app.vm0.ai", path, auth: null });
+  return setupPage({
+    context,
+    host: "app.vm0.ai",
+    path,
+    auth: null,
+    env: PAGE_ENV,
+  });
 }
 
 test("Provider errors do not leak account identifiers", async () => {

@@ -13,6 +13,7 @@ import {
 import {
   customConnectorOAuth2Contract,
   customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorValuesContract,
   customConnectorsContract,
   type CustomConnectorHttpResponse,
@@ -245,8 +246,10 @@ function customConnector(
   });
 }
 
-function mcpCustomConnector(): CustomConnectorMcpResponse {
-  return {
+function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     storageVersion: 1,
@@ -277,7 +280,8 @@ function mcpCustomConnector(): CustomConnectorMcpResponse {
     configuredFieldKeys: [],
     createdAt: "2026-08-11T00:00:00Z",
     updatedAt: "2026-08-11T00:00:00Z",
-  };
+    ...overrides,
+  });
 }
 
 function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
@@ -453,6 +457,94 @@ test("Connect and authorize a manual MCP connector", async () => {
   });
 });
 
+test("Let an MCP server discover authentication from a directed connection", async () => {
+  const connectionId = "a0000000-0000-4000-a000-000000000095";
+  let connected = false;
+  let grants: AgentCustomConnectorGrant[] = [];
+  const connector = mcpCustomConnector({
+    displayName: "Discovery MCP",
+    slug: "_discovery-mcp",
+    fields: [],
+    headerInjections: [],
+    queryInjections: [],
+    authMode: "automatic",
+    missingRequiredFields: [],
+    configuredFieldKeys: [],
+  });
+  context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+    return respond(200, {
+      connectors: [
+        {
+          ...connector,
+          connected,
+          ...(connected
+            ? {
+                connectedAccountId: connectionId,
+                connectedAccountUpdatedAt: "2026-08-11T00:00:01Z",
+              }
+            : {}),
+        },
+      ],
+    });
+  });
+  context.mocks.api(
+    customConnectorOAuth2Contract.start,
+    ({ body, params, respond }) => {
+      expect(params.id).toBe(connector.id);
+      expect(body.account).toStrictEqual({ intent: "add" });
+      connected = true;
+      return respond(200, {
+        result: "authorization",
+        authorizationUrl: "https://mcp.discovery.test/authorize",
+        connectionId,
+      });
+    },
+  );
+  context.mocks.api(
+    agentCustomConnectorsContract.update,
+    ({ body, params, respond }) => {
+      expect(params.id).toBe(AGENT_ID);
+      grants = body.grants;
+      return respond(200, { grants });
+    },
+  );
+  const authWindow = context.mocks.browser.authWindow();
+  authWindow.closed = true;
+  Object.defineProperty(authWindow, "location", {
+    value: { href: "" },
+    configurable: true,
+  });
+  context.mocks.browser.open(authWindow);
+
+  await setupPage({
+    context,
+    path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+    featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+  });
+
+  await expect(
+    screen.findByText("Zero needs Discovery MCP to proceed"),
+  ).resolves.toBeVisible();
+  click(getButtonByText("Connect"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Connect Discovery MCP",
+  });
+  expect(dialog).toHaveTextContent(
+    "Continue while Okou checks how this MCP server authenticates.",
+  );
+  click(getButtonByText("Continue", dialog));
+
+  await waitFor(() => {
+    expect(authWindow.location.href).toBe(
+      "https://mcp.discovery.test/authorize",
+    );
+    expect(grants).toStrictEqual([
+      { customConnectorId: connector.id, permissionNames: [] },
+    ]);
+    expect(screen.getByText("Discovery MCP connected")).toBeInTheDocument();
+  });
+});
+
 test("Reconnect the exact manual custom-connector account", async () => {
   const connectionId = crypto.randomUUID();
   const connector = customConnector({
@@ -569,6 +661,7 @@ test("Connect and authorize a custom OAuth connector", async () => {
       expect(body.account).toStrictEqual({ intent: "add" });
       connected = true;
       return respond(200, {
+        result: "authorization",
         authorizationUrl: "https://acme.test/oauth/authorize",
         connectionId,
       });
@@ -656,6 +749,7 @@ test("Reconnect the exact custom OAuth account", async () => {
       });
       connectedAccountUpdatedAt = "2026-01-01T00:00:01Z";
       return respond(200, {
+        result: "authorization",
         authorizationUrl: "https://acme.test/oauth/reconnect",
         connectionId: siblingConnectionId,
       });
@@ -739,6 +833,7 @@ test("Preserve existing agent permissions after connecting custom OAuth", async 
       expect(body.account).toStrictEqual({ intent: "add" });
       connected = true;
       return respond(200, {
+        result: "authorization",
         authorizationUrl: "https://acme.test/oauth/authorize",
         connectionId,
       });

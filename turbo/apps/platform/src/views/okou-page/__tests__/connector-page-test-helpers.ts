@@ -279,6 +279,9 @@ export function mockCustomConnectorStory(context: TestContext): void {
     return respond(200, { connectors });
   });
   context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+    if (body.kind === "mcp" || body.authMode === "automatic") {
+      throw new Error("Expected an HTTP custom connector");
+    }
     const created = customConnector({
       displayName: body.displayName,
       prefixTemplates: body.prefixTemplates ?? [],

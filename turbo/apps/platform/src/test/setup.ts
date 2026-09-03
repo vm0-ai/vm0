@@ -27,11 +27,6 @@ for (const [name, content] of [
   document.head.append(meta);
 }
 
-vi.hoisted(() => {
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", "test_preview_key");
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", "test_production_key");
-});
-
 globalThis.IDBCursor = IDBCursor;
 globalThis.IDBCursorWithValue = IDBCursorWithValue;
 globalThis.IDBDatabase = IDBDatabase;

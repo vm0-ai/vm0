@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
@@ -160,30 +160,6 @@ test("Startup onboarding follows the current account and workspace", async () =>
   expect(
     screen.queryByRole("heading", { name: "What do you want to make first" }),
   ).not.toBeInTheDocument();
-});
-
-test("Okou production uses the Okou authentication domain", async () => {
-  const clerk = context.mocks.clerk();
-  await setupPage({
-    context,
-    host: "app.okou.ai",
-    path: "/sign-in",
-    auth: null,
-  });
-
-  await waitFor(() => {
-    expect(clerk.resourceRequests).toContainEqual({
-      domain: "app.okou.ai",
-      publishableKey: "test_production_key",
-    });
-    expect(clerk.loads).toContainEqual({
-      afterSignOutUrl: "https://app.vm0.ai/sign-in",
-      isSatellite: true,
-      satelliteAutoSync: true,
-      signInUrl: "https://app.vm0.ai/sign-in",
-      signUpUrl: "https://app.vm0.ai/sign-up",
-    });
-  });
 });
 
 test("VM0 production uses production authentication", async () => {

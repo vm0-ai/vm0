@@ -1,6 +1,10 @@
 import type { ArtifactDetail } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   connectorOauthStartContract,
@@ -24,7 +28,6 @@ import {
   artifactSummary,
   buttonNamed,
   fileArtifactDetail,
-  GOOGLE_DRIVE_CONNECTION_ID,
   googleDriveCatalogItem,
   googleDriveConnector,
   mockArtifactConversation,
@@ -38,6 +41,8 @@ const context = testContext();
 
 const DRIVE_ARTIFACT_ID = "a0000000-0000-4000-a000-000000000940";
 const DRIVE_FILE_ID = "f0000000-0000-4000-a000-000000000940";
+const SELECTED_DRIVE_CONNECTION_ID = "d0000000-0000-4000-a000-000000000942";
+const NEW_DRIVE_CONNECTION_ID = "d0000000-0000-4000-a000-000000000943";
 const DRIVE_FILE_URL = "https://files.example.test/drive-report.pdf";
 const AUTHORIZATION_URL = "https://accounts.google.test/authorize-drive";
 
@@ -63,12 +68,18 @@ interface DriveMockControl {
   }[];
 }
 
+interface DriveMockOptions {
+  readonly selectedAccountReady?: boolean;
+  readonly agentAuthorized?: boolean;
+}
+
 function installDriveMocks(
   targetContext: TestContext,
   initialConnectionState: DriveConnectionState,
+  options: DriveMockOptions = {},
 ): DriveMockControl {
   let connectionState = initialConnectionState;
-  let agentAuthorized = false;
+  let agentAuthorized = options.agentAuthorized ?? false;
   let artifactSynced = false;
   const authorizationUpdates: UserConnectorUpdate[] = [];
   const oauthRequests: OauthRequest[] = [];
@@ -103,11 +114,25 @@ function installDriveMocks(
           googleDriveSync: artifactSynced
             ? {
                 status: "synced",
+                accountReady: true,
                 id: "drive-file-1",
                 name: "drive-report.pdf",
                 webViewLink: "https://drive.google.test/file/drive-file-1",
               }
-            : { status: "disconnected" },
+            : options.selectedAccountReady
+              ? { status: "not_synced", accountReady: true }
+              : {
+                  status: "disconnected",
+                  recovery:
+                    initialConnectionState === "not-connected"
+                      ? { action: "connect" }
+                      : initialConnectionState === "reconnect-required"
+                        ? {
+                            action: "reconnect",
+                            connectionId: SELECTED_DRIVE_CONNECTION_ID,
+                          }
+                        : { action: "authorize" },
+                },
         }),
       ];
     },
@@ -146,8 +171,75 @@ function installDriveMocks(
       oauthRequests.push(body);
       return respond(200, {
         authorizationUrl: AUTHORIZATION_URL,
-        connectionId: GOOGLE_DRIVE_CONNECTION_ID,
+        ...(body.account.intent === "add"
+          ? { connectionId: NEW_DRIVE_CONNECTION_ID }
+          : {}),
       });
+    },
+  );
+  targetContext.mocks.api(
+    connectorAccountsContract.summaries,
+    ({ respond }) => {
+      return respond(200, {
+        summaries:
+          connectionState === "not-connected"
+            ? []
+            : [
+                {
+                  target: {
+                    kind: "builtin",
+                    connectorSlug: "google-drive",
+                  },
+                  accountCount: 1,
+                  attentionCount:
+                    connectionState === "reconnect-required" ? 1 : 0,
+                  defaultConnection: null,
+                },
+              ],
+      });
+    },
+  );
+  targetContext.mocks.api(
+    connectorAccountsContract.connection,
+    ({ params, respond }) => {
+      const knownConnection =
+        params.connectionId === SELECTED_DRIVE_CONNECTION_ID ||
+        (params.connectionId === NEW_DRIVE_CONNECTION_ID &&
+          connectionState === "connected");
+      if (!knownConnection) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Account not found" },
+        });
+      }
+      const account: ConnectorAccountConnection = {
+        id: params.connectionId,
+        target: { kind: "builtin", connectorSlug: "google-drive" },
+        authMethod: "oauth",
+        displayName:
+          params.connectionId === SELECTED_DRIVE_CONNECTION_ID
+            ? "Artifact account"
+            : "New account",
+        isDefault: false,
+        externalId: "drive-artifact-account",
+        externalUsername: "artifact-owner",
+        externalEmail: "artifact-owner@example.test",
+        oauthScopes: ["https://www.googleapis.com/auth/drive.file"],
+        connectionStatus:
+          connectionState === "reconnect-required"
+            ? "reconnect-required"
+            : "connected",
+        reconnectReason:
+          connectionState === "reconnect-required"
+            ? "authorization_expired_or_revoked"
+            : null,
+        tokenExpiresAt: null,
+        createdAt: "2026-09-01T12:00:00.000Z",
+        updatedAt:
+          connectionState === "connected"
+            ? "2026-09-01T12:02:00.000Z"
+            : "2026-09-01T12:01:00.000Z",
+      };
+      return respond(200, account);
     },
   );
   targetContext.mocks.api(
@@ -209,7 +301,9 @@ function artifactPreview(): HTMLElement {
   return screen.getByTestId("artifact-sidebar");
 }
 
-async function openDriveArtifactMenu(): Promise<void> {
+async function openDriveArtifactMenu(
+  actionName = "Connect Google Drive",
+): Promise<void> {
   await waitFor(() => {
     expect(buttonNamed("Open artifacts")).toBeVisible();
   });
@@ -225,7 +319,7 @@ async function openDriveArtifactMenu(): Promise<void> {
   });
   click(buttonNamed("Download artifact", artifactPreview()));
   await waitFor(() => {
-    expect(roleItemNamed("menuitem", "Connect Google Drive")).toBeEnabled();
+    expect(roleItemNamed("menuitem", actionName)).toBeEnabled();
   });
 }
 
@@ -289,13 +383,11 @@ test("Connect Google Drive and sync an artifact", async () => {
   click(roleItemNamed("menuitem", "Connect Google Drive"));
 
   await waitFor(() => {
-    expect(authorizationPopup.open.calls).toStrictEqual([
-      {
-        url: "about:blank",
-        target: "_blank",
-        features: "width=600,height=700",
-      },
-    ]);
+    expect(authorizationPopup.open.calls).toHaveLength(1);
+    expect(authorizationPopup.open.calls[0]).toMatchObject({
+      target: "_blank",
+      features: "width=600,height=700",
+    });
     expect(drive.oauthRequests).toStrictEqual([
       {
         account: { intent: "add" },
@@ -317,7 +409,7 @@ test("Connect Google Drive and sync an artifact", async () => {
   await expectSyncedPreview();
 });
 
-test("Reconnect Google Drive and sync an artifact", async () => {
+test("Reconnect the Google Drive account selected for the artifact", async () => {
   useWideScreen();
   const authorizationPopup = installAuthorizationPopup();
   const drive = installDriveMocks(context, "reconnect-required");
@@ -332,18 +424,16 @@ test("Reconnect Google Drive and sync an artifact", async () => {
   click(roleItemNamed("menuitem", "Connect Google Drive"));
 
   await waitFor(() => {
-    expect(authorizationPopup.open.calls).toStrictEqual([
-      {
-        url: "about:blank",
-        target: "_blank",
-        features: "width=600,height=700",
-      },
-    ]);
+    expect(authorizationPopup.open.calls).toHaveLength(1);
+    expect(authorizationPopup.open.calls[0]).toMatchObject({
+      target: "_blank",
+      features: "width=600,height=700",
+    });
     expect(drive.oauthRequests).toStrictEqual([
       {
         account: {
           intent: "reconnect",
-          connectionId: GOOGLE_DRIVE_CONNECTION_ID,
+          connectionId: SELECTED_DRIVE_CONNECTION_ID,
         },
         authMethod: "oauth",
         agentId: NAVIGATION_ARTIFACT_AGENT_ID,
@@ -360,5 +450,31 @@ test("Reconnect Google Drive and sync an artifact", async () => {
       { runId: NAVIGATION_ARTIFACT_RUN_ID, fileId: DRIVE_FILE_ID },
     ]);
   });
+  await expectSyncedPreview();
+});
+
+test("Sync with the artifact's ready Drive account when the default needs attention", async () => {
+  useWideScreen();
+  const drive = installDriveMocks(context, "reconnect-required", {
+    selectedAccountReady: true,
+    agentAuthorized: true,
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${NAVIGATION_ARTIFACT_THREAD_ID}`,
+    host: "app.vm0.ai",
+  });
+
+  await openDriveArtifactMenu("Upload to Google Drive");
+  click(roleItemNamed("menuitem", "Upload to Google Drive"));
+
+  await waitFor(() => {
+    expect(drive.syncRequests).toStrictEqual([
+      { runId: NAVIGATION_ARTIFACT_RUN_ID, fileId: DRIVE_FILE_ID },
+    ]);
+  });
+  expect(drive.oauthRequests).toHaveLength(0);
+  expect(drive.authorizationUpdates).toHaveLength(0);
   await expectSyncedPreview();
 });

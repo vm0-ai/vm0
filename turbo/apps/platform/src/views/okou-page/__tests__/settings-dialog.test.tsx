@@ -68,6 +68,7 @@ function createPreferences(
     supportedLocales,
     pinnedAgentIds: [],
     sendMode: "enter",
+    cloudBrowserEnabledByDefault: true,
     theme: "system",
     colorTheme: "blue-horizon",
     captureNetworkBodiesRemaining: 0,

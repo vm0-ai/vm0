@@ -24,6 +24,7 @@ import {
   agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
 
 import {
   click,
@@ -256,7 +257,7 @@ async function openGithubWorkflowRun(): Promise<void> {
 
 function chooseMakeOption(name: string): void {
   const radio = queryAllByRoleFast("radio").find((candidate) => {
-    return new RegExp(name, "u").test(candidate.textContent ?? "");
+    return candidate.textContent?.includes(name) ?? false;
   });
   if (!radio) {
     throw new Error(`Radio not found for ${name}`);
@@ -762,6 +763,17 @@ test("Workflow drafts can be created after connectors are connected", async () =
 });
 
 test("A user can leave the catalog to create a custom workflow", async () => {
+  let completedTimezone: string | undefined;
+  context.mocks.api(
+    onboardingCompleteContract.complete,
+    ({ body, respond }) => {
+      completedTimezone = body.timezone;
+      return respond(200, {
+        onboardingComplete: true,
+        needsOnboarding: false,
+      });
+    },
+  );
   await openMakePage();
   chooseMakeOption("Workflow automation");
 
@@ -779,6 +791,9 @@ test("A user can leave the catalog to create a custom workflow", async () => {
   await waitFor(() => {
     expect(pathname()).not.toMatch(/^\/onboarding/u);
   });
+  expect(completedTimezone).toBe(
+    new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  );
 });
 
 test("Okou custom workflow onboarding addresses Okou by default", async () => {

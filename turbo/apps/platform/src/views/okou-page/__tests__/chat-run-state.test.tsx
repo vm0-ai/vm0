@@ -114,19 +114,25 @@ test("Show one cancellation outcome for an interrupted run", async () => {
 });
 
 test("Finish a run and return the composer to send mode", async () => {
-  const lifecycle = installRunChat();
+  const lifecycle = installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: [
+      promptEvent({
+        id: "complete-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Finish the release notes",
+      }),
+    ],
+  });
 
   await setupPage({ context, path: RUN_PATH });
 
   await readyChat();
-  await sendText("Finish the release notes");
   await expect(
     screen.findByText("Finish the release notes"),
   ).resolves.toBeVisible();
   await expect(findButton("Stop")).resolves.toBeVisible();
-  await waitFor(() => {
-    expect(context.mocks.ably.hasSharedDatabaseSubscription()).toBeTruthy();
-  });
 
   lifecycle.completeRun("## Release notes\n\n- Deployment is ready");
 
@@ -389,6 +395,7 @@ test("Show thinking while a newly accepted prompt starts", async () => {
   await waitFor(() => {
     expect(screen.getAllByText("Start the pending analysis")).toHaveLength(1);
     expect(queryButton("Stop")).not.toBeNull();
+    expect(context.mocks.ably.hasSharedDatabaseSubscription()).toBeTruthy();
   });
 
   lifecycle.completeRun("The pending analysis is complete.");

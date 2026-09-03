@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@clerk/clerk-js/no-rhc": path.resolve(
+        __dirname,
+        "./src/test/mocks/clerk-worker.ts",
+      ),
       "@clerk/shared/loadClerkJsScript": path.resolve(
         __dirname,
         "./src/test/mocks/clerk-resource.ts",
@@ -52,6 +56,11 @@ export default defineConfig({
     },
     globals: true,
     environment: "happy-dom",
+    env: {
+      VITE_CLERK_PUBLISHABLE_KEY_PREVIEW: "test_preview_key",
+      VITE_CLERK_PUBLISHABLE_KEY_PROD: "test_production_key",
+      VITE_POSTHOG_KEY: "phc_platform_test",
+    },
     environmentOptions: {
       happyDOM: {
         settings: {

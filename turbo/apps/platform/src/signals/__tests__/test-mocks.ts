@@ -20,6 +20,10 @@ import {
 } from "../../mocks/handlers/clerk-localizations.ts";
 import { mockClerkResource } from "../../test/mocks/clerk-resource.ts";
 import {
+  mockClerkWorker,
+  type ClerkWorkerMock,
+} from "../../test/mocks/clerk-worker.ts";
+import {
   mockSentry,
   type SentryMock,
 } from "../../test/mocks/sentry-behavior.ts";
@@ -102,7 +106,24 @@ interface CanvasRender {
   readonly width: number;
 }
 
+interface CanvasClipCircle {
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly endAngle: number;
+  readonly radius: number;
+  readonly startAngle: number;
+}
+
+interface CanvasImageDraw {
+  readonly height: number | undefined;
+  readonly width: number | undefined;
+  readonly x: number;
+  readonly y: number;
+}
+
 interface CanvasRenderingMock {
+  readonly clipCircles: CanvasClipCircle[];
+  readonly imageDraws: CanvasImageDraw[];
   readonly renders: CanvasRender[];
 }
 
@@ -220,6 +241,7 @@ interface ClerkMock {
   readonly loads: readonly (MockedClerkLoadOptions | undefined)[];
   readonly localizationRequests: ClerkLocalizationLocale[];
   readonly resourceRequests: ClerkResourceRequest[];
+  readonly worker: ClerkWorkerMock;
   readonly loaded: (loaded: boolean) => void;
   readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;
   readonly organization: (...args: Parameters<typeof mockOrganization>) => void;
@@ -648,6 +670,7 @@ function mockClerk(
   const localizationRequests: ClerkLocalizationLocale[] = [];
   const unavailableLocalizations = new Set<ClerkLocalizationLocale>();
   const resource = mockClerkResource(signal);
+  const worker = mockClerkWorker(signal);
   const originalClerk = Reflect.get(globalThis, "Clerk");
   const hadOriginalClerk = Reflect.has(globalThis, "Clerk");
 
@@ -682,6 +705,7 @@ function mockClerk(
     },
     localizationRequests,
     resourceRequests: resource.requests,
+    worker,
     loaded: mockClerkLoaded,
     localizationUnavailable(locale): void {
       unavailableLocalizations.add(locale);
@@ -1295,17 +1319,41 @@ function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
 }
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
+  const clipCircles: CanvasClipCircle[] = [];
+  const imageDraws: CanvasImageDraw[] = [];
   const renders: CanvasRender[] = [];
   const context = {
     fillStyle: "",
     imageSmoothingEnabled: false,
     imageSmoothingQuality: "low",
-    arc() {},
+    arc(
+      centerX: number,
+      centerY: number,
+      radius: number,
+      startAngle: number,
+      endAngle: number,
+    ) {
+      clipCircles.push({
+        centerX,
+        centerY,
+        radius,
+        startAngle,
+        endAngle,
+      });
+    },
     arcTo() {},
     beginPath() {},
     clip() {},
     closePath() {},
-    drawImage() {},
+    drawImage(
+      _image: CanvasImageSource,
+      x: number,
+      y: number,
+      width?: number,
+      height?: number,
+    ) {
+      imageDraws.push({ height, width, x, y });
+    },
     fill() {},
     fillRect() {},
     fillText() {},
@@ -1350,7 +1398,7 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
     toBlob.mockRestore();
   });
 
-  return { renders };
+  return { clipCircles, imageDraws, renders };
 }
 
 function defineWindowProperty(

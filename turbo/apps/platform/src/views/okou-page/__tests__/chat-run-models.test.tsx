@@ -94,6 +94,7 @@ function limitedFreeBillingStatus(): BillingStatusResponse {
 function failedRunEvents(
   error: string,
   model: SupportedRunModel,
+  failureReason?: MockChatEventInput["failureReason"],
 ): MockChatEventInput[] {
   return [
     promptEvent({
@@ -110,6 +111,7 @@ function failedRunEvents(
       content: null,
       runId: RUN_A,
       error,
+      ...(failureReason === undefined ? {} : { failureReason }),
       runLifecycleEvent: "failed",
       seqId: 2,
       createdAt: "2026-08-01T10:00:02.000Z",
@@ -416,7 +418,7 @@ test("Mark model and speed transitions between runs", async () => {
   ).toHaveLength(3);
 });
 
-test("Explain known model limit and capacity errors", async () => {
+test("A Codex capacity failure offers a neutral retry", async () => {
   configureModelPolicies(["gpt-5.6-sol", "gpt-5.6-luna"]);
   installRunChat({
     selectedModel: "gpt-5.6-sol",
@@ -434,10 +436,88 @@ test("Explain known model limit and capacity errors", async () => {
 
   await readyChat();
   const recovery = await screen.findByRole("status");
-  expect(recovery).toHaveTextContent("Codex model is busy");
-  expect(recovery).toHaveTextContent("This model is temporarily at capacity.");
+  expect(recovery).toHaveTextContent("This model is busy right now");
+  expect(recovery).toHaveTextContent("Try again shortly, or switch models.");
+  expect(queryButton("Try again", recovery)).toBeVisible();
   expect(recovery).not.toHaveTextContent(
     "Selected model is at capacity. Please try a different model.",
+  );
+});
+
+test("A structured capacity failure offers recovery despite generic provider text", async () => {
+  const providerError = "The provider could not complete this run.";
+  configureModelPolicies(["gpt-5.6-sol", "gpt-5.6-luna"]);
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    chatEvents: failedRunEvents(
+      providerError,
+      "gpt-5.6-sol",
+      "provider_overloaded",
+    ),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+  });
+
+  await readyChat();
+  const recovery = await screen.findByRole("status");
+  expect(recovery).toHaveTextContent("This model is busy right now");
+  expect(queryButton("Try again", recovery)).toBeVisible();
+  expect(recovery).not.toHaveTextContent(providerError);
+});
+
+test("An unknown structured failure does not infer recovery from provider text", async () => {
+  const providerError =
+    "Selected model is at capacity. Please try a different model.";
+  configureModelPolicies(["gpt-5.6-sol", "gpt-5.6-luna"]);
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    chatEvents: failedRunEvents(
+      providerError,
+      "gpt-5.6-sol",
+      "future_provider_condition",
+    ),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+  });
+
+  await readyChat();
+  expect(screen.getByText(providerError)).toBeVisible();
+  expect(
+    screen.queryByText("This model is busy right now"),
+  ).not.toBeInTheDocument();
+});
+
+test("A Claude Code capacity failure offers a neutral retry", async () => {
+  configureModelPolicies(["claude-opus-4-8", "gpt-5.6-luna"]);
+  installRunChat({
+    selectedModel: "claude-opus-4-8",
+    chatEvents: failedRunEvents(
+      "Claude is overloaded and temporarily at capacity.",
+      "claude-opus-4-8",
+    ),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+  });
+
+  await readyChat();
+  const recovery = await screen.findByRole("status");
+  expect(recovery).toHaveTextContent("This model is busy right now");
+  expect(recovery).toHaveTextContent("Try again shortly, or switch models.");
+  expect(queryButton("Try again", recovery)).toBeVisible();
+  expect(recovery).not.toHaveTextContent(
+    "Claude is overloaded and temporarily at capacity.",
   );
 });
 
@@ -536,7 +616,7 @@ test("Recover when a model is at capacity", async () => {
   expect(within(paidOnlyOption).getByText("Pro")).toBeVisible();
   await user.keyboard("{Escape}");
 
-  click(await findButton("Continue"));
+  click(await findButton("Try again"));
 
   await expect(screen.findByText("continue")).resolves.toBeVisible();
   await expect(findButton("Stop")).resolves.toBeVisible();
@@ -607,7 +687,9 @@ test("Preserve provider errors that have no guided recovery", async () => {
 
   await readyChat();
   expect(screen.getByText(providerError)).toBeVisible();
-  expect(screen.queryByText("Codex model is busy")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("This model is busy right now"),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("combobox", { name: "Switch model" }),
   ).not.toBeInTheDocument();

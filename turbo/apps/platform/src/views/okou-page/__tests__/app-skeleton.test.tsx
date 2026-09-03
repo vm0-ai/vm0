@@ -27,7 +27,7 @@ function createBootstrapSkeleton(): HTMLDivElement {
   return skeleton;
 }
 
-test("The loading surface yields cleanly to ready content", async () => {
+test("The bootstrap loading surface yields cleanly to ready content", async () => {
   const bootstrapSkeleton = createBootstrapSkeleton();
 
   const pageReady = setupPage({ context, path: "/_/error" });
@@ -48,4 +48,30 @@ test("The loading surface yields cleanly to ready content", async () => {
   fireEvent.transitionEnd(bootstrapSkeleton);
 
   expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+});
+
+test("The application loading surface uses an inline illustration", async () => {
+  const clerkLoad = context.mocks.clerk().runtimePending();
+
+  const pageReady = setupPage({
+    context,
+    host: "app.vm0.ai",
+    path: "/agents",
+  });
+
+  const applicationSkeleton = await screen.findByTestId("app-skeleton");
+  expect(applicationSkeleton).toBeVisible();
+  expect(applicationSkeleton.querySelector("svg")).not.toBeNull();
+  expect(applicationSkeleton.querySelectorAll("path").length).toBeGreaterThan(
+    0,
+  );
+  expect(applicationSkeleton.querySelector("img")).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Agents" })).toBeNull();
+
+  clerkLoad.resolve();
+  await pageReady;
+
+  await expect(
+    screen.findByRole("heading", { name: "Agents" }),
+  ).resolves.toBeVisible();
 });

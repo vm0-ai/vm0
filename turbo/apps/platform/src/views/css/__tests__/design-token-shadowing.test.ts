@@ -22,6 +22,9 @@ test("Platform colors stay consistent with the shared design system", () => {
     return token.startsWith("--color-state-");
   });
 
-  expect(shadowedTokens).toStrictEqual(["--color-sidebar"]);
+  expect(shadowedTokens).toStrictEqual([
+    "--color-sidebar",
+    "--color-sidebar-rail",
+  ]);
   expect(interactionStateTokens).toStrictEqual([]);
 });

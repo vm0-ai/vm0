@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
@@ -241,6 +242,37 @@ test("Restore a rich saved draft when a chat opens", async () => {
   });
   expect(composer).toHaveTextContent("Referenced launch chat");
   expect(composer).toHaveTextContent("Preserve the launch date");
+});
+
+test("Restore an unfinished voice draft when a chat opens", async () => {
+  const thread = continuityThread(6, 1, "Voice draft conversation");
+  const draft = continuityDraft([
+    {
+      type: "voice",
+      id: "a7000000-0000-4000-a000-000000000601",
+      transcript: "Raw launch notes captured before navigation",
+    },
+  ]);
+  const workspace = await installContinuityWorkspace(context, {
+    caseId: 6,
+    threads: [thread],
+    drafts: new Map([[thread.id, draft]]),
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    auth: workspace.auth,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceDraft = await screen.findByLabelText("Voice draft");
+  expect(voiceDraft).toBeVisible();
+  expect(voiceDraft).toHaveTextContent(
+    "Raw launch notes captured before navigation",
+  );
+  expect(fastButton("Finish", voiceDraft)).toBeEnabled();
+  expect(fastButton("Remove voice draft", voiceDraft)).toBeEnabled();
 });
 
 test("Save and clear typed drafts consistently", async () => {

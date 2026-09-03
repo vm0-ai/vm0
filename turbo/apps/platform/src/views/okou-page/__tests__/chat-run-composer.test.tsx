@@ -67,7 +67,11 @@ test("Enable completion notifications after a visible send", async () => {
     },
   });
 
-  await setupPage({ context, path: NEW_CHAT_PATH });
+  await setupPage({
+    context,
+    path: NEW_CHAT_PATH,
+    env: { VITE_VAPID_PUBLIC_KEY_PREVIEW: "AQIDBA" },
+  });
 
   await readyChat();
   await waitFor(() => {

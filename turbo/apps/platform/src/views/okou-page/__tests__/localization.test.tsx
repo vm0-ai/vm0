@@ -36,9 +36,11 @@ function preferences(
   return {
     timezone: "UTC",
     locale: "en-US",
+    translationLanguage: null,
     supportedLocales: [...SUPPORTED_USER_LOCALES],
     pinnedAgentIds: [],
     sendMode: "enter",
+    cloudBrowserEnabledByDefault: true,
     theme: "system",
     colorTheme: "blue-horizon",
     captureNetworkBodiesRemaining: 0,

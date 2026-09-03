@@ -23,9 +23,11 @@ function defaultPreferences(): UserPreferencesResponse {
   return {
     timezone: "Etc/UTC",
     locale: "en-US",
+    translationLanguage: null,
     supportedLocales: ["en-US", "pt-BR"],
     pinnedAgentIds: [],
     sendMode: "enter",
+    cloudBrowserEnabledByDefault: true,
     theme: "system",
     colorTheme: "blue-horizon",
     captureNetworkBodiesRemaining: 0,
@@ -102,6 +104,47 @@ test("Existing device appearance choices are preserved when account settings are
       theme: "dark",
       colorTheme: "daydream",
     });
+  });
+});
+
+test("An Okou theme cookie restores an empty account preference", async () => {
+  context.store.set(setStoredTheme$, "light");
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.dark");
+  const updates = mockPreferences({ theme: null });
+
+  await setupPage({
+    context,
+    path: "/settings",
+    host: "app.okou.ai",
+  });
+
+  await expect(
+    screen.findByText("Your preferred color scheme"),
+  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expectSelected(getFastRole("button", "Dark"));
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(updates).toContainEqual({ theme: "dark" });
+  });
+});
+
+test("An Okou account preference replaces an older theme cookie", async () => {
+  context.store.set(setStoredTheme$, "light");
+  context.mocks.browser.cookie("__Secure-okou-theme=v1.light");
+  mockPreferences({ theme: "dark" });
+
+  await setupPage({
+    context,
+    path: "/settings",
+    host: "app.okou.ai",
+  });
+
+  await expect(
+    screen.findByText("Your preferred color scheme"),
+  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expectSelected(getFastRole("button", "Dark"));
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 });
 
@@ -208,6 +251,51 @@ test("Gradient color themes stay hidden when the capability is disabled", async 
     "data-gradient-color-themes",
   );
   expect(document.documentElement).not.toHaveAttribute("data-color-theme");
+});
+
+test("Cloud browser defaults stay hidden without the preference capability", async () => {
+  mockPreferences({ cloudBrowserEnabledByDefault: false });
+
+  await setupPage({
+    context,
+    path: "/settings",
+    host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.CloudBrowserPreference]: false },
+  });
+
+  await expect(screen.findByText("Send message with")).resolves.toBeVisible();
+  expect(screen.queryByRole("switch", { name: "Cloud browser" })).toBeNull();
+  expect(
+    screen.queryByText("Let agents use a cloud browser in new chats"),
+  ).toBeNull();
+});
+
+test("A user can save the Cloud browser default for new chats", async () => {
+  const updates = mockPreferences({ cloudBrowserEnabledByDefault: false });
+
+  await setupPage({
+    context,
+    path: "/settings",
+    host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.CloudBrowserPreference]: true },
+  });
+
+  await expect(
+    screen.findByText(
+      "Choose defaults for new chats and how messages are sent.",
+    ),
+  ).resolves.toBeVisible();
+  const cloudBrowser = screen.getByRole("switch", {
+    name: "Cloud browser",
+  });
+  expect(cloudBrowser).not.toBeChecked();
+
+  click(cloudBrowser);
+
+  await waitFor(() => {
+    expect(updates).toContainEqual({ cloudBrowserEnabledByDefault: true });
+    expect(screen.getByRole("switch", { name: "Cloud browser" })).toBeChecked();
+  });
 });
 
 test("Localized preference labels save the same account choices", async () => {

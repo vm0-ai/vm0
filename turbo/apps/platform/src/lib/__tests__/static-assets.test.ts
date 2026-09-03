@@ -94,12 +94,20 @@ const OKOU_PAGE_ILLUSTRATIONS = Object.freeze({
   planTeamImg,
 });
 
-test("Avatars and the loading skeleton remain available during startup", () => {
+test("Generated avatar assets keep their published address", () => {
   expect(avatarSvgAssetUrl("head-1.svg")).toContain(
     `${FROZEN_CDN_PREFIX}assets/avatar-svg/`,
   );
-  expect(indexHtml).toContain('class="app-bootstrap-skeleton__avatar-layers"');
-  expect(indexHtml).not.toMatch(/id="app-bootstrap-skeleton"[^]*<img\s/iu);
+});
+
+test("The bootstrap loading illustration is inline", () => {
+  const document = new DOMParser().parseFromString(indexHtml, "text/html");
+  const skeleton = document.getElementById("app-bootstrap-skeleton");
+  expect(
+    skeleton?.querySelector(".app-bootstrap-skeleton__avatar-layers"),
+  ).not.toBeNull();
+  expect(skeleton?.querySelectorAll("path").length).toBeGreaterThan(0);
+  expect(skeleton?.querySelector("img")).toBeNull();
 });
 
 test("Feishu setup-guide images remain available", () => {

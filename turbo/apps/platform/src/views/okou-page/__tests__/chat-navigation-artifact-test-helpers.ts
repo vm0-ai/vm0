@@ -124,15 +124,7 @@ export function artifactRun(options: {
   readonly contentType: string;
   readonly fileId: string;
   readonly filename: string;
-  readonly googleDriveSync?:
-    | { readonly status: "disconnected" }
-    | { readonly status: "not_synced" }
-    | {
-        readonly status: "synced";
-        readonly id: string;
-        readonly name: string;
-        readonly webViewLink: string | null;
-      };
+  readonly googleDriveSync?: ChatThreadArtifactRun["files"][number]["googleDriveSync"];
   readonly url: string;
 }): ChatThreadArtifactRun {
   return {

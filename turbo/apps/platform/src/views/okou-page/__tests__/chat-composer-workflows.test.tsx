@@ -109,7 +109,9 @@ function structuredTemplateReferences(): HTMLElement[] {
 }
 
 function workflowHighlights(editor: HTMLElement): HTMLElement[] {
-  return Array.from(editor.querySelectorAll<HTMLElement>("span.text-primary"));
+  return Array.from(
+    editor.querySelectorAll<HTMLElement>("span.text-brand-text"),
+  );
 }
 
 function composerForThread(threadId: string): HTMLElement {
@@ -504,7 +506,7 @@ test("Insert an attached workflow with slash suggestions", async () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
   const emphasizedMatch = slashButton("/sales-research").querySelector(
-    String.raw`span.text-primary\/60`,
+    String.raw`span.text-brand-text\/60`,
   );
   expect(emphasizedMatch).toHaveTextContent("research");
 

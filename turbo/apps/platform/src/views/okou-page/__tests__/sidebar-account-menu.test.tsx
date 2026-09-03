@@ -750,7 +750,9 @@ test("Review personal subscription usage in the account menu", async () => {
   mockNow(new Date("2030-01-01T00:48:00.000Z"), context.signal);
   mockAdminAccountSidebar();
   context.mocks.data.personalModelProviders([
-    connectedPersonalCodexProvider(),
+    connectedPersonalCodexProvider({
+      subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:48:00.000Z",
+    }),
     connectedPersonalClaudeCodeProvider(),
   ]);
 
@@ -786,7 +788,8 @@ test("Review personal subscription usage in the account menu", async () => {
   expect(within(panel).getByText("55%")).toBeInTheDocument();
   expect(within(panel).getByText("88%")).toBeInTheDocument();
   expect(within(panel).getByText("76%")).toBeInTheDocument();
-  expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
+  const resetCredits = within(panel).getByText("2 resets left · expires in 3d");
+  expect(resetCredits).toBeInTheDocument();
   expect(within(panel).queryByText(/^resets /)).not.toBeInTheDocument();
   expect(
     within(panel).queryByText(/codex\.user@example\.com/),
@@ -802,6 +805,15 @@ test("Review personal subscription usage in the account menu", async () => {
     expectVisibleText("Resets in 4h 12m");
     expectVisibleText(
       formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
+    );
+  });
+  fireEvent.focus(resetCredits);
+  await waitFor(() => {
+    expectVisibleText(
+      `Soonest reset expires ${formatResetInTimeZone(
+        "2030-01-04T00:48:00.000Z",
+        "America/New_York",
+      )}`,
     );
   });
 
@@ -869,12 +881,19 @@ test("Reset Codex usage from the account menu", async () => {
   expect(within(panel).getByText("1 reset left")).toBeInTheDocument();
 });
 
-test("Refresh subscription usage without blanking known values", async () => {
+test("Reuse recent subscription usage, then refresh without blanking it", async () => {
+  const openedAt = new Date("2030-01-01T00:48:00.000Z").getTime();
+  mockNow(openedAt, context.signal);
   mockAdminAccountSidebar();
-  context.mocks.data.personalModelProviders([
+  let modelProviders: ModelProviderResponse[] = [
     connectedPersonalCodexProvider(),
     connectedPersonalClaudeCodeProvider(),
-  ]);
+  ];
+  let requestCount = 0;
+  context.mocks.api(personalModelProvidersMainContract.list, ({ respond }) => {
+    requestCount += 1;
+    return respond(200, { modelProviders });
+  });
 
   await setupPage({
     context,
@@ -892,8 +911,9 @@ test("Refresh subscription usage without blanking known values", async () => {
   let menu = await openAccountMenu();
   let panel = await within(menu).findByTestId("account-menu-subscriptions");
   expect(within(panel).getByText("82%")).toBeInTheDocument();
+  const requestsAfterFirstOpen = requestCount;
 
-  context.mocks.data.personalModelProviders([
+  modelProviders = [
     connectedPersonalCodexProvider({
       subscriptionUsage: {
         fiveHour: {
@@ -911,7 +931,7 @@ test("Refresh subscription usage without blanking known values", async () => {
       },
     }),
     connectedPersonalClaudeCodeProvider(),
-  ]);
+  ];
 
   expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
   fireEvent.keyDown(document.body, { key: "Escape" });
@@ -919,10 +939,23 @@ test("Refresh subscription usage without blanking known values", async () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  mockNow(openedAt + 59_999, context.signal);
   menu = await openAccountMenu();
   panel = await within(menu).findByTestId("account-menu-subscriptions");
+  expect(requestCount).toBe(requestsAfterFirstOpen);
+  expect(within(panel).getByText("82%")).toBeInTheDocument();
+  expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
 
+  fireEvent.keyDown(document.body, { key: "Escape" });
   await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  mockNow(openedAt + 60_000, context.signal);
+  menu = await openAccountMenu();
+  panel = await within(menu).findByTestId("account-menu-subscriptions");
+  await waitFor(() => {
+    expect(requestCount).toBe(requestsAfterFirstOpen + 1);
     expect(within(panel).getByText("64%")).toBeInTheDocument();
     expect(within(panel).getByText("30%")).toBeInTheDocument();
   });
@@ -943,6 +976,7 @@ test("Refresh subscription usage without blanking known values", async () => {
     },
   );
 
+  mockNow(openedAt + 120_000, context.signal);
   menu = await openAccountMenu();
   panel = await within(menu).findByTestId("account-menu-subscriptions");
   await refreshStarted.promise;

@@ -1,5 +1,7 @@
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -22,6 +24,14 @@ function featureSwitchGroup(name: string): HTMLElement {
     throw new Error(`${name} feature group not found`);
   }
   return section;
+}
+
+function buttonNamed(name: string): HTMLElement {
+  const button = screen.getByText(name).closest("button");
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`${name} button not found`);
+  }
+  return button;
 }
 
 test("Lab remains available while onboarding is required", async () => {
@@ -55,7 +65,7 @@ test("Lab remains available while onboarding is required", async () => {
   );
 });
 
-test("Lab groups every feature by rollout stage without personal controls", async () => {
+test("Lab groups every feature by rollout stage with a switch", async () => {
   await setupPage({
     context,
     path: "/_/lab",
@@ -67,24 +77,147 @@ test("Lab groups every feature by rollout stage without personal controls", asyn
   const released = featureSwitchGroup("Released");
   const beta = featureSwitchGroup("Beta");
   const alpha = featureSwitchGroup("Alpha");
-  const featureRows = [released, beta, alpha].flatMap((group) => {
+  const internal = featureSwitchGroup("Internal");
+  const featureRows = [released, beta, alpha, internal].flatMap((group) => {
     return Array.from(group.querySelectorAll("li"));
   });
 
   expect(featureRows).toHaveLength(Object.values(FeatureSwitchKey).length);
+  expect(screen.getAllByRole("switch")).toHaveLength(featureRows.length);
   expect(
-    new Set(
-      featureRows.map((row) => {
-        return row.textContent?.trim();
-      }),
-    ).size,
-  ).toBe(featureRows.length);
-  expect(within(released).getByText(FeatureSwitchKey.Dummy)).toBeVisible();
-  expect(within(beta).getByText(FeatureSwitchKey.Lab)).toBeVisible();
-  expect(within(alpha).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
-  expect(document.querySelectorAll('[role="switch"]')).toHaveLength(0);
-  expect(screen.queryByText("Reset all")).not.toBeInTheDocument();
-  expect(screen.queryByText(/^Maintainer:/u)).not.toBeInTheDocument();
+    within(released).getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+  ).toBeVisible();
+  expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
+  expect(within(beta).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
+  expect(
+    within(beta).getByText(FeatureSwitchKey.DesktopScreenRecording),
+  ).toBeVisible();
+  expect(
+    within(alpha).getByText(FeatureSwitchKey.AhrefsConnector),
+  ).toBeVisible();
+  expect(
+    within(internal).getByText(FeatureSwitchKey.TestOauthConnector),
+  ).toBeVisible();
+  expect(buttonNamed("Reset all")).toBeEnabled();
+});
+
+test("A user can filter Lab features by maintainer", async () => {
+  const user = userEvent.setup();
+
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: { [FeatureSwitchKey.Lab]: true },
+  });
+  await screen.findByRole("heading", { name: "Lab" });
+
+  await user.click(buttonNamed("lancy"));
+
+  expect(
+    screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+  ).toBeVisible();
+  expect(
+    screen.queryByText(FeatureSwitchKey.AhrefsConnector),
+  ).not.toBeInTheDocument();
+
+  await user.click(buttonNamed("All"));
+
+  expect(screen.getByText(FeatureSwitchKey.AhrefsConnector)).toBeVisible();
+});
+
+test("A user can toggle a Lab feature and reset all overrides", async () => {
+  const user = userEvent.setup();
+  const updatedSwitches: Record<string, boolean>[] = [];
+  let resetRequested = false;
+
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.TestOauthConnector]: false,
+    },
+  });
+  await screen.findByRole("heading", { name: "Lab" });
+
+  let effectiveSwitches: Record<string, boolean> = {
+    [FeatureSwitchKey.Lab]: true,
+    [FeatureSwitchKey.TestOauthConnector]: false,
+  };
+  context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+    return respond(200, {
+      switches: effectiveSwitches,
+      effectiveSwitches,
+    });
+  });
+  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+    updatedSwitches.push(body.switches);
+    effectiveSwitches = { ...effectiveSwitches, ...body.switches };
+    return respond(200, {
+      switches: effectiveSwitches,
+      effectiveSwitches,
+    });
+  });
+  context.mocks.api(featureSwitchesContract.delete, ({ respond }) => {
+    resetRequested = true;
+    effectiveSwitches = { [FeatureSwitchKey.Lab]: true };
+    return respond(200, { deleted: true });
+  });
+
+  const feature = featureSwitchRow(FeatureSwitchKey.TestOauthConnector);
+  const featureControl = within(feature).getByRole("switch");
+  expect(featureControl).not.toBeChecked();
+
+  await user.click(featureControl);
+
+  await waitFor(() => {
+    expect(featureControl).toBeChecked();
+  });
+  expect(updatedSwitches).toStrictEqual([
+    { [FeatureSwitchKey.TestOauthConnector]: true },
+  ]);
+
+  await user.click(buttonNamed("Reset all"));
+
+  await waitFor(() => {
+    expect(resetRequested).toBeTruthy();
+    expect(featureControl).not.toBeChecked();
+  });
+});
+
+test("The Notion automation switch writes only its canonical key", async () => {
+  const user = userEvent.setup();
+  const updates: Record<string, boolean>[] = [];
+
+  await setupPage({
+    context,
+    path: "/_/lab",
+    featureSwitches: {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
+    },
+  });
+  await screen.findByRole("heading", { name: "Lab" });
+
+  context.mocks.api(featureSwitchesContract.update, ({ body, respond }) => {
+    updates.push(body.switches);
+    return respond(200, {
+      switches: body.switches,
+      effectiveSwitches: body.switches,
+    });
+  });
+
+  await user.click(
+    within(
+      featureSwitchRow(FeatureSwitchKey.NotionWorkflowAutomations),
+    ).getByRole("switch"),
+  );
+
+  await waitFor(() => {
+    expect(updates).toStrictEqual([
+      { [FeatureSwitchKey.NotionWorkflowAutomations]: false },
+    ]);
+  });
 });
 
 test("Lab orders features by name within each rollout stage", async () => {
@@ -96,10 +229,10 @@ test("Lab orders features by name within each rollout stage", async () => {
 
   await screen.findByRole("heading", { name: "Lab" });
 
-  const codexFastMode = featureSwitchRow(FeatureSwitchKey.CodexFastMode);
   const banking = featureSwitchRow(FeatureSwitchKey.Banking);
+  const codexFastMode = featureSwitchRow(FeatureSwitchKey.CodexFastMode);
   expect(
-    codexFastMode.compareDocumentPosition(banking) &
+    banking.compareDocumentPosition(codexFastMode) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
 });
@@ -121,4 +254,6 @@ test("Lab localizes rollout stages in Brazilian Portuguese", async () => {
   expect(featureSwitchGroup("Lançados")).toBeVisible();
   expect(featureSwitchGroup("Beta")).toBeVisible();
   expect(featureSwitchGroup("Alfa")).toBeVisible();
+  expect(featureSwitchGroup("Internos")).toBeVisible();
+  expect(buttonNamed("Redefinir tudo")).toBeVisible();
 });

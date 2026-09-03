@@ -1,7 +1,7 @@
 import { agentsByIdContract } from "@okouai/api-contracts/contracts/agents";
 import { avatarVideoContract } from "@okouai/api-contracts/contracts/avatar-video";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
@@ -33,8 +33,21 @@ const DESKTOP_HANDOFF_SWITCHES = {
   [FeatureSwitchKey.IntroVideo]: true,
 } as const;
 
-function installIntroVideoFixture(): void {
-  installMessageExperienceChat();
+type MessageExperienceOptions = NonNullable<
+  Parameters<typeof installMessageExperienceChat>[0]
+>;
+
+function installIntroVideoFixture(
+  options: MessageExperienceOptions = {},
+): void {
+  installMessageExperienceChat(options);
+  context.mocks.upload.success({
+    id: "f0000000-0000-4000-a000-000000000051",
+    filename: "launch.pdf",
+    contentType: "application/pdf",
+    size: 13,
+    url: "https://files.example.test/launch.pdf",
+  });
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     expect(params.id).toBe(MESSAGE_EXPERIENCE_AGENT_ID);
     return respond(200, {
@@ -75,15 +88,15 @@ async function openIntroVideoDialog(): Promise<HTMLElement> {
   });
 }
 
-async function uploadLaunchPdf(
+async function uploadLaunchPresentation(
   user: ReturnType<typeof userEvent.setup>,
   dialog: HTMLElement,
 ): Promise<void> {
   const input = dialog.querySelector<HTMLInputElement>(
-    '[data-intro-video-document-input=""]',
+    '[data-intro-video-presentation-input=""]',
   );
   if (!input) {
-    throw new Error("Intro-video document input not found");
+    throw new Error("Intro-video presentation input not found");
   }
   await user.upload(
     input,
@@ -102,6 +115,38 @@ async function clickDialogButton(
   name: string,
 ): Promise<void> {
   click(await findFastControl("button", name, dialog));
+}
+
+async function reviewWithoutAvatar(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+): Promise<void> {
+  await uploadLaunchPresentation(user, dialog);
+  await reviewSourceWithoutAvatar(dialog, "No voiceover");
+}
+
+async function reviewSourceWithoutAvatar(
+  dialog: HTMLElement,
+  voice: "No voiceover" | "Original audio",
+): Promise<void> {
+  await clickDialogButton(dialog, "Next");
+  await expect(
+    within(dialog).findByText("Choose a voice"),
+  ).resolves.toBeVisible();
+  click(buttonContaining(dialog, voice));
+  await clickDialogButton(dialog, "Next");
+  await expect(
+    within(dialog).findByText("Review your intro video"),
+  ).resolves.toBeVisible();
+}
+
+function resolveDesktopRecordingFiles(): void {
+  context.mocks.http.get("/api/web/file-url", ({ request }) => {
+    const id = new URL(request.url).searchParams.get("file_id");
+    return HttpResponse.json({
+      url: `https://resolved.example/${id ?? "missing"}`,
+    });
+  });
 }
 
 function buttonContaining(container: ParentNode, text: string): HTMLElement {
@@ -125,7 +170,7 @@ test("An uploaded deck opens at the presenter without requiring source review", 
   });
 
   const dialog = await openIntroVideoDialog();
-  await uploadLaunchPdf(user, dialog);
+  await uploadLaunchPresentation(user, dialog);
   expect(
     within(dialog).queryByText("Where should the presenter stand?"),
   ).toBeNull();
@@ -157,7 +202,7 @@ test("Leaving the presenter step discards an uploaded deck", async () => {
   });
 
   const dialog = await openIntroVideoDialog();
-  await uploadLaunchPdf(user, dialog);
+  await uploadLaunchPresentation(user, dialog);
   await clickDialogButton(dialog, "Back");
 
   await expect(
@@ -166,6 +211,110 @@ test("Leaving the presenter step discards an uploaded deck", async () => {
   expect(buttonContaining(dialog, "Avatar")).toBeDisabled();
   expect(buttonContaining(dialog, "Voice")).toBeDisabled();
   expect(within(dialog).queryByText("launch.pdf")).toBeNull();
+});
+
+test("A generic source file opens at the presenter", async () => {
+  const user = userEvent.setup({ delay: null });
+  installIntroVideoFixture();
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+  });
+
+  const dialog = await openIntroVideoDialog();
+  const input = dialog.querySelector<HTMLInputElement>(
+    '[data-intro-video-file-input=""]',
+  );
+  if (!input) {
+    throw new Error("Intro-video file input not found");
+  }
+  await user.upload(
+    input,
+    new File(["speaker notes"], "speaker-notes.txt", {
+      type: "text/plain",
+    }),
+  );
+
+  await expect(
+    within(dialog).findByText("Choose an avatar"),
+  ).resolves.toBeVisible();
+  expect(within(dialog).queryByText("Your source is ready")).toBeNull();
+});
+
+test("A presentation video request does not invent editing direction, opening, or ending", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+  });
+
+  const dialog = await openIntroVideoDialog();
+  await reviewWithoutAvatar(user, dialog);
+  expect(within(dialog).getByLabelText("Editing instructions")).toHaveValue("");
+
+  await clickDialogButton(dialog, "Create in chat");
+
+  await waitFor(() => {
+    expect(submittedPrompt).toBeDefined();
+  });
+  expect(submittedPrompt).toContain(
+    "Create a polished video from the attached source.",
+  );
+  expect(submittedPrompt).toContain(
+    "Do not add an opening or ending unless the user explicitly requests them.",
+  );
+  expect(submittedPrompt).not.toContain(
+    "Create a polished intro video from the attached source.",
+  );
+  expect(submittedPrompt).not.toContain("Editing direction:");
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
+});
+
+test("Pass the user's intro-video editing direction to the new chat", async () => {
+  const user = userEvent.setup({ delay: null });
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+  });
+
+  const dialog = await openIntroVideoDialog();
+  await reviewWithoutAvatar(user, dialog);
+  await user.type(
+    within(dialog).getByLabelText("Editing instructions"),
+    "Keep the pacing brisk and end on the launch date.",
+  );
+
+  await clickDialogButton(dialog, "Create in chat");
+
+  await waitFor(() => {
+    expect(submittedPrompt).toContain("Editing direction:");
+    expect(submittedPrompt).toContain(
+      "Keep the pacing brisk and end on the launch date.",
+    );
+  });
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
 });
 
 test("Screen recording hands the user off to the desktop app", async () => {
@@ -198,14 +347,56 @@ test("Screen recording hands the user off to the desktop app", async () => {
   ).resolves.toBeVisible();
 });
 
+test("A desktop recording video request does not invent an opening or ending", async () => {
+  let submittedPrompt: string | undefined;
+  installIntroVideoFixture({
+    onSendRequest(body) {
+      submittedPrompt = body.prompt;
+    },
+  });
+  resolveDesktopRecordingFiles();
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat?${new URLSearchParams(DESKTOP_HANDOFF_PARAMS).toString()}`,
+    featureSwitches: DESKTOP_HANDOFF_SWITCHES,
+  });
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Create an intro video",
+  });
+  await expect(
+    within(dialog).findByText("Your source is ready"),
+  ).resolves.toBeVisible();
+  await clickDialogButton(dialog, "Next");
+  await expect(
+    within(dialog).findByText("Choose an avatar"),
+  ).resolves.toBeVisible();
+  await reviewSourceWithoutAvatar(dialog, "Original audio");
+
+  await clickDialogButton(dialog, "Create in chat");
+
+  await waitFor(() => {
+    expect(submittedPrompt).toBeDefined();
+  });
+  expect(submittedPrompt).toContain(
+    "Create a polished video from the attached source.",
+  );
+  expect(submittedPrompt).toContain(
+    "Do not add an opening or ending unless the user explicitly requests them.",
+  );
+  expect(submittedPrompt).not.toContain(
+    "Create a polished intro video from the attached source.",
+  );
+  expect(submittedPrompt).toContain("- Source: demo.mp4");
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
+});
+
 test("A desktop recording survives leaving the presenter step", async () => {
   installIntroVideoFixture();
-  context.mocks.http.get("/api/web/file-url", ({ request }) => {
-    const id = new URL(request.url).searchParams.get("file_id");
-    return HttpResponse.json({
-      url: `https://resolved.example/${id ?? "missing"}`,
-    });
-  });
+  resolveDesktopRecordingFiles();
 
   await setupPage({
     context,

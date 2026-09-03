@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
@@ -6,7 +6,10 @@ import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
-import { AVATAR_PRESET_COUNT } from "@okouai/core/agent-avatar";
+import {
+  AVATAR_PRESET_COUNT,
+  DEFAULT_AGENT_AVATAR_URL,
+} from "@okouai/core/agent-avatar";
 
 import {
   click,
@@ -18,6 +21,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const AGENT_ID = "a0000000-0000-4000-a000-000000000020";
 
 function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
@@ -61,7 +65,7 @@ function prepareAgentProfile(avatarUrl = "preset:0"): {
 
   context.mocks.data.agents([
     {
-      agentId: "c0000000-0000-4000-a000-000000000001",
+      agentId: DEFAULT_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
       description: null,
@@ -113,6 +117,56 @@ test("Show an agent’s saved avatar preset", async () => {
     expect.stringContaining("/face-r5-f5-m.svg"),
     expect.stringContaining("/hair-r5-h2-c2.svg"),
   ]);
+});
+
+test("Keep the default agent’s canonical identity read-only", async () => {
+  const defaultAgent: AgentResponse = {
+    agentId: DEFAULT_AGENT_ID,
+    ownerId: "test-user-123",
+    description: "The default assistant",
+    displayName: "Okou",
+    sound: "professional",
+    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+    visibility: "public",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+  };
+  context.mocks.data.agents([defaultAgent]);
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+    return respond(200, defaultAgent);
+  });
+  context.mocks.api(agentInstructionsContract.get, ({ respond }) => {
+    return respond(200, { content: null, filename: null });
+  });
+  context.mocks.data.onboardingStatus({ defaultAgentId: DEFAULT_AGENT_ID });
+
+  await setupPage({
+    context,
+    path: `/agents/${DEFAULT_AGENT_ID}?tab=profile`,
+  });
+
+  const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+  const avatarRow = avatarLabel.parentElement?.parentElement;
+  if (!avatarRow) {
+    throw new Error("Avatar profile row not found");
+  }
+  expect(within(avatarRow).getByRole("img", { name: "Okou" })).toHaveAttribute(
+    "src",
+    DEFAULT_AGENT_AVATAR_URL,
+  );
+  expect(screen.queryByLabelText("Customize avatar")).not.toBeInTheDocument();
+  expect(
+    within(avatarRow).queryByLabelText("Create custom avatar"),
+  ).not.toBeInTheDocument();
+
+  const nameLabel = screen.getByText("Name", { selector: "p" });
+  const nameRow = nameLabel.parentElement?.parentElement;
+  if (!nameRow) {
+    throw new Error("Name profile row not found");
+  }
+  expect(within(nameRow).getByText("Okou")).toBeVisible();
+  expect(within(nameRow).queryByLabelText("Name")).not.toBeInTheDocument();
 });
 
 test("Edit and save an agent profile", async () => {

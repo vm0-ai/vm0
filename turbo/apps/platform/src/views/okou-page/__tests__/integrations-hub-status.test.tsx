@@ -2,11 +2,7 @@ import { integrationsGithubContract } from "@okouai/api-contracts/contracts/inte
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import {
-  click,
-  fill,
-  holdElementAnimations,
-} from "../../../__tests__/page-helper.ts";
+import { click } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   getAction,
@@ -20,31 +16,6 @@ import {
 const context = testContext();
 const PHONE_HANDLE = "+15555550123";
 
-async function openPhoneVerification(): Promise<{
-  readonly dialog: HTMLElement;
-  readonly phoneInput: HTMLElement;
-  readonly status: HTMLElement;
-}> {
-  context.mocks.data.agentPhoneIntegration({
-    linked: false,
-    agentPhoneNumber: "+19039853128",
-    configured: true,
-  });
-  await setupIntegrationsPage(context);
-
-  const phoneCard = await screen.findByText("Phone");
-  expect(phoneCard).toBeInTheDocument();
-  click(getAction("button", "Connect phone"));
-
-  const dialog = await screen.findByRole("dialog", { name: "Connect phone" });
-  const phoneInput = within(dialog).getByLabelText("Phone number");
-  await fill(phoneInput, PHONE_HANDLE);
-  click(getAction("button", "Send verification", dialog));
-  const status = await within(dialog).findByRole("status");
-  expect(status).toHaveTextContent(PHONE_HANDLE);
-  return { dialog, phoneInput, status };
-}
-
 function publishPhoneLinked(): void {
   context.mocks.data.agentPhoneIntegration({
     linked: true,
@@ -53,25 +24,6 @@ function publishPhoneLinked(): void {
     configured: true,
   });
   context.mocks.ably.trigger("agentphone:changed");
-}
-
-async function disconnectAndOpenPhone(): Promise<HTMLElement> {
-  click(
-    await waitFor(() => {
-      return getAction("button", "Phone options");
-    }),
-  );
-  click(
-    await waitFor(() => {
-      return getAction("button", "Disconnect");
-    }),
-  );
-  click(
-    await waitFor(() => {
-      return getAction("button", "Connect phone");
-    }),
-  );
-  return screen.findByRole("dialog", { name: "Connect phone" });
 }
 
 test("Integrations show current status and refresh after GitHub connects", async () => {
@@ -189,56 +141,50 @@ test("Open Telegram settings from Integrations", async () => {
   ).resolves.toBeInTheDocument();
 });
 
-test("Phone verification closes cleanly when connection completes", async () => {
-  const first = await openPhoneVerification();
-  const finishAutomaticClose = holdElementAnimations(first.dialog);
-
-  publishPhoneLinked();
-
-  await waitFor(() => {
-    expect(getIntegrationCard("Phone")).toHaveTextContent(PHONE_HANDLE);
-  });
-  expect(first.dialog).toBeVisible();
-  expect(first.phoneInput).toHaveValue(PHONE_HANDLE);
-  expect(first.status).toBeVisible();
-  finishAutomaticClose();
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Connect phone" }),
-    ).not.toBeInTheDocument();
+test("A user connects AgentPhone through the inbound message flow", async () => {
+  context.mocks.data.agentPhoneIntegration({
+    linked: false,
+    agentPhoneNumber: "+19039853128",
+    configured: true,
   });
 
-  const secondDialog = await disconnectAndOpenPhone();
-  const secondInput = within(secondDialog).getByLabelText("Phone number");
-  expect(secondInput).toHaveValue("");
-  expect(within(secondDialog).queryByRole("status")).toBeNull();
-  await fill(secondInput, PHONE_HANDLE);
-  click(getAction("button", "Send verification", secondDialog));
-  const secondStatus = await within(secondDialog).findByRole("status");
-  const finishCancelledClose = holdElementAnimations(secondDialog);
+  await setupIntegrationsPage(context);
 
-  click(getAction("button", "Cancel", secondDialog));
+  const phoneCard = await waitFor(() => {
+    return getIntegrationCard("Phone");
+  });
+  expect(phoneCard).toHaveTextContent("iMessage or SMS to+1 (903) 985-3128");
+  click(getAction("button", "Connect phone", phoneCard));
 
-  expect(secondDialog).toBeVisible();
-  expect(secondInput).toHaveValue(PHONE_HANDLE);
-  expect(secondStatus).toBeVisible();
-  finishCancelledClose();
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Connect phone" }),
-    ).not.toBeInTheDocument();
-  });
-  publishPhoneLinked();
-  await waitFor(() => {
-    expect(getIntegrationCard("Phone")).toHaveTextContent(PHONE_HANDLE);
-  });
+  const dialog = await screen.findByRole("dialog", { name: "Connect phone" });
+  expect(dialog).toHaveAccessibleDescription(
+    "Message this AgentPhone number from the phone you want to connect.",
+  );
   expect(
-    screen.queryByRole("dialog", { name: "Connect phone" }),
-  ).not.toBeInTheDocument();
+    within(dialog).getByText(
+      "Use iMessage when possible. SMS and MMS replies may not arrive reliably.",
+    ),
+  ).toBeVisible();
+  expect(within(dialog).getByText("Send “hi”")).toBeVisible();
+  expect(within(dialog).getByText("Open our reply")).toBeVisible();
+  expect(
+    within(dialog).getByText(
+      "Tap the connection link within 10 minutes to finish.",
+    ),
+  ).toBeVisible();
+  expect(getAction("link", "Open Messages", dialog)).toHaveAttribute(
+    "href",
+    "sms:+19039853128?body=hi",
+  );
 
-  const reopened = await disconnectAndOpenPhone();
-  expect(within(reopened).getByLabelText("Phone number")).toHaveValue("");
-  expect(within(reopened).queryByRole("status")).toBeNull();
+  publishPhoneLinked();
+
+  await waitFor(() => {
+    expect(getIntegrationCard("Phone")).toHaveTextContent(PHONE_HANDLE);
+    expect(
+      screen.queryByRole("dialog", { name: "Connect phone" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 test("An admin can begin Microsoft Teams installation", async () => {

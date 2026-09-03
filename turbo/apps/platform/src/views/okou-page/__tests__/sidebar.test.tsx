@@ -545,6 +545,15 @@ function openChatListMenu(): void {
   click(within(sidebar()).getByLabelText("Open chat list menu"));
 }
 
+function chatListNewChatButton(): HTMLElement {
+  const menuButton = within(sidebar()).getByLabelText("Open chat list menu");
+  const actions = menuButton.parentElement;
+  if (!actions) {
+    throw new Error("Chat list actions not found");
+  }
+  return within(actions).getByLabelText("New chat");
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
@@ -983,13 +992,12 @@ test("Create a new chat without hiding existing conversations", async () => {
         "C server third",
       ]),
     ).toStrictEqual(["A server first", "B server second", "C server third"]);
-    return within(sidebar()).getByLabelText("Open chat list menu");
+    return chatListNewChatButton();
   });
 
   context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
 
   click(newChatButton);
-  click(menuItemByText("New chat"));
 
   await waitFor(() => {
     expect(
@@ -1353,8 +1361,11 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
       within(sidebar()).getByText("Existing conversation"),
     ).toBeInTheDocument();
   });
+  expect(chatListNewChatButton()).toBeInTheDocument();
   openChatListMenu();
-  expect(menuItemByText("New chat")).toBeInTheDocument();
+  expect(queryMenuItemByText("New chat")).not.toBeInTheDocument();
+  expect(menuItemByText("All chats")).toBeInTheDocument();
+  expect(menuItemByText("Unread only")).toBeInTheDocument();
 });
 
 test("Mount only the sidebar for the current viewport", async () => {
@@ -1406,6 +1417,7 @@ test("Keep pin management usable with many pinned agents", async () => {
     return respond(200, {
       timezone: null,
       locale: null,
+      translationLanguage: null,
       supportedLocales: [
         "en-US",
         "pt-BR",
@@ -1420,6 +1432,7 @@ test("Keep pin management usable with many pinned agents", async () => {
       ],
       pinnedAgentIds,
       sendMode: "enter",
+      cloudBrowserEnabledByDefault: true,
       theme: "system",
       colorTheme: "blue-horizon",
       captureNetworkBodiesRemaining: 0,
@@ -1737,6 +1750,7 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
     ({ body, respond }) => {
       markedAgentIds.push(body.agentId);
       hasUnread = false;
+      changeChatThreadReadCursor();
       return respond(204);
     },
   );
@@ -1758,8 +1772,16 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
       queryAllByRoleFast("menuitem").map((item) => {
         return item.textContent?.replace(/\s+/g, " ").trim();
       }),
-    ).toStrictEqual(["New chat", "Mark all read", "All chats", "Unread only"]);
+    ).toStrictEqual(["Mark all read", "All chats", "Unread only"]);
   });
+  const menuWithMarkAllRead =
+    document.querySelector<HTMLElement>('[role="menu"]');
+  if (!menuWithMarkAllRead) {
+    throw new Error("Open chat list menu not found");
+  }
+  expect(
+    menuWithMarkAllRead.querySelectorAll('[role="separator"]'),
+  ).toHaveLength(1);
   click(menuItemByText("Mark all read"));
 
   await waitFor(() => {
@@ -1768,7 +1790,22 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
   });
 
   click(within(list).getByLabelText("Open chat list menu"));
-  expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
+  await waitFor(() => {
+    expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("menuitem").map((item) => {
+        return item.textContent?.replace(/\s+/g, " ").trim();
+      }),
+    ).toStrictEqual(["All chats", "Unread only"]);
+    const menuWithoutMarkAllRead =
+      document.querySelector<HTMLElement>('[role="menu"]');
+    if (!menuWithoutMarkAllRead) {
+      throw new Error("Open chat list menu not found");
+    }
+    expect(
+      menuWithoutMarkAllRead.querySelectorAll('[role="separator"]'),
+    ).toHaveLength(0);
+  });
 });
 
 test("Mark all of an agent’s chats read", async () => {
@@ -1790,6 +1827,7 @@ test("Mark all of an agent’s chats read", async () => {
       unreadAgentIds = unreadAgentIds.filter((id) => {
         return id !== body.agentId;
       });
+      changeChatThreadReadCursor();
       return respond(204);
     },
   );
@@ -1865,6 +1903,11 @@ test("Mark conversations read and unread from the sidebar", async () => {
     chatThreadMarkUnreadContract.markUnread,
     ({ params, respond }) => {
       unreadThreadIds.add(params.id);
+      changeChatThreadReadCursor({
+        threadId: params.id,
+        agentId: AGENT_ID,
+        lastReadAt: null,
+      });
       return respond(200, {
         lastReadAt: null,
         unreads: serverUnreads(),

@@ -6,7 +6,7 @@ import {
   writePreviewBypassCookie,
 } from "../preview-bypass-cookie.ts";
 
-test("A protected preview link remains usable on a secure preview host", () => {
+test("A protected preview link creates a secure cookie on its preview host", () => {
   expect(
     buildPreviewBypassCookie({
       hostname: "pr-123-app.omby.ai",
@@ -16,8 +16,11 @@ test("A protected preview link remains usable on a secure preview host", () => {
   ).toBe(
     "x-vercel-protection-bypass=preview-secret; Path=/; Max-Age=3600; SameSite=Lax; Secure",
   );
+});
 
+test("A preview credential is written for the current preview host", () => {
   const setCookie = vi.fn<(cookie: string) => void>();
+
   expect(
     writePreviewBypassCookie(
       {
@@ -45,7 +48,7 @@ test("A protected preview link works in local HTTP development", () => {
   );
 });
 
-test("A preview credential only reaches its matching Platform service", () => {
+test("A preview credential reaches its matching API host", () => {
   const location = {
     hostname: "pr-22085-app.omby.ai",
     protocol: "https:",
@@ -53,29 +56,62 @@ test("A preview credential only reaches its matching Platform service", () => {
   };
   const cookie = "x-vercel-protection-bypass=preview%20secret";
   const apiUrl = new URL("https://pr-22085-api.vm6.ai/api/okou/status");
-  const lookalikeUrl = new URL(
-    "https://pr-22085-api.vm6.ai.evil.example/api/okou/status",
-  );
-  const otherPreviewUrl = new URL(
-    "https://pr-22086-api.vm6.ai/api/okou/status",
-  );
-  const wwwUrl = new URL(
-    "https://pr-22085-www.vm6.ai/connector/success?x-vercel-protection-bypass=stale",
-  );
 
   appendPreviewBypassToUrl(apiUrl, location, cookie);
-  appendPreviewBypassToUrl(lookalikeUrl, location, cookie);
-  appendPreviewBypassToUrl(otherPreviewUrl, location, cookie);
-  appendPreviewBypassToUrl(wwwUrl, location, cookie);
 
   expect(apiUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
     "preview secret",
   );
+});
+
+test("A preview credential does not reach a lookalike API host", () => {
+  const location = {
+    hostname: "pr-22085-app.omby.ai",
+    protocol: "https:",
+    search: "",
+  };
+  const cookie = "x-vercel-protection-bypass=preview%20secret";
+  const lookalikeUrl = new URL(
+    "https://pr-22085-api.vm6.ai.evil.example/api/okou/status",
+  );
+
+  appendPreviewBypassToUrl(lookalikeUrl, location, cookie);
+
   expect(
     lookalikeUrl.searchParams.has("x-vercel-protection-bypass"),
   ).toBeFalsy();
+});
+
+test("A preview credential does not reach another preview API host", () => {
+  const location = {
+    hostname: "pr-22085-app.omby.ai",
+    protocol: "https:",
+    search: "",
+  };
+  const cookie = "x-vercel-protection-bypass=preview%20secret";
+  const otherPreviewUrl = new URL(
+    "https://pr-22086-api.vm6.ai/api/okou/status",
+  );
+
+  appendPreviewBypassToUrl(otherPreviewUrl, location, cookie);
+
   expect(
     otherPreviewUrl.searchParams.has("x-vercel-protection-bypass"),
   ).toBeFalsy();
+});
+
+test("A preview credential does not reach the matching WWW host", () => {
+  const location = {
+    hostname: "pr-22085-app.omby.ai",
+    protocol: "https:",
+    search: "",
+  };
+  const cookie = "x-vercel-protection-bypass=preview%20secret";
+  const wwwUrl = new URL(
+    "https://pr-22085-www.vm6.ai/connector/success?x-vercel-protection-bypass=stale",
+  );
+
+  appendPreviewBypassToUrl(wwwUrl, location, cookie);
+
   expect(wwwUrl.searchParams.has("x-vercel-protection-bypass")).toBeFalsy();
 });

@@ -7,6 +7,7 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
+import { platformOkouWordmarkDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -33,6 +34,7 @@ function getButton(name: string): HTMLButtonElement {
 }
 
 test("Cloud-browser authorization uses the current app's brand", async () => {
+  context.mocks.browser.matchMedia(false);
   mockPendingAuthorization();
 
   await setupPage({
@@ -45,9 +47,16 @@ test("Cloud-browser authorization uses the current app's brand", async () => {
     screen.findByRole("heading", { name: "Enable cloud browser" }),
   ).resolves.toBeVisible();
   const brandLink = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === "Okou";
+    return candidate.querySelector('img[alt="Okou"]') !== null;
   });
+  if (!brandLink) {
+    throw new Error("Expected the Okou brand link");
+  }
   expect(brandLink).toHaveAttribute("href", "/connectors");
+  expect(screen.getByRole("img", { name: "Okou" })).toHaveAttribute(
+    "src",
+    platformOkouWordmarkDarkImg,
+  );
   expect(screen.queryByText("VM0")).toBeNull();
   expect(screen.queryByLabelText("VM0")).toBeNull();
 });

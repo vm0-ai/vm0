@@ -131,6 +131,25 @@ test("A rich artifact preview requires a complete address", async () => {
   expect(preview).toBeVisible();
 });
 
+test("A short Okou artifact link opens as a rich preview", async () => {
+  const shortArtifact = "https://a.okou.io/a1b2c3d4e5.pdf";
+  mockAttachmentChat(context, {
+    chatEvents: [assistantMessage(`[Open the review brief](${shortArtifact})`)],
+  });
+
+  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+
+  const preview = await findNamedLink("Open pdf preview for a1b2c3d4e5.pdf");
+  expect(preview).toHaveAttribute("href", shortArtifact);
+  click(preview);
+  await waitFor(() => {
+    expect(getPreviewFrame("artifact-dialog-document-frame")).toHaveAttribute(
+      "src",
+      `${shortArtifact}#navpanes=0`,
+    );
+  });
+});
+
 test("Image navigation stays within the current message", async () => {
   const first = publicArtifactUrl("gallery-first.png");
   const second = publicArtifactUrl("gallery-second.png");

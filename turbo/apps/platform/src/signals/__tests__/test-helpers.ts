@@ -152,5 +152,5 @@ export function warmMermaidParser(): void {
   beforeAll(async () => {
     const { default: mermaid } = await import("@okouai/mermaid-lite");
     await mermaid.parse("flowchart TD\n  A --> B", { suppressErrors: true });
-  }, 30_000);
+  });
 }

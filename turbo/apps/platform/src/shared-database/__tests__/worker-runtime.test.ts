@@ -12,12 +12,13 @@ import {
 import { openDB } from "idb";
 import { expect, test, vi } from "vitest";
 
+import { createAuthedContractClient } from "../../signals/api-client-base.ts";
+import type { ApiClientFactory } from "../../signals/api-client.ts";
 import { CHAT_IDB_VERSION } from "../../signals/external/chat-idb-schema.ts";
 import {
   chatEventRowsResponse,
   testContext,
 } from "../../signals/__tests__/test-helpers.ts";
-import { createChildAbortController } from "../../signals/utils.ts";
 import type {
   ChatEventDataKey,
   ChatThreadEventDataKey,
@@ -26,20 +27,8 @@ import type {
   SharedDatabaseQuery,
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
-import type { SharedDatabasePortLike } from "../bridge.ts";
-import { SharedDatabaseWorkerContext } from "../worker-host-context.ts";
-import {
-  registerConnection$,
-  setWorkerToken$,
-  type WorkerBroadcastMessage,
-} from "../worker-context.ts";
+import type { WorkerBroadcastMessage } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
-import { createSharedDatabaseContractClientFactory } from "../worker-client.ts";
-import {
-  createSharedDatabaseCredentialStore,
-  heartbeatSharedDatabaseWorker$,
-  querySharedDatabaseWorker$,
-} from "../worker-signals.ts";
 
 const context = testContext();
 const SNAPSHOT_URL = "https://r2.example.com/shared-worker-chat-events.ndjson";
@@ -48,35 +37,12 @@ const WORKER_APP_VERSION = "shared-worker-store-version";
 const AGENT_ID = "c0000000-0000-4000-a000-000000000920";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000920";
 
-class CollectingPort implements SharedDatabasePortLike {
-  readonly messages: WorkerBroadcastMessage[] = [];
-
-  postMessage(value: unknown): void {
-    this.messages.push(value as WorkerBroadcastMessage);
-  }
-
-  start(): void {}
-
-  close(): void {}
-
-  addEventListener(
-    _type: "message",
-    _listener: (event: MessageEvent<unknown>) => void,
-  ): void {}
-
-  removeEventListener(
-    _type: "message",
-    _listener: (event: MessageEvent<unknown>) => void,
-  ): void {}
-}
-
 function identity(
   overrides: Partial<SharedDatabaseIdentity> = {},
 ): SharedDatabaseIdentity {
   return {
     userId: `shared-worker-user-${context.resourceId}`,
     orgId: `shared-worker-org-${context.resourceId}`,
-    token: "initial-token",
     ...overrides,
   };
 }
@@ -158,24 +124,28 @@ function startRuntime(
   vercelProtectionBypass?: string,
 ): RuntimeFixture {
   const events: WorkerBroadcastMessage[] = [];
+  const createContractClient: ApiClientFactory = (contract) => {
+    return createAuthedContractClient(contract, {
+      baseUrl: location.origin,
+      clientVersion: WORKER_APP_VERSION,
+      getRootSignal: () => {
+        return context.signal;
+      },
+      getToken: () => {
+        return Promise.resolve("initial-token");
+      },
+      getVercelProtectionBypass: () => {
+        return vercelProtectionBypass;
+      },
+    });
+  };
   const runtime = new SharedDatabaseWorkerRuntime(
     {
       identity: currentIdentity,
-      apiBaseUrl: location.origin,
-      vercelProtectionBypass,
-      authRecovery: {
-        getToken: () => {
-          return Promise.resolve(currentIdentity.token);
-        },
-        forceRefreshToken: () => {
-          return Promise.resolve(currentIdentity.token);
-        },
-      },
       emit: (event) => {
         events.push(event);
       },
-      createContractClient:
-        createSharedDatabaseContractClientFactory(WORKER_APP_VERSION),
+      createContractClient,
     },
     context.signal,
   );
@@ -190,42 +160,55 @@ async function queryRuntime<TKey extends SharedDatabaseDataKey>(
   return await runtime.query(query, signal);
 }
 
-test("Isolate shared chat data by user and workspace", () => {
-  const workerContext = new SharedDatabaseWorkerContext(
-    context.signal,
-    WORKER_APP_VERSION,
-  );
+test("Keep cached chat data isolated by user and workspace", async () => {
   const firstIdentity = identity();
   const secondIdentity = identity({
     orgId: `${identity().orgId}-second`,
-    token: "second-token",
   });
-  const firstController = createChildAbortController(context.signal);
-  const secondController = createChildAbortController(context.signal);
-  const { binding: firstBinding } = workerContext.bindConnection({
-    connectionId: "first-connection",
-    connectionController: firstController,
-    port: new CollectingPort(),
-    identity: firstIdentity,
-    apiBaseUrl: location.origin,
-    vercelProtectionBypass: undefined,
+  const dataKey = chatEventKey(crypto.randomUUID());
+  const firstRow = chatEventRow(dataKey.threadId, 1);
+  const secondRow = chatEventRow(dataKey.threadId, 2);
+  let availableRows: readonly ChatEventRow[] = [firstRow];
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+        message: "Chat event snapshot not found",
+      },
+    });
   });
-  const { binding: secondBinding } = workerContext.bindConnection({
-    connectionId: "second-connection",
-    connectionController: secondController,
-    port: new CollectingPort(),
-    identity: secondIdentity,
-    apiBaseUrl: location.origin,
-    vercelProtectionBypass: undefined,
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, chatEventRowsResponse(availableRows, query));
   });
 
-  expect(firstBinding.store).not.toBe(secondBinding.store);
-  expect(workerContext.credentialStoreCount()).toBe(2);
+  const firstRuntime = startRuntime(firstIdentity).runtime;
+  const secondRuntime = startRuntime(secondIdentity).runtime;
+  await queryRuntime(firstRuntime, {
+    dataKey,
+    afterSeqId: null,
+    consistency: "catch-up",
+  });
+  availableRows = [secondRow];
+  await queryRuntime(secondRuntime, {
+    dataKey,
+    afterSeqId: null,
+    consistency: "catch-up",
+  });
 
-  firstController.abort();
-  expect(workerContext.credentialStoreCount()).toBe(1);
-  secondController.abort();
-  expect(workerContext.credentialStoreCount()).toBe(0);
+  await expect(
+    queryRuntime(firstRuntime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    }),
+  ).resolves.toStrictEqual([firstRow]);
+  await expect(
+    queryRuntime(secondRuntime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    }),
+  ).resolves.toStrictEqual([secondRow]);
 });
 
 test("Read locally cached chat data without the network", async () => {
@@ -322,6 +305,55 @@ test("Load complete chat history across a snapshot boundary", async () => {
     }),
   ).resolves.toStrictEqual([tailRow]);
   expect(requestedSeqIds).toHaveLength(requestCount);
+});
+
+test("Preserve a future run failure reason from snapshot storage", async () => {
+  const { runtime } = startRuntime();
+  const dataKey = chatEventKey(crypto.randomUUID());
+  const failedRow: ChatEventRow = {
+    id: crypto.randomUUID(),
+    chatThreadId: dataKey.threadId,
+    runId: "a0000000-0000-4000-a000-000000000096",
+    revokesEventId: null,
+    eventType: "run.failed",
+    failureReason: "provider_model_retired",
+    payload: { error: "The selected provider model is no longer available" },
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId: 7,
+    createdAt: CREATED_AT,
+  };
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      url: SNAPSHOT_URL,
+      expiresInSeconds: 900,
+      lastEventId: failedRow.id,
+      lastSeqId: failedRow.seqId,
+    });
+  });
+  context.mocks.http.get(SNAPSHOT_URL, () => {
+    return new Response(snapshotNdjson([failedRow]));
+  });
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, chatEventRowsResponse([], query));
+  });
+
+  await expect(
+    queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "catch-up",
+    }),
+  ).resolves.toStrictEqual([failedRow]);
+  await expect(
+    queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    }),
+  ).resolves.toStrictEqual([failedRow]);
 });
 
 test("Rebuild chat data after its saved cursor expires", async () => {
@@ -472,6 +504,67 @@ test("Rebuild chat data after its saved cursor expires", async () => {
     });
   }
 });
+
+test("Rebuild a cached chat when batched catch-up cannot continue its cursor", async () => {
+  const { runtime } = startRuntime();
+  const dataKey = chatEventKey(crypto.randomUUID());
+  const cachedRow = chatEventRow(dataKey.threadId, 1);
+  const rebuiltRow = chatEventRow(dataKey.threadId, 10);
+  const tailRow = chatEventRow(dataKey.threadId, 11);
+  let rebuilding = false;
+
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    if (!rebuilding) {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    }
+    return respond(200, {
+      url: SNAPSHOT_URL,
+      expiresInSeconds: 900,
+      lastEventId: rebuiltRow.id,
+      lastSeqId: rebuiltRow.seqId,
+    });
+  });
+  context.mocks.http.get(SNAPSHOT_URL, () => {
+    return new Response(snapshotNdjson([rebuiltRow]));
+  });
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(
+      200,
+      chatEventRowsResponse(rebuilding ? [tailRow] : [cachedRow], query),
+    );
+  });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    expect(body).toStrictEqual([[dataKey.threadId, cachedRow.seqId]]);
+    return respond(200, {
+      events: {},
+      notFoundThreads: [dataKey.threadId],
+    });
+  });
+
+  await queryRuntime(runtime, {
+    dataKey,
+    afterSeqId: null,
+    consistency: "catch-up",
+  });
+  rebuilding = true;
+
+  await expect(
+    runtime.catchUpChatEvents([dataKey.threadId], context.signal),
+  ).resolves.toStrictEqual([dataKey.threadId]);
+  await expect(
+    queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "cache-only",
+    }),
+  ).resolves.toStrictEqual([rebuiltRow, tailRow]);
+});
+
 test("Continue online when local chat storage becomes unavailable", async () => {
   const currentIdentity = identity();
   const { events, runtime } = startRuntime(currentIdentity);
@@ -522,140 +615,4 @@ test("Continue online when local chat storage becomes unavailable", async () => 
       consistency: "cache-only",
     }),
   ).resolves.toStrictEqual([]);
-});
-
-test("Wait for a genuinely new token after authentication is rejected", async () => {
-  const store = createSharedDatabaseCredentialStore(
-    {
-      appVersion: WORKER_APP_VERSION,
-      identity: identity(),
-      apiBaseUrl: location.origin,
-      vercelProtectionBypass: undefined,
-    },
-    context.signal,
-  );
-  const firstPort = new CollectingPort();
-  const secondPort = new CollectingPort();
-  const firstController = createChildAbortController(context.signal);
-  const secondController = createChildAbortController(context.signal);
-  const firstSignal = store.set(
-    registerConnection$,
-    "first-connection",
-    firstController,
-    firstPort,
-    firstController.signal,
-  );
-  const secondSignal = store.set(
-    registerConnection$,
-    "second-connection",
-    secondController,
-    secondPort,
-    secondController.signal,
-  );
-  store.set(heartbeatSharedDatabaseWorker$, "first-connection", firstSignal);
-  const dataKey = chatEventKey(crypto.randomUUID());
-  const recoveredRow = chatEventRow(dataKey.threadId, 1);
-  const authorizationHeaders: (string | null)[] = [];
-  context.mocks.api(
-    chatThreadEventsContract.snapshot,
-    ({ request, respond }) => {
-      const authorization = request.headers.get("authorization");
-      authorizationHeaders.push(authorization);
-      if (authorization !== "Bearer replacement-token") {
-        return respond(401, {
-          error: { code: "UNAUTHORIZED", message: "token expired" },
-        });
-      }
-      return respond(404, {
-        error: {
-          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-          message: "Chat event snapshot not found",
-        },
-      });
-    },
-  );
-  context.mocks.api(
-    chatThreadEventsContract.rows,
-    ({ query, request, respond }) => {
-      authorizationHeaders.push(request.headers.get("authorization"));
-      return respond(
-        200,
-        chatEventRowsResponse(
-          query.sinceSeqId === 0 ? [recoveredRow] : [],
-          query,
-        ),
-      );
-    },
-  );
-  const request = {
-    dataKey,
-    afterSeqId: null,
-    consistency: "catch-up" as const,
-  };
-
-  const firstQuery = store.set(
-    querySharedDatabaseWorker$,
-    "first-connection",
-    request,
-    firstSignal,
-  );
-  await vi.waitFor(() => {
-    expect(
-      firstPort.messages.filter((event) => {
-        return event.type === "authentication-required";
-      }),
-    ).toHaveLength(1);
-  });
-  for (const port of [firstPort, secondPort]) {
-    expect(
-      port.messages.filter((event) => {
-        return event.type === "authentication-required";
-      }),
-    ).toHaveLength(1);
-  }
-  const authenticationRequest = firstPort.messages.find((event) => {
-    return event.type === "authentication-required";
-  });
-  if (authenticationRequest?.type !== "authentication-required") {
-    throw new Error("Authentication recovery was not requested");
-  }
-  store.set(
-    setWorkerToken$,
-    "first-connection",
-    authenticationRequest.recoveryId,
-    "initial-token",
-  );
-  await expect(firstQuery).rejects.toMatchObject({
-    name: "SharedDatabaseHttpError",
-  });
-  expect(authorizationHeaders).toStrictEqual([
-    "Bearer initial-token",
-    "Bearer initial-token",
-  ]);
-
-  const recoveredQuery = store.set(
-    querySharedDatabaseWorker$,
-    "second-connection",
-    request,
-    secondSignal,
-  );
-  await vi.waitFor(() => {
-    expect(
-      secondPort.messages.filter((event) => {
-        return event.type === "authentication-required";
-      }),
-    ).toHaveLength(2);
-  });
-  const freshAuthenticationRequest = secondPort.messages.at(-1);
-  if (freshAuthenticationRequest?.type !== "authentication-required") {
-    throw new Error("Fresh authentication recovery was not requested");
-  }
-  store.set(
-    setWorkerToken$,
-    "second-connection",
-    freshAuthenticationRequest.recoveryId,
-    "replacement-token",
-  );
-  await expect(recoveredQuery).resolves.toStrictEqual([recoveredRow]);
-  expect(authorizationHeaders).toContain("Bearer replacement-token");
 });

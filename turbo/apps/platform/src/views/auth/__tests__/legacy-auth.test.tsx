@@ -11,6 +11,7 @@ import {
   testContext,
   type TestContext,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { platformOkouWordmarkDarkImg } from "../../../lib/static-assets.ts";
 import { pushState } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -64,6 +65,7 @@ function setupChooseOrganizationPage(
 }
 
 test("Branded organization selection continues to the trusted destination", async () => {
+  context.mocks.browser.matchMedia(false);
   const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
   const path = `/sign-in/tasks/choose-organization?redirect_url=${encodeURIComponent(
     redirectUrl,
@@ -81,9 +83,16 @@ test("Branded organization selection continues to the trusted destination", asyn
   );
   expect(document.title).toBe("Sign in | Okou");
   const brandLink = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === "Okou";
+    return candidate.getAttribute("aria-label") === "Go to Okou home";
   });
+  if (!brandLink) {
+    throw new Error("Expected the Okou home link");
+  }
   expect(brandLink).toHaveAttribute("href", "https://app.okou.ai");
+  expect(screen.getByRole("img", { name: "Okou" })).toHaveAttribute(
+    "src",
+    platformOkouWordmarkDarkImg,
+  );
 
   click(authV2Button("Continue with Okou Organization"));
 

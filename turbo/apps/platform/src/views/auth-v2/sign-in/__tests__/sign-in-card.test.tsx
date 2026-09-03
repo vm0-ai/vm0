@@ -1885,7 +1885,11 @@ test("Okou account suspension errors use safe branded support information", asyn
   });
   await setupSignInPage(
     { status: "needs_identifier" },
-    { url: "https://app.okou.ai/sign-in" },
+    {
+      url: `https://app.vm0.ai/sign-in?redirect_url=${encodeURIComponent(
+        "https://app.okou.ai/",
+      )}`,
+    },
   );
 
   const identifierInput = await screen.findByLabelText("Email address");

@@ -129,6 +129,7 @@ test("Reload the changed tab before using a new workspace", async () => {
   const agentsHeading = await screen.findByRole("heading", { name: "Agents" });
   expect(agentsHeading).toBeVisible();
   const clerk = context.mocks.clerk();
+  const initialRenewalCount = forcedSessionRenewalCount();
 
   act(() => {
     clerk.organization({
@@ -147,7 +148,5 @@ test("Reload the changed tab before using a new workspace", async () => {
   await waitFor(() => {
     expect(window.location.pathname).toBe("/");
   });
-  expect(mockedClerk.sessionGetToken).toHaveBeenLastCalledWith({
-    skipCache: true,
-  });
+  expect(forcedSessionRenewalCount()).toBe(initialRenewalCount + 1);
 });

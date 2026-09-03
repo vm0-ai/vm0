@@ -1,3 +1,4 @@
+import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import {
@@ -26,6 +27,7 @@ const FIRST_MAIL_ID = "e0000000-0000-4000-a000-000000000853";
 const SECOND_MAIL_ID = "e0000000-0000-4000-a000-000000000854";
 const DETAILS_MAIL_ID = "e0000000-0000-4000-a000-000000000855";
 const GMAIL_CONNECTION_ID = "e0000000-0000-4000-a000-000000000856";
+const DEFAULT_GMAIL_CONNECTION_ID = "e0000000-0000-4000-a000-000000000857";
 const APP_HOST = "app.vm0.ai";
 
 function mailUrl(mailDraftId: string): string {
@@ -136,16 +138,18 @@ function findOpenMailCard(subject: string): Promise<HTMLElement> {
 }
 
 function connectorResponse(args: {
+  readonly connectionId: string;
+  readonly email: string;
   readonly reconnectRequired: boolean;
   readonly updatedAt: string;
 }): ConnectorResponse {
   return {
-    id: GMAIL_CONNECTION_ID,
+    id: args.connectionId,
     slug: "gmail",
     authMethod: "oauth",
-    externalId: "gmail-user-851",
-    externalUsername: "sender@example.com",
-    externalEmail: "sender@example.com",
+    externalId: `gmail-${args.connectionId}`,
+    externalUsername: args.email,
+    externalEmail: args.email,
     oauthScopes: ["https://www.googleapis.com/auth/gmail.modify"],
     connectionStatus: args.reconnectRequired
       ? "reconnect-required"
@@ -190,7 +194,7 @@ function openedAuthorizationWindow(): {
   };
 }
 
-test("Recover mail access after Gmail authorization expires", async () => {
+test("Reconnect the exact Gmail account required by a persisted mail card", async () => {
   const subject = "Reconnect project mail";
   let gmailReady = false;
   installCapabilityChat({
@@ -198,6 +202,14 @@ test("Recover mail access after Gmail authorization expires", async () => {
   });
   context.mocks.data.connectors([
     connectorResponse({
+      connectionId: DEFAULT_GMAIL_CONNECTION_ID,
+      email: "default@example.com",
+      reconnectRequired: false,
+      updatedAt: "2026-08-01T09:00:00.000Z",
+    }),
+    connectorResponse({
+      connectionId: GMAIL_CONNECTION_ID,
+      email: "sender@example.com",
       reconnectRequired: true,
       updatedAt: "2026-08-01T09:00:00.000Z",
     }),
@@ -210,11 +222,14 @@ test("Recover mail access after Gmail authorization expires", async () => {
         mailDraft(RECONNECT_MAIL_ID, {
           subject,
           accessStatus: gmailReady ? "ready" : "reconnect",
+          reconnectConnectionId: gmailReady ? undefined : GMAIL_CONNECTION_ID,
         }),
       ),
     );
   });
-  context.mocks.api(connectorOauthStartContract.start, ({ respond }) => {
+  const oauthAccounts: ConnectorAccountMutationIntent[] = [];
+  context.mocks.api(connectorOauthStartContract.start, ({ body, respond }) => {
+    oauthAccounts.push(body.account);
     return respond(200, {
       authorizationUrl: "https://accounts.example.test/gmail/authorize",
     });
@@ -233,6 +248,9 @@ test("Recover mail access after Gmail authorization expires", async () => {
     expect(authorization.navigations).toContain(
       "https://accounts.example.test/gmail/authorize",
     );
+    expect(oauthAccounts).toStrictEqual([
+      { intent: "reconnect", connectionId: GMAIL_CONNECTION_ID },
+    ]);
   });
   expect(screen.getByText(subject)).toBeVisible();
   await expect(findMailCard(subject)).resolves.toBeVisible();
@@ -240,6 +258,14 @@ test("Recover mail access after Gmail authorization expires", async () => {
   gmailReady = true;
   context.mocks.data.connectors([
     connectorResponse({
+      connectionId: DEFAULT_GMAIL_CONNECTION_ID,
+      email: "default@example.com",
+      reconnectRequired: false,
+      updatedAt: "2026-08-01T09:00:00.000Z",
+    }),
+    connectorResponse({
+      connectionId: GMAIL_CONNECTION_ID,
+      email: "sender@example.com",
       reconnectRequired: false,
       updatedAt: "2026-08-01T10:00:00.000Z",
     }),

@@ -11,6 +11,7 @@ import {
 import {
   publishConnectionDiagnostic,
   type ConnectionDiagnosticEventName,
+  writeConnectionDiagnostic$,
 } from "../../../signals/connection-diagnostics.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -30,15 +31,26 @@ function diagnosticsButton(
 }
 
 async function openConnectionDiagnostics(): Promise<HTMLDetailsElement> {
-  const title = await screen.findByText("Realtime connection diagnostics");
-  const summary = title.closest("summary");
-  const details = title.closest("details");
-  if (!(summary instanceof HTMLElement)) {
-    throw new Error("Connection diagnostics summary not found");
-  }
-  if (!(details instanceof HTMLDetailsElement)) {
-    throw new Error("Connection diagnostics disclosure not found");
-  }
+  return await openDiagnosticsPanel("Realtime connection diagnostics");
+}
+
+async function openDiagnosticsPanel(
+  titleText: string,
+): Promise<HTMLDetailsElement> {
+  const { details, summary } = await waitFor(() => {
+    const title = screen.getAllByText(titleText).find((candidate) => {
+      return candidate.closest("summary") !== null;
+    });
+    const summary = title?.closest("summary");
+    const details = title?.closest("details");
+    if (!(summary instanceof HTMLElement)) {
+      throw new Error("Connection diagnostics summary not found");
+    }
+    if (!(details instanceof HTMLDetailsElement)) {
+      throw new Error("Connection diagnostics disclosure not found");
+    }
+    return { details, summary };
+  });
 
   click(summary);
 
@@ -125,4 +137,56 @@ test("Connection diagnostics remain available during startup", async () => {
     ).toBeInTheDocument();
   });
   expect(releaseFeatureSwitches.settled()).toBeFalsy();
+});
+
+test("A user can inspect, refresh, and copy the shared worker capture", async () => {
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  context.workerStore.set(writeConnectionDiagnostic$, {
+    action: "set-enabled",
+    enabled: true,
+  });
+  context.workerStore.set(writeConnectionDiagnostic$, {
+    action: "append",
+    event: {
+      details: { errorMessage: "worker-capture-before-refresh" },
+      event: "realtime.connection",
+      phase: "instant",
+    },
+  });
+
+  await setupPage({
+    context,
+    path: "/?settings=debug",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+    sharedWorkerTestTransport: "message-port",
+  });
+
+  const diagnostics = await openDiagnosticsPanel(
+    "Shared worker connection diagnostics",
+  );
+  expect(
+    within(diagnostics).getByText(/worker-capture-before-refresh/u),
+  ).toBeVisible();
+
+  click(diagnosticsButton(diagnostics, "Copy JSON"));
+  await waitFor(() => {
+    expect(clipboard.writes).toHaveLength(1);
+  });
+  expect(clipboard.writes[0]).toContain("worker-capture-before-refresh");
+
+  context.workerStore.set(writeConnectionDiagnostic$, {
+    action: "append",
+    event: {
+      details: { errorMessage: "worker-capture-after-refresh" },
+      event: "realtime.connection",
+      phase: "instant",
+    },
+  });
+  click(diagnosticsButton(diagnostics, "Refresh"));
+
+  await waitFor(() => {
+    expect(
+      within(diagnostics).getByText(/worker-capture-after-refresh/u),
+    ).toBeVisible();
+  });
 });

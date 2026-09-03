@@ -157,7 +157,7 @@ test("Sharing controls are hidden when conversation sharing is unavailable", asy
   expect(buttonsNamed("Share messages")).toHaveLength(0);
 });
 
-test("A multi-message answer counts as one shared selection", async () => {
+test("A folded multi-message answer counts as one shared selection", async () => {
   const createRequests: string[][] = [];
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
@@ -191,10 +191,15 @@ test("A multi-message answer counts as one shared selection", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.SharedThreadSharing]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      [FeatureSwitchKey.SharedThreadSharing]: true,
+    },
   });
 
   await screen.findByText("Launch answer 3");
+  expect(screen.queryByText("Launch answer 1")).not.toBeInTheDocument();
+  expect(screen.queryByText("Launch answer 2")).not.toBeInTheDocument();
   await waitFor(() => {
     expect(buttonsNamed("Share messages").length).toBeGreaterThan(0);
   });

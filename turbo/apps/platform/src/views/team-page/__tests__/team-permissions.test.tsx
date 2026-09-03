@@ -222,7 +222,9 @@ async function openPermissions(connectorName: string): Promise<void> {
   await screen.findByText(connectorName);
   click(labelledButton(`Manage ${connectorName} permissions`));
   await screen.findByRole("heading", {
-    name: new RegExp(`^${connectorName} permissions\\b`, "u"),
+    name: (accessibleName) => {
+      return accessibleName.startsWith(`${connectorName} permissions`);
+    },
   });
 }
 

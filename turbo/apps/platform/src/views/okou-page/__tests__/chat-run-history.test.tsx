@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -128,9 +129,16 @@ test("Browse completed work by conversation phase", async () => {
     ],
   });
 
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
 
   await readyChat();
+  expect(screen.getByText("Worked for 40s")).toBeVisible();
+  expect(screen.getByText("Worked for 1m")).toBeVisible();
+  expect(screen.getByText("Worked for 2m")).toBeVisible();
   expect(screen.getByText("Phase one outline")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
   expect(screen.getByText("Phase two final plan")).toBeVisible();
@@ -198,6 +206,57 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase two final plan")).toBeVisible();
   expect(screen.getByText("Plan phase one")).toBeVisible();
   expect(screen.getByText("Phase one final plan")).toBeVisible();
+});
+
+test("Show elapsed work above the latest active response", async () => {
+  installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: [
+      promptEvent({
+        id: "active-work-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Prepare the deployment review",
+        createdAt: createdAt(10),
+      }),
+      assistantEvent({
+        id: "active-work-earlier",
+        runId: RUN_A,
+        seqId: 2,
+        text: "Checked the deployment logs",
+        createdAt: createdAt(10, 20),
+      }),
+      assistantEvent({
+        id: "active-work-latest",
+        runId: RUN_A,
+        seqId: 3,
+        text: "Reviewing the final health checks",
+        createdAt: createdAt(10, 40),
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  expect(screen.getByText("Reviewing the final health checks")).toBeVisible();
+  expect(screen.queryByText("Checked the deployment logs")).toBeNull();
+  expect(screen.getByText(/^Working for /)).toBeVisible();
+
+  click(await findButton("Expand work history"));
+
+  await expect(
+    screen.findByText("Checked the deployment logs"),
+  ).resolves.toBeVisible();
+  expectTextOrder(
+    "Prepare the deployment review",
+    "Checked the deployment logs",
+    "Reviewing the final health checks",
+  );
 });
 
 test("Fold intermediate work only after a run completes", async () => {
@@ -270,7 +329,11 @@ test("Fold intermediate work only after a run completes", async () => {
     ],
   });
 
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: false },
+  });
 
   await readyChat();
   expect(screen.getByText("Active partial work")).toBeVisible();

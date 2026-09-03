@@ -602,16 +602,11 @@ test("Follow provider-authored external-code instructions", async () => {
   ).resolves.toBeInTheDocument();
   await waitFor(() => {
     expect(
-      queryAllByRoleFast("link", dialog).find((link) => {
-        return link.textContent === "https://www.playstation.com/";
+      queryAllByRoleFast("link", dialog).map((link) => {
+        return link.textContent;
       }),
-    ).toBeInTheDocument();
+    ).toStrictEqual(["https://www.playstation.com/"]);
   });
-  expect(
-    queryAllByRoleFast("link", dialog).some((link) => {
-      return link.textContent?.includes("ca.account.sony.com");
-    }),
-  ).toBeFalsy();
   expect(
     getConnectorAction("button", "Open PlayStation sign-in", dialog),
   ).toBeInTheDocument();
@@ -831,13 +826,11 @@ test("Optionally name a newly added credential-free account", async () => {
   });
   expect(within(naming).getByLabelText("Account name")).toHaveAttribute(
     "placeholder",
-    `Account #${connectionId.slice(0, 8)}`,
+    "API key",
   );
   click(getConnectorAction("button", "Skip", naming));
   await waitFor(() => {
-    expect(getConnectorCard("Public Stripe")).toHaveTextContent(
-      `Account #${connectionId.slice(0, 8)}`,
-    );
+    expect(getConnectorCard("Public Stripe")).toHaveTextContent("API key");
   });
   expect(submittedAccount).toStrictEqual({ intent: "add" });
   expect(submittedAuthorizeAgent).toBeUndefined();

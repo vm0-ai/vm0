@@ -127,6 +127,37 @@ test("Delegated work links back to its source run", async () => {
   );
 });
 
+test("Show an unfinished voice draft as read-only message content", async () => {
+  const userMessage = {
+    version: 1,
+    parts: [
+      { type: "text", text: "Typed introduction" },
+      {
+        type: "voice",
+        id: "a0000000-0000-4000-a000-000000000054",
+        transcript: "Raw spoken launch update",
+      },
+    ],
+  } satisfies UserMessageDocument;
+  installMessageExperienceChat({
+    threadId: context.resourceId,
+    chatEvents: [userEventWith(userMessage)],
+  });
+
+  await setupPage({ context, path: `/chats/${context.resourceId}` });
+
+  await expect(screen.findByText("Typed introduction")).resolves.toBeVisible();
+  const voiceTitle = await screen.findByText("Voice draft");
+  const voiceDraft = voiceTitle.parentElement?.parentElement;
+  if (!voiceDraft) {
+    throw new Error("Expected the sent voice draft");
+  }
+  expect(
+    within(voiceDraft).getByText("Raw spoken launch update"),
+  ).toBeVisible();
+  expect(queryAllByRoleFast("button", voiceDraft)).toHaveLength(0);
+});
+
 test("Related feedback notes are grouped with clear source links", async () => {
   const userMessage = {
     version: 1,

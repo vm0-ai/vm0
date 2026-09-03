@@ -1,31 +1,18 @@
+// @vitest-environment-options {"url":"https://app.vm0.ai/"}
+
 import { screen, waitFor } from "@testing-library/react";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { afterAll, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import { setupPage, startPage } from "../../__tests__/page-helper.ts";
-import {
-  APP_FIRST_SKELETON_PAINT_EVENT,
-  BOOTSTRAP_PHASE_TIMING_EVENT,
-  captureFirstSkeletonPaint,
-  initPostHog,
-} from "../../lib/posthog.ts";
-import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { testContext } from "./test-helpers.ts";
 
-const POSTHOG_KEY = "phc_startup_diagnostics_test";
+const POSTHOG_KEY = "phc_platform_test";
+const PAGE_ENV = { VITE_POSTHOG_KEY: POSTHOG_KEY } as const;
+const APP_FIRST_SKELETON_PAINT_EVENT = "app_first_skeleton_paint";
+const BOOTSTRAP_PHASE_TIMING_EVENT = "app_bootstrap_phase_timing";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
-
-const { apiOriginMarker } = vi.hoisted(() => {
-  vi.stubEnv("VITE_POSTHOG_KEY", "phc_startup_diagnostics_test");
-  window.location.href = "https://app.vm0.ai/";
-  const apiOriginMarker = document.createElement("meta");
-  apiOriginMarker.name = "vm0-api-origin";
-  apiOriginMarker.content = "https://api.vm0.ai";
-  document.head.append(apiOriginMarker);
-  return { apiOriginMarker };
-});
 
 const context = testContext();
 
@@ -42,10 +29,6 @@ beforeEach(() => {
     },
     { once: true },
   );
-});
-
-afterAll(() => {
-  apiOriginMarker.remove();
 });
 
 function capturedEvents(eventName: string): Record<string, unknown>[] {
@@ -91,11 +74,13 @@ test("An aborted route does not claim thread timing", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.vm0.ai",
+    env: PAGE_ENV,
   });
 
   await screen.findByRole("status", { name: "Loading" });
   await snapshotRequested.promise;
 
+  const { detachedNavigateTo$ } = await import("../route.ts");
   context.store.set(detachedNavigateTo$, ROUTES.error, { replace: true });
 
   await waitForErrorPage();
@@ -122,9 +107,15 @@ test("An aborted route does not claim thread timing", async () => {
 });
 
 test("Startup is reported once", async () => {
-  await setupPage({ context, path: ROUTES.error, host: "app.vm0.ai" });
+  await setupPage({
+    context,
+    path: ROUTES.error,
+    host: "app.vm0.ai",
+    env: PAGE_ENV,
+  });
 
   await waitForErrorPage();
+  const { hideAppSkeleton$ } = await import("../app-skeleton.ts");
   await context.store.set(hideAppSkeleton$, context.signal);
   await context.store.set(hideAppSkeleton$, context.signal);
 
@@ -139,6 +130,7 @@ test("Startup timing is bounded and anonymous", async () => {
     context,
     path: `/chats/${THREAD_ID}`,
     host: "app.vm0.ai",
+    env: PAGE_ENV,
   });
 
   await screen.findByTestId("labeled-nav-rail");
@@ -195,6 +187,8 @@ test("Startup timing is bounded and anonymous", async () => {
     return [];
   });
 
+  const { captureFirstSkeletonPaint, initPostHog } =
+    await import("../../lib/posthog.ts");
   captureFirstSkeletonPaint();
 
   const paintTiming = capturedEvents(APP_FIRST_SKELETON_PAINT_EVENT).at(-1);

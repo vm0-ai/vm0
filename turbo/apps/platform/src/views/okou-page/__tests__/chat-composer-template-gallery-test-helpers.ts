@@ -224,6 +224,7 @@ function summaryOf(
 
 export interface PresentationLibraryControl {
   readonly requests: {
+    readonly listCount: number;
     readonly updates: {
       readonly templateId: string;
       readonly body: { title?: string; visibility?: "private" | "public" };
@@ -237,10 +238,12 @@ export function mockPresentationTemplateLibrary(
   initialTemplates: readonly PresentationTemplateCatalogEntry[],
 ): PresentationLibraryControl {
   let templates = [...initialTemplates];
+  let listCount = 0;
   const updates: PresentationLibraryControl["requests"]["updates"] = [];
   const deletes: string[] = [];
 
   context.mocks.api(presentationTemplatesContract.list, ({ respond }) => {
+    listCount += 1;
     return respond(200, templates);
   });
   context.mocks.api(
@@ -316,7 +319,13 @@ export function mockPresentationTemplateLibrary(
   );
 
   return {
-    requests: { updates, deletes },
+    requests: {
+      get listCount() {
+        return listCount;
+      },
+      updates,
+      deletes,
+    },
     replace(nextTemplates) {
       templates = [...nextTemplates];
     },

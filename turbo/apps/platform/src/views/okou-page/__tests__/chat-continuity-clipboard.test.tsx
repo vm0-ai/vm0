@@ -83,6 +83,15 @@ function placeCaretAtEnd(composer: HTMLElement): void {
   composer.focus();
 }
 
+function selectComposerContents(composer: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(composer);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  composer.focus();
+}
+
 test("Paste copied chat text and attachments safely", async () => {
   const thread = continuityThread(14, 1, "Clipboard restoration");
   const available = continuityAttachment(14, 1, "available-copy.txt");
@@ -231,5 +240,33 @@ test("Paste plain and multi-line text at the current draft position", async () =
   );
   expect(finalText.indexOf("Launch reference")).toBeLessThan(
     finalText.indexOf("Last pasted line"),
+  );
+});
+
+test("Copy a multiline draft without flattening its line breaks", async () => {
+  const user = userEvent.setup({ delay: null });
+  const thread = continuityThread(16, 1, "Copy line breaks");
+  const workspace = await installContinuityWorkspace(context, {
+    caseId: 16,
+    threads: [thread],
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${thread.id}`,
+    auth: workspace.auth,
+  });
+
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  await user.type(composer, "First draft line");
+  await user.keyboard("{Shift>}{Enter}{/Shift}");
+  await user.keyboard("Second draft line");
+  selectComposerContents(composer);
+  const clipboardData = new DataTransfer();
+
+  fireEvent.copy(composer, { clipboardData });
+
+  expect(clipboardData.getData("text/plain")).toBe(
+    "First draft line\nSecond draft line",
   );
 });

@@ -1,4 +1,5 @@
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -17,6 +18,7 @@ import {
   mockResizeObserver,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
+import { selectPassage } from "./chat-capability-test-helpers.ts";
 
 const ROW_HEIGHT_PX = 100;
 const ROW_CONTENT_HEIGHT_PX = 80;
@@ -35,6 +37,8 @@ const THREAD_IDS = {
   prependedHistory: "b0000000-0000-4000-a000-000000000929",
   mobileHistory: "b0000000-0000-4000-a000-000000000930",
   mobileLatest: "b0000000-0000-4000-a000-000000000931",
+  expandedWork: "b0000000-0000-4000-a000-000000000932",
+  selectedPassage: "b0000000-0000-4000-a000-000000000933",
 } as const;
 
 interface ChatScrollGeometry {
@@ -300,6 +304,17 @@ function queryButtonByLabel(label: string): HTMLElement | null {
   );
 }
 
+function queryPassageAction(name: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button").find((candidate) => {
+      return (
+        candidate.getAttribute("aria-keyshortcuts") !== null &&
+        candidate.textContent?.replace(/\s+/gu, " ").trim().startsWith(name)
+      );
+    }) ?? null
+  );
+}
+
 function buttonByLabel(label: string): HTMLElement {
   const button = queryButtonByLabel(label);
   if (!button) {
@@ -336,6 +351,139 @@ test("Preserve the visible message when earlier content grows", async () => {
   await waitFor(() => {
     expect(
       anchorById(container, readingAnchorId).getBoundingClientRect().top,
+    ).toBe(readingTop);
+  });
+});
+
+test("Keep passage actions during automatic scroll until the reader scrolls", async () => {
+  const resize = mockResizeObserver();
+  mockMutableConversation(
+    THREAD_IDS.selectedPassage,
+    completedHistoryEvents(8),
+  );
+  const container = await openConversation(
+    THREAD_IDS.selectedPassage,
+    "History answer 8",
+  );
+  const geometry = installChatScrollGeometry(container);
+  scrollFromUser(container, 440);
+  await expectHistoryPositionHeld();
+  const readingAnchor = geometry.firstVisibleAnchor();
+  const readingAnchorId = anchorId(readingAnchor);
+  const readingTop = readingAnchor.getBoundingClientRect().top;
+  await selectPassage("History answer 8");
+
+  expect(queryPassageAction("Quote")).toBeVisible();
+
+  geometry.growBeforeMessages(75);
+  act(() => {
+    resize.automationAll();
+  });
+  await waitFor(() => {
+    expect(
+      anchorById(container, readingAnchorId).getBoundingClientRect().top,
+    ).toBe(readingTop);
+  });
+  fireEvent.scroll(container);
+
+  expect(queryPassageAction("Quote")).toBeVisible();
+
+  scrollFromUser(container, container.scrollTop - 20);
+
+  await waitFor(() => {
+    expect(queryPassageAction("Quote")).not.toBeInTheDocument();
+  });
+});
+
+test("Keep expanded work in place when its run completes", async () => {
+  const activeRunId = "scroll-expanded-work-run";
+  const conversation = mockMutableConversation(
+    THREAD_IDS.expandedWork,
+    [
+      ...completedHistoryEvents(6),
+      {
+        id: "scroll-expanded-work-user",
+        role: "user",
+        content: "Inspect the rollout",
+        runId: activeRunId,
+        seqId: 19,
+        createdAt: "2026-08-20T12:20:00.000Z",
+      },
+      {
+        id: "scroll-expanded-work-earlier",
+        role: "assistant",
+        content: "Checked the first rollout stage",
+        runId: activeRunId,
+        seqId: 20,
+        createdAt: "2026-08-20T12:20:20.000Z",
+      },
+      {
+        id: "scroll-expanded-work-reading",
+        role: "assistant",
+        content: "Reading the rollout health report",
+        runId: activeRunId,
+        seqId: 21,
+        createdAt: "2026-08-20T12:20:40.000Z",
+      },
+    ],
+    [activeRunId],
+  );
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_IDS.expandedWork}`,
+    host: "app.vm0.ai",
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await screen.findByText("Reading the rollout health report");
+  await waitFor(() => {
+    expect(
+      document.querySelector("[data-chat-skeleton]"),
+    ).not.toBeInTheDocument();
+  });
+
+  click(buttonByLabel("Expand work history"));
+  await screen.findByText("Checked the first rollout stage");
+  const container = chatScrollContainer();
+  const geometry = installChatScrollGeometry(container);
+  scrollFromUser(container, geometry.bottomScrollTop() - 150);
+  await expectHistoryPositionHeld();
+  const readingTop = anchorById(
+    container,
+    "scroll-expanded-work-reading",
+  ).getBoundingClientRect().top;
+
+  act(() => {
+    conversation.publish([
+      {
+        id: "scroll-expanded-work-final",
+        role: "assistant",
+        content: "The rollout is healthy",
+        runId: activeRunId,
+        seqId: 22,
+        createdAt: "2026-08-20T12:21:00.000Z",
+      },
+      {
+        id: "scroll-expanded-work-complete",
+        role: "assistant",
+        content: null,
+        runId: activeRunId,
+        runLifecycleEvent: "completed",
+        seqId: 23,
+        createdAt: "2026-08-20T12:21:01.000Z",
+      },
+    ]);
+  });
+
+  await screen.findByText("The rollout is healthy");
+  await waitFor(() => {
+    expect(screen.getByText("Checked the first rollout stage")).toBeVisible();
+    expect(buttonByLabel("Collapse work history")).toBeVisible();
+    expect(screen.getByText("Worked for 1m")).toBeVisible();
+    expect(
+      anchorById(
+        container,
+        "scroll-expanded-work-reading",
+      ).getBoundingClientRect().top,
     ).toBe(readingTop);
   });
 });

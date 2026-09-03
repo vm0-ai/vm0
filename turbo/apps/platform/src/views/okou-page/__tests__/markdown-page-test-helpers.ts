@@ -44,10 +44,7 @@ export interface MarkdownChatFixture {
   readonly runCompleted: (options: OutputRowOptions) => ChatEventRow;
 }
 
-function rowBase(
-  threadId: string,
-  options: OutputRowOptions,
-): Omit<ChatEventRow, "eventType" | "payload"> {
+function rowBase(threadId: string, options: OutputRowOptions) {
   const runId = options.runId ?? "markdown-run";
   return {
     id: options.id ?? `markdown-event-${options.seqId}`,

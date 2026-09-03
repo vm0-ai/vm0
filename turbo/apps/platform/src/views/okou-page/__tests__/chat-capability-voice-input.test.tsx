@@ -1,4 +1,6 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
+import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
@@ -9,6 +11,7 @@ import {
   context,
   findButton,
   installRunChat,
+  queryButton,
   readyChat,
   RUN_PATH,
 } from "./chat-run-test-fixtures.ts";
@@ -49,6 +52,41 @@ async function activeVoiceStopButton(): Promise<HTMLElement> {
     expect(meter?.style.getPropertyValue("--mic-volume-fill")).toBe("100%");
   });
   return stop;
+}
+
+async function activeVoiceDraftStopButton(): Promise<HTMLElement> {
+  const stop = await findButton("Stop recording");
+  await waitFor(() => {
+    expect(stop).toBeEnabled();
+  });
+  expect(stop).toHaveTextContent("OK");
+  expect(
+    screen.getByText(/^\d{2}:\d{2}$/u, { selector: "time" }),
+  ).toBeVisible();
+  expect(screen.queryByLabelText("Attach files")).not.toBeInTheDocument();
+  return stop;
+}
+
+function placeCaret(
+  composer: HTMLElement,
+  textNodeContent: string,
+  offset: number,
+): void {
+  const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node && node.textContent !== textNodeContent) {
+    node = walker.nextNode();
+  }
+  if (!node) {
+    throw new Error(`Expected composer text node ${textNodeContent}`);
+  }
+  const range = document.createRange();
+  range.setStart(node, offset);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  composer.focus();
 }
 
 test("Add voice transcription to the current message draft", async () => {
@@ -96,6 +134,107 @@ test("Add voice transcription to the current message draft", async () => {
     );
   });
   await expect(findButton("Voice input")).resolves.toBeEnabled();
+});
+
+test("Polish a voice draft into the user's current selection", async () => {
+  const polishStarted = context.mocks.deferred<void>();
+  const polishReady = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/stt", () => {
+    return HttpResponse.json({ text: "um send the launch update tomorrow" });
+  });
+  context.mocks.api(voiceIoPolishContract.post, async ({ body, respond }) => {
+    expect(body).toStrictEqual({
+      text: "um send the launch update tomorrow",
+    });
+    polishStarted.resolve(undefined);
+    await polishReady.promise;
+    return respond(200, { text: "Send the launch update tomorrow." });
+  });
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  await fill(currentComposer(), "Opening  closing");
+  click(voiceInput);
+  const stop = await activeVoiceDraftStopButton();
+  expect(queryButton("Send")).toBeNull();
+  click(stop);
+  await polishStarted.promise;
+
+  await waitFor(() => {
+    expect(
+      screen.getByText("um send the launch update tomorrow"),
+    ).not.toBeVisible();
+  });
+  expect(screen.getByRole("status")).toHaveTextContent("Transcribing...");
+  expect(queryButton("Send")).toBeNull();
+  placeCaret(currentComposer(), "Opening  closing", 8);
+
+  polishReady.resolve(undefined);
+
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe(
+      "Opening Send the launch update tomorrow. closing",
+    );
+  });
+  expect(window.getSelection()?.toString()).toBe(
+    "Send the launch update tomorrow.",
+  );
+  await expect(findButton("Send")).resolves.toBeEnabled();
+  expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
+});
+
+test("Let the user retry or remove a voice draft when polishing fails", async () => {
+  let polishAttempts = 0;
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/stt", () => {
+    return HttpResponse.json({ text: "raw launch update" });
+  });
+  context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
+    polishAttempts += 1;
+    if (polishAttempts === 1) {
+      return respond(503, {
+        error: {
+          code: "VOICE_POLISH_UNAVAILABLE",
+          message: "Voice polish is temporarily unavailable",
+        },
+      });
+    }
+    return respond(200, { text: "Polished launch update." });
+  });
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  click(await readyVoiceInput());
+  click(await activeVoiceDraftStopButton());
+
+  const draft = await screen.findByLabelText("Voice draft");
+  expect(draft).toBeVisible();
+  expect(draft).toHaveTextContent("raw launch update");
+  await expect(findButton("Finish")).resolves.toBeEnabled();
+  await expect(findButton("Remove voice draft")).resolves.toBeEnabled();
+  await expect(findButton("Send")).resolves.toBeDisabled();
+
+  click(await findButton("Finish"));
+
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe("Polished launch update.");
+  });
+  expect(polishAttempts).toBe(2);
+  await expect(findButton("Send")).resolves.toBeEnabled();
 });
 
 test("Make voice-input startup and silent cancellation clear", async () => {

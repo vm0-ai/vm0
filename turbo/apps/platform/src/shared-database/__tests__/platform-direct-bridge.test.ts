@@ -6,6 +6,7 @@ import {
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test, vi } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
@@ -212,11 +213,26 @@ test("Show cached chat data before catching up live", async () => {
 test("Cache incoming chat messages before the conversation is opened", async () => {
   const unopenedThreadId = crypto.randomUUID();
   const incomingRows = [row(unopenedThreadId, 1), row(unopenedThreadId, 2)];
-  const prewarmedThreadIds: string[] = [];
+  const batchedThreadIds: string[] = [];
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, {
       agents: {},
       threads: { [unopenedThreadId]: "unread" },
+    });
+  });
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    batchedThreadIds.push(
+      ...body.map(([threadId]) => {
+        return threadId;
+      }),
+    );
+    return respond(200, {
+      events: Object.fromEntries(
+        body.map(([threadId]) => {
+          return [threadId, threadId === unopenedThreadId ? incomingRows : []];
+        }),
+      ),
+      notFoundThreads: [],
     });
   });
   context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
@@ -227,17 +243,14 @@ test("Cache incoming chat messages before the conversation is opened", async () 
       },
     });
   });
-  context.mocks.api(
-    chatThreadEventsContract.rows,
-    ({ params, query, respond }) => {
-      prewarmedThreadIds.push(params.threadId);
-      return respond(200, chatEventRowsResponse(incomingRows, query));
-    },
-  );
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    return respond(200, chatEventRowsResponse(incomingRows, query));
+  });
 
   await setupPage({
     context,
     path: "/error",
+    featureSwitches: { [FeatureSwitchKey.BatchChatEventCatchUp]: true },
     sharedWorkerTestTransport: "message-port",
     auth: {
       user: { id: userId(), fullName: "Direct Bridge User" },
@@ -250,7 +263,7 @@ test("Cache incoming chat messages before the conversation is opened", async () 
   });
 
   await vi.waitFor(() => {
-    expect(prewarmedThreadIds).toContain(unopenedThreadId);
+    expect(batchedThreadIds).toContain(unopenedThreadId);
   });
 
   const owner = createChildAbortController(context.signal);
@@ -380,11 +393,11 @@ test("Do not show a false connection failure for a hidden tab", () => {
   expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("disconnected");
 });
 
-test("Catch up data that changed while realtime was connecting", async () => {
-  const heartbeatGates: {
-    readonly promise: Promise<void>;
-    readonly resolve: (value: void) => void;
-  }[] = [];
+test("Subscribe shared chat data through the worker", async () => {
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
+  });
+
   await setupPage({
     context,
     path: "/error",
@@ -397,25 +410,19 @@ test("Catch up data that changed while realtime was connecting", async () => {
         memberships: [{ id: orgId() }],
       },
     },
-    afterSharedDatabaseWorkerHeartbeat: async () => {
-      if (heartbeatGates.length > 0) {
-        return;
-      }
-      const gate = context.mocks.deferred<void>();
-      heartbeatGates.push(gate);
-      await gate.promise;
-    },
   });
-  await vi.waitFor(() => {
-    expect(heartbeatGates).toHaveLength(1);
-  });
-  heartbeatGates[0]?.resolve(undefined);
+
   await vi.waitFor(() => {
     expect(
-      context.mocks.ably.hasSubscription("connectorPermissionUpdated"),
+      context.mocks.ably.hasChannelSubscriptionOnChannel(realtimeChannel()),
+    ).toBeTruthy();
+    expect(
+      context.mocks.ably.hasSubscriptionOnChannel(
+        realtimeChannel(),
+        "threadListChanged",
+      ),
     ).toBeTruthy();
   });
-  expect(heartbeatGates).toHaveLength(1);
   expect(context.store).not.toBe(context.workerStore);
 });
 
