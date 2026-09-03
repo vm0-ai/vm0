@@ -537,7 +537,7 @@ function LabeledRailLink({
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive
             ? "zero-nav-copy text-sidebar-foreground"
-            : "zero-nav-copy-muted text-sidebar-foreground/60"
+            : "zero-nav-copy-muted text-sidebar-foreground/70"
         }`}
       >
         {caption}

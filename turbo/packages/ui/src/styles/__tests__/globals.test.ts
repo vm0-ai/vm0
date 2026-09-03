@@ -127,6 +127,14 @@ function color(properties: ReadonlyMap<string, string>, name: string): Rgb {
   return hslToRgb(resolveCustomProperty(properties, name));
 }
 
+function composite(background: Rgb, foreground: Rgb, alpha: number): Rgb {
+  return [
+    Math.round(foreground[0] * alpha + background[0] * (1 - alpha)),
+    Math.round(foreground[1] * alpha + background[1] * (1 - alpha)),
+    Math.round(foreground[2] * alpha + background[2] * (1 - alpha)),
+  ];
+}
+
 function relativeLuminance(rgb: Rgb): number {
   const linearize = (channel: number): number => {
     const normalized = channel / 255;
@@ -395,4 +403,74 @@ describe("new UI neutral gray palette", () => {
       ).toBeGreaterThanOrEqual(4.5);
     }
   });
+});
+
+describe("new UI opacity-modified placeholder and rail text", () => {
+  const placeholderThemes = [
+    {
+      alpha: 0.8,
+      background: "--card",
+      foreground: "--muted-foreground",
+      name: "light",
+      selector: ":root[data-new-ui]",
+    },
+    {
+      alpha: 0.8,
+      background: "--card",
+      foreground: "--muted-foreground",
+      name: "dark",
+      selector: ".dark[data-new-ui],",
+    },
+  ];
+
+  it.each(placeholderThemes)(
+    "keeps $name composer placeholder at WCAG AA after the /80 modifier",
+    ({ alpha, background, foreground, selector }) => {
+      const properties = readCustomProperties(
+        readRuleBody(globalCss, selector),
+      );
+      const placeholder = composite(
+        color(properties, background),
+        color(properties, foreground),
+        alpha,
+      );
+      expect(
+        contrastRatio(placeholder, color(properties, background)),
+      ).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  const railThemes = [
+    {
+      alpha: 0.7,
+      background: "--sidebar-rail",
+      foreground: "--sidebar-foreground",
+      name: "light",
+      selector: ":root[data-new-ui]",
+    },
+    {
+      alpha: 0.7,
+      background: "--sidebar-rail",
+      foreground: "--sidebar-foreground",
+      name: "dark",
+      selector: ".dark[data-new-ui],",
+    },
+  ];
+
+  it.each(railThemes)(
+    "keeps $name rail captions at WCAG AA after the /70 modifier",
+    ({ alpha, background, foreground, selector }) => {
+      const properties = readCustomProperties(
+        readRuleBody(globalCss, selector),
+      );
+      const caption = composite(
+        color(properties, background),
+        color(properties, foreground),
+        alpha,
+      );
+      expect(
+        contrastRatio(caption, color(properties, background)),
+      ).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 });
