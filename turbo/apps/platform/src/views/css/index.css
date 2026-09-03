@@ -469,7 +469,10 @@ body {
   --border: var(--gray-200);
   --input: var(--card);
   --ring: var(--zero-color-theme-ring);
-  --sidebar: var(--zero-color-theme-hue) 30% 96.7%;
+  /* Halved with the neutral sidebar: this surface now frames the workspace
+     card as well as backing the chat column, and a full-strength tint around a
+     white sheet overpowers it. The rail keeps its depth and stays the anchor. */
+  --sidebar: var(--zero-color-theme-hue) 30% 98.4%;
   --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
   --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
   --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;

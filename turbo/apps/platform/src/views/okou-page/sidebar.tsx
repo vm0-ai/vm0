@@ -746,7 +746,10 @@ function ChatListColumn() {
   return (
     <aside
       data-testid="chat-list-column"
-      className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
+      /* No right edge: this column and the gutter around the workspace card are
+         one surface now, so a divider here would run parallel to the card's own
+         border eight pixels away and read as a double rule. */
+      className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar"
     >
       <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
         <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
