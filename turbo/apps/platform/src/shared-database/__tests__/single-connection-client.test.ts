@@ -84,7 +84,7 @@ function createEvents(
     databaseReconnected: vi.fn<() => void>(),
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
-    reloadRequired: vi.fn<() => void>(),
+    workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: (status) => {
       statuses.push(status);
     },
@@ -139,7 +139,9 @@ describe("single-connection shared database bridge", () => {
 
     const registration = bridge.registerTab(owner.signal);
     await vi.waitFor(() => {
-      expect(events.reloadRequired).toHaveBeenCalledOnce();
+      expect(events.workerUnavailable).toHaveBeenCalledWith(
+        "worker-load-or-transport-failure",
+      );
     });
 
     expect(statuses).toStrictEqual(["connecting"]);
@@ -164,7 +166,9 @@ describe("single-connection shared database bridge", () => {
 
     const pendingQuery = bridge.query(query(), owner.signal);
     await vi.waitFor(() => {
-      expect(events.reloadRequired).toHaveBeenCalledOnce();
+      expect(events.workerUnavailable).toHaveBeenCalledWith(
+        "worker-load-or-transport-failure",
+      );
     });
 
     expect(bridges[0]!.queryCalls).toBe(1);
@@ -192,7 +196,7 @@ describe("single-connection shared database bridge", () => {
     caller.abort(new DOMException("Query cancelled", "AbortError"));
 
     await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
-    expect(events.reloadRequired).not.toHaveBeenCalled();
+    expect(events.workerUnavailable).not.toHaveBeenCalled();
     owner.abort();
   });
 });

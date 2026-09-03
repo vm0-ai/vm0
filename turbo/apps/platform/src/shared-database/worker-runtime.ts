@@ -67,7 +67,7 @@ function chatEventRowsQuery(cursor: ChatEventCursor) {
 
 type WorkerRuntimeEvent = Extract<
   SharedDatabaseWorkerMessage,
-  { readonly type: "reload-required" }
+  { readonly type: "worker-unavailable" }
 >;
 
 type ChatEventContractClient = SharedDatabaseContractClient<
@@ -1134,7 +1134,10 @@ export class SharedDatabaseWorkerRuntime {
           if (this.databaseEntry) {
             this.databaseEntry.invalidated = true;
           }
-          this.emit({ type: "reload-required" });
+          this.emit({
+            type: "worker-unavailable",
+            reason: "indexeddb-version-changed",
+          });
         },
       });
       const nextEntry: ChatDatabaseEntry = {

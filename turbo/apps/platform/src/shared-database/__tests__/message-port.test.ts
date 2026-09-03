@@ -32,7 +32,7 @@ function createEvents(
     databaseReconnected: vi.fn<() => void>(),
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     chatThreadReadCursorUpdated: vi.fn<(payload: unknown) => void>(),
-    reloadRequired: vi.fn<() => void>(),
+    workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: (status) => {
       statuses.push(status);
     },

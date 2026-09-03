@@ -12,6 +12,10 @@ import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
+import {
+  forceUpgradeDialogOpen$,
+  listenForceUpgradeDialog$,
+} from "../force-upgrade.ts";
 import { bridgeConnected$ } from "../shared-database-bridge-state.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
@@ -47,6 +51,10 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
     if (this.listener === listener) {
       this.listener = null;
     }
+  }
+
+  receive(value: unknown): void {
+    this.listener?.(new MessageEvent("message", { data: value }));
   }
 }
 
@@ -232,6 +240,50 @@ describe("shared database browser bridge", () => {
     expect(constructorCalls).toStrictEqual([]);
   });
 
+  it("opens the force upgrade dialog when the Worker requires an upgrade", async () => {
+    const replace = vi.fn<(url: string) => void>();
+    const { workers } = installSharedWorkerMock();
+    await setupBridge();
+    const currentUrl = new URL("/chat", window.location.href);
+    vi.stubGlobal("location", {
+      href: currentUrl.toString(),
+      origin: currentUrl.origin,
+      replace,
+    });
+    context.store.set(listenForceUpgradeDialog$, context.signal);
+
+    workers[0]!.port.receive({
+      type: "worker-unavailable",
+      reason: "force-upgrade-required",
+    });
+
+    await vi.waitFor(() => {
+      expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
+    });
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("reloads when an IndexedDB version change makes the Worker unavailable", async () => {
+    const replace = vi.fn<(url: string) => void>();
+    const { workers } = installSharedWorkerMock();
+    await setupBridge();
+    const currentUrl = new URL("/chat", window.location.href);
+    vi.stubGlobal("location", {
+      href: currentUrl.toString(),
+      origin: currentUrl.origin,
+      replace,
+    });
+
+    workers[0]!.port.receive({
+      type: "worker-unavailable",
+      reason: "indexeddb-version-changed",
+    });
+
+    await vi.waitFor(() => {
+      expect(replace).toHaveBeenCalledOnce();
+    });
+  });
+
   it("reloads with the current timestamp after a worker load failure", async () => {
     const replace = vi.fn<(url: string) => void>();
     const { constructorCalls, workers } = installSharedWorkerMock();
@@ -245,15 +297,13 @@ describe("shared database browser bridge", () => {
       origin: currentUrl.origin,
       replace,
     });
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+    expect(() => {
+      workers[0]!.fail();
+    }).toThrow(
+      "Shared database worker failed to load or its transport became unrecoverable",
+    );
 
-    workers[0]!.fail();
-
-    await vi.waitFor(() => {
-      expect(replace).toHaveBeenCalledOnce();
-    });
+    expect(replace).toHaveBeenCalledOnce();
     const recoveryUrl = new URL(replace.mock.calls[0]![0]);
     expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
       String(CURRENT_TIME_MS),
@@ -261,7 +311,6 @@ describe("shared database browser bridge", () => {
     expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
     expect(recoveryUrl.hash).toBe("#latest");
     expect(constructorCalls).toHaveLength(1);
-    expect(consoleError).toHaveBeenCalledOnce();
   });
 
   it("stops reloads that repeat within one minute", async () => {
@@ -281,13 +330,13 @@ describe("shared database browser bridge", () => {
       origin: currentUrl.origin,
       replace,
     });
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => {
+      workers[0]!.fail();
+    }).toThrow(
+      "Shared database worker failed to load or its transport became unrecoverable",
+    );
 
-    workers[0]!.fail();
-
-    await vi.waitFor(() => {
-      expect(toastError).toHaveBeenCalledOnce();
-    });
+    expect(toastError).toHaveBeenCalledOnce();
     expect(replace).not.toHaveBeenCalled();
     expect(replaceState).toHaveBeenCalledOnce();
     const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));
@@ -315,13 +364,13 @@ describe("shared database browser bridge", () => {
       origin: currentUrl.origin,
       replace,
     });
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => {
+      workers[0]!.fail();
+    }).toThrow(
+      "Shared database worker failed to load or its transport became unrecoverable",
+    );
 
-    workers[0]!.fail();
-
-    await vi.waitFor(() => {
-      expect(replace).toHaveBeenCalledOnce();
-    });
+    expect(replace).toHaveBeenCalledOnce();
     const recoveryUrl = new URL(replace.mock.calls[0]![0]);
     expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
       String(CURRENT_TIME_MS),

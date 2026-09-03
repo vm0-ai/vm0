@@ -37,7 +37,7 @@ import {
   registerConnection$,
   connectionControllers$,
   connectionPorts$,
-  reloadConnections$,
+  reportWorkerUnavailableForConnections$,
   type WorkerBroadcastMessage,
 } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
@@ -234,7 +234,10 @@ function createWorkerStore(
       clerk: Promise.resolve(clerkTokenSource()),
       oauthApiBaseUrl: location.origin,
       onForceUpgrade: () => {
-        store.set(reloadConnections$);
+        store.set(
+          reportWorkerUnavailableForConnections$,
+          "force-upgrade-required",
+        );
       },
     },
     context.signal,
@@ -1198,7 +1201,10 @@ describe("shared database worker runtime", () => {
     await vi.waitFor(() => {
       expect(
         events.filter((event) => {
-          return event.type === "reload-required";
+          return (
+            event.type === "worker-unavailable" &&
+            event.reason === "indexeddb-version-changed"
+          );
         }),
       ).toHaveLength(1);
     });
