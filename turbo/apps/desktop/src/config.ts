@@ -126,7 +126,7 @@ function configuredProduct(
     rawProduct?.trim() ||
       readDesktopEnvironment("OKOU_DESKTOP_PRODUCT") ||
       fileConfig?.product ||
-      "zero",
+      "okou",
   );
 }
 
