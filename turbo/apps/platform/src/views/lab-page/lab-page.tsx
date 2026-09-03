@@ -43,7 +43,7 @@ function sortedFeatureSwitchKeys(): FeatureSwitchKey[] {
 }
 
 function maintainerLabel(email: string): string {
-  return email.split("@")[0] ?? email;
+  return email.replace(/@.*$/u, "");
 }
 
 function maintainerFilterOptions(params: {
