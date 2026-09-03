@@ -25,13 +25,13 @@ const buttonVariants = cva(
           "border-[0.7px] border-[hsl(var(--gray-400))] bg-background hover:bg-state-hover active:bg-state-pressed text-foreground",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary-hover active:bg-secondary-pressed",
-        ghost: "text-primary hover:bg-state-hover active:bg-state-pressed",
+        ghost: "text-brand-text hover:bg-state-hover active:bg-state-pressed",
         // Neutral counterpart to `ghost`, for chrome that must not read as an
         // action: toolbar and composer icons, which inherit the muted ramp and
         // only gain weight on hover.
         quiet:
           "text-muted-foreground hover:bg-state-hover hover:text-foreground active:bg-state-pressed",
-        link: "text-primary underline-offset-4 hover:underline active:text-primary/80",
+        link: "text-brand-text underline-offset-4 hover:underline active:text-brand-text/80",
       },
       size: {
         xs: "h-7 px-2.5",

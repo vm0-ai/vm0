@@ -170,7 +170,7 @@ function editorContentClass(singleLineOnMobile: boolean): string {
     : `${EDITOR_CONTENT_CLASS} min-h-[96px]`;
 }
 
-const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
+const WORKFLOW_HIGHLIGHT_CLASS = "text-brand-text";
 function composerPlaceholder(): string {
   return i18n.t(($) => {
     return $.chat.composer.placeholder;

@@ -45,7 +45,7 @@ import {
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 function getSparkleColors() {
-  return ["#ed4e01", "#E0B376", "#E26C9E", "#45A7A8", "#E0BB3C", "#FF990A"];
+  return ["#ffa500", "#E0B376", "#E26C9E", "#45A7A8", "#E0BB3C", "#FF990A"];
 }
 
 function generateParticles() {
@@ -63,7 +63,7 @@ function generateParticles() {
       x: xDir,
       y: yDir,
       size: 3 + rand() * 5,
-      color: colors[Math.floor(rand() * colors.length)] ?? "#ed4e01",
+      color: colors[Math.floor(rand() * colors.length)] ?? "#ffa500",
       delay: rand() * 0.15,
     };
   });
@@ -142,7 +142,7 @@ function StepOptions({
           type="button"
           className={cn(
             "flex flex-col items-center gap-1 rounded-full transition-all hover:scale-110",
-            isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
+            isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
           )}
           style={{
             animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
@@ -171,7 +171,7 @@ function StepOptions({
           type="button"
           className={cn(
             "rounded-full transition-all hover:scale-110",
-            isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
+            isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
           )}
           style={{
             animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
@@ -196,7 +196,7 @@ function StepOptions({
         type="button"
         className={cn(
           "rounded-full transition-all hover:scale-110",
-          isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
+          isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
         )}
         style={{
           animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
