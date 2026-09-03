@@ -599,7 +599,9 @@ describe("OPS-01: user data export", () => {
         status: "leased",
         inputRevision: 2,
         completedRevision: 0,
+        reconciliationRevision: 0,
         claimedRevision: 1,
+        claimedBaseVersionId: memory.versionId,
         leaseExpiresAt: new Date(exportStartAt + 60 * 60 * 1000).toISOString(),
         retryCount: 1,
         retryAt: null,
@@ -609,12 +611,43 @@ describe("OPS-01: user data export", () => {
         ).toISOString(),
         claimedSelectedCount: 1,
         claimedSelectedUtf8Bytes: 42,
+        lastObservedHeadVersionId: memory.versionId,
+        conflictCount: 0,
+        lastConflictAt: null,
+        lastConflictingHeadVersionId: null,
+        lastPublishedVersionId: null,
+        lastPublishedAt: null,
         createdAt: new Date(exportStartAt - 2 * 60 * 60 * 1000).toISOString(),
         updatedAt: new Date(exportStartAt).toISOString(),
       },
     ]);
     expect(phase2JobsText).not.toContain(phase2Secrets.leaseToken);
     expect(phase2JobsText).not.toContain(phase2Secrets.selectionDigest);
+    expect(
+      JSON.parse(zipText(zip, "memory/phase2-publication-provenance.json")),
+    ).toStrictEqual([
+      {
+        id: "00000000-0000-4000-8000-000000031258",
+        memoryStorageId: memory.storageId,
+        orgId: actor.orgId,
+        userId: actor.userId,
+        claimedRevision: 1,
+        inputRevision: 1,
+        reconciliationRevision: 0,
+        selectionDigest: phase2Secrets.selectionDigest,
+        selectedCount: 1,
+        selectedUtf8Bytes: 42,
+        baseVersionId: memory.versionId,
+        preparedVersionId: "b".repeat(64),
+        observedHeadVersionId: "c".repeat(64),
+        writer: "pi",
+        outcome: "conflicted",
+        size: 17,
+        archiveSize: 23,
+        fileCount: 2,
+        createdAt: new Date(exportStartAt - 30 * 60 * 1000).toISOString(),
+      },
+    ]);
 
     const manifest = JSON.parse(zipText(zip, "export-manifest.json")) as {
       readonly counts: {
@@ -623,6 +656,7 @@ describe("OPS-01: user data export", () => {
         readonly memoryFiles: number;
         readonly memoryStage1Candidates: number;
         readonly memoryPhase2Jobs: number;
+        readonly memoryPhase2PublicationProvenance: number;
         readonly conversationThreads: number;
         readonly sessionHistories: number;
       };
@@ -633,6 +667,7 @@ describe("OPS-01: user data export", () => {
       memoryFiles: 2,
       memoryStage1Candidates: 0,
       memoryPhase2Jobs: 1,
+      memoryPhase2PublicationProvenance: 1,
       conversationThreads: 0,
       sessionHistories: 0,
     });

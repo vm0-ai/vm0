@@ -7,17 +7,29 @@ import { MEMORY_ARTIFACT_NAME } from "@okouai/core/storage-names";
 import { blobs } from "@okouai/db/schema/blob";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
-import { storages } from "@okouai/db/schema/storage";
+import { storages, storageVersions } from "@okouai/db/schema/storage";
 
 import { db } from "../../../lib/db";
 
 const fixtureHashes = Symbol("fixtureHashes");
 
-interface Phase2TestScope {
+export interface Phase2TestScope {
   readonly memoryStorageId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly baseVersion: Phase2TestVersion;
   readonly [fixtureHashes]: Set<string>;
+}
+
+export interface Phase2TestVersion {
+  readonly storageId: string;
+  readonly versionId: string;
+  readonly s3Key: string;
+  readonly size: number;
+  readonly archiveSize: number;
+  readonly fileCount: number;
+  readonly message: string | null;
+  readonly createdBy: string;
 }
 
 export interface Phase2CandidateInput {
@@ -82,12 +94,24 @@ async function insertFixtureBlobs(
 
 export async function createPhase2TestScope(
   label: string,
+  overrides: { readonly userId?: string } = {},
 ): Promise<Phase2TestScope> {
+  const memoryStorageId = randomUUID();
+  const orgId = `phase2-${label}-org-${randomUUID()}`;
+  const userId = overrides.userId ?? `phase2-${label}-user-${randomUUID()}`;
+  const baseVersion = phase2TestVersion(
+    { memoryStorageId, orgId, userId },
+    "base",
+  );
   const scope = {
-    memoryStorageId: randomUUID(),
-    orgId: `phase2-${label}-org-${randomUUID()}`,
-    userId: `phase2-${label}-user-${randomUUID()}`,
+    memoryStorageId,
+    orgId,
+    userId,
   } as Phase2TestScope;
+  Object.defineProperty(scope, "baseVersion", {
+    value: baseVersion,
+    enumerable: false,
+  });
   Object.defineProperty(scope, fixtureHashes, {
     value: new Set<string>(),
     enumerable: false,
@@ -101,7 +125,33 @@ export async function createPhase2TestScope(
       name: MEMORY_ARTIFACT_NAME,
       s3Prefix: `${scope.orgId}/${scope.memoryStorageId}`,
     });
+  await db().insert(storageVersions).values(storageVersionRow(baseVersion));
+  await db()
+    .update(storages)
+    .set({
+      headVersionId: baseVersion.versionId,
+      size: baseVersion.size,
+      fileCount: baseVersion.fileCount,
+    })
+    .where(eq(storages.id, scope.memoryStorageId));
   onTestFinished(async () => {
+    const versions = await db()
+      .select({ id: storageVersions.id })
+      .from(storageVersions)
+      .where(eq(storageVersions.storageId, scope.memoryStorageId));
+    if (versions.length > 0) {
+      await db()
+        .update(storages)
+        .set({ headVersionId: null })
+        .where(
+          inArray(
+            storages.headVersionId,
+            versions.map((version) => {
+              return version.id;
+            }),
+          ),
+        );
+    }
     await db().delete(storages).where(eq(storages.id, scope.memoryStorageId));
     const hashes = [...scope[fixtureHashes]];
     if (hashes.length > 0) {
@@ -109,6 +159,72 @@ export async function createPhase2TestScope(
     }
   });
   return scope;
+}
+
+function phase2TestVersion(
+  scope: Pick<Phase2TestScope, "memoryStorageId" | "orgId" | "userId">,
+  label: string,
+  overrides: Partial<Omit<Phase2TestVersion, "storageId" | "versionId">> = {},
+): Phase2TestVersion {
+  const versionId = createHash("sha256")
+    .update(`${scope.memoryStorageId}:${label}:${randomUUID()}`)
+    .digest("hex");
+  return {
+    storageId: scope.memoryStorageId,
+    versionId,
+    s3Key: `${scope.orgId}/${scope.memoryStorageId}/${versionId}`,
+    size: 101,
+    archiveSize: 67,
+    fileCount: 3,
+    message: null,
+    createdBy: "pi-memory-test",
+    ...overrides,
+  };
+}
+
+function storageVersionRow(version: Phase2TestVersion) {
+  return {
+    id: version.versionId,
+    storageId: version.storageId,
+    s3Key: version.s3Key,
+    size: version.size,
+    archiveSize: version.archiveSize,
+    fileCount: version.fileCount,
+    message: version.message,
+    createdBy: version.createdBy,
+  };
+}
+
+export async function insertPhase2StorageVersion(
+  scope: Phase2TestScope,
+  label: string,
+  overrides: Partial<Omit<Phase2TestVersion, "storageId" | "versionId">> = {},
+): Promise<Phase2TestVersion> {
+  const version = phase2TestVersion(scope, label, overrides);
+  await db().insert(storageVersions).values(storageVersionRow(version));
+  return version;
+}
+
+export async function setPhase2StorageHead(
+  scope: Phase2TestScope,
+  version: Phase2TestVersion,
+  updatedAt = new Date("2026-09-03T04:00:00.000Z"),
+): Promise<void> {
+  await db()
+    .update(storages)
+    .set({
+      headVersionId: version.versionId,
+      size: version.size,
+      fileCount: version.fileCount,
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(storages.id, scope.memoryStorageId),
+        eq(storages.orgId, scope.orgId),
+        eq(storages.userId, scope.userId),
+      ),
+    );
 }
 
 export async function insertPhase2Candidates(
@@ -198,6 +314,15 @@ export async function insertPendingPhase2Job(
       inputRevision: 1,
       completedRevision: 0,
       retryCount: 0,
+      ...(overrides.status === "leased"
+        ? {
+            claimedBaseVersionId:
+              overrides.claimedBaseVersionId ?? scope.baseVersion.versionId,
+            lastObservedHeadVersionId:
+              overrides.lastObservedHeadVersionId ??
+              scope.baseVersion.versionId,
+          }
+        : {}),
       ...overrides,
     });
 }
