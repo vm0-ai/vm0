@@ -424,10 +424,12 @@ export async function flushAxiom(
 }
 
 // Minimal options surface. Fresh-read consumers bypass Axiom's per-request
-// cache while waiting for asynchronously ingested terminal data; `cursor` is
-// used for Axiom-managed time pagination.
+// cache while waiting for asynchronously ingested terminal data; time bounds
+// constrain dataset scans, and `cursor` is used for Axiom-managed pagination.
 interface QueryAxiomOptions {
   readonly noCache?: boolean;
+  readonly startTime?: string;
+  readonly endTime?: string;
   readonly cursor?: string;
 }
 
@@ -523,9 +525,17 @@ async function queryAxiomDirect<T = Record<string, unknown>>(
 
   const client = axiomClientForApl(apl);
   const axiomOptions =
-    options?.noCache !== undefined
+    options !== undefined
       ? {
-          noCache: options.noCache,
+          ...(options.noCache === undefined
+            ? {}
+            : { noCache: options.noCache }),
+          ...(options.startTime === undefined
+            ? {}
+            : { startTime: options.startTime }),
+          ...(options.endTime === undefined
+            ? {}
+            : { endTime: options.endTime }),
         }
       : undefined;
   const result = await client.query(apl, axiomOptions);
