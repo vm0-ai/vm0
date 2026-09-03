@@ -16,23 +16,29 @@ _ASCII_CODE_POINTS = range(128)
 _TEST_HEADER_WORK_LIMIT = 256
 
 
-class _EarlyMatchSuffixGuard(str):
+class _FullValueOperationGuard(str):
+    def split(self, sep: str | None = None, maxsplit: int = -1) -> list[str]:
+        raise AssertionError(f"guarded header was split with sep={sep!r}, maxsplit={maxsplit}")
+
+    def lower(self) -> str:
+        raise AssertionError("guarded header was lowercased")
+
+    def strip(self, chars: str | None = None) -> str:
+        raise AssertionError(f"guarded header was stripped with chars={chars!r}")
+
+
+class _EarlyMatchSuffixGuard(_FullValueOperationGuard):
     def __getitem__(self, key: int | slice) -> str:
         if isinstance(key, int) and key >= len("websocket,"):
             raise AssertionError("token matcher inspected the irrelevant suffix")
         return super().__getitem__(key)
 
 
-class _WorkLimitGuard(str):
+class _WorkLimitGuard(_FullValueOperationGuard):
     def __getitem__(self, key: int | slice) -> str:
         if isinstance(key, int) and key >= 8:
             raise AssertionError("token matcher read beyond its work budget")
         return super().__getitem__(key)
-
-
-class _StripGuard(str):
-    def strip(self, chars: str | None = None) -> str:
-        raise AssertionError("oversized singleton was stripped")
 
 
 def _is_forbidden_value_control(char: str) -> bool:
@@ -210,6 +216,6 @@ def test_single_header_value(
 
 
 def test_single_header_value_rejects_oversized_value_before_strip() -> None:
-    value = _StripGuard("  value  ")
+    value = _FullValueOperationGuard("  value  ")
 
     assert http_header_syntax.single_header_value((value,), max_value_chars=8) is None
