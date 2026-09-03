@@ -374,6 +374,53 @@ mod tests {
         Ok(unsafe { File::from_raw_fd(fd) })
     }
 
+    #[cfg(target_os = "linux")]
+    async fn artifact_snapshot_preflight_error(mount: &std::path::Path) -> String {
+        let telemetry_dir = tempfile::tempdir().unwrap();
+        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
+        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let upload = server.mock(|when, then| {
+            when.method(PUT);
+            then.status(200);
+        });
+        let http = HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: None,
+        }];
+
+        let error = snapshot_artifact_entries(&http, "test-run", &entries)
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        prepare.assert_calls(0);
+        upload.assert_calls(0);
+        commit.assert_calls(0);
+        assert_artifact_hash_failure(&telemetry_path, &message);
+        message
+    }
+
     async fn start_artifact_checkpoint_test_server(
         artifact_count: usize,
     ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
@@ -702,44 +749,7 @@ mod tests {
             }
         }
 
-        let telemetry_dir = tempfile::tempdir().unwrap();
-        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
-        let server = MockServer::start();
-        let prepare = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/prepare");
-            then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let commit = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/commit");
-            then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let upload = server.mock(|when, then| {
-            when.method(PUT);
-            then.status(200);
-        });
-        let http = HttpClient::with_api_config(
-            server.base_url(),
-            "test-token",
-            "",
-            "test-run-001",
-            Duration::ZERO,
-        )
-        .unwrap();
-        let entries = vec![env::ArtifactEnv {
-            name: "workspace".to_string(),
-            mount_path: mount.to_string_lossy().into_owned(),
-            storage_id: "storage-id".to_string(),
-            version_id: "parent-version".to_string(),
-            missing_root_policy: None,
-        }];
-
-        let error = snapshot_artifact_entries(&http, "test-run", &entries)
-            .await
-            .unwrap_err();
-        let message = error.to_string();
+        let message = artifact_snapshot_preflight_error(&mount).await;
         assert!(
             message.contains(&format!(
                 "observed entries {}/{}",
@@ -756,10 +766,6 @@ mod tests {
             message.contains(&format!("/{}", vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES)),
             "got: {message}"
         );
-        prepare.assert_calls(0);
-        upload.assert_calls(0);
-        commit.assert_calls(0);
-        assert_artifact_hash_failure(&telemetry_path, &message);
     }
 
     #[cfg(target_os = "linux")]
@@ -780,44 +786,7 @@ mod tests {
         drop(file);
         drop(current);
 
-        let telemetry_dir = tempfile::tempdir().unwrap();
-        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
-        let server = MockServer::start();
-        let prepare = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/prepare");
-            then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let commit = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/commit");
-            then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let upload = server.mock(|when, then| {
-            when.method(PUT);
-            then.status(200);
-        });
-        let http = HttpClient::with_api_config(
-            server.base_url(),
-            "test-token",
-            "",
-            "test-run-001",
-            Duration::ZERO,
-        )
-        .unwrap();
-        let entries = vec![env::ArtifactEnv {
-            name: "workspace".to_string(),
-            mount_path: mount.to_string_lossy().into_owned(),
-            storage_id: "storage-id".to_string(),
-            version_id: "parent-version".to_string(),
-            missing_root_policy: None,
-        }];
-
-        let error = snapshot_artifact_entries(&http, "test-run", &entries)
-            .await
-            .unwrap_err();
-        let message = error.to_string();
+        let message = artifact_snapshot_preflight_error(&mount).await;
         assert!(
             message.contains(&format!(
                 "observed entries {}/{}",
@@ -841,10 +810,6 @@ mod tests {
             )),
             "got: {message}"
         );
-        prepare.assert_calls(0);
-        upload.assert_calls(0);
-        commit.assert_calls(0);
-        assert_artifact_hash_failure(&telemetry_path, &message);
     }
 
     #[cfg(target_os = "linux")]
@@ -865,44 +830,7 @@ mod tests {
         }
         std::fs::File::create(deepest.join(std::ffi::OsString::from_vec(vec![0xff]))).unwrap();
 
-        let telemetry_dir = tempfile::tempdir().unwrap();
-        let telemetry_path = telemetry_dir.path().join("sandbox-ops.jsonl");
-        let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(&telemetry_path);
-        let server = MockServer::start();
-        let prepare = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/prepare");
-            then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let commit = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/commit");
-            then.status(200).json_body(json!({"unreachable": true}));
-        });
-        let upload = server.mock(|when, then| {
-            when.method(PUT);
-            then.status(200);
-        });
-        let http = HttpClient::with_api_config(
-            server.base_url(),
-            "test-token",
-            "",
-            "test-run-001",
-            Duration::ZERO,
-        )
-        .unwrap();
-        let entries = vec![env::ArtifactEnv {
-            name: "workspace".to_string(),
-            mount_path: mount.to_string_lossy().into_owned(),
-            storage_id: "storage-id".to_string(),
-            version_id: "parent-version".to_string(),
-            missing_root_policy: None,
-        }];
-
-        let error = snapshot_artifact_entries(&http, "test-run", &entries)
-            .await
-            .unwrap_err();
-        let message = error.to_string();
+        let message = artifact_snapshot_preflight_error(&mount).await;
         assert!(
             message.contains(&format!(
                 "directory depth {}/{}",
@@ -919,10 +847,6 @@ mod tests {
             )),
             "got: {message}"
         );
-        prepare.assert_calls(0);
-        upload.assert_calls(0);
-        commit.assert_calls(0);
-        assert_artifact_hash_failure(&telemetry_path, &message);
     }
 
     #[tokio::test]
