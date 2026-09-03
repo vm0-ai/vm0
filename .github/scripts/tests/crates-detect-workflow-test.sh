@@ -72,12 +72,12 @@ jq -e '
   ) and
   ($host_cpu.needs | sort) == ([
     "detect",
-    "runner-build",
-    "runner-behavior-lane-a",
-    "runner-behavior-lane-b",
-    "runner-behavior-lane-c",
-    "runner-behavior-lane-d"
+    "runner-build"
   ] | sort) and
+  ($host_cpu.if | contains("needs.runner-build.result")) and
+  ($host_cpu.if | contains("needs.runner-behavior-lane-") | not) and
+  ($host_cpu.if | contains("needs.detect.outputs.sandbox-fc-changed")) and
+  ($host_cpu.if | contains("needs.detect.outputs.ci-changed")) and
   ([$lane_a, $lane_b, $lane_c, $lane_d] |
     all(.[]; .needs == ["runner-build"])) and
   behavior_commands($lane_a) == [
