@@ -9,7 +9,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { onRef, withCleanup } from "../utils.ts";
+import { onDomEventFn, onRef, withCleanup } from "../utils.ts";
 import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
@@ -17,7 +17,18 @@ import {
 import {
   featureSwitch$,
   imageRecognitionAvailable$,
+  voiceDraftEnabled$,
 } from "../external/feature-switch.ts";
+import {
+  audioInputAvailable$,
+  audioInputQuota$,
+  openAudioInputQuotaRecovery$,
+  sttRecording$,
+  sttStarting$,
+  sttTranscribing$,
+  startRecording$,
+  stopAndTranscribe$,
+} from "../voice-io/voice-io-stt.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ChatAttachment } from "./chat-draft.ts";
 import { createComposerFeedbackModel } from "./chat-feedback.ts";
@@ -251,9 +262,14 @@ interface ComposerTemplateSignals
   >;
 }
 
+interface ComposerVoiceInputSignals {
+  readonly toggle$: Command<Promise<void>, [AbortSignal]>;
+}
+
 export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
+  readonly voice: ComposerVoiceInputSignals;
   readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
@@ -485,6 +501,91 @@ function createRemoveQueuedMessage(
   );
 }
 
+function createComposerVoiceInputSignals(
+  workflowComposer: WorkflowComposerSignals,
+  draft: Pick<ComposerDraftSignals, "save$">,
+): ComposerVoiceInputSignals {
+  return {
+    toggle$: command(async ({ get, set }, signal: AbortSignal) => {
+      if (
+        !get(audioInputAvailable$) ||
+        get(sttStarting$) ||
+        get(sttTranscribing$)
+      ) {
+        return;
+      }
+      if (get(sttRecording$)) {
+        await set(stopAndTranscribe$, signal);
+        return;
+      }
+
+      const quota = await get(audioInputQuota$);
+      signal.throwIfAborted();
+      if (!quota.allowed) {
+        await set(openAudioInputQuotaRecovery$, signal);
+        return;
+      }
+
+      if (get(voiceDraftEnabled$)) {
+        let voiceDraftId: string | null = null;
+        await set(
+          startRecording$,
+          onDomEventFn(async (text: string) => {
+            if (voiceDraftId === null) {
+              return;
+            }
+            set(
+              workflowComposer.voiceDraft.appendTranscript$,
+              voiceDraftId,
+              text,
+            );
+            await set(draft.save$, signal);
+          }),
+          quota.limit === null,
+          {
+            started: () => {
+              voiceDraftId = set(workflowComposer.voiceDraft.start$);
+            },
+            finish: async () => {
+              if (voiceDraftId === null) {
+                return;
+              }
+              await set(
+                workflowComposer.voiceDraft.finish$,
+                voiceDraftId,
+                "automatic",
+                signal,
+              );
+              signal.throwIfAborted();
+              await set(draft.save$, signal);
+            },
+            fail: async () => {
+              if (voiceDraftId === null) {
+                return;
+              }
+              set(workflowComposer.voiceDraft.markFailed$, voiceDraftId);
+              await set(draft.save$, signal);
+            },
+          },
+          signal,
+        );
+        return;
+      }
+
+      await set(
+        startRecording$,
+        onDomEventFn(async (text: string) => {
+          set(workflowComposer.appendText$, text);
+          await set(draft.save$, signal);
+        }),
+        quota.limit === null,
+        undefined,
+        signal,
+      );
+    }),
+  };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -555,6 +656,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
+    voice: createComposerVoiceInputSignals(workflowComposer, options.draft),
     voiceDraft: workflowComposer.voiceDraft,
     feedback: workflowComposer.feedback,
     workflow: {

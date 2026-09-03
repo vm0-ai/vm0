@@ -71,6 +71,7 @@ export enum FeatureSwitchKey {
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
   VoiceDraft = "voiceDraft",
+  ComposerVoiceInputShortcut = "composerVoiceInputShortcut",
   ComposerImageAnnotation = "composerImageAnnotation",
   GradientColorThemes = "gradientColorThemes",
   DesktopScreenRecording = "desktopScreenRecording",
