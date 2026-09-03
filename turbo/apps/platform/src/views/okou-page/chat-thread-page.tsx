@@ -109,7 +109,7 @@ import type {
   WorkflowSchedule,
 } from "@okouai/api-contracts/contracts/workflows";
 import { getModelDisplayName } from "@okouai/core/model-display-name";
-import { emptyChatImg } from "./platform-assets.ts";
+import { emptyChatImg, thinkingSpinnerImg } from "./platform-assets.ts";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
@@ -4801,24 +4801,53 @@ function ThinkingLabel({
   return <ShimmerText>{thinkingLabel}</ShimmerText>;
 }
 
+function ThinkingLoader({
+  blockStyle,
+  spinnerEnabled,
+}: {
+  blockStyle: CSSProperties;
+  spinnerEnabled: boolean;
+}) {
+  if (spinnerEnabled) {
+    return (
+      <span
+        aria-hidden
+        className="zero-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
+      >
+        <img
+          src={thinkingSpinnerImg}
+          alt=""
+          className="zero-thinking-spinner size-3.5 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className="zero-blocks shrink-0" style={blockStyle}>
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function InlineThinkingRow({
   blockStyle,
   isQueued,
+  spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
 }: {
   blockStyle: CSSProperties;
   isQueued: boolean;
+  spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
-      <span className="zero-blocks shrink-0" style={blockStyle}>
-        <span />
-        <span />
-        <span />
-      </span>
+      <ThinkingLoader blockStyle={blockStyle} spinnerEnabled={spinnerEnabled} />
       <ThinkingLabel
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -4877,6 +4906,7 @@ function WaitingForAssistantResponse({
   thread,
   blockStyle,
   isQueued,
+  spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
   runGroupFolds,
@@ -4884,6 +4914,7 @@ function WaitingForAssistantResponse({
   thread: ChatPanelSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
+  spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
   runGroupFolds: readonly RunGroupFoldControl[];
@@ -4908,11 +4939,10 @@ function WaitingForAssistantResponse({
           })}
           <div className="zero-chat-bubble-assistant min-w-0 overflow-hidden rounded-xl py-4 text-[0.9375rem] leading-[1.7]">
             <div className="flex h-5 min-w-0 items-center gap-2">
-              <span className="zero-blocks shrink-0" style={blockStyle}>
-                <span />
-                <span />
-                <span />
-              </span>
+              <ThinkingLoader
+                blockStyle={blockStyle}
+                spinnerEnabled={spinnerEnabled}
+              />
               <ThinkingLabel
                 isQueued={isQueued}
                 thinkingLabel={thinkingLabel}
@@ -4937,6 +4967,7 @@ function AssistantThinkingStatusRow({
   active,
   blockStyle,
   isQueued,
+  spinnerEnabled,
   thinkingLabel,
   serverThinkingLabel,
   thread,
@@ -4945,6 +4976,7 @@ function AssistantThinkingStatusRow({
   active: boolean;
   blockStyle: CSSProperties;
   isQueued: boolean;
+  spinnerEnabled: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
   thread: ChatPanelSignals;
@@ -4965,6 +4997,7 @@ function AssistantThinkingStatusRow({
           <InlineThinkingRow
             blockStyle={blockStyle}
             isQueued={isQueued}
+            spinnerEnabled={spinnerEnabled}
             thinkingLabel={thinkingLabel}
             serverThinkingLabel={serverThinkingLabel}
           />
@@ -5010,8 +5043,11 @@ function ThinkingIndicator({
   mode: ThinkingIndicatorMode;
   runGroupFolds: readonly RunGroupFoldControl[];
 }) {
+  const featureSwitches = useGet(featureSwitch$);
   const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+    featureSwitches[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+  const spinnerEnabled =
+    featureSwitches[FeatureSwitchKey.ChatThinkingSpinner] ?? false;
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
@@ -5061,6 +5097,7 @@ function ThinkingIndicator({
         active={active}
         blockStyle={blockStyle}
         isQueued={isQueued}
+        spinnerEnabled={spinnerEnabled}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
         thread={thread}
@@ -5075,6 +5112,7 @@ function ThinkingIndicator({
       thread={thread}
       blockStyle={blockStyle}
       isQueued={isQueued}
+      spinnerEnabled={spinnerEnabled}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
       runGroupFolds={runGroupFolds}
