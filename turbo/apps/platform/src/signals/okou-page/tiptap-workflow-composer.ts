@@ -1568,6 +1568,7 @@ function replaceVoiceDraftWithText(
 function createVoiceDraftSignals(
   editor: Editor,
   hasDraftState$: State<boolean>,
+  lastAssistantMessage$: Computed<string | undefined> | undefined,
 ): WorkflowComposerVoiceDraftSignals {
   const hasDraft$ = computed((get): boolean => {
     return get(hasDraftState$);
@@ -1609,19 +1610,42 @@ function createVoiceDraftSignals(
         removeVoiceDraft(editor, id, false);
         return true;
       }
+      const lastAssistantMessage = lastAssistantMessage$
+        ? get(lastAssistantMessage$)
+        : undefined;
       setVoiceDraftAttributes(editor, id, {
         status: "processing",
         visible: revealWhileProcessing,
       });
       const client = get(apiClient$)(voiceIoPolishContract);
-      const result = await settle(
-        accept(
-          client.post({ body: { text }, fetchOptions: { signal } }),
-          [200],
-          signal,
-        ),
-        signal,
-      );
+      const request =
+        lastAssistantMessage === undefined
+          ? accept(
+              client.post({ body: { text }, fetchOptions: { signal } }),
+              [200],
+              signal,
+            )
+          : (async () => {
+              const contextualResponse = await accept(
+                client.post({
+                  body: { text, lastAssistantMessage },
+                  fetchOptions: { signal },
+                }),
+                [200, 400],
+                signal,
+              );
+              if (contextualResponse.status === 200) {
+                return contextualResponse;
+              }
+              // Older APIs have a strict `{ text }` schema. The legacy retry
+              // keeps a newly loaded app usable during deployment rollback.
+              return accept(
+                client.post({ body: { text }, fetchOptions: { signal } }),
+                [200],
+                signal,
+              );
+            })();
+      const result = await settle(request, signal);
       signal.throwIfAborted();
       if (!result.ok) {
         setVoiceDraftAttributes(editor, id, {
@@ -2356,9 +2380,10 @@ interface MountEditorOptions {
   singleLineOnMobile: boolean;
 }
 
-interface WorkflowComposerMountOptions {
+interface WorkflowComposerOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
+  readonly lastAssistantMessage$?: Computed<string | undefined>;
 }
 
 function focusMountedEditorAtEnd(editor: Editor): void {
@@ -3009,7 +3034,7 @@ export function createWorkflowComposerSignals<
   draft: DraftSignals,
   openDialog$: OpenTemplatePickerDialogCommand,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
-  mountOptions: WorkflowComposerMountOptions = {},
+  options: WorkflowComposerOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
@@ -3023,7 +3048,11 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
-  const voiceDraft = createVoiceDraftSignals(editor, hasVoiceDraftState$);
+  const voiceDraft = createVoiceDraftSignals(
+    editor,
+    hasVoiceDraftState$,
+    options.lastAssistantMessage$,
+  );
   connectComposerFeedback(feedback, editor);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
@@ -3080,8 +3109,8 @@ export function createWorkflowComposerSignals<
     compositionGate,
     syncWorkflowNames$,
     syncAgentMentionAvatars$,
-    autoFocus: mountOptions.autoFocus ?? false,
-    singleLineOnMobile: mountOptions.singleLineOnMobile ?? false,
+    autoFocus: options.autoFocus ?? false,
+    singleLineOnMobile: options.singleLineOnMobile ?? false,
   });
   const suggestionInsertionCommands = createSuggestionInsertionCommands(
     editor,

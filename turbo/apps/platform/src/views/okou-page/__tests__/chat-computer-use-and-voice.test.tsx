@@ -976,6 +976,81 @@ describe("chat lifecycle", () => {
     expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
+  it("uses the latest assistant message with a legacy polish fallback", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000026";
+    const rawTranscript = "um ship the nebula release";
+    const polishedTranscript = "Ship the Project Nebula release.";
+    const lastAssistantMessage =
+      "The current release is called Project Nebula.";
+    let polishCalls = 0;
+    const polishBodies: unknown[] = [];
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "voice-draft-earlier-assistant",
+          role: "assistant",
+          content: "The earlier release was called Project Aurora.",
+          runId: "voice-draft-earlier-run",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T08:00:00Z",
+        },
+        {
+          id: "voice-draft-latest-assistant",
+          role: "assistant",
+          content: lastAssistantMessage,
+          runId: "voice-draft-latest-run",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T08:01:00Z",
+        },
+      ],
+    });
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: rawTranscript }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
+      polishCalls += 1;
+      polishBodies.push(body);
+      if (polishCalls === 1) {
+        return respond(400, {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Unexpected key lastAssistantMessage",
+          },
+        });
+      }
+      return respond(200, { text: polishedTranscript });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(polishedTranscript);
+    });
+    expect(polishCalls).toBe(2);
+    expect(polishBodies).toStrictEqual([
+      { text: rawTranscript, lastAssistantMessage },
+      { text: rawTranscript },
+    ]);
+  });
+
   it("keeps a voice draft hidden and unsendable until cleanup fails", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000022";
