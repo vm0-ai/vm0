@@ -2135,3 +2135,34 @@ html:has(.zero-dialog-overlay)
       14%
   );
 }
+
+/* Brand washes and markdown accents. The Amber scale is not mirrored between
+   themes, so a raw stop that reads as a pale tint in light stays pale in dark
+   and blows out. These reach for the palette's own theme-aware brand tokens
+   instead; the ungated rules above keep the orange ramp's raw stops, which do
+   mirror. */
+[data-new-ui] ::selection {
+  background-color: hsl(var(--brand-subtle));
+}
+[data-new-ui] .wmde-markdown[data-color-mode*="light"],
+[data-new-ui] .wmde-markdown[data-color-mode*="dark"] {
+  --color-accent-fg: hsl(var(--brand-text));
+  --color-accent-emphasis: hsl(var(--brand-text));
+  --color-attention-subtle: hsl(var(--brand-subtle));
+  --color-attention-fg: hsl(var(--brand-text));
+  --color-attention-emphasis: hsl(var(--brand-text));
+  --color-prettylights-syntax-markup-heading: hsl(var(--brand-text));
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--brand-subtle));
+}
+[data-new-ui] .wmde-markdown mark {
+  background-color: hsl(var(--brand-subtle));
+}
+[data-new-ui] .wmde-markdown .markdown-alert.markdown-alert-note {
+  border-left-color: hsl(var(--brand-text));
+}
+[data-new-ui]
+  .wmde-markdown
+  .markdown-alert.markdown-alert-note
+  .markdown-alert-title {
+  color: hsl(var(--brand-text));
+}
