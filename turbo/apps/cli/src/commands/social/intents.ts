@@ -27,7 +27,7 @@ export type SocialOperation =
   | "summarize"
   | "transcript";
 
-export type SocialTargetKind =
+type SocialTargetKind =
   | "channel"
   | "company"
   | "playlist"
