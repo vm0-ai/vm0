@@ -23,14 +23,6 @@ describe("billingRedirectAllowed", () => {
     ).toBeFalsy();
   });
 
-  it("accepts an immutable okou Pages deployment in preview", () => {
-    expect(
-      billingRedirectAllowed(
-        "https://3508a2f5.okou-app.pages.dev/onboarding?billing=success",
-      ),
-    ).toBeTruthy();
-  });
-
   it("accepts a standalone okou app Worker preview", () => {
     expect(
       billingRedirectAllowed(
@@ -43,16 +35,6 @@ describe("billingRedirectAllowed", () => {
     expect(
       billingRedirectAllowed(
         "https://pr-22085-app-okou-app-preview.attacker.workers.dev/onboarding?billing=success",
-      ),
-    ).toBeFalsy();
-  });
-
-  it("rejects an immutable okou Pages deployment in production", () => {
-    mockEnv("ENV", "production");
-
-    expect(
-      billingRedirectAllowed(
-        "https://3508a2f5.okou-app.pages.dev/onboarding?billing=success",
       ),
     ).toBeFalsy();
   });

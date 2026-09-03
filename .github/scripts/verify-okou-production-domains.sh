@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 1 )); then
-  echo "usage: $0 <cloudflare-pages-url>" >&2
+if (( $# != 0 )); then
+  echo "usage: $0" >&2
   exit 1
 fi
 
-pages_url="$1"
 curl_retry=(
   --retry 12
   --retry-delay 5
@@ -14,7 +13,7 @@ curl_retry=(
   --retry-all-errors
 )
 
-for url in "$pages_url" "https://app.vm0.ai" "https://app.okou.ai"; do
+for url in "https://app.vm0.ai" "https://app.okou.ai"; do
   curl -fsSL "${curl_retry[@]}" "$url" --output /dev/null
   echo "Production App is serving: $url"
 done

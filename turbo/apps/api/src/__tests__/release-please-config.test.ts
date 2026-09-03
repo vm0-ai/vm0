@@ -129,10 +129,6 @@ describe("release-please API deployment graph", () => {
     );
     const releaseWorkflow = readText(".github/workflows/release-please.yml");
     const releaseJob = workflowJobBlock(releaseWorkflow, "release-please");
-    const promoteAppProductionJob = workflowJobBlock(
-      releaseWorkflow,
-      "promote-app-production",
-    );
     const promoteAppWorkerProductionJob = workflowJobBlock(
       releaseWorkflow,
       "promote-app-worker-production",
@@ -163,18 +159,18 @@ describe("release-please API deployment graph", () => {
     expect(releaseJob).toContain(
       "steps.release.outputs['turbo/apps/app-worker--tag_name']",
     );
-    expect(promoteAppProductionJob).toContain(
-      "needs.release-please.outputs.app_deploy_required == 'true'",
-    );
     expect(promoteAppWorkerProductionJob).toContain(
       "needs.release-please.outputs.app_deploy_required == 'true'",
     );
     expect(promoteAppWorkerProductionJob).not.toContain("continue-on-error");
     expect(promoteAppWorkerProductionJob).toContain(
-      "needs: [release-please, promote-app-production]",
+      "needs: [release-please, builds-complete, promote-api-production]",
     );
     expect(promoteAppWorkerProductionJob).toContain(
-      "needs.promote-app-production.result == 'success'",
+      "needs.builds-complete.result == 'success'",
+    );
+    expect(promoteAppWorkerProductionJob).toContain(
+      "needs.promote-api-production.result == 'success'",
     );
     expect(promoteAppWorkerProductionJob).toContain("app.okou.ai");
     expect(promoteAppWorkerProductionJob).toContain("app.vm0.ai");
@@ -359,23 +355,16 @@ describe("release-please API deployment graph", () => {
 
   it("promotes App after the API production lifecycle", () => {
     const workflow = readText(".github/workflows/release-please.yml");
-    const promoteAppProductionJob = workflowJobBlock(
-      workflow,
-      "promote-app-production",
-    );
     const promoteAppWorkerProductionJob = workflowJobBlock(
       workflow,
       "promote-app-worker-production",
     );
 
-    expect(promoteAppProductionJob).toContain(
+    expect(promoteAppWorkerProductionJob).toContain(
       "needs: [release-please, builds-complete, promote-api-production]",
     );
-    expect(promoteAppProductionJob).toContain(
-      "needs.promote-api-production.result == 'success'",
-    );
     expect(promoteAppWorkerProductionJob).toContain(
-      "needs: [release-please, promote-app-production]",
+      "needs.promote-api-production.result == 'success'",
     );
   });
 });

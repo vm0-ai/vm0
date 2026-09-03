@@ -98,9 +98,6 @@ BASH
 chmod +x "${fake_bin}/curl"
 
 expected_log() {
-  local pages_url="$1"
-
-  printf 'serve\t%s\n' "$pages_url"
   printf '%s\n' \
     $'serve\thttps://app.vm0.ai' \
     $'serve\thttps://app.okou.ai' \
@@ -114,44 +111,32 @@ expected_log() {
 
 verify_run() {
   local name="$1"
-  local pages_url="$2"
-  shift 2
+  shift
   local curl_log="${test_root}/${name}.curl.log"
   local expected="${test_root}/${name}.expected.log"
 
   PATH="${fake_bin}:$PATH" \
     MOCK_CURL_LOG="$curl_log" \
-    bash "$script" "$pages_url" "$@" > "${test_root}/${name}.output"
+    bash "$script" "$@" > "${test_root}/${name}.output"
 
-  expected_log "$pages_url" > "$expected"
+  expected_log > "$expected"
   if ! diff -u "$expected" "$curl_log"; then
     fail "$name run did not verify both brand auth redirects and CORS pairs"
   fi
 }
 
-verify_run default https://preview-default.test
+verify_run default
 
 extra_argument_log="${test_root}/extra-argument.curl.log"
 : > "$extra_argument_log"
 if PATH="${fake_bin}:$PATH" \
   MOCK_CURL_LOG="$extra_argument_log" \
-  bash "$script" https://preview-extra.test unexpected \
+  bash "$script" unexpected \
     > "${test_root}/extra-argument.output" 2>&1; then
   fail "extra argument succeeded"
 fi
 grep -Fq 'usage:' "${test_root}/extra-argument.output" ||
   fail "extra argument did not print usage"
 [[ ! -s "$extra_argument_log" ]] || fail "extra argument reached curl"
-
-missing_log="${test_root}/missing.curl.log"
-: > "$missing_log"
-if PATH="${fake_bin}:$PATH" \
-  MOCK_CURL_LOG="$missing_log" \
-  bash "$script" > "${test_root}/missing.output" 2>&1; then
-  fail "missing arguments succeeded"
-fi
-grep -Fq 'usage:' "${test_root}/missing.output" ||
-  fail "missing arguments did not print usage"
-[[ ! -s "$missing_log" ]] || fail "missing arguments reached curl"
 
 echo "verify okou production domains tests passed"
