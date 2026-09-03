@@ -596,7 +596,7 @@ fn process_record(
             ));
             append_to_retained_state(
                 raw_record,
-                Some(&value),
+                context.canonical_ordinals.is_some().then_some(&value),
                 context,
                 retained_bytes,
                 current_turn,
@@ -607,7 +607,7 @@ fn process_record(
         record => {
             append_to_retained_state(
                 raw_record,
-                Some(&value),
+                context.canonical_ordinals.is_some().then_some(&value),
                 context,
                 retained_bytes,
                 current_turn,
