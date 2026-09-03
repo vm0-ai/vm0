@@ -23,8 +23,8 @@ ruby -e '
 
   canonical_signing_identity = "OKOU_DESKTOP_SIGNING_IDENTITY"
   canonical_writer_counts = {
-    "OKOU_DESKTOP_PRODUCT" => [8, 2],
-    "OKOU_DESKTOP_PLATFORM_URL" => [11, 2],
+    "OKOU_DESKTOP_PRODUCT" => [6, 2],
+    "OKOU_DESKTOP_PLATFORM_URL" => [9, 2],
     canonical_signing_identity => [0, 5],
   }
   canonical_writer_counts.each do |name, expected_counts|
@@ -51,6 +51,15 @@ ruby -e '
   detector_run = detector.fetch("steps").find { |step| step["id"] == "version" }.fetch("run")
   raise "version detector must compare Desktop package versions" unless detector_run.include?("resolve-desktop-version-change.sh")
 
+  default_build = build.fetch("steps").find { |step| step["id"] == "build-prod" }
+  raise "Desktop CI must build the default configuration" unless default_build
+  raise "Default CI build must not select a product" if default_build.fetch("env").key?("OKOU_DESKTOP_PRODUCT")
+  raise "Default CI build must not select a platform URL" if default_build.fetch("env").key?("OKOU_DESKTOP_PLATFORM_URL")
+
+  default_verify = build.fetch("steps").find { |step| step["name"] == "Verify default-configuration artifact" }.fetch("run")
+  raise "Default CI build must package the Okou identity" unless default_verify.include?("ai.okou.desktop")
+  raise "Default CI build must stay free of a baked-in runtime config" unless default_verify.include?("should not contain desktop runtime config")
+
   okou_build = build.fetch("steps").find { |step| step["id"] == "build-okou-prod" }
   raise "Desktop CI must build the Okou product" unless okou_build
   raise "Okou CI build must select the Okou product" unless okou_build.fetch("env").fetch("OKOU_DESKTOP_PRODUCT") == "okou"
@@ -59,6 +68,7 @@ ruby -e '
 
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
   raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
+  raise "Okou artifact must verify its packaged runtime config" unless okou_verify.include?("desktop-runtime-config.json")
   raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
 
   preview = build.fetch("steps").find { |step| step["id"] == "preview" }
@@ -74,7 +84,11 @@ ruby -e '
   build_step = deploy.fetch("steps").find { |step| step["name"] == "Build canonical unsigned Desktop app" }
   raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("OKOU_DESKTOP_SKIP_SIGNING") == "true"
   raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou.app")
-  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai")
+  raise "canonical Okou build must select the Okou product" unless build_step.fetch("env").fetch("OKOU_DESKTOP_PRODUCT") == "okou"
+  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("env").fetch("OKOU_DESKTOP_PLATFORM_URL") == "https://app.okou.ai"
+  raise "canonical Desktop build must package exactly one runtime config" unless build_step.fetch("run").include?("must contain exactly one Desktop runtime config")
+  raise "canonical Desktop build must verify the packaged runtime config contents" unless build_step.fetch("run").include?("Unexpected canonical Desktop runtime config")
+  raise "canonical Desktop build must package the app once" unless build_step.fetch("run").scan("electron-forge package").length == 1
 
   artifact_build = deploy.fetch("steps").find { |step| step["name"] == "Create canonical Desktop artifact" }.fetch("run")
   raise "canonical artifact must contain the Okou app" unless artifact_build.include?("Okou-darwin-arm64/Okou.app")
