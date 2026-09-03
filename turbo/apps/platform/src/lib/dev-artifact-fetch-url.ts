@@ -1,5 +1,6 @@
 const DEV_ARTIFACT_FETCH_EXACT_HOSTS = [
   "cdn.vm0.io",
+  "a.okou.io",
   "cdn.okou.io",
   "cdn.vm7.io",
   "static.vm0.io",

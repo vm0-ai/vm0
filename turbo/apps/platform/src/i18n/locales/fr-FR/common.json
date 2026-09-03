@@ -2441,6 +2441,7 @@
     },
     "voice": {
       "checkingLimit": "Vérification de la limite d'entrée vocale",
+      "confirmRecording": "OK",
       "draft": "Brouillon vocal",
       "draftTooLong": "Ce brouillon vocal est trop long. Démarrez un nouvel enregistrement.",
       "finishDraft": "Finaliser",

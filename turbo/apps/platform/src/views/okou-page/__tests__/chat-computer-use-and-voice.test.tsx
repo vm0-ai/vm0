@@ -29,7 +29,11 @@ import {
   queryLinkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
-import { billingStatus } from "./chat-composer-test-helpers.ts";
+import {
+  billingStatus,
+  composerElementFrom,
+  placeCaretAfterText,
+} from "./chat-composer-test-helpers.ts";
 
 function computerUseRow(switchName: string): HTMLElement {
   const row = screen
@@ -1020,6 +1024,67 @@ describe("chat lifecycle", () => {
     expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
+  it("replaces the composer footer while finishing a voice draft at the last selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000025";
+    const rawTranscript = "um polished transcript";
+    const polishedTranscript = "polished transcript";
+    const polishRequested = context.mocks.deferred<void>();
+    const polishReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: rawTranscript }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.api(voiceIoPolishContract.post, async ({ body, respond }) => {
+      expect(body).toStrictEqual({ text: rawTranscript });
+      polishRequested.resolve(undefined);
+      await polishReady.promise;
+      return respond(200, { text: polishedTranscript });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    const composerShell = composerElementFrom(composer);
+    await fill(composer, "Start  end");
+    placeCaretAfterText(composer, "Start ");
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    const finishRecording = await waitFor(() => {
+      return buttonByText("OK", composerShell);
+    });
+    expect(finishRecording).toHaveAccessibleName("Stop recording");
+    expect(within(composerShell).queryByLabelText("Send")).toBeNull();
+    expect(within(composerShell).queryByLabelText("Voice input")).toBeNull();
+
+    await user.click(finishRecording);
+    await polishRequested.promise;
+
+    await expect(
+      within(composerShell).findByRole("status"),
+    ).resolves.toHaveTextContent("Transcribing...");
+    expect(within(composerShell).queryByLabelText("Send")).toBeNull();
+
+    polishReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(composer.textContent).toBe("Start polished transcript end");
+      expect(window.getSelection()?.toString()).toBe(polishedTranscript);
+      expect(within(composerShell).getByLabelText("Send")).toBeEnabled();
+      expect(within(composerShell).getByLabelText("Voice input")).toBeEnabled();
+    });
+  });
+
   it("keeps a voice draft hidden and unsendable until cleanup fails", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000022";
@@ -1068,14 +1133,14 @@ describe("chat lifecycle", () => {
     const hiddenDraft = document.querySelector("[data-voice-draft]");
     expect(hiddenDraft).not.toBeNull();
     expect(hiddenDraft).not.toBeVisible();
-    expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
 
     composer.focus();
     await user.keyboard("{Control>}z{/Control}");
     const draftAfterUndo = document.querySelector("[data-voice-draft]");
     expect(draftAfterUndo).not.toBeNull();
     expect(draftAfterUndo).not.toBeVisible();
-    expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Stop recording"));
 

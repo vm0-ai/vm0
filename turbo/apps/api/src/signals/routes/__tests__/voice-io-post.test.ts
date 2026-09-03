@@ -1264,7 +1264,9 @@ describe("POST /api/voice-io/*", () => {
     const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.wav$/u);
-    expect(url).toBe(`https://cdn.okou.io/${String(putInput.Key)}`);
+    expect(url).toBe(
+      `https://a.okou.io/${String(putInput.Key).replace(/^artifacts\//u, "")}`,
+    );
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
       filename: encodeURIComponent(filename),

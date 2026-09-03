@@ -2441,6 +2441,7 @@
     },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
+      "confirmRecording": "OK",
       "draft": "Borrador de voz",
       "draftTooLong": "Este borrador de voz es demasiado largo. Inicia una nueva grabación.",
       "finishDraft": "Finalizar",

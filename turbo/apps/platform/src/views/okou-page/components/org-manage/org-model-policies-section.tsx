@@ -895,7 +895,7 @@ function ApiKeyProviderSection({
                   href={secretSignupUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-primary underline"
+                  className="text-brand-text underline"
                 >
                   {t(($) => {
                     return $.settings.models.policies.getKey;

@@ -1227,7 +1227,6 @@ mod tests {
     unsafe fn clear_test_env() {
         for key in [
             guest_contracts::env::RUN_ID_ENV,
-            "VM0_API_TOKEN",
             guest_contracts::env::CANONICAL_API_TOKEN_ENV,
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,

@@ -30,6 +30,10 @@ use api::{
     CommitSnapshotRequest, PrepareSnapshotRequest, PreparedSnapshot, PreparedUploads,
     commit_snapshot, prepare_snapshot,
 };
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) use archive::{
+    ARTIFACT_TRAVERSAL_MAX_DEPTH, ARTIFACT_TRAVERSAL_MAX_ENTRIES, ARTIFACT_TRAVERSAL_MAX_PATH_BYTES,
+};
 use archive::{collect_file_metadata, create_archive, validate_archive_inputs};
 use std::fs::File;
 use std::io::{BufWriter, Write};

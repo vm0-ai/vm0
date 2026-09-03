@@ -125,18 +125,16 @@ assert_api_backend_url_absent() {
   assert_env_key_absent "$env_file" OKOU_API_BACKEND_URL
 }
 
-assert_machine_secret_canonical_only() {
+assert_machine_secret_canonical() {
   local env_file="$1"
   local expected="$2"
   assert_env_key_count "$env_file" OKOU_MACHINE_SECRET_KEY 1
   assert_env_value "$env_file" OKOU_MACHINE_SECRET_KEY "$expected"
-  assert_env_key_count "$env_file" VM0_MACHINE_SECRET_KEY 0
 }
 
-assert_machine_secret_aliases_absent() {
+assert_machine_secret_absent() {
   local env_file="$1"
   assert_env_key_absent "$env_file" OKOU_MACHINE_SECRET_KEY
-  assert_env_key_absent "$env_file" VM0_MACHINE_SECRET_KEY
 }
 
 assert_machine_secret_values_absent_from_output() {
@@ -393,7 +391,7 @@ assert_machine_secret_canonical_case() {
   env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${test_dir}/github-output")"
   assert_contains "$output" "Rendered"
   assert_machine_secret_values_absent_from_output "$output" "$expected"
-  assert_machine_secret_canonical_only "$env_file" "$expected"
+  assert_machine_secret_canonical "$env_file" "$expected"
 }
 
 if grep -En 'add_(var|secret) [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)' "$ACTION"; then
@@ -444,7 +442,7 @@ TEMP_DIRS+=("$machine_secret_absent_dir")
 machine_secret_absent_output="$(run_machine_secret_action "$machine_secret_absent_dir" api preview '{}' 2>&1)"
 machine_secret_absent_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${machine_secret_absent_dir}/github-output")"
 assert_contains "$machine_secret_absent_output" "Rendered"
-assert_machine_secret_aliases_absent "$machine_secret_absent_env_file"
+assert_machine_secret_absent "$machine_secret_absent_env_file"
 
 machine_secret_web_dir="$(mktemp -d)"
 TEMP_DIRS+=("$machine_secret_web_dir")
@@ -459,7 +457,7 @@ machine_secret_web_output="$(
 machine_secret_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${machine_secret_web_dir}/github-output")"
 assert_contains "$machine_secret_web_output" "Rendered"
 assert_machine_secret_values_absent_from_output "$machine_secret_web_output" " web-isolated-machine-secret "
-assert_machine_secret_aliases_absent "$machine_secret_web_env_file"
+assert_machine_secret_absent "$machine_secret_web_env_file"
 
 api_backend_url_explicit_dir="$(mktemp -d)"
 TEMP_DIRS+=("$api_backend_url_explicit_dir")
@@ -544,7 +542,7 @@ assert_env_value "$success_env_file" FINICITY_APP_KEY "github-finicity-app-key"
 assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-secret"
 assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partner-id"
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
-assert_machine_secret_canonical_only "$success_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical "$success_env_file" "github-atom-machine-secret"
 assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-vercel-bypass-secret"
 assert_env_key_count "$success_env_file" OKOU_PREVIEW_JOB_REF 1
 assert_env_value "$success_env_file" OKOU_PREVIEW_JOB_REF "pr-123"
@@ -599,7 +597,6 @@ assert_preview_job_ref_absent "$preview_web_env_file"
 assert_debug_canonical "$preview_web_env_file"
 assert_api_backend_url_canonical "$preview_web_env_file" "https://pr-123-api-backend.vm0.test"
 assert_env_key_absent "$preview_web_env_file" OKOU_MACHINE_SECRET_KEY
-assert_env_key_absent "$preview_web_env_file" VM0_MACHINE_SECRET_KEY
 assert_web_url_absent "$preview_web_env_file"
 
 empty_job_ref_dir="$(mktemp -d)"
@@ -610,7 +607,7 @@ assert_contains "$empty_job_ref_output" "Rendered"
 assert_preview_job_ref_absent "$empty_job_ref_env_file"
 assert_debug_canonical "$empty_job_ref_env_file"
 assert_api_backend_url_canonical "$empty_job_ref_env_file" "https://pr-123-api-backend.vm0.test"
-assert_machine_secret_canonical_only "$empty_job_ref_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical "$empty_job_ref_env_file" "github-atom-machine-secret"
 
 empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_dir")
@@ -621,7 +618,7 @@ assert_no_fixture_secret_values "$empty_output"
 assert_zero_keys_with_live_readers_absent "$empty_env_file"
 assert_debug_canonical "$empty_env_file"
 assert_api_backend_url_canonical "$empty_env_file" "https://pr-123-api-backend.vm0.test"
-assert_machine_secret_aliases_absent "$empty_env_file"
+assert_machine_secret_absent "$empty_env_file"
 assert_env_value "$empty_env_file" OKOU_PUBLIC_ARTIFACTS_BASE_URL ""
 assert_env_value "$empty_env_file" OKOU_PUBLIC_HOST_DOMAIN ""
 assert_env_value "$empty_env_file" OKOU_MAPS_GOOGLE_MAPS_TOKEN ""
@@ -646,7 +643,6 @@ assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$production_web_env_file" "ATOM_URL="
 assert_env_key_absent "$production_web_env_file" OKOU_MACHINE_SECRET_KEY
-assert_env_key_absent "$production_web_env_file" VM0_MACHINE_SECRET_KEY
 assert_env_absent_value "$production_web_env_file" "CLI_PKG_URL="
 assert_env_absent_value "$production_web_env_file" "JOGGAI_WEBHOOK_SECRET="
 assert_env_value "$production_web_env_file" OKOU_WEATHER_GOOGLE_WEATHER_TOKEN "github-google-weather-token"
@@ -675,7 +671,7 @@ assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr
 assert_env_value "$production_api_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
-assert_machine_secret_canonical_only "$production_api_env_file" "github-atom-machine-secret"
+assert_machine_secret_canonical "$production_api_env_file" "github-atom-machine-secret"
 assert_env_value "$production_api_env_file" JOGGAI_WEBHOOK_SECRET "github-joggai-webhook-secret"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_ID "github-teams-bot-app-id"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_PASSWORD "github-teams-bot-app-password"

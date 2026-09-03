@@ -12,8 +12,6 @@ use guest_agent::http::HttpClient;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CANONICAL_TOKEN: &str = "canonical-token-must-not-leak";
-const RETIRED_TOKEN: &str = "retired-token-must-not-leak";
-const TOKEN_VALUES: [&str; 2] = [CANONICAL_TOKEN, RETIRED_TOKEN];
 
 #[derive(Clone, Copy)]
 enum EnvInput {
@@ -26,81 +24,28 @@ enum EnvInput {
 struct CaptureCase {
     name: &'static str,
     canonical: EnvInput,
-    retired: EnvInput,
     expected_value: &'static str,
 }
 
-const CAPTURE_CASES: [CaptureCase; 12] = [
+const CAPTURE_CASES: [CaptureCase; 4] = [
     CaptureCase {
-        name: "both-absent",
+        name: "absent",
         canonical: EnvInput::Absent,
-        retired: EnvInput::Absent,
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "retired-only-readable",
-        canonical: EnvInput::Absent,
-        retired: EnvInput::Readable(RETIRED_TOKEN),
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "retired-only-empty",
-        canonical: EnvInput::Absent,
-        retired: EnvInput::Readable(""),
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "retired-only-non-unicode",
-        canonical: EnvInput::Absent,
-        retired: EnvInput::NonUnicode,
         expected_value: "",
     },
     CaptureCase {
         name: "canonical-readable",
         canonical: EnvInput::Readable(CANONICAL_TOKEN),
-        retired: EnvInput::Absent,
-        expected_value: CANONICAL_TOKEN,
-    },
-    CaptureCase {
-        name: "canonical-readable-with-retired-readable",
-        canonical: EnvInput::Readable(CANONICAL_TOKEN),
-        retired: EnvInput::Readable(RETIRED_TOKEN),
-        expected_value: CANONICAL_TOKEN,
-    },
-    CaptureCase {
-        name: "canonical-readable-with-retired-empty",
-        canonical: EnvInput::Readable(CANONICAL_TOKEN),
-        retired: EnvInput::Readable(""),
-        expected_value: CANONICAL_TOKEN,
-    },
-    CaptureCase {
-        name: "canonical-readable-with-retired-non-unicode",
-        canonical: EnvInput::Readable(CANONICAL_TOKEN),
-        retired: EnvInput::NonUnicode,
         expected_value: CANONICAL_TOKEN,
     },
     CaptureCase {
         name: "canonical-empty",
         canonical: EnvInput::Readable(""),
-        retired: EnvInput::Absent,
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "canonical-empty-with-retired-readable",
-        canonical: EnvInput::Readable(""),
-        retired: EnvInput::Readable(RETIRED_TOKEN),
         expected_value: "",
     },
     CaptureCase {
         name: "canonical-non-unicode",
         canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Absent,
-        expected_value: "",
-    },
-    CaptureCase {
-        name: "canonical-non-unicode-with-retired-readable",
-        canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Readable(RETIRED_TOKEN),
         expected_value: "",
     },
 ];
@@ -132,7 +77,6 @@ fn apply_input(key: &str, input: EnvInput) {
 
 fn clear_api_token_env() {
     remove_test_env(guest_contracts::env::CANONICAL_API_TOKEN_ENV);
-    remove_test_env("VM0_API_TOKEN");
 }
 
 fn capture_raw(log_path: &Path) -> Result<GuestConfigRaw, String> {
@@ -146,12 +90,10 @@ fn capture_raw(log_path: &Path) -> Result<GuestConfigRaw, String> {
 }
 
 fn assert_value_free(text: &str, context: &str) {
-    for token in TOKEN_VALUES {
-        assert!(
-            !text.contains(token),
-            "{context} exposed API token material"
-        );
-    }
+    assert!(
+        !text.contains(CANONICAL_TOKEN),
+        "{context} exposed API token material"
+    );
 }
 
 fn assert_http_mode(tmp: &Path, case: CaptureCase, raw: GuestConfigRaw) -> TestResult {
@@ -211,7 +153,6 @@ fn process_env_reads_only_canonical_api_token_without_value_leaks() -> TestResul
             guest_contracts::env::CANONICAL_API_TOKEN_ENV,
             case.canonical,
         );
-        apply_input("VM0_API_TOKEN", case.retired);
         let raw = capture_raw(&tmp.path().join(format!("{}.log", case.name)));
         let raw = match raw {
             Ok(raw) => raw,

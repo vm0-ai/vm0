@@ -7578,7 +7578,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       throw new Error("Expected the promoted claim to expose the Okou token");
     }
     expect(thirdClaim.secretValues).toContain(okouToken);
-    expect(thirdClaim.environment ?? {}).not.toHaveProperty("ZERO_TOKEN");
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
     expect(thirdClaim).not.toHaveProperty("runContextStorage");
     expectClaimNetworkPolicyRefreshPath(third.runId, "no_builtin_targets");
@@ -14954,7 +14953,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
 
     const directEnvironment = {
       ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
-      ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
+      CUSTOM_API_TOKEN: `\${{ secrets.CUSTOM_API_TOKEN }}`,
     };
     const directAgent = await api.createDirectAgent(actor, {
       version: "1",
@@ -14976,13 +14975,13 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       prompt: "consume an application-owned Zero context",
       modelProviderType: "anthropic-api-key",
       vars: { ZERO_AGENT_ID: directAgent.agentId },
-      secrets: { ZERO_TOKEN: directOkouToken },
+      secrets: { CUSTOM_API_TOKEN: directOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
     const directClaim = await api.claimRunnerJob(direct.runId);
     expect(directClaim.environment).toMatchObject({
       ZERO_AGENT_ID: directAgent.agentId,
-      ZERO_TOKEN: directOkouToken,
+      CUSTOM_API_TOKEN: directOkouToken,
     });
     expect(directClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
     expect(sandboxTokenPayload(directOkouToken)).toMatchObject({
@@ -15288,7 +15287,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
     const runContextSnapshot = runContextSnapshotForRun(run.runId);
     expect(runContextSnapshot.secretNames).toContain("OKOU_TOKEN");
-    expect(runContextSnapshot.secretNames).not.toContain("ZERO_TOKEN");
     expect(runContextSnapshot.environmentEntries).toContainEqual({
       name: "OKOU_TOKEN",
       value: "***",

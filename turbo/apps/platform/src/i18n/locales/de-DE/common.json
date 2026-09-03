@@ -2397,6 +2397,7 @@
     },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
+      "confirmRecording": "OK",
       "draft": "Sprachentwurf",
       "draftTooLong": "Dieser Sprachentwurf ist zu lang. Starte eine neue Aufnahme.",
       "finishDraft": "Fertigstellen",
