@@ -2941,6 +2941,22 @@ function createLegacyTemplateAttachmentControls(
   return { active$, sync$, remove$, reset$ };
 }
 
+function createActiveSuggestionRange<T>(
+  editor: Editor,
+  caretIndex$: State<number>,
+  editorFocusedState$: State<boolean>,
+  findRange: (value: string, caretIndex: number) => T | null,
+): Computed<T | null> {
+  return computed((get) => {
+    const caretIndex = get(caretIndex$);
+    if (caretIndex < 0 || !get(editorFocusedState$)) {
+      return null;
+    }
+    const textblock = activeTextblock(editor);
+    return textblock ? findRange(textblock.value, textblock.caretIndex) : null;
+  });
+}
+
 export function createWorkflowComposerSignals<
   T extends AgentIdValue = Promise<string | null>,
 >(
@@ -2979,29 +2995,18 @@ export function createWorkflowComposerSignals<
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
-  const activeSlashRange$ = computed((get) => {
-    const caretIndex = get(caretIndex$);
-    if (caretIndex < 0 || !get(editorFocusedState$)) {
-      return null;
-    }
-    const textblock = activeTextblock(editor);
-    return textblock
-      ? findActiveSlashWorkflowRange(textblock.value, textblock.caretIndex)
-      : null;
-  });
-  const activeChatThreadSuggestionRange$ = computed((get) => {
-    const caretIndex = get(caretIndex$);
-    if (caretIndex < 0 || !get(editorFocusedState$)) {
-      return null;
-    }
-    const textblock = activeTextblock(editor);
-    return textblock
-      ? findActiveChatThreadSuggestionRange(
-          textblock.value,
-          textblock.caretIndex,
-        )
-      : null;
-  });
+  const activeSlashRange$ = createActiveSuggestionRange(
+    editor,
+    caretIndex$,
+    editorFocusedState$,
+    findActiveSlashWorkflowRange,
+  );
+  const activeChatThreadSuggestionRange$ = createActiveSuggestionRange(
+    editor,
+    caretIndex$,
+    editorFocusedState$,
+    findActiveChatThreadSuggestionRange,
+  );
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
     agentId$,
