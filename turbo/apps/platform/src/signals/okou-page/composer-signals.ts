@@ -4,6 +4,7 @@ import type {
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@okouai/api-contracts/contracts/chat-events";
+import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
@@ -526,19 +527,32 @@ function createComposerVoiceInputSignals(
       }
 
       if (get(voiceDraftEnabled$)) {
-        const id = set(workflowComposer.voiceDraft.start$);
+        let voiceDraftId: string | null = null;
         await set(
           startRecording$,
           async (text) => {
-            set(workflowComposer.voiceDraft.appendTranscript$, id, text);
+            if (voiceDraftId === null) {
+              return;
+            }
+            set(
+              workflowComposer.voiceDraft.appendTranscript$,
+              voiceDraftId,
+              text,
+            );
             await set(draft.save$, signal);
           },
           quota.limit === null,
           {
+            started: () => {
+              voiceDraftId = set(workflowComposer.voiceDraft.start$);
+            },
             finish: async () => {
+              if (voiceDraftId === null) {
+                return;
+              }
               await set(
                 workflowComposer.voiceDraft.finish$,
-                id,
+                voiceDraftId,
                 "automatic",
                 signal,
               );
@@ -546,7 +560,10 @@ function createComposerVoiceInputSignals(
               await set(draft.save$, signal);
             },
             fail: async () => {
-              set(workflowComposer.voiceDraft.markFailed$, id);
+              if (voiceDraftId === null) {
+                return;
+              }
+              set(workflowComposer.voiceDraft.markFailed$, voiceDraftId);
               await set(draft.save$, signal);
             },
           },
@@ -592,6 +609,7 @@ export function createComposerSignals(
     {
       autoFocus: true,
       singleLineOnMobile: options.singleLineOnMobile,
+      lastAssistantMessage$: eventSignals.lastAssistantMessage$,
     },
     feedback,
   );
@@ -732,6 +750,20 @@ function pendingAutomationEventText(
 }
 
 function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
+  const lastAssistantMessage$ = computed((get): string | undefined => {
+    const events = get(chatEvents$);
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event?.eventType !== "output.message") {
+        continue;
+      }
+      const content = event.content.trim();
+      if (content.length > 0) {
+        return content.slice(-VOICE_IO_POLISH_MAX_TEXT_CHARS);
+      }
+    }
+    return undefined;
+  });
   const semanticEvents$ = computed((get) => {
     return semanticChatEventsFromChatEvents(get(chatEvents$));
   });
@@ -791,6 +823,7 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     return Promise.resolve(foldActiveChatGoalObjective(get(chatEvents$)));
   });
   return {
+    lastAssistantMessage$,
     actionsLoading$,
     sending$,
     runningModelSelection$,

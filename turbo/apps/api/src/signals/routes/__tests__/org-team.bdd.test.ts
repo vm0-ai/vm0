@@ -964,23 +964,23 @@ describe("ORG-02: member cleanup detaches Slack connections", () => {
   });
 });
 
-describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
+describe("ORG-01/AGENT-02: agent listing and default-agent recovery", () => {
   it("lists org-visible agents only and restores a deleted default agent [TEAM-E]", async () => {
-    const unauthenticated = await api.requestListTeam(null, [401]);
+    const unauthenticated = await api.requestListAgents(null, [401]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
     const noOrg = api.user({ orgId: null });
-    const noOrgTeam = await api.requestListTeam(noOrg, [403]);
-    expect(noOrgTeam.body).toStrictEqual({
+    const noOrgAgents = await api.requestListAgents(noOrg, [401]);
+    expect(noOrgAgents.body).toStrictEqual({
       error: {
-        message: "No active organization. Please select an org.",
-        code: "FORBIDDEN",
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
       },
     });
 
     const crossOrgAdmin = api.user();
-    await expect(api.listTeam(crossOrgAdmin)).resolves.toStrictEqual([]);
+    await expect(api.listAgents(crossOrgAdmin)).resolves.toStrictEqual([]);
 
     const admin = api.user();
     const peerAdmin = api.user({
@@ -993,12 +993,12 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       displayName: "BDD Team Default",
     });
 
-    const team = await api.listTeam(admin);
-    const defaultEntry = team.find((entry) => {
-      return entry.id === defaultAgentId;
+    const listedAgents = await api.listAgents(admin);
+    const defaultEntry = listedAgents.find((entry) => {
+      return entry.agentId === defaultAgentId;
     });
     expect(defaultEntry).toMatchObject({
-      id: defaultAgentId,
+      agentId: defaultAgentId,
       ownerId: admin.userId,
       displayName: "Okou",
       description: null,
@@ -1006,8 +1006,6 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       visibility: "public",
     });
-    expect(typeof defaultEntry?.updatedAt).toBe("string");
-
     // Private agents are visible to their owner only; public agents to the
     // whole org; nothing leaks across orgs.
     const ownPrivate = await api.createAgent(admin, {
@@ -1018,19 +1016,19 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
       displayName: "BDD Peer Private",
       visibility: "private",
     });
-    const adminTeamIds = (await api.listTeam(admin)).map((entry) => {
-      return entry.id;
+    const adminAgentIds = (await api.listAgents(admin)).map((entry) => {
+      return entry.agentId;
     });
-    expect(adminTeamIds).toContain(defaultAgentId);
-    expect(adminTeamIds).toContain(ownPrivate.agentId);
-    expect(adminTeamIds).not.toContain(peerPrivate.agentId);
-    const peerTeamIds = (await api.listTeam(peerAdmin)).map((entry) => {
-      return entry.id;
+    expect(adminAgentIds).toContain(defaultAgentId);
+    expect(adminAgentIds).toContain(ownPrivate.agentId);
+    expect(adminAgentIds).not.toContain(peerPrivate.agentId);
+    const peerAgentIds = (await api.listAgents(peerAdmin)).map((entry) => {
+      return entry.agentId;
     });
-    expect(peerTeamIds).toContain(defaultAgentId);
-    expect(peerTeamIds).toContain(peerPrivate.agentId);
-    expect(peerTeamIds).not.toContain(ownPrivate.agentId);
-    await expect(api.listTeam(crossOrgAdmin)).resolves.toStrictEqual([]);
+    expect(peerAgentIds).toContain(defaultAgentId);
+    expect(peerAgentIds).toContain(peerPrivate.agentId);
+    expect(peerAgentIds).not.toContain(ownPrivate.agentId);
+    await expect(api.listAgents(crossOrgAdmin)).resolves.toStrictEqual([]);
 
     // Deleting the default agent clears the FK, then onboarding status lazily
     // restores a usable org default for admins.

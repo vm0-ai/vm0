@@ -50,6 +50,7 @@ import {
 // The sanitizer accepts the literal IANA name; built by parts to satisfy
 // unicorn/text-encoding-identifier-case.
 const UTF8_ENCODING = ["utf", "8"].join("-");
+const HOUR_MS = 60 * 60 * 1000;
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -2573,6 +2574,64 @@ describe("RUN-04: agent run telemetry families", () => {
       runnerVersion: null,
       runnerId: null,
       runnerHeartbeatGeneration: null,
+    });
+  });
+
+  it("bounds run context Axiom scans around the run creation time", async () => {
+    const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD bounded run context agent",
+      description: "Bounded run context reads.",
+      visibility: "private",
+    });
+    const agentRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "bounded run context",
+      modelProvider: "anthropic-api-key",
+    });
+    onTestFinished(async () => {
+      await api.requestCancelRun(actor, agentRun.runId, [200]);
+    });
+
+    const runCreatedAt = agentRun.createdAt;
+    if (runCreatedAt === undefined) {
+      throw new Error("Expected the created run to include its creation time");
+    }
+    const runCreatedAtMs = Date.parse(runCreatedAt);
+    if (!Number.isFinite(runCreatedAtMs)) {
+      throw new Error("Expected the created run to have a valid creation time");
+    }
+    dispatchAxiomQueries({
+      [agentRun.runId]: {
+        runContext: [{ runId: agentRun.runId, sessionId: "bdd-bounded" }],
+      },
+    });
+    const queryStartIndex = axiomCallCount();
+
+    const contextRead = await api.requestRunContext(
+      actor,
+      agentRun.runId,
+      [200],
+    );
+    if (contextRead.status !== 200) {
+      throw new Error("Expected the run context read to succeed");
+    }
+    expect(contextRead.body).toMatchObject({
+      runId: agentRun.runId,
+      prompt: "bounded run context",
+      sessionId: "bdd-bounded",
+    });
+
+    const runContextQueries = context.mocks.axiom.query.mock.calls
+      .slice(queryStartIndex)
+      .filter(([apl]) => {
+        return typeof apl === "string" && apl.includes("['run-context']");
+      });
+    expect(runContextQueries).toHaveLength(1);
+    expect(runContextQueries[0]?.[1]).toStrictEqual({
+      startTime: new Date(runCreatedAtMs - HOUR_MS).toISOString(),
+      endTime: new Date(runCreatedAtMs + HOUR_MS).toISOString(),
     });
   });
 

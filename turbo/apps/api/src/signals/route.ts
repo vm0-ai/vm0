@@ -175,7 +175,6 @@ import { teamsBrowserConnectRoutes } from "./routes/teams-browser-connect";
 import { teamsBotRoutes } from "./routes/teams-bot";
 import { teamsConnectRoutes } from "./routes/teams-connect";
 import { teamsOauthRoutes } from "./routes/teams-oauth";
-import { teamRoutes } from "./routes/team";
 import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
 import { uploadsPrepareRoutes } from "./routes/uploads-prepare";
@@ -380,7 +379,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...integrationsTelegramMessageRoutes,
   ...integrationsTelegramUploadCompleteRoutes,
   ...integrationsTelegramUploadInitRoutes,
-  ...teamRoutes,
   ...uploadsCompleteRoutes,
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
