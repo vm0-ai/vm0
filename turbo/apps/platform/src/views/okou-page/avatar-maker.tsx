@@ -401,7 +401,7 @@ function AvatarMakerDialogBody({
           </p>
         </div>
         <StepNavigator />
-        <div className="flex max-h-48 w-full flex-wrap justify-center gap-3 overflow-y-auto px-1 py-1">
+        <div className="flex h-48 w-full flex-wrap justify-center gap-3 overflow-y-auto px-1 py-1">
           <StepOptions
             step={step}
             config={config}
