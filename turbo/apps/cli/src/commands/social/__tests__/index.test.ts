@@ -251,6 +251,8 @@ describe("okou social command", () => {
     ["https://x.com/example/status/1", "twitter_tweet"],
     ["https://facebook.com/example", "facebook_channel_stats"],
     ["https://facebook.com/example/posts/1", "facebook_stats"],
+    ["https://facebook.com/watch?v=example", "facebook_stats"],
+    ["https://facebook.com/video.php?v=example", "facebook_stats"],
     ["https://instagram.com/example", "instagram_channel_stats"],
     ["https://instagram.com/reel/example", "instagram_stats"],
     ["https://tiktok.com/@example", "tiktok_channel_stats"],
@@ -324,6 +326,7 @@ describe("okou social command", () => {
     ["https://instagram.com/example", "reels", "instagram_channel_reels"],
     ["https://tiktok.com/@example", undefined, "tiktok_channel_videos"],
     ["https://youtube.com/@example", undefined, "youtube_videos"],
+    ["https://youtube.com/playlist?list=example", undefined, "youtube_videos"],
   ])("routes posts %s %s to %s", async (url, kind, expectedTool) => {
     let requestBody: unknown;
     server.use(
@@ -901,6 +904,10 @@ describe("okou social command", () => {
     ["transcript", "https://instagram.com/explore/"],
     ["transcript", "https://linkedin.com/posts"],
     ["transcript", "https://facebook.com/watch"],
+    ["transcript", "https://facebook.com/marketplace?v=example"],
+    ["transcript", "https://youtube.com/results?v=example"],
+    ["transcript", "https://youtu.be/example/extra"],
+    ["transcript", "https://youtube.com/playlist/extra?list=example"],
   ])(
     "rejects mismatched %s target %s before managed work",
     async (operation, url) => {

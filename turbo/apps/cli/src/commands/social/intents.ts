@@ -265,6 +265,7 @@ const FACEBOOK_NON_CHANNEL_PATHS = new Set([
   "reels",
   "share",
   "sharer",
+  "video.php",
   "videos",
   "watch",
 ]);
@@ -284,10 +285,13 @@ function facebookTargetKind(url: URL): SocialTargetKind {
     return segment === "reel" || segment === "reels" || segment === "videos";
   });
   const watchIndex = segments.indexOf("watch");
+  const legacyVideoQuery =
+    (segments[0] === "watch" || segments[0] === "video.php") &&
+    hasQueryValue(url, "v");
   if (
     (videoIndex >= 0 && segments[videoIndex + 1]) ||
     (watchIndex >= 0 && segments[watchIndex + 1]) ||
-    hasQueryValue(url, "v")
+    legacyVideoQuery
   ) {
     return "video";
   }
@@ -362,27 +366,41 @@ function tiktokTargetKind(url: URL): SocialTargetKind {
     : "unknown";
 }
 
+const YOUTUBE_VIDEO_PATHS = new Set(["live", "shorts"]);
+const YOUTUBE_CHANNEL_PATHS = new Set(["c", "channel", "user"]);
+
 function youtubeTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
-  if ((hostname === "youtu.be" && segments[0]) || hasQueryValue(url, "v")) {
+  if (hostname === "youtu.be") {
+    return segments.length === 1 && segments[0] ? "video" : "unknown";
+  }
+  if (
+    segments.length === 1 &&
+    segments[0] === "watch" &&
+    hasQueryValue(url, "v")
+  ) {
     return "video";
   }
-  if ((segments[0] === "shorts" || segments[0] === "live") && segments[1]) {
+  if (
+    segments.length === 2 &&
+    segments[0] &&
+    YOUTUBE_VIDEO_PATHS.has(segments[0]) &&
+    segments[1]
+  ) {
     return "video";
   }
-  if (segments[0] === "playlist" && hasQueryValue(url, "list")) {
+  if (
+    segments.length === 1 &&
+    segments[0] === "playlist" &&
+    hasQueryValue(url, "list")
+  ) {
     return "playlist";
   }
   if (segments[0]?.startsWith("@") && segments[0].length > 1) {
     return "channel";
   }
-  if (
-    (segments[0] === "c" ||
-      segments[0] === "channel" ||
-      segments[0] === "user") &&
-    segments[1]
-  ) {
+  if (segments[0] && YOUTUBE_CHANNEL_PATHS.has(segments[0]) && segments[1]) {
     return "channel";
   }
   return "unknown";
