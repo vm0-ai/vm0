@@ -2393,6 +2393,7 @@
     },
     "voice": {
       "checkingLimit": "Memeriksa batas input suara",
+      "confirmRecording": "OK",
       "draft": "Draf suara",
       "draftTooLong": "Draf suara ini terlalu panjang. Mulai rekaman baru.",
       "finishDraft": "Selesaikan",
@@ -5077,6 +5078,14 @@
           "system": "Sistem",
           "title": "Tema"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Izinkan agen menggunakan browser cloud di chat baru",
+          "title": "Browser cloud"
+        },
+        "description": "Pilih default untuk chat baru dan cara pesan dikirim.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

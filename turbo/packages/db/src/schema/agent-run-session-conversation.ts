@@ -255,6 +255,19 @@ export const agentRuns = pgTable(
                 jsonb_typeof(
                   ${table.launchSnapshot} -> 'piMemoryGenerationEnabled'
                 ) = 'boolean'
+              ) OR (
+                ${table.launchSnapshot} ?& ARRAY[
+                  'schemaVersion',
+                  'framework',
+                  'runnerProfile'
+                ] AND
+                (
+                  ${table.launchSnapshot} -
+                  'schemaVersion' -
+                  'framework' -
+                  'runnerProfile'
+                ) = '{}'::jsonb AND
+                ${table.launchSnapshot} -> 'schemaVersion' = '3'::jsonb
               )
             )
           )

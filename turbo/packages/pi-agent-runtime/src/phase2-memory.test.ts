@@ -118,6 +118,7 @@ function args(
       model: "MODEL_ALIAS_SECRET_31243",
       catalogModel: "gpt-5.6-terra",
       api: "openai-responses",
+      dialect: "openai-responses",
       thinkingLevel: "max",
       requestHeaders: { "x-phase2-secret": "HEADER_SECRET_31243" },
     },
@@ -633,6 +634,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         apiKey: "original-key",
         model: "gpt-5.6-terra",
         api: "openai-responses",
+        dialect: "openai-responses",
         requestHeaders: headers,
       },
     });

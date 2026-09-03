@@ -16,6 +16,19 @@ use thiserror::Error;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
+/// Maximum entries returned by `ReadDir` across one artifact walk.
+///
+/// This is deliberately independent from the retained-file limit. The larger
+/// value leaves room for directory structure while bounding skipped entries.
+#[cfg(target_os = "linux")]
+pub(crate) const ARTIFACT_TRAVERSAL_MAX_ENTRIES: u64 = 100_000;
+/// Maximum directory levels traversed below the configured artifact root.
+#[cfg(target_os = "linux")]
+pub(crate) const ARTIFACT_TRAVERSAL_MAX_DEPTH: u64 = 256;
+/// Maximum bytes in the active UTF-8 path relative to the artifact root.
+#[cfg(target_os = "linux")]
+pub(crate) const ARTIFACT_TRAVERSAL_MAX_PATH_BYTES: u64 = 64 * 1024;
+
 /// Collect a best-effort manifest of successfully observed regular files.
 ///
 /// On Linux, access to the configured artifact root is strict: the root must be
@@ -26,6 +39,10 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// A nested directory iteration, child open, metadata, or file read/hash
 /// failure can therefore omit an entry or subtree while the walk still
 /// succeeds. On non-Linux targets, root access is unsupported.
+/// Every successfully yielded directory entry consumes a separate traversal
+/// budget, including excluded and non-regular entries. Exceeding that budget,
+/// the directory-depth limit, or the active relative-path limit is a hard
+/// checkpoint failure rather than a best-effort omission.
 ///
 /// Entries named `.git` or `.vm0`, symlinks, FIFOs, and other non-regular
 /// entries are intentionally excluded. The root and descendant descriptors use
@@ -45,10 +62,19 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, ArchiveError> {
     let mut files = Vec::new();
     let mut path_bytes = 0;
+    let mut observed_entries = 0;
     let root_path = Path::new(dir_path);
     let root = open_artifact_root(root_path)?;
     let entries = read_artifact_root(&root, root_path)?;
-    walk_entries(&root, "", entries, &mut files, &mut path_bytes)?;
+    walk_entries(
+        &root,
+        "",
+        entries,
+        0,
+        &mut observed_entries,
+        &mut files,
+        &mut path_bytes,
+    )?;
     Ok(files)
 }
 
@@ -63,6 +89,8 @@ pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, Ar
 fn walk_dir(
     current: &Dir,
     relative: &str,
+    depth: u64,
+    observed_entries: &mut u64,
     out: &mut Vec<FileEntry>,
     path_bytes: &mut u64,
 ) -> Result<(), ArchiveError> {
@@ -70,7 +98,15 @@ fn walk_dir(
         Ok(e) => e,
         Err(_) => return Ok(()),
     };
-    walk_entries(current, relative, entries, out, path_bytes)
+    walk_entries(
+        current,
+        relative,
+        entries,
+        depth,
+        observed_entries,
+        out,
+        path_bytes,
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -78,10 +114,20 @@ fn walk_entries(
     current: &Dir,
     relative: &str,
     entries: fs::ReadDir,
+    depth: u64,
+    observed_entries: &mut u64,
     out: &mut Vec<FileEntry>,
     path_bytes: &mut u64,
 ) -> Result<(), ArchiveError> {
     for entry in entries.flatten() {
+        let candidate_entries = observed_entries.saturating_add(1);
+        enforce_traversal_limits(
+            candidate_entries,
+            depth,
+            u64::try_from(relative.len()).unwrap_or(u64::MAX),
+        )?;
+        *observed_entries = candidate_entries;
+
         let name = entry.file_name();
         if is_excluded_artifact_entry(&name) {
             continue;
@@ -94,7 +140,13 @@ fn walk_entries(
         if try_directory && let Ok(dir) = current.open_child_dir(&name) {
             let name_str = artifact_path_component(&name, relative)?;
             let rel = relative_artifact_path(relative, name_str);
-            walk_dir(&dir, &rel, out, path_bytes)?;
+            let child_depth = depth.saturating_add(1);
+            enforce_traversal_limits(
+                *observed_entries,
+                child_depth,
+                u64::try_from(rel.len()).unwrap_or(u64::MAX),
+            )?;
+            walk_dir(&dir, &rel, child_depth, observed_entries, out, path_bytes)?;
             continue;
         }
         if !try_file {
@@ -112,6 +164,11 @@ fn walk_entries(
         }
         let name_str = artifact_path_component(&name, relative)?;
         let rel = relative_artifact_path(relative, name_str);
+        enforce_traversal_limits(
+            *observed_entries,
+            depth,
+            u64::try_from(rel.len()).unwrap_or(u64::MAX),
+        )?;
         let observed_files = u64::try_from(out.len())
             .unwrap_or(u64::MAX)
             .saturating_add(1);
@@ -140,6 +197,28 @@ fn walk_entries(
                 log_warn!(LOG_TAG, "Could not process file {rel}: {e}");
             }
         }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn enforce_traversal_limits(
+    observed_entries: u64,
+    observed_depth: u64,
+    observed_path_bytes: u64,
+) -> Result<(), ArchiveError> {
+    if observed_entries > ARTIFACT_TRAVERSAL_MAX_ENTRIES
+        || observed_depth > ARTIFACT_TRAVERSAL_MAX_DEPTH
+        || observed_path_bytes > ARTIFACT_TRAVERSAL_MAX_PATH_BYTES
+    {
+        return Err(ArchiveError::TraversalLimitExceeded {
+            observed_entries,
+            max_entries: ARTIFACT_TRAVERSAL_MAX_ENTRIES,
+            observed_depth,
+            max_depth: ARTIFACT_TRAVERSAL_MAX_DEPTH,
+            observed_path_bytes,
+            max_path_bytes: ARTIFACT_TRAVERSAL_MAX_PATH_BYTES,
+        });
     }
     Ok(())
 }
@@ -212,6 +291,17 @@ pub(super) enum ArchiveError {
         "artifact path component is not valid UTF-8 under {parent:?}: {component}; artifact paths must be valid UTF-8"
     )]
     NonUtf8PathComponent { parent: String, component: String },
+    #[error(
+        "artifact checkpoint traversal limit exceeded: observed entries {observed_entries}/{max_entries}, directory depth {observed_depth}/{max_depth}, active UTF-8 path bytes {observed_path_bytes}/{max_path_bytes}"
+    )]
+    TraversalLimitExceeded {
+        observed_entries: u64,
+        max_entries: u64,
+        observed_depth: u64,
+        max_depth: u64,
+        observed_path_bytes: u64,
+        max_path_bytes: u64,
+    },
     #[error(
         "artifact checkpoint manifest limit exceeded: candidate files {observed_files}/{max_files}, candidate UTF-8 path bytes {observed_path_bytes}/{max_path_bytes}"
     )]

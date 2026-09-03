@@ -119,10 +119,10 @@ export function SlashWorkflowMenu({
                 }}
               >
                 <span className="w-full truncate font-mono text-sm text-foreground">
-                  <span className="text-primary">/</span>
+                  <span className="text-brand-text">/</span>
                   {workflow.name.slice(0, matchStart)}
                   {query && matchStart !== -1 && (
-                    <span className="text-primary/60">
+                    <span className="text-brand-text/60">
                       {workflow.name.slice(matchStart, matchEnd)}
                     </span>
                   )}

@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CloudBrowserPreference]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Let members choose whether Cloud browser is enabled by default in new chats.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -286,21 +293,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PiMemoryRecall]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Mount the canonical user memory Storage for Pi runs without enabling memory generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PiMemoryGeneration]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
+      "Run web chat jobs with the sandbox-owned official Pi runtime, JSONL session persistence, and shared Codex-compatible memory.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -396,6 +389,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatThinkingSpinner]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Replace the three-block chat thinking loader with a rotating Okou mark.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.MarkdownHexColorPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -475,6 +482,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NewUi]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Lay the workspace out as a card floating on the shell's grey, with the two sidebars on the site's own greys and a brand-hued composer focus ring in dark.",
+    enabled: false,
+    // Ming only while the shell settles; widen once the layout is signed off.
+    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
   },
 };
 

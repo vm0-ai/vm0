@@ -16,12 +16,14 @@ import { openImageLightbox$ } from "../../signals/okou-page/attachment-chips.ts"
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../okou-page/chat-body-cards.tsx";
+import { MarkdownColorPreview } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
 
 type MarkdownNodeProp = { node?: Element };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
+type MarkdownSpanProps = ComponentPropsWithoutRef<"span"> & MarkdownNodeProp;
 type MarkdownDivProps = ComponentPropsWithoutRef<"div"> & {
   node?: Element;
 };
@@ -186,6 +188,15 @@ function MediaImageRenderer(props: MarkdownImageProps) {
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }
 
+function MarkdownSpanRenderer(props: MarkdownSpanProps) {
+  const color = props.node?.data?.colorPreview;
+  if (typeof color === "string") {
+    return <MarkdownColorPreview color={color} />;
+  }
+  const { children, ...rest } = props;
+  return <span {...omitMarkdownNodeProp(rest)}>{children}</span>;
+}
+
 // `rehypeMermaid` turns mermaid fences into `<div data-mermaid-code>`; every
 // other div renders as-is.
 // The pipeline marks copy buttons and mermaid diagrams on the node's `data`,
@@ -225,6 +236,7 @@ const PLAIN_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: PlainLinkRenderer,
   img: PlainImageRenderer,
+  span: MarkdownSpanRenderer,
   div: MarkdownDivRenderer,
 } as const;
 
@@ -232,6 +244,7 @@ export const MEDIA_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
+  span: MarkdownSpanRenderer,
   div: MarkdownDivRenderer,
 } as const;
 

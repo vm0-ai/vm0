@@ -224,7 +224,7 @@ function WorkflowCard({
         <WorkflowConnectorPills connectorSlugs={workflow.connectorSlugs} />
         <IconTooltipButton
           type="button"
-          className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:bg-gray-50 hover:text-primary dark:hover:bg-gray-50/10"
+          className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:bg-gray-50 hover:text-brand-text dark:hover:bg-gray-50/10"
           aria-label={t(($) => {
             return $.onboarding.common.previewWorkflowDetails;
           })}
@@ -236,7 +236,7 @@ function WorkflowCard({
       {selected ? (
         <CircleCheckBig
           size={18}
-          className="absolute right-3 top-3 text-primary"
+          className="absolute right-3 top-3 text-brand-text"
           aria-hidden="true"
         />
       ) : null}
@@ -286,7 +286,7 @@ function WorkflowOptions({
             "border-solid border-primary text-foreground",
         )}
       >
-        <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted/40 text-primary">
+        <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted/40 text-brand-text">
           <MessageSquarePlus size={19} aria-hidden="true" />
         </span>
         <span className="text-sm font-semibold text-foreground">

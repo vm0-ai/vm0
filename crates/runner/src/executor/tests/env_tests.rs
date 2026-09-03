@@ -84,6 +84,46 @@ fn pi_model_config_for_test() -> serde_json::Value {
     })
 }
 
+fn pi_model_config_v2_for_test(dialect: &str) -> serde_json::Value {
+    if dialect == "openai-codex-responses" {
+        return json!({
+            "schemaVersion": 2,
+            "dialect": dialect,
+            "transport": "sse",
+            "provider": "openai-codex",
+            "baseUrl": "https://chatgpt.com/backend-api",
+            "model": "gpt-5.6-terra",
+            "thinkingLevel": "low",
+            "credentialBindings": [
+                {
+                    "kind": "access-token",
+                    "environment": "CHATGPT_ACCESS_TOKEN",
+                    "secretName": "CHATGPT_ACCESS_TOKEN"
+                },
+                {
+                    "kind": "account-id",
+                    "environment": "CHATGPT_ACCOUNT_ID",
+                    "secretName": "CHATGPT_ACCOUNT_ID"
+                }
+            ]
+        });
+    }
+    json!({
+        "schemaVersion": 2,
+        "dialect": "openai-responses",
+        "transport": "sse",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-5.6-terra",
+        "thinkingLevel": "low",
+        "credentialBindings": [{
+            "kind": "api-key",
+            "environment": "OPENAI_API_KEY",
+            "secretName": "OPENAI_API_KEY"
+        }]
+    })
+}
+
 fn pi_context_for_test() -> ExecutionContext {
     let mut context = minimal_context();
     context.cli_agent_type = "pi".to_string();
@@ -453,7 +493,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
@@ -1342,12 +1381,12 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
         (
             "/provider",
             json!("future-provider"),
-            "Pi model config is invalid",
+            "Pi legacy model config is invalid",
         ),
         (
             "/apiKeyEnv",
             json!("FUTURE_API_KEY"),
-            "Pi model config is invalid",
+            "Pi legacy model config is invalid",
         ),
         ("/baseUrl", json!("not a URL"), "baseUrl is invalid"),
         ("/model", json!(""), "model must not be empty"),
@@ -1379,9 +1418,95 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
     context.pi_model_config.as_mut().unwrap()["serviceTier"] = json!("fast");
     let error = validate_context_for_test(&context).unwrap_err();
     assert!(
-        error.contains("Pi model config is invalid"),
+        error.contains("Pi legacy model config is invalid"),
         "serviceTier produced unexpected error: {error}"
     );
+}
+
+#[test]
+fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
+    for dialect in ["openai-responses", "openai-codex-responses"] {
+        let mut context = pi_context_for_test();
+        let config = pi_model_config_v2_for_test(dialect);
+        context.pi_model_config = Some(config.clone());
+
+        assert!(validate_context_for_test(&context).is_ok());
+        let payload = build_run_payload_for_run(&context).unwrap();
+        let forwarded: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
+        assert_eq!(forwarded, config);
+    }
+}
+
+#[test]
+fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
+    let invalid_configs = [
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-codex-responses");
+                config["transport"] = json!("auto");
+                config
+            },
+            "Pi model config transport must be sse",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-codex-responses");
+                config["provider"] = json!("openai");
+                config
+            },
+            "Pi Codex Responses route is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-codex-responses");
+                config["credentialBindings"] = json!([{
+                    "kind": "access-token",
+                    "environment": "CHATGPT_ACCESS_TOKEN",
+                    "secretName": "CHATGPT_ACCESS_TOKEN"
+                }]);
+                config
+            },
+            "Pi credential bindings do not match the route dialect",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["credentialBindings"] = json!([{
+                    "kind": "api-key",
+                    "environment": "OPENAI_API_KEY",
+                    "secretName": "CHATGPT_REFRESH_TOKEN"
+                }]);
+                config
+            },
+            "Pi API-key binding is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["futureRouteField"] = json!(true);
+                config
+            },
+            "Pi model config v2 fields are invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["schemaVersion"] = json!(3);
+                config
+            },
+            "Pi model config generation is unsupported",
+        ),
+    ];
+
+    for (config, expected) in invalid_configs {
+        let mut context = pi_context_for_test();
+        context.pi_model_config = Some(config);
+        let error = validate_context_for_test(&context).unwrap_err();
+        assert!(
+            error.contains(expected),
+            "expected {expected:?}, got unexpected error: {error}"
+        );
+    }
 }
 
 #[test]
@@ -1441,11 +1566,11 @@ fn build_env_json_user_timezone_not_override_environment() {
 }
 
 #[test]
-fn arbitrary_vm0_user_env_cannot_override_canonical_or_private_payload() {
+fn user_env_cannot_override_canonical_or_private_payload() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("VM0_PROMPT".into(), "hacked".into()),
-        ("VM0_API_TOKEN".into(), "stolen".into()),
+        ("CUSTOM_API_TOKEN".into(), "user-token".into()),
         ("CUSTOM_ENV".into(), "kept".into()),
     ]));
 
@@ -1461,11 +1586,11 @@ fn arbitrary_vm0_user_env_cannot_override_canonical_or_private_payload() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key("VM0_API_TOKEN"));
+    assert!(!env.contains_key("CUSTOM_API_TOKEN"));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert_eq!(user_env.get("VM0_PROMPT").unwrap(), "hacked");
-    assert_eq!(user_env.get("VM0_API_TOKEN").unwrap(), "stolen");
+    assert_eq!(user_env.get("CUSTOM_API_TOKEN").unwrap(), "user-token");
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
 }
 
@@ -1544,13 +1669,6 @@ fn build_env_json_mock_codex_suppressed_by_real_agent_preview_flag() {
         },
     );
     assert!(!env.contains_key("USE_MOCK_CODEX"));
-}
-
-#[test]
-fn build_env_json_does_not_inject_vm0_token() {
-    let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_TOKEN"));
 }
 
 #[test]

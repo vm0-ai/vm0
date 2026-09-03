@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.616.0](https://github.com/vm0-ai/vm0/compare/core-v8.615.1...core-v8.616.0) (2026-09-03)
+
+
+### Features
+
+* **artifacts:** add short okou artifact urls ([#31483](https://github.com/vm0-ai/vm0/issues/31483)) ([9d20d76](https://github.com/vm0-ai/vm0/commit/9d20d76b88d3097f279084fcfb452d8b86e7ef55))
+* **platform:** gate chat thinking spinner for staff ([#31485](https://github.com/vm0-ai/vm0/issues/31485)) ([9f30e52](https://github.com/vm0-ai/vm0/commit/9f30e521cbfaa8fd23f9a12e31b13997d15fd0fe))
+* **ui:** put the sand and amber palette behind the new-ui switch ([#31521](https://github.com/vm0-ai/vm0/issues/31521)) ([2d7c27d](https://github.com/vm0-ai/vm0/commit/2d7c27dbc469ee93d6b7d0b10470f3eebdba4f84))
+
+
+### Refactoring
+
+* **pi-memory:** make piloop the single product switch ([#31496](https://github.com/vm0-ai/vm0/issues/31496)) ([709e1a2](https://github.com/vm0-ai/vm0/commit/709e1a26703eac64d7501e777d802d80af19430c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.2
+
 ## [8.615.1](https://github.com/vm0-ai/vm0/compare/core-v8.615.0...core-v8.615.1) (2026-09-03)
 
 

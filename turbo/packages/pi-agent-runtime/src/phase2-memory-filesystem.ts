@@ -347,6 +347,7 @@ function snapshotModel(
     baseUrl: model.baseUrl,
     apiKey: model.apiKey,
     model: model.model,
+    dialect: model.dialect,
     ...(model.catalogModel === undefined
       ? {}
       : { catalogModel: model.catalogModel }),

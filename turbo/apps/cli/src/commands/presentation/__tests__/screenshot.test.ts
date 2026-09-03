@@ -1,12 +1,13 @@
 /**
  * Tests for okou presentation screenshot.
  *
- * Mocks only external binaries (agent-browser, soffice, pdftocairo, none of
- * which exist in CI). The fakes write real PNG bytes, so the command's real
- * filesystem walk, page numbering, and size check run unchanged.
+ * Mocks only external binaries (agent-browser, apt, dpkg, LibreOffice, and
+ * Poppler). The fakes write real files and PNG bytes, so installation, caching,
+ * filesystem traversal, page numbering, and size checks run unchanged.
  */
 import { execFileSync } from "child_process";
 import {
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -14,7 +15,7 @@ import {
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { basename, join, normalize, sep } from "path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,6 +29,7 @@ const state = {
   size: { width: 1600, height: 900 },
   backgroundReady: true,
   settleFails: false,
+  installFails: false,
 };
 
 function okouToken(orgId: string): string {
@@ -61,62 +63,170 @@ function png(width: number, height: number): Buffer {
   ]);
 }
 
+function fakeWhich(args: readonly string[]): string {
+  if (!state.installed.has(args[0] ?? "")) {
+    throw new Error(`which: no ${args[0] ?? ""}`);
+  }
+  return "";
+}
+
+function fakeAptGet(args: readonly string[]): string {
+  if (state.installFails) {
+    throw new Error("apt-get failed");
+  }
+  const install = args.indexOf("install");
+  if (install < 0) {
+    return "";
+  }
+  const configured = args.find((arg) => {
+    return arg.startsWith("Dir::Cache::archives=");
+  });
+  const archives = configured?.slice("Dir::Cache::archives=".length);
+  if (archives === undefined) {
+    throw new Error("missing apt archive directory");
+  }
+  mkdirSync(archives, { recursive: true });
+  for (const packageName of args.slice(install + 1)) {
+    writeFileSync(join(archives, `${packageName}.deb`), "fake");
+  }
+  return "";
+}
+
+function fixturePath(root: string, ...names: readonly string[]): string {
+  return names.reduce((parent, name) => {
+    if (name === "." || name === ".." || basename(name) !== name) {
+      throw new Error(`Invalid fixture path entry: ${name}`);
+    }
+    return normalize(`${parent}${sep}${name}`);
+  }, root);
+}
+
+function fakeLibreOfficePackage(root: string): void {
+  const program = fixturePath(root, "usr", "lib", "libreoffice", "program");
+  mkdirSync(fixturePath(root, "usr", "bin"), { recursive: true });
+  mkdirSync(program, { recursive: true });
+  mkdirSync(
+    fixturePath(root, "usr", "lib", "libreoffice", "share", ".registry"),
+    {
+      recursive: true,
+    },
+  );
+  mkdirSync(fixturePath(root, "etc", "libreoffice", "registry"), {
+    recursive: true,
+  });
+  writeFileSync(fixturePath(root, "usr", "bin", "soffice"), "fake");
+  writeFileSync(fixturePath(program, "soffice.bin"), "fake");
+  writeFileSync(
+    fixturePath(program, "fundamentalrc"),
+    "BRAND_BASE_DIR=file:///usr/lib/libreoffice\nCONFIGURATION_LAYERS=xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry\n",
+  );
+  writeFileSync(
+    fixturePath(program, "sofficerc"),
+    "FHS_CONFIG_FILE=file:///etc/libreoffice/sofficerc\n",
+  );
+  writeFileSync(
+    fixturePath(
+      root,
+      "usr",
+      "lib",
+      "libreoffice",
+      "share",
+      ".registry",
+      "main.xcd",
+    ),
+    "fake",
+  );
+  writeFileSync(fixturePath(root, "etc", "libreoffice", "sofficerc"), "fake");
+}
+
+function fakeDpkgDeb(args: readonly string[]): string {
+  const archive = args[1];
+  const root = args[2];
+  if (archive === undefined || root === undefined) {
+    throw new Error("invalid dpkg-deb invocation");
+  }
+  if (basename(archive).startsWith("libreoffice-impress")) {
+    fakeLibreOfficePackage(root);
+  }
+  if (basename(archive).startsWith("poppler-utils")) {
+    fakePopplerPackage(root);
+  }
+  return "";
+}
+
+function fakePopplerPackage(root: string): void {
+  mkdirSync(fixturePath(root, "usr", "bin"), { recursive: true });
+  writeFileSync(fixturePath(root, "usr", "bin", "pdftocairo"), "fake");
+}
+
+function fakeSoffice(args: readonly string[]): string {
+  const outdir = args[args.indexOf("--outdir") + 1];
+  writeFileSync(join(outdir ?? "", "deck.pdf"), "%PDF-1.4");
+  return "";
+}
+
+function fakePdftocairo(args: readonly string[]): string {
+  // Poppler numbers by the page count's digit width, as it does for real.
+  const prefix = args[args.length - 1] ?? "";
+  for (let page = 1; page <= state.deckPages; page += 1) {
+    writeFileSync(
+      `${prefix}-${page.toString()}.png`,
+      png(state.size.width, state.size.height),
+    );
+  }
+  return "";
+}
+
+function fakeBrowser(args: readonly string[]): string {
+  const verb = args[3];
+  if (verb === "eval") {
+    const expression = args[4] ?? "";
+    if (expression.includes("document.fonts.ready")) {
+      if (state.settleFails) {
+        throw new Error("browser settle failed");
+      }
+      if (expression.includes("backgroundImage")) {
+        state.backgroundReady = true;
+      }
+      return "1";
+    }
+    return expression.includes("querySelectorAll")
+      ? JSON.stringify(JSON.stringify(state.slides))
+      : "1";
+  }
+  if (verb === "screenshot" && args[4] !== undefined) {
+    writeFileSync(
+      args[4],
+      Buffer.concat([
+        png(state.size.width, state.size.height),
+        Buffer.from([state.backgroundReady ? 1 : 0]),
+      ]),
+    );
+  }
+  return "";
+}
+
+function fakeExecFileSync(command: string, args: readonly string[]): string {
+  if (command === "which") {
+    return fakeWhich(args);
+  }
+  if (command === "apt-get") {
+    return fakeAptGet(args);
+  }
+  if (command === "dpkg-deb") {
+    return fakeDpkgDeb(args);
+  }
+  if (["soffice", "soffice.bin"].includes(basename(command))) {
+    return fakeSoffice(args);
+  }
+  if (basename(command) === "pdftocairo") {
+    return fakePdftocairo(args);
+  }
+  return command === "agent-browser" ? fakeBrowser(args) : "";
+}
+
 vi.mock("child_process", () => {
-  return {
-    execFileSync: vi.fn((command: string, args: readonly string[]) => {
-      if (command === "which") {
-        if (!state.installed.has(args[0] ?? "")) {
-          throw new Error(`which: no ${args[0] ?? ""}`);
-        }
-        return "";
-      }
-      if (command === "soffice") {
-        const outdir = args[args.indexOf("--outdir") + 1];
-        writeFileSync(join(outdir ?? "", "deck.pdf"), "%PDF-1.4");
-        return "";
-      }
-      if (command === "pdftocairo") {
-        // Poppler numbers by the page count's digit width, as it does for real.
-        const prefix = args[args.length - 1] ?? "";
-        for (let page = 1; page <= state.deckPages; page += 1) {
-          writeFileSync(
-            `${prefix}-${page.toString()}.png`,
-            png(state.size.width, state.size.height),
-          );
-        }
-        return "";
-      }
-      if (command !== "agent-browser") {
-        return "";
-      }
-      const verb = args[3];
-      if (verb === "eval") {
-        const expression = args[4] ?? "";
-        if (expression.includes("document.fonts.ready")) {
-          if (state.settleFails) {
-            throw new Error("browser settle failed");
-          }
-          if (expression.includes("backgroundImage")) {
-            state.backgroundReady = true;
-          }
-          return "1";
-        }
-        return expression.includes("querySelectorAll")
-          ? JSON.stringify(JSON.stringify(state.slides))
-          : "1";
-      }
-      if (verb === "screenshot" && args[4] !== undefined) {
-        writeFileSync(
-          args[4],
-          Buffer.concat([
-            png(state.size.width, state.size.height),
-            Buffer.from([state.backgroundReady ? 1 : 0]),
-          ]),
-        );
-      }
-      return "";
-    }),
-  };
+  return { execFileSync: vi.fn(fakeExecFileSync) };
 });
 
 const logSpy = vi.spyOn(console, "log").mockImplementation(() => {
@@ -161,7 +271,9 @@ describe("okou presentation screenshot", () => {
     state.size = { width: 1600, height: 900 };
     state.backgroundReady = true;
     state.settleFails = false;
+    state.installFails = false;
     vi.stubEnv("OKOU_TOKEN", okouToken("org_3ANttyrbWYJk6JKRSTRLEsbsDLe"));
+    vi.stubEnv("XDG_CACHE_HOME", join(workDir, "cache"));
     logSpy.mockClear();
     errorSpy.mockClear();
     vi.mocked(execFileSync).mockClear();
@@ -183,18 +295,37 @@ describe("okou presentation screenshot", () => {
       "page-003.png",
     ]);
     expect(stdout()).toContain("Captured 3 page(s) at 1600x900");
+    expect(
+      vi.mocked(execFileSync).mock.calls.some((call) => {
+        return call[0] === "apt-get";
+      }),
+    ).toBe(false);
+    const soffice = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return ["soffice", "soffice.bin"].includes(basename(String(call[0])));
+    });
+    expect(soffice?.[1]).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^-env:UserInstallation=file:\/\//u),
+      ]),
+    );
   });
 
-  it("renders a pdf without invoking LibreOffice", async () => {
+  it("installs only Poppler when a pdf rasteriser is missing", async () => {
+    state.installed = new Set(["apt-get", "dpkg-deb"]);
     writeFileSync(join(workDir, "deck.pdf"), "%PDF-1.4");
 
     await run("--input", join(workDir, "deck.pdf"), "--out", outDir);
 
-    const commands = vi.mocked(execFileSync).mock.calls.map((call) => {
-      return call[0];
+    const install = vi.mocked(execFileSync).mock.calls.find((call) => {
+      return call[0] === "apt-get" && call[1]?.includes("install") === true;
     });
-    expect(commands).not.toContain("soffice");
-    expect(commands).toContain("pdftocairo");
+    expect(install?.[1]).toContain("poppler-utils");
+    expect(install?.[1]).not.toContain("libreoffice-impress");
+    expect(
+      vi.mocked(execFileSync).mock.calls.some((call) => {
+        return basename(String(call[0])) === "soffice";
+      }),
+    ).toBe(false);
   });
 
   it("renumbers Poppler output into zero-padded page order", async () => {
@@ -209,14 +340,106 @@ describe("okou presentation screenshot", () => {
     expect(files[10]).toBe("page-011.png");
   });
 
-  it("names the missing package when a rasteriser is absent", async () => {
-    state.installed = new Set(["pdftocairo"]);
+  it("installs and caches missing deck dependencies without root", async () => {
+    state.installed = new Set(["apt-get", "dpkg-deb"]);
+    writeFileSync(join(workDir, "deck.pptx"), "fake");
+
+    await run("--input", join(workDir, "deck.pptx"), "--out", outDir);
+    await run("--input", join(workDir, "deck.pptx"), "--out", outDir);
+
+    const installs = vi.mocked(execFileSync).mock.calls.filter((call) => {
+      return call[0] === "apt-get" && call[1]?.includes("install") === true;
+    });
+    expect(installs).toHaveLength(1);
+    expect(installs[0]?.[1]).toEqual(
+      expect.arrayContaining(["libreoffice-impress", "poppler-utils"]),
+    );
+    const sofficeCommands = vi
+      .mocked(execFileSync)
+      .mock.calls.map((call) => {
+        return String(call[0]);
+      })
+      .filter((command) => {
+        return basename(command) === "soffice";
+      });
+    expect(sofficeCommands).toHaveLength(2);
+    expect(sofficeCommands[0]).toContain(join("root", "usr", "bin", "soffice"));
+    expect(readdirSync(outDir)).toHaveLength(3);
+    expect(stderr()).toContain("Presentation dependencies installed.");
+  });
+
+  it("waits for a concurrent install and reuses its completed cache", async () => {
+    state.installed = new Set(["apt-get", "dpkg-deb"]);
+    writeFileSync(join(workDir, "deck.pptx"), "fake");
+    const cacheRoot = join(
+      workDir,
+      "cache",
+      "okou",
+      "presentation-screenshot",
+      "v1",
+    );
+    const installRoot = join(cacheRoot, "root");
+    const lockDirectory = join(cacheRoot, ".install.lock");
+    mkdirSync(lockDirectory, { recursive: true });
+
+    const concurrentInstall = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        fakeLibreOfficePackage(installRoot);
+        fakePopplerPackage(installRoot);
+        writeFileSync(
+          join(installRoot, ".libreoffice-impress.ready"),
+          "ready\n",
+        );
+        writeFileSync(join(installRoot, ".poppler-utils.ready"), "ready\n");
+        rmSync(lockDirectory, { force: true, recursive: true });
+        resolve();
+      }, 25);
+    });
+
+    await run("--input", join(workDir, "deck.pptx"), "--out", outDir);
+    await concurrentInstall;
+
+    expect(
+      vi.mocked(execFileSync).mock.calls.some((call) => {
+        return call[0] === "apt-get" && call[1]?.includes("install") === true;
+      }),
+    ).toBe(false);
+    expect(stderr()).toContain(
+      "Waiting for another presentation dependency installation...",
+    );
+    expect(readdirSync(outDir)).toHaveLength(3);
+  });
+
+  it("explains how to recover when automatic installation fails", async () => {
+    state.installed = new Set(["apt-get", "dpkg-deb"]);
+    state.installFails = true;
     writeFileSync(join(workDir, "deck.pptx"), "fake");
 
     await expect(
       run("--input", join(workDir, "deck.pptx"), "--out", outDir),
     ).rejects.toThrow(/process\.exit/u);
-    expect(stderr()).toContain("libreoffice-impress");
+
+    expect(stderr()).toContain(
+      "Could not automatically install presentation dependencies",
+    );
+    expect(stderr()).toContain(
+      "sudo apt-get install -y --no-install-recommends libreoffice-impress poppler-utils",
+    );
+  });
+
+  it("checks the deck input before installing dependencies", async () => {
+    state.installed = new Set(["apt-get", "dpkg-deb"]);
+
+    await expect(
+      run("--input", join(workDir, "missing.pptx"), "--out", outDir),
+    ).rejects.toThrow(/process\.exit/u);
+
+    expect(stderr()).toContain("Deck input is not a file");
+    expect(
+      vi.mocked(execFileSync).mock.calls.some((call) => {
+        return call[0] === "apt-get";
+      }),
+    ).toBe(false);
   });
 
   it("captures one page per slide in an HTML deck", async () => {

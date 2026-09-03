@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.309.2](https://github.com/vm0-ai/vm0/compare/cli-v9.309.1...cli-v9.309.2) (2026-09-03)
+
+
+### Refactoring
+
+* **pi:** add dialect-aware credential runtime contract ([#31493](https://github.com/vm0-ai/vm0/issues/31493)) ([9464fb3](https://github.com/vm0-ai/vm0/commit/9464fb3e99138707f242b1fe789cf0e375602973))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.398.2
+    * @okouai/core bumped to 8.616.0
+    * @okouai/pi-agent-runtime bumped to 1.15.3
+
 ## [9.309.1](https://github.com/vm0-ai/vm0/compare/cli-v9.309.0...cli-v9.309.1) (2026-09-03)
 
 

@@ -200,7 +200,7 @@ export interface ComposerImageModelSignals {
 
 interface ComposerComputerSignals {
   readonly computerUseHostId$: Computed<string | null>;
-  readonly cloudBrowserEnabled$: Computed<boolean>;
+  readonly cloudBrowserEnabled$: Computed<boolean | Promise<boolean>>;
   readonly setComputerUseHostId$: Command<
     Promise<void>,
     [string | null, AbortSignal]

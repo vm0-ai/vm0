@@ -18,6 +18,10 @@ function intentionalShadows(): string[] {
     // The Zero nav sits on its own surface: lighter than the design system's
     // sidebar in light mode, darker in dark mode.
     "--color-sidebar",
+    // Both nav surfaces are gated on the `newUi` switch. Off, they hold the
+    // flats the shell had before the workspace became a card; the design
+    // system's own two greys only take over under `[data-new-ui]`.
+    "--color-sidebar-rail",
   ];
 }
 

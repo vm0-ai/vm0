@@ -2441,6 +2441,7 @@
     },
     "voice": {
       "checkingLimit": "Comprobando el límite de entrada de voz",
+      "confirmRecording": "OK",
       "draft": "Borrador de voz",
       "draftTooLong": "Este borrador de voz es demasiado largo. Inicia una nueva grabación.",
       "finishDraft": "Finalizar",
@@ -5143,6 +5144,14 @@
           "system": "Sistema",
           "title": "Tema"
         }
+      },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Permite que los agentes usen un navegador en la nube en chats nuevos",
+          "title": "Navegador en la nube"
+        },
+        "description": "Elige los valores predeterminados para los chats nuevos y cómo se envían los mensajes.",
+        "sectionTitle": "Chat"
       },
       "debug": {
         "builtInModelCooldown": {

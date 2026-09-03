@@ -14,7 +14,8 @@ import { modelProviderCodexRuntimeConfigSchema } from "../../contracts/model-pro
 import { MAX_EVENT_SEQUENCE_NUMBER } from "../../contracts/runs";
 import {
   piLaunchConfigSchema,
-  piModelConfigSchema,
+  piModelConfigLegacySchema,
+  piModelConfigV2Schema,
   sessionHistoryEncodingSchema,
   storageMountEntrySchema,
 } from "../../contracts/runners";
@@ -40,6 +41,11 @@ const expectedBindings = [
   {
     rustModulePath: ["runners", "runs"],
     rustTypeName: "PiModelConfig",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfigV2",
     direction: "response",
   },
   {
@@ -284,6 +290,12 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub enum PiModelConfigThinkingLevel {");
     expect(firstRender).toContain("pub enum PiModelConfigServiceTier {");
     expect(firstRender).toContain("pub enum PiModelConfigApiKeyEnv {");
+    expect(firstRender).toContain("pub struct PiModelConfigV2 {");
+    expect(firstRender).toContain("pub enum PiModelConfigV2Dialect {");
+    expect(firstRender).toContain("pub enum PiModelConfigV2Provider {");
+    expect(firstRender).toContain(
+      "pub enum PiModelConfigV2CredentialBinding {",
+    );
     expect(firstRender).toContain(
       "pub http_headers: Option<std::collections::BTreeMap<String, String>>",
     );
@@ -404,9 +416,18 @@ describe("Rust type bindings", () => {
         );
       },
     );
+    const modelV2Binding: RustTypeBinding | undefined = rustTypeBindings.find(
+      ({ rustModulePath, rustTypeName }) => {
+        return (
+          rustTypeName === "PiModelConfigV2" &&
+          rustModulePath.join("/") === "runners/runs"
+        );
+      },
+    );
 
     expect(launchBinding?.schema).toBe(piLaunchConfigSchema);
-    expect(modelBinding?.schema).toBe(piModelConfigSchema);
+    expect(modelBinding?.schema).toBe(piModelConfigLegacySchema);
+    expect(modelV2Binding?.schema).toBe(piModelConfigV2Schema);
     expect(z.toJSONSchema(piLaunchConfigSchema)).toMatchObject({
       required: ["schemaVersion", "apiFirstTurn"],
       properties: {
@@ -435,7 +456,7 @@ describe("Rust type bindings", () => {
         },
       },
     });
-    expect(z.toJSONSchema(piModelConfigSchema)).toMatchObject({
+    expect(z.toJSONSchema(piModelConfigLegacySchema)).toMatchObject({
       required: [
         "provider",
         "baseUrl",
@@ -477,6 +498,31 @@ describe("Rust type bindings", () => {
         },
         serviceTier: {
           enum: ["priority"],
+        },
+      },
+    });
+    expect(z.toJSONSchema(piModelConfigV2Schema)).toMatchObject({
+      required: [
+        "schemaVersion",
+        "dialect",
+        "transport",
+        "provider",
+        "baseUrl",
+        "model",
+        "credentialBindings",
+      ],
+      properties: {
+        schemaVersion: { const: 2 },
+        dialect: {
+          enum: ["openai-responses", "openai-codex-responses"],
+        },
+        transport: { const: "sse" },
+        provider: {
+          enum: ["deepseek", "openai", "openrouter", "openai-codex"],
+        },
+        credentialBindings: {
+          minItems: 1,
+          maxItems: 2,
         },
       },
     });

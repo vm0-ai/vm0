@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.10...guest-agent-v0.84.11) (2026-09-03)
+
+
+### Refactoring
+
+* **pi:** add dialect-aware credential runtime contract ([#31493](https://github.com/vm0-ai/vm0/issues/31493)) ([9464fb3](https://github.com/vm0-ai/vm0/commit/9464fb3e99138707f242b1fe789cf0e375602973))
+
 ## [0.84.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.9...guest-agent-v0.84.10) (2026-09-03)
 
 

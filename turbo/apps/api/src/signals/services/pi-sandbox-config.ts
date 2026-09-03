@@ -1,4 +1,4 @@
-import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
+import type { PiModelConfigLegacy as PiModelConfig } from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderPiEndpoint,
@@ -170,6 +170,7 @@ function resolveCustomGatewayPiModelConfig(
     model: config.model,
     catalogModel: config.catalogModel,
     apiKey: "sandbox-secret",
+    dialect: "openai-responses",
     ...runtimeContract,
   })
     ? config
@@ -238,6 +239,7 @@ export function resolvePiSandboxModelConfig(
     baseUrl: config.baseUrl,
     model: config.model,
     apiKey: "sandbox-secret",
+    dialect: "openai-responses",
     ...runtimeContract,
   })
     ? config

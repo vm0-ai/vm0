@@ -534,11 +534,12 @@ describe("POST /api/integrations/slack/upload-file/complete", () => {
     expect(
       context.mocks.slack.files.getUploadURLExternal,
     ).not.toHaveBeenCalled();
-    const storageKey = new URL(initialized.body.url).pathname.replace(
-      /^\/+/u,
-      "",
+    const storageKey = `artifacts/${new URL(
+      initialized.body.url,
+    ).pathname.replace(/^\/+/u, "")}`;
+    expect(initialized.body.url).toMatch(
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.csv$/u,
     );
-    expect(initialized.body.url).toMatch(/^https:\/\/cdn\.okou\.io\//u);
     objectStore.addObject({
       bucket: "test-user-artifacts",
       key: storageKey,

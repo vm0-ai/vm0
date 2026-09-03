@@ -227,6 +227,7 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "gpt-5.6-terra",
           api: "openai-responses",
+          dialect: "openai-responses",
           thinkingLevel: "low",
         },
         resourceSnapshot: {
@@ -359,6 +360,7 @@ describe("Pi API facade", () => {
             apiKey: "test-key",
             model: "gpt-5.6-terra",
             api,
+            dialect: "openai-responses",
             thinkingLevel: "low",
             ...(serviceTier ? { serviceTier } : {}),
           },
@@ -469,6 +471,7 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "deepseek-v4-flash",
           api: "openai-completions",
+          dialect: "openai-responses",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
         ownership: createPiApiFirstTurnOwnership(),
@@ -564,6 +567,7 @@ describe("Pi API facade", () => {
               apiKey: "test-key",
               model: "openai/gpt-5.6-terra",
               api: "openai-responses",
+              dialect: "openai-responses",
               thinkingLevel: "low",
               serviceTier: "priority",
             },
@@ -726,6 +730,7 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "openai/gpt-5.6-terra",
           api: "openai-responses",
+          dialect: "openai-responses",
           thinkingLevel: "low",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
@@ -802,6 +807,7 @@ describe("Pi API facade", () => {
       apiKey: "test-key",
       model: "gpt-5.6-terra",
       api: "openai-responses",
+      dialect: "openai-responses",
     });
     if (!resolvedModel) {
       throw new Error("Expected pinned Pi to catalog Terra");
@@ -848,6 +854,7 @@ describe("Pi API facade", () => {
       apiKey: "test-key",
       model: "gpt-5.6-terra",
       api: "openai-responses" as const,
+      dialect: "openai-responses" as const,
       thinkingLevel: "low" as const,
     };
 
