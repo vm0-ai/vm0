@@ -1,8 +1,10 @@
-import { useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import type { MouseEvent, Ref } from "react";
+import { preserveLocalePathPrefix } from "../../i18n/locale-routing.ts";
 import {
-  generateRouterPath,
   detachedNavigateTo$,
+  generateRouterPath,
+  urlLocale$,
 } from "../../signals/route.ts";
 
 type PathName = Parameters<typeof generateRouterPath>[0];
@@ -47,8 +49,14 @@ export function Link({
   ...rest
 }: LinkProps) {
   const navigate = useSet(detachedNavigateTo$);
+  const urlLocale = useGet(urlLocale$);
   const path = generateRouterPath(pathname, options?.pathParams);
-  const href = buildHref(path, options?.searchParams, options?.hash);
+  const localizedPath = preserveLocalePathPrefix(
+    path,
+    location.hostname,
+    urlLocale,
+  );
+  const href = buildHref(localizedPath, options?.searchParams, options?.hash);
 
   const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(e);

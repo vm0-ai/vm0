@@ -8,7 +8,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { pathname } from "../../../signals/location.ts";
+import { hash, pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reportForceUpgradeRequired } from "../../../signals/force-upgrade.ts";
 import { setLocale$ } from "../../../signals/locale.ts";
@@ -33,6 +33,59 @@ function mockAPIs(): void {
 }
 
 describe("link navigation", () => {
+  it.each(["/en", "/en/"])(
+    "renders the current Okou app at locale root %s",
+    async (path) => {
+      mockAPIs();
+      context.mocks.browser.url(`https://app.okou.ai${path}`);
+
+      detachedSetupPage({ context, path });
+
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId("labeled-nav-rail")).getByText("Agents"),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("heading", { name: "Page not found" }),
+        ).not.toBeInTheDocument();
+      });
+      expect(pathname()).toMatch(/^\/en(?:\/|$)/u);
+    },
+  );
+
+  it("renders a locale-prefixed authenticated nested route without losing its URL", async () => {
+    mockAPIs();
+    const path = "/ja/agents?view=active#list";
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
+    context.mocks.data.userPreferences({ locale: "en-US" });
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 1, name: "エージェント" }),
+      ).toBeInTheDocument();
+    });
+    expect(pathname()).toBe("/ja/agents");
+    expect(search()).toBe("?view=active");
+    expect(hash()).toBe("#list");
+  });
+
+  it.each([
+    ["https://app.okou.ai/zh", "/zh"],
+    ["https://app.vm0.ai/en", "/en"],
+  ] as const)(
+    "keeps unsupported or cross-brand locale URL %s on the existing 404 policy",
+    async (url, path) => {
+      context.mocks.browser.url(url);
+
+      detachedSetupPage({ context, path });
+
+      await screen.findByRole("heading", { name: "Page not found" });
+      expect(pathname()).toBe(path);
+    },
+  );
+
   it("renders the not found page for unknown routes", async () => {
     mockAPIs();
     detachedSetupPage({ context, path: "/missing-platform-route" });
@@ -173,18 +226,55 @@ describe("link navigation", () => {
     });
   });
 
+  it("preserves an explicit Okou locale in links and in-app navigation", async () => {
+    mockAPIs();
+    const openedTargets = context.mocks.browser.open();
+    context.mocks.browser.url("https://app.okou.ai/ja");
+
+    detachedSetupPage({ context, path: "/ja" });
+
+    const link = await waitFor(() => {
+      const rail = screen.getByTestId("labeled-nav-rail");
+      return within(rail).getByText("エージェント").closest("a");
+    });
+    expect(link).toHaveAttribute("href", "/ja/agents");
+
+    fireEvent.click(link!);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/ja/agents");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "エージェント" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(link!, { metaKey: true });
+
+    await waitFor(() => {
+      expect(openedTargets.calls).toStrictEqual([
+        expect.objectContaining({
+          target: "_blank",
+          url: "https://app.okou.ai/ja/agents",
+        }),
+      ]);
+    });
+  });
+
   it("completes a sign-in token route and returns home", async () => {
     mockAPIs();
+    context.mocks.browser.url(
+      "https://app.okou.ai/en/sign-in-token?token=clerk-ticket",
+    );
 
     detachedSetupPage({
       context,
-      path: "/sign-in-token?token=clerk-ticket",
+      path: "/en/sign-in-token?token=clerk-ticket",
       user: null,
       session: null,
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe("/");
+      expect(pathname()).toBe("/en");
     });
     expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
       strategy: "ticket",

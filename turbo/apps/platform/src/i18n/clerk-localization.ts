@@ -11,6 +11,7 @@ import koKRUrl from "./clerk-localizations/ko-KR.json?url";
 import ptBRUrl from "./clerk-localizations/pt-BR.json?url";
 import { logger } from "../signals/log.ts";
 import { tapError } from "../signals/utils.ts";
+import { resolveLocaleAssetUrl } from "./locale-asset-url.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "./resources.ts";
 
 export type ClerkLocalization = typeof enUS;
@@ -90,8 +91,10 @@ async function fetchClerkLocalization(
   signal?: AbortSignal,
 ): Promise<ClerkLocalization> {
   const response = await fetch(
-    new URL(clerkLocalizationUrl(locale), location.href),
-    { signal },
+    resolveLocaleAssetUrl(clerkLocalizationUrl(locale)),
+    {
+      signal,
+    },
   );
   if (!response.ok) {
     throw new Error(

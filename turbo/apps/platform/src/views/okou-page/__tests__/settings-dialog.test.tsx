@@ -16,6 +16,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { hash, pathname, search } from "../../../signals/location.ts";
 import { openSettingsDialogAt$ } from "../../../signals/okou-page/settings/settings-dialog.ts";
 import { billingStatus } from "./chat-composer-test-helpers.ts";
 
@@ -24,6 +25,7 @@ const context = testContext();
 async function openDialog(
   role: "admin" | "member" = "admin",
   section: "debug" | "general" | "model" | "preference" = "general",
+  path = `/?settings=${section}`,
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
@@ -40,7 +42,7 @@ async function openDialog(
   });
   detachedSetupPage({
     context,
-    path: `/?settings=${section}`,
+    path,
     featureSwitches:
       section === "debug" ? { [FeatureSwitchKey.OkouDebug]: true } : {},
   });
@@ -123,6 +125,37 @@ function buttonWithText(
 }
 
 describe("settings dialog", () => {
+  it("switches an explicit Okou URL locale without losing route state", async () => {
+    const submittedLocales: UserLocale[] = [];
+    const path = "/de/agents?settings=preference&source=launch#language";
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
+    context.mocks.api(userPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences("en-US"));
+    });
+    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
+      if (body.locale !== undefined) {
+        submittedLocales.push(body.locale);
+      }
+      return respond(200, createPreferences(body.locale ?? "en-US"));
+    });
+
+    await openDialog("admin", "preference", path);
+
+    click(await screen.findByRole("combobox", { name: "Sprache" }));
+    click(screen.getByRole("option", { name: "日本語" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toStrictEqual(["ja-JP"]);
+      expect(screen.getByRole("combobox", { name: "言語" })).toHaveTextContent(
+        "日本語",
+      );
+      expect(document.documentElement.lang).toBe("ja-JP");
+      expect(pathname()).toBe("/ja/agents");
+      expect(search()).toBe("?settings=preference&source=launch");
+      expect(hash()).toBe("#language");
+    });
+  });
+
   it("keeps every available locale in the language menu", async () => {
     context.mocks.data.userPreferences(
       createPreferences("en-US", [

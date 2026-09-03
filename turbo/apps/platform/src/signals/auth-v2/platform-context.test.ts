@@ -13,6 +13,42 @@ function absoluteNavigationUrl(href: string): URL {
 }
 
 describe("Auth v2 platform context", () => {
+  it("preserves an explicit Okou locale across auth navigation and fallback redirects", () => {
+    setBrowserUrl("https://app.okou.ai/ja/sign-up?source=language-test#proof");
+
+    const platformContext = resolveAuthV2PlatformContext("sign-up");
+
+    expect(platformContext.authBrand).toStrictEqual({
+      brandName: "Okou",
+      homeUrl: "/ja",
+    });
+    expect(platformContext.navigation.completionRedirectUrl).toBe(
+      "https://app.okou.ai/ja/onboarding",
+    );
+
+    const signInUrl = absoluteNavigationUrl(
+      platformContext.navigation.href("sign-in"),
+    );
+    expect(signInUrl.pathname).toBe("/ja/sign-in");
+    expect(signInUrl.searchParams.get("source")).toBe("language-test");
+    expect(signInUrl.searchParams.get("redirect_url")).toBe(
+      "https://app.okou.ai/ja/onboarding",
+    );
+    expect(signInUrl.hash).toBe("#proof");
+  });
+
+  it("uses the redirect locale for an Okou home link on primary auth", () => {
+    const redirectUrl = "https://app.okou.ai/fr/agents?source=auth-v2#list";
+    setBrowserUrl(
+      `https://app.vm0.ai/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`,
+    );
+
+    expect(resolveAuthV2PlatformContext("sign-in").authBrand).toStrictEqual({
+      brandName: "Okou",
+      homeUrl: "https://app.okou.ai/fr",
+    });
+  });
+
   it("uses an allowed Okou redirect as the brand context on the primary app", () => {
     const redirectUrl = "https://app.okou.ai/onboarding?source=auth-v2";
     setBrowserUrl(
@@ -55,7 +91,9 @@ describe("Auth v2 platform context", () => {
     expect(nestedUrl.pathname).toBe("/sign-up/verify-email-address");
     expect(nestedUrl.searchParams.get("redirect_url")).toBe(redirectUrl);
   });
+});
 
+describe("Auth v2 navigation context", () => {
   it("preserves sign-up campaign attribution and onboarding intent across flows", () => {
     setBrowserUrl(
       "https://app.vm0.ai/sign-up/verify-email-address?gclid=click-123&utm_campaign=summer&utm_content=hero&utm_content=footer#/verify?step=code",

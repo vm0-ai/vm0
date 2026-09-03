@@ -22,6 +22,7 @@ import koKRAgentsUrl from "./locales/ko-KR/agents.json?url";
 import koKRCommonUrl from "./locales/ko-KR/common.json?url";
 import ptBRAgentsUrl from "./locales/pt-BR/agents.json?url";
 import ptBRCommonUrl from "./locales/pt-BR/common.json?url";
+import { resolveLocaleAssetUrl } from "./locale-asset-url.ts";
 
 export const DEFAULT_LOCALE = "en-US";
 export const DEFAULT_NAMESPACE = "common";
@@ -100,7 +101,7 @@ async function loadLocaleResourceNamespace(
   namespace: "agents" | "common",
   signal?: AbortSignal,
 ): Promise<LocaleResourceNamespace> {
-  const response = await fetch(new URL(resourceUrl, location.href), { signal });
+  const response = await fetch(resolveLocaleAssetUrl(resourceUrl), { signal });
   if (!response.ok) {
     throw new Error(
       `Failed to load ${locale} ${namespace} locale resources (HTTP ${response.status})`,

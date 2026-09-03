@@ -1,3 +1,5 @@
+import { localePrefixedPathname } from "../../i18n/locale-routing.ts";
+import type { SupportedLocale } from "../../i18n/resources.ts";
 import { ROUTES } from "../route-paths.ts";
 
 export type AuthV2RouteMode = "sign-in" | "sign-up";
@@ -17,6 +19,7 @@ interface CreateAuthV2NavigationOptions {
   readonly completionRedirectUrl: string;
   readonly mode: AuthV2RouteMode;
   readonly signUpCompletionRedirectUrl: string;
+  readonly urlLocale?: SupportedLocale | null;
 }
 
 const AUTH_V2_ROUTE_BY_MODE = {
@@ -84,7 +87,10 @@ export function createAuthV2Navigation(
         options.authHash,
         navigationRedirectUrl,
       );
-      const pathname = `${AUTH_V2_ROUTE_BY_MODE[targetMode]}${stepPath ?? ""}`;
+      const routePathname = `${AUTH_V2_ROUTE_BY_MODE[targetMode]}${stepPath ?? ""}`;
+      const pathname = options.urlLocale
+        ? localePrefixedPathname(routePathname, options.urlLocale)
+        : routePathname;
       return `${pathname}?${search}${hash}`;
     },
   };

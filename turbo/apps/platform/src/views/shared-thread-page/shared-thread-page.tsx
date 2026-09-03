@@ -15,6 +15,8 @@ import {
 } from "@okouai/core/public-brand";
 
 import type { BrandName } from "../../signals/branding.ts";
+import { preserveLocalePathPrefix } from "../../i18n/locale-routing.ts";
+import { urlLocale$ } from "../../signals/route.ts";
 import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -490,9 +492,21 @@ export function SharedThreadPage({
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
   const publicBrand = sharedThread?.publicBrand ?? "vm0";
   const presentation = publicBrandPresentation(publicBrand);
-  const homeUrl = appUrlForPublicBrand(window.location.origin, publicBrand);
+  const urlLocale = useGet(urlLocale$);
+  const homeUrlBase = new URL(
+    appUrlForPublicBrand(window.location.origin, publicBrand),
+  );
+  const homeOrigin = homeUrlBase.origin;
+  const homeHostname = homeUrlBase.hostname;
+  const homePathname = preserveLocalePathPrefix("/", homeHostname, urlLocale);
+  const homeUrl =
+    homePathname === "/" ? homeOrigin : `${homeOrigin}${homePathname}`;
   const shareUrl = sharedThread
-    ? `${window.location.origin}/share/threads/${encodeURIComponent(sharedThread.id)}`
+    ? `${window.location.origin}${preserveLocalePathPrefix(
+        `/share/threads/${encodeURIComponent(sharedThread.id)}`,
+        window.location.hostname,
+        urlLocale,
+      )}`
     : null;
   const handoffUrl = new URL(homeUrl);
   if (shareUrl) {
@@ -506,9 +520,15 @@ export function SharedThreadPage({
       ),
     );
   }
-  const signInUrl = new URL("/sign-in", `${homeUrl}/`);
+  const signInUrl = new URL(
+    preserveLocalePathPrefix("/sign-in", homeHostname, urlLocale),
+    `${homeOrigin}/`,
+  );
   signInUrl.searchParams.set("redirect_url", handoffUrl.toString());
-  const signUpUrl = new URL("/sign-up", `${homeUrl}/`);
+  const signUpUrl = new URL(
+    preserveLocalePathPrefix("/sign-up", homeHostname, urlLocale),
+    `${homeOrigin}/`,
+  );
   signUpUrl.searchParams.set("redirect_url", handoffUrl.toString());
 
   return (

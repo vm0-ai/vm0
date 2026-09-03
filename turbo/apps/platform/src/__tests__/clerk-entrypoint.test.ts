@@ -379,9 +379,18 @@ describe("platform Clerk entrypoint", () => {
     {
       authOrigin: "https://pr-30199-app.omby.ai",
       domain: null,
+      localePrefix: "/fr",
       publishableKey: PREVIEW_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
-      url: "https://pr-30199-app.omby.ai/",
+      url: "https://pr-30199-app.omby.ai/fr/sign-in",
+    },
+    {
+      authOrigin: "https://pr-30199-app-okou-app-preview.vm0.workers.dev",
+      domain: null,
+      localePrefix: "/ja",
+      publishableKey: PREVIEW_PUBLISHABLE_KEY,
+      scriptUrl: expectedClerkScriptUrl(),
+      url: "https://pr-30199-app-okou-app-preview.vm0.workers.dev/ja/sign-up",
     },
     {
       authOrigin: "https://app.vm0.ai",
@@ -395,15 +404,16 @@ describe("platform Clerk entrypoint", () => {
       domain: "app.okou.ai",
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
-      url: "https://app.okou.ai/",
+      url: "https://app.okou.ai/fr/sign-in",
     },
     {
       authOrigin: "https://app.okou.ai",
       domain: null,
+      localePrefix: "/fr",
       productionPrimaryAppDomain: CUTOVER_PRIMARY_APP_DOMAIN,
       publishableKey: PRODUCTION_PUBLISHABLE_KEY,
       scriptUrl: expectedClerkScriptUrl(),
-      url: "https://app.okou.ai/",
+      url: "https://app.okou.ai/fr/sign-in",
     },
     {
       authOrigin: "https://app.okou.ai",
@@ -455,6 +465,7 @@ describe("platform Clerk entrypoint", () => {
     ({
       authOrigin,
       domain,
+      localePrefix,
       productionPrimaryAppDomain,
       publishableKey,
       scriptUrl,
@@ -489,11 +500,12 @@ describe("platform Clerk entrypoint", () => {
         productionPrimaryAppDomain ?? CURRENT_PRIMARY_APP_DOMAIN,
       );
       expect(bootstrap.domain ?? null).toBe(domain);
+      const localizedAuthOrigin = `${authOrigin}${localePrefix ?? ""}`;
       expect(bootstrap.loadOptions).toStrictEqual({
-        afterSignOutUrl: `${authOrigin}/sign-in`,
+        afterSignOutUrl: `${localizedAuthOrigin}/sign-in`,
         ...(domain ? { isSatellite: true, satelliteAutoSync: true } : {}),
-        signInUrl: `${authOrigin}/sign-in`,
-        signUpUrl: `${authOrigin}/sign-up`,
+        signInUrl: `${localizedAuthOrigin}/sign-in`,
+        signUpUrl: `${localizedAuthOrigin}/sign-up`,
       });
     },
   );
@@ -501,7 +513,9 @@ describe("platform Clerk entrypoint", () => {
   it("starts Clerk.load before application bootstrap and adopts the same promise", async () => {
     const loadCanFinish = context.mocks.deferred<void>();
     mockedClerkLoad.mockReturnValue(loadCanFinish.promise);
-    const script = captureClerkBootstrapScript("https://pr-30199-app.omby.ai/");
+    const script = captureClerkBootstrapScript(
+      "https://pr-30199-app.omby.ai/fr/_/error",
+    );
 
     Reflect.set(globalThis, "Clerk", mockedClerk);
     script.dispatchEvent(new Event("load"));
@@ -518,7 +532,7 @@ describe("platform Clerk entrypoint", () => {
 
     const setup = setupPage({
       context,
-      path: "/error",
+      path: "/fr/_/error",
       withoutRender: true,
     });
     expect(mockedClerkLoad).toHaveBeenCalledOnce();

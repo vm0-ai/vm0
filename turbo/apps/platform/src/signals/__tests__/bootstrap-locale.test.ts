@@ -21,6 +21,8 @@ import {
 } from "../../i18n/resources.ts";
 import { changeI18nLanguage, i18n, initializeI18n } from "../../i18n/index.ts";
 import { locale$, setLocale$ } from "../locale.ts";
+import { hash, pathname, search } from "../location.ts";
+import { pathname$, urlLocale$ } from "../route.ts";
 import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
@@ -34,6 +36,37 @@ function loadedClerkLocalization(locale: SupportedLocale) {
 }
 
 describe("bootstrap locale", () => {
+  it.each([
+    ["en", "en-US"],
+    ["pt-BR", "pt-BR"],
+    ["ja", "ja-JP"],
+    ["ko", "ko-KR"],
+    ["id", "id-ID"],
+    ["de", "de-DE"],
+    ["es", "es-ES"],
+    ["it", "it-IT"],
+    ["fr", "fr-FR"],
+    ["hi", "hi-IN"],
+  ] as const)(
+    "maps /%s to %s ahead of the saved preference",
+    async (prefix, locale) => {
+      const path = `/${prefix}/_/error?source=locale-test#proof`;
+      context.mocks.browser.url(`https://app.okou.ai${path}`);
+      context.mocks.data.userPreferences({ locale: "en-US" });
+
+      await setupPage({ context, path, withoutRender: true });
+
+      expect(context.store.get(locale$)).toBe(locale);
+      expect(context.store.get(urlLocale$)).toBe(locale);
+      expect(context.store.get(pathname$)).toBe("/_/error");
+      expect(pathname()).toBe(`/${prefix}/_/error`);
+      expect(search()).toBe("?source=locale-test");
+      expect(hash()).toBe("#proof");
+      expect(i18n.language).toBe(locale);
+      expect(document.documentElement.lang).toBe(locale);
+    },
+  );
+
   it("loads English resources for the default locale", async () => {
     context.mocks.browser.language(DEFAULT_LOCALE);
 

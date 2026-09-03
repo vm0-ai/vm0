@@ -67,6 +67,43 @@ function buttonByLabel(label: string): HTMLButtonElement {
 }
 
 describe("auth v2 presentation", () => {
+  it("renders the current auth UI at /en/sign-in", async () => {
+    setBrowserUrl("https://app.okou.ai/en/sign-in");
+
+    detachedSetupPage({ context, path: "/en/sign-in" });
+
+    await screen.findByRole("heading", {
+      level: 1,
+      name: "Choose an account",
+    });
+    expect(linkByLabel("Go to Okou home")).toHaveAttribute("href", "/en");
+    expect(
+      screen.queryByRole("heading", { name: "Page not found" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses an explicit Okou URL locale ahead of the saved preference", async () => {
+    context.mocks.data.userPreferences({
+      locale: "en-US",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
+    const path = "/ja/sign-up?source=language-test#proof";
+    setBrowserUrl(`https://app.okou.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await screen.findByLabelText("メールアドレス");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "アカウントを作成" }),
+    ).toBeVisible();
+    expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/ja");
+    const signInLink = linkByText("サインイン");
+    const signInUrl = new URL(signInLink.href);
+    expect(signInUrl.pathname).toBe("/ja/sign-in");
+    expect(signInUrl.searchParams.get("source")).toBe("language-test");
+    expect(signInUrl.hash).toBe("#proof");
+  });
+
   it("provides branded landmarks, descriptions, announcements, and initial focus", async () => {
     setBrowserUrl("https://app.vm0.ai/sign-in");
 

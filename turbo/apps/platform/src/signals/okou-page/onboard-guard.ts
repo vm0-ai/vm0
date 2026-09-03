@@ -125,6 +125,7 @@ export const bootstrapOnboardingGuard$ = command(
       if (memberships.length > 0) {
         window.location.href = resolveAppAuthUrl(
           "/sign-in/tasks/choose-organization",
+          { redirectUrl: location.href },
         );
         return;
       }

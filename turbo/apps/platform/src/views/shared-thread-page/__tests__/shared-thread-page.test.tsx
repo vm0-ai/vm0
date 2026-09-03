@@ -13,6 +13,51 @@ const context = testContext();
 const SHARED_THREAD_ID = "30000000-0000-4000-8000-000000000702";
 
 describe("shared thread page", () => {
+  it("preserves an explicit Okou locale in public handoff and auth links", async () => {
+    const path = `/fr/share/threads/${SHARED_THREAD_ID}`;
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
+    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+      return respond(200, {
+        id: SHARED_THREAD_ID,
+        title: "Locale handoff",
+        publicBrand: "okou",
+        messages: [],
+      });
+    });
+
+    detachedSetupPage({ context, path, user: null });
+
+    await screen.findByRole("heading", { name: "Locale handoff" });
+    const links = queryAllByRoleFast("link");
+    const brandLink = links.find((link) => {
+      return link.getAttribute("aria-label") === "Okou";
+    });
+    expect(brandLink).toHaveAttribute("href", "https://app.okou.ai/fr");
+
+    const urls = links.flatMap((link) => {
+      const href = link.getAttribute("href");
+      return href ? [new URL(href, window.location.origin)] : [];
+    });
+    const signInUrls = urls.filter((url) => {
+      return url.pathname === "/fr/sign-in";
+    });
+    expect(signInUrls).toHaveLength(2);
+    const handoffUrl = new URL(
+      signInUrls[0]?.searchParams.get("redirect_url") ?? "",
+    );
+    expect(handoffUrl.pathname).toBe("/fr");
+    expect(handoffUrl.searchParams.get("prompt")).toContain(
+      `/fr/share/threads/${SHARED_THREAD_ID}`,
+    );
+
+    const signUpUrl = urls.find((url) => {
+      return url.pathname === "/fr/sign-up";
+    });
+    expect(signUpUrl?.searchParams.get("redirect_url")).toBe(
+      handoffUrl.toString(),
+    );
+  });
+
   it("renders the immutable public DTO without owner or agent identity", async () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWriteText();

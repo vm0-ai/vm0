@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { i18n } from "../i18n/index.ts";
+import { resolveLocaleRoute } from "../i18n/locale-routing.ts";
 import { captureAuthV2DiagnosticEvent } from "../lib/posthog.ts";
 import {
   AuthV2Page,
@@ -29,6 +30,10 @@ import { ROUTES } from "./route-paths.ts";
 
 function setupAuthV2Page(mode: AuthV2PageMode) {
   return command(async ({ get, set }, signal: AbortSignal) => {
+    const routePathname = resolveLocaleRoute(
+      location.pathname,
+      location.hostname,
+    ).pathname;
     const platformContext = resolveAuthV2PlatformContext(mode);
     const diagnostics = createAuthV2Diagnostics(
       mode,
@@ -36,7 +41,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     );
     const continuationController = createAuthV2ContinuationSignals({
       isContinuationRoute: isAuthV2ContinuationLocation(
-        location.pathname,
+        routePathname,
         location.hash,
       ),
       mode,
@@ -49,9 +54,9 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     let signInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
     if (mode === "sign-in") {
-      const isBaseRoute = location.pathname === ROUTES.signIn;
+      const isBaseRoute = routePathname === ROUTES.signIn;
       const isOAuthCallbackRoute =
-        location.pathname === `${ROUTES.signIn}${AUTH_V2_OAUTH_CALLBACK_PATH}`;
+        routePathname === `${ROUTES.signIn}${AUTH_V2_OAUTH_CALLBACK_PATH}`;
       signInSignals = diagnostics.instrumentSignIn(
         createAuthV2SignInSignals({
           continuation: continuationController,
@@ -76,7 +81,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       );
     } else {
       const isOAuthCallbackRoute =
-        location.pathname ===
+        routePathname ===
         `${ROUTES.signUp}${AUTH_V2_SIGN_UP_OAUTH_CALLBACK_PATH}`;
       signUpSignals = diagnostics.instrumentSignUp(
         createAuthV2SignUpSignals({

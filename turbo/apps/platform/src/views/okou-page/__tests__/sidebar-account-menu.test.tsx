@@ -1406,10 +1406,12 @@ describe("zero sidebar account menu", () => {
 
   it("shows account switching, add-account, and sign-out actions", async () => {
     prepareDefaultAgent();
+    const path = `/en/agents/${AGENT_ID}/chat`;
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
+      path,
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
@@ -1473,6 +1475,7 @@ describe("zero sidebar account menu", () => {
       expect(mockedClerk.setActive).toHaveBeenCalledWith(
         expect.objectContaining({ session: "session-jamie" }),
       );
+      expect(window.location.pathname).toBe("/en");
     });
 
     menu = await openAccountMenu();

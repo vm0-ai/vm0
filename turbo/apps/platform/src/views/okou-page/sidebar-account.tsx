@@ -72,11 +72,13 @@ import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.ts
 import { UserAvatar } from "../components/avatar.tsx";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
+import { preserveLocalePathPrefix } from "../../i18n/locale-routing.ts";
 import {
   okouDebugRealtimeIndicator$,
   type OkouDebugRealtimeIndicator,
 } from "../../signals/okou-page/realtime-status.ts";
 import { openAuthV2AddAccountDialog$ } from "../../signals/okou-page/auth-v2-add-account-dialog.ts";
+import { urlLocale$ } from "../../signals/route.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -761,6 +763,7 @@ export function AccountDropdown({
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
+  const urlLocale = useGet(urlLocale$);
   const openAuthV2AddAccountDialog = useSet(openAuthV2AddAccountDialog$);
 
   const current = accounts.find((a) => {
@@ -807,7 +810,9 @@ export function AccountDropdown({
           const destination = session.currentTask
             ? `/sign-in/tasks/${session.currentTask.key}`
             : "/";
-          window.location.href = decorateUrl(destination);
+          window.location.href = decorateUrl(
+            preserveLocalePathPrefix(destination, location.hostname, urlLocale),
+          );
         },
       }),
       Reason.DomCallback,

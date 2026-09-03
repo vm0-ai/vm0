@@ -13,6 +13,11 @@ import {
 } from "../lib/posthog.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
+  localePrefixedPathname,
+  preserveLocalePathPrefix,
+  resolveLocaleRoute,
+} from "../i18n/locale-routing.ts";
+import {
   derivePlatformServiceOrigin,
   isOkouProductionHostname,
   type PlatformService,
@@ -127,6 +132,18 @@ function resolveAuthOrigin(): string {
     : resolveAppOrigin();
 }
 
+function currentUrlLocale() {
+  return resolveLocaleRoute(location.pathname, location.hostname).locale;
+}
+
+function localizedCurrentPathname(pathname: string): string {
+  return preserveLocalePathPrefix(
+    pathname,
+    location.hostname,
+    currentUrlLocale(),
+  );
+}
+
 export function resolvePrimaryClerkUserProfileUrl(): string {
   return resolveClerkProductionTopology(
     resolveConfiguredProductionPrimaryAppDomain(),
@@ -187,6 +204,11 @@ export function resolveAppAuthUrl(
     return path;
   }
   const url = new URL(path, appOrigin);
+  url.pathname = preserveLocalePathPrefix(
+    path,
+    url.hostname,
+    currentUrlLocale(),
+  );
   if (options.redirectUrl) {
     url.searchParams.set("redirect_url", options.redirectUrl);
   }
@@ -253,7 +275,10 @@ function setCurrentLandingContext(params: URLSearchParams): void {
 function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   const params = new URLSearchParams(paramsInit);
   setCurrentLandingContext(params);
-  const url = new URL(VM0_ONBOARDING_PATH, resolveAppOrigin());
+  const url = new URL(
+    localizedCurrentPathname(VM0_ONBOARDING_PATH),
+    resolveAppOrigin(),
+  );
   url.search = params.toString();
   appendCapturedPreviewBypassToUrl(url);
   return url.toString();
@@ -322,7 +347,10 @@ export function resolveAuthBrandContext(
 ): AuthBrandContext {
   const currentBrandName = resolveBrandNameForHostname(location.hostname);
   if (currentBrandName === "Okou") {
-    return { brandName: currentBrandName, homeUrl: "/" };
+    return {
+      brandName: currentBrandName,
+      homeUrl: localizedCurrentPathname("/"),
+    };
   }
 
   const redirectUrl = readAllowedRedirectUrl(
@@ -333,7 +361,16 @@ export function resolveAuthBrandContext(
     redirectUrl &&
     resolveBrandNameForHostname(redirectUrl.hostname) === "Okou"
   ) {
-    return { brandName: "Okou", homeUrl: redirectUrl.origin };
+    const redirectLocale = resolveLocaleRoute(
+      redirectUrl.pathname,
+      redirectUrl.hostname,
+    ).locale;
+    return {
+      brandName: "Okou",
+      homeUrl: redirectLocale
+        ? `${redirectUrl.origin}${localePrefixedPathname("/", redirectLocale)}`
+        : redirectUrl.origin,
+    };
   }
 
   return { brandName: currentBrandName, homeUrl: "/" };
@@ -352,7 +389,10 @@ export function buildSignupRedirectUrl(
   }
 
   if (!hasAdTraffic(params)) {
-    return new URL(VM0_ONBOARDING_PATH, appUrl).toString();
+    return new URL(
+      localizedCurrentPathname(VM0_ONBOARDING_PATH),
+      appUrl,
+    ).toString();
   }
 
   const redirectParams = new URLSearchParams();
@@ -368,7 +408,15 @@ export function buildSignInRedirectUrl(
   const params = readAuthRedirectParams(signInSearch, signInHash);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
 
-  return redirectUrl?.toString() ?? resolveAppUrl();
+  if (redirectUrl) {
+    return redirectUrl.toString();
+  }
+
+  const appUrl = resolveAppUrl();
+  const homePathname = localizedCurrentPathname("/");
+  return homePathname === "/"
+    ? appUrl
+    : new URL(homePathname, appUrl).toString();
 }
 
 /** Loaded Clerk instance for consumers that need authentication state. */
@@ -507,7 +555,7 @@ export const watchOrgSwitch$ = command(
             return await clerk.session?.getToken({ skipCache: true });
           })(),
         );
-        location.href = "/";
+        location.href = localizedCurrentPathname("/");
       }),
     );
     signal.addEventListener("abort", unsubscribe);

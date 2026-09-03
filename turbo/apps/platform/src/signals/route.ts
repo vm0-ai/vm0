@@ -24,6 +24,12 @@ import {
 import { recordAdAttribution$ } from "./bootstrap/ad-attribution.ts";
 import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 import { bootstrapGoogleAdsConversionMilestones$ } from "./bootstrap/google-ads-conversion-milestones.ts";
+import {
+  preserveLocalePathPrefix,
+  replaceLocalePathPrefix,
+  resolveLocaleRoute,
+} from "../i18n/locale-routing.ts";
+import type { SupportedLocale } from "../i18n/resources.ts";
 
 const L = logger("Route");
 
@@ -32,7 +38,12 @@ const internalHistoryState$ = state<unknown>(window.history.state);
 
 export const pathname$ = computed((get) => {
   get(reloadPathname$);
-  return pathname();
+  return resolveLocaleRoute(pathname(), location.hostname).pathname;
+});
+
+export const urlLocale$ = computed((get) => {
+  get(reloadPathname$);
+  return resolveLocaleRoute(pathname(), location.hostname).locale;
 });
 
 export const searchParams$ = computed((get) => {
@@ -73,20 +84,43 @@ export const replaceSearchParams$ = command(
 
 export const replacePathSilently$ = command(
   (
-    { set },
+    { get, set },
     pathnameTemplate: Parameters<typeof generateRouterPath>[0],
     pathParams?: Parameters<typeof generateRouterPath>[1],
     searchParams?: URLSearchParams,
   ) => {
     const newPath = generateRouterPath(pathnameTemplate, pathParams);
+    const localizedPath = preserveLocalePathPrefix(
+      newPath,
+      location.hostname,
+      get(urlLocale$),
+    );
     const searchStr = searchParams?.toString();
-    replaceState({}, "", `${newPath}${searchStr ? `?${searchStr}` : ""}`);
+    replaceState({}, "", `${localizedPath}${searchStr ? `?${searchStr}` : ""}`);
     set(internalHistoryState$, {});
     set(reloadPathname$, (x) => {
       return x + 1;
     });
   },
 );
+
+export const replaceUrlLocale$ = command(({ set }, locale: SupportedLocale) => {
+  const currentPathname = pathname();
+  const localizedPath = replaceLocalePathPrefix(
+    currentPathname,
+    location.hostname,
+    locale,
+  );
+  if (localizedPath === currentPathname) {
+    return;
+  }
+  const historyState = window.history.state;
+  replaceState(historyState, "", `${localizedPath}${search()}${hash()}`);
+  set(internalHistoryState$, historyState);
+  set(reloadPathname$, (x) => {
+    return x + 1;
+  });
+});
 
 interface Route {
   path: string;
@@ -123,7 +157,11 @@ const currentRoute$ = computed((get) => {
 const clearPageForRouteBoundary$ = command(
   ({ get, set }, nextPathname: string) => {
     const config = get(internalRouteConfig$);
-    const nextRoute = config ? findRoute(config, nextPathname) : null;
+    const normalizedPathname = resolveLocaleRoute(
+      nextPathname,
+      location.hostname,
+    ).pathname;
+    const nextRoute = config ? findRoute(config, normalizedPathname) : null;
     if (get(currentRoute$) !== nextRoute) {
       set(clearPage$);
     }
@@ -240,7 +278,12 @@ const navigate$ = command(
     signal: AbortSignal,
   ) => {
     const searchStr = options.searchParams?.toString();
-    const newPath = `${pathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
+    const localizedPathname = preserveLocalePathPrefix(
+      pathname,
+      location.hostname,
+      get(urlLocale$),
+    );
+    const newPath = `${localizedPathname}${searchStr ? `?${searchStr}` : ""}${routeHash(options.hash)}`;
     L.debug("navigating to", newPath);
     set(clearPageForRouteBoundary$, pathname);
     if (options.replace) {
@@ -368,6 +411,7 @@ export const setupAuthPageWrapper = (
       );
       window.location.href = resolveAppAuthUrl(
         "/sign-in/tasks/choose-organization",
+        { redirectUrl: location.href },
       );
       return;
     }

@@ -9,12 +9,14 @@ import {
   loadI18nLanguageResources,
   loadInitialLocaleResources,
 } from "../i18n/index.ts";
+import { resolveLocaleRoute } from "../i18n/locale-routing.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import { clerk$ } from "./auth.ts";
 import {
   updateUserPreference$,
   userPreferences$,
 } from "./okou-page/settings/user-preferences.ts";
+import { replaceUrlLocale$, urlLocale$ } from "./route.ts";
 
 const internalLocale$ = state<SupportedLocale>(DEFAULT_LOCALE);
 
@@ -29,7 +31,9 @@ export const availableLocalePreferences$ = computed(async (get) => {
 
 export const initLocale$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    const requestedLocale = DEFAULT_LOCALE;
+    const requestedLocale =
+      resolveLocaleRoute(location.pathname, location.hostname).locale ??
+      DEFAULT_LOCALE;
     const [initial, clerkLocalization] = await Promise.all([
       loadInitialLocaleResources(requestedLocale, signal),
       set(loadClerkLocalization$, requestedLocale, signal),
@@ -68,6 +72,10 @@ const applyLocalePreference$ = command(
 
 export const syncLocalePreference$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    if (get(urlLocale$)) {
+      return;
+    }
+
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -105,6 +113,7 @@ export const updateLocalePreference$ = command(
     }
 
     await set(applyLocalePreference$, locale, signal);
+    set(replaceUrlLocale$, locale);
     await set(updateUserPreference$, { locale }, signal);
   },
 );

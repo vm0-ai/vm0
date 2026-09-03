@@ -1,3 +1,4 @@
+import { resolveLocaleRoute } from "../../i18n/locale-routing.ts";
 import {
   buildSignInRedirectUrl,
   buildSignupRedirectUrl,
@@ -56,6 +57,8 @@ export function resolveAuthV2PlatformContext(
       completionRedirectUrl,
       mode,
       signUpCompletionRedirectUrl,
+      urlLocale: resolveLocaleRoute(location.pathname, location.hostname)
+        .locale,
     }),
     satelliteConfig: resolveClerkSatelliteConfig(),
   };

@@ -1,6 +1,7 @@
 import { command } from "ccstate";
+import { preserveLocalePathPrefix } from "../i18n/locale-routing.ts";
 import { clerk$ } from "./auth.ts";
-import { searchParams$, detachedNavigateTo$ } from "./route.ts";
+import { detachedNavigateTo$, searchParams$, urlLocale$ } from "./route.ts";
 import { logger } from "./log.ts";
 
 const L = logger("SignInToken");
@@ -16,6 +17,7 @@ const L = logger("SignInToken");
 export const setupSignInTokenPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(searchParams$);
+    const urlLocale = get(urlLocale$);
     const token = params.get("token");
 
     if (!token) {
@@ -51,7 +53,9 @@ export const setupSignInTokenPage$ = command(
         const destination = session.currentTask
           ? `/sign-in/tasks/${session.currentTask.key}`
           : "/";
-        window.location.href = decorateUrl(destination);
+        window.location.href = decorateUrl(
+          preserveLocalePathPrefix(destination, location.hostname, urlLocale),
+        );
       },
     });
     signal.throwIfAborted();

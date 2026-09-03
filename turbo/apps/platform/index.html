@@ -236,10 +236,17 @@
         var authOrigin = satellite
           ? "https://" + productionPrimaryAppDomain
           : location.origin;
+        var localePrefix = currentOkouLocalePrefix(hostname, location.pathname);
+        var authHostname = new URL(authOrigin).hostname;
+        var authLocalePrefix = isOkouHostname(authHostname)
+          ? localePrefix
+          : null;
+        var signInPath = localePathname("/sign-in", authLocalePrefix);
+        var signUpPath = localePathname("/sign-up", authLocalePrefix);
         var loadOptions = {
-          afterSignOutUrl: new URL("/sign-in", authOrigin).toString(),
-          signInUrl: new URL("/sign-in", authOrigin).toString(),
-          signUpUrl: new URL("/sign-up", authOrigin).toString(),
+          afterSignOutUrl: new URL(signInPath, authOrigin).toString(),
+          signInUrl: new URL(signInPath, authOrigin).toString(),
+          signUpUrl: new URL(signUpPath, authOrigin).toString(),
         };
         if (satellite) {
           loadOptions.isSatellite = true;
@@ -256,6 +263,49 @@
 
         function isDomainOrSubdomain(value, domain) {
           return value === domain || value.endsWith("." + domain);
+        }
+
+        function isOkouHostname(value) {
+          return (
+            isDomainOrSubdomain(value, "okou.ai") ||
+            isDomainOrSubdomain(value, "omby.ai") ||
+            isDomainOrSubdomain(value, "okou-app.pages.dev") ||
+            /^(?:(?:staging|pr-[0-9]+))-app-okou-app-preview\.vm0\.workers\.dev$/.test(
+              value,
+            )
+          );
+        }
+
+        function currentOkouLocalePrefix(value, pathname) {
+          if (!isOkouHostname(value)) return null;
+          // This runs before modules; keep aliases in sync with
+          // src/i18n/locale-routing.ts.
+          var prefixes = [
+            "en",
+            "pt-BR",
+            "ja",
+            "ko",
+            "id",
+            "de",
+            "es",
+            "it",
+            "fr",
+            "hi",
+          ];
+          for (var index = 0; index < prefixes.length; index += 1) {
+            var prefix = prefixes[index];
+            if (
+              pathname === "/" + prefix ||
+              pathname.startsWith("/" + prefix + "/")
+            ) {
+              return prefix;
+            }
+          }
+          return null;
+        }
+
+        function localePathname(pathname, prefix) {
+          return prefix ? "/" + prefix + pathname : pathname;
         }
 
         function startClerk() {

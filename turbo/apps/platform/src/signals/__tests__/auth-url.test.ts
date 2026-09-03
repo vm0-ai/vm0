@@ -76,6 +76,24 @@ describe("platform auth URLs", () => {
     expect(redirectUrl.searchParams.has("domain")).toBeFalsy();
   });
 
+  it("preserves an explicit locale when the auth host is Okou", () => {
+    setBrowserUrl("https://pr-18532-app.omby.ai/fr/agents?view=active#list");
+
+    const signInUrl = new URL(resolveAppAuthUrl("/sign-in"));
+    expect(signInUrl.origin).toBe("https://pr-18532-app.omby.ai");
+    expect(signInUrl.pathname).toBe("/fr/sign-in");
+
+    const taskUrl = new URL(
+      resolveAppAuthUrl("/sign-in/tasks/choose-organization", {
+        redirectUrl: "https://pr-18532-app.omby.ai/fr/agents?view=active#list",
+      }),
+    );
+    expect(taskUrl.pathname).toBe("/fr/sign-in/tasks/choose-organization");
+    expect(taskUrl.searchParams.get("redirect_url")).toBe(
+      "https://pr-18532-app.omby.ai/fr/agents?view=active#list",
+    );
+  });
+
   it("builds web auth URLs on the derived www origin", () => {
     setBrowserUrl("https://app.vm7.ai:8443/agents");
 
@@ -243,7 +261,9 @@ describe("platform auth redirects", () => {
   });
 
   it("redirects users who need org selection to app auth", async () => {
-    setBrowserUrl("https://pr-18532-app.omby.ai/agents");
+    const currentUrl =
+      "https://pr-18532-app.omby.ai/fr/agents?view=active#list";
+    setBrowserUrl(currentUrl);
 
     detachedSetupPage({
       context,
@@ -251,14 +271,15 @@ describe("platform auth redirects", () => {
         activeOrg: null,
         memberships: [{ id: "org_member" }],
       },
-      path: "/agents",
+      path: "/fr/agents?view=active#list",
     });
 
     await waitFor(() => {
       const url = new URL(window.location.href);
       expect(url.origin).toBe("https://pr-18532-app.omby.ai");
-      expect(url.pathname).toBe("/sign-in/tasks/choose-organization");
+      expect(url.pathname).toBe("/fr/sign-in/tasks/choose-organization");
       expect(url.searchParams.has("domain")).toBeFalsy();
+      expect(url.searchParams.get("redirect_url")).toBe(currentUrl);
     });
   });
 
@@ -290,11 +311,11 @@ describe("platform auth redirects", () => {
   });
 
   it("redirects an unauthenticated satellite user through primary auth", async () => {
-    setBrowserUrl("https://app.okou.ai/agents?utm_source=okou-launch");
+    setBrowserUrl("https://app.okou.ai/ja/agents?utm_source=okou-launch#proof");
 
     detachedSetupPage({
       context,
-      path: "/agents",
+      path: "/ja/agents?utm_source=okou-launch#proof",
       session: null,
       user: null,
     });
@@ -303,9 +324,12 @@ describe("platform auth redirects", () => {
       const url = new URL(window.location.href);
       expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in");
-      expect(url.searchParams.get("redirect_url")).toBe(
-        "https://app.okou.ai/agents?utm_source=okou-launch&__clerk_synced=false",
-      );
+      const redirectUrl = new URL(url.searchParams.get("redirect_url") ?? "");
+      expect(redirectUrl.origin).toBe("https://app.okou.ai");
+      expect(redirectUrl.pathname).toBe("/ja/agents");
+      expect(redirectUrl.searchParams.get("utm_source")).toBe("okou-launch");
+      expect(redirectUrl.searchParams.get("__clerk_synced")).toBe("false");
+      expect(redirectUrl.hash).toBe("#proof");
     });
 
     expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key", {

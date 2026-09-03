@@ -522,6 +522,7 @@ export const leaveOrg$ = command(
     );
     window.location.href = resolveAppAuthUrl(
       "/sign-in/tasks/choose-organization",
+      { redirectUrl: location.href },
     );
   },
 );
@@ -548,6 +549,7 @@ export const deleteOrg$ = command(
     );
     window.location.href = resolveAppAuthUrl(
       "/sign-in/tasks/choose-organization",
+      { redirectUrl: location.href },
     );
   },
 );
