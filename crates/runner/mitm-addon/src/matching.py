@@ -9,7 +9,7 @@ parameterized hosts are meaningful only for firewall config bases.
 """
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, NamedTuple
@@ -35,6 +35,7 @@ from firewall_matching.patterns import (
     SegmentError,
     SegmentLiteral,
     _compiled_path_segments_match,
+    _iter_path_segments,
     _match_compiled_path_segments,
     _split_path_segments,
 )
@@ -615,12 +616,17 @@ def _freeze_prefix_trie[T](
 
 def _visit_prefix_trie_values[T](
     root: _CompiledPrefixTrieNode[T],
-    path_segs: list[str],
+    path_segs: Iterable[str],
     visit_values: Callable[[tuple[T, ...]], None],
 ) -> None:
     visit_values(root.values)
     node = root
-    for segment in path_segs:
+    path_iter = iter(path_segs)
+    while node.children:
+        try:
+            segment = next(path_iter)
+        except StopIteration:
+            break
         child = node.children.get(segment)
         if child is None:
             break
@@ -668,7 +674,7 @@ def _indexed_api_candidates(
     if root is not None:
         _visit_prefix_trie_values(
             root,
-            _split_path_segments(url_parts.path),
+            _iter_path_segments(url_parts.path),
             candidates.extend,
         )
     if len(candidates) <= 1:
