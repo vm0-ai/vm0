@@ -561,6 +561,64 @@ describe("artifact catalog page", () => {
     expect(screen.getByText("PDF")).toBeInTheDocument();
   });
 
+  it("uses the source video when a card has no thumbnail", async () => {
+    const sourceUrl =
+      "https://cdn.vm0.io/artifacts/test/video-source-fallback/demo.webm";
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [
+          artifact({
+            kind: "file",
+            title: "demo.webm",
+            videoSourceUrl: sourceUrl,
+          }),
+        ],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const card = await findCard("demo.webm");
+    expect(
+      card.querySelector('[data-testid="artifact-catalog-video-source"]'),
+    ).toHaveAttribute("src", `${sourceUrl}#t=0.001`);
+  });
+
+  it("uses the source video when a thumbnail fails to load", async () => {
+    const sourceUrl =
+      "https://cdn.vm0.io/artifacts/test/video-source-fallback/demo.mp4";
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [
+          artifact({
+            kind: "video",
+            title: "demo.mp4",
+            thumbnail: {
+              url: "https://cdn.vm0.io/artifacts/test/broken-poster.jpg",
+            },
+            videoSourceUrl: sourceUrl,
+          }),
+        ],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const card = await findCard("demo.mp4");
+    const thumbnail = card.querySelector(
+      '[data-testid="artifact-catalog-thumbnail"]',
+    );
+    fireEvent.error(thumbnail!);
+
+    await waitFor(() => {
+      expect(
+        card.querySelector('[data-testid="artifact-catalog-video-source"]'),
+      ).toHaveAttribute("src", `${sourceUrl}#t=0.001`);
+    });
+  });
+
   it("falls back when a thumbnail fails to load", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {
