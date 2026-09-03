@@ -60,6 +60,65 @@ const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
   "- presentation: create slide decks or presentation documents.",
   "- website: create hosted websites or web pages.",
 ].join("\n");
+const LEGACY_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT = [
+  `Generate up to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} concise follow-up prompts the user may ask next in this chat.`,
+  "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
+  'The "prompt" values are shown as plain text, not rendered as Markdown, so formatting characters will appear literally. Do not use Markdown or presentation-only syntax inside prompt values, including backticks around technical names, bold or italic markers, links, or bullet markers.',
+  'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks for one of the supported built-in generation outputs.',
+  BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,
+  "For generate items, include generationType as one of: image, video, presentation, website.",
+  'Return only a JSON array of objects like {"prompt":"...","kind":"talk"} or {"prompt":"...","kind":"generate","generationType":"website"}. No markdown or extra text.',
+].join("\n");
+const OPTIMIZED_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT = [
+  "You generate recommended follow-up messages for a chat.",
+  "",
+  `Generate 0 to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} short messages the user could naturally send next. These are quick replies, not task briefs. Optimize for meaningful progress, not for filling all ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} slots.`,
+  "",
+  "Conversation rules:",
+  "- Treat the latest assistant reply as authoritative.",
+  "- Focus on the latest unresolved decision or action.",
+  "- Do not ask for information, links, status, summaries, lists, drafts, or artifacts already provided.",
+  "- If the assistant is waiting for the user to take an action, suggest a conditional message for continuing after that action. Never claim the action has already been completed.",
+  "- If the task is complete, suggest only genuinely useful next steps or refinements.",
+  "- If the task is blocked, suggest the smallest safe unblock, a useful alternative, or a root-cause question.",
+  "- If the assistant needs clarification, suggest a direct answer to the unresolved question.",
+  "- Never invent facts, actions, or user intent that are not supported by the conversation.",
+  "",
+  "Writing rules:",
+  "- Match the user's language and conversational tone.",
+  "- Write each suggestion as a very short, natural quick reply.",
+  "- Express exactly one intent in one simple clause or question.",
+  "- Make every suggestion effortless to read at a glance.",
+  "- Remove every word that is not necessary.",
+  "- Rely on the existing conversation context. Do not repeat names, IDs, links, dates, or other details unless essential for clarity.",
+  "- Use natural contextual references when their meaning is unambiguous.",
+  "- Avoid formal, bureaucratic, report-like, or assistant-style wording.",
+  "- Do not combine multiple requests into one suggestion.",
+  "- Make the suggestions meaningfully distinct. Do not return paraphrases of the same intent.",
+  "- Do not default to summaries, reports, release notes, or presentations.",
+  `- Return fewer than ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} suggestions, including an empty array, when there are not enough strong options.`,
+  "",
+  "Classification rules:",
+  '- Use kind "talk" for discussion, questions, planning, analysis, refinement, or ordinary actions.',
+  '- Use kind "generate" only when the suggestion naturally asks for one of the supported built-in generation outputs.',
+  "- Supported generation types are:",
+  "  - image: create or edit images and visual assets.",
+  "  - video: create short generated videos.",
+  "  - presentation: create slide decks or presentation documents.",
+  "  - website: create hosted websites or web pages.",
+  '- For kind "generate", include generationType as one of: image, video, presentation, website.',
+  "- Never add a generation suggestion merely for variety.",
+  "",
+  "Output rules:",
+  "- The prompt values are displayed as plain text, not rendered as Markdown.",
+  "- Do not use Markdown, links, bullet markers, backticks, bold markers, italic markers, or presentation-only syntax inside prompt values.",
+  "- Return only a JSON array.",
+  "- Each item must be either:",
+  '  {"prompt":"...","kind":"talk"}',
+  "  or:",
+  '  {"prompt":"...","kind":"generate","generationType":"website"}',
+  "- Do not return explanations, Markdown fences, or any text outside the JSON array.",
+].join("\n");
 
 export interface ChatCompletionContextMessage {
   readonly role: "user" | "assistant";
@@ -459,6 +518,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
+  followUpOptimizeEnabled: boolean,
 ): Promise<ChatRecommendedFollowup[]> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
@@ -475,15 +535,9 @@ async function generateRecommendedFollowups(
     [
       {
         role: "system",
-        content: [
-          `Generate up to ${RECOMMENDED_FOLLOWUP_LIMIT.toString()} concise follow-up prompts the user may ask next in this chat.`,
-          "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
-          'The "prompt" values are shown as plain text, not rendered as Markdown, so formatting characters will appear literally. Do not use Markdown or presentation-only syntax inside prompt values, including backticks around technical names, bold or italic markers, links, or bullet markers.',
-          'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks for one of the supported built-in generation outputs.',
-          BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,
-          "For generate items, include generationType as one of: image, video, presentation, website.",
-          'Return only a JSON array of objects like {"prompt":"...","kind":"talk"} or {"prompt":"...","kind":"generate","generationType":"website"}. No markdown or extra text.',
-        ].join("\n"),
+        content: followUpOptimizeEnabled
+          ? OPTIMIZED_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT
+          : LEGACY_RECOMMENDED_FOLLOWUP_SYSTEM_PROMPT,
       },
       {
         role: "user",
@@ -507,13 +561,17 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
+  readonly followUpOptimizeEnabled: boolean;
 }): Promise<ChatRecommendedFollowup[]> {
   return (
-    (await tapError(generateRecommendedFollowups(args.messages), (err) => {
-      log.warn("Recommended follow-up generation failed", {
-        ...(args.threadId ? { threadId: args.threadId } : {}),
-        err,
-      });
-    })) ?? []
+    (await tapError(
+      generateRecommendedFollowups(args.messages, args.followUpOptimizeEnabled),
+      (err) => {
+        log.warn("Recommended follow-up generation failed", {
+          ...(args.threadId ? { threadId: args.threadId } : {}),
+          err,
+        });
+      },
+    )) ?? []
   );
 }
