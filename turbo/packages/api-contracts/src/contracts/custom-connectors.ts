@@ -172,15 +172,32 @@ const customConnectorResponseBaseSchema = z.object({
   updatedAt: z.string(),
 });
 
-const customConnectorManualAuthResponseSchema = z.object({
-  authMode: z.literal("manual"),
-  oauthConfig: z.never().optional(),
-});
+type CustomConnectorNonOAuthAuthResponse<
+  TMode extends "manual" | "none" | "automatic",
+> = {
+  readonly authMode: TMode;
+  readonly oauthConfig?: never;
+};
 
-const customConnectorNoAuthResponseSchema = z.object({
-  authMode: z.literal("none"),
-  oauthConfig: z.never().optional(),
-});
+const customConnectorManualAuthResponseSchema = z
+  .object({
+    authMode: z.literal("manual"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"manual"> => {
+    return { authMode: value.authMode };
+  });
+
+const customConnectorNoAuthResponseSchema = z
+  .object({
+    authMode: z.literal("none"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"none"> => {
+    return { authMode: value.authMode };
+  });
 
 const customConnectorCustomOAuthResponseSchema = z
   .object({
@@ -195,13 +212,15 @@ const customConnectorCustomOAuthResponseSchema = z
     };
   });
 
-const customConnectorAutomaticResponseSchema = z.object({
-  authMode: z.literal("automatic"),
-  oauthConfig: z.never().optional(),
-});
-
-const customConnectorOAuthResponseSchema =
-  customConnectorCustomOAuthResponseSchema;
+const customConnectorAutomaticResponseSchema = z
+  .object({
+    authMode: z.literal("automatic"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"automatic"> => {
+    return { authMode: value.authMode };
+  });
 
 const customConnectorHttpAuthResponseSchema = z.union([
   customConnectorNoAuthResponseSchema,
@@ -235,7 +254,7 @@ export const customConnectorMcpResponseSchema = z.intersection(
   z.union([
     customConnectorNoAuthResponseSchema,
     customConnectorManualAuthResponseSchema,
-    customConnectorOAuthResponseSchema,
+    customConnectorCustomOAuthResponseSchema,
     customConnectorAutomaticResponseSchema,
   ]),
 );
