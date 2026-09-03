@@ -93,7 +93,7 @@ import {
   refreshCustomConnectorAutomaticOAuthToken,
   retireCustomConnectorDcrRegistration,
   type CustomConnectorAutomaticOAuthBinding,
-  type CustomConnectorAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
+  type CustomConnectorCanonicalAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
 } from "./custom-connector-automatic-oauth.service";
 import { configuredOkouMcpOAuthClientMetadata } from "./mcp-oauth-client-metadata.service";
 
