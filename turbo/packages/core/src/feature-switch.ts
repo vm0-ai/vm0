@@ -396,6 +396,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MarkdownHexColorPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
