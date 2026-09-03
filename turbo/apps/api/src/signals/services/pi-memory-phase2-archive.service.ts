@@ -99,26 +99,37 @@ function safePath(path: string): boolean {
   });
 }
 
-function validatePaths(paths: readonly string[]): void {
-  const ordered = [...paths].sort(compareText);
-  const folded = ordered
-    .map((path) => {
-      return path.normalize("NFC").toLocaleLowerCase("en");
-    })
-    .sort(compareText);
-  for (const collection of [ordered, folded]) {
-    for (let index = 0; index < collection.length; index += 1) {
-      const current = collection[index];
-      const previous = collection[index - 1];
-      if (
-        current === undefined ||
-        !safePath(current) ||
-        current === previous ||
-        (previous !== undefined && current.startsWith(`${previous}/`))
-      ) {
+function foldedPath(path: string): string {
+  return path.normalize("NFC").toLocaleLowerCase("en");
+}
+
+function validatePathKeys(paths: readonly string[]): void {
+  const inventory = new Set(paths);
+  if (inventory.size !== paths.length) {
+    fail("path_invalid");
+  }
+  for (const path of paths) {
+    for (
+      let separator = path.indexOf("/");
+      separator !== -1;
+      separator = path.indexOf("/", separator + 1)
+    ) {
+      if (inventory.has(path.slice(0, separator))) {
         fail("path_invalid");
       }
     }
+  }
+}
+
+function validatePaths(paths: readonly string[]): void {
+  const folded = paths.map(foldedPath);
+  for (const collection of [paths, folded]) {
+    for (const path of collection) {
+      if (!safePath(path)) {
+        fail("path_invalid");
+      }
+    }
+    validatePathKeys(collection);
   }
 }
 
