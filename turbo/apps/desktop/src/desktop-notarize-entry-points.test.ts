@@ -42,7 +42,6 @@ const canonicalKeychainAliases = {
   path: "OKOU_DESKTOP_NOTARIZE_KEYCHAIN",
 } as const;
 const canonicalSigningIdentityAlias = "OKOU_DESKTOP_SIGNING_IDENTITY";
-const legacySigningIdentityAlias = "VM0_DESKTOP_SIGNING_IDENTITY";
 const developerIdApplicationIdentity =
   "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
 
@@ -161,7 +160,6 @@ type IncompleteCredentialCase = (typeof incompleteCredentialCases)[number];
 
 interface SigningIdentityInput {
   readonly canonical?: string;
-  readonly legacy?: string;
 }
 
 interface KeychainEnvironmentInput {
@@ -279,12 +277,7 @@ function applySigningIdentityInput(
   if (input.canonical !== undefined) {
     environment[canonicalSigningIdentityAlias] = input.canonical;
   }
-  if (input.legacy !== undefined) {
-    environment[legacySigningIdentityAlias] = input.legacy;
-  }
-  return [input.canonical, input.legacy].filter((value): value is string =>
-    Boolean(value),
-  );
+  return input.canonical ? [input.canonical] : [];
 }
 
 function applyKeychainEnvironmentInput(
@@ -680,7 +673,6 @@ describe("Desktop Forge Keychain notarization environment entry point", () => {
 
 describe("Desktop Forge signing identity entry point", () => {
   const canonicalIdentity = ` ${randomUUID()} `;
-  const hostileRetiredIdentity = `retired-${randomUUID()}`;
 
   it("passes the canonical identity through unchanged", () => {
     const result = runForge("absent", {
@@ -708,7 +700,7 @@ describe("Desktop Forge signing identity entry point", () => {
     ["CI", true],
     ["local", false],
   ] as const)(
-    "keeps the existing %s fallback when both aliases are absent",
+    "keeps the existing %s fallback when the canonical input is absent",
     (_, ci) => {
       const result = runForge("absent", {
         ci,
@@ -721,31 +713,6 @@ describe("Desktop Forge signing identity entry point", () => {
       expectNoSensitiveValueDisclosure(result);
     },
   );
-
-  it("treats retired-only input as absent", () => {
-    const result = runForge("absent", {
-      notarize: false,
-      signingIdentity: { legacy: hostileRetiredIdentity },
-    });
-
-    expect(result.process.status, result.process.stderr).toBe(0);
-    expect(result.trace).toBe("sign\n");
-    expectNoSensitiveValueDisclosure(result);
-  });
-
-  it("uses the canonical identity unchanged with hostile retired input", () => {
-    const result = runForge("absent", {
-      notarize: false,
-      signingIdentity: {
-        canonical: canonicalIdentity,
-        legacy: hostileRetiredIdentity,
-      },
-    });
-
-    expect(result.process.status, result.process.stderr).toBe(0);
-    expect(result.trace).toBe("sign\n");
-    expectNoSensitiveValueDisclosure(result);
-  });
 });
 
 describe("packaged Desktop signing and notarization entry point", () => {
@@ -810,49 +777,32 @@ describe("packaged Desktop signing and notarization entry point", () => {
 
 describe("packaged Desktop signing identity entry point", () => {
   const canonicalIdentity = ` ${randomUUID()} `;
-  const hostileRetiredIdentity = `retired-${randomUUID()}`;
 
-  it.each([
-    ["canonical-only", { canonical: canonicalIdentity }],
-    [
-      "canonical with hostile retired input",
-      {
-        canonical: canonicalIdentity,
-        legacy: hostileRetiredIdentity,
-      },
-    ],
-  ] as const)("passes the %s identity through unchanged", (_, input) => {
+  it("passes the canonical identity through unchanged", () => {
     const result = runPackagedAppHelper("canonical-only", {
-      signingIdentity: input,
+      signingIdentity: { canonical: canonicalIdentity },
     });
 
     expectSuccessfulApiEntryPoint(result);
   });
 
-  it.each([
-    ["absent", {}],
-    ["retired-only", { legacy: hostileRetiredIdentity }],
-  ] as const)(
-    "keeps the required-variable failure for %s canonical input",
-    (_, input) => {
-      const result = runPackagedAppHelper("canonical-only", {
-        signingIdentity: input,
-      });
+  it("keeps the required-variable failure when canonical input is absent", () => {
+    const result = runPackagedAppHelper("canonical-only", {
+      signingIdentity: {},
+    });
 
-      expect(result.process.status).toBe(1);
-      expect(result.trace).toBe("");
-      expect(result.process.stderr).toContain(
-        "OKOU_DESKTOP_SIGNING_IDENTITY is required",
-      );
-      expectNoSensitiveValueDisclosure(result);
-    },
-  );
+    expect(result.process.status).toBe(1);
+    expect(result.trace).toBe("");
+    expect(result.process.stderr).toContain(
+      "OKOU_DESKTOP_SIGNING_IDENTITY is required",
+    );
+    expectNoSensitiveValueDisclosure(result);
+  });
 
   it("keeps the required-variable failure for an explicit-empty canonical identity", () => {
     const result = runPackagedAppHelper("canonical-only", {
       signingIdentity: {
         canonical: "",
-        legacy: hostileRetiredIdentity,
       },
     });
 

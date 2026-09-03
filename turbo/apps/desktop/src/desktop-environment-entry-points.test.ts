@@ -20,8 +20,6 @@ const temporaryDirectories: string[] = [];
 const environmentNames = {
   canonicalPlatformUrl: "OKOU_DESKTOP_PLATFORM_URL",
   canonicalProduct: "OKOU_DESKTOP_PRODUCT",
-  retiredPlatformUrl: "VM0_DESKTOP_PLATFORM_URL",
-  retiredProduct: "VM0_DESKTOP_PRODUCT",
 } as const;
 
 const buildConfigHarnessSource = `
@@ -77,8 +75,6 @@ Object.defineProperty(process, "platform", { value: "darwin" });
 interface EnvironmentValues {
   readonly canonicalPlatformUrl?: string;
   readonly canonicalProduct?: string;
-  readonly retiredPlatformUrl?: string;
-  readonly retiredProduct?: string;
 }
 
 interface RuntimeFileConfig {
@@ -168,8 +164,6 @@ function applyEnvironmentValues(
   for (const [environmentName, value] of [
     [environmentNames.canonicalPlatformUrl, values.canonicalPlatformUrl],
     [environmentNames.canonicalProduct, values.canonicalProduct],
-    [environmentNames.retiredPlatformUrl, values.retiredPlatformUrl],
-    [environmentNames.retiredProduct, values.retiredProduct],
   ] as const) {
     if (value !== undefined) {
       environment[environmentName] = value;
@@ -400,36 +394,6 @@ describe("Desktop build configuration entry point", () => {
 
     expectSuccessfulEntryPoint(result);
   });
-
-  it("ignores retired-only inputs", () => {
-    const result = runBuildConfig({
-      environment: {
-        retiredProduct: "okou",
-        retiredPlatformUrl: "https://staging-app.omby.ai",
-      },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
-
-  it("keeps hostile retired inputs isolated from canonical values", () => {
-    const result = runBuildConfig({
-      environment: {
-        canonicalProduct: "okou",
-        canonicalPlatformUrl: "https://app.okou.ai",
-        retiredProduct: "unsupported",
-        retiredPlatformUrl: "not a URL",
-      },
-      expectedProduct: "okou",
-      expectedPlatformUrl: "https://app.okou.ai/",
-      expectedDisplayName: "Okou",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
 });
 
 describe("installed Desktop configuration entry point", () => {
@@ -550,38 +514,6 @@ describe("installed Desktop configuration entry point", () => {
     expectSuccessfulEntryPoint(result);
   });
 
-  it("ignores retired-only inputs", () => {
-    const result = runInstalledConfig({
-      environment: {
-        retiredProduct: "okou",
-        retiredPlatformUrl: "https://staging-app.omby.ai",
-      },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-      expectedEnvironment: "production",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
-
-  it("keeps hostile retired inputs isolated from canonical values", () => {
-    const result = runInstalledConfig({
-      environment: {
-        canonicalProduct: "okou",
-        canonicalPlatformUrl: "https://app.okou.ai",
-        retiredProduct: "unsupported",
-        retiredPlatformUrl: "not a URL",
-      },
-      expectedProduct: "okou",
-      expectedPlatformUrl: "https://app.okou.ai/",
-      expectedDisplayName: "Okou",
-      expectedEnvironment: "production",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
-
   it("names the canonical platform URL in protocol validation diagnostics", () => {
     const result = runInstalledConfig({
       environment: {
@@ -598,9 +530,6 @@ describe("installed Desktop configuration entry point", () => {
     expect(result.process.stderr).toContain(
       "OKOU_DESKTOP_PLATFORM_URL must use http or https, received ftp:",
     );
-    expect(result.process.stderr).not.toContain(
-      environmentNames.retiredPlatformUrl,
-    );
   });
 });
 
@@ -616,24 +545,8 @@ describe("packaged Desktop wrapper entry points", () => {
       {
         canonicalProduct: " okou ",
         canonicalPlatformUrl: " https://staging-app.omby.ai ",
-        retiredProduct: "unsupported",
-        retiredPlatformUrl: "not a URL",
       },
       "Okou Dev",
-    );
-
-    expectSuccessfulEntryPoint(result);
-    expect(result.trace).toBe("selected\n");
-  });
-
-  it.each(wrappers)("ignores retired-only input through %s", (wrapper) => {
-    const result = runWrapper(
-      wrapper,
-      {
-        retiredProduct: "okou",
-        retiredPlatformUrl: "https://staging-app.omby.ai",
-      },
-      "Zero Computer Use",
     );
 
     expectSuccessfulEntryPoint(result);
