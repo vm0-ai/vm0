@@ -427,6 +427,7 @@ function buildAgentToolsPrompt(args: {
     "# Agent Tools",
     `You have access to the Okou CLI. Run commands with: \`${okouCliCommand} <command>\``,
     "- Discover available commands: `okou --help`.",
+    "- When an Okou CLI command prints a user-facing action URL, return that exact URL verbatim. Never rewrite, shorten, reconstruct, or omit any query parameters.",
     "- Capability questions: when the user asks what Okou can do, whether Okou can do a category of work, or compares Okou to another assistant, run `okou intro` first. Use its output to synthesize a concise answer in the user's language. Do not paste the intro verbatim.",
     "- Locate local agent-session files, search web chat messages, or inspect external services via connectors: `okou search --help`.",
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',

@@ -22,22 +22,26 @@ export function currentChatSupportsActionCallback(
   return currentChatThreadId(agentId) !== null;
 }
 
-function addCallbackSearchParams(
-  params: URLSearchParams,
+function serializeCallbackActionUrl(
+  actionUrl: URL,
   threadId: string,
   callbackPrompt: string,
-): void {
-  params.set("threadId", threadId);
-  params.set("callbackPrompt", callbackPrompt);
+): string {
+  const finalizedUrl = new URL(actionUrl.toString());
+  finalizedUrl.searchParams.delete("threadId");
+  finalizedUrl.searchParams.delete("callbackPrompt");
+  finalizedUrl.searchParams.append("threadId", threadId);
+  finalizedUrl.searchParams.append("callbackPrompt", callbackPrompt);
+  return finalizedUrl.toString();
 }
 
-export function addRequestedCallbackSearchParams(
-  params: URLSearchParams,
+export function finalizeActionUrl(
+  actionUrl: URL,
   callbackPrompt: string | undefined,
   agentId: string | undefined,
-): void {
+): string {
   if (callbackPrompt === undefined) {
-    return;
+    return actionUrl.toString();
   }
 
   const normalizedPrompt = callbackPrompt.trim();
@@ -51,7 +55,7 @@ export function addRequestedCallbackSearchParams(
       "--callback-prompt can only target the current web chat thread and agent",
     );
   }
-  addCallbackSearchParams(params, threadId, normalizedPrompt);
+  return serializeCallbackActionUrl(actionUrl, threadId, normalizedPrompt);
 }
 
 export function connectorActionUrl(args: {
@@ -75,13 +79,11 @@ function callbackActionUrlExample(
     return null;
   }
 
-  const url = new URL(actionUrl);
-  addCallbackSearchParams(
-    url.searchParams,
+  return serializeCallbackActionUrl(
+    new URL(actionUrl),
     threadId,
     CALLBACK_PROMPT_PLACEHOLDER,
   );
-  return url.toString();
 }
 
 export function printCallbackActionUrlExample(
@@ -103,6 +105,6 @@ export function printCallbackActionUrlExample(
 export function printCallbackTurnInstruction(): void {
   console.log("");
   console.log(
-    "After sharing this callback URL, end the current turn. When the user completes the action, Okou will automatically start the next round with the callback prompt.",
+    "Return the exact callback URL above verbatim, without rewriting, shortening, reconstructing, or omitting any query parameters. Then end the current turn. When the user completes the action, Okou will automatically start the next round with the callback prompt.",
   );
 }
