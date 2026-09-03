@@ -97,18 +97,30 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should release Morning Brief independently from Official Workflows and preserve false overrides", () => {
+  it("should keep Morning Brief default-off with an independent staff rollout and overrides", () => {
+    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     const ordinaryOrgId = "org_nonexistent";
     expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
-    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
         orgId: ordinaryOrgId,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
         orgId: ordinaryOrgId,
+        overrides: { [FeatureSwitchKey.MorningBrief]: true },
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: staffOrgId,
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: staffOrgId,
         overrides: { [FeatureSwitchKey.MorningBrief]: false },
       }),
     ).toBe(false);
@@ -121,7 +133,7 @@ describe("isFeatureEnabled", () => {
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
-      rolloutStage: "released",
+      rolloutStage: "beta",
     });
   });
 
@@ -216,7 +228,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
 
   it("should enable intro video and desktop recording for staff", () => {
