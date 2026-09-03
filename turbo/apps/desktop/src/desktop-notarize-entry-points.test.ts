@@ -28,15 +28,7 @@ const canonicalAliases = {
   keyId: "OKOU_DESKTOP_NOTARIZE_API_KEY_ID",
   issuer: "OKOU_DESKTOP_NOTARIZE_API_ISSUER",
 } as const;
-const retiredAliases = {
-  keyPath: "VM0_DESKTOP_NOTARIZE_API_KEY_PATH",
-  keyId: "VM0_DESKTOP_NOTARIZE_API_KEY_ID",
-  issuer: "VM0_DESKTOP_NOTARIZE_API_ISSUER",
-} as const;
-const credentialAliases = [
-  ...Object.values(canonicalAliases),
-  ...Object.values(retiredAliases),
-];
+const credentialAliases = Object.values(canonicalAliases);
 const canonicalKeychainAliases = {
   profile: "OKOU_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE",
   path: "OKOU_DESKTOP_NOTARIZE_KEYCHAIN",
@@ -144,8 +136,6 @@ type CredentialCase =
   | "absent"
   | "empty"
   | "canonical-only"
-  | "canonical-and-retired"
-  | "retired-only"
   | IncompleteCredentialCase;
 
 const incompleteCredentialCases = [
@@ -226,7 +216,7 @@ function credentialValues(directory: string): CredentialValues {
 
 function assignCredentialValues(
   environment: NodeJS.ProcessEnv,
-  aliases: typeof canonicalAliases | typeof retiredAliases,
+  aliases: typeof canonicalAliases,
   values: CredentialValues,
 ): void {
   environment[aliases.keyPath] = values.keyPath;
@@ -250,14 +240,8 @@ function applyCredentialCase(
   }
 
   const canonical = credentialValues(directory);
-  const retired = credentialValues(directory);
   if (credentialCase === "canonical-only") {
     assignCredentialValues(environment, canonicalAliases, canonical);
-  } else if (credentialCase === "canonical-and-retired") {
-    assignCredentialValues(environment, canonicalAliases, canonical);
-    assignCredentialValues(environment, retiredAliases, retired);
-  } else if (credentialCase === "retired-only") {
-    assignCredentialValues(environment, retiredAliases, retired);
   } else {
     for (const field of incompleteCredentialFields[credentialCase]) {
       environment[canonicalAliases[field]] = canonical[field];
@@ -376,10 +360,7 @@ function runForge(
     expectedSigningIdentity === "-" ? "false" : "true";
   environment.TEST_EXPECTED_SIGNING_TIMESTAMP =
     expectedSigningIdentity === "-" ? "none" : "absent";
-  if (
-    credentialCase === "canonical-only" ||
-    credentialCase === "canonical-and-retired"
-  ) {
+  if (credentialCase === "canonical-only") {
     environment.TEST_NOTARIZE_MODE = "api";
   }
   if (options.keychainMode) {
@@ -521,10 +502,6 @@ describe("Desktop Forge notarization entry point", () => {
     expectSuccessfulApiEntryPoint(runForge("canonical-only"));
   });
 
-  it("keeps canonical credentials authoritative over hostile retired values", () => {
-    expectSuccessfulApiEntryPoint(runForge("canonical-and-retired"));
-  });
-
   it.each(incompleteCredentialCases)(
     "rejects the incomplete canonical %s shape before signing",
     (credentialCase) => {
@@ -535,7 +512,7 @@ describe("Desktop Forge notarization entry point", () => {
     },
   );
 
-  it.each(["absent", "empty", "retired-only"] as const)(
+  it.each(["absent", "empty"] as const)(
     "keeps the default Keychain profile when API credentials are %s",
     (credentialCase) => {
       const result = runForge(credentialCase, {
@@ -548,8 +525,7 @@ describe("Desktop Forge notarization entry point", () => {
   );
 
   it.each([
-    ["canonical and retired API credentials", "canonical-and-retired"],
-    ["retired-only API credentials", "retired-only"],
+    ["complete canonical API credentials", "canonical-only"],
     ["incomplete canonical API credentials", "key-path-only"],
   ] as const)(
     "keeps a custom Keychain profile ahead of %s",
@@ -721,12 +697,6 @@ describe("packaged Desktop signing and notarization entry point", () => {
     expectSuccessfulApiEntryPoint(runPackagedAppHelper("canonical-only"));
   });
 
-  it("keeps canonical credentials authoritative over hostile retired values", () => {
-    expectSuccessfulApiEntryPoint(
-      runPackagedAppHelper("canonical-and-retired"),
-    );
-  });
-
   it.each(incompleteCredentialCases)(
     "rejects the incomplete canonical %s shape before signing",
     (credentialCase) => {
@@ -737,7 +707,7 @@ describe("packaged Desktop signing and notarization entry point", () => {
     },
   );
 
-  it.each(["absent", "empty", "retired-only"] as const)(
+  it.each(["absent", "empty"] as const)(
     "rejects %s API credentials before signing",
     (credentialCase) => {
       expectFailedBeforeExternalSideEffects(

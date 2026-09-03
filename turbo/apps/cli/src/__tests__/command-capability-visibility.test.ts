@@ -254,22 +254,6 @@ describe("registerCommands", () => {
     ]);
   });
 
-  it("prefers OKOU_TOKEN when both token names are present", () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildOkouToken({ scope: "okou", capabilities: ["agent:read"] }),
-    );
-    vi.stubEnv(
-      "ZERO_TOKEN",
-      buildOkouToken({ scope: "okou", capabilities: ["connector:read"] }),
-    );
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("agent");
-    expect(visibleCommandNames(prog)).not.toContain("connector");
-  });
-
   it("should hide run-only commands and keep global commands visible with malformed token", () => {
     vi.stubEnv("OKOU_TOKEN", "not-a-valid-token");
 

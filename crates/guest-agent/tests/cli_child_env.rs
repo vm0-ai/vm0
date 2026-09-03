@@ -69,7 +69,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "CUSTOM_USER_ENV": "visible-to-cli",
             "VM0_FUTURE_RUNNER_KEY": "ordinary-vm0-value",
             "VM0_PROMPT": "ordinary-user-prompt",
-            "VM0_API_TOKEN": "ordinary-user-token",
+            "CUSTOM_API_TOKEN": "ordinary-user-token",
             "BASH_ENV": "/tmp/user-bash-env",
             "OKOU_API_BACKEND_URL": "https://canonical-user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
@@ -122,7 +122,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     );
 
     unsafe {
-        std::env::set_var("VM0_API_TOKEN", "stale token after runtime construction");
+        std::env::set_var("CUSTOM_API_TOKEN", "stale token after runtime construction");
         std::env::set_var(
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "https://stale-canonical-api.example.invalid",
@@ -169,7 +169,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     for (key, expected_value) in [
         ("VM0_FUTURE_RUNNER_KEY", "ordinary-vm0-value"),
         ("VM0_PROMPT", "ordinary-user-prompt"),
-        ("VM0_API_TOKEN", "ordinary-user-token"),
+        ("CUSTOM_API_TOKEN", "ordinary-user-token"),
     ] {
         assert_eq!(cli_env.get(key).map(String::as_str), Some(expected_value));
     }
