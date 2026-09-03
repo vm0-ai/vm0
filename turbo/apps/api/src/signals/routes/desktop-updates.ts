@@ -4,7 +4,6 @@ import {
   DESKTOP_UPDATE_LINE_ZERO,
   desktopUpdatesContract,
   type DesktopZeroMigrationPolicy,
-  type DesktopUpdateLine,
 } from "@okouai/api-contracts/contracts/desktop-updates";
 import { command } from "ccstate";
 
@@ -18,7 +17,6 @@ import {
   loadDesktopUpdateFeed,
 } from "../services/desktop-updates.service";
 
-const feedParams$ = pathParamsOf(desktopUpdatesContract.feed);
 const releasePageParams$ = pathParamsOf(desktopUpdatesContract.releasePage);
 const dmgDownloadParams$ = pathParamsOf(desktopUpdatesContract.dmgDownload);
 const productFeedParams$ = pathParamsOf(desktopUpdatesContract.productFeed);
@@ -63,18 +61,15 @@ const getDesktopMigrationPolicy$ = command(({ set }) => {
  * than a new one: the platform download button and the Zero migration bridge
  * both point at it and both expect an Okou artifact.
  *
- * These two routes used to read the line off the request namespace, so the
- * `/api/zero/**` compatibility alias kept resolving to the Zero line its
- * callers reached before the move. #31088 removed the branded compatibility
- * rows that registered that alias, #31090 removed the mechanism behind them,
- * and nothing else registers a branded path, so no request can arrive on one
- * and the Zero branch had no reachable input left. The Zero line is still
- * reachable through
- * `productFeed`, `productReleasePage` and `productDmgDownload`, which name it
- * in the path.
+ * `/api/desktop/updates/stable/darwin/arm64/dmg` is what the migration wall's
+ * `Download Okou` button opens and what the bridge compiled into installed Zero
+ * builds hard-codes, so this constant must keep resolving to the current Okou
+ * DMG. The unqualified RELEASES.json feed used to resolve to Zero instead;
+ * #31475 removed that route rather than aligning it, because a Zero client
+ * cannot cross to the Okou bundle through Squirrel and no other caller reached
+ * it.
  */
-const UNQUALIFIED_DESKTOP_UPDATE_LINE: DesktopUpdateLine =
-  DESKTOP_UPDATE_LINE_OKOU;
+const UNQUALIFIED_DESKTOP_UPDATE_LINE = DESKTOP_UPDATE_LINE_OKOU;
 
 const getDesktopReleasePage$ = command(async ({ get }, signal: AbortSignal) => {
   const url = await loadDesktopReleasePageUrl(
@@ -97,23 +92,6 @@ const getDesktopReleasePage$ = command(async ({ get }, signal: AbortSignal) => {
       "Cache-Control": "no-store",
     },
   });
-});
-
-const getDesktopUpdateFeed$ = command(async ({ get }, signal: AbortSignal) => {
-  const feed = await loadDesktopUpdateFeed(
-    { line: DESKTOP_UPDATE_LINE_ZERO, ...get(feedParams$) },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (!feed) {
-    return notFound("No desktop update is available for this feed.");
-  }
-
-  return {
-    status: 200 as const,
-    body: feed,
-  };
 });
 
 const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
@@ -139,10 +117,23 @@ const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
   });
 });
 
+/**
+ * The update lines the `:product` routes still accept in the path but no longer
+ * serve.
+ *
+ * `okou` is the pre-adoption Okou line. `zero` joined it in #31475: its
+ * manifest had been frozen since the `hard` migration policy went live, and the
+ * only clients left polling it were Squirrel auto-updaters that cannot cross
+ * from the Zero bundle to the Okou one, so the feed could not upgrade anyone.
+ * Neither line is removed from the contract union — see the note there.
+ */
 const getProductDesktopReleasePage$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productReleasePageParams$);
-    if (product === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+    if (
+      product === DESKTOP_UPDATE_LINE_LEGACY_OKOU ||
+      product === DESKTOP_UPDATE_LINE_ZERO
+    ) {
       return notFound("This desktop update line is retired.");
     }
     const url = await loadDesktopReleasePageUrl(
@@ -168,7 +159,10 @@ const getProductDesktopReleasePage$ = command(
 const getProductDesktopUpdateFeed$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productFeedParams$);
-    if (product === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+    if (
+      product === DESKTOP_UPDATE_LINE_LEGACY_OKOU ||
+      product === DESKTOP_UPDATE_LINE_ZERO
+    ) {
       return notFound("This desktop update line is retired.");
     }
     const feed = await loadDesktopUpdateFeed(
@@ -191,7 +185,10 @@ const getProductDesktopUpdateFeed$ = command(
 const getProductDesktopDmgDownload$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productDmgDownloadParams$);
-    if (product === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+    if (
+      product === DESKTOP_UPDATE_LINE_LEGACY_OKOU ||
+      product === DESKTOP_UPDATE_LINE_ZERO
+    ) {
       return notFound("This desktop update line is retired.");
     }
     const url = await loadDesktopDmgDownloadUrl(
@@ -226,10 +223,6 @@ export const desktopUpdateRoutes: readonly RouteEntry[] = [
   {
     route: desktopUpdatesContract.dmgDownload,
     handler: getDesktopDmgDownload$,
-  },
-  {
-    route: desktopUpdatesContract.feed,
-    handler: getDesktopUpdateFeed$,
   },
   {
     route: desktopUpdatesContract.productReleasePage,

@@ -4,6 +4,18 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+/**
+ * Every desktop update line the `:product` routes accept.
+ *
+ * `ai-okou-desktop` is the only line the API still resolves a manifest for.
+ * `okou` and `zero` are retired: their `:product` routes answer 404, and the
+ * API can no longer name their manifests. They stay in the union because it is
+ * not API-private — `apps/desktop/src/config.ts` validates
+ * `desktop-identities.json`'s `updateLine` against it, and the desktop `zero`
+ * identity that #31372 deliberately kept still declares `updateLine: "zero"`.
+ * Keeping them here also lets a retired line answer a truthful 404 rather than
+ * a path-param validation error.
+ */
 const DESKTOP_UPDATE_LINES = ["zero", "okou", "ai-okou-desktop"] as const;
 export const DESKTOP_UPDATE_LINE_ZERO = DESKTOP_UPDATE_LINES[0];
 export const DESKTOP_UPDATE_LINE_LEGACY_OKOU = DESKTOP_UPDATE_LINES[1];
@@ -90,21 +102,6 @@ export const desktopUpdatesContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Redirect to the current desktop DMG download",
-  },
-  feed: {
-    method: "GET",
-    path: "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
-    pathParams: z.object({
-      channel: desktopUpdateChannelSchema,
-      platform: desktopUpdatePlatformSchema,
-      arch: desktopUpdateArchitectureSchema,
-    }),
-    responses: {
-      200: squirrelMacReleasesSchema,
-      400: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get the desktop auto-update feed",
   },
   productReleasePage: {
     method: "GET",
