@@ -874,14 +874,14 @@ impl FreshArchiveDelivery {
             if let Err(error) = result
                 && !error.is_cancelled()
             {
-                warn!(%error, "fresh archive fetch task failed while draining");
+                warn!(%error, "runner-owned archive fetch task failed while draining");
             }
         }
         // Once a complete response enters publication, wait for the atomic
         // cache transaction even when the run itself has been cancelled.
         while let Some(result) = self.publications.join_next().await {
             if let Err(error) = result {
-                warn!(%error, "fresh archive publication task failed while draining");
+                warn!(%error, "runner-owned archive publication task failed while draining");
             }
         }
         if had_owned_work {
@@ -906,7 +906,7 @@ impl FreshArchiveDelivery {
         let mut resolved = Vec::new();
         while let Some(task) = self.fetches.join_next().await {
             match task.map_err(|error| {
-                RunnerError::Internal(format!("fresh archive fetch task: {error}"))
+                RunnerError::Internal(format!("runner-owned archive fetch task: {error}"))
             })? {
                 FreshArchiveFetchTaskResult::Downloaded(downloaded) => {
                     telemetry.record(
@@ -936,7 +936,7 @@ impl FreshArchiveDelivery {
                         None,
                     );
                     let target = group.targets.first().ok_or_else(|| {
-                        RunnerError::Internal("empty fresh archive target group".to_string())
+                        RunnerError::Internal("empty runner-owned archive target group".to_string())
                     })?;
                     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
                     self.publications.spawn(async move {
@@ -961,7 +961,7 @@ impl FreshArchiveDelivery {
 
         while let Some(task) = self.publications.join_next().await {
             let task = task.map_err(|error| {
-                RunnerError::Internal(format!("fresh archive publication task: {error}"))
+                RunnerError::Internal(format!("runner-owned archive publication task: {error}"))
             })?;
             match task.result {
                 Ok(archive) => {
@@ -1495,7 +1495,7 @@ async fn stage_fresh_archives(
             FreshArchiveResolved::Ready { group, archive } => {
                 let FreshArchivePublished { bytes, permit } = archive;
                 let target = group.targets.first().ok_or_else(|| {
-                    RunnerError::Internal("empty fresh archive target group".to_string())
+                    RunnerError::Internal("empty runner-owned archive target group".to_string())
                 })?;
                 let write = GuestStageWrite {
                     guest_path: guest_archive_path(&target.name, &target.version),
@@ -1938,7 +1938,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|error| {
-                RunnerError::Internal(format!("build fresh archive client: {error}"))
+                RunnerError::Internal(format!("build runner-owned archive client: {error}"))
             })?;
 
         let mut scanned = 0;
@@ -1978,7 +1978,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
                 }
             };
             let target = group.targets.first().ok_or_else(|| {
-                RunnerError::Internal("empty fresh archive target group".to_string())
+                RunnerError::Internal("empty runner-owned archive target group".to_string())
             })?;
             let lock_path = home.storage_lock(&target.name, &target.version);
             let cache_dir = home.storage_cache_dir(&target.name, &target.version);
@@ -2102,8 +2102,8 @@ pub(crate) async fn prepare_fresh_archive_delivery(
     Ok(delivery)
 }
 
-/// Fresh storage delivery uses the shared bounded timeout and falls back to
-/// guest-download when its best-effort request cannot complete successfully.
+/// Runner-owned archive delivery uses the shared bounded timeout and falls
+/// back to guest-download when its best-effort request cannot complete.
 async fn fetch_fresh_archive(
     http: &Client,
     archive_url: &str,
