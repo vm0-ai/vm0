@@ -335,6 +335,12 @@ impl FinalizationPhase {
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
         let finalization_started = Instant::now();
+        if has_reuse_key {
+            assert!(
+                active_run_reuse.mark_finalizing(finalization_started),
+                "reusable active run entered finalization from a resolved state"
+            );
+        }
         telemetry.record(
             "runner_host_finalization_started",
             Duration::ZERO,

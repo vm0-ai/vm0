@@ -4,7 +4,9 @@
 //! allowed to wait for a direct handoff without reserving fresh capacity. The predecessor's
 //! `ActiveRunReuseState` drives the wait:
 //!
-//! - `Pending` means that publication or handoff is still possible.
+//! - `Pending` means that execution or other pre-finalization work is still in progress.
+//! - `Finalizing { started_at }` means that sandbox finalization is active and publication or
+//!   handoff is possible.
 //! - `ExactSandboxPublished` means that the successor may reserve the exact idle entry.
 //! - `ExactSandboxHandedOff` means that the exact entry was handed off. A live request for this
 //!   successor receives its candidate before fallback; otherwise the successor uses fallback
@@ -12,12 +14,13 @@
 //! - `NoExactSandbox` and `Released` mean that no exact predecessor resource will be published,
 //!   so the successor must use fallback resources.
 //!
-//! While the predecessor is `Pending`, the successor requests one direct handoff. Handoff
-//! acceptance is allowed until the later of the predecessor preference deadline and the claim's
-//! return time plus `FINALIZING_HANDOFF_ACCEPTANCE_GRACE`. An accepted handoff, including a
-//! candidate that was already delivered, wins a deadline race. Cancellation is checked with
-//! priority; if a candidate was delivered before the receiver was closed, the handoff request
-//! recovers it so this module can destroy it rather than lose ownership.
+//! The successor requests one direct handoff while the predecessor can still publish exact
+//! reuse. Pre-finalization waiting ends at the API preference deadline. Once finalization begins,
+//! handoff acceptance remains open until the producer's finalization start plus
+//! `FINALIZING_HANDOFF_ACCEPTANCE_GRACE`. An accepted handoff, including a candidate that was
+//! already delivered, wins a deadline race. Cancellation is checked with priority; if a candidate
+//! was delivered before the receiver was closed, the handoff request recovers it so this module
+//! can destroy it rather than lose ownership.
 //!
 //! Every exact resource is reserved for the claimed successor's reuse key, profile, device
 //! limits, and history-generation run ID. A handed-off candidate is checked against the
@@ -33,7 +36,8 @@
 //! availability and idle-pool changes: either can make the next exact or fresh-resource attempt
 //! viable, while cancellation exits through the same no-sandbox completion path. The admission
 //! timing and ownership contract is exercised by `tests/main_loop/admission.rs`, including
-//! `finalizing_handoff_grace_starts_when_claim_returns`,
+//! `pre_finalization_wait_ends_at_preference_deadline`,
+//! `finalizing_handoff_grace_starts_when_predecessor_enters_finalization`,
 //! `finalizing_immediate_handoff_reuses_matching_sandbox_past_preference_deadline`, and
 //! `competing_finalizing_successors_reserve_exact_generation_once`. The no-executor and
 //! activation-failure telemetry paths are covered by `tests/main_loop/telemetry.rs`, including
@@ -123,7 +127,6 @@ struct FinalizingPreparation<'a> {
     claimed: &'a ClaimedJob,
     cancellation: &'a RunCancellationRegistration,
     admission: &'a mut FinalizingAdmission,
-    claim_returned_at: Instant,
     profile_name: &'a str,
     vcpu: u32,
     memory_mb: u32,
@@ -136,7 +139,6 @@ struct FinalizingWait<'a> {
     run_id: RunId,
     cancellation: &'a RunCancellationRegistration,
     admission: &'a mut FinalizingAdmission,
-    claim_returned_at: Instant,
     profile_name: &'a str,
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
     ctx: &'a SpawnContext,
@@ -193,7 +195,6 @@ async fn run_finalizing_claim(
             claimed: &claimed,
             cancellation: &cancellation,
             admission: &mut admission,
-            claim_returned_at,
             profile_name: &profile_name,
             vcpu,
             memory_mb,
@@ -489,7 +490,6 @@ async fn prepare_finalizing_resource(
         claimed,
         cancellation,
         admission,
-        claim_returned_at,
         profile_name,
         vcpu,
         memory_mb,
@@ -518,7 +518,6 @@ async fn prepare_finalizing_resource(
             run_id,
             cancellation,
             admission,
-            claim_returned_at,
             profile_name,
             device_rate_limits,
             ctx,
@@ -573,11 +572,12 @@ async fn prepare_finalizing_resource(
 /// Wait for a direct predecessor handoff, a published exact reservation, or the fallback point.
 ///
 /// The handoff request is one-shot and is created before observing the predecessor state so a
-/// successor that was claimed early can race publication safely. The claim-relative grace period
-/// extends the predecessor preference deadline, but only an unaccepted request expires there; an
-/// accepted handoff is still received. A cancellation can recover a candidate already sent over
-/// the request, and the caller owns destroying that candidate or rolling back an exact
-/// reservation returned through `reserved_exact`.
+/// successor that was claimed early can race publication safely. The API preference deadline
+/// bounds pre-finalization waiting; the producer's finalization start bounds the subsequent
+/// acceptance grace. Only an unaccepted request expires at either boundary, while an accepted
+/// handoff is still received. A cancellation can recover a candidate already sent over the
+/// request, and the caller owns destroying that candidate or rolling back an exact reservation
+/// returned through `reserved_exact`.
 async fn wait_for_finalizing_resource(
     request: FinalizingWait<'_>,
     reserved_exact: &mut Option<ReservedIdleActivation>,
@@ -586,27 +586,21 @@ async fn wait_for_finalizing_resource(
         run_id,
         cancellation,
         admission,
-        claim_returned_at,
         profile_name,
         device_rate_limits,
         ctx,
     } = request;
     let cancel = cancellation.token();
     let mut handoff = admission.predecessor.request_handoff(run_id);
-    let pre_acceptance_deadline = if handoff.is_some() {
-        admission
-            .deadline
-            .max(claim_returned_at + FINALIZING_HANDOFF_ACCEPTANCE_GRACE)
-    } else {
-        admission.deadline
-    };
     loop {
         if cancel.is_cancelled() {
             return FinalizingWaitOutcome::cancelled(handoff.as_mut());
         }
         let state = admission.predecessor.state();
-        if state != ActiveRunReuseState::Pending
-            && let Some(request) = handoff.as_mut()
+        if !matches!(
+            state,
+            ActiveRunReuseState::Pending | ActiveRunReuseState::Finalizing { .. }
+        ) && let Some(request) = handoff.as_mut()
         {
             if request.accepted().await {
                 return receive_finalizing_handoff(
@@ -628,7 +622,7 @@ async fn wait_for_finalizing_resource(
             ActiveRunReuseState::NoExactSandbox => {
                 return FinalizingWaitOutcome::no_exact("predecessor_no_exact");
             }
-            ActiveRunReuseState::Pending => None,
+            ActiveRunReuseState::Pending | ActiveRunReuseState::Finalizing { .. } => None,
         };
         if let Some(missing_exact_reason) = missing_exact_reason {
             *reserved_exact = reserve_reusable_idle_for_spawn(
@@ -657,7 +651,16 @@ async fn wait_for_finalizing_resource(
             return FinalizingWaitOutcome::no_exact(missing_exact_reason);
         }
 
-        let deadline = tokio::time::Instant::from_std(pre_acceptance_deadline);
+        let deadline = tokio::time::Instant::from_std(match state {
+            ActiveRunReuseState::Pending => admission.deadline,
+            ActiveRunReuseState::Finalizing { started_at } => {
+                started_at + FINALIZING_HANDOFF_ACCEPTANCE_GRACE
+            }
+            ActiveRunReuseState::ExactSandboxPublished
+            | ActiveRunReuseState::ExactSandboxHandedOff
+            | ActiveRunReuseState::NoExactSandbox
+            | ActiveRunReuseState::Released => continue,
+        });
         if let Some(request) = handoff.as_mut() {
             tokio::select! {
                 biased;
@@ -678,17 +681,13 @@ async fn wait_for_finalizing_resource(
                 }
                 _ = admission.predecessor.changed() => {}
                 _ = tokio::time::sleep_until(deadline) => {
-                    if admission.predecessor.state() == ActiveRunReuseState::Pending {
-                        if cancel.is_cancelled() {
-                            return FinalizingWaitOutcome::cancelled(Some(request));
-                        }
-                        if request.expire_if_unaccepted() {
-                            return FinalizingWaitOutcome::Fallback {
-                                reason: "handoff_acceptance_deadline",
-                                handoff_outcome:
-                                    FinalizingHandoffOutcome::NotAcceptedBeforeDeadline,
-                            };
-                        }
+                    if admission.predecessor.state() != state {
+                        continue;
+                    }
+                    if cancel.is_cancelled() {
+                        return FinalizingWaitOutcome::cancelled(Some(request));
+                    }
+                    if !request.expire_if_unaccepted() {
                         return receive_finalizing_handoff(
                             request,
                             run_id,
@@ -697,6 +696,24 @@ async fn wait_for_finalizing_resource(
                         )
                         .await;
                     }
+                    return match state {
+                        ActiveRunReuseState::Pending => FinalizingWaitOutcome::Fallback {
+                            reason: "pre_finalization_deadline",
+                            handoff_outcome:
+                                FinalizingHandoffOutcome::PreFinalizationDeadline,
+                        },
+                        ActiveRunReuseState::Finalizing { .. } => {
+                            FinalizingWaitOutcome::Fallback {
+                                reason: "handoff_acceptance_deadline",
+                                handoff_outcome:
+                                    FinalizingHandoffOutcome::NotAcceptedBeforeDeadline,
+                            }
+                        }
+                        ActiveRunReuseState::ExactSandboxPublished
+                        | ActiveRunReuseState::ExactSandboxHandedOff
+                        | ActiveRunReuseState::NoExactSandbox
+                        | ActiveRunReuseState::Released => continue,
+                    };
                 }
             }
         } else {
@@ -707,9 +724,23 @@ async fn wait_for_finalizing_resource(
                 }
                 _ = admission.predecessor.changed() => {}
                 _ = tokio::time::sleep_until(deadline) => {
-                    if admission.predecessor.state() == ActiveRunReuseState::Pending {
-                        return FinalizingWaitOutcome::no_exact("handoff_request_unavailable");
+                    if admission.predecessor.state() != state {
+                        continue;
                     }
+                    return match state {
+                        ActiveRunReuseState::Pending => FinalizingWaitOutcome::Fallback {
+                            reason: "pre_finalization_deadline",
+                            handoff_outcome:
+                                FinalizingHandoffOutcome::PreFinalizationDeadline,
+                        },
+                        ActiveRunReuseState::Finalizing { .. } => {
+                            FinalizingWaitOutcome::no_exact("handoff_request_unavailable")
+                        }
+                        ActiveRunReuseState::ExactSandboxPublished
+                        | ActiveRunReuseState::ExactSandboxHandedOff
+                        | ActiveRunReuseState::NoExactSandbox
+                        | ActiveRunReuseState::Released => continue,
+                    };
                 }
             }
         }
