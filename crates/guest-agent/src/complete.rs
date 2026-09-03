@@ -36,7 +36,7 @@ struct CompletePayload<'a> {
     run_id: &'a str,
     exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    failure_reason: Option<complete::RequestFailureReason>,
+    failure_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -166,7 +166,7 @@ fn payload_for_runtime<'a>(
     CompletePayload {
         run_id: &config.run_id,
         exit_code,
-        failure_reason: failure_reason.map(Into::into),
+        failure_reason: failure_reason.map(|reason| reason.as_str().to_string()),
         error,
         last_event_sequence,
         sandbox_id: as_optional(&config.sandbox_id),
@@ -253,11 +253,11 @@ mod tests {
     }
 
     #[test]
-    fn payload_uses_the_generated_failure_reason_contract() {
+    fn payload_uses_the_stable_failure_reason_token() {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 1,
-            failure_reason: Some(FailureReason::ProviderRateLimited.into()),
+            failure_reason: Some(FailureReason::ProviderRateLimited.as_str().to_string()),
             error: Some("rate limited"),
             last_event_sequence: None,
             sandbox_id: None,

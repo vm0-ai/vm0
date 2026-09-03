@@ -766,31 +766,6 @@ impl FailureReason {
     }
 }
 
-impl From<FailureReason>
-    for api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason
-{
-    fn from(reason: FailureReason) -> Self {
-        match reason {
-            FailureReason::SessionHistoryLimit => Self::SessionHistoryLimit,
-            FailureReason::InsufficientCredits => Self::InsufficientCredits,
-            FailureReason::InvalidApiKey => Self::InvalidApiKey,
-            FailureReason::InvalidCredentials => Self::InvalidCredentials,
-            FailureReason::TermsAcceptanceRequired => Self::TermsAcceptanceRequired,
-            FailureReason::ContextWindowExceeded => Self::ContextWindowExceeded,
-            FailureReason::OutputTokenLimit => Self::OutputTokenLimit,
-            FailureReason::ProviderRateLimited => Self::ProviderRateLimited,
-            FailureReason::ProviderOverloaded => Self::ProviderOverloaded,
-            FailureReason::ProviderStreamTimeout => Self::ProviderStreamTimeout,
-            FailureReason::ProviderServerError => Self::ProviderServerError,
-            FailureReason::ResponseConnectionLost => Self::ResponseConnectionLost,
-            FailureReason::SafetyPolicyRefusal => Self::SafetyPolicyRefusal,
-            FailureReason::ReconnectRequired => Self::ReconnectRequired,
-            FailureReason::UnsupportedModel => Self::UnsupportedModel,
-            FailureReason::UsageLimit => Self::UsageLimit,
-        }
-    }
-}
-
 /// Source used to derive a detailed failure reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1453,7 +1428,7 @@ mod tests {
     }
 
     #[test]
-    fn failure_reason_maps_exhaustively_to_the_public_completion_contract() {
+    fn failure_reason_has_stable_exhaustive_wire_tokens() {
         for (reason, expected) in [
             (FailureReason::SessionHistoryLimit, "session_history_limit"),
             (FailureReason::InsufficientCredits, "insufficient_credits"),
@@ -1484,12 +1459,8 @@ mod tests {
             (FailureReason::UnsupportedModel, "unsupported_model"),
             (FailureReason::UsageLimit, "usage_limit"),
         ] {
-            let public_reason: api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason =
-                reason.into();
-
             assert_eq!(reason.as_str(), expected);
             assert_eq!(serde_json::to_value(reason).unwrap(), expected);
-            assert_eq!(serde_json::to_value(public_reason).unwrap(), expected);
         }
     }
 

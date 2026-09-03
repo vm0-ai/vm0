@@ -63,8 +63,10 @@ export {
   type ApiErrorResponse,
 } from "./errors";
 export {
-  runFailureReasonSchema,
-  type RunFailureReason,
+  knownRunFailureReasonSchema,
+  runFailureReasonTokenSchema,
+  type KnownRunFailureReason,
+  type RunFailureReasonToken,
 } from "./run-failure-reasons";
 export {
   desktopAuthConsumeContract,

@@ -21,7 +21,10 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import type {
+  KnownRunFailureReason,
+  RunFailureReasonToken,
+} from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { SEED_SKILLS } from "@okouai/core/seed-skills";
@@ -18469,7 +18472,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       "safety_policy_refusal",
       "reconnect_required",
       "usage_limit",
-    ] as const satisfies readonly RunFailureReason[];
+    ] as const satisfies readonly KnownRunFailureReason[];
     const axiomLevels = [
       context.mocks.axiomLogging.debug,
       context.mocks.axiomLogging.info,
@@ -18494,7 +18497,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     }
 
     async function completeFailure(args: {
-      readonly failureReason?: RunFailureReason;
+      readonly failureReason?: RunFailureReasonToken;
       readonly modelProvider?: ModelProviderType;
       readonly persistedModelProvider?: string | null;
     }): Promise<{ readonly runId: string; readonly error: string }> {
@@ -18981,35 +18984,76 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     ).resolves.toBeNull();
   });
 
-  it("rejects unknown failure reasons before settling the run", async () => {
+  it("persists a future failure reason without suppressing its log", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "reject an unknown failure reason",
+      prompt: "preserve a future failure reason",
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
 
-    const response = await webhooks.requestAgentCompleteUnchecked(
+    const response = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
         exitCode: 1,
+        error: "future failure details",
         failureReason: "future_reason",
       },
       { authorization: `Bearer ${claim.sandboxToken}` },
-      [400],
+      [200],
     );
 
-    expectApiError(response.body);
+    expect(response.body).toStrictEqual({ success: true, status: "failed" });
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-      status: "running",
+      status: "failed",
+      error: "future failure details",
     });
-    await expect(
-      readRunFailureReasonFixture(context, run.runId),
-    ).resolves.toBeNull();
-    await api.requestCancelRun(actor, run.runId, [200]);
+    await expect(readRunFailureReasonFixture(context, run.runId)).resolves.toBe(
+      "future_reason",
+    );
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "duplicate known failure",
+        failureReason: "provider_overloaded",
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "failed",
+      error: "future failure details",
+    });
+    await expect(readRunFailureReasonFixture(context, run.runId)).resolves.toBe(
+      "future_reason",
+    );
+
+    const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message, fields]) => {
+        return (
+          message === "Run failed" &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === run.runId
+        );
+      },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.[1]).toStrictEqual(
+      expect.objectContaining({
+        runId: run.runId,
+        exitCode: 1,
+        error: "future failure details",
+        failureReason: "future_reason",
+        context: "webhook:complete",
+      }),
+    );
   });
 
   it("ignores failure reasons outside a reported failure transition", async () => {

@@ -744,7 +744,7 @@ pub(super) async fn run_job(
                 .as_ref()
                 .and_then(|failure| failure.diagnostic.as_ref())
                 .and_then(|diagnostic| diagnostic.failure_reason)
-                .map(Into::into)
+                .map(|reason| reason.as_str().to_string())
         };
 
         let completion_payload = CompletionPayload::new(
