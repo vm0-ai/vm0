@@ -15431,7 +15431,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
   it("advertises connector account switching only while the feature is enabled", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
 
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ConnectorAccounts]: false,
@@ -15441,10 +15441,14 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       prompt: "switch my connector account",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
+    const gatedOffPrompt =
+      (await api.readRun(actor, gatedOff.runId)).appendSystemPrompt ?? "";
+    expect(gatedOffPrompt).not.toContain(
       "okou connector account switch-request",
+    );
+    expect(gatedOffPrompt).toContain("return that exact URL verbatim");
+    expect(gatedOffPrompt).toContain(
+      "Never rewrite, shorten, reconstruct, or omit any query parameters",
     );
     await api.requestCancelRun(actor, gatedOff.runId, [200]);
 
@@ -15456,9 +15460,8 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       prompt: "switch my connector account",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
+    const appendSystemPrompt =
+      (await api.readRun(actor, gatedOn.runId)).appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
       "okou connector account list <slug> --json",
     );

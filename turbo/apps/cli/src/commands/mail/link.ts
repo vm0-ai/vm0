@@ -4,8 +4,8 @@ import { linkMailDraft } from "../../lib/api/domains/mail";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouChatThreadId } from "../../lib/okou-env";
 import {
-  addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
+  finalizeActionUrl,
   printCallbackTurnInstruction,
 } from "../connector/action-url";
 import { currentAgentId } from "./shared";
@@ -20,28 +20,16 @@ function currentChatThreadId(): string {
   return threadId;
 }
 
-function reviewUrlSearchParams(args: {
+function mailDraftReviewUrl(args: {
+  readonly mailDraftUrl: string;
   readonly agentId: string;
   readonly callbackPrompt: string | undefined;
-}): URLSearchParams {
-  const params = new URLSearchParams();
-  if (args.callbackPrompt === undefined) {
-    return params;
+}): string {
+  const actionUrl = new URL(args.mailDraftUrl);
+  if (args.callbackPrompt !== undefined) {
+    actionUrl.searchParams.set("agentId", args.agentId);
   }
-  params.set("agentId", args.agentId);
-  addRequestedCallbackSearchParams(params, args.callbackPrompt, args.agentId);
-  return params;
-}
-
-function mailDraftReviewUrl(
-  mailDraftUrl: string,
-  params: URLSearchParams,
-): string {
-  const url = new URL(mailDraftUrl);
-  for (const [name, value] of params) {
-    url.searchParams.set(name, value);
-  }
-  return url.toString();
+  return finalizeActionUrl(actionUrl, args.callbackPrompt, args.agentId);
 }
 
 const callbackPromptOption = new Option(
@@ -79,16 +67,18 @@ ${callbackPromptNotes}  - The user reviews the draft and sends it from the linke
       async (gmailDraftId: string, opts: { callbackPrompt?: string }) => {
         const agentId = currentAgentId();
         const threadId = currentChatThreadId();
-        const params = reviewUrlSearchParams({
-          agentId,
-          callbackPrompt: opts.callbackPrompt,
-        });
         const result = await linkMailDraft({
           threadId,
           agentId,
           gmailDraftId,
         });
-        console.log(mailDraftReviewUrl(result.mailDraftUrl, params));
+        console.log(
+          mailDraftReviewUrl({
+            mailDraftUrl: result.mailDraftUrl,
+            agentId,
+            callbackPrompt: opts.callbackPrompt,
+          }),
+        );
         if (opts.callbackPrompt !== undefined) {
           printCallbackTurnInstruction();
         }
