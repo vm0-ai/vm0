@@ -286,12 +286,14 @@ function AccountRow({
 function AccountsCard({
   loadable,
   defaultConnection,
+  search,
   target,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
   readonly defaultConnection: ConnectorAccountConnection | null;
+  readonly search: string;
   readonly target: ConnectorAccountTarget;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
@@ -334,7 +336,10 @@ function AccountsCard({
           </div>
         );
       })}
-      {defaultConnection && others.length === 0 ? (
+      {/* The pinned default survives a search that matches nothing, so this
+          message speaks for the filtered list only. Without the search guard a
+          connector holding just its default account would read as empty. */}
+      {search.trim() && loadable.data.connections.length === 0 ? (
         <AccountsMessage messageKey="noAccountsFound" />
       ) : null}
     </RadioGroup>
@@ -607,6 +612,7 @@ export function ConnectorAccountManagerDialog({
           <AccountsCard
             loadable={accountsLoadable}
             defaultConnection={defaultConnection}
+            search={search}
             target={target}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={reconnect}

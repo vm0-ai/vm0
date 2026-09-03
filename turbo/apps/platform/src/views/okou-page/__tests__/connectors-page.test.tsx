@@ -1759,6 +1759,29 @@ describe("connectors page", () => {
     expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
   });
 
+  it("keeps the empty state out of a single-account manager", async () => {
+    const accounts = mockGitHubConnectorAccounts(1);
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: accounts, nextCursor: null });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    // The sole account is also the pinned default, so it is the only row the
+    // dialog can draw. That is a full list, not an empty search result.
+    await waitFor(() => {
+      expect(within(dialog).getByText("Unnamed account")).toBeInTheDocument();
+    });
+    expect(within(dialog).queryByText("No accounts found")).toBeNull();
+  });
+
   it("paginates a feature-on account manager", async () => {
     const accounts = mockGitHubConnectorAccounts(8);
     // The server projects rows away before slicing, so a page can hold fewer
