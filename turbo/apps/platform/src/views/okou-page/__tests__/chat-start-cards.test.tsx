@@ -292,7 +292,10 @@ describe("chat start cards", () => {
     await expect(screen.findByLabelText("Stop")).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(sentPrompt).toContain(
-        "Create a polished intro video from the attached source.",
+        "Create a polished video from the attached source.",
+      );
+      expect(sentPrompt).toContain(
+        "Do not add an opening or ending unless the user explicitly requests them.",
       );
       expect(sentPrompt).toContain("- Source: launch.pdf");
       expect(sentPrompt).toContain("- Avatar: Amara (1785)");
