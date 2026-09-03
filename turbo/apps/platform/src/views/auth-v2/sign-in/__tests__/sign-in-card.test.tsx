@@ -119,6 +119,19 @@ function setupSignInPage(
   });
 }
 
+function useOkouPrimaryClerkTopology(): void {
+  Reflect.set(window, "__vm0ClerkBootstrap", {
+    productionPrimaryAppDomain: "app.okou.ai",
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+    },
+    { once: true },
+  );
+}
+
 function containingForm(element: HTMLElement): HTMLFormElement {
   const form = element.closest("form");
   if (!(form instanceof HTMLFormElement)) {
@@ -2156,6 +2169,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("substitutes the Okou brand and support address in safe errors", async () => {
+    useOkouPrimaryClerkTopology();
     mockedClerk.clientSignInCreate.mockRejectedValue({
       errors: [
         {
@@ -2187,6 +2201,7 @@ describe("auth v2 sign-in flow", () => {
   });
 
   it("substitutes the Okou brand during English startup and password flow", async () => {
+    useOkouPrimaryClerkTopology();
     setupSignInPage(
       { status: "needs_identifier" },
       { url: "https://app.okou.ai/sign-in" },
