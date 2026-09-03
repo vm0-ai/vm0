@@ -167,17 +167,8 @@ function queryConnectorCardByLabel(label: string): HTMLElement | null {
   return card instanceof HTMLElement ? card : null;
 }
 
-function defaultAccountRow(manager: HTMLElement): HTMLElement {
-  const checked = within(manager)
-    .getAllByRole("radio")
-    .find((radio) => {
-      return radio.getAttribute("aria-checked") === "true";
-    });
-  const row = checked?.closest("[data-account-row]");
-  if (!(row instanceof HTMLElement)) {
-    throw new Error("default account row not found");
-  }
-  return row;
+function accountRow(manager: HTMLElement, accountName: string): HTMLElement {
+  return within(manager).getByRole("group", { name: accountName });
 }
 
 function connectorCardByLabel(label: string): HTMLElement {
@@ -1747,7 +1738,12 @@ describe("connectors page", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Manage GitHub accounts",
     });
-    const defaultGroup = defaultAccountRow(dialog);
+    const defaultGroup = accountRow(dialog, "Unnamed account");
+    // The default radio must be named exactly "Default"; the decorative pill
+    // beside it is aria-hidden so it cannot be concatenated onto that name.
+    expect(
+      within(dialog).getByRole("radio", { name: "Default" }),
+    ).toHaveAttribute("aria-checked", "true");
     expect(
       within(defaultGroup).getByText("Unnamed account"),
     ).toBeInTheDocument();
@@ -2062,16 +2058,22 @@ describe("connectors page", () => {
       name: "Manage GitHub accounts",
     });
     expect(
-      within(defaultAccountRow(manager)).getByText("Work"),
+      within(accountRow(manager, "Work")).getByText("Work"),
     ).toBeInTheDocument();
+    expect(
+      within(manager).getByRole("radio", { name: "Default" }),
+    ).toHaveAttribute("aria-checked", "true");
     expect(within(manager).queryByPlaceholderText("Find accounts")).toBeNull();
     click(within(manager).getByLabelText("Make default"));
 
     await waitFor(() => {
       expect(defaultConnectionId).toBe(personalAccount.id);
       expect(connectorCardByLabel("GitHub")).toHaveTextContent("2 accounts");
-      const defaultGroup = defaultAccountRow(manager);
+      const defaultGroup = accountRow(manager, "Personal");
       expect(within(defaultGroup).getByText("Personal")).toBeInTheDocument();
+      expect(
+        within(defaultGroup).getByRole("radio", { name: "Default" }),
+      ).toHaveAttribute("aria-checked", "true");
       expect(within(manager).getAllByText("Personal")).toHaveLength(1);
       expect(within(manager).getAllByText("Work")).toHaveLength(1);
     });
@@ -7336,7 +7338,7 @@ describe("connectors page", () => {
     const manager = await screen.findByRole("dialog", {
       name: `Manage ${connector.displayName} accounts`,
     });
-    const defaultGroup = defaultAccountRow(manager);
+    const defaultGroup = accountRow(manager, "Existing");
     expect(within(defaultGroup).getByText("Existing")).toBeInTheDocument();
     click(within(defaultGroup).getByLabelText("Account actions"));
     click(menuItemByText("Reconnect"));

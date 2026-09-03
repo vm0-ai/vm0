@@ -110,7 +110,10 @@ function AccountDefaultRadio({
   return (
     <label className="flex shrink-0 cursor-pointer items-center gap-2">
       {account.isDefault ? (
-        <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span
+          aria-hidden="true"
+          className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+        >
           {t(($) => {
             return $.connectors.accounts.default;
           })}
@@ -234,7 +237,8 @@ function AccountRow({
   }
   return (
     <div
-      data-account-row
+      role="group"
+      aria-label={label}
       className="flex items-center justify-between gap-4 px-5 py-4"
     >
       <div className="min-w-0">
