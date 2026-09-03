@@ -1,9 +1,9 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -20,9 +20,8 @@ use crate::quiesce::OperationGuard;
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
-use crate::worker_ownership::{
-    ShutdownConnectionOnDrop, SingleActiveAdmission, SingleActivePermit,
-};
+pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as GuestStateRestoreSubmitError;
+use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
 const THREAD_WORKER: &str = "vsock-guest-state-restore";
@@ -51,12 +50,6 @@ impl GuestStateRestoreProgram {
             Self::Test(path) => path,
         }
     }
-}
-
-pub(crate) enum GuestStateRestoreSubmitError {
-    Busy,
-    Disconnected,
-    Start(io::Error),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,18 +94,14 @@ struct GuestStateRestoreRequest {
     admission: SingleActivePermit,
 }
 
-pub(crate) struct GuestStateRestoreWorker {
-    state: Mutex<GuestStateRestoreWorkerState>,
-    writer: GuestWriter,
+#[derive(Clone)]
+struct GuestStateRestoreWorkerContext {
     program: GuestStateRestoreProgram,
-    admission: SingleActiveAdmission,
-    connection_cancel: Arc<AtomicBool>,
     drain_deadline: Duration,
 }
 
-struct GuestStateRestoreWorkerState {
-    sender: Option<SyncSender<GuestStateRestoreRequest>>,
-    handle: Option<JoinHandle<()>>,
+pub(crate) struct GuestStateRestoreWorker {
+    inner: LazyConnectionWorker<GuestStateRestoreRequest, GuestStateRestoreWorkerContext>,
 }
 
 impl GuestStateRestoreWorker {
@@ -123,20 +112,22 @@ impl GuestStateRestoreWorker {
         drain_deadline: Duration,
     ) -> Self {
         Self {
-            state: Mutex::new(GuestStateRestoreWorkerState {
-                sender: None,
-                handle: None,
-            }),
-            writer,
-            program,
-            admission: SingleActiveAdmission::new(),
-            connection_cancel,
-            drain_deadline,
+            inner: LazyConnectionWorker::new(
+                writer,
+                connection_cancel,
+                GuestStateRestoreWorkerContext {
+                    program,
+                    drain_deadline,
+                },
+                handle_worker_request,
+                THREAD_WORKER,
+                "guest state restore worker",
+            ),
         }
     }
 
     pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
-        self.admission.try_acquire()
+        self.inner.try_admit()
     }
 
     pub(crate) fn submit(
@@ -145,55 +136,17 @@ impl GuestStateRestoreWorker {
         operation_guard: OperationGuard,
         admission: SingleActivePermit,
     ) -> Result<(), GuestStateRestoreSubmitError> {
-        let sender = self.sender()?;
-        let request = GuestStateRestoreRequest {
-            seq: submission.seq,
-            timeout_ms: submission.timeout_ms,
-            unix_seconds: submission.unix_seconds,
-            unix_nanoseconds: submission.unix_nanoseconds,
-            entropy: submission.entropy.to_vec(),
-            timezone: OwnedTimezone::from_borrowed(submission.timezone),
-            operation_guard,
-            admission,
-        };
-        match sender.try_send(request) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Full(_)) => Err(GuestStateRestoreSubmitError::Busy),
-            Err(TrySendError::Disconnected(_)) => Err(GuestStateRestoreSubmitError::Disconnected),
-        }
-    }
-
-    fn sender(&self) -> Result<SyncSender<GuestStateRestoreRequest>, GuestStateRestoreSubmitError> {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(sender) = &state.sender {
-            return Ok(sender.clone());
-        }
-
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let writer = self.writer.clone();
-        let worker_cancel = Arc::clone(&self.connection_cancel);
-        let program = self.program.clone();
-        let drain_deadline = self.drain_deadline;
-        let handle = thread::Builder::new()
-            .name(THREAD_WORKER.to_string())
-            .spawn(move || {
-                let _shutdown_on_exit = ShutdownConnectionOnDrop::new(writer.clone());
-                while let Ok(request) = receiver.recv() {
-                    if let Err(error) =
-                        handle_request(request, &writer, &worker_cancel, &program, drain_deadline)
-                    {
-                        log(
-                            "ERROR",
-                            &format!("guest state restore worker failed: {error}"),
-                        );
-                        break;
-                    }
-                }
+        self.inner
+            .try_submit_with(move || GuestStateRestoreRequest {
+                seq: submission.seq,
+                timeout_ms: submission.timeout_ms,
+                unix_seconds: submission.unix_seconds,
+                unix_nanoseconds: submission.unix_nanoseconds,
+                entropy: submission.entropy.to_vec(),
+                timezone: OwnedTimezone::from_borrowed(submission.timezone),
+                operation_guard,
+                admission,
             })
-            .map_err(GuestStateRestoreSubmitError::Start)?;
-        state.sender = Some(sender.clone());
-        state.handle = Some(handle);
-        Ok(sender)
     }
 }
 
@@ -206,27 +159,26 @@ pub(crate) struct GuestStateRestoreSubmission<'a> {
     pub(crate) timezone: GuestStateRestoreTimezone<'a>,
 }
 
-impl Drop for GuestStateRestoreWorker {
-    fn drop(&mut self) {
-        self.connection_cancel.store(true, Ordering::Release);
-        let state = self
-            .state
-            .get_mut()
-            .unwrap_or_else(|error| error.into_inner());
-        drop(state.sender.take());
-        if let Some(handle) = state.handle.take()
-            && handle.join().is_err()
-        {
-            log("ERROR", "guest state restore worker panicked");
-        }
-    }
-}
-
 struct GuestStateRestoreOutput {
     termination: ExecTermination,
     duration_ms: u32,
     stderr: BoundedDrainResult,
     diagnostic: String,
+}
+
+fn handle_worker_request(
+    request: GuestStateRestoreRequest,
+    writer: &GuestWriter,
+    connection_cancel: &AtomicBool,
+    context: &GuestStateRestoreWorkerContext,
+) -> io::Result<()> {
+    handle_request(
+        request,
+        writer,
+        connection_cancel,
+        &context.program,
+        context.drain_deadline,
+    )
 }
 
 fn handle_request(
