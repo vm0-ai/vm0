@@ -11,6 +11,7 @@ import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
 import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
+import { syncPinnedAgentPreviewCache$ } from "./okou-page/pinned-agents.ts";
 
 const runAppRealtimeDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -63,8 +64,15 @@ export const setupAuthenticatedBootstrapData$ = command(
     if (!clerk.user || !clerk.organization) {
       return;
     }
+    const pinnedAgentPreviewCacheSync = set(
+      syncPinnedAgentPreviewCache$,
+      signal,
+    );
     await get(bridgeConnected$);
     signal.throwIfAborted();
-    await set(subscribeEventDrivenChatThreads$, signal);
+    await Promise.all([
+      pinnedAgentPreviewCacheSync,
+      set(subscribeEventDrivenChatThreads$, signal),
+    ]);
   },
 );

@@ -62,6 +62,7 @@ import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
 } from "../../../signals/okou-page/sidebar-state.ts";
+import { cachedPinnedAgentPreviewSnapshot$ } from "../../../signals/okou-page/pinned-agents.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
@@ -219,14 +220,35 @@ const OVERFLOW_PINNED_AGENTS = [
   },
 ] as const;
 
+interface OverflowingPinnedAgentOptions {
+  readonly researchDisplayName?: string;
+  readonly researchAvatarUrl?: string | null;
+}
+
 /**
  * Pins five agents so the grid holds six cards plus Pin, which overflows the
  * five-column row and puts cards on both sides of the Pin button.
  */
-function prepareOverflowingPinnedAgents(targetContext = context): string[] {
+function prepareOverflowingPinnedAgents(
+  targetContext = context,
+  options: OverflowingPinnedAgentOptions = {},
+): string[] {
   const agents = prepareAgents(targetContext);
+  const customizedAgents = agents.map((agent) => {
+    if (agent.agentId !== RESEARCH_AGENT_ID) {
+      return agent;
+    }
+    return {
+      ...agent,
+      displayName: options.researchDisplayName ?? agent.displayName,
+      avatarUrl:
+        options.researchAvatarUrl === undefined
+          ? agent.avatarUrl
+          : options.researchAvatarUrl,
+    };
+  });
   targetContext.mocks.data.agents([
-    ...agents,
+    ...customizedAgents,
     ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
         ...agents[1]!,
@@ -306,6 +328,39 @@ function mockChatThreadSnapshot(
       ),
     });
   });
+}
+
+function deferPinnedAgentPreferences(
+  targetContext: ReturnType<typeof testContext>,
+  pinnedAgentIds: readonly string[],
+) {
+  const gate = targetContext.mocks.deferred<void>();
+  targetContext.mocks.api(userPreferencesContract.get, async ({ respond }) => {
+    await gate.promise;
+    return respond(200, {
+      timezone: null,
+      locale: null,
+      translationLanguage: null,
+      supportedLocales: [
+        "en-US",
+        "pt-BR",
+        "ja-JP",
+        "ko-KR",
+        "id-ID",
+        "de-DE",
+        "es-ES",
+        "it-IT",
+        "fr-FR",
+        "hi-IN",
+      ],
+      pinnedAgentIds: [...pinnedAgentIds],
+      sendMode: "enter",
+      theme: "system",
+      colorTheme: "blue-horizon",
+      captureNetworkBodiesRemaining: 0,
+    });
+  });
+  return gate;
 }
 
 function mockUnreadAgents(
@@ -4302,7 +4357,115 @@ describe("zero sidebar", () => {
     ).toMatchObject({ selectedImageModel: null });
   });
 
-  it("preserves pinned agent rows across a loading refresh", async () => {
+  it("keeps skeletons when pinned agent previews have not been cached", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    const preferencesGate = deferPinnedAgentPreferences(
+      context,
+      pinnedAgentIds,
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
+      4,
+    );
+    expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
+
+    preferencesGate.resolve();
+
+    await waitFor(() => {
+      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+  });
+
+  it("renders cached pinned agent names and avatars during refresh", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents(context, {
+      researchAvatarUrl: "preset:1",
+    });
+    context.mocks.data.userPreferences({ pinnedAgentIds });
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const initialGrid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(
+        within(initialGrid).getAllByTestId("pinned-agent-card"),
+      ).toHaveLength(6);
+    });
+    await waitFor(async () => {
+      const cached = await context.store.get(cachedPinnedAgentPreviewSnapshot$);
+      expect(cached?.agents).toHaveLength(6);
+    });
+    const initialAvatarMarkup = within(
+      pinnedAgentLink(initialGrid, "Research Agent"),
+    ).getByTestId("pinned-agent-avatar").innerHTML;
+
+    cleanup();
+
+    const refreshPinnedAgentIds = prepareOverflowingPinnedAgents(
+      refreshContext,
+      {
+        researchDisplayName: "Updated Research Agent",
+        researchAvatarUrl: "preset:2",
+      },
+    );
+    const preferencesGate = deferPinnedAgentPreferences(
+      refreshContext,
+      refreshPinnedAgentIds,
+    );
+
+    setupSidebarPage({
+      context: refreshContext,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    await waitFor(() => {
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Research Agent",
+        "Support Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+      ]);
+    });
+    expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+    expect(
+      within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
+        "pinned-agent-avatar",
+      ).innerHTML,
+    ).toBe(initialAvatarMarkup);
+
+    preferencesGate.resolve();
+
+    await waitFor(() => {
+      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+      expect(pinnedAgentNames(grid)).toStrictEqual([
+        "Zero",
+        "Updated Research Agent",
+        "Support Agent",
+        "Operations Agent",
+        "Analytics Agent",
+        "Billing Agent",
+      ]);
+    });
+    expect(
+      within(pinnedAgentLink(grid, "Updated Research Agent")).getByTestId(
+        "pinned-agent-avatar",
+      ).innerHTML,
+    ).not.toBe(initialAvatarMarkup);
+  });
+
+  it("does not reuse pinned agent previews for another organization", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -4317,55 +4480,35 @@ describe("zero sidebar", () => {
         within(initialGrid).getAllByTestId("pinned-agent-card"),
       ).toHaveLength(6);
     });
+    await waitFor(async () => {
+      const cached = await context.store.get(cachedPinnedAgentPreviewSnapshot$);
+      expect(cached?.agents).toHaveLength(6);
+    });
 
     cleanup();
 
     const refreshPinnedAgentIds =
       prepareOverflowingPinnedAgents(refreshContext);
-    const preferencesGate = refreshContext.mocks.deferred<void>();
-    refreshContext.mocks.api(
-      userPreferencesContract.get,
-      async ({ respond }) => {
-        await preferencesGate.promise;
-        return respond(200, {
-          timezone: null,
-          locale: null,
-          translationLanguage: null,
-          supportedLocales: [
-            "en-US",
-            "pt-BR",
-            "ja-JP",
-            "ko-KR",
-            "id-ID",
-            "de-DE",
-            "es-ES",
-            "it-IT",
-            "fr-FR",
-            "hi-IN",
-          ],
-          pinnedAgentIds: refreshPinnedAgentIds,
-          sendMode: "enter",
-          theme: "system",
-          colorTheme: "blue-horizon",
-          captureNetworkBodiesRemaining: 0,
-        });
-      },
+    const preferencesGate = deferPinnedAgentPreferences(
+      refreshContext,
+      refreshPinnedAgentIds,
     );
-
     setupSidebarPage({
       context: refreshContext,
       path: `/agents/${AGENT_ID}/chat`,
+      org: {
+        activeOrg: { id: "org_other", name: "Other Org" },
+        memberships: [{ id: "org_other" }],
+      },
     });
 
     const grid = await screen.findByTestId("pinned-agents-grid");
-    // Six cards plus Pin cached two rows, so the skeleton grid must restore
-    // 2 * 5 - 1 placeholders rather than the single-row default of 4.
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      9,
+      4,
     );
+    expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
 
     preferencesGate.resolve();
-
     await waitFor(() => {
       expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);

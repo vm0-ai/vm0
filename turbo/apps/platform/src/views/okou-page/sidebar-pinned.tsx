@@ -2,9 +2,11 @@
 // oxlint-disable max-lines-per-function
 import {
   useGet,
+  useLoadable,
   useSet,
   useLastResolved,
   useLastLoadable,
+  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Plus, ChevronRight, Pin, PinOff, CheckCheck } from "lucide-react";
@@ -31,9 +33,6 @@ import {
   openAgentListDialog$,
   agentCardCollapsed$,
   setAgentCardCollapsed$,
-  pinnedAgentGridRows$,
-  cachePinnedAgentGridRowsRef$,
-  PINNED_AGENT_GRID_COLUMNS,
   openPinAgentDialog$,
   pinAgentDialogOpen$,
   setPinAgentDialogOpen$,
@@ -53,13 +52,15 @@ import {
   setAgentPinned$,
   movePinnedAgent$,
   pinnedAgents$,
+  cachedPinnedAgentPreviewSnapshot$,
+  type PinnedAgentPreviewSnapshot,
 } from "../../signals/okou-page/pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators-from-worker.ts";
 import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";
-import { AgentAvatarImg } from "./sidebar-shared.tsx";
+import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { assistantName$ } from "../../signals/branding.ts";
 import { AgentListDialog, PinAgentDialog } from "./sidebar-dialogs.tsx";
@@ -253,6 +254,43 @@ function OpenAgentListDialog({
 interface PinnedGridAgent {
   readonly agentId: string;
   readonly displayName?: string | null;
+  readonly avatarUrl?: string | null;
+}
+
+function loadableData<T>(loadable: Loadable<T>): T | undefined {
+  return loadable.state === "hasData" ? loadable.data : undefined;
+}
+
+function resolvePinnedAgentPresentation({
+  pinnedAgentsLoadable,
+  displayedPinnedAgentsLoadable,
+  cachedPreviewLoadable,
+  defaultAgentId,
+}: {
+  readonly pinnedAgentsLoadable: Loadable<readonly PinnedGridAgent[]>;
+  readonly displayedPinnedAgentsLoadable: Loadable<readonly PinnedGridAgent[]>;
+  readonly cachedPreviewLoadable: Loadable<PinnedAgentPreviewSnapshot | null>;
+  readonly defaultAgentId: string | null | undefined;
+}) {
+  const livePinnedAgents = loadableData(pinnedAgentsLoadable);
+  const cachedPreview = loadableData(cachedPreviewLoadable);
+  const pinnedAgents = livePinnedAgents ?? cachedPreview?.agents ?? [];
+  const loadingWithoutCache =
+    livePinnedAgents === undefined &&
+    (cachedPreview === null || cachedPreview === undefined) &&
+    (pinnedAgentsLoadable.state === "loading" ||
+      cachedPreviewLoadable.state === "loading");
+  const basePinnedAgents = loadingWithoutCache ? null : pinnedAgents;
+  return {
+    displayedAgents:
+      loadableData(displayedPinnedAgentsLoadable) ?? basePinnedAgents,
+    pinnedAgentIds: new Set(
+      pinnedAgents.map((agent) => {
+        return agent.agentId;
+      }),
+    ),
+    defaultAgentId: defaultAgentId ?? cachedPreview?.defaultAgentId,
+  };
 }
 
 /** Which side of the hovered card the dragged agent lands on. */
@@ -407,10 +445,11 @@ function PinnedAgentGridCard({
         />
       )}
       <span className={`relative ${isDragging ? "opacity-0" : ""}`}>
-        <AgentAvatarImg
-          name={agent.agentId}
+        <AvatarFromUrl
+          avatarUrl={agent.avatarUrl}
           alt=""
           className="h-9 w-9 rounded-full object-cover object-top"
+          data-testid="pinned-agent-avatar"
         />
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 flex">
@@ -517,6 +556,9 @@ export function PinnedAgentListSection({
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
   const displayedPinnedAgentsLoadable = useLastLoadable(displayedPinnedAgents$);
+  const cachedPinnedAgentPreviewLoadable = useLoadable(
+    cachedPinnedAgentPreviewSnapshot$,
+  );
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -526,46 +568,34 @@ export function PinnedAgentListSection({
   const setExpanded = useSet(setSidebarExpanded$);
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
-  const cachedPinnedAgentGridRows = useGet(pinnedAgentGridRows$);
-  const cachePinnedAgentGridRowsRef = useSet(cachePinnedAgentGridRowsRef$);
   const draggingAgentId = useGet(draggingPinnedAgentId$);
   const dropTargetAgentId = useGet(pinnedAgentDropTargetId$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const pinnedAgents =
-    pinnedAgentsLoadable.state === "hasData" ? pinnedAgentsLoadable.data : [];
-  const pinnedAgentIds = new Set(
-    pinnedAgents.map((agent) => {
-      return agent.agentId;
-    }),
-  );
-  const displayedPinnedAgents =
-    displayedPinnedAgentsLoadable.state === "hasData"
-      ? displayedPinnedAgentsLoadable.data
-      : pinnedAgents;
+  const pinnedAgentPresentation = resolvePinnedAgentPresentation({
+    pinnedAgentsLoadable,
+    displayedPinnedAgentsLoadable,
+    cachedPreviewLoadable: cachedPinnedAgentPreviewLoadable,
+    defaultAgentId,
+  });
+  const displayedPinnedAgents = pinnedAgentPresentation.displayedAgents;
+  const pinnedAgentIds = pinnedAgentPresentation.pinnedAgentIds;
+  const resolvedDefaultAgentId = pinnedAgentPresentation.defaultAgentId;
 
   const selectedAgentId = routeAgentId ?? sidebarAgentId;
 
   if (layout === "horizontal") {
-    const horizontalPinnedAgents =
-      displayedPinnedAgentsLoadable.state === "loading"
-        ? null
-        : displayedPinnedAgents;
+    const horizontalPinnedAgents = displayedPinnedAgents;
     const pinnedAgentCards =
       horizontalPinnedAgents === null
-        ? Array.from(
-            {
-              length: cachedPinnedAgentGridRows * PINNED_AGENT_GRID_COLUMNS - 1,
-            },
-            (_, index) => {
-              return <PinnedAgentGridSkeletonCard key={index} />;
-            },
-          )
+        ? Array.from({ length: 4 }, (_, index) => {
+            return <PinnedAgentGridSkeletonCard key={index} />;
+          })
         : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
             const hasUnread = unreadAgentIds?.has(agent.agentId) ?? false;
             const isPinned = pinnedAgentIds.has(agent.agentId);
-            const isDefaultAgent = agent.agentId === defaultAgentId;
+            const isDefaultAgent = agent.agentId === resolvedDefaultAgentId;
             return (
               <PinnedAgentContextDecorator
                 key={agent.agentId}
@@ -598,7 +628,6 @@ export function PinnedAgentListSection({
           })}
         </span>
         <div
-          ref={cachePinnedAgentGridRowsRef}
           className="grid min-w-0 grid-cols-5 items-start gap-x-1 gap-y-2.5"
           data-testid="pinned-agents-grid"
         >
@@ -680,7 +709,7 @@ export function PinnedAgentListSection({
       </div>
       {!collapsed && (
         <div className="flex flex-col gap-0.5 mt-1">
-          {pinnedAgentsLoadable.state === "loading" && (
+          {displayedPinnedAgents === null && (
             <>
               <div className="flex h-8 items-center gap-2 px-2">
                 <div className="h-5 w-5 shrink-0 rounded-md bg-muted animate-pulse" />
@@ -692,14 +721,14 @@ export function PinnedAgentListSection({
               </div>
             </>
           )}
-          {pinnedAgentsLoadable.state === "hasData" &&
+          {displayedPinnedAgents !== null &&
             displayedPinnedAgents.map((agent) => {
               const isPrimarySelected =
                 isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
               const isFromChat = sidebarAgentId === agent.agentId;
               const isPinned = pinnedAgentIds.has(agent.agentId);
               const hasUnread = unreadAgentIds?.has(agent.agentId) ?? false;
-              const isDefaultAgent = agent.agentId === defaultAgentId;
+              const isDefaultAgent = agent.agentId === resolvedDefaultAgentId;
               const hasSideActions = hasUnread || (!isDefaultAgent && isPinned);
               return (
                 <div
@@ -727,10 +756,11 @@ export function PinnedAgentListSection({
                           : "text-sidebar-foreground hover:bg-state-hover"
                     }`}
                   >
-                    <AgentAvatarImg
-                      name={agent.agentId}
+                    <AvatarFromUrl
+                      avatarUrl={agent.avatarUrl}
                       alt={agent.displayName ?? agent.agentId}
                       className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                      data-testid="pinned-agent-avatar"
                     />
                     <span className="zero-nav-copy truncate">
                       {agent.displayName ?? agent.agentId}
