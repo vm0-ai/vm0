@@ -52,7 +52,11 @@ class SseUsageEventHandler(Protocol):
         """Called between multiple captured data fields in one event."""
 
     def on_event_end(self, event_name: str | None) -> None:
-        """Called when a captured event reaches a blank-line boundary.
+        """Called when a captured event is finalized.
+
+        This happens at a blank-line boundary or when ``SseUsageScanner.finish()``
+        flushes a captured trailing event at end-of-stream without a blank-line
+        terminator.
 
         The value is the final SSE event name if one was seen, or ``None`` if
         the frame ended without an ``event:`` line.
@@ -134,7 +138,7 @@ class SseUsageScanner:
                 i = self._consume_line(chunk, i)
 
     def finish(self) -> None:
-        """Flush a trailing event when the stream ends without a blank line."""
+        """Flush a trailing captured event at end-of-stream without a blank-line terminator."""
 
         self._at_stream_start = False
         if self._state == "data_prefix_space":
