@@ -6,6 +6,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { createBddApi } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
@@ -24,7 +25,9 @@ function client() {
 describe("POST /api/voice-io/polish", () => {
   it("turns raw dictation into send-ready text without charging usage", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    const actor = createBddApi(context).user();
+    const actor = createBddApi(context).user({
+      orgId: createUniqueStaffOrgIdFixture(),
+    });
     if (!actor.orgId) {
       throw new Error("Voice draft tests require an organization");
     }
@@ -80,22 +83,64 @@ describe("POST /api/voice-io/polish", () => {
     });
   });
 
-  it("requires session auth and the voice draft switch", async () => {
+  it("requires session auth and the voice draft switch for staff", async () => {
     const unauthenticated = await client().post({
       headers: {},
       body: { text: "Hello" },
     });
     expect(unauthenticated.status).toBe(401);
 
-    const actor = createBddApi(context).user();
+    const actor = createBddApi(context).user({
+      orgId: createUniqueStaffOrgIdFixture(),
+    });
     if (!actor.orgId) {
       throw new Error("Voice draft tests require an organization");
     }
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.VoiceDraft]: false },
+    );
     const disabled = await client().post({
       headers: { authorization: "Bearer clerk-session" },
       body: { text: "Hello" },
     });
     expect(disabled.status).toBe(403);
+  });
+
+  it("rejects non-staff users with a voice draft override", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Voice draft tests require an organization");
+    }
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.VoiceDraft]: true },
+    );
+    let providerRequests = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        providerRequests += 1;
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "Should not be returned." },
+            },
+          ],
+        });
+      }),
+    );
+
+    const response = await client().post({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { text: "Hello" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(providerRequests).toBe(0);
   });
 });
