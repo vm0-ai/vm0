@@ -20,7 +20,10 @@ import { server } from "../../../mocks/server";
 import { seedVm0BuiltInModelKey } from "./helpers/runtime-state";
 import { createFixtureOperationOwner } from "./helpers/fixture-operation-owner";
 import { createDeferredPromise } from "../../utils";
-import { cronExtractPiMemoryStage1Routes } from "../cron-extract-pi-memory-stage1";
+import {
+  cronExtractPiMemoryStage1Routes,
+  cronExtractPiMemoryStage1RoutesForTest,
+} from "../cron-extract-pi-memory-stage1";
 import {
   type TestPiMemoryStage1StateActionBody,
   type TestPiMemoryStage1StateResponse,
@@ -443,6 +446,19 @@ async function inspectUsage(storage: ReturnType<typeof createStorageFixture>) {
   return (await storage.action({ action: "inspect-usage" })).usage ?? [];
 }
 
+function stage1Headers(secret = CRON_SECRET) {
+  return { authorization: `Bearer ${secret}` };
+}
+
+function stage1Client(storage: ReturnType<typeof createStorageFixture>) {
+  return setupApp({
+    context,
+    routes: cronExtractPiMemoryStage1RoutesForTest({
+      memoryStorageId: storage.memory_storage_id,
+    }),
+  })(cronExtractPiMemoryStage1Contract);
+}
+
 beforeEach(async () => {
   mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
   mockEnv("CRON_SECRET", CRON_SECRET);
@@ -452,16 +468,97 @@ beforeEach(async () => {
 });
 
 describe("Pi memory Stage 1 worker", () => {
-  it("authenticates the production cron route before reading worker state", async () => {
+  it("authenticates the production cron route before the disabled breaker", async () => {
+    mockEnv("PI_MEMORY_BACKGROUND_WORKERS_ENABLED", "false");
     const provider = installProvider();
+    context.mocks.s3.send.mockClear();
     const response = await accept(
       setupApp({ context, routes: cronExtractPiMemoryStage1Routes })(
         cronExtractPiMemoryStage1Contract,
-      ).extract({}),
+      ).extract({ headers: stage1Headers("invalid-secret") }),
       [401],
     );
     expect(response.status).toBe(401);
     expect(provider.calls).toHaveLength(0);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("returns all-zero counters without touching pending work when disabled", async () => {
+    const storage = createStorageFixture();
+    const fixture = await storage.seed({
+      raw: settledHistory(randomUUID(), INPUT_SECRET),
+    });
+    const provider = installProvider();
+    mockEnv("PI_MEMORY_BACKGROUND_WORKERS_ENABLED", "false");
+    context.mocks.s3.send.mockClear();
+
+    const response = await accept(
+      stage1Client(storage).extract({ headers: stage1Headers() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      scanned: 0,
+      claimed: 0,
+      succeeded: 0,
+      succeededNoOutput: 0,
+      retryableFailure: 0,
+      terminalFailure: 0,
+      sourceExpired: 0,
+      sourceActive: 0,
+      staleDiscarded: 0,
+    });
+    await expect(inspect(fixture)).resolves.toMatchObject({
+      status: "pending",
+    });
+    await expect(inspectUsage(storage)).resolves.toStrictEqual([]);
+    expect(provider.calls).toHaveLength(0);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Pi memory background worker invocation disabled",
+      expect.objectContaining({ route: "stage1", outcome: "disabled" }),
+    );
+
+    const captured = JSON.stringify({
+      body: response.body,
+      logs: context.mocks.axiomLogging.debug.mock.calls,
+    });
+    expect(captured).not.toContain(INPUT_SECRET);
+    expect(captured).not.toContain(fixture.objectKey);
+    expect(captured).not.toContain(CRON_SECRET);
+  });
+
+  it("preserves Stage 1 route counters and results when enabled by default", async () => {
+    const storage = createStorageFixture();
+    const piSessionId = randomUUID();
+    const fixture = await storage.seed({
+      piSessionId,
+      raw: settledHistory(piSessionId, "perform bounded memory extraction"),
+    });
+    const provider = installProvider();
+
+    const response = await accept(
+      stage1Client(storage).extract({ headers: stage1Headers() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      scanned: 1,
+      claimed: 1,
+      succeeded: 1,
+      succeededNoOutput: 0,
+      retryableFailure: 0,
+      terminalFailure: 0,
+      sourceExpired: 0,
+      sourceActive: 0,
+      staleDiscarded: 0,
+    });
+    expect(provider.calls).toHaveLength(1);
+    await expect(inspect(fixture)).resolves.toMatchObject({
+      status: "succeeded",
+    });
   });
 
   it("decodes every encoding, redacts both boundaries, and records background usage", async () => {
