@@ -53,6 +53,7 @@ export enum FeatureSwitchKey {
   ChatErrorRecovery = "chatErrorRecovery",
   BatchChatEventCatchUp = "batchChatEventCatchUp",
   ChatRunWorkFolding = "chatRunWorkFolding",
+  ChatThinkingSpinner = "chatThinkingSpinner",
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   SidebarSubscriptionUsage = "_sidebarSubscriptionUsage",

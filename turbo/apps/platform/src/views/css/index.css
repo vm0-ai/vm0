@@ -304,6 +304,11 @@ body {
   animation: zero-thinking-in 0.3s ease-out;
 }
 
+.zero-thinking-spinner {
+  animation-duration: 1.4s;
+  will-change: transform;
+}
+
 @keyframes zero-chat-skeleton-reveal {
   to {
     opacity: 1;
@@ -1948,6 +1953,7 @@ html:has(.zero-dialog-overlay)
     .zero-shimmer-window,
     .zero-shimmer-highlight,
     .zero-blocks span,
+    .zero-thinking-spinner,
     .mic-starting-spinner,
     .owf-diagram-beam
   ):not(.zero-dialog-content *) {
