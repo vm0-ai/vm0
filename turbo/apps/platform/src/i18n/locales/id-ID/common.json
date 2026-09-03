@@ -2921,21 +2921,19 @@
       "agentphone": {
         "authorizedSender": "Pengirim yang diizinkan",
         "connectAria": "Hubungkan telepon",
-        "connectDescription": "Masukkan nomor telepon Anda. Kami akan mengirim tautan verifikasi yang menghubungkan workspace ini.",
+        "connectDescription": "Kirim pesan langsung dari nomor telepon yang ingin Anda hubungkan.",
         "connectTitle": "Hubungkan telepon",
         "copyAria": "Salin {{phone}}",
         "copyError": "Gagal menyalin nomor telepon",
         "copySuccess": "Nomor telepon disalin",
         "description": "Akses {{assistantName}} lewat pesan teks",
         "destination": "iMessage atau SMS ke",
-        "normalized": "Kami akan mengirim SMS ke {{phone}}.",
+        "messageInstruction": "Kirim “hi” ke nomor ini",
+        "openMessages": "Buka Pesan",
         "options": "Opsi telepon",
         "phoneLabel": "Telepon",
-        "phoneNumber": "Nomor telepon",
-        "risk": "Balasan SMS dan MMS mungkin tidak terkirim dengan andal. Untuk pengalaman paling andal, gunakan iMessage dengan nomor AgentPhone ini.",
-        "sending": "Mengirim...",
-        "sendVerification": "Kirim verifikasi",
-        "verificationSent": "SMS verifikasi telah dikirim ke {{phone}}. Buka tautan di SMS tersebut untuk menyelesaikan koneksi."
+        "replyInstruction": "Kami akan membalas dengan tautan koneksi. Buka dalam 10 menit untuk menyelesaikan koneksi.",
+        "risk": "Balasan SMS dan MMS mungkin tidak terkirim dengan andal. Untuk pengalaman paling andal, gunakan iMessage dengan nomor AgentPhone ini."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -2998,7 +2996,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Masukkan nomor telepon dengan kode negara, seperti +1 555 555 1212.",
         "githubAuthorizationWindow": "Gagal membuka jendela otorisasi",
         "telegramDomain": "Domain belum terlihat oleh Telegram. Periksa BotFather dan coba lagi.",
         "telegramPrivacy": "Mode privasi masih tampaknya aktif. Matikan di BotFather, lalu coba lagi."
@@ -3204,7 +3201,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone terhubung",
         "agentphoneDisconnected": "AgentPhone terputus",
-        "agentphoneVerificationSent": "Teks verifikasi terkirim",
         "feishuBotInstalled": "Bot Feishu berhasil diinstal",
         "feishuBotUninstalled": "Bot Feishu di-uninstall",
         "feishuConnected": "Feishu berhasil terhubung",

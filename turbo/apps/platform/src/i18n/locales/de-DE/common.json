@@ -2929,21 +2929,19 @@
       "agentphone": {
         "authorizedSender": "Autorisierter Absender",
         "connectAria": "Telefon anschließen",
-        "connectDescription": "Geben Sie Ihre Telefonnummer ein. Wir senden Ihnen einen Bestätigungslink per SMS, der diesen Arbeitsbereich verbindet.",
+        "connectDescription": "Senden Sie eine Direktnachricht von der Telefonnummer, die Sie verbinden möchten.",
         "connectTitle": "Telefon anschließen",
         "copyAria": "Kopieren Sie {{phone}}",
         "copyError": "Telefonnummer konnte nicht kopiert werden",
         "copySuccess": "Telefonnummer kopiert",
         "description": "SMS-Zugriff auf {{assistantName}}",
         "destination": "iMessage oder SMS an",
-        "normalized": "Wir werden {{phone}} eine SMS senden.",
+        "messageInstruction": "Senden Sie „hi“ an diese Nummer",
+        "openMessages": "Nachrichten öffnen",
         "options": "Telefonoptionen",
         "phoneLabel": "Telefon",
-        "phoneNumber": "Telefonnummer",
-        "risk": "SMS- und MMS-Antworten werden möglicherweise nicht zuverlässig zugestellt. Für ein möglichst zuverlässiges Erlebnis verwenden Sie iMessage mit dieser AgentPhone-Nummer.",
-        "sending": "Senden...",
-        "sendVerification": "Bestätigung senden",
-        "verificationSent": "Bestätigungstext an {{phone}} gesendet. Öffnen Sie den Link in diesem Text, um die Verbindung abzuschließen."
+        "replyInstruction": "Wir antworten mit einem Verbindungslink. Öffnen Sie ihn innerhalb von 10 Minuten, um die Verbindung abzuschließen.",
+        "risk": "SMS- und MMS-Antworten werden möglicherweise nicht zuverlässig zugestellt. Für ein möglichst zuverlässiges Erlebnis verwenden Sie iMessage mit dieser AgentPhone-Nummer."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3006,7 +3004,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Geben Sie eine Telefonnummer mit Landesvorwahl ein, z. B. +1 555 555 1212.",
         "githubAuthorizationWindow": "Das Autorisierungsfenster konnte nicht geöffnet werden",
         "telegramDomain": "Die Domain ist für Telegram noch nicht sichtbar. Überprüfen Sie BotFather und versuchen Sie es erneut.",
         "telegramPrivacy": "Der Datenschutzmodus scheint immer noch aktiviert zu sein. Schalten Sie es in BotFather aus und versuchen Sie es dann erneut."
@@ -3212,7 +3209,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone verbunden",
         "agentphoneDisconnected": "AgentPhone getrennt",
-        "agentphoneVerificationSent": "Bestätigungstext gesendet",
         "feishuBotInstalled": "Der Feishu-Bot wurde erfolgreich installiert",
         "feishuBotUninstalled": "Feishu-Bot deinstalliert",
         "feishuConnected": "Feishu hat erfolgreich eine Verbindung hergestellt",

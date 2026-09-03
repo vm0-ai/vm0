@@ -28,9 +28,13 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 const AGENT_PHONE_HANDLE = "+15555550123";
 
-function queryRole(role: "button" | "link", name: string): HTMLElement | null {
+function queryRole(
+  role: "button" | "link",
+  name: string,
+  container?: HTMLElement,
+): HTMLElement | null {
   return (
-    queryAllByRoleFast(role).find((candidate) => {
+    queryAllByRoleFast(role, container).find((candidate) => {
       return (
         candidate.getAttribute("aria-label") === name ||
         candidate.textContent?.trim() === name
@@ -39,8 +43,12 @@ function queryRole(role: "button" | "link", name: string): HTMLElement | null {
   );
 }
 
-function getRole(role: "button" | "link", name: string): HTMLElement {
-  const element = queryRole(role, name);
+function getRole(
+  role: "button" | "link",
+  name: string,
+  container?: HTMLElement,
+): HTMLElement {
+  const element = queryRole(role, name, container);
   if (!element) {
     throw new Error(`Expected ${role} named "${name}"`);
   }
@@ -128,11 +136,7 @@ function setupWorksPage(
   });
 }
 
-async function openAgentPhoneVerification(): Promise<{
-  dialog: HTMLElement;
-  phoneInput: HTMLElement;
-  verificationStatus: HTMLElement;
-}> {
+async function openAgentPhoneConnectDialog(): Promise<HTMLElement> {
   context.mocks.data.agentPhoneIntegration({
     linked: false,
     agentPhoneNumber: "+19039853128",
@@ -150,13 +154,7 @@ async function openAgentPhoneVerification(): Promise<{
   const dialog = await screen.findByRole("dialog", {
     name: "Connect phone",
   });
-  const phoneInput = within(dialog).getByLabelText("Phone number");
-  await fill(phoneInput, AGENT_PHONE_HANDLE);
-  click(within(dialog).getByText("Send verification"));
-
-  const verificationStatus = await within(dialog).findByRole("status");
-  expect(verificationStatus).toHaveTextContent(AGENT_PHONE_HANDLE);
-  return { dialog, phoneInput, verificationStatus };
+  return dialog;
 }
 
 function publishAgentPhoneLinked(): void {
@@ -327,47 +325,35 @@ describe("works page", () => {
     });
   });
 
-  it("keeps AgentPhone verification visible when success closes the dialog", async () => {
-    const { dialog, phoneInput, verificationStatus } =
-      await openAgentPhoneVerification();
-    const finishCloseAnimation = holdElementAnimations(dialog);
+  it("guides an unlinked AgentPhone user to message the shared number", async () => {
+    const dialog = await openAgentPhoneConnectDialog();
 
-    publishAgentPhoneLinked();
-
-    await expect(
-      screen.findByTestId("agentphone-connected-indicator"),
-    ).resolves.toHaveTextContent(AGENT_PHONE_HANDLE);
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).toBeVisible();
-    expect(phoneInput).toHaveValue(AGENT_PHONE_HANDLE);
-    expect(verificationStatus).toBeVisible();
-
-    finishCloseAnimation();
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Connect phone" }),
-      ).not.toBeInTheDocument();
-    });
-
-    const reopenedDialog = await disconnectAndReopenAgentPhone();
-    expect(within(reopenedDialog).getByLabelText("Phone number")).toHaveValue(
-      "",
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+    expect(within(dialog).getByText("Send “hi” to this number")).toBeVisible();
+    expect(within(dialog).getByText("hi")).toBeVisible();
+    expect(getRole("button", "Copy +1 (903) 985-3128", dialog)).toBeVisible();
+    expect(getRole("link", "Open Messages", dialog)).toHaveAttribute(
+      "href",
+      "sms:+19039853128",
     );
-    expect(within(reopenedDialog).queryByRole("status")).toBeNull();
+    expect(
+      within(dialog).getByText(
+        "We’ll reply with a connection link. Open it within 10 minutes to finish connecting.",
+      ),
+    ).toBeVisible();
   });
 
-  it("cleans AgentPhone verification when success arrives after close", async () => {
-    const { dialog, phoneInput, verificationStatus } =
-      await openAgentPhoneVerification();
+  it("closes AgentPhone instructions when the phone is linked", async () => {
+    const dialog = await openAgentPhoneConnectDialog();
     const finishCloseAnimation = holdElementAnimations(dialog);
 
-    click(within(dialog).getByText("Cancel"));
+    publishAgentPhoneLinked();
 
+    await expect(
+      screen.findByTestId("agentphone-connected-indicator"),
+    ).resolves.toHaveTextContent(AGENT_PHONE_HANDLE);
     expect(dialog).toBeInTheDocument();
     expect(dialog).toBeVisible();
-    expect(phoneInput).toHaveValue(AGENT_PHONE_HANDLE);
-    expect(verificationStatus).toBeVisible();
 
     finishCloseAnimation();
 
@@ -377,16 +363,9 @@ describe("works page", () => {
       ).not.toBeInTheDocument();
     });
 
-    publishAgentPhoneLinked();
-    await expect(
-      screen.findByTestId("agentphone-connected-indicator"),
-    ).resolves.toHaveTextContent(AGENT_PHONE_HANDLE);
-
     const reopenedDialog = await disconnectAndReopenAgentPhone();
-    expect(within(reopenedDialog).getByLabelText("Phone number")).toHaveValue(
-      "",
-    );
-    expect(within(reopenedDialog).queryByRole("status")).toBeNull();
+    expect(within(reopenedDialog).queryByRole("textbox")).toBeNull();
+    expect(getRole("link", "Open Messages", reopenedDialog)).toBeVisible();
   });
 
   it("opens Telegram settings from the integrations list", async () => {

@@ -2929,21 +2929,19 @@
       "agentphone": {
         "authorizedSender": "अधिकृत प्रेषक",
         "connectAria": "फ़ोन कनेक्ट करें",
-        "connectDescription": "अपना फोन नंबर डालें। हम एक सत्यापन लिंक टेक्स्ट करेंगे जो इस वर्कस्पेस को जोड़ता है।",
+        "connectDescription": "जिस फ़ोन नंबर को आप कनेक्ट करना चाहते हैं, उससे एक सीधा संदेश भेजें।",
         "connectTitle": "फ़ोन कनेक्ट करें",
         "copyAria": "{{phone}} कॉपी करें",
         "copyError": "फ़ोन नंबर कॉपी करने में विफल",
         "copySuccess": "फ़ोन नंबर कॉपी किया गया",
         "description": "{{assistantName}} तक टेक्स्ट-संदेश पहुंच",
         "destination": "iMessage या SMS को",
-        "normalized": "हम {{phone}} टेक्स्ट करेंगे।",
+        "messageInstruction": "इस नंबर पर “hi” भेजें",
+        "openMessages": "मैसेज खोलें",
         "options": "फ़ोन विकल्प",
         "phoneLabel": "फ़ोन",
-        "phoneNumber": "फ़ोन नंबर",
-        "risk": "SMS और MMS उत्तर विश्वसनीय रूप से वितरित नहीं किए जा सकते हैं। सबसे विश्वसनीय अनुभव के लिए, इस AgentPhone नंबर के साथ iMessage का उपयोग करें।",
-        "sending": "भेजा जा रहा है...",
-        "sendVerification": "सत्यापन भेजें",
-        "verificationSent": "सत्यापन पाठ {{phone}} को भेजा गया। कनेक्ट करना समाप्त करने के लिए उस टेक्स्ट में लिंक खोलें।"
+        "replyInstruction": "हम कनेक्शन लिंक के साथ जवाब देंगे। कनेक्शन पूरा करने के लिए इसे 10 मिनट के अंदर खोलें।",
+        "risk": "SMS और MMS उत्तर विश्वसनीय रूप से वितरित नहीं किए जा सकते हैं। सबसे विश्वसनीय अनुभव के लिए, इस AgentPhone नंबर के साथ iMessage का उपयोग करें।"
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3006,7 +3004,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "देश कोड के साथ एक फ़ोन नंबर दर्ज करें, जैसे +1 555 555 1212।",
         "githubAuthorizationWindow": "प्राधिकरण विंडो खोलने में विफल",
         "telegramDomain": "डोमेन अभी तक Telegram को दिखाई नहीं दे रहा है। BotFather की जाँच करें और पुनः प्रयास करें।",
         "telegramPrivacy": "गोपनीयता मोड अभी भी चालू प्रतीत होता है. इसे BotFather में बंद करें, फिर पुनः प्रयास करें।"
@@ -3212,7 +3209,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone जुड़ा",
         "agentphoneDisconnected": "AgentPhone डिस्कनेक्ट हो गया",
-        "agentphoneVerificationSent": "सत्यापन पाठ भेजा गया",
         "feishuBotInstalled": "Feishu बॉट सफलतापूर्वक स्थापित हुआ",
         "feishuBotUninstalled": "Feishu बॉट अनइंस्टॉल किया गया",
         "feishuConnected": "Feishu सफलतापूर्वक कनेक्ट हुआ",

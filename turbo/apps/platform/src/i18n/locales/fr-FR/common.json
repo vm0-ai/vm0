@@ -2980,21 +2980,19 @@
       "agentphone": {
         "authorizedSender": "Expéditeur autorisé",
         "connectAria": "Connecter le téléphone",
-        "connectDescription": "Entrez votre numéro de téléphone. Nous enverrons un lien de vérification par SMS pour connecter cet espace de travail.",
+        "connectDescription": "Envoyez un message direct depuis le numéro de téléphone que vous souhaitez connecter.",
         "connectTitle": "Connecter le téléphone",
         "copyAria": "Copier {{phone}}",
         "copyError": "Échec de la copie du numéro de téléphone",
         "copySuccess": "Numéro de téléphone copié",
         "description": "Accès aux messages texte pour {{assistantName}}",
         "destination": "iMessage ou SMS à",
-        "normalized": "Nous enverrons un SMS à {{phone}}.",
+        "messageInstruction": "Envoyez « hi » à ce numéro",
+        "openMessages": "Ouvrir Messages",
         "options": "Options de téléphone",
         "phoneLabel": "Téléphone",
-        "phoneNumber": "Numéro de téléphone",
-        "risk": "Les réponses SMS et MMS peuvent ne pas être délivrées de manière fiable. Pour une expérience plus fiable, utilisez iMessage avec ce numéro AgentPhone.",
-        "sending": "Envoi...",
-        "sendVerification": "Envoyer la vérification",
-        "verificationSent": "Texte de vérification envoyé à {{phone}}. Ouvrez le lien dans ce texte pour terminer la connexion."
+        "replyInstruction": "Nous répondrons avec un lien de connexion. Ouvrez-le dans les 10 minutes pour terminer la connexion.",
+        "risk": "Les réponses SMS et MMS peuvent ne pas être délivrées de manière fiable. Pour une expérience plus fiable, utilisez iMessage avec ce numéro AgentPhone."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3057,7 +3055,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Entrez un numéro de téléphone avec le code du pays, comme +1 555 555 1212.",
         "githubAuthorizationWindow": "Échec de l'ouverture de la fenêtre d'autorisation",
         "telegramDomain": "Le domaine n'est pas encore visible pour Telegram. Vérifiez BotFather et essayez à nouveau.",
         "telegramPrivacy": "Le mode de confidentialité semble toujours activé. Désactivez-le dans BotFather, puis réessayez."
@@ -3263,7 +3260,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone connecté",
         "agentphoneDisconnected": "AgentPhone déconnecté",
-        "agentphoneVerificationSent": "Texte de vérification envoyé",
         "feishuBotInstalled": "Bot Feishu installé avec succès",
         "feishuBotUninstalled": "Bot Feishu désinstallé",
         "feishuConnected": "Feishu connecté avec succès",

@@ -1,12 +1,6 @@
-import type { FormEvent } from "react";
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { CircleCheck, Copy, EllipsisVertical, Loader2 } from "lucide-react";
+import { CircleCheck, Copy, EllipsisVertical } from "lucide-react";
 import { Button } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
@@ -28,25 +22,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@okouai/ui/components/ui/tooltip";
-import { Input } from "@okouai/ui/components/ui/input";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   agentPhoneLinkStatus$,
   agentPhoneConnectDialogOpen$,
-  agentPhonePhoneForm$,
-  agentPhonePhoneFormError$,
-  agentPhonePhoneFormNormalized$,
-  agentPhoneShowPhoneError$,
-  agentPhoneVerificationPhone$,
-  completeAgentPhoneConnectDialogClose$,
   disconnectAgentPhone$,
   setAgentPhoneConnectDialogOpen$,
-  setAgentPhonePhoneForm$,
-  setAgentPhoneShowPhoneError$,
-  setAgentPhoneVerificationPhone$,
-  startAgentPhoneLink$,
 } from "../../signals/okou-page/agentphone.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -111,87 +94,28 @@ function PhoneNumberCopyButton({
   );
 }
 
-function AgentPhoneVerificationStatus({
-  verificationPhone,
-  connecting,
-}: {
-  readonly verificationPhone: string | null;
-  readonly connecting: boolean;
-}) {
-  const { t } = useTranslation();
-  if (!verificationPhone) {
-    return null;
-  }
-
-  return (
-    <div
-      className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground"
-      role="status"
-    >
-      <span className="flex items-center gap-2">
-        {connecting ? (
-          <Loader2 size={14} className="shrink-0 animate-spin" />
-        ) : (
-          <CircleCheck size={14} className="shrink-0 text-green-600" />
-        )}
-        <span>
-          {t(
-            ($) => {
-              return $.connectors.providerSettings.agentphone.verificationSent;
-            },
-            { phone: verificationPhone },
-          )}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 function AgentPhoneConnectActions({
-  starting,
-  connecting,
-  normalizedPhone,
-  phoneError,
-  onCancel,
+  messageHref,
+  onClose,
 }: {
-  readonly starting: boolean;
-  readonly connecting: boolean;
-  readonly normalizedPhone: string;
-  readonly phoneError: string | null;
-  readonly onCancel: () => void;
+  readonly messageHref: string;
+  readonly onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const busy = starting || connecting;
 
   return (
     <DialogFooter>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={starting}
-        onClick={onCancel}
-      >
+      <Button type="button" variant="outline" onClick={onClose}>
         {t(($) => {
-          return $.connectors.actions.cancel;
+          return $.connectors.actions.close;
         })}
       </Button>
-      <Button
-        type="submit"
-        disabled={!normalizedPhone || Boolean(phoneError) || busy}
-      >
-        {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-        {starting
-          ? t(($) => {
-              return $.connectors.providerSettings.agentphone.sending;
-            })
-          : connecting
-            ? t(($) => {
-                return $.connectors.actions.connecting;
-              })
-            : t(($) => {
-                return $.connectors.providerSettings.agentphone
-                  .sendVerification;
-              })}
+      <Button asChild>
+        <a href={messageHref}>
+          {t(($) => {
+            return $.connectors.providerSettings.agentphone.openMessages;
+          })}
+        </a>
       </Button>
     </DialogFooter>
   );
@@ -200,152 +124,88 @@ function AgentPhoneConnectActions({
 function AgentPhoneConnectIntro() {
   const { t } = useTranslation();
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>
-          {t(($) => {
-            return $.connectors.providerSettings.agentphone.connectTitle;
-          })}
-        </DialogTitle>
-        <DialogDescription>
-          {t(($) => {
-            return $.connectors.providerSettings.agentphone.connectDescription;
-          })}
-        </DialogDescription>
-      </DialogHeader>
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+    <DialogHeader>
+      <DialogTitle>
         {t(($) => {
-          return $.connectors.providerSettings.agentphone.risk;
+          return $.connectors.providerSettings.agentphone.connectTitle;
         })}
-      </div>
-    </>
+      </DialogTitle>
+      <DialogDescription>
+        {t(($) => {
+          return $.connectors.providerSettings.agentphone.connectDescription;
+        })}
+      </DialogDescription>
+    </DialogHeader>
   );
 }
 
-function AgentPhoneConnectDialog() {
+function AgentPhoneConnectDialog({
+  phoneNumber,
+}: {
+  readonly phoneNumber: string | null;
+}) {
   const { t } = useTranslation();
   const open = useGet(agentPhoneConnectDialogOpen$);
-  const phoneForm = useGet(agentPhonePhoneForm$);
-  const normalizedPhone = useLastResolved(agentPhonePhoneFormNormalized$) ?? "";
-  const phoneError = useLastResolved(agentPhonePhoneFormError$) ?? null;
-  const verificationPhone =
-    useLastResolved(agentPhoneVerificationPhone$) ?? null;
-  const showPhoneError = useLastResolved(agentPhoneShowPhoneError$) ?? false;
-  const setPhoneForm = useSet(setAgentPhonePhoneForm$);
   const setOpen = useSet(setAgentPhoneConnectDialogOpen$);
-  const completeClose = useSet(completeAgentPhoneConnectDialogClose$);
-  const setVerificationPhone = useSet(setAgentPhoneVerificationPhone$);
-  const setShowPhoneError = useSet(setAgentPhoneShowPhoneError$);
-  const pageSignal = useGet(pageSignal$);
-  const [startLoadable, startLink] = useLoadableSet(startAgentPhoneLink$);
-  const status = useLastResolved(agentPhoneLinkStatus$);
-  const starting = startLoadable.state === "loading";
-  const connecting = verificationPhone !== null && status?.linked !== true;
-  const busy = starting || connecting;
-  const visiblePhoneError = showPhoneError ? phoneError : null;
-
-  const close = (nextOpen: boolean) => {
-    if (!nextOpen && starting) {
-      return;
-    }
-    setOpen(nextOpen);
-  };
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!normalizedPhone || phoneError || busy) {
-      setShowPhoneError(true);
-      return;
-    }
-    setVerificationPhone(null);
-    setShowPhoneError(false);
-    detach(
-      (async () => {
-        const result = await startLink(pageSignal);
-        setVerificationPhone(result.phoneHandle);
-      })(),
-      Reason.DomCallback,
-    );
-  };
+  if (!phoneNumber) {
+    return null;
+  }
 
   return (
     <Dialog
       open={open}
-      onOpenChange={close}
-      onOpenChangeComplete={(nextOpen) => {
-        if (!nextOpen) {
-          completeClose();
-        }
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
       }}
     >
       <DialogContent>
         <AgentPhoneConnectIntro />
-        <form className="grid gap-3" onSubmit={submit}>
-          <label
-            htmlFor="agentphone-phone-input"
-            className="text-sm font-medium text-foreground"
-          >
+        <div className="grid gap-3">
+          <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+            <p className="text-sm text-muted-foreground">
+              {t(($) => {
+                return $.connectors.providerSettings.agentphone
+                  .messageInstruction;
+              })}
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <img src={imessageIconImg} alt="" className="h-5 w-5" />
+                <PhoneNumberCopyButton phoneNumber={phoneNumber} />
+              </span>
+              <span className="shrink-0 rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground">
+                hi
+              </span>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              {t(($) => {
+                return $.connectors.providerSettings.agentphone
+                  .replyInstruction;
+              })}
+            </p>
+          </div>
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
             {t(($) => {
-              return $.connectors.providerSettings.agentphone.phoneNumber;
+              return $.connectors.providerSettings.agentphone.risk;
             })}
-          </label>
-          <Input
-            id="agentphone-phone-input"
-            data-testid="agentphone-phone-input"
-            type="tel"
-            inputMode="tel"
-            placeholder="+1 555 555 1212"
-            value={phoneForm}
-            disabled={busy}
-            onBlur={() => {
-              setShowPhoneError(true);
-            }}
-            onChange={(event) => {
-              setVerificationPhone(null);
-              setPhoneForm(event.target.value);
-            }}
-            onFocus={() => {
-              setShowPhoneError(false);
-            }}
-          />
-          {normalizedPhone ? (
-            <p
-              className="text-xs text-muted-foreground"
-              data-testid="agentphone-normalized-phone"
-            >
-              {t(
-                ($) => {
-                  return $.connectors.providerSettings.agentphone.normalized;
-                },
-                { phone: normalizedPhone },
-              )}
-            </p>
-          ) : null}
-          {visiblePhoneError ? (
-            <p className="text-sm text-destructive" role="alert">
-              {visiblePhoneError}
-            </p>
-          ) : null}
-          <AgentPhoneVerificationStatus
-            verificationPhone={verificationPhone}
-            connecting={connecting}
-          />
+          </div>
           <AgentPhoneConnectActions
-            starting={starting}
-            connecting={connecting}
-            normalizedPhone={normalizedPhone}
-            phoneError={phoneError}
-            onCancel={() => {
-              close(false);
+            messageHref={`sms:${phoneNumber}`}
+            onClose={() => {
+              setOpen(false);
             }}
           />
-        </form>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function AgentPhoneCardActions() {
+function AgentPhoneCardActions({
+  canConnect,
+}: {
+  readonly canConnect: boolean;
+}) {
   const { t } = useTranslation();
   const statusLoadable = useLastLoadable(agentPhoneLinkStatus$);
   const status =
@@ -387,7 +247,7 @@ function AgentPhoneCardActions() {
           </Tooltip>
         </TooltipProvider>
       ) : null}
-      {status !== null && !isConnected ? (
+      {status !== null && !isConnected && canConnect ? (
         <Button
           type="button"
           variant="outline"
@@ -491,10 +351,10 @@ export function AgentPhoneCard() {
               )}
             </div>
           </div>
-          <AgentPhoneCardActions />
+          <AgentPhoneCardActions canConnect={agentPhoneNumber !== null} />
         </div>
       </div>
-      <AgentPhoneConnectDialog />
+      <AgentPhoneConnectDialog phoneNumber={agentPhoneNumber} />
     </>
   );
 }

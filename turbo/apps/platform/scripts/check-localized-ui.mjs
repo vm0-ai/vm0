@@ -140,6 +140,10 @@ function getInternalAllowedLiterals() {
 function getConnectorAllowedLiterals() {
   return [
     [
+      "src/views/okou-page/agentphone-card.tsx\u0000hi",
+      "AgentPhone inbound connection handshake message",
+    ],
+    [
       "src/views/okou-page/components/model-provider-picker.tsx\u0000BYOK",
       "bring-your-own-key product acronym",
     ],
