@@ -41,7 +41,8 @@ use super::types::{
     WorkspaceSessionHistorySidecarPublication,
 };
 use super::{
-    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache, WorkspaceImageCacheInner,
+    CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceCacheLockRegistration,
+    WorkspaceImageCache, WorkspaceImageCacheInner,
 };
 
 const WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT: Duration = Duration::from_millis(50);
@@ -157,6 +158,7 @@ struct WorkspaceImageLeaseState {
 struct WorkspaceEntryLock {
     inner: Arc<WorkspaceImageCacheInner>,
     cache_key: String,
+    identity: Arc<()>,
     lock: Option<Flock<std::fs::File>>,
 }
 
@@ -167,46 +169,66 @@ impl WorkspaceEntryLock {
         lock: Flock<std::fs::File>,
         owner: WorkspaceCacheLockOwner,
     ) -> Self {
-        let previous = cache
+        let identity = Arc::new(());
+        let mut owners = cache
             .inner
             .entry_lock_owners
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(cache_key.to_owned(), owner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registration = owners.entry(cache_key.to_owned());
         assert!(
-            previous.is_none(),
+            matches!(&registration, std::collections::hash_map::Entry::Vacant(_)),
             "workspace entry lock acquired while a local owner remains registered"
         );
+        if let std::collections::hash_map::Entry::Vacant(registration) = registration {
+            registration.insert(WorkspaceCacheLockRegistration {
+                identity: Arc::clone(&identity),
+                owner,
+            });
+        }
+        drop(owners);
         Self {
             inner: Arc::clone(&cache.inner),
             cache_key: cache_key.to_owned(),
+            identity,
             lock: Some(lock),
         }
     }
 
     fn set_owner(&mut self, owner: WorkspaceCacheLockOwner) {
-        let registered = self
+        let mut owners = self
             .inner
             .entry_lock_owners
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(self.cache_key.clone(), owner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let registered = owners.get_mut(&self.cache_key);
         assert!(
-            registered.is_some(),
-            "workspace entry lock ownership transition requires a registered owner"
+            registered
+                .as_ref()
+                .is_some_and(|registered| Arc::ptr_eq(&registered.identity, &self.identity)),
+            "workspace entry lock ownership transition requires the original registration"
         );
+        if let Some(registered) = registered {
+            registered.owner = owner;
+        }
     }
 }
 
 impl Drop for WorkspaceEntryLock {
     fn drop(&mut self) {
-        let removed = self
+        let mut owners = self
             .inner
             .entry_lock_owners
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(&self.cache_key);
-        debug_assert!(removed.is_some());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let owns_registration = owners
+            .get(&self.cache_key)
+            .is_some_and(|registered| Arc::ptr_eq(&registered.identity, &self.identity));
+        debug_assert!(owns_registration);
+        if owns_registration {
+            owners.remove(&self.cache_key);
+        }
+        drop(owners);
         drop(self.lock.take());
     }
 }
@@ -280,14 +302,30 @@ impl WorkspaceImageLease {
 }
 
 impl WorkspaceImageCache {
-    fn local_entry_lock_owner(&self, cache_key: &str) -> WorkspaceCacheLockOwner {
+    fn local_entry_lock_observation(
+        &self,
+        cache_key: &str,
+    ) -> Option<WorkspaceCacheLockRegistration> {
         self.inner
             .entry_lock_owners
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(cache_key)
-            .copied()
-            .unwrap_or(WorkspaceCacheLockOwner::Unknown)
+            .cloned()
+    }
+
+    fn stable_local_entry_lock_owner(
+        &self,
+        cache_key: &str,
+        before: Option<&WorkspaceCacheLockRegistration>,
+    ) -> WorkspaceCacheLockOwner {
+        let after = self.local_entry_lock_observation(cache_key);
+        match (before, after) {
+            (Some(before), Some(after)) if Arc::ptr_eq(&before.identity, &after.identity) => {
+                after.owner
+            }
+            _ => WorkspaceCacheLockOwner::Unknown,
+        }
     }
 
     async fn acquire_prepare_lock(
@@ -380,6 +418,7 @@ impl WorkspaceImageCache {
         };
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
+        let owner_before = self.local_entry_lock_observation(&cache_key);
         match crate::lock::try_acquire_or_busy(self.entry_lock_path(&cache_key)).await {
             Ok(crate::lock::TryLock::Acquired(lock)) => active_lease(
                 WorkspaceCacheCheckoutResult::Miss,
@@ -393,7 +432,7 @@ impl WorkspaceImageCache {
                 None,
             ),
             Ok(crate::lock::TryLock::Busy) => {
-                let owner = self.local_entry_lock_owner(&cache_key);
+                let owner = self.stable_local_entry_lock_owner(&cache_key, owner_before.as_ref());
                 info!(
                     run_id = %common.run_id,
                     cache_key,
@@ -549,10 +588,11 @@ impl WorkspaceImageCache {
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
+        let owner_before = self.local_entry_lock_observation(&cache_key);
         let lock = match self.acquire_prepare_lock(lock_path, lock_policy).await {
             Ok(crate::lock::TryLock::Acquired(lock)) => lock,
             Ok(crate::lock::TryLock::Busy) => {
-                let owner = self.local_entry_lock_owner(&cache_key);
+                let owner = self.stable_local_entry_lock_owner(&cache_key, owner_before.as_ref());
                 match lock_policy {
                     WorkspaceImagePrepareLockPolicy::WaitForTransientContention => info!(
                         run_id = %common.run_id,

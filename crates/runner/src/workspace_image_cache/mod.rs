@@ -155,7 +155,7 @@ struct WorkspaceImageCacheInner {
     cache_dir: PathBuf,
     lock_dir: PathBuf,
     cache_scope: String,
-    entry_lock_owners: Mutex<HashMap<String, WorkspaceCacheLockOwner>>,
+    entry_lock_owners: Mutex<HashMap<String, WorkspaceCacheLockRegistration>>,
     #[cfg(test)]
     fs_stats_override: FsStats,
     #[cfg(test)]
@@ -166,6 +166,12 @@ struct WorkspaceImageCacheInner {
     held_state_root_scan_notify: tokio::sync::Notify,
     #[cfg(test)]
     fail_next_session_history_sidecar_metadata_commit: AtomicBool,
+}
+
+#[derive(Clone)]
+struct WorkspaceCacheLockRegistration {
+    identity: Arc<()>,
+    owner: WorkspaceCacheLockOwner,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

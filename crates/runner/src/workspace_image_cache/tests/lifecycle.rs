@@ -12,8 +12,8 @@ use super::super::metadata::{
 use super::super::{
     CACHE_FORMAT_VERSION, CacheBudget, FsStats, TEST_FS_TOTAL_BYTES, WORKSPACE_DRIVE_LAYOUT,
     WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageActiveLeaseRequest,
-    WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
-    WorkspaceImagePromotionRequest,
+    WorkspaceImageCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareLockTestGate,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
 };
 use super::support::{TEST_PROFILE_NAME, local_cache, write_current_cache_entry};
 use crate::ids::RunId;
@@ -830,6 +830,59 @@ async fn lock_busy_checkout_reports_unknown_for_another_cache_instance() {
             workspace_drive_required: false,
         })
         .await;
+
+    assert_eq!(contender.result(), WorkspaceCacheCheckoutResult::LockBusy);
+    assert_eq!(
+        contender.lock_outcome_and_reason(),
+        Some(("busy", Some("unknown")))
+    );
+}
+
+#[tokio::test]
+async fn lock_busy_checkout_does_not_attribute_an_owner_acquired_after_the_first_attempt() {
+    let (_dir, _paths, cache) = local_cache().await;
+    let reuse_key = "thread:changed-lock-owner";
+    let cache_key = workspace_image_cache_key(reuse_key, "/workspace");
+    let external_lock = crate::lock::acquire(cache.entry_lock_path(&cache_key))
+        .await
+        .unwrap();
+    let prepare_lock_gate = WorkspaceImagePrepareLockTestGate::default();
+    let contender_cache = cache
+        .clone()
+        .with_prepare_lock_test_gate(prepare_lock_gate.clone());
+    let contender = tokio::spawn(async move {
+        contender_cache
+            .prepare(WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id: RunId::new_v4(),
+                    sandbox_id: sandbox::SandboxId::new_v4(),
+                    profile_name: TEST_PROFILE_NAME,
+                    reuse_key: Some(reuse_key),
+                    working_dir: "/workspace",
+                    image_size_bytes: 5,
+                },
+                workspace_drive_required: false,
+            })
+            .await
+    });
+    prepare_lock_gate.wait_entered(Duration::from_secs(1)).await;
+
+    drop(external_lock);
+    let _replacement_owner = cache
+        .lease_active(WorkspaceImageActiveLeaseRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_available: true,
+        })
+        .await;
+    prepare_lock_gate.release();
+    let contender = contender.await.unwrap();
 
     assert_eq!(contender.result(), WorkspaceCacheCheckoutResult::LockBusy);
     assert_eq!(
