@@ -25,6 +25,12 @@ import {
   PRESENTATION_TEMPLATE_IMPORT_ACCEPT,
 } from "../../signals/okou-page/presentation-template-import.ts";
 import type {
+  ImportedPresentationTemplateImageBuffers,
+  ImportedPresentationTemplateImageSignals,
+  ImportedPresentationTemplateImageSlot,
+  ImportedPresentationTemplateImageState,
+  ImportedPresentationTemplateLoadedImage,
+  ImportedPresentationTemplatePickerItem,
   PresentationTemplateDetail,
   PresentationTemplateSummary,
 } from "../../signals/okou-page/presentation-template-library.ts";
@@ -5050,9 +5056,6 @@ function ImportedPptCardMediaControls({
   );
 }
 
-// Keep one rendered image stable while its replacement loads and decodes
-// off-DOM, then swap the src atomically. Stale requests are ignored by URL.
-
 function importedPptImageVariant(
   imageUrl: string,
   size: TemplatePreviewImageSize,
@@ -5072,238 +5075,182 @@ function importedPptImageVariant(
   return imageUrl === null ? null : r2ImageTransformUrl(imageUrl, size);
 }
 
-function importedPptImage(media: HTMLElement): HTMLImageElement | null {
-  return media.querySelector<HTMLImageElement>(
-    "[data-imported-presentation-template-image]",
-  );
+const IMPORTED_PPT_IMAGE_SLOTS = ["a", "b"] as const;
+
+function importedPptImageLoadMatches(
+  image: ImportedPresentationTemplateLoadedImage | null,
+  desiredUrl: string,
+  sourceUrl: string,
+): boolean {
+  return image?.desiredUrl === desiredUrl && image.sourceUrl === sourceUrl;
 }
 
-function setImportedPptImagePlaceholder(
-  media: HTMLElement,
-  state: "error" | "hidden" | "loading",
-): void {
-  const placeholder = media.querySelector<HTMLElement>(
-    "[data-imported-presentation-template-image-placeholder]",
-  );
-  if (placeholder === null) {
-    return;
-  }
-  placeholder.hidden = state === "hidden";
-  placeholder.dataset.state = state;
-}
-
-function showImportedPptImage(
-  media: HTMLElement,
-  image: HTMLImageElement,
-  imageUrl: string,
-): void {
-  if (image.getAttribute("src") !== imageUrl) {
-    image.src = imageUrl;
-  }
-  image.dataset.loadedImageUrl = imageUrl;
-  image.alt = media.dataset.imageLabel ?? "";
-  image.title = media.dataset.imageLabel ?? "";
-  image.removeAttribute("aria-hidden");
-  setImportedPptImagePlaceholder(media, "hidden");
-}
-
-async function loadDecodedImportedPptImage(
-  imageUrl: string,
-  referenceImage: HTMLImageElement,
-): Promise<boolean> {
-  const candidate = new Image();
-  candidate.decoding = "async";
-  candidate.loading = "eager";
-  candidate.fetchPriority = referenceImage.fetchPriority;
-  candidate.src = imageUrl;
-  let decodeFailed = false;
-  await tapError(candidate.decode(), () => {
-    decodeFailed = true;
+function importedPptImageLoadFailed(
+  failedImages: readonly ImportedPresentationTemplateLoadedImage[],
+  desiredUrl: string,
+  sourceUrl: string,
+): boolean {
+  return failedImages.some((image) => {
+    return importedPptImageLoadMatches(image, desiredUrl, sourceUrl);
   });
-  return !decodeFailed;
 }
 
-async function replaceImportedPptImageAfterDecode(
-  media: HTMLElement,
-  imageUrl: string,
-): Promise<void> {
-  const image = importedPptImage(media);
-  if (image === null) {
-    return;
-  }
-  const decoded = await loadDecodedImportedPptImage(imageUrl, image);
-  if (!decoded) {
-    if (
-      media.dataset.desiredImageUrl === imageUrl &&
-      image.dataset.loadedImageUrl === undefined
-    ) {
-      setImportedPptImagePlaceholder(media, "error");
-    }
-    if (media.dataset.pendingImageUrl === imageUrl) {
-      delete media.dataset.pendingImageUrl;
-    }
-    return;
-  }
-  if (media.dataset.pendingImageUrl === imageUrl) {
-    delete media.dataset.pendingImageUrl;
-  }
-  if (media.dataset.desiredImageUrl !== imageUrl || !media.isConnected) {
-    return;
-  }
-  showImportedPptImage(media, image, imageUrl);
-}
-
-function requestDecodedImportedPptImage(
-  media: HTMLElement,
-  imageUrl: string,
-): void {
-  if (media.dataset.pendingImageUrl === imageUrl) {
-    return;
-  }
-  media.dataset.pendingImageUrl = imageUrl;
-  detach(
-    replaceImportedPptImageAfterDecode(media, imageUrl),
-    Reason.DomCallback,
-  );
-}
-
-function completeImportedPptImage(image: HTMLImageElement): void {
-  const media = image.closest<HTMLElement>(
-    "[data-imported-presentation-template-image-container]",
-  );
-  const imageUrl = image.getAttribute("src");
-  if (media === null || imageUrl === null) {
-    return;
-  }
-  showImportedPptImage(media, image, imageUrl);
+function importedPptImageCandidateSource(
+  state: ImportedPresentationTemplateImageState,
+  desiredUrl: string | null,
+  desiredSourceUrl: string | null,
+  previewSourceUrl: string | null,
+): string | null {
   if (
-    imageUrl === media.dataset.previewImageUrl &&
-    imageUrl !== media.dataset.desiredImageUrl &&
-    media.dataset.desiredImageUrl !== undefined
+    desiredUrl === null ||
+    desiredSourceUrl === null ||
+    importedPptImageLoadMatches(state.active, desiredUrl, desiredSourceUrl)
   ) {
-    requestDecodedImportedPptImage(media, media.dataset.desiredImageUrl);
+    return null;
   }
-}
-
-async function decodeImportedPptImage(
-  image: HTMLImageElement,
-  imageUrl: string,
-): Promise<void> {
-  await bestEffort(image.decode());
-  if (image.getAttribute("src") === imageUrl) {
-    completeImportedPptImage(image);
-  }
-}
-
-function prepareImportedPptImage(image: HTMLImageElement): void {
-  if (image.decode === undefined) {
-    completeImportedPptImage(image);
-    return;
-  }
-  const imageUrl = image.getAttribute("src");
-  if (imageUrl !== null) {
-    detach(decodeImportedPptImage(image, imageUrl), Reason.DomCallback);
-  }
-}
-
-function failImportedPptImage(image: HTMLImageElement): void {
-  const media = image.closest<HTMLElement>(
-    "[data-imported-presentation-template-image-container]",
-  );
-  const imageUrl = image.getAttribute("src");
-  if (media === null || imageUrl === null) {
-    return;
-  }
-  delete image.dataset.loadedImageUrl;
+  const resolvedPreviewSourceUrl = previewSourceUrl ?? desiredSourceUrl;
   if (
-    imageUrl === media.dataset.previewImageUrl &&
-    imageUrl !== media.dataset.desiredImageUrl &&
-    media.dataset.desiredImageUrl !== undefined
+    state.active === null &&
+    resolvedPreviewSourceUrl !== desiredSourceUrl &&
+    !importedPptImageLoadFailed(
+      state.failed,
+      desiredUrl,
+      resolvedPreviewSourceUrl,
+    )
   ) {
-    image.src = media.dataset.desiredImageUrl;
-    return;
+    return resolvedPreviewSourceUrl;
   }
-  setImportedPptImagePlaceholder(media, "error");
+  return importedPptImageLoadFailed(state.failed, desiredUrl, desiredSourceUrl)
+    ? null
+    : desiredSourceUrl;
 }
 
-function syncImportedPptImage(
-  media: HTMLElement | null,
-  imageUrl: string | null,
-  label: string,
-  previewImageUrl: string | null = imageUrl,
-): void {
-  if (media === null) {
-    return;
+function importedPptImageForSlot({
+  active,
+  candidateSourceUrl,
+  candidateSlot,
+  desiredUrl,
+  slot,
+}: {
+  readonly active: ImportedPresentationTemplateLoadedImage | null;
+  readonly candidateSourceUrl: string | null;
+  readonly candidateSlot: ImportedPresentationTemplateImageSlot;
+  readonly desiredUrl: string | null;
+  readonly slot: ImportedPresentationTemplateImageSlot;
+}): ImportedPresentationTemplateLoadedImage | null {
+  if (active?.slot === slot) {
+    return active;
   }
-  const image = importedPptImage(media);
-  if (image === null) {
-    return;
-  }
-  media.dataset.imageLabel = label;
-  image.alt = label;
-  image.title = label;
-
-  if (imageUrl === null) {
-    delete media.dataset.desiredImageUrl;
-    delete media.dataset.previewImageUrl;
-    delete media.dataset.pendingImageUrl;
-    image.removeAttribute("src");
-    delete image.dataset.loadedImageUrl;
-    image.setAttribute("aria-hidden", "true");
-    setImportedPptImagePlaceholder(media, "error");
-    return;
-  }
-  const resolvedPreviewImageUrl = previewImageUrl ?? imageUrl;
-  image.removeAttribute("aria-hidden");
   if (
-    media.dataset.desiredImageUrl === imageUrl &&
-    media.dataset.previewImageUrl === resolvedPreviewImageUrl
+    candidateSourceUrl === null ||
+    desiredUrl === null ||
+    candidateSlot !== slot
   ) {
-    return;
+    return null;
   }
-  media.dataset.desiredImageUrl = imageUrl;
-  media.dataset.previewImageUrl = resolvedPreviewImageUrl;
-
-  if (image.dataset.loadedImageUrl === imageUrl) {
-    setImportedPptImagePlaceholder(media, "hidden");
-    return;
-  }
-  const currentImageUrl = image.getAttribute("src");
-  if (currentImageUrl === null || image.dataset.loadedImageUrl === undefined) {
-    delete image.dataset.loadedImageUrl;
-    setImportedPptImagePlaceholder(media, "loading");
-    image.src = resolvedPreviewImageUrl;
-    return;
-  }
-  requestDecodedImportedPptImage(media, imageUrl);
+  return { desiredUrl, sourceUrl: candidateSourceUrl, slot };
 }
 
 function ImportedPptImage({
   className,
   fetchPriority,
+  imageSignals,
+  label,
   loading,
+  placeholder,
+  previewSize,
+  size,
 }: {
-  className: string;
-  fetchPriority: "auto" | "high" | "low";
-  loading: "eager" | "lazy";
+  readonly className: string;
+  readonly fetchPriority: "auto" | "high" | "low";
+  readonly imageSignals: ImportedPresentationTemplateImageSignals;
+  readonly label: string;
+  readonly loading: "eager" | "lazy";
+  readonly placeholder?: ReactNode;
+  readonly previewSize?: TemplatePreviewImageSize;
+  readonly size: TemplatePreviewImageSize;
 }) {
+  const desiredUrl = useLastResolved(imageSignals.desiredUrl$) ?? null;
+  const pageSignal = useGet(pageSignal$);
+  const state = useGet(imageSignals.state$);
+  const commitLoadedImage = useSet(imageSignals.commitLoadedImage$);
+  const failImageLoad = useSet(imageSignals.failImageLoad$);
+  const desiredSourceUrl = importedPptImageVariant(desiredUrl, size);
+  const previewSourceUrl = importedPptImageVariant(
+    desiredUrl,
+    previewSize ?? size,
+  );
+  const active = desiredUrl === null ? null : state.active;
+  const candidateSourceUrl = importedPptImageCandidateSource(
+    state,
+    desiredUrl,
+    desiredSourceUrl,
+    previewSourceUrl,
+  );
+  const candidateSlot = active?.slot === "a" ? "b" : "a";
+  const placeholderState =
+    active !== null
+      ? "hidden"
+      : desiredUrl === null || candidateSourceUrl === null
+        ? "error"
+        : "loading";
   return (
-    <img
-      alt=""
-      aria-hidden="true"
-      data-imported-presentation-template-image=""
-      loading={loading}
-      decoding="async"
-      fetchPriority={fetchPriority}
-      draggable={false}
-      className={className}
-      onLoad={(event) => {
-        prepareImportedPptImage(event.currentTarget);
-      }}
-      onError={(event) => {
-        failImportedPptImage(event.currentTarget);
-      }}
-    />
+    <>
+      {IMPORTED_PPT_IMAGE_SLOTS.map((slot) => {
+        const image = importedPptImageForSlot({
+          active,
+          candidateSourceUrl,
+          candidateSlot,
+          desiredUrl,
+          slot,
+        });
+        const isActive = active?.slot === slot;
+        const isInitialCandidate = active === null && image !== null;
+        return (
+          <img
+            key={`${slot}:${image?.desiredUrl ?? "empty"}:${image?.sourceUrl ?? "empty"}`}
+            src={image?.sourceUrl}
+            alt={isActive || isInitialCandidate ? label : ""}
+            aria-hidden={isActive || isInitialCandidate ? undefined : "true"}
+            title={isActive || isInitialCandidate ? label : undefined}
+            data-imported-presentation-template-image={slot}
+            data-active={isActive ? "true" : "false"}
+            data-loaded-image-url={isActive ? active.sourceUrl : undefined}
+            loading={loading}
+            decoding="async"
+            fetchPriority={fetchPriority}
+            draggable={false}
+            className={cn(
+              className,
+              "opacity-0 data-[active=true]:opacity-100",
+            )}
+            onLoad={(event) => {
+              if (image !== null && event.currentTarget.isConnected) {
+                detach(
+                  commitLoadedImage(image, pageSignal),
+                  Reason.DomCallback,
+                );
+              }
+            }}
+            onError={(event) => {
+              if (image !== null && event.currentTarget.isConnected) {
+                detach(failImageLoad(image, pageSignal), Reason.DomCallback);
+              }
+            }}
+          />
+        );
+      })}
+      {placeholder === undefined ? null : (
+        <div
+          hidden={placeholderState === "hidden"}
+          data-imported-presentation-template-image-placeholder=""
+          data-state={placeholderState}
+          className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-muted/60 text-muted-foreground data-[state=loading]:animate-pulse"
+        >
+          {placeholder}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -5312,7 +5259,7 @@ function ImportedPptCardMedia({
   selected,
   activeSlideIndex,
   slideCount,
-  activeImageUrl,
+  imageSignals,
   loading,
   label,
   onRequestDetail,
@@ -5324,7 +5271,7 @@ function ImportedPptCardMedia({
   selected: boolean;
   activeSlideIndex: number;
   slideCount: number;
-  activeImageUrl: string | null;
+  imageSignals: ImportedPresentationTemplateImageSignals;
   loading: boolean;
   label: string;
   onRequestDetail: () => void;
@@ -5334,10 +5281,6 @@ function ImportedPptCardMedia({
 }) {
   return (
     <div
-      ref={(media) => {
-        syncImportedPptImage(media, activeImageUrl, label);
-      }}
-      data-imported-presentation-template-image-container=""
       data-imported-presentation-template-media=""
       className={cn(
         TEMPLATE_TILE_MEDIA,
@@ -5363,17 +5306,14 @@ function ImportedPptCardMedia({
       }}
     >
       <ImportedPptImage
+        imageSignals={imageSignals}
+        label={label}
         loading="eager"
         fetchPriority="high"
+        size={TEMPLATE_CARD_PREVIEW_SIZE}
+        placeholder={<ImageIcon size={24} aria-hidden="true" />}
         className="pointer-events-none absolute inset-0 h-full w-full bg-background object-cover"
       />
-      <div
-        data-imported-presentation-template-image-placeholder=""
-        data-state="loading"
-        className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-muted/60 text-muted-foreground data-[state=loading]:animate-pulse"
-      >
-        <ImageIcon size={24} aria-hidden="true" />
-      </div>
       <ImportedPptCardMediaControls
         template={template}
         selected={selected}
@@ -5407,12 +5347,14 @@ function ImportedPptCardCaption({
 }
 
 function ImportedPptCard({
+  imageSignals,
   template,
   selected,
   onSelect,
   onPreview,
   signals,
 }: {
+  imageSignals: ImportedPresentationTemplateImageSignals;
   template: PresentationTemplateSummary;
   selected: boolean;
   onSelect: (template: PresentationTemplateSummary) => void;
@@ -5446,12 +5388,6 @@ function ImportedPptCard({
       slideCount - 1,
     ),
   );
-  const activeImageSource =
-    detail?.pageUrls[activeSlideIndex] ?? template.coverUrl;
-  const activeImageUrl = importedPptImageVariant(
-    activeImageSource,
-    TEMPLATE_CARD_PREVIEW_SIZE,
-  );
   const loading =
     requestedTemplateId === template.id && detailLoadable.state === "loading";
   const label = t(
@@ -5475,7 +5411,7 @@ function ImportedPptCard({
         selected={selected}
         activeSlideIndex={activeSlideIndex}
         slideCount={slideCount}
-        activeImageUrl={activeImageUrl}
+        imageSignals={imageSignals}
         loading={loading}
         label={label}
         onRequestDetail={() => {
@@ -5899,16 +5835,16 @@ function ImportedPresentationTemplatePreviewHeader({
 
 function ImportedPresentationTemplateMainPreview({
   title,
-  activeImageUrl,
   activeSlideIndex,
+  imageSignals,
   slideCount,
   loading,
   onChange,
   onKeyDown,
 }: {
   title: string;
-  activeImageUrl: string | null;
   activeSlideIndex: number;
+  imageSignals: ImportedPresentationTemplateImageSignals;
   slideCount: number;
   loading: boolean;
   onChange: (index: number) => void;
@@ -5921,35 +5857,22 @@ function ImportedPresentationTemplateMainPreview({
     },
     { title },
   );
-  const highResolutionImageUrl = importedPptImageVariant(
-    activeImageUrl,
-    TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE,
-  );
-  const lowResolutionImageUrl = importedPptImageVariant(
-    activeImageUrl,
-    TEMPLATE_CARD_PREVIEW_SIZE,
-  );
   return (
     <div
       role="group"
       aria-label={previewLabel}
-      ref={(media) => {
-        syncImportedPptImage(
-          media,
-          highResolutionImageUrl,
-          previewLabel,
-          lowResolutionImageUrl,
-        );
-      }}
-      data-imported-presentation-template-image-container=""
       data-testid={`${title} imported detail image preview`}
       tabIndex={0}
       onKeyDown={onKeyDown}
       className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <ImportedPptImage
+        imageSignals={imageSignals}
+        label={previewLabel}
         loading="eager"
         fetchPriority="high"
+        size={TEMPLATE_HIGH_RESOLUTION_PREVIEW_SIZE}
+        previewSize={TEMPLATE_CARD_PREVIEW_SIZE}
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
       />
       <button
@@ -5988,11 +5911,13 @@ function ImportedPresentationTemplateMainPreview({
 function ImportedPresentationTemplateThumbnails({
   pageUrls,
   activeSlideIndex,
+  imageSignals,
   onChange,
   onKeyDown,
 }: {
   pageUrls: readonly string[];
   activeSlideIndex: number;
+  imageSignals: readonly ImportedPresentationTemplateImageSignals[];
   onChange: (index: number) => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
 }) {
@@ -6002,31 +5927,29 @@ function ImportedPresentationTemplateThumbnails({
       className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5 lg:grid-cols-8"
       onKeyDown={onKeyDown}
     >
-      {pageUrls.map((pageUrl, index) => {
+      {pageUrls.map((_pageUrl, index) => {
         const slideNumber = index + 1;
         const active = index === activeSlideIndex;
         const eagerlyLoad =
           index < IMPORTED_PRESENTATION_TEMPLATE_EAGER_THUMBNAIL_COUNT;
-        const thumbnailUrl = importedPptImageVariant(
-          pageUrl,
-          TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE,
-        );
         const previewLabel = t(
           ($) => {
             return $.artifacts.templates.previewSlide;
           },
           { slideNumber },
         );
+        const thumbnailImageSignals = imageSignals[index];
+        if (thumbnailImageSignals === undefined) {
+          throw new Error(
+            `Imported presentation thumbnail image state is missing: ${slideNumber.toString()}`,
+          );
+        }
         return (
           <button
             key={slideNumber}
             type="button"
             aria-label={previewLabel}
             aria-pressed={active}
-            ref={(media) => {
-              syncImportedPptImage(media, thumbnailUrl, previewLabel);
-            }}
-            data-imported-presentation-template-image-container=""
             onClick={() => {
               onChange(index);
             }}
@@ -6038,8 +5961,11 @@ function ImportedPresentationTemplateThumbnails({
             )}
           >
             <ImportedPptImage
+              imageSignals={thumbnailImageSignals}
+              label={previewLabel}
               loading={eagerlyLoad ? "eager" : "lazy"}
               fetchPriority={active ? "high" : eagerlyLoad ? "auto" : "low"}
+              size={TEMPLATE_DETAIL_THUMBNAIL_PREVIEW_SIZE}
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
             <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
@@ -6053,11 +5979,13 @@ function ImportedPresentationTemplateThumbnails({
 }
 
 function ImportedPresentationTemplatePreviewPage({
+  imageBuffers,
   summary,
   onBack,
   onSelect,
   signals,
 }: {
+  imageBuffers: ImportedPresentationTemplateImageBuffers;
   summary: PresentationTemplateSummary;
   onBack: () => void;
   onSelect: (template: PresentationTemplateSummary) => void;
@@ -6098,7 +6026,6 @@ function ImportedPresentationTemplatePreviewPage({
     0,
     Math.min(activeSlideIndexRaw, slideCount - 1),
   );
-  const activeImageUrl = pageUrls[activeSlideIndex] ?? pageUrls[0] ?? null;
   const changeSlide = (index: number) => {
     selectSlide(Math.max(0, Math.min(slideCount - 1, index)));
   };
@@ -6126,8 +6053,8 @@ function ImportedPresentationTemplatePreviewPage({
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3 lg:overflow-y-auto">
           <ImportedPresentationTemplateMainPreview
             title={title}
-            activeImageUrl={activeImageUrl}
             activeSlideIndex={activeSlideIndex}
+            imageSignals={imageBuffers.detail}
             slideCount={slideCount}
             loading={detailLoadable.state === "loading"}
             onChange={changeSlide}
@@ -6136,6 +6063,7 @@ function ImportedPresentationTemplatePreviewPage({
           <ImportedPresentationTemplateThumbnails
             pageUrls={pageUrls}
             activeSlideIndex={activeSlideIndex}
+            imageSignals={imageBuffers.thumbnails}
             onChange={changeSlide}
             onKeyDown={handleSlideKeyDown}
           />
@@ -6153,19 +6081,29 @@ function ImportedPresentationTemplatePreviewPage({
   );
 }
 
-function useImportedPresentationTemplates(
+function useImportedPresentationTemplatePickerItems(
   signals: ComposerSignals,
-): readonly PresentationTemplateSummary[] {
-  const templates =
-    useLastResolved(signals.template.importedPresentationTemplates$) ?? [];
+): readonly ImportedPresentationTemplatePickerItem[] {
+  const items =
+    useLastResolved(
+      signals.template.importedPresentationTemplatePickerItems$,
+    ) ?? [];
   const deletedTemplateIds = useGet(
     signals.template.importedPresentationTemplateDeletedIds$,
   );
   return deletedTemplateIds.size === 0
-    ? templates
-    : templates.filter((template) => {
-        return !deletedTemplateIds.has(template.id);
+    ? items
+    : items.filter((item) => {
+        return !deletedTemplateIds.has(item.template.id);
       });
+}
+
+function useImportedPresentationTemplates(
+  signals: ComposerSignals,
+): readonly PresentationTemplateSummary[] {
+  return useImportedPresentationTemplatePickerItems(signals).map((item) => {
+    return item.template;
+  });
 }
 
 function PptTemplateGrid({
@@ -6192,16 +6130,18 @@ function PptTemplateGrid({
   const importEnabled = useGet(presentationTemplateImportEnabled$);
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
-  const importedTemplates = useImportedPresentationTemplates(signals);
+  const importedTemplateItems =
+    useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {importEnabled ? (
         <PptImportCard signals={signals} onImported={onImported} />
       ) : null}
-      {importedTemplates.map((template) => {
+      {importedTemplateItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard
             key={template.id}
+            imageSignals={imageBuffers.card}
             template={template}
             selected={
               value?.type === "presentation" &&
@@ -6330,17 +6270,18 @@ function TemplatePickerDialog({
     presentationItems.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const importedTemplates = useImportedPresentationTemplates(signals);
-  const importedPreviewSummary =
-    importedTemplates.find((template) => {
-      return template.id === importedPreviewId;
+  const importedTemplateItems =
+    useImportedPresentationTemplatePickerItems(signals);
+  const importedPreviewItem =
+    importedTemplateItems.find((item) => {
+      return item.template.id === importedPreviewId;
     }) ?? null;
   const importedPreviewDetail =
     importedDetailLoadable.state === "hasData" &&
     importedDetailLoadable.data?.id === importedPreviewId
       ? importedDetailLoadable.data
       : null;
-  const isPreviewing = Boolean(previewItem ?? importedPreviewSummary);
+  const isPreviewing = Boolean(previewItem ?? importedPreviewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-open:!animate-none",
@@ -6532,10 +6473,11 @@ function TemplatePickerDialog({
     if (!isPreviewing || event.defaultPrevented) {
       return;
     }
-    if (importedPreviewSummary !== null) {
+    if (importedPreviewItem !== null) {
       const slideCount = Math.max(
         1,
-        importedPreviewDetail?.pageCount ?? importedPreviewSummary.pageCount,
+        importedPreviewDetail?.pageCount ??
+          importedPreviewItem.template.pageCount,
       );
       if (event.key === "ArrowLeft" && importedPreviewSlideIndex > 0) {
         event.preventDefault();
@@ -6600,7 +6542,7 @@ function TemplatePickerDialog({
       open
       onOpenChange={(open) => {
         if (!open) {
-          if (importedPreviewSummary !== null) {
+          if (importedPreviewItem !== null) {
             closeImportedPreview();
             return;
           }
@@ -6722,9 +6664,10 @@ function TemplatePickerDialog({
             runtime={runtime}
             signals={signals}
           />
-        ) : importedPreviewSummary ? (
+        ) : importedPreviewItem ? (
           <ImportedPresentationTemplatePreviewPage
-            summary={importedPreviewSummary}
+            imageBuffers={importedPreviewItem.imageBuffers}
+            summary={importedPreviewItem.template}
             onBack={closeImportedPreview}
             onSelect={handleSelectImportedPresentation}
             signals={signals}

@@ -1,4 +1,11 @@
-import { command, computed, state, type Computed, type State } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import { delay } from "signal-timers";
 import {
   MAX_PRESENTATION_TEMPLATE_PAGES,
@@ -187,6 +194,197 @@ async function resolvePresentationTemplatePreviewAssets(
 interface ImportedPresentationTemplateCache {
   readonly previewAssetIdsByTemplateId: Map<string, readonly string[]>;
   readonly previewUrlByAssetId: Map<string, PresentationTemplatePreviewAsset>;
+  /**
+   * One stable buffer group per catalog template. The composer owns this map;
+   * catalog eviction releases entries and closing the composer releases all of
+   * them. Thumbnail groups are bounded by each deck's page count.
+   */
+  readonly imageBuffersByTemplateId: Map<
+    string,
+    ImportedPresentationTemplateImageBuffers
+  >;
+}
+
+export type ImportedPresentationTemplateImageSlot = "a" | "b";
+
+export interface ImportedPresentationTemplateLoadedImage {
+  readonly desiredUrl: string;
+  readonly sourceUrl: string;
+  readonly slot: ImportedPresentationTemplateImageSlot;
+}
+
+export interface ImportedPresentationTemplateImageState {
+  readonly active: ImportedPresentationTemplateLoadedImage | null;
+  readonly failed: readonly ImportedPresentationTemplateLoadedImage[];
+}
+
+export interface ImportedPresentationTemplateImageSignals {
+  readonly desiredUrl$: Computed<Promise<string | null>>;
+  readonly state$: Computed<ImportedPresentationTemplateImageState>;
+  readonly commitLoadedImage$: Command<
+    Promise<void>,
+    [ImportedPresentationTemplateLoadedImage, AbortSignal]
+  >;
+  readonly failImageLoad$: Command<
+    Promise<void>,
+    [ImportedPresentationTemplateLoadedImage, AbortSignal]
+  >;
+}
+
+export interface ImportedPresentationTemplateImageBuffers {
+  readonly card: ImportedPresentationTemplateImageSignals;
+  readonly detail: ImportedPresentationTemplateImageSignals;
+  readonly thumbnails: readonly ImportedPresentationTemplateImageSignals[];
+}
+
+export interface ImportedPresentationTemplatePickerItem {
+  readonly template: PresentationTemplateSummary;
+  readonly imageBuffers: ImportedPresentationTemplateImageBuffers;
+}
+
+interface ImportedPresentationTemplateImageDependencies {
+  readonly resolveDetail$: ImportedPresentationTemplateDetailLookup;
+  readonly cardHover$: Computed<ImportedPresentationTemplateHover | null>;
+  readonly previewTemplateId$: Computed<string | null>;
+  readonly previewSlideIndex$: Computed<number>;
+}
+
+function sameImportedPresentationTemplateLoadedImage(
+  left: ImportedPresentationTemplateLoadedImage | null,
+  right: ImportedPresentationTemplateLoadedImage,
+): boolean {
+  return (
+    left?.desiredUrl === right.desiredUrl &&
+    left.sourceUrl === right.sourceUrl &&
+    left.slot === right.slot
+  );
+}
+
+function createImportedPresentationTemplateImageSignals(
+  desiredUrl$: Computed<Promise<string | null>>,
+): ImportedPresentationTemplateImageSignals {
+  const internalState$ = state<ImportedPresentationTemplateImageState>({
+    active: null,
+    failed: [],
+  });
+  const state$ = computed((get): ImportedPresentationTemplateImageState => {
+    return get(internalState$);
+  });
+  const commitLoadedImage$ = command(
+    async (
+      { get, set },
+      loadedImage: ImportedPresentationTemplateLoadedImage,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      // The DOM event identifies what finished loading; the signal remains the
+      // source of truth for what the UI wants after any intervening navigation.
+      const currentDesiredUrl = await get(desiredUrl$);
+      signal.throwIfAborted();
+      if (currentDesiredUrl !== loadedImage.desiredUrl) {
+        return;
+      }
+      const current = get(internalState$);
+      if (
+        sameImportedPresentationTemplateLoadedImage(
+          current.active,
+          loadedImage,
+        ) &&
+        current.failed.length === 0
+      ) {
+        return;
+      }
+      set(internalState$, { active: loadedImage, failed: [] });
+    },
+  );
+  const failImageLoad$ = command(
+    async (
+      { get, set },
+      failedImage: ImportedPresentationTemplateLoadedImage,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const currentDesiredUrl = await get(desiredUrl$);
+      signal.throwIfAborted();
+      if (currentDesiredUrl !== failedImage.desiredUrl) {
+        return;
+      }
+      const current = get(internalState$);
+      if (
+        current.failed.some((candidate) => {
+          return sameImportedPresentationTemplateLoadedImage(
+            candidate,
+            failedImage,
+          );
+        })
+      ) {
+        return;
+      }
+      set(internalState$, {
+        ...current,
+        failed: [...current.failed, failedImage],
+      });
+    },
+  );
+  return { desiredUrl$, state$, commitLoadedImage$, failImageLoad$ };
+}
+
+function synchronizeImportedPresentationTemplateImageBuffers(
+  cache: ImportedPresentationTemplateCache,
+  template: PresentationTemplateSummary,
+  dependencies: ImportedPresentationTemplateImageDependencies,
+): ImportedPresentationTemplateImageBuffers {
+  const existing = cache.imageBuffersByTemplateId.get(template.id);
+  const thumbnailCount = template.pageCount;
+  if (existing?.thumbnails.length === thumbnailCount) {
+    return existing;
+  }
+  const detail$ = dependencies.resolveDetail$(template.id);
+  const cardDesiredUrl$ = computed(async (get): Promise<string | null> => {
+    const hover = get(dependencies.cardHover$);
+    const detail = await get(detail$);
+    if (detail === null) {
+      return null;
+    }
+    const index = hover?.templateId === template.id ? hover.index : 0;
+    return detail.pageUrls[index] ?? detail.coverUrl;
+  });
+  const detailDesiredUrl$ = computed(async (get): Promise<string | null> => {
+    const previewTemplateId = get(dependencies.previewTemplateId$);
+    const previewSlideIndex = get(dependencies.previewSlideIndex$);
+    if (previewTemplateId !== template.id) {
+      return null;
+    }
+    const detail = await get(detail$);
+    return (
+      detail?.pageUrls[previewSlideIndex] ??
+      detail?.pageUrls[0] ??
+      detail?.coverUrl ??
+      null
+    );
+  });
+  const imageBuffers = {
+    card:
+      existing?.card ??
+      createImportedPresentationTemplateImageSignals(cardDesiredUrl$),
+    detail:
+      existing?.detail ??
+      createImportedPresentationTemplateImageSignals(detailDesiredUrl$),
+    thumbnails: Array.from({ length: thumbnailCount }, (_, index) => {
+      const thumbnailDesiredUrl$ = computed(
+        async (get): Promise<string | null> => {
+          if (get(dependencies.previewTemplateId$) !== template.id) {
+            return null;
+          }
+          return (await get(detail$))?.pageUrls[index] ?? null;
+        },
+      );
+      return (
+        existing?.thumbnails[index] ??
+        createImportedPresentationTemplateImageSignals(thumbnailDesiredUrl$)
+      );
+    }),
+  } satisfies ImportedPresentationTemplateImageBuffers;
+  cache.imageBuffersByTemplateId.set(template.id, imageBuffers);
+  return imageBuffers;
 }
 
 function evictImportedPresentationTemplateCache(
@@ -196,6 +394,7 @@ function evictImportedPresentationTemplateCache(
   const removedPreviewAssetIds =
     cache.previewAssetIdsByTemplateId.get(templateId);
   cache.previewAssetIdsByTemplateId.delete(templateId);
+  cache.imageBuffersByTemplateId.delete(templateId);
   if (removedPreviewAssetIds === undefined) {
     return;
   }
@@ -288,6 +487,27 @@ function synchronizeImportedPresentationTemplateCache(
       previewAssets,
     };
   });
+}
+
+function createImportedPresentationTemplatePickerItems$(
+  templates$: Computed<Promise<readonly PresentationTemplateSummary[]>>,
+  cache: ImportedPresentationTemplateCache,
+  dependencies: ImportedPresentationTemplateImageDependencies,
+) {
+  return computed(
+    async (get): Promise<readonly ImportedPresentationTemplatePickerItem[]> => {
+      const templates = await get(templates$);
+      return templates.map((template) => {
+        const imageBuffers =
+          synchronizeImportedPresentationTemplateImageBuffers(
+            cache,
+            template,
+            dependencies,
+          );
+        return { template, imageBuffers };
+      });
+    },
+  );
 }
 
 function createCachedImportedPresentationTemplateCatalog$(
@@ -614,6 +834,7 @@ export function createImportedPresentationTemplateSignals() {
   const cache: ImportedPresentationTemplateCache = {
     previewAssetIdsByTemplateId: new Map(),
     previewUrlByAssetId: new Map(),
+    imageBuffersByTemplateId: new Map(),
   };
   const internalPreviewUrlsVersion$ = state(0);
   const catalog$ = createCachedImportedPresentationTemplateCatalog$(
@@ -670,6 +891,17 @@ export function createImportedPresentationTemplateSignals() {
     importedPresentationTemplateCardHover$,
     setImportedPresentationTemplateCardHover$,
   } = createImportedPresentationTemplateHoverSignals();
+  const importedPresentationTemplatePickerItems$ =
+    createImportedPresentationTemplatePickerItems$(
+      importedPresentationTemplates$,
+      cache,
+      {
+        resolveDetail$: detailResolver.resolve,
+        cardHover$: importedPresentationTemplateCardHover$,
+        previewTemplateId$: importedPresentationTemplatePreviewId$,
+        previewSlideIndex$: importedPresentationTemplatePreviewSlideIndex$,
+      },
+    );
 
   const updateImportedPresentationTemplate$ =
     createUpdateImportedPresentationTemplate$(internalUpdatedTemplates$);
@@ -716,6 +948,7 @@ export function createImportedPresentationTemplateSignals() {
 
   return {
     importedPresentationTemplates$,
+    importedPresentationTemplatePickerItems$,
     importedPresentationTemplateDeletedIds$,
     ...detailSignals,
     ...urlRefresh,
