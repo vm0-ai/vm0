@@ -35,6 +35,7 @@ export interface RunWorkSection {
   readonly key: string;
   readonly anchorEventId: string;
   readonly hiddenGroups: ChatEventGroup[];
+  readonly hiddenGroupsAfterAnchor: ChatEventGroup[];
   readonly startTime: number;
   readonly endTime?: number;
 }
@@ -113,11 +114,13 @@ export function runWorkExpandedKeysForScrollTarget(
   const targetSection = Array.from(
     folding.sectionsByAnchorEventId.values(),
   ).find((section) => {
-    return section.hiddenGroups.some((group) => {
-      return group.events.some((event) => {
-        return event.id === targetEventId;
-      });
-    });
+    return [...section.hiddenGroups, ...section.hiddenGroupsAfterAnchor].some(
+      (group) => {
+        return group.events.some((event) => {
+          return event.id === targetEventId;
+        });
+      },
+    );
   });
   if (!targetSection || expandedKeys.has(targetSection.key)) {
     return expandedKeys;
@@ -160,8 +163,14 @@ function groupEventsForRunWorkDisplay(
       last?.events.some((candidate) => {
         return workAnchorEventIds.has(candidate.id);
       }) ?? false;
+    const joinsWorkAnchor = lastHasWorkAnchor && isCancelledRunEvent(event);
 
-    if (!forceStandalone && last && last.role === role && !lastHasWorkAnchor) {
+    if (
+      !forceStandalone &&
+      last &&
+      last.role === role &&
+      (!lastHasWorkAnchor || joinsWorkAnchor)
+    ) {
       last.events.push(event);
       continue;
     }
@@ -478,6 +487,7 @@ function foldRunWorkPhase(
   events: readonly EnrichedChatEvent[],
   endTime: number | undefined,
   hiddenUserEventIds: ReadonlySet<string>,
+  foldedEventIds: ReadonlySet<string>,
 ): RunWorkPhaseFolding {
   const latestAssistantOutput = lastEventMatching(
     events,
@@ -499,10 +509,24 @@ function foldRunWorkPhase(
 
   const anchorIndex = events.indexOf(anchorEvent);
   const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
-    return isRunWorkAssistantOutput(event);
+    return (
+      isRunWorkAssistantOutput(event) ||
+      (hiddenUserEventIds.has(event.id) && foldedEventIds.has(event.id))
+    );
   });
+  const hiddenEventsAfterAnchor = events
+    .slice(anchorIndex + 1)
+    .filter((event) => {
+      return hiddenUserEventIds.has(event.id) && foldedEventIds.has(event.id);
+    });
+  const hiddenEventIds = new Set(
+    [...hiddenEvents, ...hiddenEventsAfterAnchor].map((event) => {
+      return event.id;
+    }),
+  );
   const trailingStatusEvents = events.slice(anchorIndex + 1).filter((event) => {
     return (
+      !hiddenEventIds.has(event.id) &&
       !hiddenUserEventIds.has(event.id) &&
       isRenderableAssistantEvent(event) &&
       !isRunWorkAssistantOutput(event)
@@ -518,6 +542,7 @@ function foldRunWorkPhase(
       key: `${key}:${events[0]!.id}`,
       anchorEventId: anchorEvent.id,
       hiddenGroups: groupEventsByRole(hiddenEvents),
+      hiddenGroupsAfterAnchor: groupEventsByRole(hiddenEventsAfterAnchor),
       startTime,
       ...(endTime === undefined ? {} : { endTime }),
     },
@@ -578,6 +603,7 @@ function phaseEndTime(
 
 export function buildRunWorkFolding(
   groups: readonly ChatEventGroup[],
+  foldedEventIds: ReadonlySet<string> = new Set(),
 ): RunWorkFolding | null {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
@@ -609,6 +635,7 @@ export function buildRunWorkFolding(
         phase,
         phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
         unit.hiddenUserEventIds,
+        foldedEventIds,
       );
       visibleEvents.push(...phaseFolding.visibleEvents);
       if (phaseFolding.section !== null) {
@@ -660,13 +687,22 @@ export function applyRunWorkExpansion(
     if (section === null || !expandedKeys.has(section.key)) {
       return group;
     }
+    const anchorIndex = group.events.findIndex((event) => {
+      return event.id === section.anchorEventId;
+    });
+    const anchorEndIndex =
+      anchorIndex === -1 ? group.events.length : anchorIndex + 1;
     return {
       ...group,
       events: [
         ...section.hiddenGroups.flatMap((hiddenGroup) => {
           return hiddenGroup.events;
         }),
-        ...group.events,
+        ...group.events.slice(0, anchorEndIndex),
+        ...section.hiddenGroupsAfterAnchor.flatMap((hiddenGroup) => {
+          return hiddenGroup.events;
+        }),
+        ...group.events.slice(anchorEndIndex),
       ],
     };
   });

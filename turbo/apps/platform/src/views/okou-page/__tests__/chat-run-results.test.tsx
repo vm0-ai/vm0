@@ -1711,6 +1711,17 @@ describe("chat lifecycle", () => {
       "The latest launch status is ready.",
       "Paused mid-thought — pick it back up whenever.",
     );
+    const finalOutputGroup = screen
+      .getByText("The latest launch status is ready.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    const cancellationGroup = screen
+      .getByText("Paused mid-thought — pick it back up whenever.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    expect(finalOutputGroup).not.toBeNull();
+    expect(cancellationGroup).toBe(finalOutputGroup);
+    expect(
+      within(finalOutputGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
 
     fireEvent.click(expandWork);
 

@@ -3094,7 +3094,7 @@ function ChatThreadRenderedEventGroups({
     );
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
   const runWorkFolding = runWorkFoldingEnabled
-    ? buildRunWorkFolding(runGroupVisibleGroups)
+    ? buildRunWorkFolding(runGroupVisibleGroups, new Set(modelChanges.keys()))
     : null;
   const runWorkExpandedKeys = useGet(runWorkExpandedKeys$);
   const effectiveRunWorkExpandedKeys = runWorkExpandedKeysForScrollTarget(
@@ -3409,9 +3409,12 @@ function ChatThreadEventGroups({
               runWorkSection={
                 runWorkSection !== null
                   ? {
+                      anchorEventId: runWorkSection.anchorEventId,
                       startTime: runWorkSection.startTime,
                       endTime: runWorkSection.endTime,
                       hiddenGroups: runWorkSection.hiddenGroups,
+                      hiddenGroupsAfterAnchor:
+                        runWorkSection.hiddenGroupsAfterAnchor,
                       expanded: runWorkExpanded,
                       onToggle: () => {
                         onToggleRunWork(runWorkSection.key);
@@ -3712,22 +3715,37 @@ function RunSectionDividerRow({
 
 function ModelChangeDividerRow({ change }: { change: RunModelChange }) {
   const { t } = useTranslation();
-  const label =
-    change.kind === "model"
-      ? t(
-          ($) => {
-            return $.chat.run.modelChangedTo;
-          },
-          { model: runModelDisplayName(t, change.selection) },
-        )
-      : change.enabled
-        ? t(($) => {
-            return $.chat.run.fastModeOn;
-          })
-        : t(($) => {
-            return $.chat.run.fastModeOff;
-          });
-  return <RunSectionDividerRow label={label} />;
+  return <RunSectionDividerRow label={modelChangeLabel(t, change)} />;
+}
+
+function modelChangeLabel(
+  t: TFunction<"common">,
+  change: RunModelChange,
+): string {
+  return change.kind === "model"
+    ? t(
+        ($) => {
+          return $.chat.run.modelChangedTo;
+        },
+        { model: runModelDisplayName(t, change.selection) },
+      )
+    : change.enabled
+      ? t(($) => {
+          return $.chat.run.fastModeOn;
+        })
+      : t(($) => {
+          return $.chat.run.fastModeOff;
+        });
+}
+
+function FoldedModelChangeDivider({ change }: { change: RunModelChange }) {
+  const { t } = useTranslation();
+  return (
+    <RunSectionDivider
+      label={modelChangeLabel(t, change)}
+      labelPosition="right"
+    />
+  );
 }
 
 function CompletedWorkFoldRow({
@@ -5853,19 +5871,8 @@ function PagedGroupRow({
   modelChanges: ReadonlyMap<string, RunModelChange>;
   stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
-  completedWorkFold?: {
-    groups: readonly ChatEventGroup[];
-    hiddenGroups: readonly ChatEventGroup[];
-    expanded: boolean;
-    onToggle: () => void;
-  };
-  runWorkSection?: {
-    startTime: number;
-    endTime: number | undefined;
-    hiddenGroups: readonly ChatEventGroup[];
-    expanded: boolean;
-    onToggle: () => void;
-  };
+  completedWorkFold?: CompletedWorkFoldControl;
+  runWorkSection?: RunWorkSectionControl;
 }) {
   if (group.role === "user") {
     return (
@@ -5882,6 +5889,7 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      modelChanges={modelChanges}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
       runWorkSection={runWorkSection}
@@ -7376,36 +7384,188 @@ function PagedUserMessage({
   );
 }
 
+type CompletedWorkFoldControl = {
+  readonly groups: readonly ChatEventGroup[];
+  readonly hiddenGroups: readonly ChatEventGroup[];
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+};
+
+type RunWorkSectionControl = Omit<RunWorkSection, "key"> & {
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+};
+
+type PagedAssistantGroupProps = {
+  readonly group: ChatEventGroup;
+  readonly thread: ChatPanelSignals;
+  readonly modelChanges: ReadonlyMap<string, RunModelChange>;
+  readonly runGroupFolds?: readonly RunGroupFoldControl[];
+  readonly completedWorkFold?: CompletedWorkFoldControl;
+  readonly runWorkSection?: RunWorkSectionControl;
+};
+
+type PagedAssistantTimelineItem =
+  | {
+      readonly kind: "assistant";
+      readonly event: EnrichedChatEvent;
+    }
+  | {
+      readonly kind: "model-change";
+      readonly eventId: string;
+      readonly change: RunModelChange;
+    }
+  | {
+      readonly kind: "completed-work";
+      readonly control: CompletedWorkFoldControl;
+    }
+  | {
+      readonly kind: "run-work";
+      readonly control: RunWorkSectionControl;
+    };
+
+function assistantTimelineItems(
+  events: readonly EnrichedChatEvent[],
+): PagedAssistantTimelineItem[] {
+  return events.filter(isRenderableAssistantEvent).map((event) => {
+    return { kind: "assistant", event };
+  });
+}
+
+function foldedRunWorkTimelineItems(
+  groups: readonly ChatEventGroup[],
+  modelChanges: ReadonlyMap<string, RunModelChange>,
+): PagedAssistantTimelineItem[] {
+  return groups.flatMap((group) => {
+    return group.events.flatMap((event): PagedAssistantTimelineItem[] => {
+      const change = modelChanges.get(event.id);
+      if (change !== undefined) {
+        return [{ kind: "model-change", eventId: event.id, change }];
+      }
+      return isRenderableAssistantEvent(event)
+        ? [{ kind: "assistant", event }]
+        : [];
+    });
+  });
+}
+
+function buildPagedAssistantTimeline({
+  group,
+  modelChanges,
+  completedWorkFold,
+  runWorkSection,
+}: Pick<
+  PagedAssistantGroupProps,
+  "group" | "modelChanges" | "completedWorkFold" | "runWorkSection"
+>): PagedAssistantTimelineItem[] {
+  const items: PagedAssistantTimelineItem[] = [];
+  if (completedWorkFold !== undefined) {
+    items.push({ kind: "completed-work", control: completedWorkFold });
+    if (completedWorkFold.expanded) {
+      items.push(
+        ...completedWorkFold.hiddenGroups.flatMap((hiddenGroup) => {
+          return assistantTimelineItems(hiddenGroup.events);
+        }),
+      );
+    }
+  }
+  if (runWorkSection === undefined) {
+    items.push(...assistantTimelineItems(group.events));
+    return items;
+  }
+
+  items.push({ kind: "run-work", control: runWorkSection });
+  const anchorIndex = group.events.findIndex((event) => {
+    return event.id === runWorkSection.anchorEventId;
+  });
+  const anchorEndIndex =
+    anchorIndex === -1 ? group.events.length : anchorIndex + 1;
+  if (runWorkSection.expanded) {
+    items.push(
+      ...foldedRunWorkTimelineItems(runWorkSection.hiddenGroups, modelChanges),
+    );
+  }
+  items.push(...assistantTimelineItems(group.events.slice(0, anchorEndIndex)));
+  if (runWorkSection.expanded) {
+    items.push(
+      ...foldedRunWorkTimelineItems(
+        runWorkSection.hiddenGroupsAfterAnchor,
+        modelChanges,
+      ),
+    );
+  }
+  items.push(...assistantTimelineItems(group.events.slice(anchorEndIndex)));
+  return items;
+}
+
+function PagedAssistantTimeline({
+  items,
+  thread,
+}: {
+  items: readonly PagedAssistantTimelineItem[];
+  thread: ChatPanelSignals;
+}) {
+  let renderedAssistantItemCount = 0;
+  return items.map((item) => {
+    if (item.kind === "model-change") {
+      return (
+        <FoldedModelChangeDivider key={item.eventId} change={item.change} />
+      );
+    }
+    if (item.kind === "completed-work") {
+      return (
+        <CompletedWorkFoldRow
+          key="completed-work:control"
+          groups={item.control.groups}
+          expanded={item.control.expanded}
+          onToggle={item.control.onToggle}
+        />
+      );
+    }
+    if (item.kind === "run-work") {
+      const collapsible =
+        item.control.hiddenGroups.length > 0 ||
+        item.control.hiddenGroupsAfterAnchor.length > 0;
+      return (
+        <RunWorkSectionRow
+          key={`run-work:control:${item.control.anchorEventId}`}
+          startTime={item.control.startTime}
+          endTime={item.control.endTime}
+          collapsible={collapsible}
+          expanded={item.control.expanded}
+          onToggle={item.control.onToggle}
+        />
+      );
+    }
+    const compactTop = renderedAssistantItemCount > 0;
+    renderedAssistantItemCount += 1;
+    return (
+      <PagedAssistantEventItem
+        key={item.event.id}
+        event={item.event}
+        compactTop={compactTop}
+        thread={thread}
+      />
+    );
+  });
+}
+
 function PagedAssistantGroup({
   group,
   thread,
+  modelChanges,
   runGroupFolds,
   completedWorkFold,
   runWorkSection,
-}: {
-  group: ChatEventGroup;
-  thread: ChatPanelSignals;
-  runGroupFolds?: readonly RunGroupFoldControl[];
-  completedWorkFold?: {
-    groups: readonly ChatEventGroup[];
-    hiddenGroups: readonly ChatEventGroup[];
-    expanded: boolean;
-    onToggle: () => void;
-  };
-  runWorkSection?: {
-    startTime: number;
-    endTime: number | undefined;
-    hiddenGroups: readonly ChatEventGroup[];
-    expanded: boolean;
-    onToggle: () => void;
-  };
-}) {
+}: PagedAssistantGroupProps) {
   const hasRenderableEvent = group.events.some((event) => {
     return isRenderableAssistantEvent(event);
   });
   const hasRunGroupFolds = (runGroupFolds?.length ?? 0) > 0;
-  const showCompletedWorkFold = completedWorkFold && !hasRunGroupFolds;
-  const showRunWorkSection = runWorkSection && !hasRunGroupFolds;
+  const visibleCompletedWorkFold = hasRunGroupFolds
+    ? undefined
+    : completedWorkFold;
+  const visibleRunWorkSection = hasRunGroupFolds ? undefined : runWorkSection;
   if (
     !hasRenderableEvent &&
     !completedWorkFold &&
@@ -7423,21 +7583,12 @@ function PagedAssistantGroup({
     })
     .filter(Boolean)
     .join("\n\n");
-  let renderedAssistantItemCount = 0;
-  const renderAssistantTimeline = (events: readonly EnrichedChatEvent[]) => {
-    return events.filter(isRenderableAssistantEvent).map((event) => {
-      const compactTop = renderedAssistantItemCount > 0;
-      renderedAssistantItemCount += 1;
-      return (
-        <PagedAssistantEventItem
-          key={event.id}
-          event={event}
-          compactTop={compactTop}
-          thread={thread}
-        />
-      );
-    });
-  };
+  const timelineItems = buildPagedAssistantTimeline({
+    group,
+    modelChanges,
+    completedWorkFold: visibleCompletedWorkFold,
+    runWorkSection: visibleRunWorkSection,
+  });
 
   return (
     <div
@@ -7455,41 +7606,7 @@ function PagedAssistantGroup({
               <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
             );
           })}
-          {showCompletedWorkFold && (
-            <CompletedWorkFoldRow
-              groups={completedWorkFold.groups}
-              expanded={completedWorkFold.expanded}
-              onToggle={completedWorkFold.onToggle}
-            />
-          )}
-          {showCompletedWorkFold && completedWorkFold.expanded
-            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
-                return (
-                  <div key={hiddenGroup.beginEventId} className="contents">
-                    {renderAssistantTimeline(hiddenGroup.events)}
-                  </div>
-                );
-              })
-            : null}
-          {showRunWorkSection && (
-            <RunWorkSectionRow
-              startTime={runWorkSection.startTime}
-              endTime={runWorkSection.endTime}
-              collapsible={runWorkSection.hiddenGroups.length > 0}
-              expanded={runWorkSection.expanded}
-              onToggle={runWorkSection.onToggle}
-            />
-          )}
-          {showRunWorkSection && runWorkSection.expanded
-            ? runWorkSection.hiddenGroups.map((hiddenGroup) => {
-                return (
-                  <div key={hiddenGroup.beginEventId} className="contents">
-                    {renderAssistantTimeline(hiddenGroup.events)}
-                  </div>
-                );
-              })
-            : null}
-          {renderAssistantTimeline(group.events)}
+          <PagedAssistantTimeline items={timelineItems} thread={thread} />
         </div>
       </div>
       <PagedGroupActions group={group} content={fullContent} thread={thread} />

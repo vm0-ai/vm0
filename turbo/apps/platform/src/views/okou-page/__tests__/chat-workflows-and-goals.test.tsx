@@ -1153,6 +1153,13 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-work-trigger-user",
           role: "user",
           content: "Resume the release goal",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Resume the release goal" },
+              { type: "model", selectedModel: "gpt-5.5" },
+            ],
+          },
           runId: "f0000001-0000-4000-a000-000000000b2c",
           createdAt: "2026-09-03T10:00:00Z",
         },
@@ -1170,7 +1177,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: goalPrompt,
           userMessage: {
             version: 1,
-            parts: [{ type: "goal", goalBrief }],
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "claude-sonnet-4-6" },
+            ],
           },
           runId: "f0000001-0000-4000-a000-000000000b2d",
           runGroupId,
@@ -1191,7 +1201,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: goalPrompt,
           userMessage: {
             version: 1,
-            parts: [{ type: "goal", goalBrief }],
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "claude-sonnet-4-6" },
+            ],
           },
           runId: "f0000001-0000-4000-a000-000000000b2e",
           runGroupId,
@@ -1232,6 +1245,9 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     expect(
       screen.queryByText("Checked the first release blocker."),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Model changed to Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(expandWork);
 
@@ -1242,7 +1258,20 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByText("Checked the first release blocker."),
       ).toBeInTheDocument();
+      expect(
+        screen.getByText("Model changed to Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
     });
+    expectTextBefore(
+      document.body,
+      "The goal is running again.",
+      "Model changed to Claude Sonnet 4.6",
+    );
+    expectTextBefore(
+      document.body,
+      "Model changed to Claude Sonnet 4.6",
+      "Checked the first release blocker.",
+    );
     expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Expand grouped run history"),
@@ -1464,6 +1493,13 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-cancelled-goal-work-trigger-user",
           role: "user",
           content: "Start checking the release",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Start checking the release" },
+              { type: "model", selectedModel: "gpt-5.5" },
+            ],
+          },
           runId: "f0000001-0000-4000-a000-000000000e2c",
           createdAt: "2026-09-03T10:00:00Z",
         },
@@ -1481,7 +1517,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: goalBrief,
           userMessage: {
             version: 1,
-            parts: [{ type: "goal", goalBrief }],
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "gpt-5.5" },
+            ],
           },
           runId: "f0000001-0000-4000-a000-000000000e2d",
           runGroupId,
@@ -1502,7 +1541,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: goalBrief,
           userMessage: {
             version: 1,
-            parts: [{ type: "goal", goalBrief }],
+            parts: [
+              { type: "goal", goalBrief },
+              { type: "model", selectedModel: "claude-sonnet-4-6" },
+            ],
           },
           runId: "f0000001-0000-4000-a000-000000000e2e",
           runGroupId,
@@ -1544,6 +1586,19 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       "The first release check passed.",
       "Paused mid-thought — pick it back up whenever.",
     );
+    expect(
+      screen.queryByText("Model changed to Claude Sonnet 4.6"),
+    ).not.toBeInTheDocument();
+    const finalOutputGroup = screen
+      .getByText("The first release check passed.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    const cancellationGroup = screen
+      .getByText("Paused mid-thought — pick it back up whenever.")
+      .closest<HTMLElement>('[data-role="assistant"]');
+    expect(cancellationGroup).toBe(finalOutputGroup);
+    expect(
+      within(finalOutputGroup!).getAllByLabelText("View agent profile"),
+    ).toHaveLength(1);
     expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
     expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
     expect(
@@ -1556,7 +1611,20 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByText("The release check has started."),
       ).toBeInTheDocument();
+      expect(
+        screen.getByText("Model changed to Claude Sonnet 4.6"),
+      ).toBeInTheDocument();
     });
+    expectTextBefore(
+      document.body,
+      "The first release check passed.",
+      "Model changed to Claude Sonnet 4.6",
+    );
+    expectTextBefore(
+      document.body,
+      "Model changed to Claude Sonnet 4.6",
+      "Paused mid-thought — pick it back up whenever.",
+    );
     expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
   });
 
