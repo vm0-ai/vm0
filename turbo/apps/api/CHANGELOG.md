@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.539.1](https://github.com/vm0-ai/vm0/compare/api-v1.539.0...api-v1.539.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+    * @okouai/db bumped to 1.239.1
+    * @okouai/pi-agent-runtime bumped to 1.15.2
+
 ## [1.539.0](https://github.com/vm0-ai/vm0/compare/api-v1.538.2...api-v1.539.0) (2026-09-03)
 
 
