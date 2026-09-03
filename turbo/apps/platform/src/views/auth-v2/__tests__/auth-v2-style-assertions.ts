@@ -38,8 +38,8 @@ const authV2ActionTheme = `
   @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
   @theme {
     --color-card: rgb(255 255 255);
-    --color-primary-900: rgb(208 50 0);
-    --color-primary-950: rgb(92 41 24);
+    --color-brand-text: rgb(136 86 0);
+    --color-brand-text-hover: rgb(108 67 0);
   }
   @tailwind utilities;
 `;
@@ -127,9 +127,9 @@ export async function renderedAuthV2LinkContrast(
   styleElement.textContent = [
     compiler.build(restingColorClasses),
     `[data-theme="dark"] {
-      --color-card: rgb(37 37 39);
-      --color-primary-900: rgb(255 148 110);
-      --color-primary-950: rgb(254 213 199);
+      --color-card: rgb(44 43 40);
+      --color-brand-text: rgb(255 165 0);
+      --color-brand-text-hover: rgb(255 197 128);
     }`,
   ].join("\n");
   document.head.append(styleElement);

@@ -8,7 +8,9 @@ import {
   reloadAuthV2,
 } from "../lib/auth-v2-ui";
 
-const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(239, 80, 1)";
+const AUTH_V2_PRIMARY_BACKGROUND_COLOR = "rgb(255, 165, 0)";
+// Amber is a light fill, so the label is Ink rather than white.
+const AUTH_V2_PRIMARY_TEXT_COLOR = "rgb(36, 35, 33)";
 const UNSUPPORTED_CHROME_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/110.0.0.0 Safari/537.36";
 
@@ -110,12 +112,12 @@ test("primary actions retain brand styling while links remain accessible", async
     "background-color",
     AUTH_V2_PRIMARY_BACKGROUND_COLOR,
   );
-  await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(continueButton).toHaveCSS("color", AUTH_V2_PRIMARY_TEXT_COLOR);
   await expect(continueButton).toHaveClass(/\bbg-primary\b/);
   await expect(continueButton).toHaveClass(/\btext-primary-foreground\b/);
-  await expect(signInLink).toHaveClass(/\btext-primary-900\b/);
+  await expect(signInLink).toHaveClass(/\btext-brand-text\b/);
   await expectAccessibleLinkContrast(signInLink, root);
-  await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(21, 24, 30)");
+  await expect(passwordVisibilityAction).toHaveCSS("color", "rgb(36, 35, 33)");
 
   await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -123,11 +125,11 @@ test("primary actions retain brand styling while links remain accessible", async
     "background-color",
     AUTH_V2_PRIMARY_BACKGROUND_COLOR,
   );
-  await expect(continueButton).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(continueButton).toHaveCSS("color", AUTH_V2_PRIMARY_TEXT_COLOR);
   await expectAccessibleLinkContrast(signInLink, root);
   await expect(passwordVisibilityAction).toHaveCSS(
     "color",
-    "rgb(233, 234, 236)",
+    "rgb(250, 248, 243)",
   );
 });
 

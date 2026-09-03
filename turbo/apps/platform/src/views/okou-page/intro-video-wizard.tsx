@@ -218,7 +218,7 @@ function WizardStepButton({
       className={cn(
         "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "bg-primary/10 text-primary"
+          ? "bg-primary/10 text-brand-text"
           : completed
             ? "text-foreground hover:bg-state-hover"
             : "text-muted-foreground hover:bg-state-hover disabled:pointer-events-none disabled:opacity-45",
@@ -230,7 +230,7 @@ function WizardStepButton({
           active
             ? "border-primary bg-primary text-primary-foreground"
             : completed
-              ? "border-primary/30 bg-primary/10 text-primary"
+              ? "border-primary/30 bg-primary/10 text-brand-text"
               : "border-border bg-background",
         )}
       >
@@ -260,7 +260,7 @@ function SourceChoice({
       onClick={onClick}
       className="group flex min-h-32 min-w-0 items-start gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-brand-text transition-colors group-hover:bg-primary/15">
         {icon}
       </span>
       <span className="min-w-0">
@@ -435,7 +435,7 @@ function DesktopStep({
 }) {
   return (
     <li className="flex items-start gap-3 py-3">
-      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-medium text-brand-text">
         {index}
       </span>
       <span className="min-w-0">
@@ -498,7 +498,7 @@ function DesktopRecordPage() {
           </div>
           <div className="grid min-h-48 place-items-center p-6 text-center">
             <div>
-              <MonitorUp className="mx-auto size-9 text-primary" />
+              <MonitorUp className="mx-auto size-9 text-brand-text" />
               <p className="mt-3 text-sm font-semibold text-foreground">
                 {t(
                   ($) => {
@@ -587,7 +587,7 @@ function SourceReviewPage({ source }: { readonly source: IntroVideoSource }) {
           />
         ) : (
           <div className="text-center">
-            <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary">
+            <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-primary/10 text-brand-text">
               <FileText size={28} />
             </span>
             <div className="mx-auto mt-5 flex w-44 flex-col gap-2">
@@ -610,7 +610,7 @@ function SourceReviewPage({ source }: { readonly source: IntroVideoSource }) {
           })}
         </p>
         <div className="mt-5 flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text">
             {source.kind === "video" ? (
               <Play size={18} fill="currentColor" />
             ) : (
@@ -903,7 +903,7 @@ function VoiceUtilityCard({
         selected ? "border-primary bg-primary/[0.04]" : "border-border",
       )}
     >
-      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
         {icon}
       </span>
       <span className="min-w-0 flex-1">
@@ -1004,7 +1004,7 @@ function ReviewItem({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-brand-text">
         {icon}
       </span>
       <span className="min-w-0">

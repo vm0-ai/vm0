@@ -1564,7 +1564,7 @@ function WorkflowTemplateCard({
           className={cn(
             "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
-              ? "border-primary/40 bg-primary/10 text-primary"
+              ? "border-primary/40 bg-primary/10 text-brand-text"
               : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
@@ -4599,7 +4599,7 @@ function IllustrationTemplateCard({
           className={cn(
             "h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
-              ? "border-primary/40 bg-primary/10 text-primary"
+              ? "border-primary/40 bg-primary/10 text-brand-text"
               : "border-border bg-background text-foreground hover:bg-state-hover",
           )}
         >
@@ -7287,14 +7287,14 @@ function ConnectorTriggerIcons({
       })}
       {hasComputerUse && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text zero-border sm:h-7 sm:w-7">
             <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
-          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
+          <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-brand-text zero-border sm:h-7 sm:w-7">
             <Globe size={16} />
           </span>
         </span>
@@ -8005,7 +8005,7 @@ function ComposerConnectorAccountChoices({
         className={choiceClassName}
         onClick={onUseDefault}
       >
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-brand-text">
           {!selection ? <Check size={15} strokeWidth={2.5} /> : null}
         </span>
         <span className="min-w-0 flex-1">
@@ -8076,7 +8076,7 @@ function ComposerConnectorAccountChoices({
               onSelect(connection);
             }}
           >
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-brand-text">
               {checked ? <Check size={15} strokeWidth={2.5} /> : null}
             </span>
             <span className="min-w-0 flex-1">

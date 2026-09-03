@@ -193,7 +193,7 @@ export function MultiSelectCombobox({
                   )}
                   <span className="flex-1 text-left">{opt.label}</span>
                   {isSelected && (
-                    <Check size={16} className="shrink-0 text-primary" />
+                    <Check size={16} className="shrink-0 text-brand-text" />
                   )}
                 </button>
               );
