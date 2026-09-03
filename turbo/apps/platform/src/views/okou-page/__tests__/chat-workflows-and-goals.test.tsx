@@ -1451,6 +1451,113 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     expect(document.querySelector("[data-thinking-indicator]")).not.toBeNull();
   });
 
+  it("keeps cancelled goal continuations folded with their triggering run", async () => {
+    const threadId = "e9000000-0000-4000-a000-000000000026";
+    const runGroupId = "f0000001-0000-4000-a000-000000000e2b";
+    const goalBrief = "Keep checking the release";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Cancelled goal run work folding",
+      chatEvents: [
+        {
+          id: "msg-cancelled-goal-work-trigger-user",
+          role: "user",
+          content: "Start checking the release",
+          runId: "f0000001-0000-4000-a000-000000000e2c",
+          createdAt: "2026-09-03T10:00:00Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-trigger-assistant",
+          role: "assistant",
+          content: "The release check has started.",
+          runId: "f0000001-0000-4000-a000-000000000e2c",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:00:10Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-user-1",
+          role: "user",
+          content: goalBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-000000000e2d",
+          runGroupId,
+          createdAt: "2026-09-03T10:01:00Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-assistant-1",
+          role: "assistant",
+          content: "The first release check passed.",
+          runId: "f0000001-0000-4000-a000-000000000e2d",
+          runGroupId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T10:01:30Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-user-2",
+          role: "user",
+          content: goalBrief,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
+          runId: "f0000001-0000-4000-a000-000000000e2e",
+          runGroupId,
+          createdAt: "2026-09-03T10:02:00Z",
+        },
+        {
+          id: "msg-cancelled-goal-work-assistant-2",
+          role: "assistant",
+          content: "Run cancelled",
+          error: "Run cancelled",
+          runId: "f0000001-0000-4000-a000-000000000e2e",
+          runGroupId,
+          runLifecycleEvent: "cancelled",
+          createdAt: "2026-09-03T10:02:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
+    });
+
+    await screen.findByText("Paused mid-thought — pick it back up whenever.");
+    const expandWork = screen.getByLabelText("Expand work history");
+    expect(expandWork).toHaveTextContent(/^Worked for /);
+    expect(screen.getByText("Start checking the release")).toBeInTheDocument();
+    expect(
+      screen.queryByText("The release check has started."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("The first release check passed."),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Expand grouped run history"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(expandWork);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The release check has started."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("The first release check passed."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
+  });
+
   it("expands archived goal history for an event hash", async () => {
     const threadId = "e9000000-0000-4000-a000-000000000016";
     const runGroupId = "f0000001-0000-4000-a000-00000000092b";

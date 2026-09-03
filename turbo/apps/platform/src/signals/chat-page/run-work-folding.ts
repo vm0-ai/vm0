@@ -592,7 +592,7 @@ export function buildRunWorkFolding(
       continue;
     }
 
-    if (latestRunWasCancelled(unit.events)) {
+    if (!unit.isGoal && latestRunWasCancelled(unit.events)) {
       visibleEvents.push(
         ...unit.events.filter((event) => {
           return !unit.hiddenUserEventIds.has(event.id);
