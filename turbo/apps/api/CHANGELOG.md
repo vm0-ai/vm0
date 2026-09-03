@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.535.0](https://github.com/vm0-ai/vm0/compare/api-v1.534.3...api-v1.535.0) (2026-09-03)
+
+
+### Features
+
+* **pi-memory:** add CAS-safe publication control plane ([#31267](https://github.com/vm0-ai/vm0/issues/31267)) ([300d105](https://github.com/vm0-ai/vm0/commit/300d105769122ccd06ad2f4e54a0bc8446f7a1f9))
+
+
+### Bug Fixes
+
+* surface paused goal context in thread runs ([#31265](https://github.com/vm0-ai/vm0/issues/31265)) ([35a1d9d](https://github.com/vm0-ai/vm0/commit/35a1d9d1e76a6b0135c4d73ea8b44a51531e1291))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.238.0
+
 ## [1.534.3](https://github.com/vm0-ai/vm0/compare/api-v1.534.2...api-v1.534.3) (2026-09-03)
 
 
