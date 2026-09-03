@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.6...guest-agent-v0.84.7) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
 ## [0.84.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.5...guest-agent-v0.84.6) (2026-09-02)
 
 

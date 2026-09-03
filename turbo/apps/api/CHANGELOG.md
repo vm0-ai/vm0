@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.534.1](https://github.com/vm0-ai/vm0/compare/api-v1.534.0...api-v1.534.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/pi-agent-runtime bumped to 1.14.0
+
 ## [1.534.0](https://github.com/vm0-ai/vm0/compare/api-v1.533.0...api-v1.534.0) (2026-09-02)
 
 
