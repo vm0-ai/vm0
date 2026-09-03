@@ -3,7 +3,6 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
-import { runFailureReasonTokenSchema } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import {
@@ -276,16 +275,7 @@ function expectArchiveInvariants(
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
-    const expectedKeys = [
-      ...CANONICAL_ARCHIVE_KEYS,
-      ...(Object.hasOwn(line, "failureReason") ? ["failureReason"] : []),
-    ].sort();
-    expect(Object.keys(line).sort()).toStrictEqual(expectedKeys);
-    expect(
-      !Object.hasOwn(line, "failureReason") ||
-        (line.eventType === "run.failed" &&
-          runFailureReasonTokenSchema.safeParse(line.failureReason).success),
-    ).toBeTruthy();
+    expect(Object.keys(line).sort()).toStrictEqual(CANONICAL_ARCHIVE_KEYS);
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
