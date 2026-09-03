@@ -427,6 +427,8 @@ export async function reserveActiveInputDelivery(
       scope.status === "running"
         ? await prepareReservation(db, scope, signal)
         : ({ kind: "empty" } as const);
+    // A committed open delivery hides its source from the pending query, so
+    // recheck for one after an empty preparation before bypassing serialization.
     if (
       scope.status === "running" &&
       prepared.kind === "empty" &&

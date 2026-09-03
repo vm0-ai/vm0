@@ -88,11 +88,12 @@ and the post-commit scheduler may create the successor run.
 
 ## Transaction Boundary
 
-A running recheck with no pending input and no committed open delivery is
-observational. After a fresh run-status and open-delivery read confirms that
-state, it returns `empty` without entering the serialized transaction. Input
-committed after that read uses the realtime notification path, with the
-30-second poll as notification-loss recovery.
+A running recheck first reads pending input without locks. If that read is
+empty, a fresh non-locking query confirms that the run is still running and no
+committed open delivery exists. It then returns `empty` without entering the
+serialized transaction. Input committed after the pending-input snapshot uses
+the realtime notification path, with the 30-second poll as notification-loss
+recovery.
 
 Pending reservations, open-delivery retrieval, and direct receipt serialize
 database state in this order:
