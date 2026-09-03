@@ -5950,7 +5950,10 @@ describe("CHAT-02: model-first provider policies", () => {
         orgId,
         userId: actor.userId,
       }),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({
+      sourceRunId: first.runId,
+      status: "pending",
+    });
     const firstDeveloperPrompt = piResponsesDeveloperPrompt(
       modelRequestBodies[0],
     );
@@ -9898,11 +9901,11 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected Terra storage manifest");
     }
     const terraMounts = terraStorageManifest.storageMounts;
-    expect(terraMounts).not.toContainEqual(
-      expect.objectContaining({ name: "memory" }),
-    );
-    expect(terraMounts).not.toContainEqual(
-      expect.objectContaining({ mountPath: PI_MEMORY_ROOT }),
+    expect(terraMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: PI_MEMORY_ROOT,
+      }),
     );
     expect(claimed.claim.prompt).toBe(prompt);
     const sandboxUsageEvent = {
