@@ -109,11 +109,11 @@ const forgeConfig = require(path.join(
   "turbo/apps/desktop/forge.config.js",
 ));
 
-if (forgeConfig.packagerConfig.name !== "Zero Computer Use") {
-  throw new Error("Default build must preserve the Zero display name");
+if (forgeConfig.packagerConfig.name !== "Okou") {
+  throw new Error("Default build must use the Okou display name");
 }
-if (forgeConfig.packagerConfig.appBundleId !== "ai.vm0.zero.desktop") {
-  throw new Error("Default build must preserve the Zero bundle ID");
+if (forgeConfig.packagerConfig.appBundleId !== "ai.okou.desktop") {
+  throw new Error("Default build must use the Okou bundle ID");
 }
 
 forgeConfig.hooks
@@ -122,6 +122,25 @@ forgeConfig.hooks
     console.error(error);
     process.exit(1);
   });
+NODE
+
+OKOU_DESKTOP_SKIP_SIGNING=true \
+OKOU_DESKTOP_PRODUCT=zero \
+node - "$repo_root" <<'NODE'
+const path = require("node:path");
+
+const repoRoot = process.argv[2];
+const forgeConfig = require(path.join(
+  repoRoot,
+  "turbo/apps/desktop/forge.config.js",
+));
+
+if (forgeConfig.packagerConfig.name !== "Zero Computer Use") {
+  throw new Error("Zero build must keep the Zero display name");
+}
+if (forgeConfig.packagerConfig.appBundleId !== "ai.vm0.zero.desktop") {
+  throw new Error("Zero build must keep the Zero bundle ID");
+}
 NODE
 
 OKOU_DESKTOP_SKIP_SIGNING=true \

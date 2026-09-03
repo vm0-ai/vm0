@@ -132,7 +132,10 @@ jobs:
           echo "platform-url=${platform_url}" >> "$GITHUB_OUTPUT"
           echo "PR preview desktop URL: ${platform_url}"
 
-      - name: Build unsigned production macOS artifact
+      # This build selects no product and writes no runtime config, so it is
+      # what an unconfigured build produces and the only packaged evidence
+      # that the default product is Okou.
+      - name: Build unsigned default-configuration macOS artifact
         id: build-prod
         env:
           SENTRY_DSN_DESKTOP: ${{ secrets.SENTRY_DSN_DESKTOP }}
@@ -153,8 +156,8 @@ jobs:
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$version.zip"
-          artifact_path="apps/desktop/out/Zero-darwin-arm64.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Okou-darwin-arm64-$version.zip"
+          artifact_path="apps/desktop/out/Okou-default-darwin-arm64.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge zip artifact found: $forge_zip"
@@ -165,10 +168,10 @@ jobs:
           cp "$forge_zip" "$artifact_path"
           echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
 
-      - name: Verify production artifact
+      - name: Verify default-configuration artifact
         run: |
-          artifact_path="apps/desktop/out/Zero-darwin-arm64.zip"
-          app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
+          artifact_path="apps/desktop/out/Okou-default-darwin-arm64.zip"
+          app_dir="apps/desktop/out/Okou-darwin-arm64/Okou.app"
           plist="$app_dir/Contents/Info.plist"
           if [ ! -f "$artifact_path" ]; then
             echo "No desktop zip artifact found"
@@ -206,7 +209,7 @@ jobs:
             exit 1
           fi
           if [ -e "$app_dir/Contents/Resources/app/desktop-runtime-config.json" ]; then
-            echo "Production artifact should not contain desktop runtime config"
+            echo "Default-configuration artifact should not contain desktop runtime config"
             exit 1
           fi
 
@@ -215,36 +218,38 @@ jobs:
             echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
             exit 1
           fi
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.okou.desktop"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop"
-          file "$app_dir/Contents/MacOS/Zero Computer Use" | grep -q "arm64"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Okou Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.okou.desktop"
+          file "$app_dir/Contents/MacOS/Okou" | grep -q "arm64"
           file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "arm64"
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/icon.icns"
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/native/computer-use-helper"
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/main.js"
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/bootstrap.js"
-          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/assets/icon.png"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/MacOS/Okou"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/dist/bootstrap.js"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/assets/icon.png"
 
-      - name: Smoke test production artifact launch
+      - name: Smoke test default-configuration artifact launch
         run: node apps/desktop/scripts/smoke-test-packaged-app.js
 
-      - name: Upload unsigned macOS artifact
+      - name: Upload unsigned default-configuration macOS artifact
         uses: actions/upload-artifact@v7
         with:
-          name: zero-desktop-macos-arm64-unsigned
+          name: okou-desktop-macos-arm64-default-unsigned
           path: turbo/${{ steps.build-prod.outputs.path }}
           if-no-files-found: error
           retention-days: 14
 
+      # The shipping configuration: the same product selected explicitly,
+      # through the runtime config that the release build bakes in.
       - name: Build unsigned Okou production macOS artifact
         id: build-okou-prod
         env:
@@ -260,6 +265,11 @@ jobs:
             rm -f apps/desktop/desktop-runtime-config.json
           }
           trap cleanup_runtime_config EXIT
+
+          # Both builds now package the same identity into
+          # out/Okou-darwin-arm64, so start from an empty output directory to
+          # keep this artifact's runtime-config assertions unambiguous.
+          rm -rf apps/desktop/out
 
           node <<'NODE'
           const fs = require("node:fs");
@@ -301,7 +311,6 @@ jobs:
         run: |
           artifact_path="apps/desktop/out/Okou-darwin-arm64.zip"
           app_dir="apps/desktop/out/Okou-darwin-arm64/Okou.app"
-          zero_app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
           runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
           if [ ! -f "$artifact_path" ]; then
@@ -311,11 +320,6 @@ jobs:
           fi
           if [ ! -d "$app_dir" ]; then
             echo "No packaged Okou app found: $app_dir"
-            find apps/desktop/out -maxdepth 4 -type d -print || true
-            exit 1
-          fi
-          if [ ! -d "$zero_app_dir" ]; then
-            echo "Zero and Okou should remain installable side by side"
             find apps/desktop/out -maxdepth 4 -type d -print || true
             exit 1
           fi
@@ -355,10 +359,19 @@ jobs:
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
-          zero_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$zero_app_dir/Contents/Info.plist")
+          # Zero and Okou must stay installable side by side so an existing
+          # Zero installation can adopt Okou. Only Okou is packaged now, so
+          # compare the packaged identity against the Zero identity that an
+          # explicit Zero-product build would use.
+          identities="apps/desktop/src/desktop-identities.json"
+          zero_bundle_id="$(jq -er '.zero.production.bundleId' "$identities")"
           okou_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist")
           if [ "$zero_bundle_id" = "$okou_bundle_id" ]; then
-            echo "Zero and Okou must use independent bundle identifiers"
+            echo "Zero and Okou should remain installable side by side: bundle identifiers collide"
+            exit 1
+          fi
+          if [ "$(jq -er '.zero.production.userDataDirectoryName' "$identities")" = "$(jq -er '.okou.production.userDataDirectoryName' "$identities")" ]; then
+            echo "Zero and Okou should remain installable side by side: user data directories collide"
             exit 1
           fi
 
@@ -423,8 +436,8 @@ jobs:
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero CU Dev-darwin-arm64-$version.zip"
-          artifact_path="apps/desktop/out/ZeroCUDev-darwin-arm64-preview.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Okou Dev-darwin-arm64-$version.zip"
+          artifact_path="apps/desktop/out/OkouDev-darwin-arm64-preview.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge preview zip artifact found: $forge_zip"
@@ -440,8 +453,8 @@ jobs:
         env:
           EXPECTED_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: |
-          artifact_path="apps/desktop/out/ZeroCUDev-darwin-arm64-preview.zip"
-          app_dir="apps/desktop/out/Zero CU Dev-darwin-arm64/Zero CU Dev.app"
+          artifact_path="apps/desktop/out/OkouDev-darwin-arm64-preview.zip"
+          app_dir="apps/desktop/out/Okou Dev-darwin-arm64/Okou Dev.app"
           plist="$app_dir/Contents/Info.plist"
           runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
           if [ ! -f "$artifact_path" ]; then
@@ -503,25 +516,25 @@ jobs:
             echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
             exit 1
           fi
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero CU Dev"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero CU Dev"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero CU Dev"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Okou Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Okou Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Okou Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.okou.desktop.dev"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero CU Dev Desktop Auth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
-          file "$app_dir/Contents/MacOS/Zero CU Dev" | grep -q "arm64"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Okou Dev Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.okou.desktop.dev"
+          file "$app_dir/Contents/MacOS/Okou Dev" | grep -q "arm64"
           file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "arm64"
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/MacOS/Zero CU Dev"
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/icon.icns"
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/native/computer-use-helper"
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/main.js"
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/bootstrap.js"
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/assets/icon.png"
-          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/desktop-runtime-config.json"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/MacOS/Okou Dev"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/app/dist/bootstrap.js"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/app/assets/icon.png"
+          unzip -l "$artifact_path" | grep -q "Okou Dev.app/Contents/Resources/app/desktop-runtime-config.json"
 
       - name: Smoke test PR preview artifact launch
         if: github.event_name == 'pull_request'
@@ -533,7 +546,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: zero-desktop-macos-arm64-preview-unsigned
+          name: okou-desktop-macos-arm64-preview-unsigned
           path: turbo/${{ steps.build-preview.outputs.path }}
           if-no-files-found: error
           retention-days: 14
@@ -650,6 +663,8 @@ jobs:
           SENTRY_PROJECT_DESKTOP: ${{ vars.SENTRY_PROJECT_DESKTOP }}
           SENTRY_ENVIRONMENT: production
           OKOU_DESKTOP_SKIP_SIGNING: "true"
+          OKOU_DESKTOP_PRODUCT: okou
+          OKOU_DESKTOP_PLATFORM_URL: https://app.okou.ai
         working-directory: turbo
         run: |
           cleanup_runtime_config() {
@@ -660,27 +675,6 @@ jobs:
           cleanup_runtime_config
           rm -rf apps/desktop/out
 
-          pnpm -F @okouai/desktop build
-          pnpm -F @okouai/desktop upload:sentry
-          pnpm --dir apps/desktop exec electron-forge package \
-            --platform darwin \
-            --arch arm64
-
-          app_dir="$PWD/apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
-          if [ ! -d "$app_dir" ]; then
-            echo "No packaged app found: $app_dir"
-            find apps/desktop/out -maxdepth 4 -type d -print || true
-            exit 1
-          fi
-          if [ -e "$app_dir/Contents/Resources/app/desktop-runtime-config.json" ]; then
-            echo "Canonical production artifact must not contain Desktop runtime config"
-            exit 1
-          fi
-
-          node apps/desktop/scripts/smoke-test-packaged-app.js
-
-          OKOU_DESKTOP_PRODUCT=okou \
-          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           node <<'NODE'
           const fs = require("node:fs");
 
@@ -697,29 +691,50 @@ jobs:
           );
           NODE
 
-          OKOU_DESKTOP_PRODUCT=okou \
-          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
           pnpm -F @okouai/desktop build
-          OKOU_DESKTOP_PRODUCT=okou \
-          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          pnpm -F @okouai/desktop upload:sentry
           pnpm --dir apps/desktop exec electron-forge package \
             --platform darwin \
             --arch arm64
 
-          okou_app_dir="$PWD/apps/desktop/out/Okou-darwin-arm64/Okou.app"
-          if [ ! -d "$okou_app_dir" ]; then
-            echo "No packaged Okou app found: $okou_app_dir"
+          app_dir="$PWD/apps/desktop/out/Okou-darwin-arm64/Okou.app"
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged Okou app found: $app_dir"
             find apps/desktop/out -maxdepth 4 -type d -print || true
             exit 1
           fi
-          okou_runtime_config="$okou_app_dir/Contents/Resources/app/desktop-runtime-config.json"
-          if [ ! -f "$okou_runtime_config" ]; then
+          runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
+          if [ ! -f "$runtime_config" ]; then
             echo "Canonical Okou artifact must contain Desktop runtime config"
             exit 1
           fi
 
-          OKOU_DESKTOP_PRODUCT=okou \
-          OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          # The published artifact must carry no runtime config beyond the one
+          # written above: exactly one file, holding exactly the canonical
+          # product and platform URL. Anything else is a configuration baked in
+          # somewhere other than this step.
+          runtime_config_count="$(find "$app_dir" -name desktop-runtime-config.json | wc -l | tr -d '[:space:]')"
+          if [ "$runtime_config_count" != "1" ]; then
+            echo "Canonical Okou artifact must contain exactly one Desktop runtime config, found $runtime_config_count"
+            find "$app_dir" -name desktop-runtime-config.json -print || true
+            exit 1
+          fi
+          RUNTIME_CONFIG="$runtime_config" node <<'NODE'
+          const fs = require("node:fs");
+
+          const config = JSON.parse(
+            fs.readFileSync(process.env.RUNTIME_CONFIG, "utf8"),
+          );
+          if (
+            Object.keys(config).sort().join(",") !== "platformUrl,product" ||
+            config.product !== process.env.OKOU_DESKTOP_PRODUCT ||
+            config.platformUrl !== process.env.OKOU_DESKTOP_PLATFORM_URL
+          ) {
+            console.error("Unexpected canonical Desktop runtime config", config);
+            process.exit(1);
+          }
+          NODE
+
           node apps/desktop/scripts/smoke-test-packaged-app.js
 
       - name: Create canonical Desktop artifact
