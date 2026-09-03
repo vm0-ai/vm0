@@ -343,10 +343,7 @@ describe("connector account lifecycle routes", () => {
     );
     expect(filteredList.body.connections).toHaveLength(1);
     expect(filteredList.body.connections[0]?.id).toBe(staleId);
-    expect(filteredList.body.defaultConnection).toMatchObject({
-      id: currentId,
-      scopeMismatch: false,
-    });
+    expect("defaultConnection" in filteredList.body).toBeFalsy();
 
     const staleDiff = await accept(
       accountClient().scopeDiff({

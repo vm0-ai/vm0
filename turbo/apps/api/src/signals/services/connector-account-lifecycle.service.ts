@@ -767,7 +767,11 @@ export async function listConnectorAccountsForTarget(
     );
     return connection ? [connection] : [];
   });
-  const defaultRow = args.includeScopeMismatch
+  const includeDefaultConnection =
+    args.includeScopeMismatch === true &&
+    args.cursor === undefined &&
+    args.search === undefined;
+  const defaultRow = includeDefaultConnection
     ? (rows.find((row) => {
         return row.isDefault;
       }) ??
@@ -796,7 +800,7 @@ export async function listConnectorAccountsForTarget(
     kind: "ok",
     connections: projected.slice(0, args.limit),
     nextCursor: hasMore ? encodeCursor(rows[args.limit - 1]!) : null,
-    ...(args.includeScopeMismatch ? { defaultConnection } : {}),
+    ...(includeDefaultConnection ? { defaultConnection } : {}),
   };
 }
 
