@@ -532,13 +532,6 @@ describe("ORG-03 onboarding status mapping", () => {
         return agent.agentId === defaultAgentId;
       })?.displayName,
     ).toBe("Okou");
-    const okouTeam = await api.listTeam(admin, "okou");
-    expect(
-      okouTeam.find((agent) => {
-        return agent.id === defaultAgentId;
-      })?.displayName,
-    ).toBe("Okou");
-
     const customZero = await api.createAgent(
       admin,
       { displayName: "Zero" },

@@ -262,10 +262,6 @@ export function chatSearch(args: {
           matchedMessage.content,
           args.keyword,
         ),
-        // #30468 removes these response-only fields after old web/app builds
-        // and commit-addressed CLI execution contexts have drained.
-        contextBefore: [],
-        contextAfter: [],
       };
     });
 

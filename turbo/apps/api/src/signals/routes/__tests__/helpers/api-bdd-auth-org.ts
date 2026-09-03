@@ -54,10 +54,6 @@ import {
   orgMembersContract,
   orgMembershipRequestsContract,
 } from "@okouai/api-contracts/contracts/org-member-routes";
-import {
-  teamContract,
-  type TeamComposeItem,
-} from "@okouai/api-contracts/contracts/team";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import {
   userPreferencesContract,
@@ -88,7 +84,6 @@ import { orgLogoRoutes } from "../../org-logo";
 import { orgMembersRoutes } from "../../org-members";
 import { orgMembershipRequestsRoutes } from "../../org-membership-requests";
 import { orgReadRoutes } from "../../org-read";
-import { teamRoutes } from "../../team";
 import { userPreferencesRoutes } from "../../user-preferences";
 import { createBddApi, type OnboardingBootstrapOptions } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
@@ -205,7 +200,6 @@ const authOrgRoutes = [
   ...orgInviteRoutes,
   ...orgMembershipRequestsRoutes,
   ...orgLogoRoutes,
-  ...teamRoutes,
   ...agentsRoutes,
   ...connectorAccountRoutes,
   ...customConnectorsRoutes,
@@ -1202,36 +1196,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       return { status: response.status, body: responseBody };
     },
 
-    async listTeam(
-      actor: ApiTestUser,
-      publicBrand: PublicBrand = "vm0",
-    ): Promise<readonly TeamComposeItem[]> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        teamContract,
-      );
-      const response = await accept(
-        client.list({
-          headers: authenticate(actor),
-          ...publicBrandHeaders(publicBrand),
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestListTeam(
-      actor: ApiTestUser | null,
-      statuses: readonly (200 | 401 | 403)[],
-    ) {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        teamContract,
-      );
-      return await accept(
-        client.list({ headers: authenticate(actor) }),
-        statuses,
-      );
-    },
-
     async readEnabledConnectorSlugs(
       actor: ApiTestUser,
       agentId: string,
@@ -1297,6 +1261,19 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async requestListAgents(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        agentsMainContract,
+      );
+      return await accept(
+        client.list({ headers: authenticate(actor) }),
+        statuses,
+      );
     },
 
     async readAgent(
