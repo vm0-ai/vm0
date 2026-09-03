@@ -17,12 +17,28 @@ import {
 } from "./chat-composer-test-helpers.ts";
 import {
   context,
-  detachedSetupPage,
+  detachedSetupPage as detachedSetupPageBase,
   expectTextBefore,
   mockServerQueuedThreadStories,
   buttonByText,
   buttonByLabel,
 } from "./chat-lifecycle-test-helpers.ts";
+
+type DetachedSetupPageOptions = Parameters<typeof detachedSetupPageBase>[0];
+
+function detachedSetupPage(options: DetachedSetupPageOptions) {
+  return detachedSetupPageBase({
+    ...options,
+    featureSwitches: {
+      [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      ...options.featureSwitches,
+    },
+  });
+}
+
+function detachedSetupLegacyPage(options: DetachedSetupPageOptions) {
+  return detachedSetupPageBase(options);
+}
 
 describe("chat lifecycle", () => {
   it("keeps budget inputs out of the visible transcript", async () => {
@@ -686,6 +702,98 @@ describe("chat lifecycle", () => {
       ).not.toBeNull();
     });
     expect(document.querySelector("[data-chat-run-work]")).toBeNull();
+  });
+
+  it("keeps every active assistant message visible when run work folding is off", async () => {
+    const threadId = "e7000000-0000-4000-a000-000000000031";
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: ["run-work-folding-disabled-active"],
+      chatEvents: [
+        {
+          role: "user",
+          content: "Audit the launch",
+          runId: "run-work-folding-disabled-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking launch notes.",
+          runId: "run-work-folding-disabled-active",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking launch metrics.",
+          runId: "run-work-folding-disabled-active",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+      ],
+    });
+
+    detachedSetupLegacyPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Checking launch notes.")).toBeInTheDocument();
+      expect(screen.getByText("Checking launch metrics.")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+    expect(document.querySelector("[data-chat-run-work]")).toBeNull();
+    expect(screen.queryByText(/^Working for /)).toBeNull();
+  });
+
+  it("preserves legacy Done and completed-work folding when the switch is off", async () => {
+    const threadId = "e7000000-0000-4000-a000-000000000032";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-legacy-work-user",
+          role: "user",
+          content: "Summarize the launch",
+          runId: "run-work-folding-disabled-completed",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-legacy-work-intermediate",
+          role: "assistant",
+          content: "Checking launch notes.",
+          runId: "run-work-folding-disabled-completed",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          id: "msg-legacy-work-completed-1",
+          role: "assistant",
+          content: "The launch summary is ready.",
+          runId: "run-work-folding-disabled-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+      ],
+    });
+
+    detachedSetupLegacyPage({ context, path: `/chats/${threadId}` });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    expect(expandButton).toHaveTextContent("Worked for 20s");
+    expect(expandButton.parentElement).toHaveAttribute(
+      "data-chat-completed-work-fold",
+    );
+    expect(screen.queryByText("Checking launch notes.")).toBeNull();
+    expect(
+      document.querySelector('[data-role="assistant-thinking"]'),
+    ).toHaveTextContent(
+      /Wrapped up|All done|Delivered at|Finished at|That was a wrap|Mission complete|Signed off|Done and dusted/,
+    );
+    expect(document.querySelector("[data-chat-run-work]")).toBeNull();
+
+    click(expandButton);
+
+    await expect(
+      screen.findByText("Checking launch notes."),
+    ).resolves.toBeInTheDocument();
   });
 
   it("shows Working above one assistant message while the run is active", async () => {

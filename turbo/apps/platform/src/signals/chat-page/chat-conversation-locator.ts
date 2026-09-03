@@ -19,14 +19,22 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, timeout } from "signal-timers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import {
+  applyCompletedWorkExpansion,
+  buildCompletedWorkFolding,
+  chatEventDisplayError,
+  completedWorkExpandedKeys$,
+  completedWorkExpandedKeysForScrollTarget,
+  isRenderableAssistantEvent,
+} from "./completed-work-folding.ts";
 import {
   applyRunWorkExpansion,
   buildRunWorkFolding,
-  chatEventDisplayError,
-  isRenderableAssistantEvent,
   runWorkExpandedKeys$,
   runWorkExpandedKeysForScrollTarget,
 } from "./run-work-folding.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
@@ -353,6 +361,26 @@ function createVisibleTurns(
     );
     const runGroupVisibleGroups =
       runGroupFolding?.visibleGroups ?? activeGroups;
+    const runWorkFoldingEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+    if (!runWorkFoldingEnabled) {
+      const completedWorkFolding = buildCompletedWorkFolding(
+        runGroupVisibleGroups,
+      );
+      const completedWorkExpandedKeys =
+        completedWorkExpandedKeysForScrollTarget(
+          completedWorkFolding,
+          get(completedWorkExpandedKeys$),
+          targetEventId,
+        );
+      return turnsFromGroups(
+        applyCompletedWorkExpansion(
+          runGroupVisibleGroups,
+          completedWorkFolding,
+          completedWorkExpandedKeys,
+        ),
+      );
+    }
     const runWorkFolding = buildRunWorkFolding(runGroupVisibleGroups);
     const runWorkExpandedKeys = runWorkExpandedKeysForScrollTarget(
       runWorkFolding,

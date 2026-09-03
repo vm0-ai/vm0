@@ -2176,6 +2176,17 @@
       "collapseGroupedHistory": "グループ化された実行履歴を折りたたむ",
       "collapseWorkHistory": "作業履歴を折りたたむ",
       "creditUsage": "クレジット使用量",
+      "done": {
+        "allDone": "すべて完了 — {{time}}",
+        "default": "完了",
+        "delivered": "{{time}} に配信",
+        "doneAndDusted": "完了し、埃を払いました — {{time}}",
+        "finished": "{{time}} に終了しました。ご対応ください",
+        "missionComplete": "ミッション完了、{{time}}",
+        "signedOff": "{{time}} でサインオフされました",
+        "wrap": "これで終わりです — {{time}}",
+        "wrappedUp": "{{time}} で終了"
+      },
       "duration": {
         "hour_one": "{{count}} 時間",
         "hour_other": "{{count}} 時間",
@@ -2199,6 +2210,7 @@
       "goalFor": "{{label}} の目標",
       "groupedRunsFor_one": "{{count}} は {{source}} に対して実行されます",
       "groupedRunsFor_other": "{{count}} は {{source}} に対して実行されます",
+      "justNow": "たった今",
       "keepGoing": "続ける",
       "keepGoingAt": "続ける · {{timestamp}}",
       "modelChangedTo": "モデルを{{model}}に変更しました",
@@ -2219,6 +2231,7 @@
       "viewActivityLogs": "アクティビティログを表示する",
       "viewLogs": "実行ログを表示する",
       "waitingIn": "待機中",
+      "worked": "働いた",
       "workedFor": "{{duration}} で働いていました",
       "workingFor": "{{duration}} 作業中"
     },

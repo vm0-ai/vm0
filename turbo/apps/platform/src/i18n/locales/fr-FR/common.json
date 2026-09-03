@@ -2216,6 +2216,17 @@
       "collapseGroupedHistory": "Réduire l'historique des exécutions groupées",
       "collapseWorkHistory": "Réduire l'historique du travail",
       "creditUsage": "Utilisation du crédit",
+      "done": {
+        "allDone": "Tout est fait — {{time}}",
+        "default": "Terminé",
+        "delivered": "Livré à {{time}}",
+        "doneAndDusted": "Terminé et bouclé — {{time}}",
+        "finished": "Terminé à {{time}}, à votre service",
+        "missionComplete": "Mission accomplie, {{time}}",
+        "signedOff": "Signé à {{time}}",
+        "wrap": "C'était dans la boîte — {{time}}",
+        "wrappedUp": "Terminé à {{time}}"
+      },
       "duration": {
         "hour_one": "{{count}} heure",
         "hour_many": "{{count}} heures",
@@ -2245,6 +2256,7 @@
       "groupedRunsFor_one": "{{count}} exécution pour {{source}}",
       "groupedRunsFor_many": "{{count}} exécutions pour {{source}}",
       "groupedRunsFor_other": "{{count}} exécutions pour {{source}}",
+      "justNow": "à l'instant",
       "keepGoing": "Continuez",
       "keepGoingAt": "Continuez · {{timestamp}}",
       "modelChangedTo": "Le modèle a été changé en {{model}}",
@@ -2265,6 +2277,7 @@
       "viewActivityLogs": "Voir les journaux d'activité",
       "viewLogs": "Voir les journaux d'exécution",
       "waitingIn": "En attente",
+      "worked": "Fonctionné",
       "workedFor": "Fonctionné pendant {{duration}}",
       "workingFor": "En cours depuis {{duration}}"
     },

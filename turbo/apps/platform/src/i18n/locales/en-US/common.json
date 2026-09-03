@@ -2179,6 +2179,17 @@
       "collapseGroupedHistory": "Collapse grouped run history",
       "collapseWorkHistory": "Collapse work history",
       "creditUsage": "Credit usage",
+      "done": {
+        "allDone": "All done — {{time}}",
+        "default": "Done",
+        "delivered": "Delivered at {{time}}",
+        "doneAndDusted": "Done and dusted — {{time}}",
+        "finished": "Finished at {{time}}, at your service",
+        "missionComplete": "Mission complete, {{time}}",
+        "signedOff": "Signed off at {{time}}",
+        "wrap": "That was a wrap — {{time}}",
+        "wrappedUp": "Wrapped up at {{time}}"
+      },
       "duration": {
         "hour_one": "{{count}} hour",
         "hour_other": "{{count}} hours",
@@ -2202,6 +2213,7 @@
       "goalFor": "Goal for {{label}}",
       "groupedRunsFor_one": "{{count}} run for {{source}}",
       "groupedRunsFor_other": "{{count}} runs for {{source}}",
+      "justNow": "just now",
       "keepGoing": "Keep going",
       "keepGoingAt": "Keep going · {{timestamp}}",
       "modelChangedTo": "Model changed to {{model}}",
@@ -2222,6 +2234,7 @@
       "viewActivityLogs": "View activity logs",
       "viewLogs": "View run logs",
       "waitingIn": "Waiting in",
+      "worked": "Worked",
       "workedFor": "Worked for {{duration}}",
       "workingFor": "Working for {{duration}}"
     },

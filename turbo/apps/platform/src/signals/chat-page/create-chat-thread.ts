@@ -286,6 +286,7 @@ function shuffleBlockColors(): [string, string, string] {
 }
 
 const THINKING_PHRASE_COUNT = 10;
+const DONE_PHRASE_COUNT = 8;
 
 function thinkingPhrase(index: number): string {
   switch (index) {
@@ -338,6 +339,88 @@ function thinkingPhrase(index: number): string {
       return i18n.t(($) => {
         return $.chat.run.thinking.tuningIn;
       });
+    }
+  }
+}
+
+function formatDonePhrase(lastEvent: ChatEvent | undefined): string {
+  const time = lastEvent
+    ? new Date(lastEvent.createdAt).toLocaleString(i18n.resolvedLanguage, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : i18n.t(($) => {
+        return $.chat.run.justNow;
+      });
+  const phraseIndex = lastEvent?.id
+    ? lastEvent.id.charCodeAt(lastEvent.id.length - 1) % DONE_PHRASE_COUNT
+    : 0;
+  switch (phraseIndex) {
+    case 0: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.wrappedUp;
+        },
+        { time },
+      );
+    }
+    case 1: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.allDone;
+        },
+        { time },
+      );
+    }
+    case 2: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.delivered;
+        },
+        { time },
+      );
+    }
+    case 3: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.finished;
+        },
+        { time },
+      );
+    }
+    case 4: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.wrap;
+        },
+        { time },
+      );
+    }
+    case 5: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.missionComplete;
+        },
+        { time },
+      );
+    }
+    case 6: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.signedOff;
+        },
+        { time },
+      );
+    }
+    default: {
+      return i18n.t(
+        ($) => {
+          return $.chat.run.done.doneAndDusted;
+        },
+        { time },
+      );
     }
   }
 }
@@ -1562,12 +1645,20 @@ function createEventSemanticSignals(
       );
     },
   );
+  const donePhrase$ = computed((get): Promise<string> => {
+    get(locale$);
+    const lastEvent = get(semanticGroups$)
+      .allGroups.at(-1)
+      ?.events.at(-1)?.event;
+    return Promise.resolve(formatDonePhrase(lastEvent));
+  });
   return {
     hasEvents$,
     thinkingIndicatorMode$,
     thinkingEventId$,
     thinkingText$,
     recommendedFollowupSource$,
+    donePhrase$,
   };
 }
 
@@ -3977,6 +4068,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     thinkingEventId$: events.thinkingEventId$,
     thinkingText$: events.thinkingText$,
     recommendedFollowupSource$: events.recommendedFollowupSource$,
+    donePhrase$: events.donePhrase$,
     loadMoreRenderedChatGroups$: events.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
       events.resetRenderedChatGroupsIfAtBottom$,

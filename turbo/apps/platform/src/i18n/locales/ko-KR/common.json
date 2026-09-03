@@ -2176,6 +2176,17 @@
       "collapseGroupedHistory": "그룹화된 실행 기록 접기",
       "collapseWorkHistory": "작업 기록 접기",
       "creditUsage": "크레딧 사용량",
+      "done": {
+        "allDone": "모두 완료 — {{time}}",
+        "default": "완료",
+        "delivered": "{{time}}에 전달됨",
+        "doneAndDusted": "완료 — {{time}}",
+        "finished": "{{time}}에 완료되었습니다, 도와드리겠습니다",
+        "missionComplete": "임무 완료, {{time}}",
+        "signedOff": "{{time}}에 서명 완료",
+        "wrap": "마무리 — {{time}}",
+        "wrappedUp": "{{time}}에 마무리됨"
+      },
       "duration": {
         "hour_one": "{{count}}시간",
         "hour_other": "{{count}}시간",
@@ -2199,6 +2210,7 @@
       "goalFor": "{{label}}의 목표",
       "groupedRunsFor_one": "{{source}}의 {{count}}회 실행",
       "groupedRunsFor_other": "{{source}}의 {{count}}회 실행",
+      "justNow": "방금",
       "keepGoing": "계속 진행",
       "keepGoingAt": "계속 진행 · {{timestamp}}",
       "modelChangedTo": "모델을 {{model}}로 변경했습니다",
@@ -2219,6 +2231,7 @@
       "viewActivityLogs": "활동 로그 보기",
       "viewLogs": "실행 로그 보기",
       "waitingIn": "대기 중",
+      "worked": "작업 완료",
       "workedFor": "{{duration}} 동안 작업 완료",
       "workingFor": "{{duration}} 동안 작업 중"
     },
