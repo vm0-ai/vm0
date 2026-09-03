@@ -357,6 +357,19 @@ function bytePlusProviderErrorResponse(
   providerError: VideoProviderError,
   providerStatus: number,
 ): VideoErrorResponse {
+  if (
+    providerError.code ===
+    "InputImageSensitiveContentDetected.PrivacyInformation"
+  ) {
+    return {
+      status: bytePlusErrorStatus(providerStatus),
+      body: errorBody(
+        "This model does not allow directly uploaded images that may contain a real person. Remove or replace them before trying again.",
+        "GENERATION_INPUT_REAL_PERSON_IMAGE_REJECTED",
+      ),
+    };
+  }
+
   return {
     status: bytePlusErrorStatus(providerStatus),
     body: errorBody(
