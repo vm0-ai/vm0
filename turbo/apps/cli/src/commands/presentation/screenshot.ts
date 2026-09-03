@@ -137,6 +137,16 @@ function childPath(directory: string, name: string): string {
   return normalize(`${directory}${sep}${name}`);
 }
 
+/** Resolve validated directory entries beneath a trusted directory. */
+function descendantPath(
+  directory: string,
+  ...names: readonly string[]
+): string {
+  return names.reduce((parent, name) => {
+    return childPath(parent, name);
+  }, directory);
+}
+
 function presentationScreenshotEnabled(): boolean {
   const payload = decodeSandboxTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.PresentationScreenshot, {
@@ -255,7 +265,7 @@ function installLockIsStale(lockDirectory: string): boolean {
 
 async function acquireInstallLock(): Promise<() => void> {
   const cacheRoot = dependencyCacheRoot();
-  const lockDirectory = join(cacheRoot, ".install.lock");
+  const lockDirectory = childPath(cacheRoot, ".install.lock");
   const deadline = Date.now() + INSTALL_LOCK_TIMEOUT_MS;
   let announcedWait = false;
   mkdirSync(cacheRoot, { recursive: true });
@@ -302,19 +312,28 @@ async function acquireInstallLock(): Promise<() => void> {
 }
 
 function localToolEnvironment(installRoot: string): NodeJS.ProcessEnv {
-  const program = join(installRoot, "usr", "lib", "libreoffice", "program");
+  const program = descendantPath(
+    installRoot,
+    "usr",
+    "lib",
+    "libreoffice",
+    "program",
+  );
   const environment = { ...process.env };
-  const libraryDirectories = [program, join(installRoot, "usr", "lib")];
+  const libraryDirectories = [
+    program,
+    descendantPath(installRoot, "usr", "lib"),
+  ];
   for (const parent of [
-    join(installRoot, "lib"),
-    join(installRoot, "usr", "lib"),
+    childPath(installRoot, "lib"),
+    descendantPath(installRoot, "usr", "lib"),
   ]) {
     if (!existsSync(parent)) {
       continue;
     }
     for (const entry of readdirSync(parent, { withFileTypes: true })) {
       if (entry.isDirectory() && entry.name.endsWith("-linux-gnu")) {
-        libraryDirectories.push(join(parent, entry.name));
+        libraryDirectories.push(childPath(parent, entry.name));
       }
     }
   }
@@ -325,7 +344,7 @@ function localToolEnvironment(installRoot: string): NodeJS.ProcessEnv {
     libraryDirectories.push(environment.LD_LIBRARY_PATH);
   }
 
-  const pathDirectories = [join(installRoot, "usr", "bin")];
+  const pathDirectories = [descendantPath(installRoot, "usr", "bin")];
   if (environment.PATH !== undefined && environment.PATH !== "") {
     pathDirectories.push(environment.PATH);
   }
@@ -334,7 +353,7 @@ function localToolEnvironment(installRoot: string): NodeJS.ProcessEnv {
     ...environment,
     LD_LIBRARY_PATH: libraryDirectories.join(delimiter),
     PATH: pathDirectories.join(delimiter),
-    URE_BOOTSTRAP: `vnd.sun.star.pathname:${join(program, "fundamentalrc")}`,
+    URE_BOOTSTRAP: `vnd.sun.star.pathname:${childPath(program, "fundamentalrc")}`,
   };
 }
 
@@ -342,7 +361,7 @@ function dependencyMarker(
   dependency: DeckDependency,
   installRoot: string,
 ): string {
-  return join(installRoot, `.${dependency.packageName}.ready`);
+  return childPath(installRoot, `.${dependency.packageName}.ready`);
 }
 
 function resolveDeckTool(
@@ -352,7 +371,7 @@ function resolveDeckTool(
   if (toolOnPath(dependency.binary)) {
     return { command: dependency.binary };
   }
-  const command = join(installRoot, ...dependency.localPath);
+  const command = descendantPath(installRoot, ...dependency.localPath);
   return existsSync(dependencyMarker(dependency, installRoot)) &&
     existsSync(command)
     ? { command, environment: localToolEnvironment(installRoot) }
@@ -371,24 +390,37 @@ function replaceConfigPaths(
 }
 
 function configureLocalLibreOffice(installRoot: string): void {
-  const program = join(installRoot, "usr", "lib", "libreoffice", "program");
+  const program = descendantPath(
+    installRoot,
+    "usr",
+    "lib",
+    "libreoffice",
+    "program",
+  );
   const brandBase = pathToFileURL(
-    join(installRoot, "usr", "lib", "libreoffice"),
+    descendantPath(installRoot, "usr", "lib", "libreoffice"),
   ).href;
-  const registryTarget = join(installRoot, "etc", "libreoffice", "registry");
+  const registryTarget = descendantPath(
+    installRoot,
+    "etc",
+    "libreoffice",
+    "registry",
+  );
   const registryUrl = pathToFileURL(registryTarget).href;
-  replaceConfigPaths(join(program, "fundamentalrc"), [
+  replaceConfigPaths(childPath(program, "fundamentalrc"), [
     ["file:///usr/lib/libreoffice", brandBase],
     ["file:///etc/libreoffice/registry", registryUrl],
   ]);
-  replaceConfigPaths(join(program, "sofficerc"), [
+  replaceConfigPaths(childPath(program, "sofficerc"), [
     [
       "file:///etc/libreoffice/sofficerc",
-      pathToFileURL(join(installRoot, "etc", "libreoffice", "sofficerc")).href,
+      pathToFileURL(
+        descendantPath(installRoot, "etc", "libreoffice", "sofficerc"),
+      ).href,
     ],
   ]);
 
-  const registrySource = join(
+  const registrySource = descendantPath(
     installRoot,
     "usr",
     "lib",
@@ -416,11 +448,11 @@ function installLocalDependencies(
     );
   }
 
-  const aptRoot = join(dependencyCacheRoot(), "apt");
-  const lists = join(aptRoot, "lists");
-  const archives = join(aptRoot, "archives");
-  mkdirSync(join(lists, "partial"), { recursive: true });
-  mkdirSync(join(archives, "partial"), { recursive: true });
+  const aptRoot = childPath(dependencyCacheRoot(), "apt");
+  const lists = childPath(aptRoot, "lists");
+  const archives = childPath(aptRoot, "archives");
+  mkdirSync(childPath(lists, "partial"), { recursive: true });
+  mkdirSync(childPath(archives, "partial"), { recursive: true });
 
   const aptOptions = [
     "-o",
@@ -475,7 +507,7 @@ function installLocalDependencies(
       if (!packageNames.includes(dependency.packageName)) {
         continue;
       }
-      const command = join(installRoot, ...dependency.localPath);
+      const command = descendantPath(installRoot, ...dependency.localPath);
       if (!existsSync(command)) {
         throw new Error(`${dependency.packageName} did not provide ${command}`);
       }
@@ -505,7 +537,7 @@ function missingDeckPackages(
 }
 
 async function ensureDeckTools(converts: boolean): Promise<DeckTools> {
-  const installRoot = join(dependencyCacheRoot(), "root");
+  const installRoot = childPath(dependencyCacheRoot(), "root");
   let soffice = converts
     ? resolveDeckTool(LIBREOFFICE, installRoot)
     : undefined;

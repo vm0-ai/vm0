@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
-import { basename, join } from "path";
+import { basename, join, normalize, sep } from "path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,31 +92,51 @@ function fakeAptGet(args: readonly string[]): string {
   return "";
 }
 
+function fixturePath(root: string, ...names: readonly string[]): string {
+  return names.reduce((parent, name) => {
+    if (name === "." || name === ".." || basename(name) !== name) {
+      throw new Error(`Invalid fixture path entry: ${name}`);
+    }
+    return normalize(`${parent}${sep}${name}`);
+  }, root);
+}
+
 function fakeLibreOfficePackage(root: string): void {
-  const program = join(root, "usr", "lib", "libreoffice", "program");
-  mkdirSync(join(root, "usr", "bin"), { recursive: true });
+  const program = fixturePath(root, "usr", "lib", "libreoffice", "program");
+  mkdirSync(fixturePath(root, "usr", "bin"), { recursive: true });
   mkdirSync(program, { recursive: true });
-  mkdirSync(join(root, "usr", "lib", "libreoffice", "share", ".registry"), {
+  mkdirSync(
+    fixturePath(root, "usr", "lib", "libreoffice", "share", ".registry"),
+    {
+      recursive: true,
+    },
+  );
+  mkdirSync(fixturePath(root, "etc", "libreoffice", "registry"), {
     recursive: true,
   });
-  mkdirSync(join(root, "etc", "libreoffice", "registry"), {
-    recursive: true,
-  });
-  writeFileSync(join(root, "usr", "bin", "soffice"), "fake");
-  writeFileSync(join(program, "soffice.bin"), "fake");
+  writeFileSync(fixturePath(root, "usr", "bin", "soffice"), "fake");
+  writeFileSync(fixturePath(program, "soffice.bin"), "fake");
   writeFileSync(
-    join(program, "fundamentalrc"),
+    fixturePath(program, "fundamentalrc"),
     "BRAND_BASE_DIR=file:///usr/lib/libreoffice\nCONFIGURATION_LAYERS=xcsxcu:file:///etc/libreoffice/registry res:file:///etc/libreoffice/registry\n",
   );
   writeFileSync(
-    join(program, "sofficerc"),
+    fixturePath(program, "sofficerc"),
     "FHS_CONFIG_FILE=file:///etc/libreoffice/sofficerc\n",
   );
   writeFileSync(
-    join(root, "usr", "lib", "libreoffice", "share", ".registry", "main.xcd"),
+    fixturePath(
+      root,
+      "usr",
+      "lib",
+      "libreoffice",
+      "share",
+      ".registry",
+      "main.xcd",
+    ),
     "fake",
   );
-  writeFileSync(join(root, "etc", "libreoffice", "sofficerc"), "fake");
+  writeFileSync(fixturePath(root, "etc", "libreoffice", "sofficerc"), "fake");
 }
 
 function fakeDpkgDeb(args: readonly string[]): string {
@@ -135,8 +155,8 @@ function fakeDpkgDeb(args: readonly string[]): string {
 }
 
 function fakePopplerPackage(root: string): void {
-  mkdirSync(join(root, "usr", "bin"), { recursive: true });
-  writeFileSync(join(root, "usr", "bin", "pdftocairo"), "fake");
+  mkdirSync(fixturePath(root, "usr", "bin"), { recursive: true });
+  writeFileSync(fixturePath(root, "usr", "bin", "pdftocairo"), "fake");
 }
 
 function fakeSoffice(args: readonly string[]): string {
