@@ -144,6 +144,41 @@ function omitForDefaultAgent<T>(
   return value;
 }
 
+function AgentNameControl({
+  name,
+  isDefaultAgent,
+  inputId,
+  label,
+  placeholder,
+  onChange,
+}: {
+  name: string;
+  isDefaultAgent: boolean;
+  inputId: string;
+  label: string;
+  placeholder: string;
+  onChange: (name: string) => void;
+}) {
+  if (isDefaultAgent) {
+    return (
+      <p className="flex h-9 items-center text-sm text-foreground">{name}</p>
+    );
+  }
+
+  return (
+    <Input
+      id={inputId}
+      value={name}
+      onChange={(event) => {
+        onChange(event.target.value);
+      }}
+      placeholder={placeholder}
+      className="h-9 w-full"
+      aria-label={label}
+    />
+  );
+}
+
 export function SettingsTab({
   agentId,
   displayName: resolvedAgentName,
@@ -363,29 +398,20 @@ export function SettingsTab({
               wideControls
             >
               <div className="min-w-0 w-full">
-                {isDefaultAgent ? (
-                  <p className="flex h-9 items-center text-sm text-foreground">
-                    {agentName}
-                  </p>
-                ) : (
-                  <Input
-                    id={inputId}
-                    value={agentName}
-                    onChange={(e) => {
-                      return patchForm({
-                        agentId,
-                        patch: { name: e.target.value },
-                      });
-                    }}
-                    placeholder={t(($) => {
-                      return $.profile.fields.name.placeholder;
-                    })}
-                    className="h-9 w-full"
-                    aria-label={t(($) => {
-                      return $.profile.fields.name.label;
-                    })}
-                  />
-                )}
+                <AgentNameControl
+                  name={agentName}
+                  isDefaultAgent={isDefaultAgent}
+                  inputId={inputId}
+                  label={t(($) => {
+                    return $.profile.fields.name.label;
+                  })}
+                  placeholder={t(($) => {
+                    return $.profile.fields.name.placeholder;
+                  })}
+                  onChange={(name) => {
+                    patchForm({ agentId, patch: { name } });
+                  }}
+                />
               </div>
             </InlineSettingsRow>
 
