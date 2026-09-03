@@ -1027,6 +1027,7 @@ async function resolveExplicitRunConfiguration(params: {
         userId: params.userId,
         modelPin,
         requestedModelProvider: undefined,
+        externalPlanCapabilities: { kind: "load-current" },
       });
     },
   );
