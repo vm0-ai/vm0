@@ -2137,29 +2137,21 @@ async function runCompletedChatCallbackSideEffects(
       );
 
   const followupsStep = (async () => {
-    const featureSwitchContext = await tapError(
-      loadUserFeatureSwitchContext(
-        args.db,
-        args.chatThread.orgId,
-        args.chatThread.userId,
-      ),
-      (err) => {
-        log.warn("Recommended follow-up feature switch load failed", {
-          threadId: args.chatThread.chatThreadId,
-          err,
-        });
-      },
+    signal.throwIfAborted();
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      args.db,
+      args.chatThread.orgId,
+      args.chatThread.userId,
     );
+    signal.throwIfAborted();
     const followups = await generateRecommendedFollowupsForCompletedRun(
       {
         followupContext: args.followupContext,
         threadId: args.chatThread.chatThreadId,
-        followUpOptimizeEnabled:
-          featureSwitchContext !== undefined &&
-          isFeatureEnabled(
-            FeatureSwitchKey.FollowUpOptimize,
-            featureSwitchContext,
-          ),
+        followUpOptimizeEnabled: isFeatureEnabled(
+          FeatureSwitchKey.FollowUpOptimize,
+          featureSwitchContext,
+        ),
       },
       signal,
     );
