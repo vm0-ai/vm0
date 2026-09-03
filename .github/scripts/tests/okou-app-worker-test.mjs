@@ -419,7 +419,7 @@ assert.ok(
 );
 assert.equal(
   tagAttribute(vm0Page.html, "link", "rel", "apple-touch-icon", "href"),
-  "/icons/icon-192.png",
+  "https://static.vm0.io/platform/okou-pwa-be0be646-180.png",
 );
 assertBootstrapAvatar(vm0Page.html);
 assert.equal(clerkCoreScript(vm0Page.html), expectedClerkCoreScript);
@@ -444,7 +444,7 @@ assert.ok(
 );
 assert.equal(
   tagAttribute(okouPage.html, "link", "rel", "apple-touch-icon", "href"),
-  "/icons/icon-192.png",
+  "https://static.okou.io/platform/okou-pwa-be0be646-180.png",
 );
 assert.equal(
   tagAttributeValues(okouPage.html, "link", "href").some(
