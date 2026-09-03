@@ -703,6 +703,18 @@ body {
 .zero-nav {
   --color-sidebar-border: hsl(var(--gray-200));
 }
+
+/* Shell surfaces, gated on the `newUi` switch. Off, both sidebars sit on the
+   flats they had before the workspace became a card. On, they take the site's
+   own two greys and the chat column doubles as the frame around that card. */
+.zero-app {
+  --color-sidebar: hsl(var(--gray-0));
+  --color-sidebar-rail: hsl(var(--gray-50));
+}
+:where([data-new-ui]) .zero-app {
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-rail: hsl(var(--sidebar-rail));
+}
 .zero-app[data-gradient-color-themes] .zero-nav {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-border: hsl(var(--border) / 0.5);
@@ -833,13 +845,18 @@ body {
   opacity: 1;
 }
 
-/* Dark carries the brand hue instead of a lighter neutral. The light ring can
-   stay neutral because there it darkens, and darker-than-the-border already
-   reads as emphasis. Lifting a neutral against a dark card does not: it lands
-   on a bright grey that reads as a white outline rather than as focus, which is
-   what `--ring` means on every other control. Saturation, not lightness, does
-   the work, so the ring stays quieter than the full Amber stop. */
 :where([data-theme="dark"]) .zero-app .zero-composer {
+  --zero-composer-ring: 42.9 1.6% 37.5%;
+}
+
+/* Under the `newUi` switch dark carries the brand hue instead of a lighter
+   neutral. The light ring can stay neutral because there it darkens, and
+   darker-than-the-border already reads as emphasis. Lifting a neutral against a
+   dark card does not: it lands on a bright grey that reads as a white outline
+   rather than as focus, which is what `--ring` means on every other control.
+   Saturation, not lightness, does the work, so the ring stays quieter than the
+   full Amber stop. */
+:where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
   --zero-composer-ring: 38.8 38% 38%;
 }
 
@@ -1406,13 +1423,13 @@ details > summary {
    Desktop only. Below the sidebar breakpoint the columns are gone and a frame
    would just spend width the page does not have. */
 @media (min-width: 48rem) {
-  .zero-workspace-card {
+  [data-new-ui] .zero-workspace-card {
     --zero-workspace-card-gap: 8px;
     background-color: hsl(var(--sidebar));
     padding: var(--zero-workspace-card-gap);
   }
 
-  .zero-workspace-card.zero-workspace-bg::before {
+  [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
     inset: var(--zero-workspace-card-gap);
     border: 0.7px solid hsl(var(--border));
     border-radius: 12px;
