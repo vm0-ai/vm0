@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
@@ -10,8 +14,13 @@ import {
   stubConnectorCatalog,
   stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
+import {
+  stubRunConnectorAccountInspection,
+  writeRunConnectorAccountContext,
+} from "../../__tests__/helpers/run-connector-accounts";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
+const RUN_CONNECTION_ID = "00000000-0000-4000-8000-000000000001";
 
 const CONNECTOR_LABELS: Record<string, string> = {
   elevenlabs: "ElevenLabs",
@@ -37,12 +46,25 @@ const CONNECTOR_GENERATION: Record<string, readonly string[]> = {
   runway: ["image", "video"],
 };
 
+interface TestConnectorAccount {
+  readonly id: string;
+  readonly slug: string;
+  readonly authMethod: "api-token";
+  readonly externalId: string;
+  readonly externalUsername: string | null;
+  readonly externalEmail: null;
+  readonly oauthScopes: null;
+  readonly connectionStatus: "connected" | "reconnect-required";
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 function connector(
   connectorSlug: string,
   externalUsername: string | null = `${connectorSlug}-user`,
-) {
+): TestConnectorAccount {
   return {
-    id: "00000000-0000-4000-8000-000000000001",
+    id: RUN_CONNECTION_ID,
     slug: connectorSlug,
     authMethod: "api-token",
     externalId: `${connectorSlug}-external-id`,
@@ -55,7 +77,7 @@ function connector(
   };
 }
 
-function stubConnectors(connectors: Array<Record<string, unknown>>) {
+function stubConnectors(connectors: readonly TestConnectorAccount[]) {
   return stubConnectorsWithCatalogSlugs(connectors, [
     "fal",
     "luma",
@@ -67,12 +89,12 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
 }
 
 function stubConnectorsWithCatalogSlugs(
-  connectors: Array<Record<string, unknown>>,
-  catalogConnectorSlugs: string[],
+  connectors: readonly TestConnectorAccount[],
+  catalogConnectorSlugs: readonly string[],
 ) {
   const connectedBySlug = new Map(
     connectors.map((item) => {
-      const connectorSlug = item.slug as string;
+      const connectorSlug = item.slug;
       return [
         connectorSlug,
         catalogStatusItem({
@@ -81,15 +103,13 @@ function stubConnectorsWithCatalogSlugs(
           generation: [...(CONNECTOR_GENERATION[connectorSlug] ?? [])],
           authMethods: [manualAuthMethod()],
           connection: {
-            authMethod: item.authMethod as string,
-            externalUsername: (item.externalUsername as string | null) ?? null,
-            externalEmail: (item.externalEmail as string | null) ?? null,
+            authMethod: item.authMethod,
+            externalUsername: item.externalUsername,
+            externalEmail: item.externalEmail,
             reconnectReason: null,
           },
           connected: true,
-          connectionStatus:
-            (item.connectionStatus as "connected" | "reconnect-required") ??
-            "connected",
+          connectionStatus: item.connectionStatus,
         }),
       ] as const;
     }),
@@ -113,6 +133,77 @@ function stubConnectorsWithCatalogSlugs(
   );
 }
 
+function stubRunConnectorsWithCatalogSlugs(
+  contextPath: string,
+  connectors: readonly TestConnectorAccount[],
+  catalogConnectorSlugs: readonly string[],
+) {
+  const connectedBySlug = new Map(
+    connectors.map((item) => {
+      return [item.slug, item] as const;
+    }),
+  );
+  const visibleConnectorSlugs = new Set([
+    ...catalogConnectorSlugs,
+    ...connectedBySlug.keys(),
+  ]);
+  writeRunConnectorAccountContext(
+    contextPath,
+    [...visibleConnectorSlugs].map((connectorSlug) => {
+      return {
+        kind: "builtin" as const,
+        connectorSlug,
+        connectionId: connectedBySlug.get(connectorSlug)?.id ?? null,
+      };
+    }),
+  );
+  return [
+    stubConnectorCatalog(
+      [...visibleConnectorSlugs].map((connectorSlug) => {
+        return catalogItem({
+          connectorSlug,
+          label: CONNECTOR_LABELS[connectorSlug] ?? connectorSlug,
+          generation: [...(CONNECTOR_GENERATION[connectorSlug] ?? [])],
+          authMethods: [manualAuthMethod()],
+        });
+      }),
+    ),
+    stubRunConnectorAccountInspection(
+      connectors.map((item) => {
+        return {
+          kind: "available" as const,
+          connectionId: item.id,
+          target: { kind: "builtin" as const, connectorSlug: item.slug },
+          authMethod: item.authMethod,
+          displayName: null,
+          externalId: item.externalId,
+          externalUsername: item.externalUsername,
+          externalEmail: item.externalEmail,
+          connectionStatus: item.connectionStatus,
+          reconnectReason:
+            item.connectionStatus === "reconnect-required"
+              ? "authorization_expired_or_revoked"
+              : null,
+        };
+      }),
+    ),
+  ] as const;
+}
+
+function stubRunConnectors(
+  contextPath: string,
+  connectors: readonly TestConnectorAccount[],
+) {
+  return stubRunConnectorsWithCatalogSlugs(contextPath, connectors, [
+    "fal",
+    "luma",
+    "luma-ai",
+    "openai",
+    "replicate",
+    "runway",
+  ]);
+}
+
 function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
     `http://localhost:3000/api/agents/${AGENT_ID}/user-connectors`,
@@ -121,19 +212,6 @@ function stubUserConnectors(enabledConnectorSlugs: string[]) {
         enabledConnectorSlugs: enabledConnectorSlugs,
       });
     },
-  );
-}
-
-function stubAvailableConnectors(connectorSlugs: string[]) {
-  return stubConnectorCatalogStatus(
-    connectorSlugs.map((connectorSlug) => {
-      return catalogStatusItem({
-        connectorSlug,
-        label: CONNECTOR_LABELS[connectorSlug] ?? connectorSlug,
-        generation: [...(CONNECTOR_GENERATION[connectorSlug] ?? [])],
-        authMethods: [manualAuthMethod()],
-      });
-    }),
   );
 }
 
@@ -179,12 +257,17 @@ describe("okou generate lister", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  let directory = "";
+  let contextPath = "";
 
   beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), "okou-generate-run-account-"));
+    contextPath = join(directory, "context.json");
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-token");
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);
     server.use(stubBillingStatus(true));
   });
 
@@ -193,6 +276,7 @@ describe("okou generate lister", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
+    rmSync(directory, { recursive: true, force: true });
   });
 
   function output(): string {
@@ -218,13 +302,33 @@ describe("okou generate lister", () => {
   });
 
   it("lists ready image generation connectors for the current agent", async () => {
+    let defaultStatusRequests = 0;
     server.use(
-      stubConnectors([
+      ...stubRunConnectors(contextPath, [
         connector("fal", "fal-user"),
         connector("openai", "openai-user"),
         connector("replicate", "replicate-user"),
       ]),
       stubUserConnectors(["fal", "openai"]),
+      http.get("http://localhost:3000/api/connector-catalog/status", () => {
+        defaultStatusRequests += 1;
+        return HttpResponse.json({
+          connectors: [
+            catalogStatusItem({
+              connectorSlug: "fal",
+              generation: ["image"],
+              connection: {
+                authMethod: "api-token",
+                externalUsername: "default-account-a",
+                externalEmail: null,
+                reconnectReason: "authorization_expired_or_revoked",
+              },
+              connected: true,
+              connectionStatus: "reconnect-required",
+            }),
+          ],
+        });
+      }),
     );
 
     await generateCommand.parseAsync(["node", "cli", "image"]);
@@ -254,14 +358,17 @@ describe("okou generate lister", () => {
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
+    expect(text).not.toContain("default-account-a");
+    expect(defaultStatusRequests).toBe(0);
     expect(text).toContain(
       "Use --all to see every image generation candidate.",
     );
   });
 
   it("shows not-ready candidates and action links with --all", async () => {
+    let defaultStatusRequests = 0;
     server.use(
-      stubConnectors([
+      ...stubRunConnectors(contextPath, [
         connector("fal", "fal-user"),
         connector("replicate", "replicate-user"),
         {
@@ -270,6 +377,25 @@ describe("okou generate lister", () => {
         },
       ]),
       stubUserConnectors(["fal"]),
+      http.get("http://localhost:3000/api/connector-catalog/status", () => {
+        defaultStatusRequests += 1;
+        return HttpResponse.json({
+          connectors: [
+            catalogStatusItem({
+              connectorSlug: "openai",
+              generation: ["image"],
+              connection: {
+                authMethod: "api-token",
+                externalUsername: "healthy-default-a",
+                externalEmail: null,
+                reconnectReason: null,
+              },
+              connected: true,
+              connectionStatus: "connected",
+            }),
+          ],
+        });
+      }),
     );
 
     await generateCommand.parseAsync(["node", "cli", "image", "--all"]);
@@ -280,22 +406,62 @@ describe("okou generate lister", () => {
     expect(text).toContain("Replicate");
     expect(text).toContain("connected, not authorized for current agent");
     expect(text).toContain("Luma AI");
-    expect(text).toContain("not connected or authorized for current agent");
+    expect(text).toContain("not admitted for this run");
     expect(text).toContain("OpenAI");
     expect(text).toContain("connected, reconnect required");
     expect(text).toContain(
       `[Authorize Replicate](http://localhost:3000/connectors/replicate/authorize?agentId=${AGENT_ID})`,
     );
+    expect(text).not.toContain("Connect and authorize Luma AI");
     expect(text).toContain(
-      `[Connect and authorize Luma AI](http://localhost:3000/connectors/luma-ai/connect?agentId=${AGENT_ID})`,
+      `[Reconnect OpenAI](http://localhost:3000/connectors/openai/reconnect/${RUN_CONNECTION_ID}?agentId=${AGENT_ID})`,
     );
-    expect(text).toContain(
-      "[Reconnect OpenAI](http://localhost:3000/connectors)",
+    expect(text).toContain("start a new run");
+    expect(text).not.toContain("healthy-default-a");
+    expect(defaultStatusRequests).toBe(0);
+  });
+
+  it("preserves default-account generation discovery outside a run", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+    server.use(stubConnectors([connector("fal", "default-account-a")]));
+
+    await generateCommand.parseAsync(["node", "cli", "image"]);
+
+    expect(output()).toContain("@default-account-a");
+  });
+
+  it("fails closed when connector-backed discovery has no run projection", async () => {
+    let defaultStatusRequests = 0;
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({
+          connectorSlug: "fal",
+          label: "fal.ai",
+          generation: ["image"],
+          authMethods: [manualAuthMethod()],
+        }),
+      ]),
+      stubUserConnectors(["fal"]),
+      http.get("http://localhost:3000/api/connector-catalog/status", () => {
+        defaultStatusRequests += 1;
+        return HttpResponse.json({ connectors: [] });
+      }),
     );
+
+    await generateCommand.parseAsync(["node", "cli", "image", "--all"]);
+
+    expect(output()).toContain("run account context unavailable");
+    expect(output()).toContain("start a new run");
+    expect(defaultStatusRequests).toBe(0);
   });
 
   it("does not list providers that are absent from the public catalog", async () => {
-    server.use(stubAvailableConnectors([]), stubUserConnectors([]));
+    server.use(
+      ...stubRunConnectorsWithCatalogSlugs(contextPath, [], []),
+      stubUserConnectors([]),
+    );
 
     await generateCommand.parseAsync(["node", "cli", "text", "--all"]);
 
@@ -365,7 +531,11 @@ describe("okou generate lister", () => {
 
   it("suggests the built-in video command when no video connector is ready", async () => {
     server.use(
-      stubConnectorsWithCatalogSlugs([], ["fal", "luma-ai", "runway"]),
+      ...stubRunConnectorsWithCatalogSlugs(
+        contextPath,
+        [],
+        ["fal", "luma-ai", "runway"],
+      ),
       stubUserConnectors([]),
     );
 
@@ -402,7 +572,8 @@ describe("okou generate lister", () => {
 
   it("reflects built-in and connector choices for avatar video", async () => {
     server.use(
-      stubConnectorsWithCatalogSlugs(
+      ...stubRunConnectorsWithCatalogSlugs(
+        contextPath,
         [connector("joggai", "jogg-user")],
         ["joggai"],
       ),
@@ -431,7 +602,11 @@ describe("okou generate lister", () => {
 
   it("marks built-in video models as plan-restricted before generation", async () => {
     server.use(
-      stubConnectorsWithCatalogSlugs([], ["fal", "luma-ai", "runway"]),
+      ...stubRunConnectorsWithCatalogSlugs(
+        contextPath,
+        [],
+        ["fal", "luma-ai", "runway"],
+      ),
       stubUserConnectors([]),
       stubBillingStatus(false),
     );
@@ -525,7 +700,8 @@ describe("okou generate lister", () => {
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithCatalogSlugs(
+      ...stubRunConnectorsWithCatalogSlugs(
+        contextPath,
         [],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -553,7 +729,8 @@ describe("okou generate lister", () => {
 
   it("also shows the built-in voice provider when a voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithCatalogSlugs(
+      ...stubRunConnectorsWithCatalogSlugs(
+        contextPath,
         [connector("openai", "openai-user")],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -576,7 +753,8 @@ describe("okou generate lister", () => {
 
   it("lists music as the public audio connector-backed subtype", async () => {
     server.use(
-      stubConnectorsWithCatalogSlugs(
+      ...stubRunConnectorsWithCatalogSlugs(
+        contextPath,
         [connector("elevenlabs", "elevenlabs-user")],
         ["elevenlabs", "minimax"],
       ),
