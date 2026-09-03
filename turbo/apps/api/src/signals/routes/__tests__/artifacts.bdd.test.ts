@@ -52,6 +52,12 @@ interface SnapshotRequest {
 
 interface SnapshotFixture {
   readonly content?: string;
+  readonly error?: {
+    readonly code: number;
+    readonly detail: string;
+    readonly message: string;
+    readonly status: number;
+  };
   readonly screenshot?: string;
   readonly status?: number;
   readonly title?: string;
@@ -62,7 +68,7 @@ interface MediaFrameRequest {
 }
 
 function mockCloudflareSnapshot(
-  fixture: SnapshotFixture = {},
+  fixtures: readonly SnapshotFixture[] = [{}],
 ): SnapshotRequest[] {
   const requests: SnapshotRequest[] = [];
   server.use(
@@ -72,6 +78,27 @@ function mockCloudflareSnapshot(
         url: request.url,
         body: await request.json(),
       });
+      const fixture = fixtures[requests.length - 1];
+      if (!fixture) {
+        throw new Error("Missing Cloudflare snapshot fixture");
+      }
+      if (fixture.error) {
+        return HttpResponse.json(
+          {
+            success: false,
+            errors: [
+              {
+                code: fixture.error.code,
+                message: fixture.error.message,
+                detail: fixture.error.detail,
+              },
+            ],
+            messages: [],
+            result: null,
+          },
+          { status: fixture.error.status },
+        );
+      }
       return HttpResponse.json({
         meta: {
           status: fixture.status ?? 200,
@@ -615,6 +642,8 @@ describe("hosted Artifact previews", () => {
           height: 800,
           deviceScaleFactor: 0.5,
         },
+        gotoOptions: { waitUntil: "networkidle2", timeout: 20_000 },
+        actionTimeout: 30_000,
         screenshotOptions: { type: "webp", quality: 80 },
       },
     });
@@ -640,15 +669,98 @@ describe("hosted Artifact previews", () => {
     expect(snapshotRequests).toHaveLength(1);
   }, 120_000);
 
+  it("retries navigation timeouts once with explicit DOM readiness", async () => {
+    const owner = await artifactActor("Artifacts API navigation retry agent");
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
+    const snapshotRequests = mockCloudflareSnapshot([
+      {
+        error: {
+          code: 6002,
+          message:
+            "A timeout was reached. Check gotoOptions/waitForSelector/waitForTimeout/actionTimeout options.",
+          detail: "Navigation timeout of 20000 ms exceeded",
+          status: 422,
+        },
+      },
+      {},
+    ]);
+    const site = `navigation-retry-${randomUUID().slice(0, 8)}`;
+
+    await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site,
+    });
+    await flushWaitUntilForTest();
+
+    expect(snapshotRequests).toHaveLength(2);
+    expect(snapshotRequests[0]?.body).toMatchObject({
+      gotoOptions: { waitUntil: "networkidle2", timeout: 20_000 },
+      actionTimeout: 30_000,
+    });
+    expect(snapshotRequests[1]?.body).toMatchObject({
+      gotoOptions: { waitUntil: "domcontentloaded", timeout: 15_000 },
+      waitForSelector: {
+        selector: "body > *",
+        visible: true,
+        timeout: 10_000,
+      },
+      actionTimeout: 30_000,
+    });
+    const previewedArtifact = await findCatalogArtifact(owner.actor, site);
+    expect(previewedArtifact?.thumbnail?.url).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.webp$/u,
+    );
+  }, 120_000);
+
+  it("does not retry non-navigation browser rendering timeouts", async () => {
+    const owner = await artifactActor("Artifacts API screenshot timeout agent");
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
+    const snapshotRequests = mockCloudflareSnapshot([
+      {
+        error: {
+          code: 6002,
+          message:
+            "A timeout was reached. Check gotoOptions/waitForSelector/waitForTimeout/actionTimeout options.",
+          detail: "Screenshot timed out after 30000 ms",
+          status: 422,
+        },
+      },
+    ]);
+    const site = `screenshot-timeout-${randomUUID().slice(0, 8)}`;
+
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site,
+    });
+    await flushWaitUntilForTest();
+
+    expect(snapshotRequests).toHaveLength(1);
+    const unpreviewedArtifact = await findCatalogArtifact(owner.actor, site);
+    expect(unpreviewedArtifact?.thumbnail).toBeNull();
+    expect(
+      owner.objectStore.puts.some((put) => {
+        return put.key.endsWith(`/preview-v3-${artifact.deploymentId}.webp`);
+      }),
+    ).toBeFalsy();
+  }, 120_000);
+
   it("rejects page errors and Cloudflare challenges instead of saving them as previews", async () => {
     const owner = await artifactActor("Artifacts API challenge preview agent");
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-    const pageErrorRequests = mockCloudflareSnapshot({
-      status: 403,
-      title: "Forbidden",
-      content: "<!doctype html><html><body>forbidden</body></html>",
-    });
+    const pageErrorRequests = mockCloudflareSnapshot([
+      {
+        status: 403,
+        title: "Forbidden",
+        content: "<!doctype html><html><body>forbidden</body></html>",
+      },
+    ]);
     const pageErrorSite = `error-preview-${randomUUID().slice(0, 8)}`;
 
     const pageErrorArtifact = await createHostedArtifact({
@@ -659,11 +771,13 @@ describe("hosted Artifact previews", () => {
     });
     await flushWaitUntilForTest();
 
-    const challengeRequests = mockCloudflareSnapshot({
-      title: "Just a moment...",
-      content:
-        "<!doctype html><html><body><h1>Performing security verification</h1><p>Incompatible browser extension or network configuration</p><script>window.__cf_chl_opt={}</script></body></html>",
-    });
+    const challengeRequests = mockCloudflareSnapshot([
+      {
+        title: "Just a moment...",
+        content:
+          "<!doctype html><html><body><h1>Performing security verification</h1><p>Incompatible browser extension or network configuration</p><script>window.__cf_chl_opt={}</script></body></html>",
+      },
+    ]);
     const challengeSite = `challenge-preview-${randomUUID().slice(0, 8)}`;
 
     const challengeArtifact = await createHostedArtifact({
