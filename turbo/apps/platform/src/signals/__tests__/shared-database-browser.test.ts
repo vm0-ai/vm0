@@ -141,9 +141,28 @@ describe("shared database browser bridge", () => {
     });
     const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
     expect(workerUrl.origin).toBe(window.location.origin);
-    expect(workerUrl.search).toBe("?userId=test-user-123&orgId=test-org-123");
+    expect(workerUrl.search).toBe(
+      "?userId=test-user-123&orgId=test-org-123&clerkPrimaryAppDomain=app.vm0.ai",
+    );
     expect(workers[0]!.port.messages).toStrictEqual([{ type: "register-tab" }]);
     expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
+  });
+
+  it("forwards the deployed Clerk primary app domain through the Worker URL", async () => {
+    Reflect.set(window, "__vm0ClerkBootstrap", {
+      productionPrimaryAppDomain: "app.okou.ai",
+    });
+    context.signal.addEventListener("abort", () => {
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+    });
+    const { constructorCalls } = installSharedWorkerMock();
+
+    await setupBridge();
+
+    const workerUrl = new URL(String(constructorCalls[0]?.scriptURL));
+    expect(workerUrl.searchParams.get("clerkPrimaryAppDomain")).toBe(
+      "app.okou.ai",
+    );
   });
 
   it("forwards a captured Preview bypass through the Worker URL", async () => {
