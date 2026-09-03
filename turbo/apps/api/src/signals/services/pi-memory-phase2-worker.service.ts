@@ -305,7 +305,6 @@ function logOutcome(args: {
   readonly errorClass?: string;
   readonly versionId?: string;
 }): void {
-  // eslint-disable-next-line api/no-logger-info -- terminal outcome is production diagnostic telemetry.
   log.info("Pi memory Phase 2 work completed", {
     orgId: args.claim.orgId,
     userId: args.claim.userId,
