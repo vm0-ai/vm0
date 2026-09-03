@@ -2526,6 +2526,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
       connected: false,
     });
+    expect(created).not.toHaveProperty("oauthSetup");
     expectNoVisibleSecret(created, clientSecret);
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
@@ -3953,6 +3954,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(createdDefinition).toMatchObject({
       authMode: "automatic",
     });
+    expect(createdDefinition).not.toHaveProperty("oauthSetup");
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requiredOrgId(admin),
@@ -4165,6 +4167,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       storageVersion: 2,
       connected: false,
     });
+    expect(updated).not.toHaveProperty("oauthSetup");
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requiredOrgId(admin),
