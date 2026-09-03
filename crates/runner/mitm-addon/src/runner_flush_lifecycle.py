@@ -338,9 +338,9 @@ def _write_jsonl_flush_state(
             addon_process_logging.emit_addon_process_event(
                 "warn",
                 (
-                    f"Failed to write JSONL flush state for request {flush_request_id!r} at "
-                    f"{state_path}: {type(exc).__name__}: {exc}. Subsequent failures for this "
-                    "request will be silent."
+                    f"Failed to write JSONL flush state for request {flush_request_id!r} "
+                    f"({type(exc).__name__}). Subsequent failures for this request will be "
+                    f"silent. State path: {state_path}. Error: {exc}"
                 ),
             )
         return False

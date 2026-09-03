@@ -327,7 +327,8 @@ class TestRunnerJsonlFlush:
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
         assert _DEFAULT_JSONL_FLUSH_REQUEST_ID in warning
-        assert "OSError: state replace failed" in warning
+        assert "(OSError)" in warning
+        assert "Error: state replace failed" in warning
         assert "Subsequent failures for this request will be silent" in warning
 
     def test_persistent_jsonl_acknowledgement_write_failure_logs_once_per_request(
@@ -375,6 +376,7 @@ class TestRunnerJsonlFlush:
 
         assert flush_log_path.call_count == 4
         assert len(failed_tmp_paths) == 4
+        assert len(set(failed_tmp_paths)) == 4
         assert state_path.read_text() == baseline_state
         assert all(not tmp_path.exists() for tmp_path in failed_tmp_paths)
         assert list(runner_jsonl_flush_files.tmp_path.glob(f"{state_path.name}.*.tmp")) == []
