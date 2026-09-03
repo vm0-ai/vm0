@@ -6,7 +6,7 @@ use crate::ids::RunId;
 use crate::local_queue::{self, JobResponse};
 
 #[test]
-fn abandoned_cleanup_preserves_active_claim_state() {
+fn cancelled_abandon_preserves_active_claim_without_result() {
     let dir = tempfile::tempdir().unwrap();
     let group_dir = dir.path();
     let job_id = RunId::new_v4();
@@ -27,15 +27,12 @@ fn abandoned_cleanup_preserves_active_claim_state() {
         })
         .unwrap();
 
-    queue.abandon("timed out");
-    let response: JobResponse =
-        serde_json::from_slice(&std::fs::read(&queue.result).unwrap()).unwrap();
+    queue.abandon_cancelled();
 
-    assert_eq!(response.run_id, queue.job_id);
     assert!(!queue.job.exists());
     assert!(
-        queue.result.exists(),
-        "abandoned cleanup must keep a terminal marker while a runner owns the claim"
+        !queue.result.exists(),
+        "cancelled cleanup must not publish a terminal result while a runner owns the claim"
     );
     assert!(
         queue.cancel.exists(),
@@ -68,7 +65,7 @@ fn abandoned_cleanup_removes_unclaimed_job_without_claim_marker() {
         })
         .unwrap();
 
-    queue.abandon("timed out");
+    queue.abandon_cancelled();
 
     assert!(!queue.job.exists());
     assert!(!queue.result.exists());
@@ -99,7 +96,7 @@ fn abandoned_cleanup_ignores_claim_file_symlink() {
     std::fs::write(&target, b"").unwrap();
     symlink(&target, &queue.claim).unwrap();
 
-    queue.abandon("timed out");
+    queue.abandon_cancelled();
 
     assert!(!queue.job.exists());
     assert!(!queue.result.exists());
@@ -120,7 +117,7 @@ fn abandoned_cleanup_removes_duplicate_unclaimed_jobs() {
 
     std::fs::write(&queue.cancel, b"").unwrap();
 
-    queue.abandon("timed out");
+    queue.abandon_cancelled();
 
     assert!(!default_job.exists());
     assert!(!large_job.exists());
@@ -188,7 +185,7 @@ fn abandoned_cleanup_removes_late_unclaimed_active_inputs_after_job_cleanup() {
     std::fs::write(&queue.job, b"{}").unwrap();
     std::fs::write(&queue.cancel, b"").unwrap();
 
-    queue.abandon("timed out");
+    queue.abandon_cancelled();
     local_queue::LocalQueue::new(group_dir.to_path_buf())
         .write_active_input_sync(&local_queue::ActiveInputEntry {
             run_id: job_id,
@@ -206,7 +203,7 @@ fn abandoned_cleanup_removes_late_unclaimed_active_inputs_after_job_cleanup() {
 }
 
 #[test]
-fn abandoned_cleanup_keeps_marker_when_duplicate_job_cannot_be_removed() {
+fn timeout_abandon_keeps_marker_when_duplicate_job_cannot_be_removed() {
     let dir = tempfile::tempdir().unwrap();
     let group_dir = dir.path();
     let job_id = RunId::new_v4();
@@ -214,10 +211,6 @@ fn abandoned_cleanup_keeps_marker_when_duplicate_job_cannot_be_removed() {
     let default_job = write_queue_job_file(group_dir, crate::profile::DEFAULT_PROFILE, job_id);
     let blocked_job = local_queue::job_path(group_dir, "vm0/large", job_id).unwrap();
     std::fs::create_dir_all(&blocked_job).unwrap();
-    std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
-
-    std::fs::write(&queue.cancel, b"").unwrap();
-
     queue.abandon("timed out");
 
     assert!(!default_job.exists());
@@ -226,12 +219,12 @@ fn abandoned_cleanup_keeps_marker_when_duplicate_job_cannot_be_removed() {
         queue.result.exists(),
         "terminal marker must remain if any duplicate job path could not be removed"
     );
-    assert!(queue.cancel.exists());
+    assert!(!queue.cancel.exists());
     assert!(!queue.claim.exists());
 }
 
 #[test]
-fn abandoned_cleanup_keeps_marker_when_job_already_absent_but_claimed() {
+fn cancelled_abandon_keeps_claim_when_job_is_already_absent() {
     let dir = tempfile::tempdir().unwrap();
     let group_dir = dir.path();
     let job_id = RunId::new_v4();
@@ -242,9 +235,9 @@ fn abandoned_cleanup_keeps_marker_when_job_already_absent_but_claimed() {
     std::fs::write(&queue.cancel, b"").unwrap();
     std::fs::write(&queue.claim, b"").unwrap();
 
-    queue.abandon("timed out");
+    queue.abandon_cancelled();
 
-    assert!(queue.result.exists());
+    assert!(!queue.result.exists());
     assert!(queue.cancel.exists());
     assert!(queue.claim.exists());
 }
@@ -380,7 +373,7 @@ fn abandoned_cleanup_keeps_completed_result_when_claimed() {
 }
 
 #[test]
-fn abandoned_cleanup_keeps_marker_when_job_cannot_be_removed() {
+fn cancelled_abandon_keeps_unremoved_job_pending() {
     let dir = tempfile::tempdir().unwrap();
     let group_dir = dir.path();
     let job_id = RunId::new_v4();
@@ -390,11 +383,11 @@ fn abandoned_cleanup_keeps_marker_when_job_cannot_be_removed() {
 
     std::fs::write(&queue.cancel, b"").unwrap();
 
-    queue.abandon("timed out");
+    queue.abandon_cancelled();
 
     assert!(
-        queue.result.exists(),
-        "terminal marker must remain if the stale job path could not be removed"
+        !queue.result.exists(),
+        "cancelled cleanup must not publish a terminal result"
     );
     assert!(queue.cancel.exists());
     assert!(!queue.claim.exists());
