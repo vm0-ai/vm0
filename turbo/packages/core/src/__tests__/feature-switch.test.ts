@@ -183,8 +183,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
@@ -212,8 +210,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );

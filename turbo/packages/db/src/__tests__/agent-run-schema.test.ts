@@ -179,6 +179,7 @@ describe("agentRuns circular foreign keys", () => {
     expect(launchSnapshotSql).toContain("piMemoryGenerationEnabled");
     expect(launchSnapshotSql).toContain("'1'");
     expect(launchSnapshotSql).toContain("'2'");
+    expect(launchSnapshotSql).toContain("'3'");
     expect(launchSnapshotSql).toContain("'boolean'");
     expect(launchSnapshotSql).toContain("'claude-code'");
     expect(launchSnapshotSql).toContain("'codex'");

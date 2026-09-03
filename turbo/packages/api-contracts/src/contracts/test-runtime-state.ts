@@ -397,6 +397,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
               piMemoryGenerationEnabled: z.boolean(),
             })
             .strict(),
+          z
+            .object({
+              schemaVersion: z.literal(3),
+              framework: z.enum(["claude-code", "codex", "pi"]),
+              runnerProfile: z.string().min(1).max(255),
+            })
+            .strict(),
         ])
         .nullable(),
     })
