@@ -193,6 +193,37 @@ export function resolveAppAuthUrl(
   return url.toString();
 }
 
+export function resolveSatelliteAuthRouteRedirectUrl(
+  mode: "sign-in" | "sign-up",
+): string | null {
+  if (!resolveClerkSatelliteConfig()) {
+    return null;
+  }
+
+  // Clerk authentication must run on the configured primary app. Keep the
+  // satellite destination explicit so the primary flow can safely return to
+  // the originating brand after it completes.
+  const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
+  const completionRedirectUrl =
+    mode === "sign-in"
+      ? buildSignInRedirectUrl(
+          location.search,
+          allowedRedirectOrigins,
+          location.hash,
+        )
+      : buildSignupRedirectUrl(
+          location.search,
+          allowedRedirectOrigins,
+          location.hash,
+        );
+  const redirectUrl = new URL(resolveAppAuthUrl("/sign-in"));
+  redirectUrl.pathname = location.pathname;
+  redirectUrl.search = location.search;
+  redirectUrl.hash = location.hash;
+  redirectUrl.searchParams.set("redirect_url", completionRedirectUrl);
+  return redirectUrl.toString();
+}
+
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
 // and api siblings. Production also includes the satellite domain family and
 // primary app so Clerk can safely return between app.vm0.ai and *.okou.ai.
