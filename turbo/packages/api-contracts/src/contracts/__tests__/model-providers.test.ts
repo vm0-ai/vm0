@@ -659,7 +659,6 @@ describe("model-first canonical catalog", () => {
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-fable-5-1",
-      "claude-fable-5",
       "gpt-5.6-sol",
       "gpt-5.6-luna",
       "deepseek-v4-flash",
