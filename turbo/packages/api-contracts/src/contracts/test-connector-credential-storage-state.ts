@@ -40,7 +40,8 @@ const customOauthStateSchema = z.object({
   storage_version: z.number().int().positive().nullable(),
   context_storage_version: z.number().int().positive().nullable(),
   context_valid: z.boolean().optional(),
-  oauth_setup: z.enum(["custom", "automatic"]).optional(),
+  auth_mode: z.enum(["oauth", "automatic"]).optional(),
+  context_format: z.enum(["legacy", "canonical"]).optional(),
 });
 
 const automaticOauthBindingStateSchema = z.object({
@@ -277,10 +278,6 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
-    definition_oauth_setup: z
-      .enum(["custom", "automatic"])
-      .nullable()
-      .optional(),
     account_mutation: connectorAccountMutationIntentSchema
       .nullable()
       .optional(),

@@ -38,10 +38,23 @@ reader-first rollout even though the version number does not change:
    enforced compatibility floor.
 3. Enable writers in a later release.
 
-The reader preparation does not change Snapshot pointers, client cache
-versions, or persisted database rows. A V7 cache can therefore contain both
-historical reasonless failures and later failures with a reason once writer
-activation is safe.
+Reader preparation shipped in release
+`89c6a521944e2ac8550da424f164db08f4f80f0c` and contains reader commit
+`c093e0ffdab988d2a8a071809f90d87fa3e79f20`. Writer activation stores the
+optional value in a nullable `chat_events.failure_reason` column outside the
+strict payload JSON. The minimum supported App version is `0.830.0`, the first
+prepared App build.
+
+Commit-addressed CLI contexts created before reader API promotion must drain
+through their two-hour queue lifetime, two-hour execution budget, and bounded
+finalization before writer activation. Production rollback targets must contain
+the reader commit above; the release commit is the first compatible tagged
+baseline. A rollback to an earlier strict V7 reader is unsafe after any
+reason-bearing row has been persisted.
+
+The rollout does not change Snapshot pointers, client cache versions, or the V7
+wire version. A V7 cache can therefore contain both historical reasonless
+failures and later failures with a reason.
 
 ## Snapshot storage and reads
 

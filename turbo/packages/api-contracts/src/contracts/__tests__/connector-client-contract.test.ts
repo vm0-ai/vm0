@@ -442,13 +442,13 @@ describe("connector client request contracts", () => {
         prefixTemplates: ["https://api.example.test"],
       });
     }).toThrow();
-    expect(() => {
+    expect(
       createCustomConnectorBodySchema.parse({
         ...manualDefinition,
         authMode: "manual",
         oauthSetup: "custom",
-      });
-    }).toThrow();
+      }),
+    ).toStrictEqual({ ...manualDefinition, authMode: "manual" });
   });
 
   it("accepts canonical connector check requests", () => {

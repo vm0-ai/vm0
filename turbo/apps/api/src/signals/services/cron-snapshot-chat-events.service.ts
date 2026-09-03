@@ -159,6 +159,7 @@ type ArchiveEventRow = Pick<
   | "revokesEventId"
   | "eventType"
   | "payload"
+  | "failureReason"
   | "contextType"
   | "contextId"
   | "runEventSequenceNumber"
@@ -202,6 +203,7 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
     revokesEventId: row.revokesEventId,
     eventType: row.eventType,
     payload: row.payload,
+    ...(row.failureReason === null ? {} : { failureReason: row.failureReason }),
     contextType: row.contextType,
     contextId: row.contextId,
     runEventSequenceNumber: row.runEventSequenceNumber,
@@ -266,6 +268,7 @@ async function readCanonicalEvents(
         revokesEventId: chatEvents.revokesEventId,
         eventType: chatEvents.eventType,
         payload: chatEvents.payload,
+        failureReason: chatEvents.failureReason,
         contextType: chatEvents.contextType,
         contextId: chatEvents.contextId,
         runEventSequenceNumber: chatEvents.runEventSequenceNumber,

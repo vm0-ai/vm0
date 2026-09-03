@@ -11,6 +11,7 @@ import {
 import { testBrowserReconcileContract } from "@okouai/api-contracts/contracts/test-browser-reconcile";
 import type { SupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@okouai/api-contracts/contracts/runners";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 import {
@@ -668,9 +669,15 @@ async function failChatRun(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
   error: string,
+  failureReason?: RunFailureReasonToken,
 ): Promise<void> {
   await webhooks.requestAgentComplete(
-    { runId, exitCode: 1, error },
+    {
+      runId,
+      exitCode: 1,
+      error,
+      ...(failureReason === undefined ? {} : { failureReason }),
+    },
     sandboxHeaders,
     [200],
   );
@@ -4703,9 +4710,17 @@ describe("CHAT-02: failed chat callbacks", () => {
       "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.";
     const executionTimeoutError =
       "Agent execution timed out after 7200 seconds";
-    const rounds = [
+    const rounds: readonly {
+      readonly prompt: string;
+      readonly error: string;
+      readonly failureReason?: RunFailureReasonToken;
+    }[] = [
       { prompt: "round one", error: actionableError },
-      { prompt: "round two", error: "First runner failure" },
+      {
+        prompt: "round two",
+        error: "First runner failure",
+        failureReason: "future_reason",
+      },
       { prompt: "round three", error: "Second runner failure" },
       { prompt: "round four", error: usageLimitError },
       { prompt: "round five", error: executionTimeoutError },
@@ -4725,7 +4740,12 @@ describe("CHAT-02: failed chat callbacks", () => {
       // Isolate failed-callback notifications from send-side background work.
       await flushWaitUntilForTest();
       context.mocks.ably.publish.mockClear();
-      await failChatRun(run.runId, sandboxHeaders, round.error);
+      await failChatRun(
+        run.runId,
+        sandboxHeaders,
+        round.error,
+        round.failureReason,
+      );
       // The complete webhook acknowledges before terminal callback work
       // finishes. Drain its tracked waitUntil work so the realtime assertion
       // covers the complete failed-run callback instead of a one-second window.
@@ -4734,6 +4754,19 @@ describe("CHAT-02: failed chat callbacks", () => {
         `chatThreadMessageCreated:${run.threadId}`,
         null,
       );
+      if (round.failureReason !== undefined) {
+        await webhooks.requestAgentComplete(
+          {
+            runId: run.runId,
+            exitCode: 1,
+            error: "Late conflicting failure",
+            failureReason: "provider_overloaded",
+          },
+          sandboxHeaders,
+          [200],
+        );
+        await flushWaitUntilForTest();
+      }
     }
     if (!threadId) {
       throw new Error("Expected five failed chat rounds");
@@ -4796,6 +4829,45 @@ describe("CHAT-02: failed chat callbacks", () => {
         return message.runId === runIds[4];
       })?.content,
     ).toBe(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE);
+    expect(
+      runIds.map((runId) => {
+        return failed.find((message) => {
+          return message.runId === runId;
+        })?.failureReason;
+      }),
+    ).toStrictEqual([
+      undefined,
+      "future_reason",
+      undefined,
+      undefined,
+      undefined,
+    ]);
+
+    const rawRows = await chat.listThreadEventRows(actor, threadId);
+    const rawFailures = rawRows.filter((row) => {
+      return row.eventType === "run.failed";
+    });
+    expect(
+      runIds.map((runId) => {
+        return rawFailures.find((row) => {
+          return row.runId === runId;
+        })?.failureReason;
+      }),
+    ).toStrictEqual([
+      undefined,
+      "future_reason",
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(
+      rawFailures.find((row) => {
+        return row.runId === runIds[1];
+      })?.payload,
+    ).toStrictEqual({
+      content: "Oops, something went wrong. Please try again later.",
+      error: "Oops, something went wrong. Please try again later.",
+    });
 
     expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(5);
     expect(

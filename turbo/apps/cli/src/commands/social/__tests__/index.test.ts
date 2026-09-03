@@ -1,10 +1,4 @@
-import { mkdtempSync } from "node:fs";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-
 import { HttpResponse, http } from "msw";
-import { z } from "zod";
 import {
   afterAll,
   afterEach,
@@ -17,58 +11,6 @@ import {
 
 import { server } from "../../../mocks/server";
 import { socialCommand } from "../index";
-
-const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "social-home-"));
-vi.mock("os", async (importOriginal) => {
-  const original = await importOriginal<typeof import("os")>();
-  return {
-    ...original,
-    homedir: () => {
-      return TEST_HOME;
-    },
-  };
-});
-
-const jsonSchema = z.object({}).loose();
-const catalogSchema = z.object({
-  tools: z.array(
-    z.object({
-      name: z.string(),
-      description: z.string(),
-      inputSchema: jsonSchema,
-      outputSchema: jsonSchema,
-      availability: z.literal("transcript").optional(),
-      collection: z
-        .object({
-          resultField: z.string(),
-          retrieval: z.object({ kind: z.string() }).loose(),
-          defaultLimit: z.number().optional(),
-          requestMaxLimit: z.number().optional(),
-          effectiveLimit: z.number().optional(),
-          reportedTotalField: z.string().optional(),
-          providerLimit: z.object({ kind: z.string() }).loose().optional(),
-          emptyResult: z.object({ reliability: z.string() }).loose().optional(),
-          pageSize: z.object({ kind: z.string() }).loose().optional(),
-          itemContract: z.string().optional(),
-        })
-        .nullable(),
-      billing: z.object({ kind: z.string() }).loose(),
-    }),
-  ),
-  unsupportedCapabilities: z.array(
-    z.object({
-      platform: z.string(),
-      capability: z.string(),
-      status: z.literal("unsupported"),
-      availablePaths: z.object({
-        managedApi: z.literal(false),
-        scrape: z.literal(false),
-        browser: z.literal(false),
-      }),
-      guidance: z.string(),
-    }),
-  ),
-});
 
 type Collection =
   | null
@@ -110,29 +52,72 @@ function socialResponse(
   };
 }
 
-function publicSocialResponseFixture(
-  response: ReturnType<typeof socialResponse>,
-) {
-  return {
-    tool: response.tool,
-    billingCategory: response.billingCategory,
-    billingQuantity: response.billingQuantity,
-    creditsCharged: response.creditsCharged,
-    collection: response.collection,
-    result: response.result,
-  };
+function collectionResult(tool: string): Readonly<Record<string, unknown>> {
+  switch (tool) {
+    case "linkedin_company_posts": {
+      return { posts: [] };
+    }
+    case "twitter_tweets": {
+      return { tweets: [], nextCursor: null };
+    }
+    case "instagram_channel_posts":
+    case "instagram_channel_reels":
+    case "instagram_reels_search": {
+      return { items: [], hasMore: false };
+    }
+    case "facebook_comments":
+    case "instagram_comments":
+    case "tiktok_comments":
+    case "youtube_comments": {
+      return { comments: [], hasMore: false };
+    }
+    case "tiktok_channel_videos":
+    case "tiktok_hashtag_search":
+    case "tiktok_search":
+    case "youtube_search":
+    case "youtube_videos": {
+      return { results: [], hasMore: false };
+    }
+    default: {
+      throw new Error(`Unexpected collection tool ${tool}`);
+    }
+  }
 }
 
-function failedDownloadResponse(status: "provider_failed" | "artifact_failed") {
-  const billed = status === "artifact_failed";
+function completedDownload() {
   return {
     downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
-    status,
+    status: "completed",
     platform: "youtube",
     quality: "720p",
     format: "mp4",
     maxDuration: 600,
     billingCategory: "request",
+    provider: {
+      durationSeconds: 61,
+      fileSizeMB: 2,
+      creditsCost: 2,
+      title: "Example",
+    },
+    billing: { quantity: 2, creditsCharged: 6 },
+    artifact: {
+      id: "e5932cce-3ec7-45ef-a96d-2e4c5dcb4cd4",
+      url: "https://artifacts.example/video.mp4",
+      filename: "example.mp4",
+      contentType: "video/mp4",
+      sizeBytes: 2048,
+    },
+    error: null,
+    createdAt: "2026-08-27T00:00:00.000Z",
+    completedAt: "2026-08-27T00:01:00.000Z",
+  };
+}
+
+function failedDownload(status: "artifact_failed" | "provider_failed") {
+  const billed = status === "artifact_failed";
+  return {
+    ...completedDownload(),
+    status,
     provider: billed
       ? { durationSeconds: 61, fileSizeMB: 2, creditsCost: 2 }
       : null,
@@ -148,7 +133,6 @@ function failedDownloadResponse(status: "provider_failed" | "artifact_failed") {
       retryable: billed,
       billed,
     },
-    createdAt: "2026-08-27T00:00:00.000Z",
     completedAt: billed ? null : "2026-08-27T00:01:00.000Z",
   };
 }
@@ -168,16 +152,21 @@ describe("okou social command", () => {
     throw new Error("process.exit called");
   }) as never);
 
-  beforeEach(async () => {
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  beforeEach(() => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_TOKEN", "test-okou-token");
     for (const command of socialCommand.commands) {
-      command.setOptionValue("input", undefined);
-      command.setOptionValue("all", undefined);
-      command.setOptionValue("maxPages", undefined);
-      command.setOptionValue("maxItems", undefined);
       command.setOptionValue("json", undefined);
+      command.setOptionValue("thread", undefined);
+      command.setOptionValue("kind", undefined);
+      command.setOptionValue("limit", 10);
+      command.setOptionValue("stream", undefined);
+      command.setOptionValue("platform", undefined);
+      command.setOptionValue("hashtag", undefined);
+      command.setOptionValue("sort", undefined);
+      command.setOptionValue("date", undefined);
+      command.setOptionValue("type", undefined);
+      command.setOptionValue("prompt", undefined);
       command.setOptionValue("maxDuration", undefined);
       command.setOptionValue("quality", undefined);
       command.setOptionValue("format", undefined);
@@ -185,22 +174,20 @@ describe("okou social command", () => {
     }
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     mockStderrWrite.mockClear();
     mockExit.mockClear();
     process.exitCode = originalExitCode;
     vi.unstubAllEnvs();
-    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
-  afterAll(async () => {
+  afterAll(() => {
     mockConsoleLog.mockRestore();
     mockConsoleError.mockRestore();
     mockStderrWrite.mockRestore();
     mockExit.mockRestore();
-    await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
   function output(): string {
@@ -208,406 +195,339 @@ describe("okou social command", () => {
   }
 
   function errorOutput(): string {
-    return [
-      ...mockConsoleError.mock.calls.flat(),
-      ...mockStderrWrite.mock.calls.flat(),
-    ]
-      .map(String)
-      .join("\n");
+    return mockConsoleError.mock.calls.flat().map(String).join("\n");
   }
 
-  it("prints all typed tools as local compact JSON", async () => {
+  function outputRequest(): unknown {
+    return (JSON.parse(output()) as { readonly request: unknown }).request;
+  }
+
+  function parserErrorOutput(): string {
+    return mockStderrWrite.mock.calls.flat().map(String).join("");
+  }
+
+  it("discovers concise capabilities locally", async () => {
     let apiRequests = 0;
     server.use(
       http.post("http://localhost:3000/api/social/request", () => {
         apiRequests += 1;
-        return HttpResponse.json(
-          socialResponse("youtube_transcript", null, {}),
-        );
+        return HttpResponse.json(socialResponse("youtube_stats", null, {}));
       }),
     );
 
-    await socialCommand.parseAsync(["node", "cli", "tools", "--json"]);
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "capabilities",
+      "instagram",
+      "--json",
+    ]);
 
-    const catalog = catalogSchema.parse(JSON.parse(output()) as unknown);
-    expect(catalog.tools).toHaveLength(38);
-    expect(
-      new Set(
-        catalog.tools.map((tool) => {
-          return tool.name;
-        }),
-      ).size,
-    ).toBe(38);
+    const result = JSON.parse(output()) as {
+      readonly capabilities: readonly {
+        readonly platform: string;
+        readonly operations: readonly string[];
+      }[];
+    };
+    expect(result).toMatchObject({
+      capabilities: [
+        {
+          platform: "instagram",
+          operations: expect.arrayContaining([
+            "inspect",
+            "posts",
+            "search",
+            "comments",
+          ]),
+        },
+      ],
+    });
+    expect(output()).not.toContain("inputSchema");
+    expect(output()).not.toContain("instagram_channel_posts");
     expect(apiRequests).toBe(0);
-
-    const search = catalog.tools.find((tool) => {
-      return tool.name === "youtube_search";
-    });
-    expect(search?.inputSchema).toMatchObject({
-      type: "object",
-      required: ["query"],
-      properties: {
-        query: { type: "string" },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
-        cache: {
-          type: "boolean",
-          description: "Whether the provider may cache the result",
-        },
-      },
-    });
-    expect(search?.outputSchema).toMatchObject({
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        results: { type: "array" },
-      },
-    });
-    expect(search?.collection).toMatchObject({
-      resultField: "results",
-      retrieval: { kind: "provider_limited" },
-      defaultLimit: 10,
-      requestMaxLimit: 100,
-      providerLimit: { kind: "no_pagination" },
-    });
-    const transcript = catalog.tools.find((tool) => {
-      return tool.name === "youtube_transcript";
-    });
-    expect(transcript?.availability).toBe("transcript");
-    const comments = catalog.tools.find((tool) => {
-      return tool.name === "tiktok_comments";
-    });
-    expect(comments?.collection).toMatchObject({
-      reportedTotalField: "commentCount",
-    });
-    const reelsSearch = catalog.tools.find((tool) => {
-      return tool.name === "instagram_reels_search";
-    });
-    expect(reelsSearch?.collection).toMatchObject({
-      providerLimit: { kind: "max_page", maxPage: 2 },
-    });
-
-    const summary = catalog.tools.find((tool) => {
-      return tool.name === "youtube_summarize";
-    });
-    expect(summary?.inputSchema).toMatchObject({
-      properties: { custom_response: { anyOf: expect.any(Array) } },
-    });
-    expect(summary?.outputSchema).toMatchObject({
-      properties: {
-        summary: { type: "string" },
-        keyPoints: { type: "array" },
-      },
-    });
-    const tiktokSearch = catalog.tools.find((tool) => {
-      return tool.name === "tiktok_search";
-    });
-    expect(tiktokSearch).toMatchObject({
-      collection: {
-        defaultLimit: 10,
-        requestMaxLimit: 100,
-        effectiveLimit: 10,
-        itemContract: "tiktok_video",
-        pageSize: {
-          kind: "provider_controlled",
-          mayDifferFromRequestLimit: true,
-        },
-        emptyResult: {
-          reliability: "unreliable",
-          outcome: "provider_limited",
-          retry: "none",
-          billing: "successful_request",
-        },
-      },
-      billing: {
-        kind: "items",
-        itemsPerUnit: 50,
-        quantityBasis: "effective_request_limit",
-      },
-      outputSchema: {
-        properties: {
-          results: {
-            items: {
-              properties: {
-                videoId: { type: "string" },
-                description: { type: "string" },
-                views: { type: "integer", minimum: 0 },
-              },
-            },
-          },
-        },
-      },
-    });
-    expect(
-      catalog.tools.find((tool) => {
-        return tool.name === "tiktok_hashtag_search";
-      })?.collection,
-    ).toMatchObject({ defaultLimit: 20, effectiveLimit: 20 });
-    expect(
-      catalog.tools.find((tool) => {
-        return tool.name === "tiktok_channel_videos";
-      })?.collection,
-    ).toMatchObject({ defaultLimit: 30, effectiveLimit: 30 });
-    expect(
-      catalog.unsupportedCapabilities.map((capability) => {
-        return capability.capability;
-      }),
-    ).toStrictEqual(["follower_list", "following_list", "comment_replies"]);
-    expect(output()).not.toMatch(/socialkit/iu);
   });
 
-  it("prints readable input and output schemas", async () => {
-    await socialCommand.parseAsync(["node", "cli", "tools"]);
-
-    expect(output()).toContain("youtube_transcript");
-    expect(output()).toContain("Input schema:");
-    expect(output()).toContain("Output schema:");
-    expect(output()).toContain("instagram_comments");
-    expect(output()).toContain("Collection: comments (cursor)");
-    expect(output()).toContain("Reported total: commentCount");
-    expect(output()).toContain("Provider limit: no pagination");
-    expect(output()).toContain("Effective request limit: 10");
-    expect(output()).toContain(
-      "Page size: provider-controlled and may differ from the request limit",
-    );
-    expect(output()).toContain(
-      "Empty result: unreliable; returns provider_limited uncertainty",
-    );
-    expect(output()).toContain(
-      "Billing: 1 quantity per 50 items in the effective request limit",
-    );
-    expect(output()).toContain("Unsupported capabilities");
-    expect(output()).toContain("tiktok.follower_list");
-    expect(output()).toContain(
-      "No reviewed managed API, scrape, or browser path is available",
-    );
-    expect(output()).toContain(
-      "Availability: transcript (provider evidence required; unknown remains explicit)",
-    );
-    expect(output()).not.toMatch(/socialkit/iu);
-  });
-
-  it("calls a tool with typed JSON input", async () => {
+  it.each([
+    ["https://linkedin.com/in/example", "linkedin_profile"],
+    ["https://linkedin.com/company/example", "linkedin_company"],
+    ["https://linkedin.com/posts/example", "linkedin_post"],
+    ["https://twitter.com/example", "twitter_profile"],
+    ["https://x.com/example/status/1", "twitter_tweet"],
+    ["https://facebook.com/example", "facebook_channel_stats"],
+    ["https://facebook.com/example/posts/1", "facebook_stats"],
+    ["https://fb.watch/example", "facebook_stats"],
+    ["https://facebook.com/watch?v=example", "facebook_stats"],
+    ["https://facebook.com/video.php?v=example", "facebook_stats"],
+    [
+      "https://facebook.com/permalink.php?story_fbid=example&id=page",
+      "facebook_stats",
+    ],
+    ["https://facebook.com/photo.php?fbid=example", "facebook_stats"],
+    [
+      "https://facebook.com/story.php?story_fbid=example&id=page",
+      "facebook_stats",
+    ],
+    ["https://instagram.com/example", "instagram_channel_stats"],
+    ["https://instagram.com/reel/example", "instagram_stats"],
+    ["https://tiktok.com/@example", "tiktok_channel_stats"],
+    ["https://tiktok.com/@example/video/1", "tiktok_stats"],
+    ["https://tiktok.com/t/example", "tiktok_stats"],
+    ["https://vm.tiktok.com/example", "tiktok_stats"],
+    ["https://vt.tiktok.com/example", "tiktok_stats"],
+    ["https://youtube.com/@example", "youtube_channel_stats"],
+    ["https://youtube.com/watch?v=example", "youtube_stats"],
+  ])("routes inspect %s to %s", async (url, expectedTool) => {
     let requestBody: unknown;
-    const response = socialResponse(
-      "youtube_search",
-      { state: "provider_limited", itemsReturned: 1 },
-      {
-        query: "typed tools",
-        results: [{ title: "Typed result", views: 10 }],
-        providerName: "SocialKit",
-        nested: {
-          providerCode: "socialkit",
-          items: [{ upstreamProvider: "socialkit" }],
-        },
-        source: { provider: "youtube" },
-      },
-    );
     server.use(
       http.post(
         "http://localhost:3000/api/social/request",
         async ({ request }) => {
-          requestBody = (await request.json()) as unknown;
-          return HttpResponse.json(response);
+          requestBody = await request.json();
+          return HttpResponse.json(socialResponse(expectedTool, null, {}));
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync(["node", "okou", "inspect", url, "--json"]);
+
+    expect(requestBody).toMatchObject({ tool: expectedTool });
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      status: "complete",
+      operation: "inspect",
+    });
+    expect(outputRequest()).toStrictEqual({ thread: false });
+  });
+
+  it("canonicalizes supported URLs and routes X threads", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(socialResponse("twitter_thread", null, {}));
         },
       ),
     );
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
-      "call",
-      "youtube_search",
-      "--input",
-      '{"query":"typed tools","limit":10,"cache":false}',
+      "okou",
+      "inspect",
+      "http://mobile.twitter.com/example/status/1?utm_source=test#reply",
+      "--thread",
+      "--json",
+    ]);
+
+    expect(requestBody).toStrictEqual({
+      tool: "twitter_thread",
+      input: { url: "https://x.com/example/status/1" },
+    });
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      platform: "twitter",
+      target: {
+        input:
+          "http://mobile.twitter.com/example/status/1?utm_source=test#reply",
+        canonicalUrl: "https://x.com/example/status/1",
+      },
+    });
+    expect(outputRequest()).toStrictEqual({ thread: true });
+  });
+
+  it.each([
+    [
+      "https://linkedin.com/company/example",
+      undefined,
+      "linkedin_company_posts",
+    ],
+    ["https://x.com/example", undefined, "twitter_tweets"],
+    ["https://instagram.com/example", undefined, "instagram_channel_posts"],
+    ["https://instagram.com/example", "reels", "instagram_channel_reels"],
+    ["https://tiktok.com/@example", undefined, "tiktok_channel_videos"],
+    ["https://youtube.com/@example", undefined, "youtube_videos"],
+    ["https://youtube.com/playlist?list=example", undefined, "youtube_videos"],
+  ])("routes posts %s %s to %s", async (url, kind, expectedTool) => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(
+            socialResponse(
+              expectedTool,
+              { state: "complete", itemsReturned: 0 },
+              collectionResult(expectedTool),
+            ),
+          );
+        },
+      ),
+    );
+    const args = ["node", "okou", "posts", url, "--limit", "250", "--json"];
+    if (kind) {
+      args.push("--kind", kind);
+    }
+
+    await socialCommand.parseAsync(args);
+
+    expect(requestBody).toMatchObject({ tool: expectedTool });
+    expect(requestBody).toHaveProperty(
+      "input.limit",
+      expectedTool === "linkedin_company_posts"
+        ? 50
+        : expectedTool === "tiktok_channel_videos"
+          ? 30
+          : 100,
+    );
+    expect(outputRequest()).toStrictEqual(
+      kind === undefined ? { limit: 250 } : { limit: 250, kind },
+    );
+  });
+
+  it.each([
+    ["instagram", false, "instagram_reels_search"],
+    ["tiktok", false, "tiktok_search"],
+    ["tiktok", true, "tiktok_hashtag_search"],
+    ["youtube", false, "youtube_search"],
+  ])("routes %s search to %s", async (platform, hashtag, expectedTool) => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(
+            socialResponse(
+              expectedTool,
+              { state: "complete", itemsReturned: 0 },
+              collectionResult(expectedTool),
+            ),
+          );
+        },
+      ),
+    );
+    const args = [
+      "node",
+      "okou",
+      "search",
+      hashtag ? "#launch" : "launch",
+      "--platform",
+      platform,
+      "--json",
+    ];
+    if (hashtag) {
+      args.push("--hashtag");
+    }
+
+    await socialCommand.parseAsync(args);
+
+    expect(requestBody).toMatchObject({ tool: expectedTool });
+    if (hashtag) {
+      expect(requestBody).toHaveProperty("input.hashtag", "launch");
+    }
+    expect(outputRequest()).toStrictEqual({ limit: 10, hashtag });
+  });
+
+  it("reports provider-neutral search filters in the result envelope", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(
+            socialResponse(
+              "youtube_search",
+              { state: "complete", itemsReturned: 0 },
+              collectionResult("youtube_search"),
+            ),
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "search",
+      "launch",
+      "--platform",
+      "youtube",
+      "--sort",
+      "views",
+      "--date",
+      "month",
+      "--type",
+      "shorts",
+      "--limit",
+      "25",
       "--json",
     ]);
 
     expect(requestBody).toStrictEqual({
       tool: "youtube_search",
-      input: { query: "typed tools", limit: 10, cache: false },
-    });
-    expect(JSON.parse(output()) as unknown).toStrictEqual({
-      ...publicSocialResponseFixture(response),
-      result: {
-        query: "typed tools",
-        results: [{ title: "Typed result", views: 10 }],
-        nested: { items: [{}] },
-        source: { provider: "youtube" },
+      input: {
+        query: "launch",
+        limit: 25,
+        sortBy: "views",
+        uploadDate: "month",
+        type: "shorts",
       },
     });
-    expect(output()).not.toMatch(/socialkit/iu);
-  });
-
-  it("normalizes an old-shaped TikTok response and clamps a single-page request", async () => {
-    let requestBody: unknown;
-    server.use(
-      http.post(
-        "http://localhost:3000/api/social/request",
-        async ({ request }) => {
-          requestBody = (await request.json()) as unknown;
-          return HttpResponse.json(
-            socialResponse(
-              "tiktok_search",
-              { state: "complete", itemsReturned: 1 },
-              {
-                query: "launch",
-                results: [
-                  {
-                    id: "video-1",
-                    desc: "Launch result",
-                    url: "https://www.tiktok.com/@example/video/1",
-                    author: {
-                      uniqueId: "example",
-                      nickname: "Example",
-                    },
-                    stats: {
-                      views: 100,
-                      likes: 20,
-                      comments: 3,
-                      shares: 4,
-                      saves: 5,
-                    },
-                    video: {
-                      cover: "https://example.com/cover.jpg",
-                      duration: 12,
-                    },
-                    providerName: "SocialKit",
-                  },
-                ],
-                hasMore: false,
-                cursor: null,
-              },
-            ),
-          );
-        },
-      ),
-    );
-
-    await socialCommand.parseAsync([
-      "node",
-      "cli",
-      "call",
-      "tiktok_search",
-      "--input",
-      '{"query":"launch","limit":100}',
-      "--json",
-    ]);
-
-    expect(requestBody).toStrictEqual({
-      tool: "tiktok_search",
-      input: { query: "launch", limit: 10 },
+    expect(outputRequest()).toStrictEqual({
+      limit: 25,
+      hashtag: false,
+      sort: "views",
+      date: "month",
+      type: "shorts",
     });
-    expect(JSON.parse(output()) as unknown).toMatchObject({
-      tool: "tiktok_search",
-      collection: { state: "complete", itemsReturned: 1 },
-      result: {
-        results: [
-          {
-            videoId: "video-1",
-            description: "Launch result",
-            thumbnail: "https://example.com/cover.jpg",
-            duration: 12,
-            views: 100,
-            collects: 5,
-            author: { username: "example", displayName: "Example" },
-          },
-        ],
-      },
-    });
-    expect(output()).not.toMatch(/socialkit/iu);
   });
 
   it.each([
-    {
-      tool: "tiktok_search",
-      input: '{"query":"launch","limit":100}',
-      expectedInput: { query: "launch", limit: 10 },
-      result: {
-        results: [{ id: "search-video", desc: "Search result" }],
-        hasMore: false,
-        cursor: null,
-      },
-    },
-    {
-      tool: "tiktok_hashtag_search",
-      input: '{"hashtag":"launch"}',
-      expectedInput: { hashtag: "launch", limit: 20 },
-      result: {
-        results: [{ id: "hashtag-video", desc: "Hashtag result" }],
-        hasMore: false,
-        cursor: null,
-      },
-    },
-    {
-      tool: "tiktok_channel_videos",
-      input: '{"url":"https://www.tiktok.com/@example","limit":100}',
-      expectedInput: {
-        url: "https://www.tiktok.com/@example",
-        limit: 30,
-      },
-      result: {
-        results: [{ videoId: "channel-video", description: "Channel result" }],
-        hasMore: false,
-        cursor: null,
-      },
-    },
-  ])(
-    "uses the reviewed effective page limit for $tool full retrieval",
-    async ({ tool, input, expectedInput, result }) => {
-      const requests: unknown[] = [];
-      server.use(
-        http.post(
-          "http://localhost:3000/api/social/request",
-          async ({ request }) => {
-            requests.push((await request.json()) as unknown);
-            return HttpResponse.json(
-              socialResponse(
-                tool,
-                { state: "complete", itemsReturned: 1 },
-                result,
-              ),
-            );
-          },
-        ),
-      );
-
-      await socialCommand.parseAsync([
-        "node",
-        "cli",
-        "call",
-        tool,
-        "--input",
-        input,
-        "--all",
-        "--json",
-      ]);
-
-      expect(requests).toStrictEqual([{ tool, input: expectedInput }]);
-      expect(
-        JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0])),
-      ).toMatchObject({
-        kind: "summary",
-        completion: "complete",
-        pages: 1,
-        itemsReturned: 1,
-      });
-      expect(output()).not.toMatch(/socialkit/iu);
-    },
-  );
-
-  it("stops on old-API unreliable empty uncertainty without a hidden retry", async () => {
-    const requests: unknown[] = [];
+    ["https://facebook.com/example/posts/1", "facebook_comments"],
+    ["https://instagram.com/p/example", "instagram_comments"],
+    ["https://tiktok.com/@example/video/1", "tiktok_comments"],
+    ["https://youtu.be/example", "youtube_comments"],
+  ])("routes comments %s to %s", async (url, expectedTool) => {
+    let requestBody: unknown;
     server.use(
       http.post(
         "http://localhost:3000/api/social/request",
         async ({ request }) => {
-          requests.push((await request.json()) as unknown);
+          requestBody = await request.json();
           return HttpResponse.json(
             socialResponse(
-              "tiktok_search",
+              expectedTool,
               { state: "complete", itemsReturned: 0 },
-              { query: "empty", results: [], hasMore: false, cursor: null },
+              collectionResult(expectedTool),
             ),
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync(["node", "okou", "comments", url, "--json"]);
+
+    expect(requestBody).toMatchObject({ tool: expectedTool });
+    expect(outputRequest()).toStrictEqual({ limit: 10 });
+  });
+
+  it.each([
+    ["https://linkedin.com/posts/example", "linkedin_transcript"],
+    ["https://x.com/example/status/1", "twitter_transcript"],
+    ["https://facebook.com/example/videos/1", "facebook_transcript"],
+    ["https://instagram.com/reel/example", "instagram_transcript"],
+    ["https://tiktok.com/@example/video/1", "tiktok_transcript"],
+    ["https://youtu.be/example", "youtube_transcript"],
+  ])("routes transcript %s to %s", async (url, expectedTool) => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(
+            socialResponse(expectedTool, null, { transcript: "Example" }),
           );
         },
       ),
@@ -615,104 +535,74 @@ describe("okou social command", () => {
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
-      "call",
-      "tiktok_search",
-      "--input",
-      '{"query":"empty"}',
-      "--all",
+      "okou",
+      "transcript",
+      url,
       "--json",
     ]);
 
-    expect(requests).toStrictEqual([
-      { tool: "tiktok_search", input: { query: "empty", limit: 10 } },
-    ]);
-    const records = mockConsoleLog.mock.calls.map(([value]) => {
-      return JSON.parse(String(value)) as unknown;
-    });
-    expect(records[0]).toMatchObject({
-      kind: "page",
-      response: {
-        collection: {
-          state: "provider_limited",
-          itemsReturned: 0,
-          uncertainty: { reason: "unreliable_empty_result" },
-        },
-      },
-    });
-    expect(records[1]).toStrictEqual({
-      kind: "summary",
-      completion: "provider_limited",
-      pages: 1,
-      itemsReturned: 0,
-      billingQuantity: 1,
-      creditsCharged: 3,
-      uncertaintyReason: "unreliable_empty_result",
-    });
-    expect(output()).not.toMatch(/socialkit/iu);
+    expect(requestBody).toMatchObject({ tool: expectedTool });
+    expect(outputRequest()).toStrictEqual({});
   });
 
-  it("keeps custom response objects typed in the request", async () => {
+  it.each([
+    ["https://facebook.com/example/videos/1", "facebook_summarize"],
+    ["https://instagram.com/reel/example", "instagram_summarize"],
+    ["https://tiktok.com/@example/video/1", "tiktok_summarize"],
+    ["https://youtu.be/example", "youtube_summarize"],
+  ])("routes summarize %s to %s", async (url, expectedTool) => {
     let requestBody: unknown;
-    const response = socialResponse("youtube_summarize", null, {
-      summary: "Short summary",
-      title: "Custom title",
-    });
     server.use(
       http.post(
         "http://localhost:3000/api/social/request",
         async ({ request }) => {
-          requestBody = (await request.json()) as unknown;
-          return HttpResponse.json(response);
+          requestBody = await request.json();
+          return HttpResponse.json(
+            socialResponse(expectedTool, null, { summary: "Example" }),
+          );
         },
       ),
     );
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
-      "call",
-      "youtube_summarize",
-      "--input",
-      '{"url":"https://youtu.be/id","custom_response":{"title":"Video title"}}',
+      "okou",
+      "summarize",
+      url,
+      "--prompt",
+      "Focus on outcomes",
+      "--json",
     ]);
 
-    expect(requestBody).toStrictEqual({
-      tool: "youtube_summarize",
-      input: {
-        url: "https://youtu.be/id",
-        custom_response: { title: "Video title" },
-      },
+    expect(requestBody).toMatchObject({
+      tool: expectedTool,
+      input: { custom_prompt: "Focus on outcomes" },
     });
-    expect(output()).toBe(
-      JSON.stringify(publicSocialResponseFixture(response), null, 2),
-    );
+    expect(outputRequest()).toStrictEqual({ customPrompt: true });
   });
 
-  it("retrieves typed cursor pages with provider-max page size", async () => {
+  it("aggregates pages, trims provider overshoot, and totals billing", async () => {
     const requests: unknown[] = [];
     server.use(
       http.post(
         "http://localhost:3000/api/social/request",
         async ({ request }) => {
-          requests.push((await request.json()) as unknown);
+          requests.push(await request.json());
           const firstPage = requests.length === 1;
+          const comments = Array.from({ length: 7 }, (_, index) => {
+            return { id: `${firstPage ? "a" : "b"}-${index}` };
+          });
           return HttpResponse.json(
             socialResponse(
               "instagram_comments",
-              firstPage
-                ? {
-                    state: "more",
-                    itemsReturned: 2,
-                    nextInput: { cursor: "next-page" },
-                  }
-                : { state: "complete", itemsReturned: 1 },
               {
-                comments: firstPage
-                  ? [{ id: "1" }, { id: "2" }]
-                  : [{ id: "3" }],
-                hasMore: firstPage,
+                state: "more",
+                itemsReturned: 7,
+                reportedTotal: 82,
+                nextInput: { cursor: firstPage ? "next" : "after-next" },
               },
+              { comments, hasMore: true, commentCount: 82 },
+              2,
             ),
           );
         },
@@ -721,144 +611,93 @@ describe("okou social command", () => {
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
-      "call",
-      "instagram_comments",
-      "--input",
-      '{"url":"https://instagram.com/p/example"}',
-      "--all",
+      "okou",
+      "comments",
+      "https://instagram.com/p/example",
+      "--limit",
+      "10",
       "--json",
     ]);
 
-    expect(requests).toStrictEqual([
-      {
-        tool: "instagram_comments",
-        input: { url: "https://instagram.com/p/example", limit: 100 },
-      },
-      {
-        tool: "instagram_comments",
-        input: {
-          url: "https://instagram.com/p/example",
-          limit: 100,
-          cursor: "next-page",
-        },
-      },
-    ]);
-    const records = mockConsoleLog.mock.calls.map(([value]) => {
-      return JSON.parse(String(value)) as unknown;
-    });
-    expect(records[0]).toStrictEqual({
-      kind: "page",
-      pageNumber: 1,
-      response: {
-        tool: "instagram_comments",
-        billingCategory: "request",
-        billingQuantity: 1,
-        creditsCharged: 3,
-        collection: {
-          state: "more",
-          itemsReturned: 2,
-          nextInput: { cursor: "next-page" },
-        },
-        result: {
-          comments: [{ id: "1" }, { id: "2" }],
-          hasMore: true,
-        },
-      },
-    });
-    expect(records[1]).toStrictEqual({
-      kind: "page",
-      pageNumber: 2,
-      response: {
-        tool: "instagram_comments",
-        billingCategory: "request",
-        billingQuantity: 1,
-        creditsCharged: 3,
-        collection: { state: "complete", itemsReturned: 1 },
-        result: { comments: [{ id: "3" }], hasMore: false },
-      },
-    });
-    expect(records[2]).toStrictEqual({
-      kind: "summary",
-      completion: "complete",
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toHaveProperty("input.limit", 10);
+    expect(requests[1]).toHaveProperty("input.limit", 3);
+    const result = JSON.parse(output()) as {
+      readonly status: string;
+      readonly request: Readonly<Record<string, unknown>>;
+      readonly data: { readonly items: readonly unknown[] };
+      readonly collection: Readonly<Record<string, unknown>>;
+      readonly billing: Readonly<Record<string, unknown>>;
+    };
+    expect(result.status).toBe("complete");
+    expect(result.request).toStrictEqual({ limit: 10 });
+    expect(result.data.items).toHaveLength(10);
+    expect(result.collection).toMatchObject({
+      state: "caller_limited",
       pages: 2,
-      itemsReturned: 3,
-      billingQuantity: 2,
-      creditsCharged: 6,
+      itemsReturned: 10,
+      itemsObserved: 14,
+      requestedItems: 10,
+      reportedTotal: 82,
+    });
+    expect(result.billing).toMatchObject({
+      quantity: 4,
+      creditsCharged: 12,
     });
   });
 
-  it("follows typed numeric pages to the provider ceiling", async () => {
-    const requests: unknown[] = [];
-    server.use(
-      http.post(
-        "http://localhost:3000/api/social/request",
-        async ({ request }) => {
-          requests.push((await request.json()) as unknown);
-          const firstPage = requests.length === 1;
-          return HttpResponse.json(
-            socialResponse(
-              "instagram_reels_search",
-              firstPage
-                ? {
-                    state: "more",
-                    itemsReturned: 1,
-                    nextInput: { page: 2 },
-                  }
-                : { state: "provider_limited", itemsReturned: 1 },
-              { items: [{ id: String(requests.length) }], hasMore: true },
-            ),
-          );
-        },
-      ),
-    );
-
-    await socialCommand.parseAsync([
-      "node",
-      "cli",
-      "call",
-      "instagram_reels_search",
-      "--input",
-      '{"query":"cats"}',
-      "--all",
-      "--json",
-    ]);
-
-    expect(requests).toStrictEqual([
-      { tool: "instagram_reels_search", input: { query: "cats" } },
-      {
-        tool: "instagram_reels_search",
-        input: { query: "cats", page: 2 },
-      },
-    ]);
-    expect(JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0]))).toEqual({
-      kind: "summary",
-      completion: "provider_limited",
-      pages: 2,
-      itemsReturned: 2,
-      billingQuantity: 2,
-      creditsCharged: 6,
-    });
-  });
-
-  it("reports provider completeness evidence in full retrieval output", async () => {
+  it("marks a complete provider page caller-limited when trimming overshoot", async () => {
     server.use(
       http.post("http://localhost:3000/api/social/request", () => {
         return HttpResponse.json(
           socialResponse(
-            "tiktok_comments",
+            "youtube_search",
+            { state: "complete", itemsReturned: 3 },
+            {
+              results: [{ id: "one" }, { id: "two" }, { id: "three" }],
+              hasMore: false,
+            },
+          ),
+        );
+      }),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "search",
+      "launch",
+      "--platform",
+      "youtube",
+      "--limit",
+      "2",
+      "--json",
+    ]);
+
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      status: "complete",
+      data: { items: [{ id: "one" }, { id: "two" }] },
+      collection: {
+        state: "caller_limited",
+        itemsReturned: 2,
+        itemsObserved: 3,
+      },
+      warnings: [{ code: "RESULT_LIMIT_REACHED" }],
+    });
+  });
+
+  it("marks an unsatisfied provider-limited collection partial", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          socialResponse(
+            "youtube_comments",
             {
               state: "provider_limited",
               itemsReturned: 2,
-              reason: "reported_total_exceeds_page",
-              reportedTotal: 100,
+              reason: "no_pagination",
             },
-            {
-              comments: [{ id: "1" }, { id: "2" }],
-              commentCount: 100,
-              hasMore: false,
-              cursor: null,
-            },
+            { comments: [{ id: "1" }, { id: "2" }] },
           ),
         );
       }),
@@ -866,223 +705,44 @@ describe("okou social command", () => {
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
-      "call",
-      "tiktok_comments",
-      "--input",
-      '{"url":"https://tiktok.com/@example/video/123"}',
-      "--all",
+      "okou",
+      "comments",
+      "https://youtu.be/example",
+      "--limit",
+      "10",
       "--json",
     ]);
 
-    const records = mockConsoleLog.mock.calls.map(([value]) => {
-      return JSON.parse(String(value)) as Record<string, unknown>;
-    });
-    expect(records[0]).toMatchObject({
-      kind: "page",
-      response: {
-        collection: {
-          state: "provider_limited",
-          reason: "reported_total_exceeds_page",
-          reportedTotal: 100,
-        },
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      status: "partial",
+      collection: {
+        state: "provider_limited",
+        itemsReturned: 2,
+        requestedItems: 10,
       },
+      warnings: [{ code: "PROVIDER_LIMITED" }],
     });
-    expect(records[1]).toStrictEqual({
-      kind: "summary",
-      completion: "provider_limited",
-      pages: 1,
-      itemsReturned: 2,
-      billingQuantity: 1,
-      creditsCharged: 3,
-      providerLimitedReason: "reported_total_exceeds_page",
-      reportedTotal: 100,
-    });
+    expect(process.exitCode).toBe(2);
   });
 
-  it("honors typed caller item limits", async () => {
-    const requests: unknown[] = [];
-    server.use(
-      http.post(
-        "http://localhost:3000/api/social/request",
-        async ({ request }) => {
-          const body: unknown = await request.json();
-          requests.push(body);
-          return HttpResponse.json(
-            socialResponse(
-              "tiktok_search",
-              {
-                state: "more",
-                itemsReturned: 3,
-                nextInput: { cursor: "next-page" },
-              },
-              { results: [], hasMore: true },
-            ),
-          );
-        },
-      ),
-    );
-
-    await socialCommand.parseAsync([
-      "node",
-      "cli",
-      "call",
-      "tiktok_search",
-      "--input",
-      '{"query":"launch"}',
-      "--all",
-      "--max-items",
-      "3",
-      "--json",
-    ]);
-
-    expect(requests).toStrictEqual([
-      {
-        tool: "tiktok_search",
-        input: { query: "launch", limit: 3 },
-      },
-    ]);
-    expect(JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0]))).toEqual({
-      kind: "summary",
-      completion: "caller_limited",
-      pages: 1,
-      itemsReturned: 3,
-      billingQuantity: 1,
-      creditsCharged: 3,
-    });
-  });
-
-  it("stops at the first page that exceeds a caller item limit", async () => {
-    const requests: unknown[] = [];
-    server.use(
-      http.post(
-        "http://localhost:3000/api/social/request",
-        async ({ request }) => {
-          requests.push((await request.json()) as unknown);
-          return HttpResponse.json(
-            socialResponse(
-              "tiktok_search",
-              {
-                state: "more",
-                itemsReturned: 16,
-                nextInput: { cursor: "next-page" },
-              },
-              {
-                results: Array.from({ length: 16 }, (_, index) => {
-                  return { id: `video-${index}`, desc: "Result" };
-                }),
-                hasMore: true,
-                cursor: "next-page",
-              },
-            ),
-          );
-        },
-      ),
-    );
-
-    await socialCommand.parseAsync([
-      "node",
-      "cli",
-      "call",
-      "tiktok_search",
-      "--input",
-      '{"query":"launch"}',
-      "--all",
-      "--max-items",
-      "3",
-      "--json",
-    ]);
-
-    expect(requests).toStrictEqual([
-      {
-        tool: "tiktok_search",
-        input: { query: "launch", limit: 3 },
-      },
-    ]);
-    expect(JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0]))).toEqual({
-      kind: "summary",
-      completion: "caller_limited",
-      pages: 1,
-      itemsReturned: 16,
-      billingQuantity: 1,
-      creditsCharged: 3,
-    });
-  });
-
-  it("preserves emitted pages and reports a failed summary", async () => {
-    let requestCount = 0;
+  it("detects repeated pagination and emits a structured error", async () => {
+    let requests = 0;
     server.use(
       http.post("http://localhost:3000/api/social/request", () => {
-        requestCount += 1;
-        if (requestCount === 2) {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "The requested social content is unavailable",
-                code: "SOCIALKIT_CONTENT_UNAVAILABLE",
-              },
-            },
-            { status: 404 },
-          );
-        }
-        return HttpResponse.json(
-          socialResponse(
-            "tiktok_channel_videos",
-            {
-              state: "more",
-              itemsReturned: 1,
-              nextInput: { cursor: "unstable-page" },
-            },
-            { results: [{ videoId: "1" }], hasMore: true },
-          ),
-        );
-      }),
-    );
-
-    await expect(
-      socialCommand.parseAsync([
-        "node",
-        "cli",
-        "call",
-        "tiktok_channel_videos",
-        "--input",
-        '{"url":"https://tiktok.com/@example"}',
-        "--all",
-        "--json",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    const records = mockConsoleLog.mock.calls.map(([value]) => {
-      return JSON.parse(String(value)) as unknown;
-    });
-    expect(records[0]).toMatchObject({ kind: "page", pageNumber: 1 });
-    expect(records[1]).toStrictEqual({
-      kind: "summary",
-      completion: "failed",
-      pages: 1,
-      itemsReturned: 1,
-      billingQuantity: 1,
-      creditsCharged: 3,
-    });
-    expect(errorOutput()).toContain(
-      "404: The requested social content is unavailable",
-    );
-  });
-
-  it("rejects repeated pagination without a third API request", async () => {
-    let requestCount = 0;
-    server.use(
-      http.post("http://localhost:3000/api/social/request", () => {
-        requestCount += 1;
+        requests += 1;
         return HttpResponse.json(
           socialResponse(
             "tiktok_search",
             {
               state: "more",
               itemsReturned: 1,
-              nextInput: { cursor: "repeated-cursor" },
+              nextInput: { cursor: "same" },
             },
-            { results: [{ id: String(requestCount) }], hasMore: true },
+            {
+              results: [{ id: `video-${requests}` }],
+              hasMore: true,
+              cursor: "same",
+            },
           ),
         );
       }),
@@ -1091,271 +751,53 @@ describe("okou social command", () => {
     await expect(
       socialCommand.parseAsync([
         "node",
-        "cli",
-        "call",
-        "tiktok_search",
-        "--input",
-        '{"query":"launch"}',
-        "--all",
+        "okou",
+        "search",
+        "launch",
+        "--platform",
+        "tiktok",
+        "--limit",
+        "10",
         "--json",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    expect(requestCount).toBe(2);
-    expect(JSON.parse(String(mockConsoleLog.mock.calls.at(-1)?.[0]))).toEqual({
-      kind: "summary",
-      completion: "failed",
-      pages: 2,
-      itemsReturned: 2,
-      billingQuantity: 2,
-      creditsCharged: 6,
+    expect(requests).toBe(2);
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "internal",
+        code: "INTERNAL",
+        message: "Okou Social returned a repeated pagination state",
+      },
+      progress: { pages: 2, itemsReturned: 2 },
     });
-    expect(errorOutput()).toContain("repeated pagination state");
   });
 
-  it("rejects a collection response without page metadata", async () => {
+  it("reports progress when a later collection page fails", async () => {
+    let requests = 0;
     server.use(
       http.post("http://localhost:3000/api/social/request", () => {
-        return HttpResponse.json(
-          socialResponse("tiktok_search", null, {
-            results: [],
-            hasMore: false,
-          }),
-        );
-      }),
-    );
-
-    await expect(
-      socialCommand.parseAsync([
-        "node",
-        "cli",
-        "call",
-        "tiktok_search",
-        "--input",
-        '{"query":"launch"}',
-        "--all",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(errorOutput()).toContain(
-      "Okou Social collection response has no page metadata",
-    );
-  });
-
-  it.each([
-    {
-      caseName: "an unknown tool",
-      args: ["call", "youtube_unknown", "--input", "{}"],
-      message: "Unknown Okou Social tool",
-    },
-    {
-      caseName: "malformed JSON",
-      args: ["call", "youtube_transcript", "--input", "{"],
-      message: "valid JSON",
-    },
-    {
-      caseName: "a string number",
-      args: [
-        "call",
-        "youtube_search",
-        "--input",
-        '{"query":"launch","limit":"10"}',
-      ],
-      message: "expected number",
-    },
-    {
-      caseName: "an authentication override",
-      args: [
-        "call",
-        "youtube_transcript",
-        "--input",
-        '{"url":"https://youtu.be/id","access_key":"caller-key"}',
-      ],
-      message: "Unrecognized key",
-    },
-    {
-      caseName: "a missing URL",
-      args: ["call", "youtube_transcript", "--input", "{}"],
-      message: "expected string",
-    },
-    {
-      caseName: "full retrieval for a non-collection tool",
-      args: [
-        "call",
-        "youtube_transcript",
-        "--input",
-        '{"url":"https://youtu.be/id"}',
-        "--all",
-      ],
-      message: "requires an Okou Social collection tool",
-    },
-    {
-      caseName: "a caller bound without full retrieval",
-      args: [
-        "call",
-        "youtube_search",
-        "--input",
-        '{"query":"launch"}',
-        "--max-pages",
-        "2",
-      ],
-      message: "require --all",
-    },
-    {
-      caseName: "an item bound for page-only retrieval",
-      args: [
-        "call",
-        "instagram_reels_search",
-        "--input",
-        '{"query":"cats"}',
-        "--all",
-        "--max-items",
-        "2",
-      ],
-      message: "requires a tool with a result limit",
-    },
-  ])("rejects $caseName before calling the API", async ({ args, message }) => {
-    let apiRequests = 0;
-    server.use(
-      http.post("http://localhost:3000/api/social/request", () => {
-        apiRequests += 1;
-        return HttpResponse.json(
-          socialResponse("youtube_transcript", null, {}),
-        );
-      }),
-    );
-
-    await expect(
-      socialCommand.parseAsync(["node", "cli", ...args]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(errorOutput()).toContain(message);
-    expect(mockExit).toHaveBeenCalledWith(1);
-    expect(apiRequests).toBe(0);
-  });
-
-  it("prints API errors", async () => {
-    server.use(
-      http.post("http://localhost:3000/api/social/request", () => {
+        requests += 1;
+        if (requests === 1) {
+          return HttpResponse.json(
+            socialResponse(
+              "instagram_comments",
+              {
+                state: "more",
+                itemsReturned: 2,
+                nextInput: { cursor: "next" },
+              },
+              { comments: [{ id: "one" }, { id: "two" }], hasMore: true },
+              2,
+            ),
+          );
+        }
         return HttpResponse.json(
           {
             error: {
-              message: "SocialKit could not read the requested content",
-              code: "SOCIALKIT_CONTENT_UNAVAILABLE",
-            },
-          },
-          { status: 404 },
-        );
-      }),
-    );
-
-    await expect(
-      socialCommand.parseAsync([
-        "node",
-        "cli",
-        "call",
-        "linkedin_profile",
-        "--input",
-        '{"url":"https://linkedin.com/in/example"}',
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(errorOutput()).toContain(
-      "404: Okou Social could not read the requested content",
-    );
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
-
-  it.each([
-    {
-      status: 404,
-      code: "SOCIALKIT_TRANSCRIPT_UNAVAILABLE",
-      message: "A transcript is not available for this video",
-      title: "Transcript unavailable",
-      guidance: "not evidence that the video contains no speech",
-      reason: "transcript_unavailable",
-    },
-    {
-      status: 404,
-      code: "SOCIALKIT_TRANSCRIPT_AVAILABILITY_UNKNOWN",
-      message:
-        "SocialKit could not establish whether the source or transcript is unavailable",
-      title: "Transcript availability unknown",
-      guidance: "not evidence that the video contains no speech",
-      reason: "availability_unknown",
-    },
-    {
-      status: 502,
-      code: "SOCIALKIT_TRANSCRIPT_ACCESS_DENIED",
-      message:
-        "SocialKit denied transcript access; transcript availability is unknown",
-      title: "Transcript access denied",
-      guidance: "not a vm0 authentication failure",
-      reason: "access_denied",
-    },
-  ])("renders transcript guidance for $code", async (testCase) => {
-    server.use(
-      http.post("http://localhost:3000/api/social/request", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: testCase.message,
-              code: testCase.code,
-              reason: testCase.reason,
-            },
-          },
-          { status: testCase.status },
-        );
-      }),
-    );
-
-    await expect(
-      socialCommand.parseAsync([
-        "node",
-        "cli",
-        "call",
-        "youtube_transcript",
-        "--input",
-        '{"url":"https://youtu.be/example"}',
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(errorOutput()).toContain(testCase.title);
-    expect(errorOutput()).toContain(testCase.guidance);
-    expect(errorOutput()).not.toMatch(/socialkit/iu);
-    expect(errorOutput()).not.toContain("404:");
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
-
-  it("uses public branding for a malformed API error", async () => {
-    server.use(
-      http.post("http://localhost:3000/api/social/request", () => {
-        return HttpResponse.json({}, { status: 502 });
-      }),
-    );
-
-    await expect(
-      socialCommand.parseAsync([
-        "node",
-        "cli",
-        "call",
-        "linkedin_profile",
-        "--input",
-        '{"url":"https://linkedin.com/in/example"}',
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(errorOutput()).toContain("502: Okou Social request failed");
-  });
-
-  it("sanitizes download creation API errors", async () => {
-    server.use(
-      http.post("http://localhost:3000/api/social/downloads", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "SocialKit could not start the download",
-              code: "SOCIALKIT_DOWNLOAD_FAILED",
+              code: "SOCIALKIT_UPSTREAM_ERROR",
+              message: "SocialKit request failed",
             },
           },
           { status: 502 },
@@ -1366,326 +808,601 @@ describe("okou social command", () => {
     await expect(
       socialCommand.parseAsync([
         "node",
-        "cli",
-        "download",
-        "youtube",
-        "https://youtu.be/public-video",
-        "--max-duration",
-        "600",
+        "okou",
+        "comments",
+        "https://instagram.com/p/example",
+        "--limit",
+        "10",
+        "--json",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    expect(errorOutput()).toContain(
-      "502: Okou Social could not start the download",
-    );
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "provider_temporary",
+        code: "SOCIAL_UPSTREAM_ERROR",
+        retryable: true,
+      },
+      progress: {
+        pages: 1,
+        itemsReturned: 2,
+        itemsObserved: 2,
+        billingQuantity: 2,
+        creditsCharged: 6,
+      },
+    });
   });
 
-  it("sanitizes download status API errors", async () => {
+  it("streams only when explicitly requested", async () => {
+    let requests = 0;
     server.use(
-      http.get(
-        "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
-        () => {
-          return HttpResponse.json(
+      http.post("http://localhost:3000/api/social/request", () => {
+        requests += 1;
+        const firstPage = requests === 1;
+        return HttpResponse.json(
+          socialResponse(
+            "instagram_comments",
+            firstPage
+              ? {
+                  state: "more",
+                  itemsReturned: 1,
+                  nextInput: { cursor: "next" },
+                }
+              : { state: "complete", itemsReturned: 1 },
             {
-              error: {
-                message: "SocialKit download status is unavailable",
-                code: "SOCIALKIT_DOWNLOAD_FAILED",
-              },
+              comments: [{ id: String(requests) }],
+              hasMore: firstPage,
+              ...(firstPage ? { cursor: "next" } : {}),
             },
-            { status: 500 },
-          );
-        },
-      ),
+          ),
+        );
+      }),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "comments",
+      "https://instagram.com/p/example",
+      "--limit",
+      "10",
+      "--stream",
+    ]);
+
+    const records = mockConsoleLog.mock.calls.map(([value]) => {
+      return JSON.parse(String(value)) as Readonly<Record<string, unknown>>;
+    });
+    expect(records).toHaveLength(3);
+    expect(records[0]).toMatchObject({
+      kind: "page",
+      page: 1,
+      request: { limit: 10 },
+    });
+    expect(records[1]).toMatchObject({
+      kind: "page",
+      page: 2,
+      request: { limit: 10 },
+    });
+    expect(records[2]).toMatchObject({
+      kind: "summary",
+      status: "complete",
+      request: { limit: 10 },
+      collection: { pages: 2 },
+    });
+    expect(records[2]).not.toHaveProperty("data");
+  });
+
+  it("emits structured API failures and exits non-zero", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "SOCIAL_UPSTREAM_ERROR",
+              message: "The social data service is temporarily unavailable",
+            },
+          },
+          { status: 502 },
+        );
+      }),
     );
 
     await expect(
       socialCommand.parseAsync([
         "node",
-        "cli",
-        "download",
-        "--resume",
-        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "okou",
+        "inspect",
+        "https://instagram.com/p/example",
+        "--json",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    expect(errorOutput()).toContain(
-      "500: Okou Social download status is unavailable",
-    );
+    expect(JSON.parse(errorOutput()) as unknown).toStrictEqual({
+      status: "error",
+      error: {
+        kind: "provider_temporary",
+        code: "SOCIAL_UPSTREAM_ERROR",
+        message: "The social data service is temporarily unavailable",
+        httpStatus: 502,
+        retryable: true,
+      },
+    });
   });
 
-  it("starts a download and prints its durable artifact", async () => {
-    let submitted: unknown;
+  it.each([
+    [
+      "invalid option value",
+      ["posts", "https://x.com/example", "--limit", "invalid", "--json"],
+    ],
+    ["missing required option", ["search", "launch", "--json"]],
+    ["invalid argument value", ["capabilities", "unsupported", "--json"]],
+    ["invalid resume ID", ["download", "--resume", "not-a-uuid", "--json"]],
+    [
+      "streaming option value",
+      [
+        "comments",
+        "https://youtu.be/example",
+        "--limit",
+        "invalid",
+        "--stream",
+      ],
+    ],
+  ])("emits structured parser failures for %s", async (_case, args) => {
+    await expect(
+      socialCommand.parseAsync(["node", "okou", ...args]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(parserErrorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "invalid_input",
+        code: "INVALID_INPUT",
+        retryable: false,
+      },
+    });
+  });
+
+  it("rejects unsupported hosts before managed work", async () => {
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        apiRequests += 1;
+        return HttpResponse.json(socialResponse("youtube_stats", null, {}));
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "okou",
+        "inspect",
+        "https://example.com/video",
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(apiRequests).toBe(0);
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: { kind: "invalid_input", code: "INVALID_INPUT" },
+    });
+  });
+
+  it.each([
+    ["transcript", "https://instagram.com/example"],
+    ["transcript", "https://youtube.com/"],
+    ["transcript", "https://youtu.be/"],
+    ["transcript", "https://vm.tiktok.com/"],
+    ["transcript", "https://instagram.com/explore/"],
+    ["transcript", "https://linkedin.com/posts"],
+    ["transcript", "https://facebook.com/watch"],
+    ["transcript", "https://facebook.com/marketplace?v=example"],
+    ["transcript", "https://facebook.com/marketplace?fbid=example"],
+    ["transcript", "https://facebook.com/marketplace?story_fbid=example"],
+    ["transcript", "https://facebook.com/video.php/extra?v=example"],
+    ["transcript", "https://facebook.com/photo.php/extra?fbid=example"],
+    [
+      "transcript",
+      "https://facebook.com/permalink.php/extra?story_fbid=example",
+    ],
+    ["transcript", "https://facebook.com/story.php/extra?story_fbid=example"],
+    ["transcript", "https://fb.watch/example/extra"],
+    ["transcript", "https://vm.tiktok.com/example/extra"],
+    ["transcript", "https://vt.tiktok.com/example/extra"],
+    ["transcript", "https://tiktok.com/t/example/extra"],
+    ["transcript", "https://youtube.com/results?v=example"],
+    ["transcript", "https://youtu.be/example/extra"],
+    ["transcript", "https://youtube.com/playlist/extra?list=example"],
+  ])(
+    "rejects mismatched %s target %s before managed work",
+    async (operation, url) => {
+      let apiRequests = 0;
+      server.use(
+        http.post("http://localhost:3000/api/social/request", () => {
+          apiRequests += 1;
+          return HttpResponse.json(
+            socialResponse("youtube_transcript", null, {}),
+          );
+        }),
+      );
+
+      await expect(
+        socialCommand.parseAsync(["node", "okou", operation, url, "--json"]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(apiRequests).toBe(0);
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "invalid_input",
+          message: "transcript requires a public post or video URL",
+        },
+      });
+    },
+  );
+
+  it.each([
+    ["inspect", "https://instagram.com/p/example", "--thread"],
+    ["posts", "https://x.com/example", "--kind", "reels"],
+    [
+      "search",
+      "launch",
+      "--platform",
+      "tiktok",
+      "--hashtag",
+      "--sort",
+      "likes",
+    ],
+    ["search", "launch", "--platform", "youtube", "--sort", ""],
+    ["search", "launch", "--platform", "tiktok", "--date", ""],
+    ["search", "launch", "--platform", "youtube", "--type", ""],
+    ["comments", "https://facebook.com/posts/example", "--sort", ""],
+    ["comments", "https://instagram.com/p/example", "--sort", ""],
+    ["summarize", "https://youtu.be/example", "--prompt", ""],
+    [
+      "download",
+      "https://youtu.be/example",
+      "--max-duration",
+      "600",
+      "--quality",
+      "",
+    ],
+    [
+      "download",
+      "https://youtu.be/example",
+      "--max-duration",
+      "600",
+      "--format",
+      "",
+    ],
+  ])("rejects mismatched %s options before managed work", async (...args) => {
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        apiRequests += 1;
+        return HttpResponse.json(socialResponse("youtube_stats", null, {}));
+      }),
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        apiRequests += 1;
+        return HttpResponse.json(completedDownload(), { status: 202 });
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync(["node", "okou", ...args, "--json"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(apiRequests).toBe(0);
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: { kind: "invalid_input" },
+    });
+  });
+
+  it("auto-detects downloads and prints the stable envelope", async () => {
+    let requestBody: unknown;
     server.use(
       http.post(
         "http://localhost:3000/api/social/downloads",
         async ({ request }) => {
-          submitted = await request.json();
-          return HttpResponse.json(
-            {
-              downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
-              status: "completed",
-              platform: "youtube",
-              quality: "1080p",
-              format: "mp4",
-              maxDuration: 600,
-              billingCategory: "request",
-              provider: {
-                durationSeconds: 61,
-                fileSizeMB: 2,
-                creditsCost: 2,
-                title: "Public video",
-              },
-              billing: { quantity: 2, creditsCharged: 6 },
-              artifact: {
-                id: "6bdc3449-41ef-4624-a525-45bce09c67f0",
-                url: "https://cdn.vm7.io/artifacts/social-video.mp4",
-                filename: "Public video.mp4",
-                contentType: "video/mp4",
-                sizeBytes: 1024,
-              },
-              error: null,
-              createdAt: "2026-08-27T00:00:00.000Z",
-              completedAt: "2026-08-27T00:01:00.000Z",
-            },
-            { status: 202 },
-          );
+          requestBody = await request.json();
+          return HttpResponse.json(completedDownload(), { status: 202 });
         },
       ),
     );
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
+      "okou",
       "download",
-      "youtube",
-      "https://youtu.be/public-video",
+      "https://youtu.be/example?si=tracking",
       "--max-duration",
       "600",
-      "--quality",
-      "1080p",
       "--json",
     ]);
 
-    expect(submitted).toStrictEqual({
+    expect(requestBody).toStrictEqual({
       platform: "youtube",
-      url: "https://youtu.be/public-video",
+      url: "https://youtu.be/example",
       maxDuration: 600,
-      quality: "1080p",
+      quality: "720p",
       format: "mp4",
     });
     expect(JSON.parse(output()) as unknown).toMatchObject({
-      status: "completed",
+      status: "complete",
+      operation: "download",
+      platform: "youtube",
       billing: { quantity: 2, creditsCharged: 6 },
-      artifact: { filename: "Public video.mp4" },
+      data: { status: "completed", artifact: { filename: "example.mp4" } },
     });
-    expect(errorOutput()).toContain("completed");
+    expect(outputRequest()).toStrictEqual({
+      resume: false,
+      maxDuration: 600,
+      quality: "720p",
+      format: "mp4",
+    });
   });
 
-  it("resumes a billed artifact failure without creating a new job", async () => {
-    let createRequests = 0;
-    let statusRequests = 0;
+  it.each([
+    {
+      caseName: "creation",
+      method: "post",
+      status: 502,
+      args: [
+        "download",
+        "https://youtu.be/example",
+        "--max-duration",
+        "600",
+        "--json",
+      ],
+    },
+    {
+      caseName: "status",
+      method: "get",
+      status: 500,
+      args: [
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "--json",
+      ],
+    },
+  ] as const)(
+    "sanitizes and structures download $caseName API failures",
+    async ({ method, status, args }) => {
+      const response = () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "SOCIALKIT_DOWNLOAD_FAILED",
+              message: "SocialKit download request failed",
+            },
+          },
+          { status },
+        );
+      };
+      server.use(
+        method === "post"
+          ? http.post("http://localhost:3000/api/social/downloads", response)
+          : http.get(
+              "http://localhost:3000/api/social/downloads/:downloadId",
+              response,
+            ),
+      );
+
+      await expect(
+        socialCommand.parseAsync(["node", "okou", ...args]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "provider_temporary",
+          code: "SOCIAL_DOWNLOAD_FAILED",
+          message: "Okou Social download request failed",
+          httpStatus: status,
+          retryable: true,
+        },
+      });
+      expect(errorOutput()).not.toMatch(/socialkit/iu);
+    },
+  );
+
+  it("resumes an existing download without a new request", async () => {
+    let creates = 0;
     server.use(
       http.post("http://localhost:3000/api/social/downloads", () => {
-        createRequests += 1;
-        return HttpResponse.error();
+        creates += 1;
+        return HttpResponse.json(completedDownload(), { status: 202 });
       }),
-      http.get(
-        "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
-        () => {
-          statusRequests += 1;
-          if (statusRequests === 1) {
-            return HttpResponse.json(failedDownloadResponse("artifact_failed"));
-          }
-          return HttpResponse.json({
-            downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
-            status: "completed",
-            platform: "youtube",
-            quality: "720p",
-            format: "mp4",
-            maxDuration: 600,
-            billingCategory: "request",
-            provider: {
-              durationSeconds: 60,
-              fileSizeMB: 1,
-              creditsCost: 1,
-            },
-            billing: { quantity: 1, creditsCharged: 3 },
-            artifact: {
-              id: "6bdc3449-41ef-4624-a525-45bce09c67f0",
-              url: "https://cdn.vm7.io/artifacts/social-video.mp4",
-              filename: "Public video.mp4",
-              contentType: "video/mp4",
-              sizeBytes: 1024,
-            },
-            error: null,
-            createdAt: "2026-08-27T00:00:00.000Z",
-            completedAt: "2026-08-27T00:01:00.000Z",
-          });
-        },
-      ),
+      http.get("http://localhost:3000/api/social/downloads/:downloadId", () => {
+        return HttpResponse.json(completedDownload());
+      }),
     );
 
     await socialCommand.parseAsync([
       "node",
-      "cli",
+      "okou",
       "download",
       "--resume",
       "6bdc3449-41ef-4624-a525-45bce09c67f0",
       "--json",
     ]);
 
-    expect(createRequests).toBe(0);
-    expect(statusRequests).toBe(2);
+    expect(creates).toBe(0);
     expect(JSON.parse(output()) as unknown).toMatchObject({
-      downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
-      status: "completed",
+      target: {
+        kind: "download",
+        downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      },
     });
-    expect(errorOutput()).toContain("artifact_failed");
+    expect(outputRequest()).toStrictEqual({
+      resume: true,
+      maxDuration: 600,
+      quality: "720p",
+      format: "mp4",
+    });
   });
 
-  it.each([
-    {
-      caseName: "a free provider failure",
-      status: "provider_failed" as const,
-      billed: "no",
-      retryable: "no",
-    },
-    {
-      caseName: "a billed artifact failure",
-      status: "artifact_failed" as const,
-      billed: "yes",
-      retryable: "yes",
-    },
-  ])(
-    "reports $caseName with complete diagnostics",
-    async ({ status, billed, retryable }) => {
+  it("retries artifact materialization when resuming a download", async () => {
+    let statusRequests = 0;
+    server.use(
+      http.get("http://localhost:3000/api/social/downloads/:downloadId", () => {
+        statusRequests += 1;
+        return HttpResponse.json(
+          statusRequests === 1
+            ? failedDownload("artifact_failed")
+            : completedDownload(),
+        );
+      }),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "download",
+      "--resume",
+      "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      "--json",
+    ]);
+
+    expect(statusRequests).toBe(2);
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      status: "complete",
+      data: { status: "completed" },
+    });
+    expect(errorOutput()).toBe("");
+  });
+
+  it.each(["provider_failed", "artifact_failed"] as const)(
+    "emits a structured %s download failure",
+    async (status) => {
       server.use(
         http.post("http://localhost:3000/api/social/downloads", () => {
-          return HttpResponse.json(failedDownloadResponse(status), {
-            status: 202,
-          });
+          return HttpResponse.json(failedDownload(status), { status: 202 });
         }),
       );
 
       await expect(
         socialCommand.parseAsync([
           "node",
-          "cli",
+          "okou",
           "download",
-          "youtube",
-          "https://youtu.be/public-video",
+          "https://youtu.be/example",
           "--max-duration",
           "600",
+          "--json",
         ]),
       ).rejects.toThrow("process.exit called");
 
-      const error = errorOutput();
-      expect(error).toContain(
-        "Download ID: 6bdc3449-41ef-4624-a525-45bce09c67f0",
-      );
-      expect(error).toContain(`Status: ${status}`);
-      expect(error).toContain("Platform: youtube");
-      expect(error).toContain("Requested quality: 720p");
-      expect(error).toContain("Requested format: mp4");
-      expect(error).toContain("Error code:");
-      expect(error).toContain("Error:");
-      expect(error).toContain(`Retryable: ${retryable}`);
-      expect(error).toContain(`Billed: ${billed}`);
-      if (status === "artifact_failed") {
-        expect(error).toContain(
-          "Resume: okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
-        );
-      } else {
-        expect(error).not.toContain("Resume:");
-      }
-      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "download_failed",
+          retryable: status === "artifact_failed",
+          billed: status === "artifact_failed",
+        },
+        download: { status },
+      });
     },
   );
 
-  it("prints one compact terminal response for JSON failures", async () => {
-    const response = {
-      ...failedDownloadResponse("provider_failed"),
-      error: {
-        code: "SOCIALKIT_PROVIDER_duration_limit_exceeded",
-        message: "Video exceeds the requested duration limit",
-        retryable: false,
-        billed: false,
-      },
-    };
+  it("fails visibly when a terminal download omits error details", async () => {
     server.use(
       http.post("http://localhost:3000/api/social/downloads", () => {
-        return HttpResponse.json(response, { status: 202 });
+        return HttpResponse.json(
+          { ...failedDownload("provider_failed"), error: null },
+          { status: 202 },
+        );
       }),
     );
 
     await expect(
       socialCommand.parseAsync([
         "node",
-        "cli",
+        "okou",
         "download",
-        "youtube",
-        "https://youtu.be/public-video",
+        "https://youtu.be/example",
         "--max-duration",
         "600",
         "--json",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-    const publicResponse = {
-      ...response,
+    expect(JSON.parse(errorOutput()) as unknown).toStrictEqual({
+      status: "error",
       error: {
-        ...response.error,
-        code: "SOCIAL_PROVIDER_duration_limit_exceeded",
+        kind: "internal",
+        code: "INTERNAL",
+        message: expect.stringContaining("without error details"),
+        retryable: false,
       },
-    };
-    expect(output()).toBe(JSON.stringify(publicResponse));
-    expect(JSON.parse(output()) as unknown).toStrictEqual(publicResponse);
-    expect(errorOutput()).toContain(
-      "Error code: SOCIAL_PROVIDER_duration_limit_exceeded",
-    );
-    expect(errorOutput()).not.toMatch(/socialkit/iu);
-    expect(mockExit).toHaveBeenCalledWith(1);
+    });
   });
 
-  it("prints the exact corrected resume command for mixed arguments", async () => {
+  it("rejects mixed resume and new-download arguments", async () => {
     await expect(
       socialCommand.parseAsync([
         "node",
-        "cli",
+        "okou",
         "download",
-        "youtube",
-        "https://youtu.be/public-video",
+        "https://youtu.be/example",
         "--resume",
         "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "--json",
       ]),
     ).rejects.toThrow("process.exit called");
 
-    expect(errorOutput()).toContain(
-      "use: okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
-    );
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "invalid_input",
+        message: expect.stringContaining(
+          "okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+        ),
+      },
+    });
   });
 
   it.each([
-    {
-      signal: "SIGINT" as const,
-      secondSignal: "SIGTERM" as const,
-      exitCode: 130,
-    },
-    {
-      signal: "SIGTERM" as const,
-      secondSignal: "SIGINT" as const,
-      exitCode: 143,
-    },
-  ])(
-    "prints recovery guidance and cleans up after $signal",
-    async ({ signal, secondSignal, exitCode }) => {
+    ["quality", "--quality"],
+    ["format", "--format"],
+  ])("rejects an explicitly empty %s when resuming", async (_case, option) => {
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "okou",
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        option,
+        "",
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "invalid_input",
+        message: expect.stringContaining("--resume cannot be combined"),
+      },
+    });
+  });
+
+  it.each([
+    ["SIGINT", "SIGTERM", 130],
+    ["SIGTERM", "SIGINT", 143],
+  ] as const)(
+    "emits structured recovery guidance and cleans up after %s",
+    async (signal, secondSignal, exitCode) => {
       let statusRequestStarted = false;
       const initialSigintListeners = process.listenerCount("SIGINT");
       const initialSigtermListeners = process.listenerCount("SIGTERM");
       server.use(
         http.get(
-          "http://localhost:3000/api/social/downloads/6bdc3449-41ef-4624-a525-45bce09c67f0",
+          "http://localhost:3000/api/social/downloads/:downloadId",
           async ({ request }) => {
             statusRequestStarted = true;
             await new Promise<void>((resolve) => {
@@ -1708,7 +1425,7 @@ describe("okou social command", () => {
 
       const command = socialCommand.parseAsync([
         "node",
-        "cli",
+        "okou",
         "download",
         "--resume",
         "6bdc3449-41ef-4624-a525-45bce09c67f0",
@@ -1722,13 +1439,21 @@ describe("okou social command", () => {
       await command;
 
       expect(output()).toBe("");
-      expect(mockConsoleError).toHaveBeenCalledTimes(2);
-      expect(errorOutput()).toContain(
-        `continues on the server after ${signal}`,
-      );
-      expect(errorOutput()).toContain(
-        "Resume: okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
-      );
+      expect(mockConsoleError).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "interrupted",
+          code: "INTERRUPTED",
+          retryable: true,
+        },
+        interruption: {
+          signal,
+          downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+          resumeCommand:
+            "okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+        },
+      });
       expect(process.exitCode).toBe(exitCode);
       expect(mockExit).not.toHaveBeenCalled();
       expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
@@ -1736,67 +1461,29 @@ describe("okou social command", () => {
     },
   );
 
-  it("documents typed discovery, calls, billing, and security boundaries", () => {
-    const tools = socialCommand.commands.find((command) => {
-      return command.name() === "tools";
-    });
-    const call = socialCommand.commands.find((command) => {
-      return command.name() === "call";
-    });
-    let socialHelp = "";
+  it("documents the intent-oriented surface", () => {
+    const help = socialCommand.helpInformation();
+    let renderedHelp = "";
     socialCommand.configureOutput({
       writeOut: (value) => {
-        socialHelp += value;
+        renderedHelp += value;
       },
     });
     socialCommand.outputHelp();
-
-    expect(tools?.helpInformation()).toContain("--json");
-    expect(call?.helpInformation()).toContain("--input");
-    expect(call?.helpInformation()).toContain("--all");
-    expect(call?.helpInformation()).toContain("--max-pages");
-    expect(call?.helpInformation()).toContain("--max-items");
-    expect(call?.helpInformation()).toContain("--json");
-    const download = socialCommand.commands.find((command) => {
-      return command.name() === "download";
-    });
-    const downloadHelp = download?.helpInformation() ?? "";
-    expect(socialHelp).toContain("Use Okou Social public data services");
-    expect(tools?.helpInformation()).toContain(
-      "List typed Okou Social tools and their schemas",
+    const postsHelp = socialCommand.commands
+      .find((command) => {
+        return command.name() === "posts";
+      })
+      ?.helpInformation();
+    expect(help).toContain("capabilities");
+    expect(help).toContain("inspect");
+    expect(help).toContain("comments");
+    expect(postsHelp).toContain("Maximum total items to return");
+    expect(renderedHelp).toContain(
+      "Provider credentials remain on the Okou API server",
     );
-    expect(call?.helpInformation()).toContain("Call a typed Okou Social tool");
-    expect(downloadHelp).toContain("--max-duration");
-    expect(downloadHelp).toContain("--resume");
-    expect(downloadHelp).toContain("default: 720p");
-    expect(downloadHelp).toContain("default: mp4");
-    expect(downloadHelp.replace(/\s+/gu, " ")).toContain(
-      "billing uses completed duration",
+    expect(renderedHelp).toContain(
+      "one kind=page record per fetched page, followed by one metadata-only kind=summary record",
     );
-    expect(socialHelp).toContain("38 typed tools");
-    expect(socialHelp).toContain("okou social tools --json");
-    expect(socialHelp).toContain("youtube_summarize");
-    expect(socialHelp).toContain("okou social download youtube");
-    expect(socialHelp).toContain("durable Okou artifacts");
-    expect(socialHelp).toContain("Unknown bulk and direct-video tools");
-    expect(socialHelp).toContain(
-      "Full retrieval bills and emits each successful provider page independently",
-    );
-    expect(socialHelp).toContain(
-      "TikTok keyword, hashtag, and channel-video pages use reviewed effective limits of 10, 20, and 30",
-    );
-    expect(socialHelp).toContain(
-      "TikTok page sizes are provider-controlled and may differ from the requested limit",
-    );
-    expect(socialHelp).toContain(
-      "Unreliable empty TikTok search pages return explicit uncertainty without a hidden retry",
-    );
-    expect(socialHelp).toContain(
-      "TikTok follower lists, following lists, and comment replies have no managed API, scrape, or browser fallback",
-    );
-    expect(socialHelp).toContain(
-      "Missing transcript data is not evidence that a video contains no speech",
-    );
-    expect(socialHelp).not.toMatch(/socialkit/iu);
   });
 });
