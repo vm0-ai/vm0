@@ -22,7 +22,7 @@
     "build": "tsup",
     "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@okouai/cli\"; delete this.scripts; delete this.devDependencies; this.bin={okou:\"okou.js\"}; this.files=[\"*.js\",\"*.js.map\",\"migrations/*.sql\"]'",
     "dev": "tsup --watch",
-    "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/okou-startup.bench.test.ts",
+    "bench:startup": "pnpm build && OKOU_STARTUP_BENCH=1 vitest run src/__tests__/okou-startup.bench.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
