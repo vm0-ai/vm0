@@ -303,6 +303,12 @@ describe("prompt query parameter injection", () => {
     await user.click(buttonWithText("Create in chat", dialog));
 
     await waitFor(() => {
+      expect(sentPrompt).toContain(
+        "Create a polished video from the attached source.",
+      );
+      expect(sentPrompt).toContain(
+        "Do not add an opening or ending unless the user explicitly requests them.",
+      );
       expect(sentPrompt).toContain("- Source: demo.mp4");
       expect(sentPrompt).toContain("- Source type: video");
       // A take from the recorder is edited by the click-driven camera pass, not

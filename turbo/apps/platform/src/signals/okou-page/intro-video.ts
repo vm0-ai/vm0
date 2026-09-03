@@ -188,7 +188,8 @@ function buildIntroVideoPrompt(args: {
   };
   const instructions = args.instructions.trim();
   return [
-    "Create a polished intro video from the attached source.",
+    "Create a polished video from the attached source.",
+    "Do not add an opening or ending unless the user explicitly requests them.",
     "",
     "Configuration:",
     `- Source: ${args.source.name}`,
