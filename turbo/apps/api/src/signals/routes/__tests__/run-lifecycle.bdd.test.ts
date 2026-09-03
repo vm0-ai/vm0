@@ -18452,7 +18452,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
-  it("suppresses only reviewed non-built-in failures from generic completion logs", async () => {
+  it("suppresses reviewed expected failures from generic completion logs", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     await seedVm0BuiltInDefaultModelKey();
@@ -18541,6 +18541,23 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
 
     for (const failureReason of suppressedReasons) {
       const { runId } = await completeFailure({ failureReason });
+      for (const level of axiomLevels) {
+        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
+      }
+    }
+
+    const oversizedInputFailures = [
+      await completeFailure({ failureReason: "input_too_large" }),
+      await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "input_too_large",
+      }),
+      await completeFailure({
+        failureReason: "input_too_large",
+        persistedModelProvider: "legacy-unknown-provider",
+      }),
+    ];
+    for (const { runId } of oversizedInputFailures) {
       for (const level of axiomLevels) {
         expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
       }

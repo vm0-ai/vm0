@@ -257,8 +257,8 @@ mod tests {
         let payload = CompletePayload {
             run_id: "run-123",
             exit_code: 1,
-            failure_reason: Some(FailureReason::ProviderRateLimited.into()),
-            error: Some("rate limited"),
+            failure_reason: Some(FailureReason::InputTooLarge.into()),
+            error: Some("Codex input exceeded the app-server limit"),
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
@@ -268,7 +268,7 @@ mod tests {
         };
 
         let json = serde_json::to_value(&payload).unwrap();
-        assert_eq!(json["failureReason"], "provider_rate_limited");
+        assert_eq!(json["failureReason"], "input_too_large");
     }
 
     /// Completion metadata fields must be skipped independently so one absent
