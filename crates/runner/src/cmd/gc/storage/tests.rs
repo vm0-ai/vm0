@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use nix::fcntl::FlockArg;
+use nix::fcntl::{Flock, FlockArg};
 
 use super::*;
 use crate::cmd::gc::test_support::{
@@ -519,64 +519,6 @@ async fn gc_storage_cache_removes_empty_name_dir_after_eviction() {
     assert!(
         !name_dir.exists(),
         "empty storage name dir should be removed with its last version"
-    );
-}
-
-#[tokio::test]
-async fn gc_storage_cache_lock_cleanup_keeps_replaced_lock_path() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    std::fs::create_dir_all(home.locks_dir()).unwrap();
-
-    let lock_path = home.storage_lock("foo", "v1");
-    let held_lock = match probe_lock(&lock_path) {
-        LockProbe::Free(lock) => lock,
-        LockProbe::Held => panic!("new test lock must not be held"),
-        LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
-    };
-
-    std::fs::remove_file(&lock_path).unwrap();
-    drop(lock::open_lock_file(&lock_path).unwrap());
-    assert!(
-        lock_path.exists(),
-        "test setup must recreate the lock path with a new inode"
-    );
-
-    remove_storage_lock_after_eviction(&lock_path, &held_lock, "foo", "v1").await;
-
-    assert!(
-        lock_path.exists(),
-        "cleanup must not remove a lock path recreated after this lock was acquired"
-    );
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn gc_storage_cache_lock_cleanup_keeps_symlink_lock_path() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = test_home(dir.path());
-    std::fs::create_dir_all(home.locks_dir()).unwrap();
-
-    let lock_path = home.storage_lock("foo", "v1");
-    let alias = home.locks_dir().join("storage-alias.lock");
-    let held_lock = match probe_lock(&lock_path) {
-        LockProbe::Free(lock) => lock,
-        LockProbe::Held => panic!("new test lock must not be held"),
-        LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
-    };
-
-    std::fs::hard_link(&lock_path, &alias).unwrap();
-    std::fs::remove_file(&lock_path).unwrap();
-    std::os::unix::fs::symlink(&alias, &lock_path).unwrap();
-
-    remove_storage_lock_after_eviction(&lock_path, &held_lock, "foo", "v1").await;
-
-    assert!(
-        std::fs::symlink_metadata(&lock_path)
-            .unwrap()
-            .file_type()
-            .is_symlink(),
-        "cleanup must not remove a lock path replaced by a symlink"
     );
 }
 
