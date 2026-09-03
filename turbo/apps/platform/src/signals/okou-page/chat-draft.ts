@@ -28,6 +28,7 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
 import { flattenAnnotatedImage } from "./flatten-annotated-image.ts";
+import { logger } from "../log.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
 import { desktopRecordingAgentInstructions } from "./intro-video-agent-instructions.ts";
 
@@ -57,6 +58,8 @@ type AttachmentUploadState =
       readonly status: "uploaded";
       readonly fileInfo: FileInfo;
     };
+
+const log = logger("chat-draft");
 
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
 const MAX_PART_UPLOAD_ATTEMPTS = 5;
@@ -411,6 +414,14 @@ function createAttachmentAnnotationSignals(args: {
       );
       if (!rendered.ok) {
         set(internalUploadState$, { status: "failed" });
+        // Five different steps land on that one state — the original going
+        // missing, the read, the decode, the encode and the upload. Dropping
+        // `rendered.error` left the retry badge as the only evidence any of
+        // them had happened, so a failure that reproduced every time was
+        // indistinguishable from a flaky one. Warn rather than error: the
+        // attachment keeps its marks and the badge retries in place, so this
+        // is a recoverable condition the user is already being shown.
+        log.warn("annotation flatten failed", args.filename, rendered.error);
         return;
       }
       set(internalUploadState$, {

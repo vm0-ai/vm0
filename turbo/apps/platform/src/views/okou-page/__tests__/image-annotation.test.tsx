@@ -225,7 +225,29 @@ async function dragOnSurface(
   });
 }
 
+/**
+ * Serves the bytes of the image being annotated.
+ *
+ * Flattening reads the original over the network before it can draw on it, so
+ * without this the marks are composited onto an image that was never fetched.
+ * The stub `Image` alone cannot stand in for it: it reports `load` for any src,
+ * including one the browser would have refused, which is how a read that fails
+ * for every annotated screenshot still looked green here.
+ */
+function mockOriginalImageBytes(): void {
+  context.mocks.http.get(FILE_URL, () => {
+    return new Response(new Blob(["original"], { type: "image/png" }), {
+      headers: { "Content-Type": "image/png" },
+    });
+  });
+}
+
 function mockAnnotationRendering(): void {
+  mockOriginalImageBytes();
+  mockAnnotationCanvas();
+}
+
+function mockAnnotationCanvas(): void {
   context.mocks.browser.imageDimensions({ width: 800, height: 600 });
   const noop = () => {};
   const canvasContext = {
@@ -410,6 +432,94 @@ describe("composer image annotation", () => {
         ]),
       }),
     );
+  });
+
+  /**
+   * Flattening used to reach for the original with an
+   * `<img crossOrigin="anonymous">`, which made it the only step in the feature
+   * that needed the CDN's permission — the editor renders the very same URL as
+   * a plain `<img>` and negotiates nothing. So the image the user had just
+   * finished drawing on could still be refused here, and every annotated
+   * screenshot failed on attach while the editor itself looked perfectly fine.
+   * The read is a `fetch` now, so a refusal arrives with its status instead of a
+   * bare `error` event, and the marks land on bytes this app actually holds.
+   */
+  it("attaches marks when the original image is only readable as bytes", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    const savedDrafts: SavedDraft[] = [];
+    mockSuccessfulAnnotationUpload();
+
+    const crossOriginRequests: (string | null)[] = [];
+    context.mocks.http.get(FILE_URL, ({ request }) => {
+      crossOriginRequests.push(request.headers.get("origin"));
+      return new Response(new Blob(["original"], { type: "image/png" }), {
+        headers: { "Content-Type": "image/png" },
+      });
+    });
+    mockDraftWithImage(null, savedDrafts);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+    await dragOnSurface();
+    await user.click(attachMarksButton());
+
+    await waitFor(() => {
+      expect(
+        savedDrafts.some((saved) => {
+          return JSON.stringify(saved.userMessage).includes(ANNOTATED_FILE_ID);
+        }),
+      ).toBeTruthy();
+    });
+    // The bytes were actually read, rather than an image element reporting a
+    // load for a src it never successfully fetched.
+    expect(crossOriginRequests.length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText(/Try again/)).toBeNull();
+  });
+
+  it("offers a retry when the original image cannot be read", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    mockAnnotationCanvas();
+    context.mocks.upload.success({
+      id: ANNOTATED_FILE_ID,
+      filename: "billing-page.annotated.png",
+      contentType: "image/png",
+      size: 9,
+      url: "https://cdn.vm7.io/artifacts/test/drafts/billing-page.annotated.png",
+    });
+    // The object is there, but this viewer is refused it.
+    context.mocks.http.get(FILE_URL, () => {
+      return new Response(null, { status: 403 });
+    });
+    mockDraftWithImage(null);
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+    await dragOnSurface();
+    await user.click(attachMarksButton());
+
+    // The mark survives on the chip and the failure is recoverable in place,
+    // rather than the editor closing over a silently dropped annotation.
+    const retry = await screen.findByLabelText(
+      "Failed to upload billing-page.png. Try again.",
+    );
+    expect(retry).toBeInTheDocument();
+    expect(
+      screen.getByTestId("composer-attachment-mark-count"),
+    ).toHaveTextContent("1");
   });
 
   it("blocks send while the confirmed derivative is uploading", async () => {
