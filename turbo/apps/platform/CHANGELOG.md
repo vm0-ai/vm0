@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.829.1](https://github.com/vm0-ai/vm0/compare/app-v0.829.0...app-v0.829.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **platform:** send shared worker clerk requests to the frontend api host ([#31254](https://github.com/vm0-ai/vm0/issues/31254)) ([b954bd9](https://github.com/vm0-ai/vm0/commit/b954bd96b27ef3c5372af97de91a795719554eba))
+
 ## [0.829.0](https://github.com/vm0-ai/vm0/compare/app-v0.828.0...app-v0.829.0) (2026-09-02)
 
 
