@@ -2595,6 +2595,7 @@ export function connectorScopeDiff(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorSlug: string;
+  readonly selection: StoredConnectorSelection;
   readonly snapshot?: ConnectorRuntimeSnapshot;
 }): Computed<Promise<ScopeDiffResponse | null>> {
   return computed(async (get): Promise<ScopeDiffResponse | null> => {
@@ -2605,9 +2606,11 @@ export function connectorScopeDiff(args: {
     }
     const connector = await get(
       storedConnector({
-        ...args,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug: args.connectorSlug,
         snapshot,
-        selection: { kind: "default" },
+        selection: args.selection,
       }),
     );
     return connector === null

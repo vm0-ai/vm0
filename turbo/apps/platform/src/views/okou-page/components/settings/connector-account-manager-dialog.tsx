@@ -60,6 +60,18 @@ interface ConnectorAccountManagerDialogProps {
   readonly onClose: () => void;
   readonly onAdd: () => void;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
+  readonly onReviewScopes?: (account: ConnectorAccountConnection) => void;
+}
+
+function accountActionAfterLeave(
+  leave: (next: () => void) => void,
+  action: (account: ConnectorAccountConnection) => void,
+): (account: ConnectorAccountConnection) => void {
+  return (account) => {
+    leave(() => {
+      action(account);
+    });
+  };
 }
 
 // Mirrors the status dot used by ConnectorAccountSummaryText on the connector
@@ -67,18 +79,20 @@ interface ConnectorAccountManagerDialogProps {
 function AccountStatus({ account }: { account: ConnectorAccountConnection }) {
   const { t } = useTranslation();
   const needsReconnect = account.connectionStatus === "reconnect-required";
+  const needsScopeReview = account.scopeMismatch === true;
+  const needsAttention = needsReconnect || needsScopeReview;
   return (
     <span className="flex min-w-0 items-center gap-2">
       <span
         className={cn(
           "h-1.5 w-1.5 shrink-0 rounded-full",
-          needsReconnect ? "bg-amber-500" : "bg-emerald-500",
+          needsAttention ? "bg-amber-500" : "bg-emerald-500",
         )}
       />
       <span
         className={cn(
           "truncate",
-          needsReconnect
+          needsAttention
             ? "text-amber-600 dark:text-amber-400"
             : "text-muted-foreground",
         )}
@@ -87,9 +101,13 @@ function AccountStatus({ account }: { account: ConnectorAccountConnection }) {
           ? t(($) => {
               return $.connectors.accounts.reconnectRequired;
             })
-          : t(($) => {
-              return $.connectors.accounts.connected;
-            })}
+          : needsScopeReview
+            ? t(($) => {
+                return $.connectors.card.updatePermissions;
+              })
+            : t(($) => {
+                return $.connectors.accounts.connected;
+              })}
       </span>
     </span>
   );
@@ -150,11 +168,13 @@ function AccountActions({
   account,
   connectionActionsEnabled,
   onReconnect,
+  onReviewScopes,
 }: {
   readonly target: ConnectorAccountTarget;
   readonly account: ConnectorAccountConnection;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
+  readonly onReviewScopes?: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
   const startRename = useSet(startConnectorAccountRename$);
@@ -176,6 +196,17 @@ function AccountActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {account.scopeMismatch === true && onReviewScopes ? (
+          <DropdownMenuItem
+            onClick={() => {
+              return onReviewScopes(account);
+            }}
+          >
+            {t(($) => {
+              return $.connectors.card.reviewPermissions;
+            })}
+          </DropdownMenuItem>
+        ) : null}
         {connectionActionsEnabled &&
         account.connectionStatus !== "reconnect-required" ? (
           <DropdownMenuItem
@@ -220,11 +251,13 @@ function AccountRow({
   account,
   connectionActionsEnabled,
   onReconnect,
+  onReviewScopes,
 }: {
   readonly target: ConnectorAccountTarget;
   readonly account: ConnectorAccountConnection;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
+  readonly onReviewScopes?: (account: ConnectorAccountConnection) => void;
 }) {
   const { t } = useTranslation();
   const renameDraft = useGet(connectorAccountRenameDraft$);
@@ -277,6 +310,7 @@ function AccountRow({
           account={account}
           connectionActionsEnabled={connectionActionsEnabled}
           onReconnect={onReconnect}
+          onReviewScopes={onReviewScopes}
         />
       </div>
     </div>
@@ -290,6 +324,7 @@ function AccountsCard({
   target,
   connectionActionsEnabled,
   onReconnect,
+  onReviewScopes,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
   readonly defaultConnection: ConnectorAccountConnection | null;
@@ -297,6 +332,7 @@ function AccountsCard({
   readonly target: ConnectorAccountTarget;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
+  readonly onReviewScopes?: (account: ConnectorAccountConnection) => void;
 }) {
   if (loadable.state === "hasError") {
     return <AccountsMessage messageKey="accountsUnavailable" />;
@@ -338,6 +374,7 @@ function AccountsCard({
               account={account}
               connectionActionsEnabled={connectionActionsEnabled}
               onReconnect={onReconnect}
+              onReviewScopes={onReviewScopes}
             />
           </div>
         );
@@ -534,6 +571,31 @@ function connectorAccountSearchIsVisible(
   );
 }
 
+function connectorAccountNextCursor(
+  accounts: Loadable<ConnectorAccountList>,
+): string | null {
+  return accounts.state === "hasData" ? accounts.data.nextCursor : null;
+}
+
+function enrichedDefaultConnection(
+  accounts: ConnectorAccountList,
+  summarizedDefault: ConnectorAccountConnection | null,
+): ConnectorAccountConnection | null {
+  if (accounts.defaultConnection !== undefined) {
+    return accounts.defaultConnection;
+  }
+  if (!summarizedDefault) {
+    return null;
+  }
+  // Summaries intentionally omit opt-in list enrichment. Prefer the matching
+  // list row so the pinned default account retains its scope review state.
+  return (
+    accounts.connections.find((account) => {
+      return account.id === summarizedDefault.id;
+    }) ?? summarizedDefault
+  );
+}
+
 export function ConnectorAccountManagerDialog({
   target,
   connectorLabel,
@@ -542,6 +604,7 @@ export function ConnectorAccountManagerDialog({
   onClose,
   onAdd,
   onReconnect,
+  onReviewScopes,
 }: ConnectorAccountManagerDialogProps) {
   const { t } = useTranslation();
   const accountsLoadable = useLoadable(settingsConnectorAccounts.accounts$);
@@ -552,27 +615,25 @@ export function ConnectorAccountManagerDialog({
   );
   const resetDrafts = useSet(resetConnectorAccountManagerDrafts$);
   const signal = useGet(pageSignal$);
-  const nextCursor =
-    accountsLoadable.state === "hasData"
-      ? accountsLoadable.data.nextCursor
-      : null;
+  const nextCursor = connectorAccountNextCursor(accountsLoadable);
   const defaultConnection =
     summariesLoadable.state === "hasData" &&
     accountsLoadable.state === "hasData" &&
     accountsLoadable.data.available
-      ? (summariesLoadable.data.get(connectorAccountTargetKey(target))
-          ?.defaultConnection ?? null)
+      ? enrichedDefaultConnection(
+          accountsLoadable.data,
+          summariesLoadable.data.get(connectorAccountTargetKey(target))
+            ?.defaultConnection ?? null,
+        )
       : null;
   const showSearch = connectorAccountSearchIsVisible(search, accountsLoadable);
   const leave = (next: () => void) => {
     resetDrafts();
     next();
   };
-  const reconnect = (account: ConnectorAccountConnection) => {
-    leave(() => {
-      return onReconnect(account);
-    });
-  };
+  const reconnect = accountActionAfterLeave(leave, onReconnect);
+  const reviewScopes =
+    onReviewScopes && accountActionAfterLeave(leave, onReviewScopes);
   return (
     <Dialog
       open
@@ -616,6 +677,7 @@ export function ConnectorAccountManagerDialog({
             target={target}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={reconnect}
+            onReviewScopes={reviewScopes}
           />
           {nextCursor ? (
             <Button

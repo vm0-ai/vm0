@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.541.0](https://github.com/vm0-ai/vm0/compare/api-v1.540.0...api-v1.541.0) (2026-09-03)
+
+
+### Features
+
+* add cloud browser preference ([#31522](https://github.com/vm0-ai/vm0/issues/31522)) ([99b4589](https://github.com/vm0-ai/vm0/commit/99b4589022738a463640e019b97f31c150e50850))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.0
+    * @okouai/core bumped to 8.617.0
+    * @okouai/db bumped to 1.240.0
+    * @okouai/pi-agent-runtime bumped to 1.15.4
+
 ## [1.540.0](https://github.com/vm0-ai/vm0/compare/api-v1.539.1...api-v1.540.0) (2026-09-03)
 
 

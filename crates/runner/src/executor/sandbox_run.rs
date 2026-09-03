@@ -852,7 +852,7 @@ pub(super) async fn prepare_workspace_image(
         prepare_error.is_none(),
         prepare_error,
     );
-    record_workspace_cache_result(telemetry, lease.result());
+    record_workspace_cache_result(telemetry, &lease);
     Some(lease)
 }
 

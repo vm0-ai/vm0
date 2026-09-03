@@ -1136,6 +1136,12 @@ async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
         Some("workspace_image_prepare_lock_busy"),
     );
     assert_telemetry_action(&telemetry, "workspace_image_cache_lock_busy", true, None);
+    assert!(telemetry.pending_ops_with_outcome_snapshot().contains(&(
+        "workspace_image_cache_lock_busy".into(),
+        true,
+        Some("busy".into()),
+        Some("unknown".into()),
+    )));
 }
 
 #[tokio::test]
@@ -1209,6 +1215,12 @@ async fn execute_inner_logs_workspace_cache_lock_error_separately() {
         false,
         Some("workspace_image_prepare_lock_busy"),
     );
+    assert!(telemetry.pending_ops_with_outcome_snapshot().contains(&(
+        "workspace_image_cache_lock_busy".into(),
+        true,
+        Some("unavailable".into()),
+        None,
+    )));
     let errors = captured_events_named(
         &events,
         "workspace image cache lock unavailable; using fresh workspace image",

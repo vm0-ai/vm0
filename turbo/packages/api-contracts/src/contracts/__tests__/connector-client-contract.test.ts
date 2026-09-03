@@ -516,6 +516,11 @@ describe("connector path parameter contracts", () => {
         body: { target: { kind: "builtin", connectorSlug: "github" } },
       },
     );
+    await initClient(connectorAccountsContract, config).scopeDiff({
+      params: { connectionId: connector.id },
+      query: { connectorSlug: "github" },
+      headers: {},
+    });
     await initClient(connectorCatalogContract, config).permissions({
       params: { connectorSlug: "github" },
       headers: {},
@@ -528,6 +533,7 @@ describe("connector path parameter contracts", () => {
 
     expect(paths).toStrictEqual([
       "https://api.example.test/api/connector-accounts/single-account",
+      `https://api.example.test/api/connector-accounts/${connector.id}/scope-diff?connectorSlug=github`,
       "https://api.example.test/api/connector-catalog/github/permissions",
       "https://api.example.test/api/connectors/github/callback?responseMode=json",
     ]);

@@ -6,30 +6,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@okouai/ui/components/ui/dialog";
-import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import { scopeDiff$ } from "../../../../signals/okou-page/settings/connectors.ts";
+import {
+  scopeDiff$,
+  type ConnectorScopeReviewSelection,
+} from "../../../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../../../signals/external/connectors.ts";
 
 interface ScopeReviewModalProps {
-  connectorSlug: ConnectorSlug | null;
+  selection: ConnectorScopeReviewSelection;
   onClose: () => void;
-  onReconnect: (connectorSlug: ConnectorSlug) => void;
+  onReconnect: (selection: ConnectorScopeReviewSelection) => void;
 }
 
 function ScopeDiffContent({
-  connectorSlug,
+  selection,
   addedScopes,
   removedScopes,
   onClose,
   onReconnect,
 }: {
-  connectorSlug: ConnectorSlug;
+  selection: ConnectorScopeReviewSelection;
   addedScopes: readonly string[];
   removedScopes: readonly string[];
   onClose: () => void;
-  onReconnect: (connectorSlug: ConnectorSlug) => void;
+  onReconnect: (selection: ConnectorScopeReviewSelection) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -94,7 +96,7 @@ function ScopeDiffContent({
         <Button
           type="button"
           onClick={() => {
-            return onReconnect(connectorSlug);
+            return onReconnect(selection);
           }}
           className="flex-1"
         >
@@ -113,7 +115,7 @@ function ScopeDiffContent({
 }
 
 export function ScopeReviewModal({
-  connectorSlug,
+  selection,
   onClose,
   onReconnect,
 }: ScopeReviewModalProps) {
@@ -124,14 +126,10 @@ export function ScopeReviewModal({
   const scopeDiff =
     scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
 
-  if (!connectorSlug) {
-    return null;
-  }
-
   const connector = connectorCatalog?.connectors.find((candidate) => {
-    return candidate.slug === connectorSlug;
+    return candidate.slug === selection.connectorSlug;
   });
-  const connectorLabel = connector?.label ?? connectorSlug;
+  const connectorLabel = connector?.label ?? selection.connectorSlug;
 
   return (
     <Dialog
@@ -165,7 +163,7 @@ export function ScopeReviewModal({
           </p>
         ) : scopeDiff ? (
           <ScopeDiffContent
-            connectorSlug={connectorSlug}
+            selection={selection}
             addedScopes={scopeDiff.addedScopes}
             removedScopes={scopeDiff.removedScopes}
             onClose={onClose}

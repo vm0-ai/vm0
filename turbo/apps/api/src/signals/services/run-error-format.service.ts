@@ -4,12 +4,15 @@ import {
   isClaudeCodeAuthenticationCredentialsError,
 } from "@okouai/api-contracts/contracts/errors";
 import {
+  getFrameworkForType,
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
+import type { ModelProviderFramework } from "@okouai/api-contracts/contracts/model-provider-types";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { appUrlForPublicBrand } from "@okouai/core/public-brand";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { eq } from "drizzle-orm";
@@ -26,6 +29,8 @@ interface RunErrorProviderContext {
   readonly orgId: string;
   readonly modelProviderType: ModelProviderType | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly failureReason: RunFailureReasonToken | null;
+  readonly framework: ModelProviderFramework | null;
   readonly selectedModel: string | null;
 }
 
@@ -34,6 +39,8 @@ interface FormatRunErrorLikeWebMessageParams {
   readonly runId: string;
   readonly errorMessage: string;
   readonly publicBrand: PublicBrand;
+  readonly failureReason?: RunFailureReasonToken;
+  readonly framework?: ModelProviderFramework | null;
   readonly modelProviderType?: ModelProviderType | null;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope | null;
   readonly selectedModel?: string | null;
@@ -108,7 +115,9 @@ function runErrorProviderContext(
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
         modelProviderType: agentRuns.modelProvider,
+        modelRuntimeProviderType: agentRuns.modelRuntimeProvider,
         modelProviderCredentialScope: agentRuns.modelProviderCredentialScope,
+        failureReason: agentRuns.failureReason,
         selectedModel: agentRuns.selectedModel,
       })
       .from(agentRuns)
@@ -119,13 +128,28 @@ function runErrorProviderContext(
       return undefined;
     }
 
+    const modelProviderType = formatLatestSessionProviderType(
+      run.modelProviderType,
+    );
+    const modelRuntimeProviderType = formatLatestSessionProviderType(
+      run.modelRuntimeProviderType,
+    );
+    const frameworkProviderType =
+      modelRuntimeProviderType ??
+      (modelProviderType === "built-in" ? null : modelProviderType);
+
     return {
       userId: run.userId,
       orgId: run.orgId,
-      modelProviderType: formatLatestSessionProviderType(run.modelProviderType),
+      modelProviderType,
       modelProviderCredentialScope: formatRunModelProviderCredentialScope(
         run.modelProviderCredentialScope,
       ),
+      failureReason: run.failureReason,
+      framework:
+        frameworkProviderType === null
+          ? null
+          : getFrameworkForType(frameworkProviderType),
       selectedModel: run.selectedModel,
     };
   });
@@ -136,11 +160,13 @@ function formatRunErrorLikeWebMessage(
 ): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const errorMessage = params.errorMessage.trim() || "Run failed";
-    if (isProRequiredRunError(errorMessage)) {
-      return PRO_REQUIRED_MARKER;
-    }
-    if (isInsufficientCreditsRunError(errorMessage)) {
-      return INSUFFICIENT_CREDITS_MARKER;
+    if (params.failureReason === undefined) {
+      if (isProRequiredRunError(errorMessage)) {
+        return PRO_REQUIRED_MARKER;
+      }
+      if (isInsufficientCreditsRunError(errorMessage)) {
+        return INSUFFICIENT_CREDITS_MARKER;
+      }
     }
 
     const providerContext =
@@ -164,6 +190,8 @@ function formatRunErrorLikeWebMessage(
     return formatRunErrorForExternalSurface({
       code: "INTERNAL_SERVER_ERROR",
       message: errorMessage,
+      failureReason: params.failureReason,
+      framework: params.framework,
       selectedModel,
       claudeCodeCredentialRecovery: {
         modelProviderType,
@@ -184,7 +212,10 @@ export const formatRunErrorForRunOwner$ = command(
     { get, set },
     params: Omit<
       FormatRunErrorLikeWebMessageParams,
-      "modelProviderType" | "modelProviderCredentialScope"
+      | "failureReason"
+      | "framework"
+      | "modelProviderType"
+      | "modelProviderCredentialScope"
     >,
     signal: AbortSignal,
   ): Promise<string> => {
@@ -196,7 +227,9 @@ export const formatRunErrorForRunOwner$ = command(
       params.canManageOrgModelProviders === undefined &&
       providerContext?.modelProviderType === "anthropic-api-key" &&
       providerContext.modelProviderCredentialScope === "org" &&
-      isClaudeCodeAuthenticationCredentialsError(params.errorMessage)
+      (providerContext.failureReason === "invalid_credentials" ||
+        (providerContext.failureReason === null &&
+          isClaudeCodeAuthenticationCredentialsError(params.errorMessage)))
     ) {
       const membership = await set(
         getMemberRoleAndUpdateCache$,
@@ -211,6 +244,8 @@ export const formatRunErrorForRunOwner$ = command(
     return await get(
       formatRunErrorLikeWebMessage({
         ...params,
+        failureReason: providerContext?.failureReason ?? undefined,
+        framework: providerContext?.framework ?? null,
         modelProviderType: providerContext?.modelProviderType ?? null,
         modelProviderCredentialScope:
           providerContext?.modelProviderCredentialScope ?? null,
