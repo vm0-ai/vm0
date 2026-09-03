@@ -142,11 +142,10 @@ import {
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import {
-  connectorAccountEffectiveLabel,
-  type ConnectorAccountConnection,
-  type ConnectorAccountSelection,
-  type ConnectorAccountTarget,
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountSelection,
+  ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
@@ -290,6 +289,7 @@ import {
   findWebsiteTemplateItem,
 } from "../../lib/platform-template-items.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -7964,16 +7964,9 @@ function ComposerConnectorAccountMenu({
     connectorAccountTargetKey(menuTarget) === connectorAccountTargetKey(target),
   );
   const effectiveConnection = explicit ? selectedConnection : defaultConnection;
+  const resolveAccountLabel = useConnectorAccountLabel();
   const accountLabel = effectiveConnection
-    ? connectorAccountEffectiveLabel(
-        effectiveConnection,
-        t(
-          ($) => {
-            return $.connectors.accounts.fallbackName;
-          },
-          { id: effectiveConnection.id.slice(0, 8) },
-        ),
-      )
+    ? resolveAccountLabel(effectiveConnection)
     : t(($) => {
         return $.chat.connectors.noUsableAccount;
       });
@@ -8099,17 +8092,7 @@ function ComposerConnectorAccountChoices({
     "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     saving && "cursor-default opacity-50",
   );
-  const accountLabel = (connection: ConnectorAccountConnection): string => {
-    return connectorAccountEffectiveLabel(
-      connection,
-      t(
-        ($) => {
-          return $.connectors.accounts.fallbackName;
-        },
-        { id: connection.id.slice(0, 8) },
-      ),
-    );
-  };
+  const accountLabel = useConnectorAccountLabel();
   const defaultLabel = defaultConnection
     ? accountLabel(defaultConnection)
     : t(($) => {

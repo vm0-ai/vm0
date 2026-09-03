@@ -12,7 +12,6 @@ import {
   DialogTitle,
   Input,
 } from "@okouai/ui";
-import { connectorAccountEffectiveLabel } from "@okouai/api-contracts/contracts/connector-accounts";
 
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { renameConnectorAccount$ } from "../../../../signals/okou-page/settings/connector-accounts.ts";
@@ -23,9 +22,11 @@ import {
   setConnectorAccountNamePromptValue$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { useConnectorAccountLabel } from "./use-connector-account-label.ts";
 
 export function ConnectorAccountNameDialog() {
   const { t } = useTranslation();
+  const accountLabel = useConnectorAccountLabel();
   const prompt = useGet(connectorAccountNamePrompt$);
   const value = useGet(connectorAccountNamePromptValue$);
   const setValue = useSet(setConnectorAccountNamePromptValue$);
@@ -99,15 +100,7 @@ export function ConnectorAccountNameDialog() {
               onChange={(event) => {
                 return setValue(event.target.value);
               }}
-              placeholder={connectorAccountEffectiveLabel(
-                prompt.account,
-                t(
-                  ($) => {
-                    return $.connectors.accounts.fallbackName;
-                  },
-                  { id: prompt.account.id.slice(0, 8) },
-                ),
-              )}
+              placeholder={accountLabel(prompt.account)}
               maxLength={255}
             />
           </div>

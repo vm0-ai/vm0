@@ -1349,15 +1349,6 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
-      - name: Verify production App and API domains
-        shell: bash
-        env:
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/verify-okou-production-domains.sh \
-            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
@@ -1644,7 +1635,6 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
         run: |
@@ -1688,9 +1678,6 @@ jobs:
               exit 1
             fi
           done
-
-          pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          bash .github/scripts/verify-okou-production-domains.sh "$pages_url"
 
       - name: Finish GitHub Deployment
         if: always()

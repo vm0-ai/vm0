@@ -2014,6 +2014,7 @@ describe.sequential("Morning Brief preference", () => {
       await cleanupCatalog();
     });
     await setOfficialWorkflowsEnabled(actor, true);
+    await setMorningBriefEnabled(actor, false);
     const headers = authHeaders(actor);
     const installations = await Promise.all(
       [onboarding.defaultAgentId, alternate.agentId].map(async (agentId) => {
@@ -2077,6 +2078,81 @@ describe.sequential("Morning Brief preference", () => {
 });
 
 describe.sequential("Morning Brief default onboarding", () => {
+  it("uses the production boundary with Morning Brief released and Official Workflows off", async () => {
+    installCatalogStorageFixture();
+    await syncDeployedCatalog();
+    const activationAt = new Date("2026-09-07T01:00:00.000Z");
+    const beforeActivation = new Date(activationAt.getTime() - 1);
+    const preActivationActor = bdd.user();
+    const eligibleCreator = bdd.user();
+    onTestFinished(async () => {
+      installCatalogStorageFixture();
+      await cleanupCatalog();
+    });
+
+    for (const actor of [preActivationActor, eligibleCreator]) {
+      await setOfficialWorkflowsEnabled(actor, false);
+    }
+
+    await deliverClerkOrganizationCreated(preActivationActor, beforeActivation);
+    await deliverClerkOrganizationCreated(eligibleCreator, activationAt);
+
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: preActivationActor.orgId ?? "",
+        userId: preActivationActor.userId,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: eligibleCreator.orgId ?? "",
+        userId: eligibleCreator.userId,
+      }),
+    ).resolves.toStrictEqual(activationAt);
+
+    expect(
+      (
+        await bdd.completeOnboarding(preActivationActor, {
+          timezone: "Asia/Shanghai",
+        })
+      ).status,
+    ).toBe(200);
+    await expect(
+      listMorningBriefInstallations(preActivationActor),
+    ).resolves.toHaveLength(0);
+
+    expect(
+      (
+        await bdd.completeOnboarding(eligibleCreator, {
+          timezone: "Asia/Shanghai",
+        })
+      ).status,
+    ).toBe(200);
+    const installations = await listMorningBriefInstallations(eligibleCreator);
+    expect(installations).toHaveLength(1);
+    const installation = installations[0];
+    if (!installation) {
+      throw new Error("Expected a default Morning Brief installation");
+    }
+    const detail = await accept(
+      installationClient().get({
+        headers: authHeaders(eligibleCreator),
+        params: { workflowId: installation.id },
+      }),
+      [200],
+    );
+    expect(detail.body.workflow.automations).toHaveLength(1);
+    expect(detail.body.workflow.automations).toMatchObject([
+      {
+        enabled: true,
+        official: {
+          blueprintKey: "daily-delivery",
+          reconciliationStatus: "current",
+        },
+      },
+    ]);
+  });
+
   it("marks only post-activation organization creators and preserves the first source timestamp", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();

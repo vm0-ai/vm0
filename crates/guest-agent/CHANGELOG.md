@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.7...guest-agent-v0.84.8) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
 ## [0.84.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.6...guest-agent-v0.84.7) (2026-09-03)
 
 

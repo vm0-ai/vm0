@@ -49,6 +49,8 @@ const SMOOTH_WINDOW_MS = 100;
 /** A burst shorter than this is a shortcut, not typing. */
 const TYPING_MIN_MS = 1_000;
 /** Share of pixels that changed after a click for the page to count as changed. */
+/** How long after a click the picture is compared with the click frame. */
+export const REACTION_DELAY_MS = 400;
 const REACTION_LOCAL = 0.12;
 const REACTION_PAGE = 0.35;
 const REACTION_RELEASE_MS = 300;
@@ -222,6 +224,19 @@ export const cameraPlanSchema = z
     }),
     content: pixelRectSchema,
     shots: z.array(cameraShotSchema),
+    /** The clicks the plan serves, so a review can check them against whatever the plan became. */
+    clicks: z
+      .array(
+        z.object({
+          tMs: z.number().int().nonnegative(),
+          x: z.number(),
+          y: z.number(),
+          elementRole: z.string().optional(),
+          /** Share of the picture that changed within `REACTION_DELAY_MS` of the click. */
+          reaction: z.number().min(0).max(1).optional(),
+        }),
+      )
+      .default([]),
   })
   .superRefine((plan, context) => {
     let previousEndMs = 0;
@@ -1179,6 +1194,51 @@ export function createCameraPlan(
     source,
     content,
     shots: toPlanShots(shots),
+    clicks: clicks.map((click) => {
+      const reaction = analysis.reactions.get(click.tMs);
+      return {
+        tMs: click.tMs,
+        x: Math.round(click.x * 1_000) / 1_000,
+        y: Math.round(click.y * 1_000) / 1_000,
+        ...(click.elementRole ? { elementRole: click.elementRole } : {}),
+        ...(reaction === undefined
+          ? {}
+          : { reaction: Math.round(reaction * 1_000) / 1_000 }),
+      };
+    }),
+  });
+}
+
+export interface PlanClickVerification {
+  readonly tMs: number;
+  readonly inFrame: boolean;
+}
+
+/**
+ * Every click of the plan checked against the camera the plan describes, as it
+ * will be rendered. Run on the plan being rendered rather than on the one that
+ * was generated, so an edited plan is judged on its edits.
+ */
+export function verifyPlanClicks(
+  plan: CameraPlan,
+): readonly PlanClickVerification[] {
+  const frames = createCameraFrameStates(plan);
+  return plan.clicks.map((click) => {
+    return {
+      tMs: click.tMs,
+      inFrame: clickInFrame(
+        frames,
+        {
+          tMs: click.tMs,
+          x: click.x,
+          y: click.y,
+          element: null,
+          elementRole: null,
+        },
+        plan.source,
+        CLICK_MARGIN,
+      ),
+    };
   });
 }
 

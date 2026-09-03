@@ -417,10 +417,11 @@ describe("Pi API facade", () => {
     }
   });
 
-  it("sends direct DeepSeek through the exact Responses endpoint without Chat fields", async () => {
+  it("sends direct DeepSeek through Responses with the stable Pi identity and no Chat fields", async () => {
     const providerRequests: Array<{
       readonly url: string | undefined;
       readonly body: Record<string, unknown>;
+      readonly userAgent: string | undefined;
     }> = [];
     const server = createServer((request, response) => {
       void (async () => {
@@ -434,6 +435,7 @@ describe("Pi API facade", () => {
             string,
             unknown
           >,
+          userAgent: request.headers["user-agent"],
         });
         responsesTextSse(response, "DeepSeek API-first answer");
       })().catch((error: unknown) => {
@@ -475,6 +477,7 @@ describe("Pi API facade", () => {
       expect(providerRequests).toHaveLength(1);
       expect(providerRequests[0]).toMatchObject({
         url: "/responses",
+        userAgent: "okou-pi-agent/1.0",
         body: {
           model: "deepseek-v4-flash",
           stream: true,
