@@ -251,7 +251,7 @@ describe("chat lifecycle", () => {
     ).toBeTruthy();
   });
 
-  it("creates a new chat thread with Cloud browser on by default", async () => {
+  it("keeps Cloud browser on while the preference feature is off", async () => {
     const user = userEvent.setup({ delay: null });
     let sentCloudBrowserEnabled: boolean | undefined;
     let sentComputerUseHostId: string | null | undefined;
@@ -263,6 +263,9 @@ describe("chat lifecycle", () => {
     });
     context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
+    });
+    context.mocks.data.userPreferences({
+      cloudBrowserEnabledByDefault: false,
     });
 
     detachedSetupPage({
@@ -282,6 +285,47 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(sentCloudBrowserEnabled).toBeTruthy();
       expect(sentComputerUseHostId).toBeUndefined();
+    });
+  });
+
+  it("uses the disabled Cloud browser preference for a new chat thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    let runCreated = false;
+    let sentCloudBrowserEnabled: boolean | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runCreated = true;
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+      },
+    });
+    context.mocks.data.userPreferences({
+      cloudBrowserEnabledByDefault: false,
+    });
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.CloudBrowserPreference]: true,
+      },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await composerConnectorsButton());
+    const cloudBrowserSwitch = await screen.findByRole("switch", {
+      name: "Enable Cloud browser",
+    });
+    expect(cloudBrowserSwitch).toHaveAttribute("aria-checked", "false");
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
+
+    await waitFor(() => {
+      expect(runCreated).toBeTruthy();
+      expect(sentCloudBrowserEnabled).toBeUndefined();
     });
   });
 

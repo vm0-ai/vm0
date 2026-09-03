@@ -5145,6 +5145,14 @@
           "title": "Tema"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Permita que os agentes usem um navegador na nuvem em novos chats",
+          "title": "Navegador na nuvem"
+        },
+        "description": "Escolha os padrões para novos chats e como as mensagens são enviadas.",
+        "sectionTitle": "Chat"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancelar cooldown",

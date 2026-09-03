@@ -199,6 +199,7 @@ function validateApplicationCallerInventory(): void {
       "turbo/apps/api/src/signals/services/acquisition-attribution.service.ts",
       "turbo/apps/platform/src/__tests__/presentation-onboarding-fixture.ts",
       "turbo/apps/platform/src/signals/__tests__/signup-attribution-conversion.test.ts",
+      "turbo/apps/platform/src/signals/auth-v2-page-setup.test.ts",
       "turbo/apps/platform/src/signals/auth-v2/platform-context.test.ts",
       "turbo/apps/platform/src/signals/auth.ts",
       "turbo/apps/platform/src/signals/bootstrap/ad-attribution.ts",
