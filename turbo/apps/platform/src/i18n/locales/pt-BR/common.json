@@ -4855,6 +4855,10 @@
       "title": "Exportar dados"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Redefinir tudo",
+        "resetting": "Redefinindo…"
+      },
       "description": "Veja os recursos por estágio de lançamento.",
       "documentTitle": "Laboratório",
       "groups": {

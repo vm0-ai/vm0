@@ -4792,6 +4792,10 @@
       "title": "Ekspor data"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Reset semua",
+        "resetting": "Mereset…"
+      },
       "description": "Lihat pengalih fitur berdasarkan tahap peluncuran.",
       "documentTitle": "Lab",
       "groups": {

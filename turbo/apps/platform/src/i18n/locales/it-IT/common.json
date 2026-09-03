@@ -4855,6 +4855,10 @@
       "title": "Esporta dati"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Reimposta tutto",
+        "resetting": "Reimpostazione…"
+      },
       "description": "Visualizza le funzionalità per fase di rilascio.",
       "documentTitle": "Laboratorio",
       "groups": {

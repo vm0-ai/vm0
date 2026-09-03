@@ -166,9 +166,10 @@ Evaluation has two layers (lowest to highest priority):
    `"__org__"`); `ORG_SCOPED_FEATURE_SWITCH_KEYS` currently holds
    `ChatErrorRecovery`, `PiLoop`, and `PresentationTemplates`. Written
    via `POST /api/feature-switches` and cleared via
-   `DELETE /api/feature-switches`. The Lab page is read-only and groups the
-   registry into Released, Beta, Alpha, and Internal categories. Switch keys
-   beginning with `_` are Internal regardless of their rollout audience.
+   `DELETE /api/feature-switches`. The Lab page lets users update or reset these
+   overrides and groups the registry into Released, Beta, Alpha, and Internal
+   categories. Switch keys beginning with `_` are Internal regardless of their
+   rollout audience.
 
 The same two-layer resolution applies on the server: route handlers that call
 `isFeatureEnabled(..., { userId, orgId, overrides })` pass a context built by

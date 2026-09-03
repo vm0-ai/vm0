@@ -4800,6 +4800,10 @@
       "title": "Daten exportieren"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Alles zurücksetzen",
+        "resetting": "Zurücksetzen…"
+      },
       "description": "Feature-Schalter nach Einführungsphase anzeigen.",
       "documentTitle": "Labor",
       "groups": {

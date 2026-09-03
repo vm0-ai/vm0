@@ -4792,6 +4792,10 @@
       "title": "データのエクスポート"
     },
     "lab": {
+      "actions": {
+        "resetAll": "すべてリセット",
+        "resetting": "リセット中…"
+      },
       "description": "ロールアウト段階別に機能スイッチを確認できます。",
       "documentTitle": "研究室",
       "groups": {
