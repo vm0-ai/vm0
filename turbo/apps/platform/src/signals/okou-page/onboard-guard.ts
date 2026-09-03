@@ -23,6 +23,7 @@ const ONBOARDING_GUARDED_PATHS = [
   ROUTES.connectors,
   ROUTES.directedAuthorize,
   ROUTES.directedConnect,
+  ROUTES.directedReconnect,
   ROUTES.exportData,
   ROUTES.githubConnect,
   ROUTES.home,

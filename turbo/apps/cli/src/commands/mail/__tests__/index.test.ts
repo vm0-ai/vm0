@@ -9,11 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../mocks/server";
 import {
-  authCodeMethod,
   catalogItem,
-  catalogStatusItem,
   stubConnectorCatalog,
-  stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
 import { stubCustomConnectors } from "../../__tests__/helpers/custom-connectors";
 import { mailCommand } from "../index";
@@ -22,52 +19,6 @@ const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
 const MAIL_DRAFT_ID = "550e8400-e29b-41d4-a716-446655440002";
 const RUN_GMAIL_CONNECTION_ID = "550e8400-e29b-41d4-a716-446655440003";
-
-function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
-  return [
-    http.get(`http://localhost:3000/api/agents/${AGENT_ID}`, () => {
-      return HttpResponse.json({
-        agentId: AGENT_ID,
-        ownerId: "owner-1",
-        description: null,
-        displayName: "Mail agent",
-        sound: null,
-        avatarUrl: null,
-      });
-    }),
-    http.get(
-      `http://localhost:3000/api/agents/${AGENT_ID}/user-connectors`,
-      () => {
-        return HttpResponse.json({
-          enabledConnectorSlugs: [...enabledConnectorSlugs],
-        });
-      },
-    ),
-  ];
-}
-
-function mailCatalog() {
-  return stubConnectorCatalogStatus([
-    catalogStatusItem({
-      connectorSlug: "gmail",
-      label: "Gmail",
-      authMethods: [authCodeMethod()],
-      connected: true,
-      connectionStatus: "connected",
-      connection: {
-        authMethod: "oauth",
-        externalUsername: null,
-        externalEmail: "sender@example.com",
-        reconnectReason: null,
-      },
-    }),
-    catalogStatusItem({
-      connectorSlug: "outlook-mail",
-      label: "Outlook Mail",
-      authMethods: [authCodeMethod()],
-    }),
-  ]);
-}
 
 describe("okou mail", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -114,7 +65,7 @@ describe("okou mail", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
-  it("lists the exact mail account used by the run and returns a connect link", async () => {
+  it("lists the exact mail account used by the run and keeps unadmitted mail unavailable", async () => {
     server.use(
       stubConnectorCatalog([
         catalogItem({ connectorSlug: "gmail", label: "Gmail" }),
@@ -159,7 +110,19 @@ describe("okou mail", () => {
     expect(listOutput).toContain("outlook");
     expect(listOutput).toContain("unavailable");
 
-    server.use(mailCatalog(), ...stubAgentContext(["gmail"]));
+    mockConsoleLog.mockClear();
+    await mailCommand.parseAsync(["node", "cli", "connect", "gmail", "--json"]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        provider: "gmail",
+        action: "ready",
+        url: null,
+        context: "run",
+        connectionId: RUN_GMAIL_CONNECTION_ID,
+      },
+    );
+
     mockConsoleLog.mockClear();
     await mailCommand.parseAsync([
       "node",
@@ -172,8 +135,58 @@ describe("okou mail", () => {
     expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
       {
         provider: "outlook",
-        action: "connect",
-        url: `http://localhost:3000/connectors/outlook-mail/connect?agentId=${AGENT_ID}`,
+        action: "unavailable",
+        url: null,
+        context: "run",
+        connectionId: null,
+      },
+    );
+  });
+
+  it("returns an exact reconnect link for the Gmail account used by the run", async () => {
+    server.use(
+      stubConnectorCatalog([
+        catalogItem({ connectorSlug: "gmail", label: "Gmail" }),
+        catalogItem({
+          connectorSlug: "outlook-mail",
+          label: "Outlook Mail",
+        }),
+      ]),
+      stubCustomConnectors([]),
+      http.post(
+        "http://localhost:3000/api/connector-accounts/inspect",
+        async ({ request }) => {
+          const body = connectorAccountsContract.inspect.body.parse(
+            await request.json(),
+          );
+          return HttpResponse.json({
+            results: body.selections.map((selection) => {
+              return {
+                kind: "available" as const,
+                ...selection,
+                authMethod: "oauth" as const,
+                displayName: "Selected Gmail",
+                externalId: "selected-gmail-account",
+                externalUsername: null,
+                externalEmail: "selected@example.com",
+                connectionStatus: "reconnect-required" as const,
+                reconnectReason: "authorization_expired_or_revoked" as const,
+              };
+            }),
+          });
+        },
+      ),
+    );
+
+    await mailCommand.parseAsync(["node", "cli", "connect", "gmail", "--json"]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        provider: "gmail",
+        action: "reconnect",
+        url: `http://localhost:3000/connectors/gmail/reconnect/${RUN_GMAIL_CONNECTION_ID}?agentId=${AGENT_ID}`,
+        context: "run",
+        connectionId: RUN_GMAIL_CONNECTION_ID,
       },
     );
   });
@@ -210,6 +223,18 @@ describe("okou mail", () => {
     expect(output).toContain("unavailable");
     expect(output).not.toContain("sender@example.com");
     expect(output).not.toContain("ready");
+
+    mockConsoleLog.mockClear();
+    await mailCommand.parseAsync(["node", "cli", "connect", "gmail", "--json"]);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        provider: "gmail",
+        action: "unavailable",
+        url: null,
+        context: "run",
+        connectionId: RUN_GMAIL_CONNECTION_ID,
+      },
+    );
   });
 
   it("links an existing Gmail draft and prints only the review URL", async () => {
