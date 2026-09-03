@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.619.0](https://github.com/vm0-ai/vm0/compare/core-v8.618.0...core-v8.619.0) (2026-09-03)
+
+
+### Features
+
+* **app:** add composer voice input shortcut ([#31541](https://github.com/vm0-ai/vm0/issues/31541)) ([7f01748](https://github.com/vm0-ai/vm0/commit/7f017487956ca49793aa82a1d41b634f642c285c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.400.0
+
 ## [8.618.0](https://github.com/vm0-ai/vm0/compare/core-v8.617.0...core-v8.618.0) (2026-09-03)
 
 

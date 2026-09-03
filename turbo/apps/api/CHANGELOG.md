@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.542.0](https://github.com/vm0-ai/vm0/compare/api-v1.541.1...api-v1.542.0) (2026-09-03)
+
+
+### Features
+
+* use chat context for voice draft cleanup ([#31517](https://github.com/vm0-ai/vm0/issues/31517)) ([c77f7ff](https://github.com/vm0-ai/vm0/commit/c77f7ff2fc4887a079700e3729bef1afcf5da863))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.400.0
+    * @okouai/core bumped to 8.619.0
+    * @okouai/db bumped to 1.240.2
+    * @okouai/pi-agent-runtime bumped to 1.15.6
+
 ## [1.541.1](https://github.com/vm0-ai/vm0/compare/api-v1.541.0...api-v1.541.1) (2026-09-03)
 
 
