@@ -797,6 +797,9 @@ body {
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
 .zero-app .zero-composer {
+  /* Seven points from the resting border in both themes: down from it in light,
+     up from it in dark, where the border is far darker than the surface. */
+  --zero-composer-ring: 42.9 2.05% 77%;
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-composer-radius);
@@ -815,7 +818,7 @@ body {
      enough below the lightened hairline to read as a hard outline rather than
      as focus. The composer autofocuses on the chat home, so this ring is the
      first border a user sees. */
-  border: 0.7px solid hsl(42.9 2.05% 77%);
+  border: 0.7px solid hsl(var(--zero-composer-ring));
   border-radius: inherit;
   box-shadow: var(--zero-composer-focus-veil);
   opacity: 0;
@@ -825,6 +828,10 @@ body {
 }
 .zero-app .zero-composer:focus-within::after {
   opacity: 1;
+}
+
+:where([data-theme="dark"]) .zero-app .zero-composer {
+  --zero-composer-ring: 42.9 1.6% 37.5%;
 }
 
 @media (prefers-reduced-motion: reduce) {
