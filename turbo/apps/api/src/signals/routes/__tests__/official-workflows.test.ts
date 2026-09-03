@@ -2110,6 +2110,7 @@ describe.sequential("Morning Brief default onboarding", () => {
       }),
     ).resolves.toStrictEqual(activationAt);
 
+    context.mocks.axiomLogging.info.mockClear();
     expect(
       (
         await bdd.completeOnboarding(preActivationActor, {
@@ -2117,10 +2118,31 @@ describe.sequential("Morning Brief default onboarding", () => {
         })
       ).status,
     ).toBe(200);
+    expect(
+      context.mocks.axiomLogging.info.mock.calls.filter(([message]) => {
+        return message === "Morning Brief onboarding provisioning outcome";
+      }),
+    ).toStrictEqual([
+      [
+        "Morning Brief onboarding provisioning outcome",
+        expect.objectContaining({
+          context: "onboarding.service",
+          orgId: preActivationActor.orgId,
+          userId: preActivationActor.userId,
+          firstCompletion: true,
+          timezone: "stored",
+          provisioning: {
+            outcome: "skipped",
+            reason: "not-eligible",
+          },
+        }),
+      ],
+    ]);
     await expect(
       listMorningBriefInstallations(preActivationActor),
     ).resolves.toHaveLength(0);
 
+    context.mocks.axiomLogging.info.mockClear();
     expect(
       (
         await bdd.completeOnboarding(eligibleCreator, {
@@ -2128,6 +2150,26 @@ describe.sequential("Morning Brief default onboarding", () => {
         })
       ).status,
     ).toBe(200);
+    expect(
+      context.mocks.axiomLogging.info.mock.calls.filter(([message]) => {
+        return message === "Morning Brief onboarding provisioning outcome";
+      }),
+    ).toStrictEqual([
+      [
+        "Morning Brief onboarding provisioning outcome",
+        expect.objectContaining({
+          context: "onboarding.service",
+          orgId: eligibleCreator.orgId,
+          userId: eligibleCreator.userId,
+          firstCompletion: true,
+          timezone: "stored",
+          provisioning: {
+            outcome: "installed",
+            workflowId: expect.any(String),
+          },
+        }),
+      ],
+    ]);
     const installations = await listMorningBriefInstallations(eligibleCreator);
     expect(installations).toHaveLength(1);
     const installation = installations[0];
