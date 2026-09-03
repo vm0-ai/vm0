@@ -508,12 +508,11 @@ describe("POST /api/me/model-providers (upsert)", () => {
       }),
       [200],
     );
-    const [provider] = listed.body.modelProviders;
-    expect(provider).toMatchObject({
+    expect(listed.body.modelProviders[0]).toMatchObject({
       type: "codex-oauth-token",
       subscriptionResetCredits: 2,
+      subscriptionResetCreditsNextExpiresAt: null,
     });
-    expect(provider?.subscriptionResetCreditsNextExpiresAt ?? null).toBeNull();
   });
 
   it("consumes a Codex subscription reset credit", async () => {
