@@ -8,7 +8,7 @@ import {
   type PiLaunchPayload,
 } from "@okouai/api-contracts/contracts/runners";
 import {
-  resolvePiAgentCredential,
+  materializePiAgentModelConfig,
   runPiOfficialRpcMode,
   type PiAgentModelConfig,
   type PiMemoryRecallOutcome,
@@ -118,30 +118,17 @@ export async function piSandboxAgentConfigFromEnv(
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
-  // Normalize old API/runner/Sandbox payloads and pre-cutover contexts during
-  // the prior-API rollback window and two-hour drain plus finalization. Remove
-  // this compatibility input only after the production gates in #31085 pass.
-  const {
-    api: _legacyApi,
-    apiKeyEnv,
-    credentialHeader,
-    credentialSecretName: _credentialSecretName,
-    ...model
-  } = parsedModel;
-  const credential = requiredEnv(env, apiKeyEnv);
   return {
     runId,
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     launchPayload: await readLaunchPayload(env),
-    model: {
-      ...model,
-      api: "openai-responses",
-      ...resolvePiAgentCredential({
-        credential,
-        header: credentialHeader,
-        target: "sandbox-firewall",
-      }),
-    },
+    model: await materializePiAgentModelConfig({
+      config: parsedModel,
+      target: "sandbox-firewall",
+      resolveCredential(binding) {
+        return requiredEnv(env, binding.environment);
+      },
+    }),
   };
 }
 

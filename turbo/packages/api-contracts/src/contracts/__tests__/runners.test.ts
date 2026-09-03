@@ -18,7 +18,9 @@ import {
   jobSchema,
   piApiFirstTurnConfigSchema,
   piApiFirstTurnManifestSchema,
+  piModelConfigLegacySchema,
   piModelConfigSchema,
+  piModelConfigV2Schema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -415,6 +417,110 @@ describe("Pi sandbox execution contract", () => {
           credentialHeader: { name: "x-api-key", valueTemplate },
         }).success,
       ).toBe(false);
+    }
+  });
+
+  it("accepts only exact dialect-aware credential binding sets", () => {
+    const publicResponses = {
+      schemaVersion: 2,
+      dialect: "openai-responses",
+      transport: "sse",
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-terra",
+      thinkingLevel: "low",
+      credentialBindings: [
+        {
+          kind: "api-key",
+          environment: "OPENAI_API_KEY",
+          secretName: "OPENAI_API_KEY",
+        },
+      ],
+    } as const;
+    const codexResponses = {
+      schemaVersion: 2,
+      dialect: "openai-codex-responses",
+      transport: "sse",
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: "gpt-5.6-terra",
+      thinkingLevel: "low",
+      credentialBindings: [
+        {
+          kind: "account-id",
+          environment: "CHATGPT_ACCOUNT_ID",
+          secretName: "CHATGPT_ACCOUNT_ID",
+        },
+        {
+          kind: "access-token",
+          environment: "CHATGPT_ACCESS_TOKEN",
+          secretName: "CHATGPT_ACCESS_TOKEN",
+        },
+      ],
+    } as const;
+
+    expect(piModelConfigV2Schema.parse(publicResponses)).toEqual(
+      publicResponses,
+    );
+    expect(piModelConfigV2Schema.parse(codexResponses)).toEqual(codexResponses);
+    expect(piModelConfigSchema.parse(publicResponses)).toEqual(publicResponses);
+    expect(piModelConfigSchema.parse(codexResponses)).toEqual(codexResponses);
+    expect(piModelConfigLegacySchema.safeParse(codexResponses).success).toBe(
+      false,
+    );
+
+    for (const invalid of [
+      { ...publicResponses, transport: "auto" },
+      { ...publicResponses, provider: "openai-codex" },
+      { ...publicResponses, credentialBindings: [] },
+      {
+        ...publicResponses,
+        credentialBindings: [
+          publicResponses.credentialBindings[0],
+          publicResponses.credentialBindings[0],
+        ],
+      },
+      {
+        ...publicResponses,
+        credentialBindings: [
+          {
+            kind: "api-key",
+            environment: "CHATGPT_ACCESS_TOKEN",
+            secretName: "OPENAI_API_KEY",
+          },
+        ],
+      },
+      {
+        ...publicResponses,
+        credentialBindings: [
+          {
+            kind: "api-key",
+            environment: "OPENAI_API_KEY",
+            secretName: "CHATGPT_REFRESH_TOKEN",
+          },
+        ],
+      },
+      {
+        ...codexResponses,
+        credentialBindings: [codexResponses.credentialBindings[1]],
+      },
+      {
+        ...codexResponses,
+        serviceTier: "priority",
+      },
+      {
+        ...codexResponses,
+        credentialBindings: [
+          ...codexResponses.credentialBindings,
+          {
+            kind: "id-token",
+            environment: "CHATGPT_ID_TOKEN",
+            secretName: "CHATGPT_ID_TOKEN",
+          },
+        ],
+      },
+    ]) {
+      expect(piModelConfigV2Schema.safeParse(invalid).success).toBe(false);
     }
   });
 
@@ -1789,6 +1895,30 @@ describe("runner claim request contract", () => {
         heartbeatGeneration: Number.MAX_SAFE_INTEGER,
       },
     });
+  });
+
+  it("accepts a bounded forward-compatible Pi model-config capability", () => {
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        capabilities: { piModelConfigGenerations: [1, 2, 7] },
+      }),
+    ).toStrictEqual({
+      capabilities: { piModelConfigGenerations: [1, 2, 7] },
+    });
+
+    for (const piModelConfigGenerations of [
+      [],
+      [1, 1],
+      [0],
+      [256],
+      [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    ]) {
+      expect(
+        runnersJobClaimContract.claim.body.safeParse({
+          capabilities: { piModelConfigGenerations },
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("requires a strict all-or-nothing runner identity", () => {

@@ -293,21 +293,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Run web chat jobs with the sandbox-owned official Pi runtime and JSONL session persistence.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PiMemoryRecall]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Mount the canonical user memory Storage for Pi runs without enabling memory generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PiMemoryGeneration]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
+      "Run web chat jobs with the sandbox-owned official Pi runtime, JSONL session persistence, and shared Codex-compatible memory.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

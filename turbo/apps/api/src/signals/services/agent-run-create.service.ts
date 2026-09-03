@@ -9,7 +9,7 @@ import {
   type PiMemoryRecallSelection,
   type PiLaunchConfig,
   type PiApiFirstTurnConfig,
-  type PiModelConfig,
+  type PiModelConfigLegacy as PiModelConfig,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
   piMemoryRecallSelectionSchema,
@@ -9562,12 +9562,7 @@ function prepareRunOutputMetadata(args: {
     resolved: args.resolved,
     framework: args.framework,
     piSandbox: args.piSandbox,
-    includeAutoMemory:
-      args.piSandbox === undefined ||
-      isFeatureEnabled(
-        FeatureSwitchKey.PiMemoryRecall,
-        args.featureSwitchContext,
-      ),
+    includeAutoMemory: true,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {
@@ -10256,16 +10251,12 @@ function finalizePreparedRunContext(
   return {
     ...prepared.context,
     launchSnapshot: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       framework:
         prepared.context.piSandbox === undefined
           ? prepared.context.framework
           : "pi",
       runnerProfile: runnerProfile(prepared.context.resolved.content),
-      piMemoryGenerationEnabled: isFeatureEnabled(
-        FeatureSwitchKey.PiMemoryGeneration,
-        prepared.context.featureSwitchContext,
-      ),
     },
     body: withFinalRunAppendSystemPrompt({
       body: {

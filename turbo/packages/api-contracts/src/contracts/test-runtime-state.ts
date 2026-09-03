@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { initContract } from "./base";
-import { connectorRuntimeTargetsSchema } from "./runners";
+import {
+  connectorRuntimeTargetsSchema,
+  piModelConfigV2Schema,
+} from "./runners";
 import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 
 const c = initContract();
@@ -110,6 +113,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("mutate-runner-job-secret-value-environment-keys"),
     run_id: z.uuid(),
     mode: z.enum(["remove", "invalid"]),
+  }),
+  z.object({
+    action: z.literal("set-runner-job-pi-context-as-v2-writer"),
+    run_id: z.uuid(),
+    pi_model_config: piModelConfigV2Schema,
   }),
   z.object({
     action: z.literal("enable-queued-pi-ownership-transfer"),
@@ -395,6 +403,13 @@ export const testRuntimeStateActionResponseSchema = z.object({
               framework: z.enum(["claude-code", "codex", "pi"]),
               runnerProfile: z.string().min(1).max(255),
               piMemoryGenerationEnabled: z.boolean(),
+            })
+            .strict(),
+          z
+            .object({
+              schemaVersion: z.literal(3),
+              framework: z.enum(["claude-code", "codex", "pi"]),
+              runnerProfile: z.string().min(1).max(255),
             })
             .strict(),
         ])
