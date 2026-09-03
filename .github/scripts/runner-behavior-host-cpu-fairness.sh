@@ -75,7 +75,7 @@ cleanup() {
 trap cleanup EXIT
 
 mapfile -t CPU_CANDIDATES < <(
-  lscpu --parse=CPU,ONLINE | awk -F, '$2 == "Y" { print $1 }'
+  LC_ALL=C lscpu --parse=CPU,ONLINE | awk -F, '$2 == "Y" { print $1 }'
 )
 if [ "${#CPU_CANDIDATES[@]}" -eq 0 ]; then
   echo "host has no online CPUs" >&2
