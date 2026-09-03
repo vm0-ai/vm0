@@ -235,6 +235,7 @@ def _new_extractor(
             include_usage=include_usage,
             include_failure=include_failure,
         ),
+        max_number_bytes=_JSON_MAX_NUMBER_BYTES,
         max_work_units=_CHAT_COMPLETIONS_MAX_WORK_UNITS,
     )
 
