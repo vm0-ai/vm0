@@ -1,11 +1,9 @@
 """Runner-triggered usage flush and JSONL marker-watcher lifecycle owner."""
 
-import json
 import os
 import signal
 import threading
 import time
-from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 
@@ -15,6 +13,7 @@ import claude_output_timing
 import codex_output_timing
 import logging_utils
 import runner_flush_request
+import state_file
 import usage
 
 _RunnerFlushPhase = Literal["running", "draining", "closed"]
@@ -43,11 +42,12 @@ _usage_flush_signal_lock = threading.Lock()
 # Running workers own requests under the lock. During shutdown, drain_and_close()
 # changes the phase before waiting for that lock and becomes the sole draining owner.
 _runner_flush_phase: _RunnerFlushPhase = "running"
-_jsonl_flush_state_write_lock = threading.Lock()
+_jsonl_flush_state_publisher = state_file.AtomicJsonPublisher()
 _jsonl_flush_worker_lock = threading.Lock()
 _jsonl_flush_stop = threading.Event()
 _jsonl_flush_worker: threading.Thread | None = None
 _last_jsonl_flush_request_id: str | None = None
+_last_jsonl_state_write_error_request_id: str | None = None
 _JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
 _JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
 RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
@@ -89,7 +89,8 @@ def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -
 
 
 def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
-    global _last_jsonl_flush_request_id, _runner_flush_phase, _usage_flush_requested
+    global _last_jsonl_flush_request_id, _last_jsonl_state_write_error_request_id
+    global _runner_flush_phase, _usage_flush_requested
 
     _stop_runner_jsonl_flush_worker()
     acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
@@ -99,6 +100,7 @@ def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
         _runner_flush_phase = "running"
         _usage_flush_requested = False
         _last_jsonl_flush_request_id = None
+        _last_jsonl_state_write_error_request_id = None
     finally:
         _usage_flush_signal_lock.release()
 
@@ -317,7 +319,9 @@ def _write_jsonl_flush_state(
     *,
     pending: int = 0,
 ) -> bool:
-    state = {
+    global _last_jsonl_state_write_error_request_id
+
+    state: dict[str, object] = {
         "pid": os.getpid(),
         "usageStateId": usage.current_usage_state_id(),
         "updatedAtMs": int(time.time() * 1000),
@@ -325,21 +329,21 @@ def _write_jsonl_flush_state(
         "path": log_path,
         "pending": pending,
     }
-    tmp_path = state_path.with_name(f"{state_path.name}.{flush_request_id}.tmp")
-    with _jsonl_flush_state_write_lock:
-        try:
-            with tmp_path.open("w") as f:
-                json.dump(state, f, separators=(",", ":"))
-            tmp_path.replace(state_path)
-            return True
-        except OSError as exc:
-            with suppress(OSError):
-                tmp_path.unlink()
+    try:
+        _jsonl_flush_state_publisher.publish(state_path, state)
+        return True
+    except OSError as exc:
+        if _last_jsonl_state_write_error_request_id != flush_request_id:
+            _last_jsonl_state_write_error_request_id = flush_request_id
             addon_process_logging.emit_addon_process_event(
                 "warn",
-                f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}",
+                (
+                    f"Failed to write JSONL flush state for request {flush_request_id!r} at "
+                    f"{state_path}: {type(exc).__name__}: {exc}. Subsequent failures for this "
+                    "request will be silent."
+                ),
             )
-            return False
+        return False
 
 
 def drain_and_close() -> None:

@@ -15,6 +15,7 @@ import pytest
 import jsonl_writer
 import logging_utils
 import runner_flush_lifecycle
+import state_file
 import usage
 from tests.process_log_helpers import capture_addon_process_events
 
@@ -287,20 +288,15 @@ class TestRunnerJsonlFlush:
     ):
         log_path = runner_jsonl_flush_files.write_jsonl_flush_request()
         state_path = runner_jsonl_flush_files.jsonl_flush_state_path
-        tmp_state_path = state_path.with_name(
-            f"{state_path.name}.{_DEFAULT_JSONL_FLUSH_REQUEST_ID}.tmp"
-        )
         original_replace = Path.replace
-        failure_injected = False
+        failed_tmp_paths: list[Path] = []
 
         def fail_first_state_replace(
             source: Path,
             target: str | os.PathLike[str],
         ) -> Path:
-            nonlocal failure_injected
-
-            if source == tmp_state_path and Path(target) == state_path and not failure_injected:
-                failure_injected = True
+            if Path(target) == state_path and not failed_tmp_paths:
+                failed_tmp_paths.append(source)
                 raise OSError("state replace failed")
             return original_replace(source, target)
 
@@ -310,13 +306,13 @@ class TestRunnerJsonlFlush:
                 "flush_log_path",
                 wraps=logging_utils.flush_log_path,
             ) as flush_log_path,
-            capture_addon_process_events(),
-            patch.object(Path, "replace", new=fail_first_state_replace),
+            capture_addon_process_events() as log,
+            patch.object(state_file.Path, "replace", new=fail_first_state_replace),
             running_jsonl_flush_worker(runner_jsonl_flush_files),
         ):
             state = wait_for_jsonl_flush_state(runner_jsonl_flush_files)
 
-        assert failure_injected
+        assert len(failed_tmp_paths) == 1
         assert flush_log_path.call_count == 2
         assert state == {
             "pid": state["pid"],
@@ -326,7 +322,80 @@ class TestRunnerJsonlFlush:
             "path": str(log_path),
             "pending": 0,
         }
-        assert not tmp_state_path.exists()
+        assert not failed_tmp_paths[0].exists()
+        assert list(runner_jsonl_flush_files.tmp_path.glob(f"{state_path.name}.*.tmp")) == []
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert _DEFAULT_JSONL_FLUSH_REQUEST_ID in warning
+        assert "OSError: state replace failed" in warning
+        assert "Subsequent failures for this request will be silent" in warning
+
+    def test_persistent_jsonl_acknowledgement_write_failure_logs_once_per_request(
+        self, runner_jsonl_flush_files: RunnerJsonlFlushFiles
+    ):
+        state_path = runner_jsonl_flush_files.jsonl_flush_state_path
+        log_path = runner_jsonl_flush_files.write_jsonl_flush_request(
+            flush_request_id="baseline-request"
+        )
+        runner_flush_lifecycle._flush_jsonl_for_runner_request(
+            runner_jsonl_flush_files.jsonl_flush_request_path,
+            state_path,
+        )
+        baseline_state = state_path.read_text()
+        original_replace = Path.replace
+        failed_tmp_paths: list[Path] = []
+
+        def fail_state_replace(
+            source: Path,
+            target: str | os.PathLike[str],
+        ) -> Path:
+            if Path(target) == state_path:
+                failed_tmp_paths.append(source)
+                raise OSError("persistent state replace failure")
+            return original_replace(source, target)
+
+        runner_jsonl_flush_files.write_jsonl_flush_request(flush_request_id="failed-request-1")
+        with (
+            patch.object(logging_utils, "flush_log_path", return_value=True) as flush_log_path,
+            capture_addon_process_events() as log,
+            patch.object(state_file.Path, "replace", new=fail_state_replace),
+        ):
+            for _ in range(2):
+                runner_flush_lifecycle._flush_jsonl_for_runner_request(
+                    runner_jsonl_flush_files.jsonl_flush_request_path,
+                    state_path,
+                )
+
+            runner_jsonl_flush_files.write_jsonl_flush_request(flush_request_id="failed-request-2")
+            for _ in range(2):
+                runner_flush_lifecycle._flush_jsonl_for_runner_request(
+                    runner_jsonl_flush_files.jsonl_flush_request_path,
+                    state_path,
+                )
+
+        assert flush_log_path.call_count == 4
+        assert len(failed_tmp_paths) == 4
+        assert state_path.read_text() == baseline_state
+        assert all(not tmp_path.exists() for tmp_path in failed_tmp_paths)
+        assert list(runner_jsonl_flush_files.tmp_path.glob(f"{state_path.name}.*.tmp")) == []
+        assert log.warn.call_count == 2
+        warnings = [call.args[0] for call in log.warn.call_args_list]
+        assert "failed-request-1" in warnings[0]
+        assert "failed-request-2" in warnings[1]
+        assert all("persistent state replace failure" in warning for warning in warnings)
+        assert all(
+            "Subsequent failures for this request will be silent" in warning for warning in warnings
+        )
+
+        runner_jsonl_flush_files.write_jsonl_flush_request(flush_request_id="recovered-request")
+        runner_flush_lifecycle._flush_jsonl_for_runner_request(
+            runner_jsonl_flush_files.jsonl_flush_request_path,
+            state_path,
+        )
+        recovered_state = json.loads(state_path.read_text())
+        assert recovered_state["flushRequestId"] == "recovered-request"
+        assert recovered_state["path"] == str(log_path)
+        assert recovered_state["pending"] == 0
 
     def test_jsonl_watcher_acknowledges_rapid_sequential_paths(
         self, runner_jsonl_flush_files: RunnerJsonlFlushFiles
