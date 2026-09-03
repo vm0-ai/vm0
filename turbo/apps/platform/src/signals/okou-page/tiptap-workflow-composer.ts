@@ -1637,8 +1637,9 @@ function createVoiceDraftSignals(
               if (contextualResponse.status === 200) {
                 return contextualResponse;
               }
-              // Older APIs have a strict `{ text }` schema. The legacy retry
-              // keeps a newly loaded app usable during deployment rollback.
+              // New app -> old API rollout fallback: older APIs enforce a
+              // strict `{ text }` schema. Remove with #31523 once APIs from
+              // before #31517 neither serve nor remain rollback targets.
               return accept(
                 client.post({ body: { text }, fetchOptions: { signal } }),
                 [200],
