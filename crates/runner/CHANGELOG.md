@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.184.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.6...runner-rs-v0.184.7) (2026-09-03)
+
+
+### Bug Fixes
+
+* **runner:** include legacy timezone links in guest images ([#31295](https://github.com/vm0-ai/vm0/issues/31295)) ([6aa441c](https://github.com/vm0-ai/vm0/commit/6aa441c1d7da92128d98a6d5f95364c7e69cb57b))
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
 ## [0.184.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.5...runner-rs-v0.184.6) (2026-09-03)
 
 

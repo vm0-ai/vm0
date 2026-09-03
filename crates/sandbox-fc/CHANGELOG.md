@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.5...sandbox-fc-v0.38.6) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
 ## [0.38.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.4...sandbox-fc-v0.38.5) (2026-09-03)
 
 ## [0.38.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.3...sandbox-fc-v0.38.4) (2026-09-02)
