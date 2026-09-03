@@ -15,7 +15,6 @@ import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   applyColorThemeDocumentAttributes,
-  applyNewUiDocumentAttribute,
   applyTypefaceDocumentAttribute,
   colorTheme$,
 } from "../../signals/theme.ts";
@@ -30,7 +29,6 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
     features[FeatureSwitchKey.GradientColorThemes] ?? false;
   const geistTypefaceEnabled =
     features[FeatureSwitchKey.GeistTypeface] ?? false;
-  const newUiEnabled = features[FeatureSwitchKey.NewUi] ?? false;
 
   return (
     <div
@@ -42,7 +40,6 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
         applyTypefaceDocumentAttribute(
           element !== null && geistTypefaceEnabled,
         );
-        applyNewUiDocumentAttribute(element !== null && newUiEnabled);
       }}
       className="zero-app zero-viewport-shell flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
@@ -67,7 +64,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
           />
         </div>
       </aside>
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
         {children}
       </div>
     </div>

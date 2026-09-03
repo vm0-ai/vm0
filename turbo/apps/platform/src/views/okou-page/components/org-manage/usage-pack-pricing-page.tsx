@@ -1755,7 +1755,7 @@ function ManagedSubscriptionComparisonTooltip({
             backgroundColor: "hsl(var(--popover))",
             color: "hsl(var(--popover-foreground))",
             boxShadow:
-              "0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025)",
+              "0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02)",
           }}
         >
           <p className="text-sm font-medium text-foreground">

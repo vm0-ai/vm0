@@ -476,14 +476,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NewUi]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Lay the workspace out as a card floating on the shell's grey, with the two sidebars on the site's own greys and a brand-hued composer focus ring in dark.",
-    enabled: false,
-    // Ming only while the shell settles; widen once the layout is signed off.
-    enabledEmailHashes: ["54757055"], // fnv1a("ming@vm0.ai")
-  },
 };
 
 interface ResolvedHashes {

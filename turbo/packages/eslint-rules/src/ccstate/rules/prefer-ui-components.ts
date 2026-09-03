@@ -35,7 +35,7 @@ const SOLID_PRIMARY = /(?<![\w:/-])bg-primary(?![\w/-])/;
 const PRIMARY_INK = /(?<![\w:/-])text-(?:primary-foreground|white)(?![\w/-])/;
 const COMPONENT_FILLS: readonly { pattern: RegExp; label: string }[] = [
   { pattern: /(?<![\w:/-])bg-destructive(?![\w/-])/, label: "bg-destructive" },
-  { pattern: /(?<![\w:/-])bg-\[#ffa500\]/i, label: "a hardcoded brand hex" },
+  { pattern: /(?<![\w:/-])bg-\[#ed4e01\]/, label: "a hardcoded brand hex" },
 ];
 
 /** The shared field recipe owned by `Input` / `Textarea`. */
