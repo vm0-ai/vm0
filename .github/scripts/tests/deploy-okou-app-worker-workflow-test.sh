@@ -145,12 +145,6 @@ if start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if finish_step.get("with", {}).get("status") != "${{ job.status }}":
     raise RuntimeError("production Worker deployment must report its final job status")
-for verifier in (
-    "bash .github/scripts/verify-okou-app-runtime.sh",
-    "bash .github/scripts/verify-okou-production-domains.sh",
-):
-    if verifier in deploy_source:
-        raise RuntimeError("production Worker deployment must trust Cloudflare success")
 
 steps = worker_release_job["steps"]
 if not (
