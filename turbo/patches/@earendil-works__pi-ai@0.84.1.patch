@@ -14,11 +14,14 @@ diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-response
 index 603ab2e3b082669045b7ecb849bd33f45918bce5..7ba136bcec10b3319108a6748fe1b0c5b3bb8a97 100644
 --- a/dist/api/openai-codex-responses.js
 +++ b/dist/api/openai-codex-responses.js
-@@ -171,7 +171,7 @@ export const stream = (model, context, options) => {
+@@ -171,7 +171,10 @@ export const stream = (model, context, options) => {
              if (!apiKey) {
                  throw new Error(`No API key for provider: ${model.provider}`);
              }
 -            const accountId = extractAccountId(apiKey);
++            // Preserve existing JWT callers while VM0 adopts the explicit binding.
++            // Remove after #31373 records the two-hour Runner/Sandbox drain and
++            // confirms every supported caller supplies accountId.
 +            const accountId = options?.accountId?.trim() || extractAccountId(apiKey);
              const grammarToolInputProperties = createGrammarToolInputProperties(context.tools, model.compat?.supportsOpenAIGrammarTools ?? false);
              const cacheSessionId = options?.cacheRetention === "none" ? undefined : options?.sessionId;
