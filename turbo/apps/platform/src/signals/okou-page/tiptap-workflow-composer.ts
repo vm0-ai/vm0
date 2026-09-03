@@ -224,7 +224,8 @@ export interface WorkflowComposerSignals {
 
 export type OpenComposerTemplatePickerIntent =
   | { readonly kind: "insert"; readonly category: string }
-  | { readonly kind: "edit-selected"; readonly category: string };
+  | { readonly kind: "edit-selected"; readonly category: string }
+  | { readonly kind: "edit-legacy"; readonly category: string };
 
 export type ComposerTemplateAttachmentType =
   | "presentation"
@@ -1472,7 +1473,7 @@ interface WorkflowComposerRuntime {
   selectionUpdate(editor: Editor): void;
   focus(editor: Editor): void;
   blur(): void;
-  openTemplate(category: string): void;
+  openTemplate(intent: OpenComposerTemplatePickerIntent): void;
   removeTemplate(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
@@ -1511,7 +1512,7 @@ function createTemplateAttachmentNode(
         return createTemplateAttachmentNodeView(
           node,
           (category) => {
-            runtime.openTemplate(category);
+            runtime.openTemplate({ kind: "edit-legacy", category });
           },
           () => {
             runtime.removeTemplate();
@@ -1573,7 +1574,7 @@ function createInlineTemplateNode(
           {
             openTemplate: (category) => {
               if (selectSelf()) {
-                runtime.openTemplate(category);
+                runtime.openTemplate({ kind: "edit-selected", category });
               }
             },
           },
@@ -2013,8 +2014,8 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
-      runtime.openTemplate = (category) => {
-        set(openTemplatePicker$, { kind: "edit-selected", category });
+      runtime.openTemplate = (intent) => {
+        set(openTemplatePicker$, intent);
       };
       runtime.removeTemplate = () => {
         set(legacyTemplateAttachment.remove$);
@@ -2357,17 +2358,20 @@ function createReadSelectedTemplateCommand(editor: Editor) {
 
 function createTemplateCommands(
   editor: Editor,
+  draft: DraftSignals,
   openTemplatePickerDialog$: OpenTemplatePickerDialogCommand,
 ) {
   const readSelectedTemplate$ = createReadSelectedTemplateCommand(editor);
   const prepareTemplateInsertion$ =
     createPrepareTemplateInsertionCommand(editor);
   const openTemplatePicker$ = command(
-    ({ set }, intent: OpenComposerTemplatePickerIntent): void => {
-      const referenceValue =
-        intent.kind === "edit-selected"
-          ? (set(readSelectedTemplate$) ?? null)
-          : null;
+    ({ get, set }, intent: OpenComposerTemplatePickerIntent): void => {
+      let referenceValue: GenerationTemplateRequest | null = null;
+      if (intent.kind === "edit-selected") {
+        referenceValue = set(readSelectedTemplate$) ?? null;
+      } else if (intent.kind === "edit-legacy") {
+        referenceValue = get(draft.generationTemplate$) ?? null;
+      }
       if (intent.kind === "insert") {
         set(prepareTemplateInsertion$);
       }
@@ -2445,7 +2449,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     selectionUpdate(_editor: Editor): void {},
     focus(_editor: Editor): void {},
     blur(): void {},
-    openTemplate(_category: string): void {},
+    openTemplate(_intent: OpenComposerTemplatePickerIntent): void {},
     removeTemplate(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
@@ -2483,7 +2487,7 @@ export function createWorkflowComposerSignals<
   T extends AgentIdValue = Promise<string | null>,
 >(
   draft: DraftSignals,
-  openPickerDialog$: OpenTemplatePickerDialogCommand,
+  openDialog$: OpenTemplatePickerDialogCommand,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
@@ -2507,7 +2511,7 @@ export function createWorkflowComposerSignals<
   const syncAgentMentionAvatars$ = createSyncAgentMentionAvatarsCommand(
     agentMentionAvatarRuntime,
   );
-  const templateCommands = createTemplateCommands(editor, openPickerDialog$);
+  const templateCommands = createTemplateCommands(editor, draft, openDialog$);
   const legacyTemplateAttachment = createLegacyTemplateAttachmentControls(
     editor,
     draft,

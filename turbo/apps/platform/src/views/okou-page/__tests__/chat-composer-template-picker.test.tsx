@@ -789,6 +789,8 @@ describe("chat composer templates", () => {
       }
       return current;
     });
+    // Current page actions create inline template nodes, so this historical
+    // editor shape can only be reached by restoring an earlier draft snapshot.
     context.store.set(
       thread.composer.template.setGenerationTemplate$,
       generationTemplate,
@@ -821,6 +823,9 @@ describe("chat composer templates", () => {
         "aria-selected",
         "true",
       );
+      expect(
+        screen.getByLabelText(`Select template ${template.title}`),
+      ).toHaveAttribute("aria-pressed", "true");
     });
 
     await user.click(screen.getByLabelText("Close"));
