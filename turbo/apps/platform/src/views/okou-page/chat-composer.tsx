@@ -358,6 +358,7 @@ interface ComposerComputerUse {
   readonly selectedHostId: string | null;
   readonly onChange: (hostId: string | null) => void;
   readonly cloudBrowserEnabled: boolean;
+  readonly cloudBrowserLoading: boolean;
   readonly onCloudBrowserChange: (enabled: boolean) => void;
   readonly downloadUrl: string;
 }
@@ -7529,7 +7530,7 @@ function ComputerUseConnectorMenuSection({
             onCheckedChange={onDomEventFn((enabled) => {
               computerUse.onCloudBrowserChange(enabled);
             })}
-            loading={false}
+            loading={computerUse.cloudBrowserLoading}
             ariaLabel={
               computerUse.cloudBrowserEnabled
                 ? t(($) => {
@@ -10560,7 +10561,16 @@ function ComposerConnectorConnectDialogs({
 
 function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
-  const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
+  const cloudBrowserState = useLastLoadable(
+    signals.computer.cloudBrowserEnabled$,
+  );
+  const lastCloudBrowserEnabled = useLastResolved(
+    signals.computer.cloudBrowserEnabled$,
+  );
+  const cloudBrowserEnabled =
+    cloudBrowserState.state === "hasData"
+      ? cloudBrowserState.data
+      : (lastCloudBrowserEnabled ?? true);
   const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
   const setCloudBrowserEnabled = useSet(
     signals.computer.setCloudBrowserEnabled$,
@@ -10590,6 +10600,9 @@ function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
       );
     },
     cloudBrowserEnabled,
+    cloudBrowserLoading:
+      cloudBrowserState.state === "loading" &&
+      lastCloudBrowserEnabled === undefined,
     onCloudBrowserChange: (enabled) => {
       detach(
         setCloudBrowserEnabled(enabled, composerPageSignal),

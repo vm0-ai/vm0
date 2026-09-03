@@ -6,6 +6,7 @@ import {
   createPlainMarkdownTree,
   plainTextFromMarkdownTree,
 } from "../../lib/markdown/plain-markdown.ts";
+import { MarkdownTextWithColorPreviews } from "./markdown-color-preview.tsx";
 import { MarkdownFrame } from "./markdown-frame.tsx";
 import {
   Markdown as RichMarkdown,
@@ -31,7 +32,11 @@ function PlainMarkdown({
 }) {
   return (
     <MarkdownFrame className={className} style={style}>
-      {text === "" ? null : <p className="m-0">{text}</p>}
+      {text === "" ? null : (
+        <p className="m-0">
+          <MarkdownTextWithColorPreviews text={text} />
+        </p>
+      )}
     </MarkdownFrame>
   );
 }

@@ -5088,6 +5088,14 @@
           "title": "थीम"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "नए चैट में एजेंटों को क्लाउड ब्राउज़र का उपयोग करने दें",
+          "title": "क्लाउड ब्राउज़र"
+        },
+        "description": "नए चैट के लिए डिफ़ॉल्ट सेटिंग और संदेश भेजने का तरीका चुनें।",
+        "sectionTitle": "चैट"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "कूलडाउन रद्द करें",

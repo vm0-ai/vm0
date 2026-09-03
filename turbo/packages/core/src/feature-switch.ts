@@ -277,6 +277,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.CloudBrowserPreference]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Let members choose whether Cloud browser is enabled by default in new chats.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -386,6 +393,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Replace the three-block chat thinking loader with a rotating Okou mark.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.MarkdownHexColorPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a color swatch after six-digit HEX RGB colors in rendered Markdown.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

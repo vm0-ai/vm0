@@ -1,6 +1,9 @@
 import { command, computed, state, type Command } from "ccstate";
 import type { GenerationTemplateRequest } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { PresentationTemplateItem } from "@okouai/core/presentation-template-items";
+import { cloudBrowserEnabledByDefault$ } from "../cloud-browser-preference.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { jsonParseOr, onRef, tapError } from "../utils.ts";
 import type { TemplatePreviewRuntime } from "./template-preview-runtime.ts";
@@ -27,6 +30,14 @@ type NewThreadComputerAccess =
   | { readonly kind: "cloudBrowser" }
   | { readonly kind: "computerUse"; readonly hostId: string };
 
+async function computerAccessFromCloudBrowserPreference(
+  cloudBrowserEnabled: Promise<boolean>,
+): Promise<NewThreadComputerAccess> {
+  return (await cloudBrowserEnabled)
+    ? { kind: "cloudBrowser" }
+    : { kind: "none" };
+}
+
 // Like the composer's model selection: `null` means the user has not picked
 // anything for the current draft and the default applies, while a value is the
 // user's own choice — including an explicit "no computer at all".
@@ -34,13 +45,34 @@ const internalNewThreadComputerAccess$ = state<NewThreadComputerAccess | null>(
   null,
 );
 
-export const newThreadComputerAccess$ = computed(
-  (get): NewThreadComputerAccess => {
+export const newThreadCloudBrowserEnabled$ = computed(
+  (get): boolean | Promise<boolean> => {
     const selection = get(internalNewThreadComputerAccess$);
-    if (selection === null) {
-      return { kind: "cloudBrowser" };
+    if (selection !== null) {
+      return selection.kind === "cloudBrowser";
     }
-    return selection;
+    const preferenceEnabled =
+      get(featureSwitch$)[FeatureSwitchKey.CloudBrowserPreference] ?? false;
+    return preferenceEnabled ? get(cloudBrowserEnabledByDefault$) : true;
+  },
+);
+
+export const newThreadComputerUseHostId$ = computed((get): string | null => {
+  const selection = get(internalNewThreadComputerAccess$);
+  return selection?.kind === "computerUse" ? selection.hostId : null;
+});
+
+export const newThreadComputerAccess$ = computed(
+  (get): NewThreadComputerAccess | Promise<NewThreadComputerAccess> => {
+    const selection = get(internalNewThreadComputerAccess$);
+    if (selection !== null) {
+      return selection;
+    }
+    const cloudBrowserEnabled = get(newThreadCloudBrowserEnabled$);
+    if (typeof cloudBrowserEnabled === "boolean") {
+      return cloudBrowserEnabled ? { kind: "cloudBrowser" } : { kind: "none" };
+    }
+    return computerAccessFromCloudBrowserPreference(cloudBrowserEnabled);
   },
 );
 

@@ -5080,6 +5080,14 @@
           "title": "Theme"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Let agents use a cloud browser in new chats",
+          "title": "Cloud browser"
+        },
+        "description": "Choose defaults for new chats and how messages are sent.",
+        "sectionTitle": "Chat"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancel cooldown",
