@@ -17,10 +17,10 @@ describe("create-styled-dmg helpers", () => {
     const output = [
       "/dev/disk7\tGUID_partition_scheme",
       "/dev/disk7s1\tEFI",
-      "/dev/disk7s2\tApple_HFS\t/private/tmp/zero-dmg/mount",
+      "/dev/disk7s2\tApple_HFS\t/private/tmp/okou-dmg/mount",
     ].join("\n");
 
-    expect(parseAttachDevice(output, "/private/tmp/zero-dmg/mount")).toBe(
+    expect(parseAttachDevice(output, "/private/tmp/okou-dmg/mount")).toBe(
       "/dev/disk7",
     );
   });
@@ -61,7 +61,7 @@ describe("create-styled-dmg helpers", () => {
 
     await expect(
       detachDmg({
-        mountPath: "/tmp/zero-dmg/mount",
+        mountPath: "/tmp/okou-dmg/mount",
         device: "/dev/disk4",
         runCommand,
         wait,
@@ -90,7 +90,7 @@ describe("create-styled-dmg helpers", () => {
     });
 
     await detachDmg({
-      mountPath: "/tmp/zero-dmg/mount",
+      mountPath: "/tmp/okou-dmg/mount",
       device: "/dev/disk4",
       runCommand,
       wait: vi.fn(),
