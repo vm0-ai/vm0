@@ -405,6 +405,7 @@ async fn finalizing_handoff_activation_failure_is_not_reported_as_accepted() {
         .mock_async(|when, then| {
             when.method(POST)
                 .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_wait")
                 .body_includes("runner_claim_finalizing_handoff")
                 .body_includes(r#""outcome":"activation_failed""#);
             then.status(200)
