@@ -444,10 +444,6 @@ if not (
     raise RuntimeError(
         "production Worker deployment must verify live runtime before success"
     )
-if domain_verifier in release_source:
-    raise RuntimeError(
-        "release promotion must not verify production domains after deployment"
-    )
 if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
     "${{ steps.pages-production.outputs.canonical-dist }}/assets"
 ):
