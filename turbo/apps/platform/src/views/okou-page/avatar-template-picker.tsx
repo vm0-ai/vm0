@@ -210,7 +210,7 @@ function CatalogFiltersPopover({
           {activeCount > 0 && (
             <button
               type="button"
-              className="text-xs font-medium text-brand-text hover:text-brand-text/80"
+              className="text-xs font-medium text-primary hover:text-primary/80"
               onClick={onClear}
             >
               {t(($) => {
@@ -807,7 +807,7 @@ function VoicePreviewControl({ voice }: { readonly voice: AvatarVideoVoice }) {
         disabled={!voice.sampleUrl}
         onClick={toggleVoicePreview}
         className={cn(
-          "flex size-11 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-brand-text transition-all hover:scale-105 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40",
+          "flex size-11 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary transition-all hover:scale-105 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40",
           "group-data-[playing=true]/voice:bg-primary group-data-[playing=true]/voice:text-primary-foreground",
         )}
       >
@@ -923,7 +923,7 @@ function AvatarVoiceCard({
             {recommended && (
               <span
                 id={recommendedDescriptionId}
-                className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-brand-text"
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary"
               >
                 {t(($) => {
                   return $.artifacts.templates.recommended;

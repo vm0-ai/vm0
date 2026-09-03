@@ -738,7 +738,7 @@ function AgentCard({ agent, creator, hasUnread, showCreator }: AgentProps) {
                       // Matches --zero-card-shadow; inlined because the tooltip
                       // portal renders outside .zero-app where the var is scoped.
                       boxShadow:
-                        "0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025)",
+                        "0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02)",
                       whiteSpace: "normal",
                     }}
                   >

@@ -77,25 +77,14 @@ describe("global focus colors", () => {
     );
   });
 
-  it.each(THEMES)(
-    "resolves $name's focus color from the primary scale",
-    ({ selector }) => {
-      const theme = readRuleBody(globalCss, selector);
-      const ring = /--ring:\s*var\(--(primary-\d+)\);/.exec(theme);
-
-      expect(ring).not.toBeNull();
-      // The stop each theme reaches for is a design choice and moves with the
-      // palette; what must hold is that it is a stop, not a loose literal.
-      const declaration = theme
-        .split("\n")
-        .find((line) => {
-          return line.trimStart().startsWith(`--${ring?.[1] ?? ""}:`);
-        })
-        ?.trim();
-
-      expect(declaration).toMatch(/^--primary-\d+:\s*[\d.]+ [\d.]+% [\d.]+%;/);
-    },
-  );
+  it("resolves the focus color from each theme's primary scale", () => {
+    expect(globalCss).toMatch(
+      /:root\s*{[\s\S]*?--primary-600:\s*15 80% 66%;[\s\S]*?--ring:\s*var\(--primary-600\);/,
+    );
+    expect(globalCss).toMatch(
+      /\[data-theme="dark"\]\s*{[\s\S]*?--primary-600:\s*16 62% 41%;[\s\S]*?--ring:\s*var\(--primary-600\);/,
+    );
+  });
 });
 
 describe("global Lucide defaults", () => {

@@ -107,7 +107,7 @@ export function OnboardingWorkflowRunPage() {
               />
               <IconTooltipButton
                 type="button"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:text-brand-text"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-muted/30 text-muted-foreground hover:border-primary/35 hover:text-primary"
                 aria-label={t(($) => {
                   return $.onboarding.common.previewWorkflowDetails;
                 })}

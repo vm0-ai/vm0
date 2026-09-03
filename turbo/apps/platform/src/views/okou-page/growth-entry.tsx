@@ -165,7 +165,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
           {leadIsSlack ? (
             <SlackMark size={16} />
           ) : (
-            <PlusCircle className="text-brand-text" />
+            <PlusCircle className="text-primary" />
           )}
           <span className="text-[13px] font-medium">
             {leadIsSlack
