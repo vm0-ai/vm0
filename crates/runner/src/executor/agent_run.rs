@@ -1107,7 +1107,7 @@ pub(super) struct RunControls {
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
+    pub(super) prepared_storage: Option<crate::storage_cache::PreparedStorage>,
     pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
     pub(super) pre_spawn_admission_lease:
         Option<crate::pre_spawn_admission::PreSpawnAdmissionLease>,
@@ -1385,7 +1385,7 @@ async fn prepare_guest_storage(
     config: &ExecutorConfig,
     start: &RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    prepared_storage: &mut Option<crate::storage_cache::PreparedFreshStorage>,
+    prepared_storage: &mut Option<crate::storage_cache::PreparedStorage>,
 ) -> RunnerResult<Option<crate::storage_cache::DeferredBackgroundFill>> {
     let Some(manifest) = &context.storage_manifest else {
         return Ok(None);

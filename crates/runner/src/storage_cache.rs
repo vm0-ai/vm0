@@ -801,11 +801,12 @@ enum FreshArchiveResolved {
     },
 }
 
-/// In-flight runner ownership for archives selected from one fresh storage plan.
+/// In-flight runner ownership for archives selected from one storage plan.
 ///
-/// Fetch tasks start before sandbox creation, but a completed fetch waits on
-/// its apply gate until guest storage application resolves this delivery. The
-/// delivery then owns any atomic cache publication tasks until they finish.
+/// Fetch tasks start during fresh or reused pre-spawn preparation, but a
+/// completed fetch waits on its apply gate until guest storage application
+/// resolves this delivery. The delivery then owns any atomic cache publication
+/// tasks until they finish.
 ///
 /// Callers must either pass this value with its original plan to
 /// `populate_cache_with_fresh_delivery` or call
@@ -820,13 +821,13 @@ pub(crate) struct FreshArchiveDelivery {
     publications: JoinSet<FreshArchivePublicationTaskResult>,
 }
 
-/// A fresh storage plan paired with the delivery prepared for its plan inputs.
+/// A storage plan paired with the delivery prepared for its plan inputs.
 ///
 /// The plan and delivery must remain together. A retry that changes the
 /// workspace-image selection must drain the previous delivery and rebuild both
 /// values; a retry such as DNS-only sandbox replacement may retain the pair
 /// when the plan inputs are unchanged.
-pub(crate) struct PreparedFreshStorage {
+pub(crate) struct PreparedStorage {
     pub(crate) plan: StoragePlan,
     pub(crate) delivery: FreshArchiveDelivery,
 }
@@ -1890,13 +1891,14 @@ fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
         .collect()
 }
 
-/// Starts bounded runner-owned archive delivery for one fresh storage plan.
+/// Starts bounded runner-owned archive delivery for one storage plan.
 ///
-/// The executor calls this after workspace-image selection fixes the plan and
-/// before sandbox creation, allowing eligible full-archive fetches to overlap
-/// sandbox startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
-/// groups, admits at most `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each
-/// admission from the shared `FRESH_DELIVERY_RUNNER_LIMIT`.
+/// The executor calls this after previous-storage selection fixes the plan and
+/// before fresh or reused sandbox preparation, allowing eligible full-archive
+/// fetches to overlap pre-spawn work. Preparation examines at most
+/// `FRESH_DELIVERY_SCAN_LIMIT` target groups, admits at most
+/// `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each admission from the shared
+/// `FRESH_DELIVERY_RUNNER_LIMIT`.
 ///
 /// Each admitted group acquires its cache-writer flock before fetching. After
 /// validating a complete response, the fetch waits on a one-shot apply gate;

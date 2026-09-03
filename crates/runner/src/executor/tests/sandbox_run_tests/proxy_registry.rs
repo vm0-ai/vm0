@@ -1,6 +1,8 @@
 use super::*;
 use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
 use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection};
+use httpmock::Method::GET;
+use httpmock::MockServer;
 
 fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
     let captured = CapturedEvents::default();
@@ -186,29 +188,71 @@ async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_
 async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
+    let registry_guard = crate::lock::acquire(dir.path().join("proxy-registry.json.lock"))
+        .await
+        .unwrap();
     tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
         .await
         .unwrap();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let source_ip = sandbox.source_ip().to_string();
-    let ctx = minimal_context();
-    let mut telemetry = test_telemetry(&config, &ctx);
+    let server = MockServer::start_async().await;
+    let body = b"reused proxy failure".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/reused-proxy-failure.tar.gz")
+                .header_missing("range");
+            then.status(200).body(body.clone());
+        })
+        .await;
+    let archive_url = server.url("/reused-proxy-failure.tar.gz");
+    let mut ctx = minimal_context();
+    let mut storage = api_storage("reused-proxy-failure", "/data", "v1", &archive_url);
+    storage.archive_size = Some(body.len() as u64);
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: Vec::new(),
+    });
+    let storage_lock_path = config.home.storage_lock("reused-proxy-failure", "v1");
     let prev_storage = crate::storage_fingerprints::StorageFingerprints::default();
 
-    let outcome = execute_reused_sandbox(
-        sandbox,
-        &source_ip,
-        &ctx,
-        &config,
-        &prev_storage,
-        &mut telemetry,
-        PreparedRunInputs::new(
-            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
-            prepare_run_payload_for_run(&ctx).unwrap(),
-        ),
-    )
-    .await;
+    let task = tokio::spawn(async move {
+        let mut telemetry = test_telemetry(&config, &ctx);
+        let outcome = execute_reused_sandbox(
+            sandbox,
+            &source_ip,
+            &ctx,
+            &config,
+            &prev_storage,
+            &mut telemetry,
+            PreparedRunInputs::new(
+                RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+                prepare_run_payload_for_run(&ctx).unwrap(),
+            ),
+        )
+        .await;
+        (outcome, telemetry)
+    });
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        while full_get.calls_async().await == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("archive request should start while proxy registration is blocked");
+    assert!(
+        !task.is_finished(),
+        "proxy lock should keep registration from completing"
+    );
+    drop(registry_guard);
+
+    let (outcome, telemetry) = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, task)
+        .await
+        .expect("proxy failure should drain prepared storage")
+        .expect("reused execution task should not panic");
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
@@ -218,10 +262,29 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     );
     assert!(outcome.sandbox.is_some());
     assert!(outcome.network_log_session.is_none());
+    full_get.assert_calls_async(1).await;
     assert!(
         overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start an agent when proxy registration fails"
     );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_cancelled",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_drained",
+        true,
+        None,
+    );
+    assert!(matches!(
+        crate::lock::try_acquire_or_busy(storage_lock_path)
+            .await
+            .unwrap(),
+        crate::lock::TryLock::Acquired(_)
+    ));
 }
 
 #[tokio::test]
