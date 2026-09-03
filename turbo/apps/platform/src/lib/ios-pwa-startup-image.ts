@@ -81,15 +81,6 @@ function renderStartupImage(
   context.fillStyle = background;
   context.fillRect(0, 0, width, height);
 
-  const centerX = (layout.avatar.left + layout.avatar.width / 2) * pixelRatio;
-  const centerY = (layout.avatar.top + layout.avatar.height / 2) * pixelRatio;
-  const clipRadius =
-    (Math.min(layout.avatar.width, layout.avatar.height) * pixelRatio) / 2;
-
-  context.save();
-  context.beginPath();
-  context.arc(centerX, centerY, clipRadius, 0, Math.PI * 2);
-  context.clip();
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(
@@ -99,7 +90,6 @@ function renderStartupImage(
     layout.avatarLayers.width * pixelRatio,
     layout.avatarLayers.height * pixelRatio,
   );
-  context.restore();
 
   return canvas.toDataURL("image/png");
 }

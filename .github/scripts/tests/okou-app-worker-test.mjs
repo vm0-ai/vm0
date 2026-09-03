@@ -321,11 +321,8 @@ function assertBootstrapAvatar(html) {
       html,
     )?.[0];
   assert.ok(avatar, "bootstrap avatar must remain inline");
-  assert.equal(parseAttributes(avatar).get("viewBox"), "0 0 480 480");
-  assert.equal([...avatar.matchAll(/<path\b/giu)].length, 10);
-  assert.match(avatar, /id="bootstrap-avatar-head-clip"/u);
-  assert.match(avatar, /id="bootstrap-avatar-face-clip"/u);
-  assert.match(avatar, /id="bootstrap-avatar-hair-clip"/u);
+  assert.equal(parseAttributes(avatar).get("viewBox"), "0 0 518 512");
+  assert.equal([...avatar.matchAll(/<path\b/giu)].length, 20);
   assert.doesNotMatch(html, /data-app-bootstrap-avatar-layer/u);
   assert.doesNotMatch(html, /assets\/avatar-svg\//u);
 }

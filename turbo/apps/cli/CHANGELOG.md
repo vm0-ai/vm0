@@ -1,5 +1,44 @@
 # Changelog
 
+## [9.309.1](https://github.com/vm0-ai/vm0/compare/cli-v9.309.0...cli-v9.309.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+    * @okouai/pi-agent-runtime bumped to 1.15.2
+
+## [9.309.0](https://github.com/vm0-ai/vm0/compare/cli-v9.308.4...cli-v9.309.0) (2026-09-03)
+
+
+### Features
+
+* **cli:** redesign okou social around user intents ([#31333](https://github.com/vm0-ai/vm0/issues/31333)) ([1dafc7d](https://github.com/vm0-ai/vm0/commit/1dafc7d10900a2f1a5b7c6821090cc287b150093))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.615.0
+
+## [9.308.4](https://github.com/vm0-ai/vm0/compare/cli-v9.308.3...cli-v9.308.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* **cli:** make action url handoffs loss-resistant ([#31461](https://github.com/vm0-ai/vm0/issues/31461)) ([da3fa0d](https://github.com/vm0-ai/vm0/commit/da3fa0d9df45c76e052ff9d3c6a99e3cc7ffa040))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.614.2
+
 ## [9.308.3](https://github.com/vm0-ai/vm0/compare/cli-v9.308.2...cli-v9.308.3) (2026-09-03)
 
 

@@ -128,7 +128,7 @@ describe("enterDegradedDesktopMode", () => {
       expect.objectContaining({
         updateSource: expect.objectContaining({
           baseUrl:
-            "https://api.vm0.ai/api/desktop/updates/stable/darwin/" +
+            "https://api.vm0.ai/api/desktop/updates/zero/stable/darwin/" +
             process.arch,
         }),
       }),

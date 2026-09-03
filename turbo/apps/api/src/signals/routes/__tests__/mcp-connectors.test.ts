@@ -19,6 +19,7 @@ import {
   manualHttpCustomConnectorCreateBody,
   mockAutomaticMcpOAuthProvider,
 } from "./helpers/api-bdd-connectors";
+import { readCustomConnectorOAuthStorageState } from "./helpers/connector-credential-storage-state";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRouteMocks } from "./helpers/route-test";
 import { mcpConnectorsRoutes } from "../mcp-connectors";
@@ -543,9 +544,19 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
         undefined,
         { intent: "add", displayName: "Pinned account" },
       );
+      const firstState = stateFromAuthorizationUrl(firstAuthorization);
+      await expect(
+        readCustomConnectorOAuthStorageState(context, firstState),
+      ).resolves.toMatchObject({
+        custom_oauth_state: {
+          auth_mode: "automatic",
+          context_format: "legacy",
+          context_valid: true,
+        },
+      });
       await connectors.completeCustomConnectorOAuth2Callback({
         code: "pinned-account-code",
-        state: stateFromAuthorizationUrl(firstAuthorization),
+        state: firstState,
         iss: provider.issuer,
       });
       const secondAuthorization = await connectors.startCustomConnectorOAuth2(
@@ -610,9 +621,21 @@ describe("POST /api/mcp-connectors/:id/oauth2/reauthorize", () => {
       expect(authorizationUrl.searchParams.get("scope")).toBe("read admin");
       expect(response.body.expiresAt).toStrictEqual(expect.any(String));
       expect(provider.registrationBodies).toHaveLength(registrationCount);
+      const reauthorizationState = stateFromAuthorizationUrl(
+        response.body.authorizationUrl,
+      );
+      await expect(
+        readCustomConnectorOAuthStorageState(context, reauthorizationState),
+      ).resolves.toMatchObject({
+        custom_oauth_state: {
+          auth_mode: "automatic",
+          context_format: "legacy",
+          context_valid: true,
+        },
+      });
       await connectors.completeCustomConnectorOAuth2Callback({
         code: "scope-upgrade-code",
-        state: stateFromAuthorizationUrl(response.body.authorizationUrl),
+        state: reauthorizationState,
         iss: provider.issuer,
       });
       const upgradedAccounts = await connectors.listCustomConnectorAccounts(

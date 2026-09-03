@@ -71,9 +71,6 @@ interface BrowserScreenOptions {
 
 interface CanvasRender {
   readonly avatar: {
-    readonly centerX: number;
-    readonly centerY: number;
-    readonly clipRadius: number;
     readonly height: number;
     readonly width: number;
     readonly x: number;
@@ -1092,9 +1089,6 @@ function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
   const renders: CanvasRender[] = [];
-  let avatarCenterX = 0;
-  let avatarCenterY = 0;
-  let avatarClipRadius = 0;
   let avatarHeight = 0;
   let avatarWidth = 0;
   let avatarX = 0;
@@ -1103,13 +1097,6 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
     fillStyle: "",
     imageSmoothingEnabled: false,
     imageSmoothingQuality: "low",
-    arc(centerX: number, centerY: number, radius: number) {
-      avatarCenterX = centerX;
-      avatarCenterY = centerY;
-      avatarClipRadius = radius;
-    },
-    beginPath() {},
-    clip() {},
     drawImage(
       _image: CanvasImageSource,
       x: number,
@@ -1123,8 +1110,6 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
       avatarHeight = height;
     },
     fillRect() {},
-    restore() {},
-    save() {},
   } as unknown as CanvasRenderingContext2D;
 
   const getContext = vi
@@ -1137,9 +1122,6 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
     .mockImplementation(function toDataURL(this: HTMLCanvasElement) {
       renders.push({
         avatar: {
-          centerX: avatarCenterX,
-          centerY: avatarCenterY,
-          clipRadius: avatarClipRadius,
           height: avatarHeight,
           width: avatarWidth,
           x: avatarX,
