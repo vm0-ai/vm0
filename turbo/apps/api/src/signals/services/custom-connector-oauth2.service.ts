@@ -93,7 +93,7 @@ import {
   refreshCustomConnectorAutomaticOAuthToken,
   retireCustomConnectorDcrRegistration,
   type CustomConnectorAutomaticOAuthBinding,
-  type LegacyCustomConnectorAutomaticOAuthStateContext,
+  type CustomConnectorAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
 } from "./custom-connector-automatic-oauth.service";
 import { configuredOkouMcpOAuthClientMetadata } from "./mcp-oauth-client-metadata.service";
 
@@ -266,14 +266,6 @@ const customConnectorOAuthStateContextSchema = z.union([
 type CustomConnectorOAuthStateContext = z.infer<
   typeof customConnectorOAuthStateContextSchema
 >;
-
-type CustomConnectorLegacyCustomOAuthStateContext = z.infer<
-  typeof customConnectorLegacyCustomOAuthStateContextSchema
->;
-
-type CustomConnectorLegacyOAuthStateContext =
-  | CustomConnectorLegacyCustomOAuthStateContext
-  | LegacyCustomConnectorAutomaticOAuthStateContext;
 
 export type CustomConnectorCustomOAuthStateContext = z.infer<
   typeof customConnectorCustomOAuthStateContextSchema
@@ -672,16 +664,22 @@ interface StartCustomConnectorOAuth2Args {
   };
 }
 
-interface PreparedOAuthStart {
-  readonly oauthSetup: "custom" | "automatic";
+type PreparedOAuthStart = {
   readonly redirectUri: string;
   readonly state: string;
   readonly authorizationUrl: string;
   readonly codeVerifier: string | null;
   readonly oauthRequestedScopes: string | null;
-  // Keep emitting the legacy callback state until #31471 is deployed.
-  readonly context: CustomConnectorLegacyOAuthStateContext;
-}
+} & (
+  | {
+      readonly authMode: "oauth";
+      readonly context: CustomConnectorCanonicalCustomOAuthStateContext;
+    }
+  | {
+      readonly authMode: "automatic";
+      readonly context: PreparedCustomConnectorAutomaticOAuthStateContext;
+    }
+);
 
 function connectorConnectionMutationFailure(
   resolution: ConnectorConnectionMutationResolution,
@@ -709,7 +707,7 @@ function prepareCustomOAuthStart(
   const codeVerifier =
     connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
   return {
-    oauthSetup: "custom",
+    authMode: "oauth",
     redirectUri: args.redirectUri,
     state,
     authorizationUrl: buildCustomConnectorOAuth2AuthorizationUrl({
@@ -721,7 +719,8 @@ function prepareCustomOAuthStart(
     codeVerifier,
     oauthRequestedScopes: null,
     context: {
-      oauthSetup: "custom",
+      version: 2,
+      authMode: "oauth",
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
       ...(connector.oauthConfig.providerAdapter === "feishu" &&
@@ -824,14 +823,14 @@ async function prepareAutomaticOAuthStart(
     result: {
       kind: "oauth" as const,
       prepared: {
-        oauthSetup: "automatic",
+        authMode: "automatic",
         redirectUri: client.redirectUri,
         state,
         authorizationUrl: prepared.authorizationUrl,
         codeVerifier: prepared.codeVerifier,
         oauthRequestedScopes: prepared.requestedScope,
         context:
-          prepared.context satisfies LegacyCustomConnectorAutomaticOAuthStateContext,
+          prepared.context satisfies PreparedCustomConnectorAutomaticOAuthStateContext,
       } satisfies PreparedOAuthStart,
     },
   };
@@ -855,7 +854,7 @@ async function persistCustomConnectorOAuthStart(
       orgId: args.orgId,
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
-      authMode: prepared.oauthSetup === "automatic" ? "automatic" : "oauth",
+      authMode: prepared.authMode,
     });
     const resolution = await resolveConnectorConnectionMutation(tx, {
       orgId: args.orgId,
@@ -1277,7 +1276,7 @@ export const startCustomConnectorAutomaticOAuthReauthorization$ = command(
         },
         featureContext,
         prepared: {
-          oauthSetup: "automatic",
+          authMode: "automatic",
           redirectUri,
           state,
           authorizationUrl: prepared.authorizationUrl,
