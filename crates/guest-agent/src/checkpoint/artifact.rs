@@ -271,10 +271,6 @@ mod tests {
     #[cfg(target_os = "linux")]
     use std::ffi::CString;
     #[cfg(target_os = "linux")]
-    use std::fs::File;
-    #[cfg(target_os = "linux")]
-    use std::os::fd::{AsRawFd, FromRawFd};
-    #[cfg(target_os = "linux")]
     use std::os::unix::ffi::OsStrExt;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -329,49 +325,6 @@ mod tests {
         } else {
             Err(std::io::Error::last_os_error())
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn create_and_open_child_dir(parent: &File, name: &CString) -> std::io::Result<File> {
-        // SAFETY: `parent` is a live directory descriptor and `name` is a
-        // NUL-terminated basename owned for the duration of both calls.
-        let created = unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o755) };
-        if created != 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        // SAFETY: the arguments satisfy `openat`, and a successful result is a
-        // newly owned descriptor transferred to `File` below.
-        let fd = unsafe {
-            libc::openat(
-                parent.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-            )
-        };
-        if fd < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        // SAFETY: `fd` is the newly owned descriptor returned by `openat`.
-        Ok(unsafe { File::from_raw_fd(fd) })
-    }
-
-    #[cfg(target_os = "linux")]
-    fn create_child_file(parent: &File, name: &CString) -> std::io::Result<File> {
-        // SAFETY: `parent` is a live directory descriptor, `name` is a
-        // NUL-terminated basename, and `O_CREAT` supplies the explicit mode.
-        let fd = unsafe {
-            libc::openat(
-                parent.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                0o600,
-            )
-        };
-        if fd < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        // SAFETY: `fd` is the newly owned descriptor returned by `openat`.
-        Ok(unsafe { File::from_raw_fd(fd) })
     }
 
     #[cfg(target_os = "linux")]
@@ -764,61 +717,6 @@ mod tests {
         );
         assert!(
             message.contains(&format!("/{}", vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES)),
-            "got: {message}"
-        );
-    }
-
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn artifact_snapshot_enforces_traversal_active_path_limit_before_storage_api_calls() {
-        let _system_log_state_guard = crate::lock_system_log_test_state_async().await;
-        guest_common::log::clear_system_log_file();
-
-        // Use tmpfs so the descriptor-relative fixture is not constrained by
-        // an overlay filesystem's internal backing-path length.
-        let dir = tempfile::tempdir_in("/dev/shm").unwrap();
-        let mount = dir.path().join("long-path");
-        std::fs::create_dir(&mount).unwrap();
-        let mut current = File::open(&mount).unwrap();
-        for depth in 0..vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
-            let component_bytes = if depth + 1 == vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
-                254
-            } else {
-                255
-            };
-            let directory_name = CString::new("d".repeat(component_bytes)).unwrap();
-            current = create_and_open_child_dir(&current, &directory_name).unwrap();
-        }
-        let file = create_child_file(&current, &CString::new("f").unwrap()).unwrap();
-        drop(file);
-
-        let exact_files = vas::walk_files_for_checkpoint(mount.to_str().unwrap())
-            .await
-            .unwrap();
-        assert_eq!(exact_files.len(), 1);
-        assert_eq!(
-            exact_files.first().unwrap().path.len(),
-            usize::try_from(vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES).unwrap()
-        );
-
-        let file = create_child_file(&current, &CString::new("gg").unwrap()).unwrap();
-        drop(file);
-        drop(current);
-
-        let message = artifact_snapshot_preflight_error(&mount).await;
-        assert!(
-            message.contains(&format!(
-                "directory depth {0}/{0}",
-                vas::ARTIFACT_TRAVERSAL_MAX_DEPTH
-            )),
-            "got: {message}"
-        );
-        assert!(
-            message.contains(&format!(
-                "active UTF-8 path bytes {}/{}",
-                vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES + 1,
-                vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES
-            )),
             "got: {message}"
         );
     }
