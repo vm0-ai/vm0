@@ -1573,6 +1573,14 @@ mod tests {
             );
         }
 
+        let mut boundary_reset = valid_ordinals.clone();
+        boundary_reset[0] = Some(json!(0));
+        let file = paginated_source_with_ordinals(Some(json!(0)), &records, &boundary_reset);
+        assert_eq!(
+            select(&file).unwrap(),
+            CodexHistorySelection::Ineligible(CodexHistoryIneligibleReason::InvalidRecord)
+        );
+
         for invalid_ordinal in [
             None,
             Some(json!("40")),
