@@ -185,6 +185,7 @@ async fn kill_current_target(
         control,
         move || async move { rediscover_same_sandbox_process(&rediscovery_target).await },
         |pid, runner_pids| async move { process::is_orphan(pid, &runner_pids).await },
+        |target| async move { orphan::terminate(&target).await },
         process::discover_all_with_status,
     )
     .await
@@ -195,6 +196,8 @@ async fn kill_current_target_with_orphan_fallback<
     RediscoverFuture,
     IsOrphan,
     IsOrphanFuture,
+    Terminate,
+    TerminateFuture,
     Discover,
     DiscoverFuture,
 >(
@@ -203,6 +206,7 @@ async fn kill_current_target_with_orphan_fallback<
     control: &dyn SandboxControl,
     rediscover: Rediscover,
     classify_orphan: IsOrphan,
+    terminate: Terminate,
     discover: Discover,
 ) -> KillOutcome
 where
@@ -211,6 +215,8 @@ where
         std::future::Future<Output = Result<ResolvedKillTarget, RediscoverTargetError>>,
     IsOrphan: FnOnce(u32, Vec<u32>) -> IsOrphanFuture,
     IsOrphanFuture: std::future::Future<Output = bool>,
+    Terminate: FnOnce(KillTarget) -> TerminateFuture,
+    TerminateFuture: std::future::Future<Output = OrphanOutcome>,
     Discover: FnOnce() -> DiscoverFuture,
     DiscoverFuture: std::future::Future<Output = process::ProcessDiscovery>,
 {
@@ -224,6 +230,7 @@ where
                 is_orphan,
                 rediscover,
                 classify_orphan,
+                terminate,
                 discover,
             )
             .await
@@ -236,6 +243,8 @@ async fn retry_as_orphan_if_owner_disappeared<
     RediscoverFuture,
     IsOrphan,
     IsOrphanFuture,
+    Terminate,
+    TerminateFuture,
     Discover,
     DiscoverFuture,
 >(
@@ -244,6 +253,7 @@ async fn retry_as_orphan_if_owner_disappeared<
     was_orphan: bool,
     rediscover: Rediscover,
     classify_orphan: IsOrphan,
+    terminate: Terminate,
     discover: Discover,
 ) -> KillOutcome
 where
@@ -252,6 +262,8 @@ where
         std::future::Future<Output = Result<ResolvedKillTarget, RediscoverTargetError>>,
     IsOrphan: FnOnce(u32, Vec<u32>) -> IsOrphanFuture,
     IsOrphanFuture: std::future::Future<Output = bool>,
+    Terminate: FnOnce(KillTarget) -> TerminateFuture,
+    TerminateFuture: std::future::Future<Output = OrphanOutcome>,
     Discover: FnOnce() -> DiscoverFuture,
     DiscoverFuture: std::future::Future<Output = process::ProcessDiscovery>,
 {
@@ -283,7 +295,7 @@ where
         return KillOutcome::RefusedTargetChanged(RUN_ORPHAN_FALLBACK_REFUSAL.into());
     }
 
-    KillOutcome::from(orphan::terminate(&refreshed).await)
+    KillOutcome::from(terminate(refreshed).await)
 }
 
 async fn finish_kill_outcome(
@@ -506,6 +518,10 @@ mod tests {
         target
     }
 
+    fn orphan_already_exited(target: KillTarget) -> std::future::Ready<OrphanOutcome> {
+        std::future::ready(OrphanOutcome::AlreadyExited(target))
+    }
+
     #[test]
     fn run_scoped_target_refuses_orphan_fallback() {
         assert!(should_refuse_orphan_fallback(Some("run-full-id")));
@@ -608,6 +624,7 @@ mod tests {
             runner_pids: runner_pids.clone(),
         };
         let classifier_input = RefCell::new(None);
+        let termination_called = Cell::new(false);
         let discovery_called = Cell::new(false);
 
         let outcome = kill_current_target_with_orphan_fallback(
@@ -618,6 +635,10 @@ mod tests {
             |pid, runner_pids| {
                 classifier_input.replace(Some((pid, runner_pids)));
                 std::future::ready(false)
+            },
+            |target| {
+                termination_called.set(true);
+                orphan_already_exited(target)
             },
             || {
                 discovery_called.set(true);
@@ -636,6 +657,7 @@ mod tests {
             classifier_input.into_inner(),
             Some((target.pid, runner_pids))
         );
+        assert!(!termination_called.get());
         assert!(!discovery_called.get());
         assert_eq!(
             control.recorded_kill_targets(),
@@ -671,6 +693,7 @@ mod tests {
                 classification_called.set(true);
                 std::future::ready(true)
             },
+            orphan_already_exited,
             || {
                 discovery_called.set(true);
                 std::future::ready(empty_process_discovery(true))
@@ -709,6 +732,7 @@ mod tests {
             &control,
             || std::future::ready(Ok(refreshed)),
             |_, _| std::future::ready(true),
+            orphan_already_exited,
             || std::future::ready(empty_process_discovery(true)),
         )
         .await;
@@ -741,6 +765,7 @@ mod tests {
                 )))
             },
             |_, _| std::future::ready(true),
+            orphan_already_exited,
             || std::future::ready(empty_process_discovery(true)),
         )
         .await;
@@ -767,6 +792,7 @@ mod tests {
                 )))
             },
             |_, _| std::future::ready(true),
+            orphan_already_exited,
             || std::future::ready(empty_process_discovery(false)),
         )
         .await;
