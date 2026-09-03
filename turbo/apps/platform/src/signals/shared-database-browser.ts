@@ -4,6 +4,7 @@ import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
 import { i18n } from "../i18n/index.ts";
+import { now } from "../lib/time.ts";
 import {
   CLERK_DEV_BROWSER_NAME,
   readClerkDevBrowserJwt,
@@ -47,6 +48,7 @@ import {
 import { createDeferredPromise, onRejection } from "./utils.ts";
 
 const SHARED_DATABASE_RELOAD_MARKER = "okou-shared-database-reload";
+const SHARED_DATABASE_RELOAD_WINDOW_MS = 60_000;
 const L = logger("SharedDatabaseBrowser");
 
 export interface SharedDatabaseBridgeHost {
@@ -60,19 +62,26 @@ export interface SharedDatabaseBridgeHost {
 
 function handleSharedDatabaseReloadRequired(): void {
   const url = new URL(location.href);
-  if (!url.searchParams.has(SHARED_DATABASE_RELOAD_MARKER)) {
-    url.searchParams.set(SHARED_DATABASE_RELOAD_MARKER, "1");
-    location.replace(url.toString());
+  const reloadAtMs = now();
+  const reloadMarker = url.searchParams.get(SHARED_DATABASE_RELOAD_MARKER);
+  const previousReloadAtMs =
+    reloadMarker === null ? Number.NaN : Number(reloadMarker);
+  if (
+    Number.isFinite(previousReloadAtMs) &&
+    reloadAtMs - previousReloadAtMs < SHARED_DATABASE_RELOAD_WINDOW_MS
+  ) {
+    url.searchParams.delete(SHARED_DATABASE_RELOAD_MARKER);
+    history.replaceState(history.state, "", url);
+    toast.error(
+      i18n.t(($) => {
+        return $.global.errors.sharedDatabaseUnavailable;
+      }),
+    );
     return;
   }
 
-  url.searchParams.delete(SHARED_DATABASE_RELOAD_MARKER);
-  history.replaceState(history.state, "", url);
-  toast.error(
-    i18n.t(($) => {
-      return $.global.errors.sharedDatabaseUnavailable;
-    }),
-  );
+  url.searchParams.set(SHARED_DATABASE_RELOAD_MARKER, String(reloadAtMs));
+  location.replace(url.toString());
 }
 
 function createBrowserSharedDatabaseBridge(

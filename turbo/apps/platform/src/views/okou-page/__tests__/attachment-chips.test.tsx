@@ -711,6 +711,42 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("closes the attachment lightbox with a deliberate backdrop click", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    fireEvent.click(await screen.findByTestId("attachment-lightbox-backdrop"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the attachment lightbox open when a drag ends on the backdrop", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    // Panning a zoomed image past the panel edge releases the button over the
+    // backdrop, so the browser dispatches the click at the common ancestor of
+    // the two endpoints — the popup, not the backdrop.
+    fireEvent.click(await screen.findByTestId("attachment-lightbox"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("attachment-lightbox-panel"),
+      ).toBeInTheDocument();
+    });
+
+    // The backdrop still dismisses once a press really both starts and ends on it.
+    fireEvent.click(screen.getByTestId("attachment-lightbox-backdrop"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("pans an uploaded image preview with ordinary wheel events", async () => {
     await setupUploadedImagePreview();
 

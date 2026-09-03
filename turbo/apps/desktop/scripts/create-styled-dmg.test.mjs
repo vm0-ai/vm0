@@ -1,6 +1,16 @@
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { detachDmg, parseAttachDevice } from "./create-styled-dmg.mjs";
+import {
+  createStyledDmg,
+  detachDmg,
+  parseAttachDevice,
+} from "./create-styled-dmg.mjs";
+
+const originalPlatform = process.platform;
+const temporaryDirectories = [];
 
 function commandError(message, stderr = message) {
   const error = new Error(message);
@@ -8,11 +18,71 @@ function commandError(message, stderr = message) {
   return error;
 }
 
-describe("create-styled-dmg helpers", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+async function retainedDmgTempDirectories(keepDmgTemp) {
+  const fixtureDirectory = await mkdtemp(
+    join(tmpdir(), "desktop-dmg-cleanup-test-"),
+  );
+  temporaryDirectories.push(fixtureDirectory);
+  const appPath = join(fixtureDirectory, "Okou.app");
+  const backgroundSvg = join(fixtureDirectory, "background.svg");
+  const emptyPath = join(fixtureDirectory, "empty-path");
+  await mkdir(appPath);
+  await mkdir(emptyPath);
+  await writeFile(backgroundSvg, "<svg></svg>");
+
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: "darwin",
+  });
+  vi.stubEnv("TMPDIR", fixtureDirectory);
+  vi.stubEnv("PATH", emptyPath);
+  vi.stubEnv("OKOU_DESKTOP_KEEP_DMG_TEMP", keepDmgTemp);
+
+  await expect(
+    createStyledDmg({
+      appPath,
+      backgroundSvg,
+      outPath: join(fixtureDirectory, "Okou.dmg"),
+      volumeName: "Okou",
+    }),
+  ).rejects.toThrow();
+
+  return (await readdir(fixtureDirectory)).filter((entry) =>
+    entry.startsWith("desktop-dmg-"),
+  );
+}
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: originalPlatform,
+  });
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, {
+        force: true,
+        recursive: true,
+      }),
+    ),
+  );
+});
+
+describe("createStyledDmg cleanup", () => {
+  it('keeps the temporary directory on failure only for the exact value "true"', async () => {
+    expect(await retainedDmgTempDirectories("true")).toHaveLength(1);
   });
 
+  it.each([undefined, "false", "TRUE", "1", ""])(
+    "removes the temporary directory on failure when the switch is %s",
+    async (keepDmgTemp) => {
+      expect(await retainedDmgTempDirectories(keepDmgTemp)).toHaveLength(0);
+    },
+  );
+});
+
+describe("create-styled-dmg helpers", () => {
   it("parses the attached whole disk device from hdiutil attach output", () => {
     const output = [
       "/dev/disk7\tGUID_partition_scheme",

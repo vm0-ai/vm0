@@ -592,9 +592,8 @@ async fn execute(
                 1,
                 1,
                 msg,
-                Some(failure_diagnostics::base_failure_diagnostic_for_config(
-                    config,
-                    FailureClass::CliExecutionError,
+                Some(failure_diagnostics::cli_execution_error_for_config(
+                    config, &e,
                 )),
                 false,
             )

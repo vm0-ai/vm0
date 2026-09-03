@@ -54,6 +54,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
       continuationController,
     );
     let signInSignals: AuthV2SignInSignals | null = null;
+    let initializedSignInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
     if (mode === "sign-in") {
       const isBaseRoute = location.pathname === ROUTES.signIn;
@@ -122,11 +123,16 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     if (get(continuationSignals.state$).status === "inactive") {
       if (signInSignals) {
         await set(signInSignals.initialize$, signal);
+        initializedSignInSignals = signInSignals;
       } else if (signUpSignals) {
         await set(signUpSignals.initialize$, signal);
       }
     }
     await set(hideAppSkeleton$, signal);
+    signal.throwIfAborted();
+    if (initializedSignInSignals) {
+      await set(initializedSignInSignals.initializeExternalStrategies$, signal);
+    }
   });
 }
 

@@ -5,14 +5,15 @@ use super::messages::{
     secondary_token_usage_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
     turn_completed_notification, turn_failed_notification, turn_interrupted_notification,
-    turn_started_notification, warning_notification, write_error, write_json_line,
-    write_malformed_thread_item_notification, write_oversized_delivery_notifications,
-    write_resumed_turn_notifications, write_split_json_line_prefix, write_success,
-    write_thread_item_notifications, write_turn_completion_notifications, write_turn_notifications,
-    write_turn_start_notifications, write_turn_usage_notifications,
+    turn_started_notification, warning_notification, write_error, write_error_with_data,
+    write_json_line, write_malformed_thread_item_notification,
+    write_oversized_delivery_notifications, write_resumed_turn_notifications,
+    write_split_json_line_prefix, write_success, write_thread_item_notifications,
+    write_turn_completion_notifications, write_turn_notifications, write_turn_start_notifications,
+    write_turn_usage_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events, session_rollout_timestamp};
-use super::scenario::Scenario;
+use super::scenario::{Scenario, TurnStartRpcError};
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use guest_contracts::stdout_framing::CODEX_APP_SERVER_STDOUT_MAX_LINE_BYTES;
 use serde_json::{Value, json};
@@ -50,6 +51,8 @@ const SHELL_PROMPT_PREFIX: &str = "@shell@\n";
 const SHELL_PROMPT_END_SEPARATOR: &str = "\n@end-shell@";
 const CHECKPOINTED_SHELL_PROMPT_PREFIX: &str = "@shell-checkpoint@\n";
 const CHECKPOINTED_SHELL_SEPARATOR: &str = "\n@continue@\n";
+const INVALID_PARAMS: i64 = -32602;
+const INPUT_TOO_LARGE_ERROR_MESSAGE: &str = "do-not-expose-upstream-input-limit-message";
 
 enum MockTurnOutput {
     Complete(String),
@@ -120,6 +123,16 @@ impl AppServerState {
     ) -> io::Result<ServerAction> {
         if !self.initialized {
             write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
+            return Ok(ServerAction::Continue);
+        }
+        if self.scenario == Scenario::ThreadStartInputTooLarge {
+            write_error_with_data(
+                output,
+                id,
+                INVALID_PARAMS,
+                INPUT_TOO_LARGE_ERROR_MESSAGE,
+                input_too_large_data(json!(101), json!(100)),
+            )?;
             return Ok(ServerAction::Continue);
         }
         if self.scenario == Scenario::HangOnThreadStart {
@@ -282,6 +295,10 @@ impl AppServerState {
             loop {
                 thread::park();
             }
+        }
+        if let Some(error) = self.scenario.turn_start_rpc_error() {
+            write_turn_start_rpc_error(output, id, error)?;
+            return Ok(ServerAction::Continue);
         }
 
         let Some(thread_id) = non_empty_string_param(params, "threadId") else {
@@ -732,6 +749,79 @@ impl AppServerState {
         write_success(output, id, json!({ "completed": true }))?;
         Ok(ServerAction::Continue)
     }
+}
+
+fn write_turn_start_rpc_error<W: Write>(
+    output: &mut W,
+    id: Value,
+    error: TurnStartRpcError,
+) -> io::Result<()> {
+    let (code, data) = match error {
+        TurnStartRpcError::InputTooLarge => (
+            INVALID_PARAMS,
+            Some(input_too_large_data(json!(101), json!(100))),
+        ),
+        TurnStartRpcError::WrongRpcCode => {
+            (-32603, Some(input_too_large_data(json!(101), json!(100))))
+        }
+        TurnStartRpcError::WrongDiscriminator => (
+            INVALID_PARAMS,
+            Some(json!({
+                "input_error_code": "invalid_attachment",
+                "actual_chars": 101,
+                "max_chars": 100,
+            })),
+        ),
+        TurnStartRpcError::MissingData => (INVALID_PARAMS, None),
+        TurnStartRpcError::MissingMaxChars => (
+            INVALID_PARAMS,
+            Some(json!({
+                "input_error_code": "input_too_large",
+                "actual_chars": 101,
+            })),
+        ),
+        TurnStartRpcError::MissingActualChars => (
+            INVALID_PARAMS,
+            Some(json!({
+                "input_error_code": "input_too_large",
+                "max_chars": 100,
+            })),
+        ),
+        TurnStartRpcError::StringActualChars => (
+            INVALID_PARAMS,
+            Some(input_too_large_data(json!("101"), json!(100))),
+        ),
+        TurnStartRpcError::FractionalActualChars => (
+            INVALID_PARAMS,
+            Some(input_too_large_data(json!(101.5), json!(100))),
+        ),
+        TurnStartRpcError::NegativeMaxChars => (
+            INVALID_PARAMS,
+            Some(input_too_large_data(json!(101), json!(-1))),
+        ),
+        TurnStartRpcError::ZeroMaxChars => (
+            INVALID_PARAMS,
+            Some(input_too_large_data(json!(101), json!(0))),
+        ),
+        TurnStartRpcError::NotExceeded => (
+            INVALID_PARAMS,
+            Some(input_too_large_data(json!(100), json!(100))),
+        ),
+    };
+    if let Some(data) = data {
+        write_error_with_data(output, id, code, INPUT_TOO_LARGE_ERROR_MESSAGE, data)
+    } else {
+        write_error(output, id, code, INPUT_TOO_LARGE_ERROR_MESSAGE)
+    }
+}
+
+fn input_too_large_data(actual_chars: Value, max_chars: Value) -> Value {
+    json!({
+        "input_error_code": "input_too_large",
+        "actual_chars": actual_chars,
+        "max_chars": max_chars,
+        "additive_field": true,
+    })
 }
 
 fn write_secondary_thread_notifications<W: Write>(

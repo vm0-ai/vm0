@@ -684,7 +684,7 @@ describe("sandbox Pi agent loop", () => {
       catalogModel: "deepseek-v4-flash",
       api: "openai-responses",
       apiKeyEnv: "OPENAI_API_KEY",
-      credentialSecretName: "VM0_MODEL_PROVIDER_API_KEY",
+      credentialSecretName: "CUSTOM_GATEWAY_API_KEY",
       credentialHeader: {
         name: "x-api-key",
         valueTemplate: "Key {{secret}}",

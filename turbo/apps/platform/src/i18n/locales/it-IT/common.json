@@ -2278,7 +2278,8 @@
       "viewLogs": "Visualizza i registri di esecuzione",
       "waitingIn": "In attesa",
       "worked": "Ha funzionato",
-      "workedFor": "Ha lavorato per {{duration}}"
+      "workedFor": "Ha lavorato per {{duration}}",
+      "workingFor": "In lavorazione da {{duration}}"
     },
     "sharing": {
       "cancel": "Annulla",
@@ -2997,21 +2998,20 @@
       "agentphone": {
         "authorizedSender": "Mittente autorizzato",
         "connectAria": "Collega il telefono",
-        "connectDescription": "Inserisci il tuo numero di telefono. Invieremo un SMS con un collegamento di verifica che collega questa area di lavoro.",
+        "connectDescription": "Invia un messaggio a questo numero AgentPhone dal telefono che vuoi collegare.",
         "connectTitle": "Collega il telefono",
         "copyAria": "Copia {{phone}}",
         "copyError": "Impossibile copiare il numero di telefono",
         "copySuccess": "Numero di telefono copiato",
         "description": "Accesso via SMS a {{assistantName}}",
         "destination": "iMessage o SMS a",
-        "normalized": "Ti invieremo un SMS con {{phone}}.",
+        "messageInstruction": "Invia “hi”",
+        "openMessages": "Apri Messaggi",
         "options": "Opzioni del telefono",
         "phoneLabel": "Telefono",
-        "phoneNumber": "Numero di telefono",
-        "risk": "Le risposte SMS e MMS potrebbero non essere consegnate in modo affidabile. Per un'esperienza più affidabile, utilizza iMessage con questo numero AgentPhone.",
-        "sending": "Invio...",
-        "sendVerification": "Invia verifica",
-        "verificationSent": "Testo di verifica inviato a {{phone}}. Apri il collegamento in quel testo per completare la connessione."
+        "replyInstruction": "Apri il link di connessione entro 10 minuti per completare.",
+        "replyTitle": "Apri la nostra risposta",
+        "risk": "Usa iMessage quando possibile. Le risposte SMS e MMS potrebbero non arrivare in modo affidabile."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3074,7 +3074,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Inserisci un numero di telefono con prefisso internazionale, ad esempio +1 555 555 1212.",
         "githubAuthorizationWindow": "Impossibile aprire la finestra di autorizzazione",
         "telegramDomain": "Il dominio non è ancora visibile a Telegram. Controlla BotFather e riprova.",
         "telegramPrivacy": "La modalità privacy sembra essere ancora attiva. Disattivalo in BotFather, quindi riprova."
@@ -3280,7 +3279,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone connesso",
         "agentphoneDisconnected": "AgentPhone disconnesso",
-        "agentphoneVerificationSent": "SMS di verifica inviato",
         "feishuBotInstalled": "Feishu bot installato correttamente",
         "feishuBotUninstalled": "Feishu bot disinstallato",
         "feishuConnected": "Feishu si è connesso correttamente",

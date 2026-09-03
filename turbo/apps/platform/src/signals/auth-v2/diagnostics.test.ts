@@ -102,7 +102,7 @@ function createSignInHarness(options?: {
         return Promise.resolve();
       }),
   );
-  const initialize$ = command(
+  const initializeExternalStrategies$ = command(
     async (_context, signal: AbortSignal): Promise<void> => {
       await sourceInitialize();
       signal.throwIfAborted();
@@ -161,7 +161,8 @@ function createSignInHarness(options?: {
       identifier$: computed((get) => {
         return get(identifier$);
       }),
-      initialize$,
+      initialize$: SIGN_IN_ASYNC_NO_OP$,
+      initializeExternalStrategies$,
       newPassword$: computed((get) => {
         return get(newPassword$);
       }),
@@ -410,7 +411,7 @@ describe("auth v2 diagnostic attempt ownership", () => {
     });
 
     const initialization = context.store.set(
-      signals.initialize$,
+      signals.initializeExternalStrategies$,
       context.signal,
     );
     expect(harness.sourceInitialize).toHaveBeenCalledOnce();
@@ -552,8 +553,14 @@ describe("auth v2 diagnostic privacy", () => {
       step: "identifier",
     });
     context.store.get(signals.state$);
-    await context.store.set(signals.initialize$, context.signal);
-    await context.store.set(signals.initialize$, context.signal);
+    await context.store.set(
+      signals.initializeExternalStrategies$,
+      context.signal,
+    );
+    await context.store.set(
+      signals.initializeExternalStrategies$,
+      context.signal,
+    );
 
     expect(capture).not.toHaveBeenCalled();
   });

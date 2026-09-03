@@ -149,6 +149,8 @@ interface BrowserMatchMediaMock {
   ) => void;
 }
 
+type BrowserElementRectResolver = (element: Element) => DOMRectInit | undefined;
+
 interface ImageDimensionsMockValue {
   width: number;
   height: number;
@@ -306,6 +308,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         matches: boolean | ((query: string) => boolean),
       ): BrowserMatchMediaMock => {
         return mockMatchMedia(matches);
+      },
+      boundingClientRect: (resolve: BrowserElementRectResolver): void => {
+        mockBoundingClientRect(getSignal(), resolve);
       },
       standaloneDisplayMode: (enabled: boolean): void => {
         mockMatchMedia((query) => {
@@ -613,6 +618,25 @@ function mockMatchMedia(
       }
     },
   };
+}
+
+function mockBoundingClientRect(
+  signal: AbortSignal,
+  resolve: BrowserElementRectResolver,
+): void {
+  const getBoundingClientRect = Element.prototype.getBoundingClientRect;
+  const spy = vi
+    .spyOn(Element.prototype, "getBoundingClientRect")
+    .mockImplementation(function getMockBoundingClientRect(this: Element) {
+      const rect = resolve(this);
+      return rect === undefined
+        ? getBoundingClientRect.call(this)
+        : DOMRect.fromRect(rect);
+    });
+
+  restoreOnAbort(signal, () => {
+    spy.mockRestore();
+  });
 }
 
 function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {

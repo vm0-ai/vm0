@@ -387,6 +387,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatRunWorkFolding]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -395,6 +402,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
+  },
+  [FeatureSwitchKey.FollowUpOptimize]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Use a concise, language-matched prompt for recommended chat follow-ups.",
+    enabled: false,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",

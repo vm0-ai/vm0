@@ -906,6 +906,26 @@ pub(super) fn write_error<W: Write>(
     )
 }
 
+pub(super) fn write_error_with_data<W: Write>(
+    output: &mut W,
+    id: Value,
+    code: i64,
+    message: &str,
+    data: Value,
+) -> io::Result<()> {
+    write_json_line(
+        output,
+        &json!({
+            "id": id,
+            "error": {
+                "code": code,
+                "message": message,
+                "data": data
+            }
+        }),
+    )
+}
+
 pub(super) fn write_json_line<W: Write>(output: &mut W, value: &Value) -> io::Result<()> {
     serde_json::to_writer(&mut *output, value).map_err(io::Error::other)?;
     writeln!(output)?;

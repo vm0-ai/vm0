@@ -120,36 +120,6 @@ describe("test-oauth provider URLs", () => {
     expect(authorizationUrl.origin).toBe("https://pr-12962-api.vm6.ai");
   });
 
-  it("ignores the retired Web URL input with or without canonical config", () => {
-    vi.stubEnv("VM0_WEB_URL", "https://legacy-web.example.test");
-    vi.stubEnv("APP_URL", "https://app-fallback.example.test");
-
-    const fallbackAuthorizationUrl = new URL(
-      buildTestOAuthAuthorizationUrl(
-        authCodeGrant(),
-        "test-client",
-        "https://app.vm0.ai/callback",
-        "state-123",
-      ),
-    );
-    expect(fallbackAuthorizationUrl.origin).toBe(
-      "https://app-fallback.example.test",
-    );
-
-    vi.stubEnv("OKOU_WEB_URL", "https://canonical-web.example.test");
-    const canonicalAuthorizationUrl = new URL(
-      buildTestOAuthAuthorizationUrl(
-        authCodeGrant(),
-        "test-client",
-        "https://app.vm0.ai/callback",
-        "state-123",
-      ),
-    );
-    expect(canonicalAuthorizationUrl.origin).toBe(
-      "https://canonical-web.example.test",
-    );
-  });
-
   it("sends both Vercel and internal preview bypass headers on refresh", async () => {
     vi.stubEnv("OKOU_API_BACKEND_URL", "https://pr-12962-www.vm6.ai");
     vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");

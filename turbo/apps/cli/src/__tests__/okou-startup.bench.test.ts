@@ -4,9 +4,9 @@ import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const SHOULD_RUN = process.env.ZERO_STARTUP_BENCH === "1";
-const RUNS = Number(process.env.ZERO_STARTUP_BENCH_RUNS ?? "15");
-const MAX_MEDIAN_MS = Number(process.env.ZERO_STARTUP_BENCH_MAX_MS ?? "550");
+const SHOULD_RUN = process.env.OKOU_STARTUP_BENCH === "1";
+const RUNS = Number(process.env.OKOU_STARTUP_BENCH_RUNS ?? "15");
+const MAX_MEDIAN_MS = Number(process.env.OKOU_STARTUP_BENCH_MAX_MS ?? "550");
 const OKOU_DIST_PATH = fileURLToPath(
   new URL("../../dist/okou.js", import.meta.url),
 );

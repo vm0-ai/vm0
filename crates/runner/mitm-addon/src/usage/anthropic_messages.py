@@ -102,8 +102,8 @@ def create_anthropic_messages_sse_usage_extractor(
     that still contain SSE framing to *scanner* (or its ``feed()`` method) and
     retain *usage* as a live mutable accumulator. Usage extracted at a complete
     event boundary updates that same dict in place. After all decoded bytes
-    have been fed, callers must invoke ``scanner.finish()`` to flush a trailing
-    event without a blank-line terminator.
+    have been fed, callers must invoke ``scanner.finish()`` to finalize a
+    captured trailing event when the stream ends without a blank-line terminator.
 
     ``include_usage`` controls both usage extraction and delivery of the
     callbacks described below. When it is ``False``, usage parsing is disabled

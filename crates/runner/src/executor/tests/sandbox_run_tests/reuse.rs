@@ -148,7 +148,7 @@ async fn execute_job_reuse_claude_tool_validation_failure_returns_sandbox() {
 
     assert_eq!(reuse_outcome.exit_code(), 1);
     let error = reuse_outcome.error().unwrap();
-    assert!(error.contains("VM0_DISALLOWED_TOOLS"));
+    assert!(error.contains("OKOU_DISALLOWED_TOOLS"));
     assert!(error.contains("must not be empty"));
     assert!(reuse_outcome.sandbox.is_some());
     assert!(reuse_outcome.network_log_session.is_none());

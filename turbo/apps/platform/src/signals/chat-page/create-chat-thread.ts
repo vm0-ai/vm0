@@ -1655,7 +1655,6 @@ function createEventSemanticSignals(
       ?.events.at(-1)?.event;
     return Promise.resolve(formatDonePhrase(lastEvent));
   });
-
   return {
     hasEvents$,
     thinkingIndicatorMode$,

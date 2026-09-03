@@ -286,6 +286,7 @@ describe("agent completion failure reasons", () => {
       "invalid_credentials",
       "terms_acceptance_required",
       "context_window_exceeded",
+      "input_too_large",
       "output_token_limit",
       "provider_rate_limited",
       "provider_overloaded",
