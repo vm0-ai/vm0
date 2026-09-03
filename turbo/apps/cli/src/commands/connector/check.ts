@@ -25,6 +25,12 @@ import {
   currentChatSupportsActionCallback,
   printCallbackActionUrlExample,
 } from "./action-url";
+import {
+  isRunBoundConnectorContext,
+  resolveRunConnectorAccountLookups,
+  runConnectorAccountUnavailableMessage,
+  type RunConnectorAccountLookup,
+} from "./run-account-context";
 
 interface CheckConnectorOptions {
   readonly connector?: string;
@@ -66,6 +72,13 @@ interface DiagContext {
   readonly run: ResolvedDiagnostic["run"];
   readonly platformOrigin: string;
   readonly agentId: string | undefined;
+  readonly runBound: boolean;
+}
+
+interface ConnectorConfigurationStatus {
+  readonly isConnected: boolean;
+  readonly isExpired: boolean;
+  readonly runAccount: RunConnectorAccountLookup | null;
 }
 
 function stripUrlQueryAndFragment(url: string): string {
@@ -403,8 +416,7 @@ function diagnosticEnvironmentNames(
 
 function printConnectorConnectionStatus(
   ctx: DiagContext,
-  isConnected: boolean,
-  isExpired: boolean,
+  status: ConnectorConfigurationStatus,
   hasPermission: boolean,
 ): void {
   console.log(
@@ -415,7 +427,20 @@ function printConnectorConnectionStatus(
     console.log(
       `The ${ctx.label} connector is not available for this account.`,
     );
-  } else if (!isConnected) {
+  } else if (status.runAccount?.state === "context-unavailable") {
+    console.log(
+      runConnectorAccountUnavailableMessage(status.runAccount.reason),
+    );
+  } else if (status.runAccount?.state === "not-admitted") {
+    console.log(`No ${ctx.label} account was admitted for this run.`);
+    console.log(
+      "Connect or change the thread selection, then start a new run.",
+    );
+  } else if (status.runAccount?.state === "metadata-unavailable") {
+    console.log(`Account used by this run: ${status.runAccount.connectionId}`);
+    console.log("Current account metadata is unavailable or deleted.");
+    console.log("Select an available account, then start a new run.");
+  } else if (!status.isConnected) {
     console.log(`The ${ctx.label} connector is not connected.`);
     if (ctx.agentId && hasPermission) {
       const connectUrl = connectorActionUrl({
@@ -432,18 +457,32 @@ function printConnectorConnectionStatus(
       });
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
     }
-  } else if (isExpired) {
+  } else if (status.isExpired) {
     const url = connectorActionUrl({
       origin: ctx.platformOrigin,
-      path: `/connectors/${ctx.connectorSlug}/connect`,
+      path:
+        status.runAccount?.state === "available"
+          ? `/connectors/${ctx.connectorSlug}/reconnect/${status.runAccount.connectionId}`
+          : `/connectors/${ctx.connectorSlug}/connect`,
       agentId: ctx.agentId,
     });
+    if (status.runAccount?.state === "available") {
+      console.log(`Account used by this run: ${status.runAccount.label}`);
+      console.log(`Connection ID: ${status.runAccount.connectionId}`);
+    }
     console.log(
       `The ${ctx.label} connector is connected but has expired and needs to be reconnected.`,
     );
     console.log(`Reconnect it at: [Reconnect ${ctx.label}](${url})`);
     printCallbackActionUrlExample(url, ctx.agentId);
+    if (ctx.runBound) {
+      console.log("After reconnecting, start a new run.");
+    }
   } else {
+    if (status.runAccount?.state === "available") {
+      console.log(`Account used by this run: ${status.runAccount.label}`);
+      console.log(`Connection ID: ${status.runAccount.connectionId}`);
+    }
     console.log(`The ${ctx.label} connector is connected and active.`);
   }
   console.log("");
@@ -451,21 +490,22 @@ function printConnectorConnectionStatus(
 
 function printAgentAuthorizationStatus(
   ctx: DiagContext,
-  isConnected: boolean,
-  isExpired: boolean,
+  status: ConnectorConfigurationStatus,
   hasPermission: boolean,
 ): void {
   if (!ctx.agentId) {
     console.log("OKOU_AGENT_ID is not set — cannot check agent authorization.");
-  } else if (isExpired) {
+  } else if (status.isExpired) {
     console.log(
       `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
     );
   } else if (hasPermission) {
     console.log(
-      isConnected
+      status.isConnected
         ? `The ${ctx.label} connector is authorized for this agent.`
-        : `The ${ctx.label} connector is authorized for this agent, but it is not connected.`,
+        : ctx.runBound
+          ? `The ${ctx.label} connector is authorized for this agent, but an account is not available for this run.`
+          : `The ${ctx.label} connector is authorized for this agent, but it is not connected.`,
     );
   } else {
     const url = connectorActionUrl({
@@ -474,19 +514,23 @@ function printAgentAuthorizationStatus(
       agentId: ctx.agentId,
     });
     console.log(
-      isConnected
+      status.isConnected
         ? `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}).`
-        : `The ${ctx.label} connector needs to be connected and authorized for this agent (${ctx.agentId}).`,
+        : ctx.runBound
+          ? `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}), and an account is not available for this run.`
+          : `The ${ctx.label} connector needs to be connected and authorized for this agent (${ctx.agentId}).`,
     );
     console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
     printCallbackActionUrlExample(url, ctx.agentId);
+    if (ctx.runBound) {
+      console.log("After authorizing it, start a new run.");
+    }
   }
 }
 
 function printConnectorAuthorizationStatus(
   ctx: DiagContext,
-  isConnected: boolean,
-  isExpired: boolean,
+  status: ConnectorConfigurationStatus,
   hasPermission: boolean,
 ): void {
   console.log(
@@ -498,7 +542,7 @@ function printConnectorAuthorizationStatus(
       `Skipped — the ${ctx.label} connector is not available for this account.`,
     );
   } else {
-    printAgentAuthorizationStatus(ctx, isConnected, isExpired, hasPermission);
+    printAgentAuthorizationStatus(ctx, status, hasPermission);
   }
   console.log(
     `This run uses agent-scoped connector authorization for ${ctx.label} access.`,
@@ -556,21 +600,45 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   );
   console.log("");
 
-  const [connector, enabledConnectorSlugs] = await Promise.all([
-    getConnector(ctx.connectorSlug),
+  const [configuration, enabledConnectorSlugs] = await Promise.all([
+    ctx.runBound
+      ? resolveRunConnectorAccountLookups([
+          { kind: "builtin", connectorSlug: ctx.connectorSlug },
+        ]).then((lookups) => {
+          const runAccount = lookups[0];
+          if (!runAccount) {
+            throw new Error("Missing run account lookup for connector");
+          }
+          return {
+            isConnected: runAccount.state === "available",
+            isExpired:
+              runAccount.state === "available" &&
+              runAccount.metadata.connectionStatus === "reconnect-required",
+            runAccount,
+          } satisfies ConnectorConfigurationStatus;
+        })
+      : getConnector(ctx.connectorSlug).then((connector) => {
+          return {
+            isConnected: connector !== null,
+            isExpired: connector?.connectionStatus === "reconnect-required",
+            runAccount: null,
+          } satisfies ConnectorConfigurationStatus;
+        }),
     ctx.agentId ? getAgentUserConnectors(ctx.agentId) : Promise.resolve(null),
   ]);
 
-  const isConnected = connector !== null;
-  const isExpired = connector?.connectionStatus === "reconnect-required";
   const hasPermission =
     enabledConnectorSlugs !== null &&
     enabledConnectorSlugs.includes(ctx.connectorSlug);
 
-  printConnectorConnectionStatus(ctx, isConnected, isExpired, hasPermission);
-  printConnectorAuthorizationStatus(ctx, isConnected, isExpired, hasPermission);
+  printConnectorConnectionStatus(ctx, configuration, hasPermission);
+  printConnectorAuthorizationStatus(ctx, configuration, hasPermission);
 
-  return { isConnected, isExpired, hasPermission };
+  return {
+    isConnected: configuration.isConnected,
+    isExpired: configuration.isExpired,
+    hasPermission,
+  };
 }
 
 function checkConnectorDomains(ctx: DiagContext): boolean | null {
@@ -964,6 +1032,7 @@ How connectors work:
         run: result.run,
         platformOrigin: platformUrl.origin,
         agentId: getOkouAgentId(),
+        runBound: isRunBoundConnectorContext(),
       };
 
       checkEnvironmentNames(ctx);
