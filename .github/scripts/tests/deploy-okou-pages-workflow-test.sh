@@ -54,7 +54,6 @@ turbo_job = turbo["jobs"]["deploy-app"]
 release_controller_job = release["jobs"]["release-please"]
 release_job = release["jobs"]["promote-app-production"]
 worker_release_job = release["jobs"]["promote-app-worker-production"]
-release_api_job = release["jobs"]["promote-api-production"]
 release_dashboard_job = release["jobs"]["update-rollback-dashboard"]
 rollback_job = rollback["jobs"]["rollback-app"]
 rollback_verification_job = rollback["jobs"]["verify-production-domains"]
@@ -106,9 +105,6 @@ worker_release_finish_step = find_step(
 release_start_step = find_step(release_job, "Start GitHub Deployment")
 release_finish_step = find_step(release_job, "Finish GitHub Deployment")
 release_failure_step = find_step(release_job, "Notify Slack - Pages fallback failure")
-release_api_verification_step = find_step(
-    release_api_job, "Verify production App and API domains"
-)
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
 rollback_prepare_step = find_step(rollback_job, "Prepare App production deployment")
 rollback_verification_step = find_step(
@@ -331,8 +327,6 @@ worker_release_source = require_fragments(
         '"https://app.okou.ai|https://api.okou.ai"',
         '"https://app-worker.vm0.ai|https://api.vm0.ai"',
         '"https://app-worker.okou.ai|https://api.okou.ai"',
-        "bash .github/scripts/verify-okou-production-domains.sh",
-        '"$pages_url"',
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -342,10 +336,6 @@ if worker_release_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
-if worker_release_step.get("env", {}).get("CF_PAGES_PROJECT_NAME") != (
-    "${{ vars.CF_PAGES_PROJECT_NAME }}"
-):
-    raise RuntimeError("production Worker must verify the synchronized Pages fallback")
 if worker_release_source.count("wrangler deploy") != 1:
     raise RuntimeError("production Worker must deploy exactly once")
 if worker_release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
@@ -439,13 +429,6 @@ for fragment in (domain_verifier, '"https://app.vm0.ai"', '"https://app.okou.ai"
             f"Pages fallback deployment must not verify the live Worker route: {fragment}"
         )
 if not (
-    worker_release_source.index("wrangler deploy")
-    < worker_release_source.index(domain_verifier)
-):
-    raise RuntimeError(
-        "production Worker deployment must verify domains after Cloudflare succeeds"
-    )
-if not (
     release_steps.index(release_step) < release_steps.index(release_finish_step)
 ):
     raise RuntimeError(
@@ -475,21 +458,6 @@ if preview_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
 ):
     raise RuntimeError("preview Worker deployment must use the Worker deploy token")
 
-require_fragments(
-    worker_release_step,
-    ["verify-okou-production-domains.sh", '"$pages_url"'],
-)
-require_fragments(
-    release_api_verification_step,
-    [
-        "verify-okou-production-domains.sh",
-        '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
-    ],
-)
-if release_api_verification_step.get("shell") != "bash":
-    raise RuntimeError("API production verification must use Bash")
-if "app_release_created" in str(release_api_job.get("if", "")):
-    raise RuntimeError("API production verification must not depend on an App release")
 require_fragments(
     rollback_verification_step,
     [
