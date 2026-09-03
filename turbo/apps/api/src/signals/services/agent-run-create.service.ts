@@ -7331,6 +7331,12 @@ function preparedRunnerJobBody(
   if (!args.includeOkouTokenSecret) {
     return args.body;
   }
+  const customConnectorSourceEntries =
+    args.customConnectorContext.targets.flatMap((target) => {
+      return target.kind === "custom" && target.sourceId
+        ? [[target.customConnectorId, target.sourceId] as const]
+        : [];
+    });
   const okouToken = generateOkouToken(
     args.userId,
     args.run.id,
@@ -7343,6 +7349,13 @@ function preparedRunnerJobBody(
         : {}),
       cloudBrowserEnabled: args.okouTokenCloudBrowserEnabled === true,
       imageRecognitionAvailable: args.imageRecognitionAvailable,
+      ...(customConnectorSourceEntries.length === 0
+        ? {}
+        : {
+            customConnectorSourceIds: Object.fromEntries(
+              customConnectorSourceEntries,
+            ),
+          }),
     },
   );
   return withOkouTokenSecret(args.body, okouToken);

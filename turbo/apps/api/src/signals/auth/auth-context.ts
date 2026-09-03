@@ -150,6 +150,9 @@ const agentAuth$ = command(
       ...(agentAuth.computerUseHostId
         ? { computerUseHostId: agentAuth.computerUseHostId }
         : {}),
+      ...(agentAuth.customConnectorSourceIds
+        ? { customConnectorSourceIds: agentAuth.customConnectorSourceIds }
+        : {}),
     };
 
     const membership = await set(
