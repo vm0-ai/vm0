@@ -125,6 +125,36 @@ describe("auth v2 presentation", () => {
     expect(announcer).toHaveAttribute("aria-live", "polite");
   });
 
+  it.each(["/sign-in", "/sign-up"])(
+    "clips decorative overflow without disabling content scrolling on %s",
+    async (path) => {
+      setBrowserUrl(`https://app.vm0.ai${path}`);
+
+      detachedSetupPage({ context, path });
+
+      await screen.findByTestId("app-auth-v2");
+      const layout = screen.getByTestId("app-auth-layout");
+      const background = screen.getByTestId("app-auth-background");
+      const styleElement = document.createElement("style");
+      const tailwindCompiler = await compile("@tailwind utilities;");
+      styleElement.textContent = tailwindCompiler.build([
+        ...layout.classList,
+        ...background.classList,
+      ]);
+      document.head.append(styleElement);
+      context.signal.addEventListener(
+        "abort",
+        () => {
+          styleElement.remove();
+        },
+        { once: true },
+      );
+
+      expect(getComputedStyle(layout).overflowY).toBe("auto");
+      expect(getComputedStyle(background).overflow).toBe("hidden");
+    },
+  );
+
   it("keeps password controls in their accessible region", async () => {
     setBrowserUrl("https://app.vm0.ai/sign-up");
 
