@@ -111,6 +111,19 @@ describe("okou mail", () => {
     expect(listOutput).toContain("unavailable");
 
     mockConsoleLog.mockClear();
+    await mailCommand.parseAsync(["node", "cli", "connect", "gmail", "--json"]);
+
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toStrictEqual(
+      {
+        provider: "gmail",
+        action: "ready",
+        url: null,
+        context: "run",
+        connectionId: RUN_GMAIL_CONNECTION_ID,
+      },
+    );
+
+    mockConsoleLog.mockClear();
     await mailCommand.parseAsync([
       "node",
       "cli",
