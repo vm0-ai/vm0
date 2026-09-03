@@ -115,6 +115,31 @@ async function printWorkspace(): Promise<void> {
   }
 }
 
+async function resolveSandboxConnectorData(
+  showPermissions: boolean,
+  agentId: string,
+) {
+  if (!showPermissions) {
+    return {
+      view: await resolveRunConnectorAccountView(),
+      permissionSources: null,
+    };
+  }
+
+  const [viewResult, grantsResult, enabledResult] = await Promise.allSettled([
+    resolveRunConnectorAccountView(),
+    listUserPermissionGrants(agentId),
+    getAgentUserConnectors(agentId),
+  ]);
+  if (viewResult.status === "rejected") {
+    throw viewResult.reason;
+  }
+  return {
+    view: viewResult.value,
+    permissionSources: [grantsResult, enabledResult] as const,
+  };
+}
+
 async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   const agentId = getOkouAgentId();
   const payload = decodeSandboxTokenPayload();
@@ -133,13 +158,10 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 
   // Connected Services section
   try {
-    const permissionSources = showPermissions
-      ? Promise.allSettled([
-          listUserPermissionGrants(agentId!),
-          getAgentUserConnectors(agentId!),
-        ])
-      : null;
-    const view = await resolveRunConnectorAccountView();
+    const { view, permissionSources } = await resolveSandboxConnectorData(
+      showPermissions,
+      agentId!,
+    );
     if (view.state === "unavailable") {
       console.log();
       console.log(chalk.bold("Connectors:"));
@@ -153,8 +175,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
     let permissionInfoBySlug = new Map<string, ConnectorPermissionInfo>();
     let permissionDataAvailable = false;
     if (permissionSources) {
-      // Full mode also fetches current-user grants and agent connector access.
-      const [grantsResult, enabledResult] = await permissionSources;
+      const [grantsResult, enabledResult] = permissionSources;
 
       if (
         grantsResult.status === "fulfilled" &&
