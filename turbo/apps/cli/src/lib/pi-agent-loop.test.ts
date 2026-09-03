@@ -8,11 +8,12 @@ import { join } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryPiSession } from "@okouai/pi-agent-runtime/node";
 
 import {
   piSandboxAgentConfigFromEnv,
+  recordPiMemoryToolSourceUse,
   type PiSandboxAgentConfig,
 } from "./pi-agent-loop";
 
@@ -565,6 +566,55 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 describe("sandbox Pi agent loop", () => {
+  it("records content-free memory source use with run and session correlation", () => {
+    const writes: string[] = [];
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk) => {
+        writes.push(String(chunk));
+        return true;
+      });
+    try {
+      recordPiMemoryToolSourceUse(RUN_ID, SESSION_ID, {
+        operation: "read",
+        outcome: "success",
+        memoryStorageId: "memory-storage-a",
+        storageVersionId: "memory-version-a",
+        pathHash: "a".repeat(64),
+        visitedEntries: 0,
+        scannedFiles: 1,
+        scannedBytes: 42,
+        returnedEntries: 0,
+        returnedLines: 2,
+        returnedMatches: 0,
+        truncated: false,
+        durationMs: 3,
+      });
+    } finally {
+      write.mockRestore();
+    }
+
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0] ?? "{}") as unknown).toStrictEqual({
+      type: "pi_memory_tool_source_use",
+      runId: RUN_ID,
+      sessionId: SESSION_ID,
+      operation: "read",
+      outcome: "success",
+      memoryStorageId: "memory-storage-a",
+      storageVersionId: "memory-version-a",
+      pathHash: "a".repeat(64),
+      visitedEntries: 0,
+      scannedFiles: 1,
+      scannedBytes: 42,
+      returnedEntries: 0,
+      returnedLines: 2,
+      returnedMatches: 0,
+      truncated: false,
+      durationMs: 3,
+    });
+  });
+
   it("resolves the Pi session, launch payload file, and model credential", async () => {
     await expect(
       piSandboxAgentConfigFromEnv(piEnv({ OKOU_RUN_ID: RUN_ID })),

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +16,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resumePiApiFirstTurn } from "./rpc";
+import type { PiMemoryToolSourceUse } from "./api-types";
+import { createPiMemoryTools } from "./memory-tools-node";
 import { MemoryPiSession } from "./session-memory";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
@@ -31,6 +33,109 @@ afterEach(async () => {
 });
 
 describe("Pi API first-turn sandbox resume", () => {
+  it("executes one pending memory call once and never repeats it on follow-up", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pi-memory-resume-"));
+    temporaryDirectories.push(directory);
+    const memoryRoot = join(directory, "memory");
+    await mkdir(memoryRoot);
+    await writeFile(join(memoryRoot, "MEMORY.md"), "Frozen version A");
+    const sessionFile = join(directory, "handoff.jsonl");
+    const memory = MemoryPiSession.create({
+      cwd: "/home/user/workspace",
+      id: SESSION_ID,
+    });
+    memory.appendMessage({
+      role: "user",
+      content: "read the frozen index",
+      timestamp: 1,
+    });
+    memory.appendMessage(
+      fauxAssistantMessage(
+        fauxToolCall(
+          "memories_read",
+          { path: "MEMORY.md" },
+          { id: TOOL_CALL_ID },
+        ),
+        { stopReason: "toolUse", timestamp: 2 },
+      ),
+    );
+    await writeFile(sessionFile, memory.toJsonl());
+
+    const faux = createFauxCore({
+      api: "memory-resume-test",
+      provider: "memory-resume-test",
+    });
+    faux.setResponses([
+      (context) => {
+        expect(context.messages.at(-1)).toMatchObject({
+          role: "toolResult",
+          toolCallId: TOOL_CALL_ID,
+          content: [
+            {
+              type: "text",
+              text: expect.stringContaining("Frozen version A"),
+            },
+          ],
+        });
+        return fauxAssistantMessage("memory continuation complete", {
+          timestamp: 3,
+        });
+      },
+      fauxAssistantMessage("follow-up complete", { timestamp: 5 }),
+    ]);
+    const modelRuntime = await ModelRuntime.create({
+      allowModelNetwork: false,
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    modelRuntime.registerProvider(faux.provider, {
+      name: faux.provider,
+      api: faux.api,
+      baseUrl: faux.getModel().baseUrl,
+      apiKey: "test-api-key",
+      streamSimple: faux.streamSimple,
+      models: faux.models,
+    });
+    const sourceUses: PiMemoryToolSourceUse[] = [];
+    const { session } = await createAgentSession({
+      cwd: "/home/user/workspace",
+      agentDir: join(directory, "agent"),
+      model: faux.getModel(),
+      modelRuntime,
+      sessionManager: SessionManager.open(sessionFile),
+      tools: ["memories_read"],
+      customTools: createPiMemoryTools({
+        mode: "sandbox",
+        selection: {
+          status: "no-content",
+          memoryStorageId: "memory-storage-a",
+          storageVersionId: "memory-version-a",
+        },
+        memoryRoot,
+        onSourceUse(sourceUse) {
+          sourceUses.push(sourceUse);
+        },
+      }),
+    });
+
+    await resumePiApiFirstTurn(session);
+    expect(sourceUses).toHaveLength(1);
+    expect(faux.state.callCount).toBe(1);
+    await session.prompt("ordinary follow-up");
+    expect(sourceUses).toHaveLength(1);
+    expect(faux.state.callCount).toBe(2);
+    session.dispose();
+
+    const reopened = SessionManager.open(sessionFile);
+    expect(
+      reopened.buildSessionContext().messages.filter((message) => {
+        return (
+          message.role === "toolResult" && message.toolCallId === TOOL_CALL_ID
+        );
+      }),
+    ).toHaveLength(1);
+  });
+
   it("executes pending H1 tools and continues through Pi AgentSession", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pi-handoff-resume-"));
     temporaryDirectories.push(directory);

@@ -84,6 +84,40 @@ export interface PiMemoryRecallOutcome {
   readonly injectedTokenCount: number;
 }
 
+export type PiMemoryToolOperation = "list" | "search" | "read";
+
+export type PiMemoryToolErrorClass =
+  | "aborted"
+  | "binary"
+  | "invalid-input"
+  | "invalid-utf8"
+  | "io"
+  | "missing"
+  | "non-directory"
+  | "non-regular"
+  | "oversized"
+  | "path-race"
+  | "symlink"
+  | "timeout";
+
+/** Content-free execution-side evidence that one frozen memory source was used. */
+export interface PiMemoryToolSourceUse {
+  readonly operation: PiMemoryToolOperation;
+  readonly outcome: "success" | "error";
+  readonly errorClass?: PiMemoryToolErrorClass;
+  readonly memoryStorageId: string;
+  readonly storageVersionId: string;
+  readonly pathHash: string;
+  readonly visitedEntries: number;
+  readonly scannedFiles: number;
+  readonly scannedBytes: number;
+  readonly returnedEntries: number;
+  readonly returnedLines: number;
+  readonly returnedMatches: number;
+  readonly truncated: boolean;
+  readonly durationMs: number;
+}
+
 export interface PiApiAssistantTextContent {
   readonly type: "text";
   readonly text: string;

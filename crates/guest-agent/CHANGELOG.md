@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.84.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.6...guest-agent-v0.84.7) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
+## [0.84.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.5...guest-agent-v0.84.6) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** reclassify run payload field identifiers ([#31244](https://github.com/vm0-ai/vm0/issues/31244)) ([3b475f2](https://github.com/vm0-ai/vm0/commit/3b475f25121716295b2edcfefe3d4c9143c6d671))
+
+## [0.84.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.4...guest-agent-v0.84.5) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
 ## [0.84.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.3...guest-agent-v0.84.4) (2026-09-02)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.12.25](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.24...guest-contracts-v0.12.25) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
+## [0.12.24](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.23...guest-contracts-v0.12.24) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** reclassify run payload field identifiers ([#31244](https://github.com/vm0-ai/vm0/issues/31244)) ([3b475f2](https://github.com/vm0-ai/vm0/commit/3b475f25121716295b2edcfefe3d4c9143c6d671))
+* **runtime:** remove retired working-directory environment tombstone ([#31239](https://github.com/vm0-ai/vm0/issues/31239)) ([9fbce0e](https://github.com/vm0-ai/vm0/commit/9fbce0e91a45dda92802f927d8a31539876d3f97))
+
+## [0.12.23](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.22...guest-contracts-v0.12.23) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired process-containment alias tombstones ([#31231](https://github.com/vm0-ai/vm0/issues/31231)) ([6947bad](https://github.com/vm0-ai/vm0/commit/6947badf5b8d81c81d3795796d49abf708aa710e))
+
 ## [0.12.22](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.21...guest-contracts-v0.12.22) (2026-09-02)
 
 

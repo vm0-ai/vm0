@@ -425,8 +425,8 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
       undici:
-        specifier: ^8.9.0
-        version: 8.10.0
+        specifier: ^8.10.1
+        version: 8.10.1
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(happy-dom@20.11.6)(msw@2.13.2(@types/node@24.3.0)(typescript@6.0.3))(vite@8.0.16(@types/node@24.3.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
@@ -1084,9 +1084,15 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.1
         version: 0.84.1(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
+      '@okouai/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
       gpt-tokenizer:
         specifier: ^3.4.0
         version: 3.4.0
+      yaml:
+        specifier: '>=2.8.3'
+        version: 2.9.0
     devDependencies:
       '@okouai/eslint-config':
         specifier: workspace:*
@@ -9590,8 +9596,8 @@ packages:
     resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
     engines: {node: '>=20.18.1'}
 
-  undici@8.10.0:
-    resolution: {integrity: sha512-HvltHd7avK13QIw/oLe4qoOLyoVSoafqJ2jYOrtMRBkbYT31eiBQ8O0ehRKZiEZCMEyLFQNIADpgCWC5fALvYQ==}
+  undici@8.10.1:
+    resolution: {integrity: sha512-YQ3WlbqjYMmNpdvDH64jAgLjxuAR9+649calDWhbshYaeQGO2bR4nI94ORJmwI3J9YhoKQnpyGOK+0zlWS5N5Q==}
     engines: {node: '>=22.19.0'}
 
   undici@8.9.0:
@@ -19407,7 +19413,7 @@ snapshots:
 
   undici@7.28.0: {}
 
-  undici@8.10.0: {}
+  undici@8.10.1: {}
 
   undici@8.9.0: {}
 

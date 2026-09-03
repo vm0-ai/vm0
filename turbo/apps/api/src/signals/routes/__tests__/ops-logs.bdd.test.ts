@@ -18,6 +18,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   aggregateModelStatsFixture,
@@ -41,6 +42,7 @@ import {
 import { commitMemoryVersion } from "./helpers/memory";
 import { createFixtureTracker } from "./helpers/route-test";
 import { agentInstructionsRoutes } from "../agent-instructions";
+import { seedPiMemoryPhase2ExportJobFixture } from "../../../test-fixtures/pi-memory-stage1-candidates";
 
 /* BILL-02 model stats and OPS-01 user export. */
 
@@ -1345,7 +1347,7 @@ describe("OPS-01: user data export", () => {
     expect(messages[0]?.content).not.toContain("stale export content");
   });
 
-  it("exports only agent instruction files, workflow files, and memory files", async () => {
+  it("exports only safe agent, workflow, and memory control-plane data", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
@@ -1402,8 +1404,15 @@ describe("OPS-01: user data export", () => {
     // Create the memory artifact head version through the product storage
     // upload flow, then place the mocked archive at the S3 key the product
     // assigned to it.
+    createStoragesBddApi(context).mockStoragePresignedUrls();
     const memory = await commitMemoryVersion(context, actor, memoryFiles);
     putMemoryArchive(misc, memory.s3Key, memoryFiles);
+    const phase2Secrets = await seedPiMemoryPhase2ExportJobFixture({
+      memoryStorageId: memory.storageId,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      currentTime: new Date(exportStartAt),
+    });
 
     mockNow(exportStartAt);
     context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
@@ -1443,6 +1452,35 @@ describe("OPS-01: user data export", () => {
     expect(zipText(zip, `memory/${actor.orgId}/notes/profile.md`)).toBe(
       "Memory supporting note",
     );
+    const phase2JobsText = zipText(zip, "memory/phase2-jobs.json");
+    const phase2Jobs = JSON.parse(phase2JobsText) as readonly Record<
+      string,
+      unknown
+    >[];
+    expect(phase2Jobs).toStrictEqual([
+      {
+        memoryStorageId: memory.storageId,
+        orgId: actor.orgId,
+        userId: actor.userId,
+        status: "leased",
+        inputRevision: 2,
+        completedRevision: 0,
+        claimedRevision: 1,
+        leaseExpiresAt: new Date(exportStartAt + 60 * 60 * 1000).toISOString(),
+        retryCount: 1,
+        retryAt: null,
+        lastErrorClass: null,
+        lastSucceededAt: new Date(
+          exportStartAt - 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        claimedSelectedCount: 1,
+        claimedSelectedUtf8Bytes: 42,
+        createdAt: new Date(exportStartAt - 2 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(exportStartAt).toISOString(),
+      },
+    ]);
+    expect(phase2JobsText).not.toContain(phase2Secrets.leaseToken);
+    expect(phase2JobsText).not.toContain(phase2Secrets.selectionDigest);
 
     const manifest = JSON.parse(zipText(zip, "export-manifest.json")) as {
       readonly counts: {
@@ -1450,6 +1488,7 @@ describe("OPS-01: user data export", () => {
         readonly workflowFiles: number;
         readonly memoryFiles: number;
         readonly memoryStage1Candidates: number;
+        readonly memoryPhase2Jobs: number;
         readonly conversationThreads: number;
         readonly sessionHistories: number;
       };
@@ -1459,6 +1498,7 @@ describe("OPS-01: user data export", () => {
       workflowFiles: 2,
       memoryFiles: 2,
       memoryStage1Candidates: 0,
+      memoryPhase2Jobs: 1,
       conversationThreads: 0,
       sessionHistories: 0,
     });

@@ -24,6 +24,14 @@
       "preview_urls": false,
       "routes": [
         {
+          "pattern": "app.okou.ai/*",
+          "zone_name": "okou.ai",
+        },
+        {
+          "pattern": "app.vm0.ai/*",
+          "zone_name": "vm0.ai",
+        },
+        {
           "pattern": "app-worker.okou.ai",
           "custom_domain": true,
         },

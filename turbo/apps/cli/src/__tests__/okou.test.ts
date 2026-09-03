@@ -57,6 +57,7 @@ describe("Okou CLI program", () => {
       "web",
       "video",
       "host",
+      "presentation",
       "maps",
       "weather",
       "scrape",
@@ -98,7 +99,7 @@ describe("Okou CLI program", () => {
     expect(publicCommandNames).not.toContain("__agent-loop");
   });
 
-  it("should have exactly 39 public commands", () => {
-    expect(publicCommandNames).toHaveLength(39);
+  it("should have exactly 40 public commands", () => {
+    expect(publicCommandNames).toHaveLength(40);
   });
 });

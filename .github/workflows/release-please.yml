@@ -1474,19 +1474,17 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Keep the standalone production Worker warm on canary domains while Pages
-  # remains the live production path. This shadow deployment is deliberately
-  # non-blocking until the formal App routes move to the Worker. Remove this
-  # Pages/Worker split under vm0-ai/vm0#31133 after canary browser verification,
-  # App hostname cutover, and retirement of Pages as a rollback target.
+  # Deploy the production Worker only after the synchronized Pages fallback is
+  # ready. The Worker owns the live App routes while retaining the direct canary
+  # domains for diagnosis. Keep Pages for at least 24 hours after cutover and
+  # until one post-cutover App production release succeeds and browser QA passes
+  # on both live domains. Remove it under vm0-ai/vm0#31133 after all gates pass.
   promote-app-worker-production:
-    needs: [release-please, builds-complete, promote-api-production]
+    needs: [release-please, promote-app-production]
     if: >-
       always() &&
       needs.release-please.outputs.app_deploy_required == 'true' &&
-      needs.builds-complete.result == 'success' &&
-      needs.promote-api-production.result == 'success'
-    continue-on-error: true
+      needs.promote-app-production.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     container:
@@ -1510,9 +1508,29 @@ jobs:
         with:
           step: start
           token: ${{ github.token }}
-          env: app-worker/production-canary
+          env: app/production
           ref: ${{ github.ref }}
-          desc: Deploying standalone App Worker production canaries
+          desc: Deploying App Worker production
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*App* deploying to Cloudflare Workers production..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* deploying to Cloudflare Workers production...\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-please.outputs.app_deploy_tag }}|View Release>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve App Build Commit SHA
         id: build-commit
@@ -1606,7 +1624,7 @@ jobs:
 
           echo "canonical-dist=$canonical_dist" >> "$GITHUB_OUTPUT"
 
-      - name: Verify immutable App assets for Worker canaries
+      - name: Verify immutable App assets for Worker production
         env:
           CANONICAL_ASSETS: ${{ steps.worker-production.outputs.canonical-dist }}/assets
         run: |
@@ -1614,7 +1632,7 @@ jobs:
             "https://static.okou.io/okou-app/assets" \
             "$CANONICAL_ASSETS"
 
-      - name: Deploy standalone App Worker production canaries
+      - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
           CANONICAL_ASSETS: ${{ steps.worker-production.outputs.canonical-dist }}/assets
@@ -1635,6 +1653,8 @@ jobs:
           cd ..
 
           for mapping in \
+            "https://app.vm0.ai|https://api.vm0.ai" \
+            "https://app.okou.ai|https://api.okou.ai" \
             "https://app-worker.vm0.ai|https://api.vm0.ai" \
             "https://app-worker.okou.ai|https://api.okou.ai"; do
             IFS='|' read -r app_origin api_origin <<< "$mapping"
@@ -1674,31 +1694,69 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app-worker.okou.ai
+          env_url: https://app.vm0.ai
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
-      - name: Report non-blocking Worker failure
-        if: failure()
-        run: |
-          echo "::warning title=Standalone App Worker canary failed::Pages remains the live production path; inspect this job before route cutover."
-          {
-            echo "## Standalone App Worker canary failed"
-            echo
-            echo "Cloudflare Pages remains the live production path. The release is intentionally not blocked."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report Worker canary URLs
+      - name: Report App Worker URLs
         if: success()
         run: |
           {
-            echo "## Standalone App Worker canaries"
+            echo "## App Worker production"
             echo
+            echo "### Live"
+            echo "- https://app.okou.ai"
+            echo "- https://app.vm0.ai"
+            echo
+            echo "### Direct canaries"
             echo "- https://app-worker.okou.ai"
             echo "- https://app-worker.vm0.ai"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Publish the immutable app artifact to Cloudflare Pages after the API
-  # production lifecycle, including any required migration and traffic promotion.
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ✅ Deployed to Cloudflare Workers"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ✅ Deployed to Cloudflare Workers\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*App* ❌ Cloudflare Workers deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*App* ❌ Cloudflare Workers deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Keep Cloudflare Pages synchronized as the phase-one fallback. This job must
+  # complete before the Worker deployment can move the live routes forward.
   promote-app-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
@@ -1731,29 +1789,9 @@ jobs:
         with:
           step: start
           token: ${{ github.token }}
-          env: app/production
+          env: app-pages/production-shadow
           ref: ${{ github.ref }}
-          desc: Deploying app to Cloudflare Pages production
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*App* deploying to Cloudflare Pages production..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* deploying to Cloudflare Pages production...\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.release-please.outputs.app_deploy_tag }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+          desc: Synchronizing the App Cloudflare Pages production fallback
 
       - name: Resolve App Build Commit SHA
         id: build-commit
@@ -1855,7 +1893,7 @@ jobs:
             "https://static.okou.io/okou-app/assets" \
             "$CANONICAL_ASSETS"
 
-      - name: Upload Cloudflare Pages source maps to Sentry
+      - name: Upload App source maps to Sentry
         env:
           CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -1865,7 +1903,7 @@ jobs:
         run: |
           pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
 
-      - name: Deploy Cloudflare Pages production
+      - name: Deploy Cloudflare Pages production fallback
         id: deploy-pages
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
@@ -1884,17 +1922,11 @@ jobs:
             "$ARTIFACT_SHA"
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          production_url="https://app.vm0.ai"
-          for app_url in \
+          bash .github/scripts/verify-okou-app-runtime.sh \
             "$pages_url" \
-            "https://app.vm0.ai" \
-            "https://app.okou.ai"; do
-            bash .github/scripts/verify-okou-app-runtime.sh \
-              "$app_url" \
-              "https://static.okou.io/okou-app/assets" \
-              "$CANONICAL_ASSETS"
-          done
-          echo "url=$production_url" >> "$GITHUB_OUTPUT"
+            "https://static.okou.io/okou-app/assets" \
+            "$CANONICAL_ASSETS"
+          echo "url=$pages_url" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Cloudflare Pages dashboard URL
         id: pages-dashboard
@@ -1914,51 +1946,32 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: ${{ steps.deploy-pages.outputs.url }}
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
+      - name: Report Pages fallback URL
+        if: success()
         run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Cloudflare Pages production fallback"
+            echo
+            echo "- ${{ steps.deploy-pages.outputs.url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
+      - name: Notify Slack - Pages fallback failure
+        if: ${{ failure() && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
-          method: chat.update
+          method: chat.postMessage
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ✅ Deployed to Cloudflare Pages"
+            text: "*App* ❌ Cloudflare Pages fallback deploy failed"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*App* ❌ Cloudflare Pages deploy failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ❌ Cloudflare Pages deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*App* ❌ Cloudflare Pages fallback deploy failed; Worker production was not advanced.\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Record a complete production release target after all applicable
   # production promotions succeed.
@@ -1968,6 +1981,7 @@ jobs:
         release-please,
         promote-api-production,
         promote-app-production,
+        promote-app-worker-production,
         promote-desktop-release,
         promote-runner-production,
       ]
@@ -1976,7 +1990,8 @@ jobs:
       needs.release-please.outputs.releases_created == 'true' &&
       needs.promote-api-production.result == 'success' &&
       (needs.release-please.outputs.app_deploy_required != 'true' ||
-       needs.promote-app-production.result == 'success') &&
+       (needs.promote-app-production.result == 'success' &&
+        needs.promote-app-worker-production.result == 'success')) &&
       (needs.release-please.outputs.desktop_release_created != 'true' ||
        needs.promote-desktop-release.result == 'success') &&
       (needs.release-please.outputs.runner_rs_release_created != 'true' ||

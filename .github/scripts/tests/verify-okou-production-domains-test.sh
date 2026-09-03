@@ -112,22 +112,36 @@ expected_log() {
     $'cors\thttps://api.okou.ai/api/__brand-smoke__\thttps://app.okou.ai'
 }
 
-verify_domains() {
-  local pages_url="$1"
-  local curl_log="${test_root}/valid.curl.log"
-  local expected="${test_root}/valid.expected.log"
+verify_run() {
+  local name="$1"
+  local pages_url="$2"
+  shift 2
+  local curl_log="${test_root}/${name}.curl.log"
+  local expected="${test_root}/${name}.expected.log"
 
   PATH="${fake_bin}:$PATH" \
     MOCK_CURL_LOG="$curl_log" \
-    bash "$script" "$pages_url" > "${test_root}/valid.output"
+    bash "$script" "$pages_url" "$@" > "${test_root}/${name}.output"
 
   expected_log "$pages_url" > "$expected"
   if ! diff -u "$expected" "$curl_log"; then
-    fail "verifier did not check both brand auth redirects and CORS pairs"
+    fail "$name run did not verify both brand auth redirects and CORS pairs"
   fi
 }
 
-verify_domains https://preview.test
+verify_run default https://preview-default.test
+
+extra_argument_log="${test_root}/extra-argument.curl.log"
+: > "$extra_argument_log"
+if PATH="${fake_bin}:$PATH" \
+  MOCK_CURL_LOG="$extra_argument_log" \
+  bash "$script" https://preview-extra.test unexpected \
+    > "${test_root}/extra-argument.output" 2>&1; then
+  fail "extra argument succeeded"
+fi
+grep -Fq 'usage:' "${test_root}/extra-argument.output" ||
+  fail "extra argument did not print usage"
+[[ ! -s "$extra_argument_log" ]] || fail "extra argument reached curl"
 
 missing_log="${test_root}/missing.curl.log"
 : > "$missing_log"

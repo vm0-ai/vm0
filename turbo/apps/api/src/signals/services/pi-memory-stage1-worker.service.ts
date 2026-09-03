@@ -547,6 +547,8 @@ async function commitWorkResult(
   return await db.transaction(async (tx) => {
     return await commitPiMemoryStage1Candidate(tx, {
       memoryStorageId: work.memoryStorageId,
+      orgId: work.orgId,
+      userId: work.userId,
       piSessionId: work.piSessionId,
       sourceHistoryHash: work.sourceHistoryHash,
       leaseToken: work.leaseToken,

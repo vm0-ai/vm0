@@ -85,6 +85,7 @@ import {
   readmitPiMemoryStage1CandidateFixture,
   readPiConversationIdentityFixture,
   readPiMemoryStage1CandidateFixture,
+  setSyntheticPiMemoryStage1SelectionFixture,
 } from "../../../test-fixtures/pi-memory-stage1-candidates";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
@@ -152,7 +153,6 @@ import {
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setVm0BuiltInCandidateCooldownFixture,
   setRunAutonomyBudgetFixture,
-  setRunnerJobPiOwnershipTransferAsPreviousApi,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
 import { createRouteMocks } from "./helpers/route-test";
@@ -5092,6 +5092,9 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const orgId = requireOrgId(actor);
+    // External model admission depends on plan capabilities, not VM0 credits.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
       secret: "selected-deepseek-key",
@@ -5172,6 +5175,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
+    // Restore spendable credits before exercising the built-in branch.
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 1_000_000 });
+
     // A vm0 provider pin in an entitled org passes the spendable-credits
     // admission. The outcome past admission is race-dependent on the shared
     // database: 503 when no vm0 execution key exists (no public provisioning
@@ -5186,11 +5192,8 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
     ]);
-    if (!actor.orgId) {
-      throw new Error("Expected the built-in admission actor to have an org");
-    }
     await setOrgModelPolicyProviderTypeFixture({
-      orgId: actor.orgId,
+      orgId,
       model: "claude-sonnet-5",
       defaultProviderType: "built-in",
     });
@@ -5781,6 +5784,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const answers = [
       "first memory admission answer",
       "replacement memory admission answer",
+      "selection watermark replacement answer",
       "generation-disabled answer",
     ] as const;
     let modelCalls = 0;
@@ -5977,6 +5981,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: firstCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: firstCandidate.piSessionId,
         sourceHistoryHash: firstCandidate.sourceHistoryHash,
         leaseToken: staleLeaseToken,
@@ -6007,6 +6013,8 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: replacedCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: replacedCandidate.piSessionId,
         sourceHistoryHash: replacedCandidate.sourceHistoryHash,
         leaseToken: currentLeaseToken,
@@ -6017,9 +6025,110 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       commitPiMemoryStage1CandidateFixture({
         memoryStorageId: replacedCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
         piSessionId: replacedCandidate.piSessionId,
         sourceHistoryHash: replacedCandidate.sourceHistoryHash,
         leaseToken: currentLeaseToken,
+        committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeTruthy();
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      status: "succeeded_no_output",
+      rawMemory: null,
+      rolloutSummary: null,
+      lastSelectedSourceHistoryHash: null,
+    });
+
+    await setSyntheticPiMemoryStage1SelectionFixture({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceHistoryHash: replacedCandidate.sourceHistoryHash,
+    });
+    await expect(
+      readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
+    ).resolves.toMatchObject({
+      lastSelectedSourceHistoryHash: replacedCandidate.sourceHistoryHash,
+    });
+
+    const third = await sendChatRun(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        prompt: "replace the synthetic Phase 2 selection watermark",
+        model: "gpt-5.6-terra",
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+    await waitForRunStatus(actor, third.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    const thirdConversation = await readPiConversationIdentityFixture(
+      third.runId,
+    );
+    const thirdCandidate = await readPiMemoryStage1CandidateFixture({
+      orgId,
+      userId: actor.userId,
+    });
+    if (!thirdCandidate) {
+      throw new Error("Expected third Pi memory candidate generation");
+    }
+    expect(thirdCandidate).toMatchObject({
+      memoryStorageId: replacedCandidate.memoryStorageId,
+      piSessionId: replacedCandidate.piSessionId,
+      sourceRunId: third.runId,
+      sourceHistoryHash: thirdConversation.sourceHistoryHash,
+      status: "pending",
+      rawMemory: null,
+      rolloutSummary: null,
+      generatedAt: null,
+      lastSelectedSourceHistoryHash: null,
+    });
+    expect(thirdCandidate.sourceHistoryHash).not.toBe(
+      replacedCandidate.sourceHistoryHash,
+    );
+    await expect(
+      readSessionHistoryBlobRefCountFixture(
+        replacedCandidate.sourceHistoryHash,
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      readSessionHistoryBlobRefCountFixture(thirdCandidate.sourceHistoryHash),
+    ).resolves.toBe(2);
+
+    const thirdLeaseToken = randomUUID();
+    await leasePiMemoryStage1CandidateFixture({
+      memoryStorageId: thirdCandidate.memoryStorageId,
+      piSessionId: thirdCandidate.piSessionId,
+      sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+      leaseToken: thirdLeaseToken,
+      leaseExpiresAt: new Date(now() + 60_000),
+    });
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: thirdCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
+        piSessionId: thirdCandidate.piSessionId,
+        sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+        leaseToken: currentLeaseToken,
+        committedAt: nowDate(),
+        result: { kind: "succeeded_no_output" },
+      }),
+    ).resolves.toBeFalsy();
+    await expect(
+      commitPiMemoryStage1CandidateFixture({
+        memoryStorageId: thirdCandidate.memoryStorageId,
+        orgId,
+        userId: actor.userId,
+        piSessionId: thirdCandidate.piSessionId,
+        sourceHistoryHash: thirdCandidate.sourceHistoryHash,
+        leaseToken: thirdLeaseToken,
         committedAt: nowDate(),
         result: {
           kind: "succeeded",
@@ -6034,7 +6143,7 @@ describe("CHAT-02: model-first provider policies", () => {
       status: "succeeded",
       rawMemory: "bounded raw memory",
       rolloutSummary: "bounded rollout summary",
-      lastSelectedSourceHistoryHash: replacedCandidate.sourceHistoryHash,
+      lastSelectedSourceHistoryHash: null,
     });
 
     await updateFeatureSwitchesForUser(
@@ -6065,14 +6174,12 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     );
 
-    await deletePiMemoryStorageFixture(replacedCandidate.memoryStorageId);
+    await deletePiMemoryStorageFixture(thirdCandidate.memoryStorageId);
     await expect(
       readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
     ).resolves.toBeNull();
     await expect(
-      readSessionHistoryBlobRefCountFixture(
-        replacedCandidate.sourceHistoryHash,
-      ),
+      readSessionHistoryBlobRefCountFixture(thirdCandidate.sourceHistoryHash),
     ).resolves.toBe(1);
   }, 90_000);
 
@@ -8677,12 +8784,6 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       },
     });
-    const fallbackFirstTurnConfig =
-      fallbackClaim.claim.piLaunchConfig?.apiFirstTurn;
-    if (!fallbackFirstTurnConfig) {
-      throw new Error("Expected Pi API first-turn launch config");
-    }
-    expect(fallbackFirstTurnConfig).not.toHaveProperty("ownershipTransfer");
     const postProviderPrompt = "must fail after one provider request";
     const postProvider = await sendChatRun(actor, {
       agentId,
@@ -9238,7 +9339,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { content: "before parallel tools", sequenceNumber: 0 },
       { content: "after parallel tools", sequenceNumber: 3 },
     ]);
-    await setRunnerJobPiOwnershipTransferAsPreviousApi(context, run.runId);
     const claimed = await claimChatRun(runnerGroup, run.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
     expect(claimed.claim.piSessionId).toBe(run.threadId);
@@ -9251,7 +9351,6 @@ describe("CHAT-02: model-first provider policies", () => {
       schemaVersion: 2,
       apiFirstTurn: {
         schemaVersion: 1,
-        ownershipTransfer: { schemaVersion: 1 },
         baseSession: { sessionId: run.threadId, sha256: null },
         sandboxEventSequenceStart: 1,
       },
