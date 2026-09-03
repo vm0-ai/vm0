@@ -571,6 +571,12 @@ function connectorAccountSearchIsVisible(
   );
 }
 
+function connectorAccountNextCursor(
+  accounts: Loadable<ConnectorAccountList>,
+): string | null {
+  return accounts.state === "hasData" ? accounts.data.nextCursor : null;
+}
+
 function enrichedDefaultConnection(
   accounts: ConnectorAccountList,
   summarizedDefault: ConnectorAccountConnection | null,
@@ -606,10 +612,7 @@ export function ConnectorAccountManagerDialog({
   );
   const resetDrafts = useSet(resetConnectorAccountManagerDrafts$);
   const signal = useGet(pageSignal$);
-  const nextCursor =
-    accountsLoadable.state === "hasData"
-      ? accountsLoadable.data.nextCursor
-      : null;
+  const nextCursor = connectorAccountNextCursor(accountsLoadable);
   const defaultConnection =
     summariesLoadable.state === "hasData" &&
     accountsLoadable.state === "hasData" &&
