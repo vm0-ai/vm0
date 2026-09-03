@@ -103,6 +103,7 @@ import {
 import { cn } from "@okouai/ui/lib/utils";
 import {
   ElapsedTime,
+  getShortcutLabel,
   processShortcut,
   type KeyboardEventLike,
 } from "@okouai/ui";
@@ -135,6 +136,10 @@ import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import {
+  COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS,
+  COMPOSER_VOICE_INPUT_SHORTCUT,
+} from "../../lib/composer-voice-input-shortcut.ts";
 import {
   previewPresentationHtml,
   type PresentationPreviewDraft,
@@ -8985,6 +8990,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             onClick={handleClick}
             disabled={disabled}
             aria-label={micButtonAriaLabel(status)}
+            aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
           >
             {starting || transcribing ? (
               <span className="mic-starting-spinner" aria-hidden="true" />
@@ -9007,7 +9013,8 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          {micButtonTooltip(status)}
+          {micButtonTooltip(status)} (
+          {getShortcutLabel(COMPOSER_VOICE_INPUT_SHORTCUT)})
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -9103,6 +9110,7 @@ function VoiceDraftFooter({ status }: { status: "recording" | "processing" }) {
         size="sm"
         className="ml-auto min-w-14 shrink-0 bg-background"
         aria-label={stopRecordingLabel}
+        aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
         disabled={starting || !recording}
         onClick={() => {
           detach(stopAndTranscribe(signal), Reason.DomCallback);

@@ -8,6 +8,7 @@ import {
 } from "../../signals/chat-page/chat-shortcut-help.ts";
 import { i18n } from "../../i18n/index.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
+import { COMPOSER_VOICE_INPUT_SHORTCUT } from "../../lib/composer-voice-input-shortcut.ts";
 
 type ShortcutLabelId =
   | "blurComposer"
@@ -26,7 +27,8 @@ type ShortcutLabelId =
   | "sendMessage"
   | "setIcon"
   | "showShortcuts"
-  | "toggleSidebar";
+  | "toggleSidebar"
+  | "voiceInput";
 
 interface ShortcutDefinition {
   readonly key: string;
@@ -69,6 +71,7 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
     titleId: "composer",
     shortcuts: [
       { key: "enter", labelId: "sendMessage" },
+      { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
       { key: "escape", labelId: "blurComposer" },
     ],
   },
@@ -91,6 +94,7 @@ const AGENT_CHAT_SHORTCUT_SECTIONS = [
     titleId: "composer",
     shortcuts: [
       { key: "enter", labelId: "sendMessage" },
+      { key: COMPOSER_VOICE_INPUT_SHORTCUT, labelId: "voiceInput" },
       { key: "escape", labelId: "blurComposer" },
     ],
   },
@@ -190,6 +194,9 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     }),
     toggleSidebar: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.toggleSidebar;
+    }),
+    voiceInput: i18n.t(($) => {
+      return $.chat.voice.input;
     }),
   };
 }

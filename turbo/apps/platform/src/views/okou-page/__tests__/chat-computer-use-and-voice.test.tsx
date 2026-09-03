@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
@@ -22,7 +22,9 @@ import {
   COMPUTER_USE_SELECTION_THREAD_ID,
   COMPUTER_USE_SEND_THREAD_ID,
   COMPUTER_USE_SAVED_SELECTION_THREAD_ID,
+  mockChatLifecycleWithoutBrowserSession,
   mockMacUserAgentData,
+  mockResizeObserver,
   computerUsePermissions,
   buttonByText,
   linkByText,
@@ -34,6 +36,36 @@ import {
   composerElementFrom,
   placeCaretAfterText,
 } from "./chat-composer-test-helpers.ts";
+
+const WINDOWS_CHROME_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+const MAC_SAFARI_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
+  "(KHTML, like Gecko) Version/18.6 Safari/605.1.15";
+
+function pressVoiceInputShortcut(
+  target: HTMLElement,
+  options: {
+    readonly ctrlKey?: boolean;
+    readonly metaKey?: boolean;
+  },
+): boolean {
+  return fireEvent.keyDown(target, {
+    key: "E",
+    code: "KeyE",
+    shiftKey: true,
+    ...options,
+  });
+}
+
+async function enabledVoiceInputButton(): Promise<HTMLElement> {
+  const voiceInput = await screen.findByLabelText("Voice input");
+  await waitFor(() => {
+    expect(voiceInput).toBeEnabled();
+  });
+  return voiceInput;
+}
 
 function computerUseRow(switchName: string): HTMLElement {
   const row = screen
@@ -1024,6 +1056,150 @@ describe("chat lifecycle", () => {
     expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
+  it("routes Ctrl+Shift+E to the focused chat composer and defaults to main on Windows", async () => {
+    const mainThreadId = "e2000000-0000-4000-a000-000000000026";
+    const sideThreadId = "e2000000-0000-4000-a000-000000000028";
+    const transcripts = [
+      "Main keyboard transcript",
+      "Side keyboard transcript",
+    ];
+    let transcriptIndex = 0;
+    context.mocks.browser.userAgent(WINDOWS_CHROME_USER_AGENT);
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockResizeObserver();
+    const lifecycle = mockChatLifecycleWithoutBrowserSession({
+      threadId: mainThreadId,
+    });
+    lifecycle.setThreadList([
+      {
+        id: mainThreadId,
+        title: "Main voice thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: sideThreadId,
+        title: "Side voice thread",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      const text = transcripts[transcriptIndex];
+      transcriptIndex += 1;
+      return new Response(JSON.stringify({ text }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${mainThreadId}?sidebar=${sideThreadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const mainThread = document.querySelector<HTMLElement>(
+      `[data-chat-thread-container-id="${mainThreadId}"]`,
+    );
+    const sideThread = document.querySelector<HTMLElement>(
+      `[data-chat-thread-container-id="${sideThreadId}"]`,
+    );
+    if (!mainThread || !sideThread) {
+      throw new Error("Split chat threads not found");
+    }
+    const mainComposer = within(mainThread).getByPlaceholderText(PLACEHOLDER);
+    const sideComposer = within(sideThread).getByPlaceholderText(PLACEHOLDER);
+    const mainVoiceInput = within(mainThread).getByLabelText("Voice input");
+    await waitFor(() => {
+      expect(mainVoiceInput).toBeEnabled();
+    });
+    expect(mainVoiceInput).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Meta+Shift+E Control+Shift+E",
+    );
+
+    const outsideThread = screen.getAllByLabelText("New chat")[0];
+    if (!outsideThread) {
+      throw new Error("New chat control not found");
+    }
+    outsideThread.focus();
+    expect(
+      pressVoiceInputShortcut(outsideThread, { ctrlKey: true }),
+    ).toBeFalsy();
+
+    await waitFor(() => {
+      expect(
+        within(mainThread).getByLabelText("Stop recording"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      pressVoiceInputShortcut(outsideThread, { ctrlKey: true }),
+    ).toBeFalsy();
+
+    await waitFor(() => {
+      expect(mainComposer).toHaveTextContent("Main keyboard transcript");
+    });
+    expect(sideComposer).not.toHaveTextContent("Main keyboard transcript");
+
+    sideComposer.focus();
+    expect(
+      pressVoiceInputShortcut(sideComposer, { ctrlKey: true }),
+    ).toBeFalsy();
+    await waitFor(() => {
+      expect(
+        within(sideThread).getByLabelText("Stop recording"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      pressVoiceInputShortcut(sideComposer, { ctrlKey: true }),
+    ).toBeFalsy();
+    await waitFor(() => {
+      expect(sideComposer).toHaveTextContent("Side keyboard transcript");
+    });
+    expect(mainComposer).not.toHaveTextContent("Side keyboard transcript");
+  });
+
+  it("uses Command instead of Control for the agent chat voice shortcut on macOS", async () => {
+    context.mocks.browser.userAgent(MAC_SAFARI_USER_AGENT);
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycleWithoutBrowserSession();
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: "Mac transcript" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    await enabledVoiceInputButton();
+
+    expect(
+      pressVoiceInputShortcut(document.body, { ctrlKey: true }),
+    ).toBeTruthy();
+
+    expect(
+      pressVoiceInputShortcut(document.body, { metaKey: true }),
+    ).toBeFalsy();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    expect(
+      pressVoiceInputShortcut(document.body, { metaKey: true }),
+    ).toBeFalsy();
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("Mac transcript");
+    });
+  });
+
   it("replaces the composer footer while finishing a voice draft at the last selection", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000025";
@@ -1067,7 +1243,9 @@ describe("chat lifecycle", () => {
     expect(within(composerShell).queryByLabelText("Send")).toBeNull();
     expect(within(composerShell).queryByLabelText("Voice input")).toBeNull();
 
-    await user.click(finishRecording);
+    expect(
+      pressVoiceInputShortcut(document.body, { ctrlKey: true }),
+    ).toBeFalsy();
     await polishRequested.promise;
 
     await expect(

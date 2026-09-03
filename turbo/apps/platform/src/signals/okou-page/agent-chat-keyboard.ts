@@ -2,10 +2,26 @@ import { command } from "ccstate";
 import { matchShortcut } from "@okouai/ui";
 import { currentChatThreadListIds$ } from "../agent-chat.ts";
 import { onDomEventFn } from "../utils.ts";
+import {
+  clickComposerVoiceInput,
+  COMPOSER_VOICE_INPUT_SHORTCUT,
+} from "../../lib/composer-voice-input-shortcut.ts";
+import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { navigateToChat$ } from "./nav.ts";
 
 export const setupAgentChatKeyboardShortcuts$ = command(
   ({ get, set }, signal: AbortSignal) => {
+    setupGlobalShortcut(
+      {
+        [COMPOSER_VOICE_INPUT_SHORTCUT]: {
+          allowInEditableTarget: true,
+          run: () => {
+            clickComposerVoiceInput(document);
+          },
+        },
+      },
+      signal,
+    );
     document.addEventListener(
       "keydown",
       onDomEventFn(async (event: KeyboardEvent) => {

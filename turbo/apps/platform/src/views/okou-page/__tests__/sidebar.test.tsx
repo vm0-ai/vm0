@@ -2892,6 +2892,7 @@ describe("zero sidebar", () => {
       name: "Keyboard Shortcuts",
     });
     expect(within(dialog).getByText("Show shortcuts")).toBeInTheDocument();
+    expect(within(dialog).getByText("Voice input")).toBeInTheDocument();
   });
 
   it("ignores global shortcuts while a dialog is open", async () => {

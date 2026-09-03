@@ -26,6 +26,10 @@ import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
+import {
+  clickComposerVoiceInput,
+  COMPOSER_VOICE_INPUT_SHORTCUT,
+} from "../../lib/composer-voice-input-shortcut.ts";
 import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
@@ -177,6 +181,7 @@ interface ChatPageShortcutActions {
   scrollBottom: () => void | Promise<void>;
   scrollTop: () => void | Promise<void>;
   setEmoji: (emoji: string) => void | Promise<void>;
+  toggleVoiceInput: () => void | Promise<void>;
 }
 
 interface ChatPageShortcutSetup {
@@ -294,6 +299,13 @@ const setupChatPageShortcutActions$ = command(
               await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
             }
           },
+          toggleVoiceInput: () => {
+            const thread = focusedThread();
+            const container = thread ? get(thread.containerEl$) : null;
+            if (container) {
+              clickComposerVoiceInput(container);
+            }
+          },
         },
         doc,
       },
@@ -367,6 +379,7 @@ function createChatPageShortcutBindings({
   scrollBottom,
   scrollTop,
   setEmoji,
+  toggleVoiceInput,
 }: ChatPageShortcutActions): GlobalShortcutBindings {
   return {
     "shift+f2": {
@@ -384,6 +397,10 @@ function createChatPageShortcutBindings({
     "mod+shift+arrowdown": {
       allowInEditableTarget: true,
       run: navigateNext,
+    },
+    [COMPOSER_VOICE_INPUT_SHORTCUT]: {
+      allowInEditableTarget: true,
+      run: toggleVoiceInput,
     },
     "mod+arrowup": {
       allowInEditableTarget: true,
