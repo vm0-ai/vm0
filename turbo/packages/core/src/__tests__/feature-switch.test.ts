@@ -292,12 +292,14 @@ describe("feature switch override filtering", () => {
     expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
   });
 
-  it("ignores persisted overrides for removed switches", () => {
+  it("ignores removed Pi memory overrides while retaining the PiLoop control", () => {
     expect(
       filterFeatureSwitchOverrides({
-        zeroPeopleSearch: false,
+        piMemoryRecall: false,
+        piMemoryGeneration: false,
+        [FeatureSwitchKey.PiLoop]: true,
       }),
-    ).toStrictEqual({});
+    ).toStrictEqual({ [FeatureSwitchKey.PiLoop]: true });
   });
 });
 
