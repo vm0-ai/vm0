@@ -340,7 +340,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SocialDownloadDetectedMediaType]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "File a social download by the container detected from its leading bytes instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
+      "File a social download by the media kind detected from its leading file structure instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
     enabled: false,
     // Staff first: this decides the stored filename and content type, and the
     // extension is baked into the public artifact URL, so widen only after real
