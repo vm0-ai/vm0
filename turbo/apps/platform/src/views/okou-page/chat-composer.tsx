@@ -142,11 +142,10 @@ import {
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
-import {
-  connectorAccountEffectiveLabel,
-  type ConnectorAccountConnection,
-  type ConnectorAccountSelection,
-  type ConnectorAccountTarget,
+import type {
+  ConnectorAccountConnection,
+  ConnectorAccountSelection,
+  ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
@@ -208,6 +207,7 @@ import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
   imageRecognitionAvailable$,
+  voiceDraftEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -290,6 +290,7 @@ import {
   findWebsiteTemplateItem,
 } from "../../lib/platform-template-items.ts";
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
+import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -7068,101 +7069,25 @@ function inlineComposerTemplatePicker({
   };
 }
 
-function composerTemplateAttachmentLifecycleKey(
-  attachment: ComposerTemplateAttachment | undefined,
-): string {
-  return attachment
-    ? JSON.stringify([
-        attachment.type,
-        attachment.title,
-        attachment.category,
-        attachment.previewImageUrl,
-      ])
-    : "none";
-}
-
-function ComposerTemplateAttachmentSync({
+function ComposerImportedTemplateUrlRefreshLifecycle({
   signals,
 }: {
   signals: ComposerSignals;
 }) {
-  const picker = useComposerTemplatePicker(signals);
-  const onDraftChange = useComposerDraftChange(signals);
-  const runtime = signals.template.templatePreview;
-  const setLifecycleRef = useSet(
-    signals.template.setTemplateAttachmentLifecycleRef$,
-  );
   const setImportedTemplateUrlRefreshLifecycleRef = useSet(
     signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
   );
-  const setOpen = useSet(signals.template.setTemplatePickerOpen$);
-  const setCategory = useSet(signals.template.setTemplatePickerCategory$);
-  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(
-    signals.template.setTemplatePickerReferenceValue$,
-  );
-  const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
-  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates = useImportedPresentationTemplates(signals);
-  const attachment = selectedComposerTemplateAttachment(
-    picker?.value,
-    importedTemplates,
-  );
-  const openPicker = (category: string) => {
-    prewarmTemplatePreviewImages(
-      runtime,
-      initialTemplatePreviewImageUrlsForCategory({
-        category,
-        hasPptTab: true,
-        hasIllustrationTab: true,
-        hasVideoTab: true,
-        presentationThemeIdBySlug: cardThemeIdBySlug,
-      }),
-      templatePreviewPrewarmImageCountForCategory(category),
-    );
-    setSearch("");
-    setPreviewSlug(null);
-    setReferenceValue(readSelectedTemplate() ?? null);
-    setCategory(category);
-    setOpen(true);
-  };
-
   return (
-    <>
-      <span
-        ref={setImportedTemplateUrlRefreshLifecycleRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
-      />
-      <button
-        key={composerTemplateAttachmentLifecycleKey(attachment)}
-        ref={setLifecycleRef}
-        type="button"
-        hidden
-        data-template-type={attachment?.type}
-        data-template-title={attachment?.title}
-        data-template-category={attachment?.category}
-        data-template-preview-url={attachment?.previewImageUrl}
-        onClick={(event) => {
-          const action = event.currentTarget.dataset.templateAction;
-          if (action === "open") {
-            openPicker(
-              event.currentTarget.dataset.templateCategory ?? "slides",
-            );
-          } else if (action === "remove") {
-            picker?.onChange(undefined);
-            onDraftChange?.();
-          }
-        }}
-      />
-    </>
+    <span
+      ref={setImportedTemplateUrlRefreshLifecycleRef}
+      aria-hidden="true"
+      className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+    />
   );
 }
 
 function TemplatePickerButton({
   picker,
-  onOpen,
   hasPptTab,
   presentationItems,
   hasIllustrationTab,
@@ -7173,7 +7098,6 @@ function TemplatePickerButton({
   signals,
 }: {
   picker: ComposerTemplatePicker;
-  onOpen: () => void;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
@@ -7191,11 +7115,10 @@ function TemplatePickerButton({
   const category = useGet(signals.template.templatePickerCategory$);
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
-  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
   );
+  const openTemplatePicker = useSet(signals.template.openTemplatePicker$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates = useImportedPresentationTemplates(signals);
   const selectedTitle = selectedTemplateTitle(picker.value, importedTemplates);
@@ -7243,12 +7166,11 @@ function TemplatePickerButton({
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
               onClick={() => {
-                onOpen();
                 prewarmPicker();
-                setSearch("");
-                setPreviewSlug(null);
-                setReferenceValue(null);
-                setOpen(true);
+                openTemplatePicker({
+                  kind: "insert",
+                  category: selectedCategory,
+                });
               }}
             >
               <SwatchBook size={18} aria-hidden="true" />
@@ -7301,13 +7223,9 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
   const hasAvatarTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  const prepareTemplateInsertion = useSet(
-    signals.template.prepareTemplateInsertion$,
-  );
   return (
     <TemplatePickerButton
       picker={picker}
-      onOpen={prepareTemplateInsertion}
       hasPptTab={hasPptTab}
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
@@ -7964,16 +7882,9 @@ function ComposerConnectorAccountMenu({
     connectorAccountTargetKey(menuTarget) === connectorAccountTargetKey(target),
   );
   const effectiveConnection = explicit ? selectedConnection : defaultConnection;
+  const resolveAccountLabel = useConnectorAccountLabel();
   const accountLabel = effectiveConnection
-    ? connectorAccountEffectiveLabel(
-        effectiveConnection,
-        t(
-          ($) => {
-            return $.connectors.accounts.fallbackName;
-          },
-          { id: effectiveConnection.id.slice(0, 8) },
-        ),
-      )
+    ? resolveAccountLabel(effectiveConnection)
     : t(($) => {
         return $.chat.connectors.noUsableAccount;
       });
@@ -8099,17 +8010,7 @@ function ComposerConnectorAccountChoices({
     "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     saving && "cursor-default opacity-50",
   );
-  const accountLabel = (connection: ConnectorAccountConnection): string => {
-    return connectorAccountEffectiveLabel(
-      connection,
-      t(
-        ($) => {
-          return $.connectors.accounts.fallbackName;
-        },
-        { id: connection.id.slice(0, 8) },
-      ),
-    );
-  };
+  const accountLabel = useConnectorAccountLabel();
   const defaultLabel = defaultConnection
     ? accountLabel(defaultConnection)
     : t(($) => {
@@ -9040,11 +8941,18 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
   const startRec = useSet(startRecording$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
   const appendText = useSet(signals.editor.appendText$);
+  const startVoiceDraft = useSet(signals.voiceDraft.start$);
+  const appendVoiceDraftTranscript = useSet(
+    signals.voiceDraft.appendTranscript$,
+  );
+  const markVoiceDraftFailed = useSet(signals.voiceDraft.markFailed$);
+  const finishVoiceDraft = useSet(signals.voiceDraft.finish$);
   const saveDraft = useSet(signals.draft.save$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
@@ -9079,8 +8987,34 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
       detach(openQuotaRecovery(signal), Reason.DomCallback);
       return;
     }
+    if (voiceDraftEnabled) {
+      const id = startVoiceDraft();
+      detach(
+        startRec(
+          (text) => {
+            appendVoiceDraftTranscript(id, text);
+            detach(saveDraft(signal), Reason.DomCallback);
+          },
+          quota.limit === null,
+          {
+            finish: async () => {
+              await finishVoiceDraft(id, false, signal);
+              signal.throwIfAborted();
+              await saveDraft(signal);
+            },
+            fail: async () => {
+              markVoiceDraftFailed(id);
+              await saveDraft(signal);
+            },
+          },
+          signal,
+        ),
+        Reason.DomCallback,
+      );
+      return;
+    }
     detach(
-      startRec(onTranscribed, quota.limit === null, signal),
+      startRec(onTranscribed, quota.limit === null, undefined, signal),
       Reason.DomCallback,
     );
   };
@@ -11032,7 +10966,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
     >
       <CardContent className="p-0">
         <div className="flex flex-col">
-          <ComposerTemplateAttachmentSync signals={signals} />
+          <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
           {/* Edge inset is 16px on all four sides so it matches the editor's

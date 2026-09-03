@@ -7,6 +7,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { platformOkouWordmarkDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -84,8 +85,10 @@ describe("shared thread page", () => {
       return link.getAttribute("aria-label") === "Okou";
     });
     expect(brandLink).toBeInTheDocument();
-    expect(brandLink?.textContent).toBe("Okou");
-    expect(screen.getByRole("img", { name: "Okou" })).toBeInTheDocument();
+    expect(brandLink?.querySelector("img")).toHaveAttribute(
+      "src",
+      platformOkouWordmarkDarkImg,
+    );
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
     expect(

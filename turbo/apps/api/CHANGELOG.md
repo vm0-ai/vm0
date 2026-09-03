@@ -1,5 +1,74 @@
 # Changelog
 
+## [1.537.0](https://github.com/vm0-ai/vm0/compare/api-v1.536.0...api-v1.537.0) (2026-09-03)
+
+
+### Features
+
+* **chat:** batch shared worker event catch-up ([#31261](https://github.com/vm0-ai/vm0/issues/31261)) ([127f8e8](https://github.com/vm0-ai/vm0/commit/127f8e8cfc5cc91750a5ca7a1ac90529f10d4ef9))
+* **pi-memory:** compose bounded phase 2 archive worker ([#31335](https://github.com/vm0-ai/vm0/issues/31335)) ([c8662dc](https://github.com/vm0-ai/vm0/commit/c8662dccea14112a2b2038cb26f64336e22e8a1c))
+* polish voice drafts before sending ([#31190](https://github.com/vm0-ai/vm0/issues/31190)) ([12b2532](https://github.com/vm0-ai/vm0/commit/12b2532a6400c7c62ba705a782e3e209f0440091))
+
+
+### Bug Fixes
+
+* **api:** avoid locking empty active-input polls ([#31329](https://github.com/vm0-ai/vm0/issues/31329)) ([38884ae](https://github.com/vm0-ai/vm0/commit/38884ae93f6fcf6ef6e00a356663f1276fa97050))
+* **platform:** use selected drive account for artifact readiness ([#31316](https://github.com/vm0-ai/vm0/issues/31316)) ([65d4ac5](https://github.com/vm0-ai/vm0/commit/65d4ac58bb3df45a52c97658bde0f594f554b6ad))
+
+
+### Refactoring
+
+* **contracts:** accept forward-compatible failure reasons ([#31305](https://github.com/vm0-ai/vm0/issues/31305)) ([abf08e4](https://github.com/vm0-ai/vm0/commit/abf08e49f5d261b1197975b5fa2bc6c1e6a7fbca))
+
+
+### Performance Improvements
+
+* **api:** reuse persisted plan capabilities ([#31320](https://github.com/vm0-ai/vm0/issues/31320)) ([b0ebcef](https://github.com/vm0-ai/vm0/commit/b0ebcef5734e0f73672eb8c95780e8946fa53592))
+* **api:** select goal from authoritative queue head ([#31327](https://github.com/vm0-ai/vm0/issues/31327)) ([9bd0c1a](https://github.com/vm0-ai/vm0/commit/9bd0c1a26eaecdbb995db99c14cf988517e7d10e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.397.0
+    * @okouai/core bumped to 8.613.0
+    * @okouai/db bumped to 1.238.3
+    * @okouai/pi-agent-runtime bumped to 1.15.0
+
+## [1.536.0](https://github.com/vm0-ai/vm0/compare/api-v1.535.1...api-v1.536.0) (2026-09-03)
+
+
+### Features
+
+* launch morning brief for future workspace creators ([#31289](https://github.com/vm0-ai/vm0/issues/31289)) ([8bf2a15](https://github.com/vm0-ai/vm0/commit/8bf2a154bdb38424d1e466280c86c123a3b89334))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.612.0
+    * @okouai/db bumped to 1.238.2
+    * @okouai/pi-agent-runtime bumped to 1.14.4
+
+## [1.535.1](https://github.com/vm0-ai/vm0/compare/api-v1.535.0...api-v1.535.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **models:** remove claude fable 5 from new workspace defaults ([#31281](https://github.com/vm0-ai/vm0/issues/31281)) ([699e37f](https://github.com/vm0-ai/vm0/commit/699e37fdc9986b5ded7108d7aa46060b12cfa43f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.3
+    * @okouai/core bumped to 8.611.6
+    * @okouai/db bumped to 1.238.1
+    * @okouai/pi-agent-runtime bumped to 1.14.3
+
 ## [1.535.0](https://github.com/vm0-ai/vm0/compare/api-v1.534.3...api-v1.535.0) (2026-09-03)
 
 

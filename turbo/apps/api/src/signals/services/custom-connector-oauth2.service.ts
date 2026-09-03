@@ -525,14 +525,9 @@ function isCustomOAuthConnector(
   connector: CustomConnectorRow,
 ): connector is CustomConnectorRow & {
   readonly authMode: "oauth";
-  readonly oauthSetup: "custom";
   readonly oauthConfig: CustomConnectorOAuthConfigRow;
 } {
-  return (
-    connector.authMode === "oauth" &&
-    connector.oauthSetup === "custom" &&
-    connector.oauthConfig !== null
-  );
+  return connector.authMode === "oauth" && connector.oauthConfig !== null;
 }
 
 function isAutomaticOAuthConnector(
@@ -540,13 +535,11 @@ function isAutomaticOAuthConnector(
 ): connector is CustomConnectorRow & {
   readonly kind: "mcp";
   readonly authMode: "automatic";
-  readonly oauthSetup: null;
   readonly oauthConfig: null;
 } {
   return (
     connector.kind === "mcp" &&
     connector.authMode === "automatic" &&
-    connector.oauthSetup === null &&
     connector.oauthConfig === null
   );
 }
@@ -600,7 +593,6 @@ function connectorConnectionMutationFailure(
 function prepareCustomOAuthStart(
   connector: CustomConnectorRow & {
     readonly authMode: "oauth";
-    readonly oauthSetup: "custom";
     readonly oauthConfig: CustomConnectorOAuthConfigRow;
   },
   args: StartCustomConnectorOAuth2Args,
@@ -649,7 +641,6 @@ async function prepareAutomaticOAuthStart(
     readonly connector: CustomConnectorRow & {
       readonly kind: "mcp";
       readonly authMode: "automatic";
-      readonly oauthSetup: null;
       readonly oauthConfig: null;
     };
     readonly args: StartCustomConnectorOAuth2Args;
@@ -838,7 +829,6 @@ async function persistAutomaticNoAuthConnection(
     readonly connector: CustomConnectorRow & {
       readonly kind: "mcp";
       readonly authMode: "automatic";
-      readonly oauthSetup: null;
       readonly oauthConfig: null;
     };
     readonly args: StartCustomConnectorOAuth2Args;
@@ -1705,11 +1695,7 @@ async function resolveCustomConnectorOAuth2AccessToken(
   args: ResolveCustomConnectorOAuth2AccessTokenArgs,
   signal: AbortSignal,
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
-  if (
-    args.connector.authMode !== "oauth" ||
-    args.connector.oauthSetup !== "custom" ||
-    !args.connector.oauthConfig
-  ) {
+  if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
     return { kind: "unavailable" };
   }
   const oauthConfig = args.connector.oauthConfig;
@@ -1863,7 +1849,6 @@ async function refreshLockedAutomaticOAuthAccessToken(
     readonly connector: CustomConnectorRow & {
       readonly kind: "mcp";
       readonly authMode: "automatic";
-      readonly oauthSetup: null;
     };
     readonly initialConnection: StoredConnection;
     readonly initialAccessToken: ReturnType<typeof storedConnectionAccessToken>;

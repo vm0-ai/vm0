@@ -73,6 +73,12 @@ flow.metadata.update([*{(metadata_keys.FIREWALL_ACTION, "ALLOW"): None}])
 flow.metadata.update(
     [*{(metadata_keys.FIREWALL_PERMISSION, value): None for value in rows}]
 )
+flow.metadata.update([*dict({(metadata_keys.SANDBOX_RUN_ID, "run-1"): None})])
+flow.metadata.update(list(dict({(metadata_keys.FIREWALL_NAME, "github"): None})))
+flow.metadata.update([*dict([((metadata_keys.FIREWALL_ACTION, "ALLOW"), None)])])
+flow.metadata.update([*dict({"sandbox_run_id": "run-1"})])
+flow.metadata.update([*dict({("sandbox_run_id", "run-1", "extra"): None})])
+flow.metadata.update([*dict([("sandbox_run_id", "run-1")])])
 flow.metadata.update([*dict.fromkeys([("external", "sandbox_run_id")])])
 flow.metadata.update(zip([metadata_keys.SANDBOX_RUN_ID], ["run-1"]))
 flow.metadata.update(zip(dict.fromkeys([metadata_keys.SANDBOX_RUN_ID]), ["run-1"]))

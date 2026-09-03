@@ -242,6 +242,13 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
+async function closeAccountMenu(): Promise<void> {
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+}
+
 function setupAddAccountPage(): void {
   prepareDefaultAgent();
   detachedSetupPage({
@@ -999,6 +1006,60 @@ describe("zero sidebar account menu", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it("shows when the soonest Codex reset expires", async () => {
+    mockAdminAccountSidebar();
+    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider({
+        subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:00:00.000Z",
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    const menu = await openAccountMenu();
+    const panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(
+      within(panel).getByText("2 resets left · expires in 3d"),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the expiry when no Codex reset is left", async () => {
+    mockAdminAccountSidebar();
+    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider({
+        subscriptionResetCredits: 0,
+        subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:00:00.000Z",
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+    });
+
+    const menu = await openAccountMenu();
+    const panel = await within(menu).findByTestId("account-menu-subscriptions");
+    expect(within(panel).getByText("0 resets left")).toBeInTheDocument();
+    expect(within(panel).queryByText(/expires/)).not.toBeInTheDocument();
+  });
+
   it("resets Codex usage from the account menu", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
@@ -1058,12 +1119,22 @@ describe("zero sidebar account menu", () => {
     expect(within(panel).getByText("1 reset left")).toBeInTheDocument();
   });
 
-  it("refreshes account menu subscriptions when the menu opens", async () => {
+  it("refreshes account menu subscriptions once the last read goes stale", async () => {
     mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
+    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
+
+    let providers = [
       connectedPersonalCodexProvider(),
       connectedPersonalClaudeCodeProvider(),
-    ]);
+    ];
+    let listCalls = 0;
+    context.mocks.api(
+      personalModelProvidersMainContract.list,
+      ({ respond }) => {
+        listCalls += 1;
+        return respond(200, { modelProviders: providers });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -1079,8 +1150,9 @@ describe("zero sidebar account menu", () => {
     let menu = await openAccountMenu();
     let panel = await within(menu).findByTestId("account-menu-subscriptions");
     expect(within(panel).getByText("82%")).toBeInTheDocument();
+    const callsAfterFirstOpen = listCalls;
 
-    context.mocks.data.personalModelProviders([
+    providers = [
       connectedPersonalCodexProvider({
         subscriptionUsage: {
           fiveHour: {
@@ -1098,14 +1170,18 @@ describe("zero sidebar account menu", () => {
         },
       }),
       connectedPersonalClaudeCodeProvider(),
-    ]);
+    ];
 
+    await closeAccountMenu();
+    menu = await openAccountMenu();
+    panel = await within(menu).findByTestId("account-menu-subscriptions");
+
+    expect(within(panel).getByText("82%")).toBeInTheDocument();
     expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
+    expect(listCalls).toBe(callsAfterFirstOpen);
 
+    mockNow(context.signal, new Date("2030-01-01T00:01:01.000Z"));
+    await closeAccountMenu();
     menu = await openAccountMenu();
     panel = await within(menu).findByTestId("account-menu-subscriptions");
 
@@ -1113,10 +1189,12 @@ describe("zero sidebar account menu", () => {
       expect(within(panel).getByText("64%")).toBeInTheDocument();
       expect(within(panel).getByText("30%")).toBeInTheDocument();
     });
+    expect(listCalls).toBeGreaterThan(callsAfterFirstOpen);
   });
 
   it("keeps loaded subscription usage visible while a menu refresh is pending", async () => {
     mockAdminAccountSidebar();
+    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
     ]);
@@ -1158,6 +1236,7 @@ describe("zero sidebar account menu", () => {
       },
     );
 
+    mockNow(context.signal, new Date("2030-01-01T00:01:01.000Z"));
     menu = await openAccountMenu();
     panel = await within(menu).findByTestId("account-menu-subscriptions");
 

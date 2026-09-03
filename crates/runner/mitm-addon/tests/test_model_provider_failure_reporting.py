@@ -5,7 +5,7 @@ import hashlib
 import json
 import threading
 import zlib
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 from unittest.mock import patch
@@ -709,6 +709,55 @@ def test_report_transport_failure_logs_omission_and_reclaims_capacity(
         flow_id=flow.id,
         reason="delivery_failed",
         error_type="ConnectionError",
+    )
+
+
+def test_drain_waits_for_completed_report_callback_cleanup(
+    tmp_path,
+    real_flow,
+    model_provider_failure_api,
+):
+    release_delivery = threading.Event()
+    callback_started = threading.Event()
+    release_callback = threading.Event()
+    original_finish_report = model_provider_failure._finish_report
+
+    def hold_callback_cleanup(
+        future: Future[int],
+        context: model_provider_failure._ReportContext,
+    ) -> None:
+        callback_started.set()
+        release_callback.wait()
+        original_finish_report(future, context)
+
+    model_provider_failure_api.queue_response(204, release_event=release_delivery)
+    with patch.object(model_provider_failure, "_finish_report", hold_callback_cleanup):
+        try:
+            _enqueue_provider_unavailable(real_flow, tmp_path / "callback-cleanup.jsonl")
+            assert model_provider_failure_api.wait_for_request_count(1)
+            release_delivery.set()
+            wait_for_event(
+                callback_started,
+                timeout=1,
+                message="failure report callback did not begin cleanup",
+            )
+
+            with pytest.raises(
+                TimeoutError,
+                match="1 model-provider failure report callbacks did not finish",
+            ):
+                model_provider_failure.drain_reports_for_tests(timeout=0)
+        finally:
+            release_delivery.set()
+            release_callback.set()
+            model_provider_failure.drain_reports_for_tests()
+
+    with model_provider_failure._report_lock:
+        assert not model_provider_failure._report_futures
+    _assert_full_report_capacity(
+        real_flow,
+        tmp_path / "callback-cleanup-recovery.jsonl",
+        model_provider_failure_api,
     )
 
 

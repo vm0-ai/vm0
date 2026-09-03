@@ -910,6 +910,65 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn periodic_refresh_recovers_at_next_interval_after_failure() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let cache_path = PathBuf::from("builtin-firewall-catalog-cache.json");
+        let attempts_for_refresh = Arc::clone(&attempts);
+        let refresh = move |_cancel: CancellationToken| {
+            let attempts = Arc::clone(&attempts_for_refresh);
+            async move {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                if attempt == 1 {
+                    Err(RunnerError::Api("periodic refresh failed".to_string()))
+                } else {
+                    Ok(())
+                }
+            }
+        };
+
+        let interval = Duration::from_secs(60);
+        let future = run_periodic_refresh_with_interval(refresh, &cache_path, &cancel, interval);
+        tokio::pin!(future);
+
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("periodic refresh should wait for the interval"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 0);
+
+        tokio::time::advance(interval).await;
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("periodic refresh should continue after failure"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        tokio::time::advance(interval - Duration::from_nanos(1)).await;
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("periodic refresh should wait for the next interval"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        tokio::time::advance(Duration::from_nanos(1)).await;
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("periodic refresh should keep running after recovery"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), future)
+            .await
+            .expect("periodic refresh should stop after cancellation");
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn periodic_refresh_finishes_in_progress_write_before_cancel_exit() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let entered = Arc::new(tokio::sync::Notify::new());

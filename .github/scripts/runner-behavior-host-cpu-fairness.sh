@@ -53,6 +53,8 @@ ROOTFS_HASH=$2
 EXECUTION_KEY=$3
 BASE_DIR="/var/lib/vm0-runner/host-cpu-fairness/${EXECUTION_KEY}"
 UNIT="vm0-host-cpu-managed-${EXECUTION_KEY}"
+LOCK_DIR="/run/lock/vm0-host-cpu-fairness"
+LOCK_FD=""
 
 case "$EXECUTION_KEY" in
   ''|*[!a-zA-Z0-9._-]*)
@@ -65,8 +67,57 @@ cleanup() {
   sudo systemctl stop "${UNIT}.service" 2>/dev/null || true
   sudo rm -f -- "$TEST_BIN"
   sudo rm -rf -- "$BASE_DIR"
+  if [ -n "$LOCK_FD" ]; then
+    flock --unlock "$LOCK_FD" || true
+    exec {LOCK_FD}>&-
+  fi
 }
 trap cleanup EXIT
+
+mapfile -t CPU_CANDIDATES < <(
+  LC_ALL=C lscpu --parse=CPU,ONLINE | awk -F, '$2 == "Y" { print $1 }'
+)
+if [ "${#CPU_CANDIDATES[@]}" -eq 0 ]; then
+  echo "host has no online CPUs" >&2
+  exit 1
+fi
+for cpu in "${CPU_CANDIDATES[@]}"; do
+  if [[ ! "$cpu" =~ ^[0-9]+$ ]]; then
+    echo "invalid online CPU: $cpu" >&2
+    exit 1
+  fi
+done
+if [ "${#CPU_CANDIDATES[@]}" -gt 1 ]; then
+  NONZERO_CPUS=()
+  for cpu in "${CPU_CANDIDATES[@]}"; do
+    if [ "$cpu" -ne 0 ]; then
+      NONZERO_CPUS+=("$cpu")
+    fi
+  done
+  CPU_CANDIDATES=("${NONZERO_CPUS[@]}")
+fi
+
+read -r SELECTION_HASH _ < <(printf '%s' "$EXECUTION_KEY" | cksum)
+START_INDEX=$((SELECTION_HASH % ${#CPU_CANDIDATES[@]}))
+sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$LOCK_DIR"
+
+SELECTED_CPU=""
+for ((offset = 0; offset < ${#CPU_CANDIDATES[@]}; offset++)); do
+  candidate_index=$(((START_INDEX + offset) % ${#CPU_CANDIDATES[@]}))
+  candidate_cpu=${CPU_CANDIDATES[$candidate_index]}
+  exec {candidate_lock_fd}>"${LOCK_DIR}/cpu-${candidate_cpu}.lock"
+  if flock --nonblock "$candidate_lock_fd"; then
+    SELECTED_CPU=$candidate_cpu
+    LOCK_FD=$candidate_lock_fd
+    break
+  fi
+  exec {candidate_lock_fd}>&-
+done
+if [ -z "$SELECTED_CPU" ]; then
+  echo "no online host CPU is available for the fairness test" >&2
+  exit 1
+fi
+echo "HOST_CPU_SELECTED_CPU=$SELECTED_CPU"
 
 SYSTEMD_VERSION=$(systemd --version | awk 'NR == 1 { print $2 }')
 case "$SYSTEMD_VERSION" in
@@ -104,7 +155,7 @@ sudo systemd-run \
   --property=Type=exec \
   --property=Delegate=cpu \
   --property=DelegateSubgroup=control \
-  --property=AllowedCPUs=0 \
+  "--property=AllowedCPUs=${SELECTED_CPU}" \
   --property=TimeoutStopSec=60 \
   "--setenv=VM0_HOST_CPU_TEST_FIRECRACKER=${FIRECRACKER}" \
   "--setenv=VM0_HOST_CPU_TEST_KERNEL=${KERNEL}" \

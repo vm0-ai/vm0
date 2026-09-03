@@ -16,6 +16,7 @@ import {
 import { focusAuthV2HeadingRef$ } from "../../signals/auth-v2-presentation.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import { theme$ } from "../../signals/theme.ts";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
 const AUTH_V2_TITLE_ID = "auth-v2-title";
 const AUTH_V2_DESCRIPTION_ID = "auth-v2-description";
@@ -78,7 +79,15 @@ export function AuthV2Shell({
               choiceLayout && "px-10 py-8",
             )}
           >
-            {authBrand.brandName === "VM0" ? (
+            {authBrand.brandName === "Okou" ? (
+              <span className="mb-5" data-testid="auth-v2-brand-logo">
+                <ProductBrandMark
+                  brandName={authBrand.brandName}
+                  decorative
+                  size="compact"
+                />
+              </span>
+            ) : (
               <img
                 alt=""
                 aria-hidden="true"
@@ -91,7 +100,7 @@ export function AuthV2Shell({
                 }
                 width={82}
               />
-            ) : null}
+            )}
             <div className="w-full space-y-1">
               <h1
                 className="text-lg font-medium text-foreground outline-none"

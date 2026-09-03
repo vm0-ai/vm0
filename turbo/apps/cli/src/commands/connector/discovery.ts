@@ -1,10 +1,14 @@
 import chalk from "chalk";
+import type { ConnectorAccountTarget } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { CustomConnectorResponse } from "@okouai/api-contracts/contracts/custom-connectors";
-import type { ConnectorCatalogStatus } from "../../lib/api/domains/connectors";
+import type {
+  ConnectorCatalogItem,
+  ConnectorCatalogStatus,
+} from "../../lib/api/domains/connectors";
 import type { ConnectorDiscoveryAgentContext } from "./agent-context";
 import { renderConnectedAsCell } from "./connected-as";
 
-interface CatalogConnectorDiscoveryItem {
+interface CatalogConnectorDiscoveryDefinition {
   readonly kind: "catalog";
   readonly slug: string;
   readonly label: string;
@@ -12,7 +16,10 @@ interface CatalogConnectorDiscoveryItem {
   readonly category: string;
   readonly tags: readonly string[];
   readonly generation: readonly string[];
-  readonly authMethods: ConnectorCatalogStatus["authMethods"];
+  readonly authMethods: ConnectorCatalogItem["authMethods"];
+}
+
+interface CatalogConnectorDiscoveryItem extends CatalogConnectorDiscoveryDefinition {
   readonly catalogConnector: ConnectorCatalogStatus;
 }
 
@@ -32,6 +39,41 @@ export type ConnectorDiscoveryItem =
   | CatalogConnectorDiscoveryItem
   | CustomConnectorDiscoveryItem;
 
+export type ConnectorDiscoveryDefinition =
+  | CatalogConnectorDiscoveryDefinition
+  | CustomConnectorDiscoveryItem;
+
+function catalogDiscoveryDefinition(
+  connector: ConnectorCatalogItem,
+): CatalogConnectorDiscoveryDefinition {
+  return {
+    kind: "catalog",
+    slug: connector.slug,
+    label: connector.label,
+    description: connector.description,
+    category: connector.category,
+    tags: connector.tags,
+    generation: connector.generation,
+    authMethods: connector.authMethods,
+  };
+}
+
+function customDiscoveryItem(
+  connector: CustomConnectorResponse,
+): CustomConnectorDiscoveryItem {
+  return {
+    kind: "custom",
+    slug: connector.slug,
+    label: connector.displayName,
+    description: "",
+    category: "custom",
+    tags: [],
+    generation: [],
+    authMethods: [],
+    customConnector: connector,
+  };
+}
+
 export function connectorDiscoveryItems(
   catalogConnectors: readonly ConnectorCatalogStatus[],
   customConnectors: readonly CustomConnectorResponse[],
@@ -39,31 +81,30 @@ export function connectorDiscoveryItems(
   return [
     ...catalogConnectors.map((connector): CatalogConnectorDiscoveryItem => {
       return {
-        kind: "catalog",
-        slug: connector.slug,
-        label: connector.label,
-        description: connector.description,
-        category: connector.category,
-        tags: connector.tags,
-        generation: connector.generation,
-        authMethods: connector.authMethods,
+        ...catalogDiscoveryDefinition(connector),
         catalogConnector: connector,
       };
     }),
-    ...customConnectors.map((connector): CustomConnectorDiscoveryItem => {
-      return {
-        kind: "custom",
-        slug: connector.slug,
-        label: connector.displayName,
-        description: "",
-        category: "custom",
-        tags: [],
-        generation: [],
-        authMethods: [],
-        customConnector: connector,
-      };
-    }),
+    ...customConnectors.map(customDiscoveryItem),
   ];
+}
+
+export function connectorDiscoveryDefinitions(
+  catalogConnectors: readonly ConnectorCatalogItem[],
+  customConnectors: readonly CustomConnectorResponse[],
+): readonly ConnectorDiscoveryDefinition[] {
+  return [
+    ...catalogConnectors.map(catalogDiscoveryDefinition),
+    ...customConnectors.map(customDiscoveryItem),
+  ];
+}
+
+export function connectorDiscoveryTarget(
+  connector: ConnectorDiscoveryDefinition,
+): ConnectorAccountTarget {
+  return connector.kind === "catalog"
+    ? { kind: "builtin", connectorSlug: connector.slug }
+    : { kind: "custom", customConnectorId: connector.customConnector.id };
 }
 
 export function renderConnectorDiscoveryConnectedAsCell(
@@ -84,7 +125,7 @@ export function renderConnectorDiscoveryConnectedAsCell(
 }
 
 export function isConnectorDiscoveryAuthorized(
-  connector: ConnectorDiscoveryItem,
+  connector: ConnectorDiscoveryDefinition,
   agentContext: ConnectorDiscoveryAgentContext,
 ): boolean {
   if (connector.kind === "catalog") {

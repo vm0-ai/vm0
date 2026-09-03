@@ -56,15 +56,6 @@ assert_no_match() {
   fi
 }
 
-assert_stderr_excludes_values() {
-  local value
-  for value in "$@"; do
-    if grep -Fq -- "$value" "$stderr_file"; then
-      fail "collector diagnostics exposed an ignored value"
-    fi
-  done
-}
-
 assert_stderr_empty() {
   [ ! -s "$stderr_file" ] || fail "collector emitted unexpected diagnostics"
 }
@@ -216,36 +207,6 @@ test_workspace_image_cache_dir_canonical_and_defaults() {
   assert_stderr_empty
 }
 
-test_retired_workspace_image_cache_dir_is_ignored() {
-  reset_dirs
-  local retired_cache_dir="$tmp_root/retired-cache"
-  mkdir -p "$retired_cache_dir/retired-entry"
-  touch "$retired_cache_dir/retired-entry/current.ext4"
-
-  run_with_path_env \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$retired_cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 0"
-  assert_stderr_excludes_values \
-    "$retired_cache_dir" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR \
-    "monitoring path alias"
-  assert_stderr_empty
-
-  mkdir -p "$cache_dir/canonical-entry"
-  touch "$cache_dir/canonical-entry/current.ext4"
-  run_with_path_env \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR="$retired_cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_stderr_excludes_values \
-    "$retired_cache_dir" \
-    VM0_WORKSPACE_IMAGE_CACHE_DIR \
-    "monitoring path alias"
-  assert_stderr_empty
-}
-
 test_monitoring_textfile_dir_canonical_and_defaults() {
   reset_dirs
   mkdir -p "$cache_dir/canonical-entry"
@@ -275,42 +236,6 @@ test_monitoring_textfile_dir_canonical_and_defaults() {
     'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
     "$stderr_file" || fail "empty canonical textfile path did not use the fixed default"
   assert_output_absent
-}
-
-test_retired_monitoring_textfile_dir_is_ignored() {
-  reset_dirs
-  local retired_textfile_dir="$tmp_root/retired-textfile"
-  mkdir -p "$cache_dir/canonical-entry" "$retired_textfile_dir"
-  touch "$cache_dir/canonical-entry/current.ext4"
-
-  if run_with_path_env \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$retired_textfile_dir"; then
-    fail "expected the retired textfile path to be ignored in favor of the missing default"
-  fi
-  grep -qF \
-    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
-    "$stderr_file" || fail "retired textfile path redirected the collector"
-  assert_stderr_excludes_values \
-    "$retired_textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR \
-    "monitoring path alias"
-  assert_output_absent
-  [ ! -e "$retired_textfile_dir/workspace-image-cache.prom" ] ||
-    fail "retired textfile path received collector output"
-
-  run_with_path_env \
-    OKOU_WORKSPACE_IMAGE_CACHE_DIR="$cache_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$retired_textfile_dir"
-  assert_line "vm0_workspace_image_cache_entries 1"
-  assert_stderr_excludes_values \
-    "$retired_textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR \
-    "monitoring path alias"
-  assert_stderr_empty
-  [ ! -e "$retired_textfile_dir/workspace-image-cache.prom" ] ||
-    fail "retired textfile path overrode the canonical path"
 }
 
 test_missing_textfile_dir_fails() {
@@ -344,9 +269,7 @@ test_regular_file_bucket_counts
 test_multiple_entries_aggregate_across_buckets
 test_ignores_incomplete_and_non_regular_entries
 test_workspace_image_cache_dir_canonical_and_defaults
-test_retired_workspace_image_cache_dir_is_ignored
 test_monitoring_textfile_dir_canonical_and_defaults
-test_retired_monitoring_textfile_dir_is_ignored
 test_missing_textfile_dir_fails
 test_playbook_provisions_workspace_image_cache_collector_identity_and_cadence
 

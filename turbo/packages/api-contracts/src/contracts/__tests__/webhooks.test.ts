@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT } from "../runners";
-import { runFailureReasonSchema } from "../run-failure-reasons";
+import {
+  knownRunFailureReasonSchema,
+  runFailureReasonTokenSchema,
+} from "../run-failure-reasons";
 import {
   STORAGE_MANIFEST_MAX_FILES,
   STORAGE_MANIFEST_MAX_PATH_BYTES,
@@ -275,14 +278,15 @@ describe("agent completion failure reasons", () => {
     exitCode: 1,
   };
 
-  it("accepts exactly the public values and omission", () => {
-    expect(runFailureReasonSchema.options).toStrictEqual([
+  it("accepts known reasons, future tokens, and omission", () => {
+    expect(knownRunFailureReasonSchema.options).toStrictEqual([
       "session_history_limit",
       "insufficient_credits",
       "invalid_api_key",
       "invalid_credentials",
       "terms_acceptance_required",
       "context_window_exceeded",
+      "input_too_large",
       "output_token_limit",
       "provider_rate_limited",
       "provider_overloaded",
@@ -294,7 +298,18 @@ describe("agent completion failure reasons", () => {
       "unsupported_model",
       "usage_limit",
     ]);
-    for (const failureReason of runFailureReasonSchema.options) {
+    for (const failureReason of knownRunFailureReasonSchema.options) {
+      expect(
+        webhookCompleteContract.complete.body.parse({
+          ...baseBody,
+          failureReason,
+        }),
+      ).toMatchObject({ failureReason });
+    }
+    for (const failureReason of ["future_reason", "a", "a".repeat(64)]) {
+      expect(runFailureReasonTokenSchema.parse(failureReason)).toBe(
+        failureReason,
+      );
       expect(
         webhookCompleteContract.complete.body.parse({
           ...baseBody,
@@ -307,11 +322,16 @@ describe("agent completion failure reasons", () => {
     ).toBe(true);
   });
 
-  it("rejects values outside the public enum", () => {
+  it("rejects malformed and oversized reason tokens", () => {
     for (const failureReason of [
+      "",
       "ProviderOverloaded",
       "provider-overloaded",
-      "unknown",
+      "_provider_overloaded",
+      "provider_overloaded_",
+      "provider__overloaded",
+      "1_provider_overloaded",
+      "a".repeat(65),
     ]) {
       expect(
         webhookCompleteContract.complete.body.safeParse({

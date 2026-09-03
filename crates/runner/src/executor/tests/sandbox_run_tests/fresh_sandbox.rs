@@ -1116,13 +1116,6 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "VM0_RUN_PAYLOAD_FILE".into(),
             "/tmp/evil-payload.json".into(),
         ),
-        ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
-        ("VM0_POST_RESULT_SIGTERM_GRACE_SECS".into(), "1".into()),
-        ("VM0_POST_RESULT_TOTAL_CAP_SECS".into(), " 4 ".into()),
-        (
-            "VM0_POST_RESULT_SIGKILL_GRACE_SECS".into(),
-            "not-a-duration".into(),
-        ),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
             "/tmp/evil-connector-account-context.json".into(),
@@ -1172,19 +1165,6 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "tok"
     );
     assert!(!start_env.contains_key("VM0_API_TOKEN"));
-    for ((legacy_input, canonical_bootstrap_output), expected_value) in
-        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
-            .into_iter()
-            .zip(["3", "1", " 4 ", "not-a-duration"])
-    {
-        assert_eq!(
-            start_env
-                .get(canonical_bootstrap_output)
-                .map(String::as_str),
-            Some(expected_value)
-        );
-        assert!(!start_env.contains_key(legacy_input));
-    }
     assert_eq!(
         start_env
             .get(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV)
@@ -1297,9 +1277,6 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         user_env.get("VM0_RUN_PAYLOAD_FILE").map(String::as_str),
         Some("/tmp/evil-payload.json")
     );
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        assert!(!user_env.contains_key(*key));
-    }
     assert_eq!(
         user_env
             .get(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV)
@@ -1740,7 +1717,7 @@ async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
 
     assert_eq!(outcome.exit_code(), 1);
     let error = outcome.error().unwrap();
-    assert!(error.contains("VM0_TOOLS"));
+    assert!(error.contains("OKOU_TOOLS"));
     assert!(error.contains("must not contain commas"));
     assert!(outcome.sandbox.is_none());
     assert!(

@@ -1,4 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
+import { command } from "ccstate";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -11,6 +12,7 @@ import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { testContext } from "./test-helpers.ts";
 import { createDraftSignals } from "../okou-page/chat-draft.ts";
 import { createWorkflowComposerSignals } from "../okou-page/tiptap-workflow-composer.ts";
+import type { OpenTemplatePickerDialogOptions } from "../okou-page/chat-composer.ts";
 import {
   editorDocToMessageDocument,
   messageDocumentToDisplayText,
@@ -19,6 +21,9 @@ import {
 } from "../okou-page/user-message-document-codec.ts";
 
 const context = testContext();
+const openTemplatePickerDialog$ = command(
+  (_context, _options: OpenTemplatePickerDialogOptions): void => {},
+);
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";
 const MENTIONED_AGENT_ID = "a1000000-0000-4000-a000-000000000001";
 const FEEDBACK_EVENT_ID = "assistant-event-1";
@@ -58,7 +63,10 @@ function persistedAttachments(): readonly PersistedAttachment[] {
 }
 
 function workflowComposerDocument(content: JSONContent) {
-  const composer = createWorkflowComposerSignals(createDraftSignals());
+  const composer = createWorkflowComposerSignals(
+    createDraftSignals(),
+    openTemplatePickerDialog$,
+  );
   context.signal.addEventListener("abort", () => {
     composer.editor.destroy();
   });
@@ -243,6 +251,48 @@ describe("user message document codec", () => {
         { type: "text", text: " then\ncontinue  \nlast" },
       ],
     });
+  });
+
+  it("persists voice drafts and projects their raw transcript into prompts", () => {
+    const voiceDraft: UserMessageDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "voice",
+          id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+          transcript: "um ship Friday no Monday",
+        },
+      ],
+    };
+
+    expect(messageDocumentToPrompt(voiceDraft)).toBe(
+      "um ship Friday no Monday",
+    );
+    expect(messageDocumentToDisplayText(voiceDraft)).toBe(
+      "um ship Friday no Monday",
+    );
+    const restored = messageDocumentToEditorDoc(voiceDraft);
+    expect(restored).toStrictEqual({
+      type: "doc",
+      content: [
+        {
+          type: "voiceDraft",
+          attrs: {
+            id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+            transcript: "um ship Friday no Monday",
+            status: "failed",
+            visible: true,
+          },
+        },
+        { type: "paragraph" },
+      ],
+    });
+    if (!restored) {
+      throw new Error("Expected the voice draft to restore");
+    }
+    expect(
+      editorDocToMessageDocument(workflowComposerDocument(restored)),
+    ).toStrictEqual(voiceDraft);
   });
 
   it("excludes non-content parts from prompt and display text", () => {

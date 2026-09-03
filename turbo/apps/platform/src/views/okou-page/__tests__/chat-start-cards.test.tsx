@@ -276,6 +276,9 @@ describe("chat start cards", () => {
       screen.findByText("Review your intro video"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Where should the presenter stand?")).toBeNull();
+    expect(
+      screen.getByRole("textbox", { name: "Editing instructions" }),
+    ).toHaveValue("");
     const createButton = buttonWithText("Create in chat", dialog);
     expect(createButton).toBeInTheDocument();
     expect(createButton).toBeEnabled();
@@ -314,6 +317,7 @@ describe("chat start cards", () => {
       expect(sentPrompt).toContain("confirm it really is a paginated deck");
       expect(sentPrompt).toContain("okou presentation screenshot");
       expect(sentPrompt).not.toContain("okou video camera");
+      expect(sentPrompt).not.toContain("Editing direction:");
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
         fileId: "intro-video-source",
@@ -384,11 +388,18 @@ describe("chat start cards", () => {
     await expect(
       screen.findByText("Review your intro video"),
     ).resolves.toBeInTheDocument();
+    await user.type(
+      screen.getByRole("textbox", { name: "Editing instructions" }),
+      "Keep the source's original pacing.",
+    );
     await user.click(buttonWithText("Create in chat", dialog));
 
     await waitFor(() => {
       expect(sentPrompt).toContain("- Source type: file");
       expect(sentPrompt).toContain("open it and identify it first");
+      expect(sentPrompt).toContain(
+        "Editing direction:\nKeep the source's original pacing.",
+      );
     });
     // Neither of the workflows that assume they already know the source.
     expect(sentPrompt).not.toContain("For an attached presentation source:");

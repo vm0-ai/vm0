@@ -40,6 +40,8 @@ const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 const TURN_INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 const API_TO_CODEX_OUTPUT_ITEM_STARTED: &str = "api_to_codex_output_item_started";
 const API_TO_CODEX_AGENT_MESSAGE_ITEM_STARTED: &str = "api_to_codex_agent_message_item_started";
+const INVALID_PARAMS_RPC_CODE: i64 = -32602;
+const INPUT_TOO_LARGE_ERROR_CODE: &str = "input_too_large";
 
 struct NotificationIngestResult {
     emitted_thread_started: bool,
@@ -1106,8 +1108,35 @@ async fn ingest_run_notification(
     Ok(result)
 }
 
-fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
+fn app_server_error(masker: &SecretMasker, error: CodexAppServerError) -> AgentError {
+    if let Some((actual_chars, max_chars)) = codex_input_too_large_counts(&error) {
+        return AgentError::CodexInputTooLarge {
+            actual_chars,
+            max_chars,
+        };
+    }
     AgentError::Execution(masker.mask_string(&error.to_string()))
+}
+
+fn codex_input_too_large_counts(error: &CodexAppServerError) -> Option<(u64, u64)> {
+    let CodexAppServerError::Rpc {
+        method,
+        error: rpc_error,
+        ..
+    } = error
+    else {
+        return None;
+    };
+    if method != "turn/start" || rpc_error.code != INVALID_PARAMS_RPC_CODE {
+        return None;
+    }
+    let data = rpc_error.data.as_ref()?.as_object()?;
+    if data.get("input_error_code")?.as_str()? != INPUT_TOO_LARGE_ERROR_CODE {
+        return None;
+    }
+    let actual_chars = data.get("actual_chars")?.as_u64()?;
+    let max_chars = data.get("max_chars")?.as_u64()?;
+    (max_chars > 0 && actual_chars > max_chars).then_some((actual_chars, max_chars))
 }
 
 async fn wait_for_heartbeat(

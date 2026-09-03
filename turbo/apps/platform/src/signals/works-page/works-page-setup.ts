@@ -8,7 +8,6 @@ import { initSlackOrg$, watchSlackConnection$ } from "../okou-page/slack.ts";
 import { watchTeamsConnection$ } from "../okou-page/teams.ts";
 import { watchGithubIntegration$ } from "../okou-page/github.ts";
 import {
-  resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
   watchAgentPhoneConnection$,
 } from "../okou-page/agentphone.ts";
@@ -41,7 +40,6 @@ const initWorksRedirect$ = command(({ get, set }) => {
 });
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
-  set(resetAgentPhoneConnectUi$);
   set(setAgentPhoneConnectDialogOpen$, false);
   set(updatePage$, createElement(WorksPage), "sidebar");
   set(

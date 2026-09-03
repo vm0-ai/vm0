@@ -437,7 +437,10 @@ function OAuthAccountMenu({
       ? [
           {
             kind: "status" as const,
-            label: formatCodexResetCredits(resetCredits),
+            label: formatCodexResetCredits(
+              resetCredits,
+              account.subscriptionResetCreditsNextExpiresAt,
+            ),
           },
           { kind: "separator" as const },
           {
@@ -750,7 +753,10 @@ function CodexOAuthCredentialRow({
   onOpenReset: () => void;
 }) {
   const { t } = useTranslation();
-  const resetCreditLabel = formatCodexResetCredits(resetCredits);
+  const resetCreditLabel = formatCodexResetCredits(
+    resetCredits,
+    provider?.subscriptionResetCreditsNextExpiresAt,
+  );
   return (
     <OAuthCredentialRow
       type="codex-oauth-token"

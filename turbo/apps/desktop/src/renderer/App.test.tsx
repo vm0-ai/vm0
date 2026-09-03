@@ -440,7 +440,7 @@ describe("Desktop renderer bridge integration", () => {
 
     renderDesktopApp();
 
-    expect(await screen.findByText("Okou")).toBeTruthy();
+    expect(await screen.findByRole("img", { name: "Okou" })).toBeTruthy();
     expect(await screen.findByText("Sign in to Okou")).toBeTruthy();
   });
 

@@ -14,6 +14,7 @@ import { openDB } from "idb";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 
+import { mockNow, now } from "../../lib/time.ts";
 import { CHAT_IDB_VERSION } from "../../signals/external/chat-idb-schema.ts";
 import { createAuthedContractClient } from "../../signals/api-client-base.ts";
 import type { ApiClientFactory } from "../../signals/api-client.ts";
@@ -41,6 +42,7 @@ import {
 } from "../worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "../worker-runtime.ts";
 import {
+  catchUpChatEvent$,
   initializeSharedDatabaseWorker$,
   querySharedDatabaseWorker$,
   startSharedDatabaseWorkerDaemons$,
@@ -113,6 +115,24 @@ function chatEventRow(threadId: string, seqId: number): ChatEventRow {
     revokesEventId: null,
     eventType: "output.message",
     payload: { content: `message ${seqId}` },
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId,
+    createdAt: CREATED_AT,
+  };
+}
+
+function failedChatEventRow(threadId: string, seqId: number): ChatEventRow {
+  return {
+    id: crypto.randomUUID(),
+    chatThreadId: threadId,
+    runId: crypto.randomUUID(),
+    revokesEventId: null,
+    eventType: "run.failed",
+    payload: { error: `provider unavailable ${seqId}` },
+    failureReason: "future_reason",
     contextType: null,
     contextId: null,
     runEventSequenceNumber: null,
@@ -425,6 +445,65 @@ describe("shared database worker runtime", () => {
     expect(networkRequests).toBe(0);
   });
 
+  it("coalesces global ChatEvent catch-up into serialized throttle slots", async () => {
+    const store = createWorkerStore();
+    const threadId = crypto.randomUUID();
+    const firstRequest = context.mocks.deferred<void>();
+    const secondRequest = context.mocks.deferred<void>();
+    const startedAt: number[] = [];
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: {},
+        threads: { [threadId]: "unread" },
+      });
+    });
+    context.mocks.api(
+      chatThreadEventsContract.catchUp,
+      async ({ body, respond }) => {
+        const requestIndex = startedAt.length;
+        startedAt.push(now());
+        if (requestIndex === 0) {
+          await firstRequest.promise;
+        } else if (requestIndex === 1) {
+          await secondRequest.promise;
+        }
+        return respond(200, {
+          events: Object.fromEntries(
+            body.map(([candidateThreadId]) => {
+              return [candidateThreadId, []];
+            }),
+          ),
+          notFoundThreads: [],
+        });
+      },
+    );
+
+    mockNow(0, context.signal);
+    const first = store.set(catchUpChatEvent$);
+    await vi.waitFor(() => {
+      expect(startedAt).toStrictEqual([0]);
+    });
+    mockNow(100, context.signal);
+    const second = store.set(catchUpChatEvent$);
+    mockNow(200, context.signal);
+    const third = store.set(catchUpChatEvent$);
+
+    mockNow(1000, context.signal);
+    firstRequest.resolve(undefined);
+    await first;
+    await vi.waitFor(() => {
+      expect(startedAt).toStrictEqual([0, 1000]);
+    });
+    mockNow(1100, context.signal);
+    const fourth = store.set(catchUpChatEvent$);
+
+    mockNow(2000, context.signal);
+    secondRequest.resolve(undefined);
+    await Promise.all([second, third]);
+    await fourth;
+    expect(startedAt).toStrictEqual([0, 1000, 2000]);
+  });
+
   it.each(["UnknownError", "TransactionInactiveError", "InvalidStateError"])(
     "reopens IndexedDB and retries a %s transaction once",
     async (errorName) => {
@@ -560,8 +639,8 @@ describe("shared database worker runtime", () => {
   it("loads a ChatEvent snapshot plus tail and serves strict cursor reads from cache", async () => {
     const { runtime } = startRuntime();
     const dataKey = chatEventKey(crypto.randomUUID());
-    const snapshotRow = chatEventRow(dataKey.threadId, 2);
-    const tailRow = chatEventRow(dataKey.threadId, 3);
+    const snapshotRow = failedChatEventRow(dataKey.threadId, 2);
+    const tailRow = failedChatEventRow(dataKey.threadId, 3);
     const requestedSeqIds: number[] = [];
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
@@ -605,6 +684,82 @@ describe("shared database worker runtime", () => {
       }),
     ).resolves.toStrictEqual([tailRow]);
     expect(requestedSeqIds).toHaveLength(requestCount);
+  });
+
+  it("rebuilds batch misses from a Snapshot and clears deleted thread caches", async () => {
+    const { runtime } = startRuntime();
+    const dataKey = chatEventKey(crypto.randomUUID());
+    const cachedRow = chatEventRow(dataKey.threadId, 1);
+    const snapshotRow = chatEventRow(dataKey.threadId, 5);
+    let phase: "seed" | "rebuild" | "deleted" = "seed";
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      if (phase === "seed") {
+        return respond(404, {
+          error: {
+            code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+            message: "Chat event snapshot not found",
+          },
+        });
+      }
+      if (phase === "deleted") {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Chat thread not found" },
+        });
+      }
+      return respond(200, {
+        url: SNAPSHOT_URL,
+        expiresInSeconds: 900,
+        lastEventId: snapshotRow.id,
+        lastSeqId: snapshotRow.seqId,
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      return respond(
+        200,
+        chatEventRowsResponse(
+          phase === "seed" && query.sinceSeqId === 0 ? [cachedRow] : [],
+          query,
+        ),
+      );
+    });
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ respond }) => {
+      return respond(200, {
+        events: {},
+        notFoundThreads: [dataKey.threadId],
+      });
+    });
+    context.mocks.http.get(SNAPSHOT_URL, () => {
+      return new Response(snapshotNdjson([snapshotRow]));
+    });
+
+    await queryRuntime(runtime, {
+      dataKey,
+      afterSeqId: null,
+      consistency: "catch-up",
+    });
+    phase = "rebuild";
+    await expect(
+      runtime.catchUpChatEvents([dataKey.threadId], context.signal),
+    ).resolves.toStrictEqual([dataKey.threadId]);
+    await expect(
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual([snapshotRow]);
+
+    phase = "deleted";
+    await expect(
+      runtime.catchUpChatEvents([dataKey.threadId], context.signal),
+    ).resolves.toStrictEqual([dataKey.threadId]);
+    await expect(
+      queryRuntime(runtime, {
+        dataKey,
+        afterSeqId: null,
+        consistency: "cache-only",
+      }),
+    ).resolves.toStrictEqual([]);
   });
 
   it("runs concurrent connection requests independently and aborts only one connection", async () => {

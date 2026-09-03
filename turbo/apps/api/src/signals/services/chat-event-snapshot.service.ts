@@ -4,7 +4,8 @@ import {
   type ChatEventCursor,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or } from "drizzle-orm";
+import { agents } from "@okouai/db/schema/agent";
 import { chatEvents } from "@okouai/db/schema/chat-event";
 import { chatEventSnapshots } from "@okouai/db/schema/chat-event-snapshot";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
@@ -22,6 +23,21 @@ import {
 const SNAPSHOT_URL_TTL_SECONDS = 900;
 /** Cursor that reads a thread from its very first event. */
 const THREAD_START_SEQ_ID = 0;
+
+const chatEventRowSelection = {
+  id: chatEvents.id,
+  chatThreadId: chatEvents.chatThreadId,
+  runId: chatEvents.runId,
+  revokesEventId: chatEvents.revokesEventId,
+  eventType: chatEvents.eventType,
+  payload: chatEvents.payload,
+  contextType: chatEvents.contextType,
+  contextId: chatEvents.contextId,
+  runEventSequenceNumber: chatEvents.runEventSequenceNumber,
+  runEventId: chatEvents.runEventId,
+  seqId: chatEvents.seqId,
+  createdAt: chatEvents.createdAt,
+} as const;
 
 type ChatEventSnapshotDownload =
   | { readonly kind: "thread-not-found" }
@@ -201,6 +217,210 @@ async function cursorContinuationSeqId(
   return physicalCursorRow?.id === args.sinceEventId ? args.sinceSeqId : null;
 }
 
+interface ChatEventBatchSnapshotCursor {
+  readonly lastEventId: string | null;
+  readonly lastSeqId: number | null;
+  readonly physicalLastSeqId: number;
+}
+
+interface ChatEventBatchCatchUpResult {
+  readonly events: Readonly<Record<string, readonly ChatEventRow[]>>;
+  readonly notFoundThreads: readonly string[];
+}
+
+interface ChatEventBatchContinuation {
+  readonly threadId: string;
+  readonly lastSeqId: number;
+}
+
+function validatedBatchSnapshotCursor(snapshot: ChatEventBatchSnapshotCursor): {
+  readonly lastSeqId: number;
+  readonly physicalLastSeqId: number;
+} {
+  if (
+    snapshot.lastSeqId === null ||
+    !(
+      (snapshot.lastSeqId === THREAD_START_SEQ_ID &&
+        snapshot.lastEventId === null) ||
+      (snapshot.lastSeqId > THREAD_START_SEQ_ID &&
+        snapshot.lastEventId !== null)
+    )
+  ) {
+    throw new Error("Current Chat Event Snapshot cursor is incomplete");
+  }
+  return {
+    lastSeqId: snapshot.lastSeqId,
+    physicalLastSeqId: snapshot.physicalLastSeqId,
+  };
+}
+
+function resolveBatchContinuations(
+  requested: ReadonlyMap<string, number>,
+  ownedThreadIds: ReadonlySet<string>,
+  snapshotsByThreadId: ReadonlyMap<
+    string,
+    { readonly lastSeqId: number; readonly physicalLastSeqId: number }
+  >,
+  physicalCursorThreadIds: ReadonlySet<string>,
+): {
+  readonly continuations: readonly ChatEventBatchContinuation[];
+  readonly notFoundThreads: readonly string[];
+} {
+  const continuations: ChatEventBatchContinuation[] = [];
+  const notFoundThreads: string[] = [];
+  for (const [threadId, lastSeqId] of requested) {
+    if (!ownedThreadIds.has(threadId)) {
+      notFoundThreads.push(threadId);
+      continue;
+    }
+    const snapshot = snapshotsByThreadId.get(threadId);
+    if (snapshot?.lastSeqId === lastSeqId) {
+      continuations.push({
+        threadId,
+        lastSeqId: snapshot.physicalLastSeqId,
+      });
+      continue;
+    }
+    if (
+      (lastSeqId === THREAD_START_SEQ_ID && snapshot === undefined) ||
+      (physicalCursorThreadIds.has(threadId) &&
+        (snapshot === undefined || lastSeqId > snapshot.physicalLastSeqId))
+    ) {
+      continuations.push({ threadId, lastSeqId });
+      continue;
+    }
+    notFoundThreads.push(threadId);
+  }
+  return { continuations, notFoundThreads };
+}
+
+/**
+ * Resolve complete raw-row tails for a batch of per-thread seq cursors.
+ * Missing threads and cursors that can no longer be continued are deliberately
+ * indistinguishable so the client follows the same Snapshot rebuild path.
+ */
+export function catchUpChatThreadEvents(args: {
+  readonly cursors: readonly (readonly [string, number])[];
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<ChatEventBatchCatchUpResult>> {
+  return computed(async (get) => {
+    const requested = new Map(args.cursors);
+    if (requested.size === 0) {
+      return { events: {}, notFoundThreads: [] };
+    }
+
+    const db = get(db$);
+    const threadIds = [...requested.keys()];
+    const ownedRows = await db
+      .select({ threadId: chatThreads.id })
+      .from(chatThreads)
+      .innerJoin(agents, eq(agents.id, chatThreads.agentId))
+      .where(
+        and(
+          inArray(chatThreads.id, threadIds),
+          eq(chatThreads.userId, args.userId),
+          eq(agents.orgId, args.orgId),
+        ),
+      );
+    const ownedThreadIds = new Set(
+      ownedRows.map((row) => {
+        return row.threadId;
+      }),
+    );
+
+    const snapshots =
+      ownedThreadIds.size === 0
+        ? []
+        : await db
+            .select({
+              threadId: chatEventSnapshots.chatThreadId,
+              lastEventId: chatEventSnapshots.terminalEventId,
+              lastSeqId: chatEventSnapshots.terminalSeqId,
+              physicalLastSeqId: chatEventSnapshots.lastSeqId,
+            })
+            .from(chatEventSnapshots)
+            .where(
+              and(
+                inArray(chatEventSnapshots.chatThreadId, [...ownedThreadIds]),
+                eq(
+                  chatEventSnapshots.archiveSchemaVersion,
+                  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+                ),
+              ),
+            );
+    const snapshotsByThreadId = new Map(
+      snapshots.map((snapshot) => {
+        return [snapshot.threadId, validatedBatchSnapshotCursor(snapshot)];
+      }),
+    );
+
+    const positiveCursors = [...requested].filter(([threadId, lastSeqId]) => {
+      return ownedThreadIds.has(threadId) && lastSeqId > THREAD_START_SEQ_ID;
+    });
+    const physicalCursorRows =
+      positiveCursors.length === 0
+        ? []
+        : await db
+            .select({ threadId: chatEvents.chatThreadId })
+            .from(chatEvents)
+            .where(
+              or(
+                ...positiveCursors.map(([threadId, lastSeqId]) => {
+                  return and(
+                    eq(chatEvents.chatThreadId, threadId),
+                    eq(chatEvents.seqId, lastSeqId),
+                  );
+                }),
+              ),
+            );
+    const physicalCursorThreadIds = new Set(
+      physicalCursorRows.map((row) => {
+        return row.threadId;
+      }),
+    );
+
+    const { continuations, notFoundThreads } = resolveBatchContinuations(
+      requested,
+      ownedThreadIds,
+      snapshotsByThreadId,
+      physicalCursorThreadIds,
+    );
+
+    const physicalRows =
+      continuations.length === 0
+        ? []
+        : await db
+            .select(chatEventRowSelection)
+            .from(chatEvents)
+            .where(
+              or(
+                ...continuations.map(({ threadId, lastSeqId }) => {
+                  return and(
+                    eq(chatEvents.chatThreadId, threadId),
+                    gt(chatEvents.seqId, lastSeqId),
+                  );
+                }),
+              ),
+            )
+            .orderBy(asc(chatEvents.chatThreadId), asc(chatEvents.seqId));
+    const events: Record<string, ChatEventRow[]> = Object.fromEntries(
+      continuations.map(({ threadId }) => {
+        return [threadId, []];
+      }),
+    );
+    for (const row of physicalRows) {
+      const threadEvents = events[row.chatThreadId];
+      if (!threadEvents) {
+        throw new Error("Chat Event tail escaped its requested partition");
+      }
+      threadEvents.push(chatEventRowFromDbRow(row));
+    }
+
+    return { events, notFoundThreads };
+  });
+}
+
 /** Resolve the current persisted Snapshot pointer. */
 export function chatThreadEventSnapshot(args: {
   readonly threadId: string;
@@ -290,20 +510,7 @@ export function chatThreadEventRows(
     }
 
     const physicalRows = await db
-      .select({
-        id: chatEvents.id,
-        chatThreadId: chatEvents.chatThreadId,
-        runId: chatEvents.runId,
-        revokesEventId: chatEvents.revokesEventId,
-        eventType: chatEvents.eventType,
-        payload: chatEvents.payload,
-        contextType: chatEvents.contextType,
-        contextId: chatEvents.contextId,
-        runEventSequenceNumber: chatEvents.runEventSequenceNumber,
-        runEventId: chatEvents.runEventId,
-        seqId: chatEvents.seqId,
-        createdAt: chatEvents.createdAt,
-      })
+      .select(chatEventRowSelection)
       .from(chatEvents)
       .where(
         and(

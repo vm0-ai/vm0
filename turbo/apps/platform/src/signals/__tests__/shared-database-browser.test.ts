@@ -8,6 +8,7 @@ import {
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
+import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
@@ -16,6 +17,7 @@ import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
+const CURRENT_TIME_MS = 1_800_000_000_000;
 
 class TestSharedWorkerPort implements SharedDatabasePortLike {
   readonly messages: unknown[] = [];
@@ -118,6 +120,7 @@ async function setupBridge(): Promise<void> {
 
 describe("shared database browser bridge", () => {
   beforeEach(() => {
+    mockNow(CURRENT_TIME_MS, context.signal);
     mockUser(
       { id: "test-user-123", fullName: "Test User" },
       { token: "shared-worker-token" },
@@ -229,7 +232,7 @@ describe("shared database browser bridge", () => {
     expect(constructorCalls).toStrictEqual([]);
   });
 
-  it("reloads once with a recovery marker after a worker load failure", async () => {
+  it("reloads with the current timestamp after a worker load failure", async () => {
     const replace = vi.fn<(url: string) => void>();
     const { constructorCalls, workers } = installSharedWorkerMock();
     await setupBridge();
@@ -253,7 +256,7 @@ describe("shared database browser bridge", () => {
     });
     const recoveryUrl = new URL(replace.mock.calls[0]![0]);
     expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
-      "1",
+      String(CURRENT_TIME_MS),
     );
     expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
     expect(recoveryUrl.hash).toBe("#latest");
@@ -261,7 +264,7 @@ describe("shared database browser bridge", () => {
     expect(consoleError).toHaveBeenCalledOnce();
   });
 
-  it("stops the reload loop and removes the recovery marker", async () => {
+  it("stops reloads that repeat within one minute", async () => {
     const replace = vi.fn<(url: string) => void>();
     const replaceState = vi
       .spyOn(history, "replaceState")
@@ -270,7 +273,7 @@ describe("shared database browser bridge", () => {
     const { workers } = installSharedWorkerMock();
     await setupBridge();
     const currentUrl = new URL(
-      "/chat?threadId=thread-1&okou-shared-database-reload=1#latest",
+      `/chat?threadId=thread-1&okou-shared-database-reload=${CURRENT_TIME_MS - 30_000}#latest`,
       window.location.href,
     );
     vi.stubGlobal("location", {
@@ -293,5 +296,39 @@ describe("shared database browser bridge", () => {
     ).toBeFalsy();
     expect(retryUrl.searchParams.get("threadId")).toBe("thread-1");
     expect(retryUrl.hash).toBe("#latest");
+  });
+
+  it("allows another reload after one minute", async () => {
+    const replace = vi.fn<(url: string) => void>();
+    const replaceState = vi
+      .spyOn(history, "replaceState")
+      .mockImplementation(() => {});
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    const { workers } = installSharedWorkerMock();
+    await setupBridge();
+    const currentUrl = new URL(
+      `/chat?threadId=thread-1&okou-shared-database-reload=${CURRENT_TIME_MS - 60_000}#latest`,
+      window.location.href,
+    );
+    vi.stubGlobal("location", {
+      href: currentUrl.toString(),
+      origin: currentUrl.origin,
+      replace,
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    workers[0]!.fail();
+
+    await vi.waitFor(() => {
+      expect(replace).toHaveBeenCalledOnce();
+    });
+    const recoveryUrl = new URL(replace.mock.calls[0]![0]);
+    expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
+      String(CURRENT_TIME_MS),
+    );
+    expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
+    expect(recoveryUrl.hash).toBe("#latest");
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
   });
 });

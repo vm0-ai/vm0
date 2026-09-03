@@ -463,6 +463,9 @@ function artifactSidebarSyncTarget(params: {
   threadId: string;
 }): ArtifactDownloadSyncTarget {
   return {
+    accountReady:
+      params.item.file.googleDriveSync?.status !== "disconnected" &&
+      params.item.file.googleDriveSync?.accountReady === true,
     agentId: params.agentId,
     disconnected: params.item.file.googleDriveSync?.status === "disconnected",
     recovery:

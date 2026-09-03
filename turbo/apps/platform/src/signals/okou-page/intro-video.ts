@@ -82,8 +82,6 @@ export type IntroVideoVoiceSelection =
 export type IntroVideoPlacement = "left" | "overlay" | "right";
 
 const PRESENTATION_EXTENSIONS = ["html", "pdf", "ppt", "pptx"] as const;
-const DEFAULT_INSTRUCTIONS =
-  "Create a concise 30 second product intro. Zoom in on important actions, remove pauses, and keep the pacing energetic.";
 /**
  * Aspect ratio reported to the agent for the raw avatar take.
  *
@@ -188,7 +186,7 @@ function buildIntroVideoPrompt(args: {
     overlay: "Presenter over the slide, anchored to the bottom right",
     right: "Presenter on the right, slide on the left",
   };
-  const direction = args.instructions.trim() || DEFAULT_INSTRUCTIONS;
+  const instructions = args.instructions.trim();
   return [
     "Create a polished intro video from the attached source.",
     "",
@@ -212,9 +210,7 @@ function buildIntroVideoPrompt(args: {
             : []),
         ]
       : []),
-    "",
-    "Editing direction:",
-    direction,
+    ...(instructions ? ["", "Editing direction:", instructions] : []),
   ].join("\n");
 }
 
@@ -245,7 +241,7 @@ function createIntroVideoInternalState(): IntroVideoInternalState {
     busy$: state(false),
     draftDiscarded$: state(false),
     error$: state<IntroVideoWizardError | null>(null),
-    instructions$: state(DEFAULT_INSTRUCTIONS),
+    instructions$: state(""),
     open$: state(false),
     placement$: state<IntroVideoPlacement>("left"),
     source$: state<IntroVideoSource | null>(null),
@@ -330,7 +326,7 @@ function createResetWizardDraftCommand(internal: IntroVideoInternalState) {
     set(internal.avatar$, null);
     set(internal.voice$, null);
     set(internal.placement$, "left");
-    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.instructions$, "");
     set(internal.step$, "source");
     set(internal.busy$, false);
     set(internal.open$, false);
@@ -383,7 +379,7 @@ function createOpenWizardCommand(internal: IntroVideoInternalState) {
     set(internal.avatar$, null);
     set(internal.busy$, false);
     set(internal.error$, null);
-    set(internal.instructions$, DEFAULT_INSTRUCTIONS);
+    set(internal.instructions$, "");
     set(internal.sourceUploaded$, false);
     set(internal.placement$, "left");
     set(internal.voice$, null);

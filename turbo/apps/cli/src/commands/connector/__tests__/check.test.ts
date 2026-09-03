@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorCheckDiagnosticResult,
@@ -6,13 +10,18 @@ import type {
 } from "@okouai/api-contracts/contracts/connector-check";
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  stubRunConnectorAccountInspection,
+  writeRunConnectorAccountContext,
+} from "../../__tests__/helpers/run-connector-accounts";
 import { server } from "../../../mocks/server";
 import { checkConnectorCommand } from "../check";
 
 const API_BASE_URL = "https://app.vm0.ai";
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
+const SELECTED_CONNECTION_ID = "00000000-0000-4000-8000-000000000099";
 
 type ResolvedDiagnostic = Extract<
   ConnectorCheckDiagnosticResult,
@@ -234,17 +243,70 @@ describe("okou connector check command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  let directory = "";
+  let contextPath = "";
+
+  function setRunAccount(
+    connectorSlug: string,
+    connectionStatus: ConnectorResponse["connectionStatus"] | null,
+    options: {
+      readonly connectionId?: string;
+      readonly label?: string;
+      readonly origin?: string;
+    } = {},
+  ): void {
+    const connectionId = options.connectionId ?? SELECTED_CONNECTION_ID;
+    const target = { kind: "builtin" as const, connectorSlug };
+    writeRunConnectorAccountContext(contextPath, [
+      {
+        ...target,
+        connectionId: connectionStatus === null ? null : connectionId,
+      },
+    ]);
+    server.use(
+      stubRunConnectorAccountInspection(
+        connectionStatus === null
+          ? []
+          : [
+              {
+                kind: "available",
+                target,
+                connectionId,
+                authMethod: "oauth",
+                displayName: options.label ?? "Run-selected account",
+                externalId: "run-external-id",
+                externalUsername: "run-user",
+                externalEmail: "run@example.com",
+                connectionStatus,
+                reconnectReason:
+                  connectionStatus === "reconnect-required"
+                    ? "authorization_expired_or_revoked"
+                    : null,
+              },
+            ],
+        options.origin ?? API_BASE_URL,
+      ),
+    );
+  }
 
   beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), "okou-check-run-account-"));
+    contextPath = join(directory, "context.json");
     vi.unstubAllEnvs();
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("OKOU_API_BACKEND_URL", API_BASE_URL);
     vi.stubEnv("OKOU_TOKEN", buildOkouToken());
     vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);
     vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");
+    setRunAccount("github", "connected");
+  });
+
+  afterEach(() => {
+    rmSync(directory, { recursive: true, force: true });
   });
 
   function getOutput(): string {
@@ -265,6 +327,7 @@ describe("okou connector check command", () => {
   describe("request construction and local validation", () => {
     it("sends a sanitized URL request and preserves every selector in the re-diagnosis hint", async () => {
       let capturedBody: unknown;
+      setRunAccount("server-only", "connected");
       stubDiagnostic(
         resolvedUrl({
           connector: connectorIdentity({
@@ -471,6 +534,7 @@ describe("okou connector check command", () => {
       });
       let connectorCalls = 0;
       let authorizationCalls = 0;
+      setRunAccount("server-only", "connected");
       vi.stubEnv("SERVER_ONLY_TOKEN", "placeholder-not-a-secret");
       stubDiagnostic(
         resolvedEnvironment({
@@ -518,7 +582,7 @@ describe("okou connector check command", () => {
         "Credentials are resolved at the network boundary for requests matching these registered base URLs.",
       );
       expect(output).not.toContain("Credentials resolved from:");
-      expect(connectorCalls).toBe(1);
+      expect(connectorCalls).toBe(0);
       expect(authorizationCalls).toBe(1);
     });
 
@@ -554,7 +618,8 @@ describe("okou connector check command", () => {
         identity: connectorIdentity(),
         connector: null,
         enabledConnectorSlugs: ["github"],
-        expected: "authorized for this agent, but it is not connected",
+        expected:
+          "authorized for this agent, but an account is not available for this run",
       },
       {
         name: "expired",
@@ -573,6 +638,7 @@ describe("okou connector check command", () => {
     ])(
       "renders $name connector state",
       async ({ identity, connector, enabledConnectorSlugs, expected }) => {
+        setRunAccount("github", connector?.connectionStatus ?? null);
         stubDiagnostic(resolvedEnvironment({ connector: identity }));
         stubResolvedDependencies("github", {
           connector,
@@ -589,6 +655,129 @@ describe("okou connector check command", () => {
         expect(getOutput()).toContain(expected);
       },
     );
+
+    it("diagnoses the reconnect-required account selected by the run instead of a healthy default sibling", async () => {
+      let defaultAccountRequests = 0;
+      setRunAccount("github", "reconnect-required", {
+        connectionId: SELECTED_CONNECTION_ID,
+        label: "Run account B",
+      });
+      stubDiagnostic(resolvedEnvironment());
+      stubConnector("github", connectorResponse("github"), () => {
+        defaultAccountRequests += 1;
+      });
+      stubAgentConnectors(["github"]);
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const text = getOutput();
+      expect(text).toContain("Account used by this run: Run account B");
+      expect(text).toContain(`Connection ID: ${SELECTED_CONNECTION_ID}`);
+      expect(text).toContain(
+        `/connectors/github/reconnect/${SELECTED_CONNECTION_ID}?agentId=${AGENT_ID}`,
+      );
+      expect(text).toContain("After reconnecting, start a new run.");
+      expect(defaultAccountRequests).toBe(0);
+    });
+
+    it("reports the healthy run account without reading a reconnect-required default sibling", async () => {
+      let defaultAccountRequests = 0;
+      setRunAccount("github", "connected", {
+        connectionId: SELECTED_CONNECTION_ID,
+        label: "Run account B",
+      });
+      stubDiagnostic(resolvedEnvironment());
+      stubConnector(
+        "github",
+        connectorResponse("github", "reconnect-required"),
+        () => {
+          defaultAccountRequests += 1;
+        },
+      );
+      stubAgentConnectors(["github"]);
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const text = getOutput();
+      expect(text).toContain("Account used by this run: Run account B");
+      expect(text).toContain("connected and active");
+      expect(text).not.toContain("needs to be reconnected");
+      expect(defaultAccountRequests).toBe(0);
+    });
+
+    it("retains a deleted run account ID without offering sibling recovery", async () => {
+      const target = { kind: "builtin" as const, connectorSlug: "github" };
+      writeRunConnectorAccountContext(contextPath, [
+        { ...target, connectionId: SELECTED_CONNECTION_ID },
+      ]);
+      server.use(stubRunConnectorAccountInspection([], API_BASE_URL));
+      stubDiagnostic(resolvedEnvironment());
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const text = getOutput();
+      expect(text).toContain(
+        `Account used by this run: ${SELECTED_CONNECTION_ID}`,
+      );
+      expect(text).toContain("metadata is unavailable or deleted");
+      expect(text).not.toContain("/connectors/github/connect");
+      expect(text).not.toContain("/connectors/github/reconnect");
+    });
+
+    it("fails closed when a legacy run has no account projection", async () => {
+      vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+      stubDiagnostic(resolvedEnvironment());
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const text = getOutput();
+      expect(text).toContain("started without connector account context");
+      expect(text).not.toContain("/connectors/github/connect");
+      expect(text).not.toContain("/connectors/github/reconnect");
+    });
+
+    it("preserves deterministic default status outside a run", async () => {
+      vi.stubEnv("OKOU_TOKEN", "test-session-token");
+      vi.stubEnv("OKOU_AGENT_ID", "");
+      vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+      stubDiagnostic(resolvedEnvironment({ run: { status: "not-scoped" } }));
+      stubConnector(
+        "github",
+        connectorResponse("github", "reconnect-required"),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      expect(getOutput()).toContain("needs to be reconnected");
+      expect(getOutput()).toContain("/connectors/github/connect");
+    });
 
     it.each([
       {
@@ -660,6 +849,7 @@ describe("okou connector check command", () => {
       "maps $name links to the platform origin",
       async ({ baseUrl, platformOrigin }) => {
         vi.stubEnv("OKOU_API_BACKEND_URL", baseUrl);
+        setRunAccount("github", "connected", { origin: baseUrl });
         stubDiagnostic(resolvedEnvironment(), undefined, baseUrl);
         stubResolvedDependencies("github", {
           connector: null,

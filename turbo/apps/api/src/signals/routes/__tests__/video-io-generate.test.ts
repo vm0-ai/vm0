@@ -2528,6 +2528,155 @@ describe("POST /api/video-io/generate", () => {
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
+  it("explains BytePlus real-person image rejections without leaking the request ID", async () => {
+    const fixture = await seedVideoFixture({
+      credits: 1000,
+    });
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    const token = okouToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const headers = { authorization: `Bearer ${token}` };
+
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json(
+          {
+            error: {
+              code: "InputImageSensitiveContentDetected.PrivacyInformation",
+              message:
+                "The request failed because the input image 'content[1]' 'content[2]' 'content[3]' may contain real person. Request id: test-byteplus-request-id",
+              type: "BadRequest",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const app = createVideoIoTestApp(fixture.pricingResolution);
+    const response = await app.request("/api/video-io/generate", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: "animate the subjects",
+        model: SEEDANCE_2_5_MODEL,
+        imageUrls: [
+          "https://example.com/reference-1.png",
+          "https://example.com/reference-2.png",
+          "https://example.com/reference-3.png",
+        ],
+      }),
+    });
+
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      content: [
+        { type: "text", text: "animate the subjects" },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/reference-1.png" },
+          role: "reference_image",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/reference-2.png" },
+          role: "reference_image",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/reference-3.png" },
+          role: "reference_image",
+        },
+      ],
+    });
+    expect(response.status).toBe(400);
+    const expectedError = {
+      message:
+        "This model does not allow directly uploaded images that may contain a real person. Remove or replace them before trying again.",
+      code: "GENERATION_INPUT_REAL_PERSON_IMAGE_REJECTED",
+    };
+    await expect(response.json()).resolves.toStrictEqual({
+      error: expectedError,
+    });
+
+    const generationId = readPublishedGenerationId(
+      context.mocks.ably.publish.mock.calls,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "video",
+        status: "failed",
+        error: expectedError,
+      }),
+    );
+    const statusResponse = await app.request(
+      `/api/built-in-generations/${generationId}`,
+      { headers },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    expect(statusBody).toMatchObject({
+      generationId,
+      type: "video",
+      status: "failed",
+      error: expectedError,
+    });
+    expect(JSON.stringify(context.mocks.ably.publish.mock.calls)).not.toContain(
+      "test-byteplus-request-id",
+    );
+    expect(JSON.stringify(statusBody)).not.toContain(
+      "test-byteplus-request-id",
+    );
+
+    let acceptedTaskCount = 0;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+        acceptedTaskCount += 1;
+        return HttpResponse.json({
+          id: `admission-proof-task-${String(acceptedTaskCount)}`,
+          status: "queued",
+        });
+      }),
+    );
+    // The per-run in-flight limit is three. All three starts can be admitted
+    // only if the synchronously failed submission released its active slot.
+    for (let index = 0; index < 3; index += 1) {
+      const admittedResponse = await app.request("/api/video-io/generate", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          prompt: `admission proof ${String(index + 1)}`,
+          model: SEEDANCE_2_5_MODEL,
+        }),
+      });
+      expect(admittedResponse.status).toBe(202);
+    }
+    expect(acceptedTaskCount).toBe(3);
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
   it("records specific BytePlus webhook failure details on async failure", async () => {
     const fixture = await seedVideoFixture({
       credits: 1000,

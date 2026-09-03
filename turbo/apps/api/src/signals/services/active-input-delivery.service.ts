@@ -10,7 +10,15 @@ import {
 } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { chatEvents } from "@okouai/db/schema/chat-event";
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
@@ -207,6 +215,39 @@ async function prepareReservation(
   };
 }
 
+async function canReturnEmptyReservation(
+  db: Db,
+  scope: ActiveInputDeliveryScope,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const [run] = await db
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, scope.runId),
+        eq(agentRuns.chatThreadId, scope.chatThreadId),
+        eq(agentRuns.userId, scope.userId),
+        eq(agentRuns.orgId, scope.orgId),
+        eq(agentRuns.status, "running"),
+        notExists(
+          db
+            .select({ id: activeInputDeliveries.id })
+            .from(activeInputDeliveries)
+            .where(
+              and(
+                eq(activeInputDeliveries.runId, scope.runId),
+                eq(activeInputDeliveries.status, "open"),
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return run !== undefined;
+}
+
 async function lockOpenDelivery(
   tx: ActiveInputDeliveryTransaction,
   scope: ActiveInputDeliveryIdentity,
@@ -386,6 +427,15 @@ export async function reserveActiveInputDelivery(
       scope.status === "running"
         ? await prepareReservation(db, scope, signal)
         : ({ kind: "empty" } as const);
+    // A committed open delivery hides its source from the pending query, so
+    // recheck for one after an empty preparation before bypassing serialization.
+    if (
+      scope.status === "running" &&
+      prepared.kind === "empty" &&
+      (await canReturnEmptyReservation(db, scope, signal))
+    ) {
+      return { outcome: "empty" };
+    }
     const result = await db.transaction(async (tx) => {
       return await transitionReservation(tx, scope, prepared);
     });

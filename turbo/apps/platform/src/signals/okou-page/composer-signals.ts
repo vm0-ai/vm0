@@ -36,6 +36,7 @@ import {
   createWorkflowComposerSignals,
   type WorkflowComposerSignals,
   type WorkflowComposerSubmissionSnapshot,
+  type WorkflowComposerVoiceDraftSignals,
 } from "./tiptap-workflow-composer.ts";
 import {
   createComposerConnectorSignals,
@@ -93,9 +94,7 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
-  | "readSelectedTemplate$"
-  | "prepareTemplateInsertion$"
-  | "setTemplateAttachmentLifecycleRef$"
+  | "openTemplatePicker$"
 >;
 
 type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
@@ -254,6 +253,7 @@ interface ComposerTemplateSignals
 export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
+  readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
   readonly suggestion: ComposerSuggestionSignals;
@@ -373,10 +373,7 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
-    readSelectedTemplate$: composer.readSelectedTemplate$,
-    prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
-    setTemplateAttachmentLifecycleRef$:
-      composer.setTemplateAttachmentLifecycleRef$,
+    openTemplatePicker$: composer.openTemplatePicker$,
   };
 }
 
@@ -502,8 +499,10 @@ export function createComposerSignals(
       (get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false)
     );
   });
+  const ui = createComposerUiSignals();
   const workflowComposer = createWorkflowComposerSignals(
     draft,
+    ui.openTemplatePickerDialog$,
     agentId$,
     {
       autoFocus: true,
@@ -511,7 +510,6 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const ui = createComposerUiSignals();
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,
@@ -555,6 +553,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
+    voiceDraft: workflowComposer.voiceDraft,
     feedback: workflowComposer.feedback,
     workflow: {
       ...composerWorkflowSignals(workflowComposer),
@@ -749,6 +748,9 @@ function createComposerPrimaryActionSignal(args: {
     if (await get(eventSignals.actionsLoading$)) {
       return "disabled";
     }
+    if (get(workflowComposer.voiceDraft.hasDraft$)) {
+      return "disabled";
+    }
 
     const uploadsReady = get(draft.attachmentUploadsReady$);
     const attachments = get(draft.attachments$);
@@ -812,6 +814,9 @@ function createComposerSubmissionSignals(
         return false;
       }
       if (!get(draft.attachmentUploadsReady$)) {
+        return false;
+      }
+      if (get(workflowComposer.voiceDraft.hasDraft$)) {
         return false;
       }
       if (get(internalSubmissionPending$)) {

@@ -28,10 +28,16 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  VOICE_IO_POLISH_MAX_TEXT_CHARS,
+  voiceIoPolishContract,
+} from "@okouai/api-contracts/contracts/voice-io-polish";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
+import { accept } from "../../lib/accept.ts";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
-import { onRef, resetSignal } from "../utils.ts";
+import { onRef, resetSignal, settle } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createComposerFeedbackModel,
@@ -40,7 +46,6 @@ import {
   type ComposerFeedbackSignals,
   type FeedbackItem,
 } from "./chat-feedback.ts";
-import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import {
   findActiveChatThreadSuggestionRange,
   serializeChatThreadMention,
@@ -76,6 +81,7 @@ import {
   INLINE_TEMPLATE_NODE_NAME,
   messageDocumentToEditorDoc,
   TEMPLATE_ATTACHMENT_NODE_NAME,
+  VOICE_DRAFT_NODE_NAME,
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
 import {
@@ -83,8 +89,11 @@ import {
   type TemplatePreviewRuntime,
 } from "./template-preview-runtime.ts";
 import { createComposerWorkflows } from "./composer-workflows.ts";
+import type { OpenTemplatePickerDialogCommand } from "./chat-composer.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
+import { apiClient$ } from "../api-client.ts";
+import { toast } from "@okouai/ui/components/ui/sonner";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -207,11 +216,10 @@ export interface WorkflowComposerSignals {
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
-  readonly readSelectedTemplate$: Command<
-    GenerationTemplateRequest | undefined,
-    []
+  readonly openTemplatePicker$: Command<
+    void,
+    [OpenComposerTemplatePickerIntent]
   >;
-  readonly prepareTemplateInsertion$: Command<void, []>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
   readonly selectOrAppendText$: Command<void, [string]>;
@@ -219,11 +227,22 @@ export interface WorkflowComposerSignals {
     Promise<WorkflowComposerSubmissionSnapshot>,
     [AbortSignal]
   >;
-  readonly setTemplateAttachmentLifecycleRef$: Command<
-    (() => void) | undefined,
-    [HTMLButtonElement | null]
-  >;
+  readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: ComposerFeedbackSignals;
+}
+
+export type OpenComposerTemplatePickerIntent =
+  | { readonly kind: "insert"; readonly category: string }
+  | { readonly kind: "edit-selected"; readonly category: string }
+  | { readonly kind: "edit-legacy"; readonly category: string };
+
+export interface WorkflowComposerVoiceDraftSignals {
+  readonly hasDraft$: Computed<boolean>;
+  readonly start$: Command<string, []>;
+  readonly appendTranscript$: Command<void, [string, string]>;
+  readonly markFailed$: Command<void, [string]>;
+  readonly finish$: Command<Promise<boolean>, [string, boolean, AbortSignal]>;
+  readonly remove$: Command<void, [string]>;
 }
 
 export type ComposerTemplateAttachmentType =
@@ -528,6 +547,151 @@ function createComposerIcon(
     icon.append(path);
   }
   return icon;
+}
+
+type VoiceDraftStatus = "recording" | "processing" | "failed";
+
+interface VoiceDraftNodeAttributes {
+  readonly id: string;
+  readonly transcript: string;
+  readonly status: VoiceDraftStatus;
+  readonly visible: boolean;
+}
+
+function voiceDraftNodeAttributes(
+  node: ProseMirrorNode,
+): VoiceDraftNodeAttributes {
+  const id: unknown = node.attrs.id;
+  const transcript: unknown = node.attrs.transcript;
+  const status: unknown = node.attrs.status;
+  const visible: unknown = node.attrs.visible;
+  if (
+    typeof id !== "string" ||
+    typeof transcript !== "string" ||
+    (status !== "recording" &&
+      status !== "processing" &&
+      status !== "failed") ||
+    typeof visible !== "boolean"
+  ) {
+    throw new Error("Voice draft node attributes are invalid");
+  }
+  return { id, transcript, status, visible };
+}
+
+function voiceDraftActionButton(action: "finish" | "remove") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.voiceDraftAction = action;
+  button.className =
+    "inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-2 " +
+    "text-xs font-medium text-muted-foreground transition-colors " +
+    "hover:bg-background hover:text-foreground focus-visible:outline-none " +
+    "focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none " +
+    "disabled:opacity-50";
+  return button;
+}
+
+function createVoiceDraftNodeView(
+  node: ProseMirrorNode,
+  localizedUi: Set<() => void>,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.contentEditable = "false";
+
+  const heading = document.createElement("div");
+  heading.className = "flex items-center gap-2";
+  const icon = createComposerIcon(15, 1.7, [
+    "M12 2a3 3 0 0 0 -3 3v7a3 3 0 0 0 6 0v-7a3 3 0 0 0 -3 -3z",
+    "M5 10a7 7 0 0 0 14 0",
+    "M8 21h8",
+    "M12 17v4",
+  ]);
+  icon.setAttribute("class", "shrink-0");
+  const title = document.createElement("span");
+  title.className = "text-xs font-semibold";
+  const actions = document.createElement("div");
+  actions.className = "ml-auto flex items-center gap-1";
+  const finishButton = voiceDraftActionButton("finish");
+  const finishIcon = createComposerIcon(13, 1.8, ["M20 6l-11 11l-5 -5"]);
+  const finishLabel = document.createElement("span");
+  finishButton.append(finishIcon, finishLabel);
+  const removeButton = voiceDraftActionButton("remove");
+  removeButton.className = `${removeButton.className} w-7 px-0`;
+  removeButton.append(
+    createComposerIcon(13, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+  );
+  actions.append(finishButton, removeButton);
+  heading.append(icon, title, actions);
+
+  const transcript = document.createElement("div");
+  transcript.className =
+    "mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words " +
+    "text-sm leading-5 text-foreground/70";
+  dom.append(heading, transcript);
+
+  let currentNode = node;
+  function localize(): void {
+    const attributes = voiceDraftNodeAttributes(currentNode);
+    const draftLabel = i18n.t(($) => {
+      return $.chat.voice.draft;
+    });
+    title.textContent = draftLabel;
+    dom.setAttribute("aria-label", draftLabel);
+    const finishDraft = i18n.t(($) => {
+      return $.chat.voice.finishDraft;
+    });
+    const finishingDraft = i18n.t(($) => {
+      return $.chat.voice.finishingDraft;
+    });
+    finishLabel.textContent =
+      attributes.status === "processing" ? finishingDraft : finishDraft;
+    finishButton.setAttribute("aria-label", finishDraft);
+    finishButton.title = finishDraft;
+    const removeDraft = i18n.t(($) => {
+      return $.chat.voice.removeDraft;
+    });
+    removeButton.setAttribute("aria-label", removeDraft);
+    removeButton.title = removeDraft;
+  }
+  function render(nextNode: ProseMirrorNode): void {
+    currentNode = nextNode;
+    const attributes = voiceDraftNodeAttributes(nextNode);
+    dom.dataset.voiceDraft = attributes.id;
+    dom.dataset.voiceDraftStatus = attributes.status;
+    dom.hidden = !attributes.visible;
+    dom.className =
+      "my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 " +
+      "text-muted-foreground";
+    transcript.textContent = attributes.transcript;
+    finishButton.disabled = attributes.status === "processing";
+    removeButton.disabled = attributes.status === "processing";
+    localize();
+  }
+  localizedUi.add(localize);
+  render(node);
+
+  return {
+    dom,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      render(nextNode);
+      return true;
+    },
+    stopEvent(event) {
+      return (
+        event.target instanceof Element &&
+        event.target.closest("button[data-voice-draft-action]") !== null
+      );
+    },
+    ignoreMutation() {
+      return true;
+    },
+    destroy() {
+      localizedUi.delete(localize);
+    },
+  };
 }
 
 interface FeedbackQuoteChip {
@@ -1239,6 +1403,247 @@ function feedbackItemsFromWorkflowComposer(
   return items;
 }
 
+interface LocatedVoiceDraft {
+  readonly node: ProseMirrorNode;
+  readonly position: number;
+  readonly index: number;
+}
+
+function locateVoiceDraft(
+  document: ProseMirrorNode,
+  id: string,
+): LocatedVoiceDraft | null {
+  let position = 0;
+  for (let index = 0; index < document.childCount; index++) {
+    const node = document.child(index);
+    if (
+      node.type.name === VOICE_DRAFT_NODE_NAME &&
+      voiceDraftNodeAttributes(node).id === id
+    ) {
+      return { node, position, index };
+    }
+    position += node.nodeSize;
+  }
+  return null;
+}
+
+function hasVoiceDraft(document: ProseMirrorNode): boolean {
+  for (let index = 0; index < document.childCount; index++) {
+    if (document.child(index).type.name === VOICE_DRAFT_NODE_NAME) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function startVoiceDraft(editor: Editor): string {
+  const id = crypto.randomUUID();
+  const node = editor.schema.node(VOICE_DRAFT_NODE_NAME, {
+    id,
+    transcript: "",
+    status: "recording",
+    visible: false,
+  });
+  const position = isEmptyComposerDocument(editor.state.doc)
+    ? 0
+    : editor.state.doc.content.size;
+  editor.view.dispatch(
+    editor.state.tr.insert(position, node).setMeta("addToHistory", false),
+  );
+  return id;
+}
+
+function setVoiceDraftAttributes(
+  editor: Editor,
+  id: string,
+  patch: Partial<VoiceDraftNodeAttributes>,
+): boolean {
+  const located = locateVoiceDraft(editor.state.doc, id);
+  if (!located) {
+    return false;
+  }
+  const current = voiceDraftNodeAttributes(located.node);
+  editor.view.dispatch(
+    editor.state.tr
+      .setNodeMarkup(located.position, undefined, {
+        ...current,
+        ...patch,
+      })
+      .setMeta("addToHistory", false),
+  );
+  return true;
+}
+
+function appendVoiceDraftTranscript(
+  editor: Editor,
+  id: string,
+  value: string,
+): void {
+  const text = value.trim();
+  if (!text) {
+    return;
+  }
+  const located = locateVoiceDraft(editor.state.doc, id);
+  if (!located) {
+    return;
+  }
+  const current = voiceDraftNodeAttributes(located.node);
+  const transcript = current.transcript
+    ? `${current.transcript}\n${text}`
+    : text;
+  if (transcript.length > VOICE_IO_POLISH_MAX_TEXT_CHARS) {
+    setVoiceDraftAttributes(editor, id, {
+      status: "failed",
+      visible: true,
+    });
+    toast.error(
+      i18n.t(($) => {
+        return $.chat.voice.draftTooLong;
+      }),
+    );
+    return;
+  }
+  setVoiceDraftAttributes(editor, id, { transcript });
+}
+
+function removeVoiceDraft(
+  editor: Editor,
+  id: string,
+  addToHistory = true,
+): void {
+  const located = locateVoiceDraft(editor.state.doc, id);
+  if (!located) {
+    return;
+  }
+  const transaction = editor.state.tr.delete(
+    located.position,
+    located.position + located.node.nodeSize,
+  );
+  if (transaction.doc.childCount === 0) {
+    transaction.insert(0, editor.schema.node("paragraph"));
+  }
+  if (!addToHistory) {
+    transaction.setMeta("addToHistory", false);
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
+}
+
+function replaceVoiceDraftWithText(
+  editor: Editor,
+  id: string,
+  text: string,
+): void {
+  // Keep the successful replacement undoable, but make its inverse safe: an
+  // undo restores an actionable raw draft instead of a hidden processing node.
+  setVoiceDraftAttributes(editor, id, {
+    status: "failed",
+    visible: true,
+  });
+  const located = locateVoiceDraft(editor.state.doc, id);
+  if (!located) {
+    return;
+  }
+  const textDocument = editor.schema.nodeFromJSON(
+    valueToWorkflowComposerDoc(text),
+  );
+  const replacement: ProseMirrorNode[] = [];
+  for (let index = 0; index < textDocument.childCount; index++) {
+    replacement.push(textDocument.child(index));
+  }
+  const onlyVoiceAndEmptyParagraph =
+    editor.state.doc.childCount === 2 &&
+    located.index === 0 &&
+    editor.state.doc.child(1).type.name === "paragraph" &&
+    editor.state.doc.child(1).content.size === 0;
+  const replaceTo = onlyVoiceAndEmptyParagraph
+    ? editor.state.doc.content.size
+    : located.position + located.node.nodeSize;
+  editor.view.dispatch(
+    editor.state.tr
+      .replaceWith(located.position, replaceTo, replacement)
+      .scrollIntoView(),
+  );
+}
+
+function createVoiceDraftSignals(
+  editor: Editor,
+  hasDraftState$: State<boolean>,
+): WorkflowComposerVoiceDraftSignals {
+  const hasDraft$ = computed((get): boolean => {
+    return get(hasDraftState$);
+  });
+  const start$ = command((): string => {
+    return startVoiceDraft(editor);
+  });
+  const appendTranscript$ = command(
+    (_context, id: string, value: string): void => {
+      appendVoiceDraftTranscript(editor, id, value);
+    },
+  );
+  const markFailed$ = command((_context, id: string): void => {
+    setVoiceDraftAttributes(editor, id, {
+      status: "failed",
+      visible: true,
+    });
+  });
+  const remove$ = command((_context, id: string): void => {
+    removeVoiceDraft(editor, id);
+  });
+  const finish$ = command(
+    async (
+      { get },
+      id: string,
+      revealWhileProcessing: boolean,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const located = locateVoiceDraft(editor.state.doc, id);
+      if (!located) {
+        return false;
+      }
+      const attributes = voiceDraftNodeAttributes(located.node);
+      if (attributes.status === "processing") {
+        return false;
+      }
+      const text = attributes.transcript.trim();
+      if (!text) {
+        removeVoiceDraft(editor, id, false);
+        return true;
+      }
+      setVoiceDraftAttributes(editor, id, {
+        status: "processing",
+        visible: revealWhileProcessing,
+      });
+      const client = get(apiClient$)(voiceIoPolishContract);
+      const result = await settle(
+        accept(
+          client.post({ body: { text }, fetchOptions: { signal } }),
+          [200],
+          signal,
+        ),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!result.ok) {
+        setVoiceDraftAttributes(editor, id, {
+          status: "failed",
+          visible: true,
+        });
+        return false;
+      }
+      replaceVoiceDraftWithText(editor, id, result.value.body.text);
+      return true;
+    },
+  );
+  return {
+    hasDraft$,
+    start$,
+    appendTranscript$,
+    markFailed$,
+    finish$,
+    remove$,
+  };
+}
+
 interface LocatedTemplateAttachment {
   readonly node: ProseMirrorNode;
   readonly position: number;
@@ -1258,107 +1663,19 @@ function locateTemplateAttachment(
   return null;
 }
 
-function templateAttachmentsEqual(
-  first: ComposerTemplateAttachment,
-  second: ComposerTemplateAttachment,
-): boolean {
-  return (
-    first.type === second.type &&
-    first.title === second.title &&
-    first.category === second.category &&
-    first.previewImageUrl === second.previewImageUrl
-  );
-}
-
-function isComposerTemplateAttachmentType(
-  value: string | undefined,
-): value is ComposerTemplateAttachmentType {
-  return (
-    value === "presentation" ||
-    value === "illustration" ||
-    value === "video" ||
-    value === "avatar" ||
-    value === "workflow" ||
-    value === "website"
-  );
-}
-
-function templateAttachmentFromLifecycleElement(
-  element: HTMLButtonElement,
-): ComposerTemplateAttachment | undefined {
-  const { templateType, templateTitle, templateCategory, templatePreviewUrl } =
-    element.dataset;
-  if (
-    !isComposerTemplateAttachmentType(templateType) ||
-    templateTitle === undefined ||
-    templateCategory === undefined
-  ) {
-    return undefined;
-  }
-  return {
-    type: templateType,
-    title: templateTitle,
-    category: templateCategory,
-    previewImageUrl: templatePreviewUrl || undefined,
-  };
-}
-
-function templateAttachmentNode(
-  editor: Editor,
-  attachment: ComposerTemplateAttachment,
-): ProseMirrorNode {
-  return editor.schema.nodeFromJSON({
-    type: TEMPLATE_ATTACHMENT_NODE_NAME,
-    attrs: {
-      templateType: attachment.type,
-      title: attachment.title,
-      category: attachment.category,
-      previewImageUrl: attachment.previewImageUrl ?? null,
-    },
-  });
-}
-
-function setTemplateAttachmentNode(
-  editor: Editor,
-  attachment: ComposerTemplateAttachment | undefined,
-): void {
+function removeTemplateAttachmentNode(editor: Editor): void {
   const located = locateTemplateAttachment(editor.state.doc);
-  if (!attachment) {
-    if (!located) {
-      return;
-    }
-    const transaction = editor.state.tr.delete(
-      located.position,
-      located.position + located.node.nodeSize,
-    );
-    if (transaction.doc.childCount === 0) {
-      transaction.insert(0, editor.schema.node("paragraph"));
-    }
-    editor.view.dispatch(transaction.scrollIntoView());
+  if (!located) {
     return;
   }
-  if (located) {
-    const currentAttachment = templateAttachmentNodeAttributes(located.node);
-    if (templateAttachmentsEqual(currentAttachment, attachment)) {
-      return;
-    }
-    editor.view.dispatch(
-      editor.state.tr
-        .setNodeMarkup(located.position, undefined, {
-          templateType: attachment.type,
-          title: attachment.title,
-          category: attachment.category,
-          previewImageUrl: attachment.previewImageUrl ?? null,
-        })
-        .scrollIntoView(),
-    );
-    return;
-  }
-  editor.view.dispatch(
-    editor.state.tr
-      .insert(0, templateAttachmentNode(editor, attachment))
-      .scrollIntoView(),
+  const transaction = editor.state.tr.delete(
+    located.position,
+    located.position + located.node.nodeSize,
   );
+  if (transaction.doc.childCount === 0) {
+    transaction.insert(0, editor.schema.node("paragraph"));
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
 }
 
 function agentMentionInlineContent(value: string): JSONContent[] {
@@ -1440,6 +1757,15 @@ function workflowComposerDocToString(editor: Editor): string {
   for (let index = 0; index < editor.state.doc.childCount; index++) {
     const node = editor.state.doc.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
+      continue;
+    }
+    if (node.type.name === VOICE_DRAFT_NODE_NAME) {
+      flushTextBlocks();
+      flushFeedbackItems();
+      const { transcript } = voiceDraftNodeAttributes(node);
+      if (transcript.length > 0) {
+        sections.push(transcript);
+      }
       continue;
     }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
@@ -1560,10 +1886,8 @@ interface WorkflowComposerRuntime {
   selectionUpdate(editor: Editor): void;
   focus(editor: Editor): void;
   blur(): void;
-  templateAttachment: ComposerTemplateAttachment | undefined;
-  openTemplate(category: string): void;
+  openTemplate(intent: OpenComposerTemplatePickerIntent): void;
   removeTemplate(): void;
-  templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   localizedUi: Set<() => void>;
@@ -1601,7 +1925,7 @@ function createTemplateAttachmentNode(
         return createTemplateAttachmentNodeView(
           node,
           (category) => {
-            runtime.openTemplate(category);
+            runtime.openTemplate({ kind: "edit-legacy", category });
           },
           () => {
             runtime.removeTemplate();
@@ -1609,31 +1933,6 @@ function createTemplateAttachmentNode(
           runtime.localizedUi,
         );
       };
-    },
-    addProseMirrorPlugins() {
-      return [
-        new Plugin({
-          key: new PluginKey("templateAttachmentGuard"),
-          appendTransaction(_transactions, _oldState, newState) {
-            const attachment = runtime.templateAttachment;
-            if (
-              attachment === undefined ||
-              locateTemplateAttachment(newState.doc) !== null
-            ) {
-              return null;
-            }
-            return newState.tr.insert(
-              0,
-              newState.schema.node(TEMPLATE_ATTACHMENT_NODE_NAME, {
-                templateType: attachment.type,
-                title: attachment.title,
-                category: attachment.category,
-                previewImageUrl: attachment.previewImageUrl ?? null,
-              }),
-            );
-          },
-        }),
-      ];
     },
   });
 }
@@ -1688,7 +1987,7 @@ function createInlineTemplateNode(
           {
             openTemplate: (category) => {
               if (selectSelf()) {
-                runtime.openTemplate(category);
+                runtime.openTemplate({ kind: "edit-selected", category });
               }
             },
           },
@@ -1741,6 +2040,38 @@ function createFeedbackItemNode(
   });
 }
 
+function createVoiceDraftNode(
+  runtime: WorkflowComposerRuntime,
+): Node<undefined, unknown> {
+  return Node.create({
+    name: VOICE_DRAFT_NODE_NAME,
+    group: "block",
+    atom: true,
+    defining: true,
+    isolating: true,
+    selectable: false,
+    addAttributes() {
+      return {
+        id: { default: "" },
+        transcript: { default: "" },
+        status: { default: "failed" },
+        visible: { default: true },
+      };
+    },
+    parseHTML() {
+      return [{ tag: "div[data-voice-draft]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["div", { ...HTMLAttributes, "data-voice-draft": "" }];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        return createVoiceDraftNodeView(node, runtime.localizedUi);
+      };
+    },
+  });
+}
+
 function createWorkflowEditor(
   runtime: WorkflowComposerRuntime,
   agentMentionAvatarRuntime: AgentMentionAvatarRuntime,
@@ -1752,6 +2083,7 @@ function createWorkflowEditor(
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),
+      createVoiceDraftNode(runtime),
       createAgentMentionNode(
         COMPOSER_INLINE_REFERENCE_CLASS,
         agentMentionAvatarRuntime,
@@ -1901,6 +2233,8 @@ function resetMountedWorkflowRuntime(runtime: WorkflowComposerRuntime): void {
   runtime.selectionUpdate = () => {};
   runtime.focus = () => {};
   runtime.blur = () => {};
+  runtime.openTemplate = () => {};
+  runtime.removeTemplate = () => {};
   runtime.replaceFeedbackItems = () => {};
   runtime.removeFeedback = () => {};
 }
@@ -2006,9 +2340,14 @@ interface MountEditorOptions {
   editor: Editor;
   draft: DraftSignals;
   runtime: WorkflowComposerRuntime;
+  legacyTemplateAttachment: ReturnType<
+    typeof createLegacyTemplateAttachmentControls
+  >;
+  openTemplatePicker$: WorkflowComposerSignals["openTemplatePicker$"];
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
+  hasVoiceDraftState$: State<boolean>;
   feedback: ComposerFeedbackModel;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
@@ -2034,12 +2373,14 @@ interface MountedDraftInputSyncTargetOptions {
   editor: Editor;
   runtime: WorkflowComposerRuntime;
   setEditorDocument(snapshot: EditorDocumentSnapshot): void;
+  onDocumentChanged(): void;
 }
 
 function createMountedDraftInputSyncTarget({
   editor,
   runtime,
   setEditorDocument,
+  onDocumentChanged,
 }: MountedDraftInputSyncTargetOptions): DraftInputSyncTarget {
   const syncEditorDocument = () => {
     setEditorDocument(createEditorDocumentSnapshot(editor.state.doc));
@@ -2055,6 +2396,7 @@ function createMountedDraftInputSyncTarget({
       );
       if (changed) {
         runtime.replaceFeedbackItems(feedbackItemsFromWorkflowComposer(editor));
+        onDocumentChanged();
         syncEditorDocument();
       }
     },
@@ -2066,6 +2408,7 @@ function createMountedDraftInputSyncTarget({
       const changed = setWorkflowComposerDocument(editor, document);
       if (changed) {
         runtime.replaceFeedbackItems(feedbackItemsFromWorkflowComposer(editor));
+        onDocumentChanged();
       }
       syncEditorDocument();
     },
@@ -2076,9 +2419,12 @@ function createMountEditorCommand({
   editor,
   draft,
   runtime,
+  legacyTemplateAttachment,
+  openTemplatePicker$,
   caretIndex$,
   editorFocusedState$,
   selectedSuggestionIndexState$,
+  hasVoiceDraftState$,
   feedback,
   compositionGate,
   syncWorkflowNames$,
@@ -2089,6 +2435,7 @@ function createMountEditorCommand({
   return onRef(
     command(async ({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
+        set(legacyTemplateAttachment.sync$);
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
@@ -2099,6 +2446,7 @@ function createMountEditorCommand({
         );
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
+        set(hasVoiceDraftState$, hasVoiceDraft(updatedEditor.state.doc));
         compositionGate.notifySettled();
         // Forward TipTap updates through the React-owned DOM boundary.
         element.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2119,6 +2467,12 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.signals.remove$, id);
       };
+      runtime.openTemplate = (intent) => {
+        set(openTemplatePicker$, intent);
+      };
+      runtime.removeTemplate = () => {
+        set(legacyTemplateAttachment.remove$);
+      };
       configureMountedWorkflowEditor(editor, singleLineOnMobile);
       setWorkflowComposerDocument(
         editor,
@@ -2128,10 +2482,12 @@ function createMountEditorCommand({
           editorDocument: set(draft.readEditorDocument$),
         }),
       );
+      set(hasVoiceDraftState$, hasVoiceDraft(editor.state.doc));
       set(
         draft.setEditorDocument$,
         createEditorDocumentSnapshot(editor.state.doc),
       );
+      set(legacyTemplateAttachment.sync$);
       editor.mount(element);
       mountLocalizationListener(editor, runtime, signal);
       mountCompositionListeners(editor, compositionGate, signal);
@@ -2142,6 +2498,10 @@ function createMountEditorCommand({
           runtime,
           setEditorDocument(snapshot) {
             set(draft.setEditorDocument$, snapshot);
+            set(legacyTemplateAttachment.sync$);
+          },
+          onDocumentChanged() {
+            set(hasVoiceDraftState$, hasVoiceDraft(editor.state.doc));
           },
         }),
       );
@@ -2158,8 +2518,10 @@ function createMountEditorCommand({
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);
+        set(legacyTemplateAttachment.reset$);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
+        set(hasVoiceDraftState$, false);
         editor.unmount();
       });
       await Promise.all([
@@ -2388,14 +2750,54 @@ function inlineTemplateNode(
   });
 }
 
-function createInsertTemplateCommand(editor: Editor) {
+function replaceLegacyTemplateAttachmentNode(
+  editor: Editor,
+  inlineTemplate: ProseMirrorNode,
+): boolean {
+  const located = locateTemplateAttachment(editor.state.doc);
+  if (!located) {
+    return false;
+  }
+  const transaction = editor.state.tr.delete(
+    located.position,
+    located.position + located.node.nodeSize,
+  );
+  const nextNode = transaction.doc.nodeAt(located.position);
+  if (nextNode?.type.name === "paragraph") {
+    transaction.insert(located.position + 1, inlineTemplate);
+  } else {
+    transaction.insert(
+      located.position,
+      editor.schema.nodeFromJSON({
+        type: "paragraph",
+        content: [inlineTemplate.toJSON()],
+      }),
+    );
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+
+function createInsertTemplateCommand(
+  editor: Editor,
+  draft: DraftSignals,
+  legacyReplacementPending$: State<boolean>,
+) {
   return command(
     (
-      _context,
+      { get, set },
       request: GenerationTemplateRequest,
       attachment: ComposerTemplateAttachment,
     ) => {
       const node = inlineTemplateNode(editor, request, attachment);
+      const replaceLegacy = get(legacyReplacementPending$);
+      set(legacyReplacementPending$, false);
+      if (replaceLegacy) {
+        set(draft.setGenerationTemplate$, undefined);
+        if (replaceLegacyTemplateAttachmentNode(editor, node)) {
+          return;
+        }
+      }
       const { selection } = editor.state;
       if (
         selection instanceof NodeSelection &&
@@ -2452,11 +2854,40 @@ function createReadSelectedTemplateCommand(editor: Editor) {
   });
 }
 
-function createTemplateInsertionCommands(editor: Editor) {
+function createTemplateCommands(
+  editor: Editor,
+  draft: DraftSignals,
+  openTemplatePickerDialog$: OpenTemplatePickerDialogCommand,
+) {
+  const legacyReplacementPending$ = state(false);
+  const readSelectedTemplate$ = createReadSelectedTemplateCommand(editor);
+  const prepareTemplateInsertion$ =
+    createPrepareTemplateInsertionCommand(editor);
+  const openTemplatePicker$ = command(
+    ({ get, set }, intent: OpenComposerTemplatePickerIntent): void => {
+      set(legacyReplacementPending$, intent.kind === "edit-legacy");
+      let referenceValue: GenerationTemplateRequest | null = null;
+      if (intent.kind === "edit-selected") {
+        referenceValue = set(readSelectedTemplate$) ?? null;
+      } else if (intent.kind === "edit-legacy") {
+        referenceValue = get(draft.generationTemplate$) ?? null;
+      }
+      if (intent.kind === "insert") {
+        set(prepareTemplateInsertion$);
+      }
+      set(openTemplatePickerDialog$, {
+        category: intent.category,
+        referenceValue,
+      });
+    },
+  );
   return {
-    insertTemplate$: createInsertTemplateCommand(editor),
-    readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
-    prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
+    insertTemplate$: createInsertTemplateCommand(
+      editor,
+      draft,
+      legacyReplacementPending$,
+    ),
+    openTemplatePicker$,
   };
 }
 
@@ -2522,63 +2953,61 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     selectionUpdate(_editor: Editor): void {},
     focus(_editor: Editor): void {},
     blur(): void {},
-    templateAttachment: undefined,
-    openTemplate(_category: string): void {},
+    openTemplate(_intent: OpenComposerTemplatePickerIntent): void {},
     removeTemplate(): void {},
-    templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     localizedUi: new Set(),
   };
 }
 
-function createTemplateAttachmentControls(
+/** Keeps attachment blocks from drafts created before inline templates interactive. */
+function createLegacyTemplateAttachmentControls(
   editor: Editor,
-  runtime: WorkflowComposerRuntime,
+  draft: DraftSignals,
 ) {
   const activeState$ = state(false);
-  runtime.removeTemplate = () => {
-    if (runtime.templateAttachment === undefined) {
+  const sync$ = command(({ set }) => {
+    set(activeState$, locateTemplateAttachment(editor.state.doc) !== null);
+  });
+  const remove$ = command(({ set }) => {
+    if (locateTemplateAttachment(editor.state.doc) === null) {
       return;
     }
-    runtime.templateAttachment = undefined;
-    setTemplateAttachmentNode(editor, undefined);
-    runtime.templateRemoved();
-  };
-  const setLifecycleRef$ = onRef(
-    command(({ set }, element: HTMLButtonElement, signal: AbortSignal) => {
-      const attachment = templateAttachmentFromLifecycleElement(element);
-      runtime.templateAttachment = attachment;
-      set(activeState$, attachment !== undefined);
-      setTemplateAttachmentNode(editor, attachment);
-      runtime.openTemplate = (category) => {
-        element.dataset.templateAction = "open";
-        element.dataset.templateCategory = category;
-        element.click();
-      };
-      runtime.templateRemoved = () => {
-        element.dataset.templateAction = "remove";
-        element.click();
-      };
-      signal.addEventListener("abort", () => {
-        runtime.templateAttachment = undefined;
-        runtime.openTemplate = () => {};
-        runtime.templateRemoved = () => {};
-        set(activeState$, false);
-        setTemplateAttachmentNode(editor, undefined);
-      });
-    }),
-  );
+    set(draft.setGenerationTemplate$, undefined);
+    removeTemplateAttachmentNode(editor);
+    set(activeState$, false);
+  });
+  const reset$ = command(({ set }) => {
+    set(activeState$, false);
+  });
   const active$ = computed((get) => {
     return get(activeState$);
   });
-  return { active$, setLifecycleRef$ };
+  return { active$, sync$, remove$, reset$ };
+}
+
+function createActiveSuggestionRange<T>(
+  editor: Editor,
+  caretIndex$: State<number>,
+  editorFocusedState$: State<boolean>,
+  findRange: (value: string, caretIndex: number) => T | null,
+): Computed<T | null> {
+  return computed((get) => {
+    const caretIndex = get(caretIndex$);
+    if (caretIndex < 0 || !get(editorFocusedState$)) {
+      return null;
+    }
+    const textblock = activeTextblock(editor);
+    return textblock ? findRange(textblock.value, textblock.caretIndex) : null;
+  });
 }
 
 export function createWorkflowComposerSignals<
   T extends AgentIdValue = Promise<string | null>,
 >(
   draft: DraftSignals,
+  openDialog$: OpenTemplatePickerDialogCommand,
   agentIdSource$: Computed<T> = currentChatAgentRecordId$ as Computed<T>,
   mountOptions: WorkflowComposerMountOptions = {},
   feedback: ComposerFeedbackModel = createComposerFeedbackModel(),
@@ -2586,6 +3015,7 @@ export function createWorkflowComposerSignals<
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
+  const hasVoiceDraftState$ = state(false);
   const runtime = createWorkflowComposerRuntime();
   const agentMentionAvatarRuntime = createAgentMentionAvatarRuntime();
   const templatePreview = createTemplatePreviewRuntime();
@@ -2593,6 +3023,7 @@ export function createWorkflowComposerSignals<
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
   const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
+  const voiceDraft = createVoiceDraftSignals(editor, hasVoiceDraftState$);
   connectComposerFeedback(feedback, editor);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
@@ -2602,33 +3033,26 @@ export function createWorkflowComposerSignals<
   const syncAgentMentionAvatars$ = createSyncAgentMentionAvatarsCommand(
     agentMentionAvatarRuntime,
   );
-  const templateAttachment = createTemplateAttachmentControls(editor, runtime);
+  const templateCommands = createTemplateCommands(editor, draft, openDialog$);
+  const legacyTemplateAttachment = createLegacyTemplateAttachmentControls(
+    editor,
+    draft,
+  );
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
-  const activeSlashRange$ = computed((get) => {
-    const caretIndex = get(caretIndex$);
-    if (caretIndex < 0 || !get(editorFocusedState$)) {
-      return null;
-    }
-    const textblock = activeTextblock(editor);
-    return textblock
-      ? findActiveSlashWorkflowRange(textblock.value, textblock.caretIndex)
-      : null;
-  });
-  const activeChatThreadSuggestionRange$ = computed((get) => {
-    const caretIndex = get(caretIndex$);
-    if (caretIndex < 0 || !get(editorFocusedState$)) {
-      return null;
-    }
-    const textblock = activeTextblock(editor);
-    return textblock
-      ? findActiveChatThreadSuggestionRange(
-          textblock.value,
-          textblock.caretIndex,
-        )
-      : null;
-  });
+  const activeSlashRange$ = createActiveSuggestionRange(
+    editor,
+    caretIndex$,
+    editorFocusedState$,
+    findActiveSlashWorkflowRange,
+  );
+  const activeChatThreadSuggestionRange$ = createActiveSuggestionRange(
+    editor,
+    caretIndex$,
+    editorFocusedState$,
+    findActiveChatThreadSuggestionRange,
+  );
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
     agentId$,
@@ -2646,9 +3070,12 @@ export function createWorkflowComposerSignals<
     editor,
     draft,
     runtime,
+    legacyTemplateAttachment,
+    openTemplatePicker$: templateCommands.openTemplatePicker$,
     caretIndex$,
     editorFocusedState$,
     selectedSuggestionIndexState$,
+    hasVoiceDraftState$,
     feedback,
     compositionGate,
     syncWorkflowNames$,
@@ -2662,7 +3089,6 @@ export function createWorkflowComposerSignals<
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
-  const templateCommands = createTemplateInsertionCommands(editor);
   const insertUserMessage$ = createInsertUserMessageCommand(editor);
   const readInputForSubmission$ = createReadInputForSubmissionCommand(
     editor,
@@ -2678,7 +3104,7 @@ export function createWorkflowComposerSignals<
     setContainerRef$,
     focus$,
     hasInput$,
-    hasTemplateAttachment$: templateAttachment.active$,
+    hasTemplateAttachment$: legacyTemplateAttachment.active$,
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,
@@ -2693,7 +3119,7 @@ export function createWorkflowComposerSignals<
     ...templateCommands,
     insertUserMessage$,
     readInputForSubmission$,
-    setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
+    voiceDraft,
     feedback: feedback.signals,
   };
 }

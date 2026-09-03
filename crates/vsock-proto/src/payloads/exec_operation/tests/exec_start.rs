@@ -1,8 +1,36 @@
+use super::super::start::{
+    EXEC_LIFECYCLE_SUPERVISED, EXEC_PROCESS_ROLE_CODEX_SESSION_CLEANUP,
+    EXEC_PROCESS_ROLE_SESSION_HISTORY_IDENTITY_VERIFIER,
+};
 use super::super::*;
 use super::shared::{
     ExecStartLayout, ExecStartLayoutRequest, set_byte_at, write_u16_at, write_u32_at,
 };
 use super::{NONCE, assert_invalid_payload};
+
+type ExecProcessContract = (ExecProcessRole, ExecLifecyclePolicy, ExecControlPolicy);
+
+const EXEC_PROCESS_ROLES: [ExecProcessRole; 4] = [
+    ExecProcessRole::Workload,
+    ExecProcessRole::Agent,
+    ExecProcessRole::SessionHistoryIdentityVerifier,
+    ExecProcessRole::CodexSessionCleanup,
+];
+const EXEC_LIFECYCLE_POLICIES: [ExecLifecyclePolicy; 2] = [
+    ExecLifecyclePolicy::OneShot,
+    ExecLifecyclePolicy::Supervised,
+];
+const EXEC_CONTROL_POLICIES: [ExecControlPolicy; 3] = [
+    ExecControlPolicy::Disabled,
+    ExecControlPolicy::Enabled {
+        control_nonce: NONCE,
+        sink: false,
+    },
+    ExecControlPolicy::Enabled {
+        control_nonce: NONCE,
+        sink: true,
+    },
+];
 
 fn exec_start_payload(command: &str, env: &[(&str, &str)], label: &str) -> Vec<u8> {
     encode_exec_start(
@@ -65,6 +93,109 @@ fn encode_exec_start_contract(
         control,
         stdin_bytes: None,
     })
+}
+
+fn exec_process_contracts() -> impl Iterator<Item = ExecProcessContract> {
+    EXEC_PROCESS_ROLES.into_iter().flat_map(|role| {
+        EXEC_LIFECYCLE_POLICIES
+            .into_iter()
+            .flat_map(move |lifecycle| {
+                EXEC_CONTROL_POLICIES
+                    .into_iter()
+                    .map(move |control| (role, lifecycle, control))
+            })
+    })
+}
+
+fn is_expected_valid_exec_process_contract(
+    role: ExecProcessRole,
+    lifecycle: ExecLifecyclePolicy,
+    control: ExecControlPolicy,
+) -> bool {
+    matches!(
+        (role, lifecycle, control),
+        (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        ) | (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Disabled,
+        ) | (
+            ExecProcessRole::Workload,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled { sink: false, .. },
+        ) | (
+            ExecProcessRole::Agent,
+            ExecLifecyclePolicy::Supervised,
+            ExecControlPolicy::Enabled { sink: true, .. },
+        ) | (
+            ExecProcessRole::SessionHistoryIdentityVerifier,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        ) | (
+            ExecProcessRole::CodexSessionCleanup,
+            ExecLifecyclePolicy::OneShot,
+            ExecControlPolicy::Disabled,
+        )
+    )
+}
+
+fn exec_process_role_wire_value(role: ExecProcessRole) -> u8 {
+    match role {
+        ExecProcessRole::Workload => EXEC_PROCESS_ROLE_WORKLOAD,
+        ExecProcessRole::Agent => EXEC_PROCESS_ROLE_AGENT,
+        ExecProcessRole::SessionHistoryIdentityVerifier => {
+            EXEC_PROCESS_ROLE_SESSION_HISTORY_IDENTITY_VERIFIER
+        }
+        ExecProcessRole::CodexSessionCleanup => EXEC_PROCESS_ROLE_CODEX_SESSION_CLEANUP,
+    }
+}
+
+fn exec_lifecycle_wire_value(lifecycle: ExecLifecyclePolicy) -> u8 {
+    match lifecycle {
+        ExecLifecyclePolicy::OneShot => EXEC_LIFECYCLE_ONE_SHOT,
+        ExecLifecyclePolicy::Supervised => EXEC_LIFECYCLE_SUPERVISED,
+    }
+}
+
+fn decoder_payload_for_exec_process_contract(
+    role: ExecProcessRole,
+    lifecycle: ExecLifecyclePolicy,
+    control: ExecControlPolicy,
+) -> Vec<u8> {
+    let seed_role = match control {
+        ExecControlPolicy::Disabled | ExecControlPolicy::Enabled { sink: false, .. } => {
+            ExecProcessRole::Workload
+        }
+        ExecControlPolicy::Enabled { sink: true, .. } => ExecProcessRole::Agent,
+    };
+    let mut payload =
+        encode_exec_start_contract(seed_role, ExecLifecyclePolicy::Supervised, control).unwrap();
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control,
+        stdin_bytes: None,
+    });
+
+    set_byte_at(
+        &mut payload,
+        layout.role_offset,
+        exec_process_role_wire_value(role),
+    );
+    set_byte_at(
+        &mut payload,
+        layout.lifecycle_offset,
+        exec_lifecycle_wire_value(lifecycle),
+    );
+    payload
 }
 
 fn stdin_exec_start_payload(stdin_bytes: &[u8]) -> Vec<u8> {
@@ -350,44 +481,14 @@ fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
 
 #[test]
 fn exec_start_accepts_every_valid_process_contract() {
-    for (role, lifecycle, control) in [
-        (
-            ExecProcessRole::Workload,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::Workload,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::Workload,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: false,
-            },
-        ),
-        (
-            ExecProcessRole::Agent,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: true,
-            },
-        ),
-        (
-            ExecProcessRole::SessionHistoryIdentityVerifier,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::CodexSessionCleanup,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Disabled,
-        ),
-    ] {
+    let mut contract_count = 0;
+    let mut accepted_count = 0;
+    for (role, lifecycle, control) in exec_process_contracts() {
+        contract_count += 1;
+        if !is_expected_valid_exec_process_contract(role, lifecycle, control) {
+            continue;
+        }
+
         let timeout = match lifecycle {
             ExecLifecyclePolicy::OneShot => ExecTimeoutPolicy::Duration { timeout_ms: 1 },
             ExecLifecyclePolicy::Supervised => ExecTimeoutPolicy::None,
@@ -411,186 +512,49 @@ fn exec_start_accepts_every_valid_process_contract() {
         assert_eq!(decoded.role, role);
         assert_eq!(decoded.lifecycle, lifecycle);
         assert_eq!(decoded.control, control);
+        accepted_count += 1;
     }
+
+    assert_eq!(contract_count, 24);
+    assert_eq!(accepted_count, 6);
 }
 
 #[test]
 fn exec_start_encoder_rejects_every_invalid_process_contract() {
-    for (role, lifecycle, control) in [
-        (
-            ExecProcessRole::Agent,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::Agent,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::Agent,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: false,
-            },
-        ),
-        (
-            ExecProcessRole::Workload,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: false,
-            },
-        ),
-        (
-            ExecProcessRole::Workload,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: true,
-            },
-        ),
-        (
-            ExecProcessRole::Workload,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: true,
-            },
-        ),
-        (
-            ExecProcessRole::SessionHistoryIdentityVerifier,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::SessionHistoryIdentityVerifier,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: false,
-            },
-        ),
-        (
-            ExecProcessRole::CodexSessionCleanup,
-            ExecLifecyclePolicy::Supervised,
-            ExecControlPolicy::Disabled,
-        ),
-        (
-            ExecProcessRole::CodexSessionCleanup,
-            ExecLifecyclePolicy::OneShot,
-            ExecControlPolicy::Enabled {
-                control_nonce: NONCE,
-                sink: false,
-            },
-        ),
-    ] {
+    let mut rejected_count = 0;
+    for (role, lifecycle, control) in exec_process_contracts() {
+        if is_expected_valid_exec_process_contract(role, lifecycle, control) {
+            continue;
+        }
+
         let error = encode_exec_start_contract(role, lifecycle, control).unwrap_err();
         assert_invalid_payload(
             error,
             "exec start role, lifecycle, and control combination invalid",
         );
+        rejected_count += 1;
     }
+
+    assert_eq!(rejected_count, 18);
 }
 
 #[test]
 fn exec_start_decoder_rejects_every_invalid_process_contract() {
-    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
-    let mut agent_one_shot_disabled = default_exec_start_payload();
-    set_byte_at(
-        &mut agent_one_shot_disabled,
-        layout.role_offset,
-        EXEC_PROCESS_ROLE_AGENT,
-    );
+    let mut rejected_count = 0;
+    for (role, lifecycle, control) in exec_process_contracts() {
+        if is_expected_valid_exec_process_contract(role, lifecycle, control) {
+            continue;
+        }
 
-    let workload_supervised_disabled = encode_exec_start_contract(
-        ExecProcessRole::Workload,
-        ExecLifecyclePolicy::Supervised,
-        ExecControlPolicy::Disabled,
-    )
-    .unwrap();
-    let disabled_layout = ExecStartLayout::new(ExecStartLayoutRequest {
-        timeout: ExecTimeoutPolicy::None,
-        command: "cmd",
-        env: &[],
-        label: "",
-        stdout: ExecOutputPolicy::Discard,
-        stderr: ExecOutputPolicy::Discard,
-        expected_exit_codes: &[],
-        control: ExecControlPolicy::Disabled,
-        stdin_bytes: None,
-    });
-    let mut agent_supervised_disabled = workload_supervised_disabled;
-    set_byte_at(
-        &mut agent_supervised_disabled,
-        disabled_layout.role_offset,
-        EXEC_PROCESS_ROLE_AGENT,
-    );
-
-    let workload_supervised_control = supervised_control_exec_start_payload();
-    let control_layout = ExecStartLayout::new(ExecStartLayoutRequest {
-        timeout: ExecTimeoutPolicy::None,
-        command: "cmd",
-        env: &[],
-        label: "",
-        stdout: ExecOutputPolicy::Discard,
-        stderr: ExecOutputPolicy::Discard,
-        expected_exit_codes: &[],
-        control: ExecControlPolicy::Enabled {
-            control_nonce: NONCE,
-            sink: false,
-        },
-        stdin_bytes: None,
-    });
-    let mut agent_supervised_without_sink = workload_supervised_control.clone();
-    set_byte_at(
-        &mut agent_supervised_without_sink,
-        control_layout.role_offset,
-        EXEC_PROCESS_ROLE_AGENT,
-    );
-    let mut workload_one_shot_with_control = workload_supervised_control;
-    set_byte_at(
-        &mut workload_one_shot_with_control,
-        control_layout.lifecycle_offset,
-        EXEC_LIFECYCLE_ONE_SHOT,
-    );
-
-    let agent_supervised_control = encode_exec_start_contract(
-        ExecProcessRole::Agent,
-        ExecLifecyclePolicy::Supervised,
-        ExecControlPolicy::Enabled {
-            control_nonce: NONCE,
-            sink: true,
-        },
-    )
-    .unwrap();
-    let mut workload_supervised_with_sink = agent_supervised_control.clone();
-    set_byte_at(
-        &mut workload_supervised_with_sink,
-        control_layout.role_offset,
-        EXEC_PROCESS_ROLE_WORKLOAD,
-    );
-    let mut agent_one_shot_with_sink = agent_supervised_control;
-    set_byte_at(
-        &mut agent_one_shot_with_sink,
-        control_layout.lifecycle_offset,
-        EXEC_LIFECYCLE_ONE_SHOT,
-    );
-
-    for payload in [
-        agent_one_shot_disabled,
-        agent_supervised_disabled,
-        agent_supervised_without_sink,
-        workload_one_shot_with_control,
-        workload_supervised_with_sink,
-        agent_one_shot_with_sink,
-    ] {
+        let payload = decoder_payload_for_exec_process_contract(role, lifecycle, control);
         assert_invalid_payload(
             decode_exec_start(&payload).unwrap_err(),
             "exec start role, lifecycle, and control combination invalid",
         );
+        rejected_count += 1;
     }
+
+    assert_eq!(rejected_count, 18);
 }
 #[test]
 fn exec_start_rejects_zero_duration_timeout() {

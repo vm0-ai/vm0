@@ -565,6 +565,55 @@ class TestFirewallHeaderCache:
         assert fresh_snapshot.resolved_secrets == ["TOKEN"]
         assert fresh_snapshot.query == {"api_key": "original-key"}
 
+    async def test_returned_metadata_is_detached_from_cached_payload(self):
+        cache_key = auth_cache_key()
+        auth_request = firewall_auth_request(
+            auth_headers={"Authorization": "template"},
+            auth_query={"api_key": "template"},
+        )
+        auth_fetch = AsyncMock(
+            return_value=firewall_auth_success(
+                headers={"Authorization": "Bearer original"},
+                resolved_secrets=["TOKEN"],
+                query={"api_key": "original-key"},
+            )
+        )
+
+        with patch.object(auth_cache, "fetch_firewall_headers", auth_fetch):
+            fresh = await auth_cache.get_firewall_headers(cache_key, auth_request)
+            cache_entry_identity = fresh["cache_entry_identity"]
+
+            fresh["headers"]["Authorization"] = "Bearer mutated-fresh"
+            fresh["resolved_secrets"].append("MUTATED_FRESH")
+            fresh["query"]["api_key"] = "mutated-fresh-key"
+
+            snapshot = require_cached_headers(cache_key)
+            assert snapshot.headers == {"Authorization": "Bearer original"}
+            assert snapshot.resolved_secrets == ["TOKEN"]
+            assert snapshot.query == {"api_key": "original-key"}
+            assert snapshot.cache_entry_identity is cache_entry_identity
+
+            cached = await auth_cache.get_firewall_headers(cache_key, auth_request)
+            assert cached["headers"] == {"Authorization": "Bearer original"}
+            assert cached["resolved_secrets"] == ["TOKEN"]
+            assert cached["query"] == {"api_key": "original-key"}
+
+            cached["headers"]["Authorization"] = "Bearer mutated-cached"
+            cached["resolved_secrets"].append("MUTATED_CACHED")
+            cached["query"]["api_key"] = "mutated-cached-key"
+
+            subsequent = await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+        assert fresh["cache_hit"] is False
+        assert cached["cache_hit"] is True
+        assert subsequent["cache_hit"] is True
+        assert cached["cache_entry_identity"] is cache_entry_identity
+        assert subsequent["cache_entry_identity"] is cache_entry_identity
+        assert subsequent["headers"] == {"Authorization": "Bearer original"}
+        assert subsequent["resolved_secrets"] == ["TOKEN"]
+        assert subsequent["query"] == {"api_key": "original-key"}
+        auth_fetch.assert_awaited_once_with(auth_request, force_refresh=False)
+
     async def test_fetch_failure_does_not_cache(self, mitm_ctx):
         """Failed fetch should not populate cache; next caller retries independently."""
         cache_key = auth_cache_key()

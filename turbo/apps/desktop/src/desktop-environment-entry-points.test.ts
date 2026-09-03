@@ -20,8 +20,6 @@ const temporaryDirectories: string[] = [];
 const environmentNames = {
   canonicalPlatformUrl: "OKOU_DESKTOP_PLATFORM_URL",
   canonicalProduct: "OKOU_DESKTOP_PRODUCT",
-  retiredPlatformUrl: "VM0_DESKTOP_PLATFORM_URL",
-  retiredProduct: "VM0_DESKTOP_PRODUCT",
 } as const;
 
 const buildConfigHarnessSource = `
@@ -70,6 +68,17 @@ if (
 }
 `;
 
+const forgeConfigHarnessSource = `
+const path = require("node:path");
+const config = require(process.env.TEST_FORGE_CONFIG);
+if (
+  path.basename(config.packagerConfig.icon) !==
+  process.env.TEST_EXPECTED_APP_ICON_BASE_NAME
+) {
+  throw new Error("Desktop package icon changed");
+}
+`;
+
 const platformOverrideSource = `
 Object.defineProperty(process, "platform", { value: "darwin" });
 `;
@@ -77,8 +86,6 @@ Object.defineProperty(process, "platform", { value: "darwin" });
 interface EnvironmentValues {
   readonly canonicalPlatformUrl?: string;
   readonly canonicalProduct?: string;
-  readonly retiredPlatformUrl?: string;
-  readonly retiredProduct?: string;
 }
 
 interface RuntimeFileConfig {
@@ -168,8 +175,6 @@ function applyEnvironmentValues(
   for (const [environmentName, value] of [
     [environmentNames.canonicalPlatformUrl, values.canonicalPlatformUrl],
     [environmentNames.canonicalProduct, values.canonicalProduct],
-    [environmentNames.retiredPlatformUrl, values.retiredPlatformUrl],
-    [environmentNames.retiredProduct, values.retiredProduct],
   ] as const) {
     if (value !== undefined) {
       environment[environmentName] = value;
@@ -237,6 +242,23 @@ function runInstalledConfig(testCase: InstalledSurfaceCase): EntryPointResult {
     { cwd: turboDirectory, encoding: "utf8", env: environment },
   );
   return { process: processResult, trace: trace(fixture) };
+}
+
+function runForgeConfig(
+  product: "zero" | "okou" | undefined,
+  expectedAppIconBaseName: "icon-zero" | "icon",
+): SpawnSyncReturns<string> {
+  const environment = baseEnvironment();
+  environment.TEST_FORGE_CONFIG = join(desktopDirectory, "forge.config.js");
+  environment.TEST_EXPECTED_APP_ICON_BASE_NAME = expectedAppIconBaseName;
+  if (product) {
+    environment.OKOU_DESKTOP_PRODUCT = product;
+  }
+  return spawnSync(process.execPath, ["--eval", forgeConfigHarnessSource], {
+    cwd: desktopDirectory,
+    encoding: "utf8",
+    env: environment,
+  });
 }
 
 function preparePackagedApp(
@@ -311,9 +333,9 @@ describe("Desktop build configuration entry point", () => {
   const lifecycleCases = [
     {
       name: "uses product defaults when inputs are absent",
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
     },
     {
       name: "treats trimmed-empty canonical inputs as absent",
@@ -321,9 +343,9 @@ describe("Desktop build configuration entry point", () => {
         canonicalProduct: " ",
         canonicalPlatformUrl: "\t",
       },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
     },
     {
       name: "trims canonical inputs",
@@ -344,6 +366,20 @@ describe("Desktop build configuration entry point", () => {
       expectedProduct: "okou",
       expectedPlatformUrl: "https://staging-app.omby.ai/",
       expectedDisplayName: "Okou Dev",
+    },
+    {
+      name: "keeps Zero selectable through canonical inputs",
+      environment: { canonicalProduct: "zero" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
+    },
+    {
+      name: "keeps Zero selectable through the runtime file",
+      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
     },
   ] satisfies readonly (SurfaceCase & { readonly name: string })[];
 
@@ -400,45 +436,15 @@ describe("Desktop build configuration entry point", () => {
 
     expectSuccessfulEntryPoint(result);
   });
-
-  it("ignores retired-only inputs", () => {
-    const result = runBuildConfig({
-      environment: {
-        retiredProduct: "okou",
-        retiredPlatformUrl: "https://staging-app.omby.ai",
-      },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
-
-  it("keeps hostile retired inputs isolated from canonical values", () => {
-    const result = runBuildConfig({
-      environment: {
-        canonicalProduct: "okou",
-        canonicalPlatformUrl: "https://app.okou.ai",
-        retiredProduct: "unsupported",
-        retiredPlatformUrl: "not a URL",
-      },
-      expectedProduct: "okou",
-      expectedPlatformUrl: "https://app.okou.ai/",
-      expectedDisplayName: "Okou",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
 });
 
 describe("installed Desktop configuration entry point", () => {
   const lifecycleCases = [
     {
       name: "uses product defaults when inputs are absent",
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
       expectedEnvironment: "production",
     },
     {
@@ -447,9 +453,9 @@ describe("installed Desktop configuration entry point", () => {
         canonicalProduct: " ",
         canonicalPlatformUrl: "\n",
       },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
       expectedEnvironment: "production",
     },
     {
@@ -473,6 +479,22 @@ describe("installed Desktop configuration entry point", () => {
       expectedPlatformUrl: "https://staging-app.omby.ai/",
       expectedDisplayName: "Okou Dev",
       expectedEnvironment: "staging",
+    },
+    {
+      name: "keeps Zero selectable through canonical inputs",
+      environment: { canonicalProduct: "zero" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
+      expectedEnvironment: "production",
+    },
+    {
+      name: "keeps Zero selectable through the runtime file",
+      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
+      expectedEnvironment: "production",
     },
   ] satisfies readonly (InstalledSurfaceCase & { readonly name: string })[];
 
@@ -550,38 +572,6 @@ describe("installed Desktop configuration entry point", () => {
     expectSuccessfulEntryPoint(result);
   });
 
-  it("ignores retired-only inputs", () => {
-    const result = runInstalledConfig({
-      environment: {
-        retiredProduct: "okou",
-        retiredPlatformUrl: "https://staging-app.omby.ai",
-      },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
-      expectedEnvironment: "production",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
-
-  it("keeps hostile retired inputs isolated from canonical values", () => {
-    const result = runInstalledConfig({
-      environment: {
-        canonicalProduct: "okou",
-        canonicalPlatformUrl: "https://app.okou.ai",
-        retiredProduct: "unsupported",
-        retiredPlatformUrl: "not a URL",
-      },
-      expectedProduct: "okou",
-      expectedPlatformUrl: "https://app.okou.ai/",
-      expectedDisplayName: "Okou",
-      expectedEnvironment: "production",
-    });
-
-    expectSuccessfulEntryPoint(result);
-  });
-
   it("names the canonical platform URL in protocol validation diagnostics", () => {
     const result = runInstalledConfig({
       environment: {
@@ -598,9 +588,6 @@ describe("installed Desktop configuration entry point", () => {
     expect(result.process.stderr).toContain(
       "OKOU_DESKTOP_PLATFORM_URL must use http or https, received ftp:",
     );
-    expect(result.process.stderr).not.toContain(
-      environmentNames.retiredPlatformUrl,
-    );
   });
 });
 
@@ -616,8 +603,6 @@ describe("packaged Desktop wrapper entry points", () => {
       {
         canonicalProduct: " okou ",
         canonicalPlatformUrl: " https://staging-app.omby.ai ",
-        retiredProduct: "unsupported",
-        retiredPlatformUrl: "not a URL",
       },
       "Okou Dev",
     );
@@ -625,18 +610,28 @@ describe("packaged Desktop wrapper entry points", () => {
     expectSuccessfulEntryPoint(result);
     expect(result.trace).toBe("selected\n");
   });
-
-  it.each(wrappers)("ignores retired-only input through %s", (wrapper) => {
+  it.each(wrappers)("selects the Zero product through %s", (wrapper) => {
     const result = runWrapper(
       wrapper,
-      {
-        retiredProduct: "okou",
-        retiredPlatformUrl: "https://staging-app.omby.ai",
-      },
+      { canonicalProduct: "zero" },
       "Zero Computer Use",
     );
 
     expectSuccessfulEntryPoint(result);
     expect(result.trace).toBe("selected\n");
+  });
+});
+
+describe("Desktop package brand assets", () => {
+  it("uses the Okou app icon by default", () => {
+    const result = runForgeConfig(undefined, "icon");
+
+    expect(result.status, result.stderr).toBe(0);
+  });
+
+  it("retains the legacy icon for explicit Zero builds", () => {
+    const result = runForgeConfig("zero", "icon-zero");
+
+    expect(result.status, result.stderr).toBe(0);
   });
 });

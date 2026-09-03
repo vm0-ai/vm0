@@ -17,6 +17,8 @@ import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import type { PiAgentModelConfig } from "./types";
 import type { PiAgentStreamOptions } from "./stream-options";
 
+const PI_AGENT_USER_AGENT = "okou-pi-agent/1.0";
+
 function providerModels(provider: string): readonly Model<Api>[] {
   switch (provider) {
     case "deepseek": {
@@ -210,9 +212,6 @@ export const piAgentRegisteredStream = (
 export function piAgentStreamForConfig(
   config: Pick<PiAgentModelConfig, "requestHeaders" | "serviceTier">,
 ): typeof piAgentRegisteredStream {
-  if (config.serviceTier === undefined && config.requestHeaders === undefined) {
-    return piAgentRegisteredStream;
-  }
   return (model, context, options) => {
     const configuredHeaderNames = new Set(
       Object.keys(config.requestHeaders ?? {}).map((name) => {
@@ -226,14 +225,11 @@ export function piAgentStreamForConfig(
     );
     return piAgentRegisteredStream(model, context, {
       ...options,
-      ...(config.requestHeaders === undefined
-        ? {}
-        : {
-            headers: {
-              ...inheritedHeaders,
-              ...config.requestHeaders,
-            },
-          }),
+      headers: {
+        ...inheritedHeaders,
+        "User-Agent": PI_AGENT_USER_AGENT,
+        ...config.requestHeaders,
+      },
       ...(config.serviceTier === undefined
         ? {}
         : { serviceTier: config.serviceTier }),

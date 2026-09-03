@@ -16,7 +16,31 @@ use thiserror::Error;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
+/// Collect a best-effort manifest of successfully observed regular files.
+///
+/// On Linux, access to the configured artifact root is strict: the root must be
+/// opened and its directory listing must be initialized successfully. Below
+/// that readable root, traversal is best-effort. The returned `Ok(Vec<FileEntry>)`
+/// contains only regular files that were successfully observed, opened,
+/// inspected, and hashed; it is not proof that every descendant was included.
+/// A nested directory iteration, child open, metadata, or file read/hash
+/// failure can therefore omit an entry or subtree while the walk still
+/// succeeds. On non-Linux targets, root access is unsupported.
+///
+/// Entries named `.git` or `.vm0`, symlinks, FIFOs, and other non-regular
+/// entries are intentionally excluded. The root and descendant descriptors use
+/// the existing fd-relative no-follow opening boundary, so symlinks are not
+/// followed. Hard-linked names remain independent manifest paths even when
+/// they refer to the same underlying file. Hash/read failures currently emit a
+/// warning, but warning absence is not a completeness signal because not every
+/// omission path has a diagnostic.
+///
+/// The exclusion and hardlink behavior is covered by
+/// `walk_dir_skips_symlinks`, `walk_dir_does_not_follow_directory_symlink`,
+/// `walk_dir_skips_fifo`, `collect_file_metadata_excludes_git_and_vm0`, and
+/// `walk_dir_handles_hardlinks` in this module's tests. The checkpoint caller
+/// that consumes the resulting list is
+/// `crate::checkpoint::artifact::snapshot_artifact_entries`.
 #[cfg(target_os = "linux")]
 pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, ArchiveError> {
     let mut files = Vec::new();

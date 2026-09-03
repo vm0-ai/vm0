@@ -109,6 +109,9 @@ export const openAuthV2AddAccountDialog$ = command(
       await set(signInSignals.initialize$, dialogSignal);
       parentSignal.throwIfAborted();
       dialogSignal.throwIfAborted();
+      await set(signInSignals.initializeExternalStrategies$, dialogSignal);
+      parentSignal.throwIfAborted();
+      dialogSignal.throwIfAborted();
     }
   },
 );

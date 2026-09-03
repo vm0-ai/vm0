@@ -222,6 +222,52 @@ describe("Pi memory Phase 2 filesystem", () => {
     }
   });
 
+  it("rejects non-adjacent ancestors and accepts valid near prefixes", () => {
+    const collisions = [
+      ["a", "a-", "a/b"],
+      ["E\u0301", "é-", "É/child"],
+    ] as const;
+    for (const paths of collisions) {
+      const files = paths.map((path, index) => {
+        return baseFile(path, `collision-${index.toString()}`);
+      });
+      for (const ordered of [files, [...files].reverse()]) {
+        expect(() => {
+          snapshotPiMemoryPhase2Input(
+            consolidationArgs(ordered),
+            new AbortController().signal,
+          );
+        }).toThrow(Phase2InputInvalidError);
+      }
+    }
+
+    const nearPrefixes = [
+      baseFile("a", "exact"),
+      baseFile("a-/child", "hyphen"),
+      baseFile("a.b", "dot"),
+      baseFile("a0/b", "suffix"),
+      baseFile("E\u0301", "decomposed"),
+      baseFile("é-/child", "normalized hyphen"),
+    ];
+    for (const files of [nearPrefixes, [...nearPrefixes].reverse()]) {
+      const snapshot = snapshotPiMemoryPhase2Input(
+        consolidationArgs(files),
+        new AbortController().signal,
+      );
+      expect(
+        snapshot.baseFiles.map((file) => {
+          return file.path;
+        }),
+      ).toStrictEqual(
+        nearPrefixes
+          .map((file) => {
+            return file.path;
+          })
+          .sort(),
+      );
+    }
+  });
+
   it("preflights file-count, path-byte, per-file, and total bounds before copying bytes", () => {
     const empty = {
       type: "file" as const,

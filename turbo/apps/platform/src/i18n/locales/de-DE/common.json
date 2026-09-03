@@ -2235,7 +2235,8 @@
       "viewLogs": "Ausführungsprotokolle anzeigen",
       "waitingIn": "Warten",
       "worked": "Ausgeführt",
-      "workedFor": "Ausgeführt in {{duration}}"
+      "workedFor": "Ausgeführt in {{duration}}",
+      "workingFor": "Seit {{duration}} in Arbeit"
     },
     "sharing": {
       "cancel": "Abbrechen",
@@ -2396,6 +2397,10 @@
     },
     "voice": {
       "checkingLimit": "Überprüfung des Spracheingabelimits",
+      "draft": "Sprachentwurf",
+      "draftTooLong": "Dieser Sprachentwurf ist zu lang. Starte eine neue Aufnahme.",
+      "finishDraft": "Fertigstellen",
+      "finishingDraft": "Wird fertiggestellt...",
       "input": "Spracheingabe",
       "inputLimitReached": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Pro oder Team.",
       "inputLimitReachedMember": "Das Limit für die Spracheingabe wurde erreicht. Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade für höhere Limits.",
@@ -2404,6 +2409,7 @@
       "inputLimitReachedReset": "Das Limit für die Spracheingabe wurde erreicht. Bitte warten Sie, bis Ihr Limit zurückgesetzt wird.",
       "microphoneAccessDenied": "Der Zugriff auf das Mikrofon wurde verweigert. Erlauben Sie den Mikrofonzugriff und versuchen Sie es erneut.",
       "openingMicrophone": "Mikrofon öffnen...",
+      "removeDraft": "Sprachentwurf entfernen",
       "starting": "Spracheingabe starten",
       "stopRecording": "Aufnahme stoppen",
       "transcribing": "Transkribieren",
@@ -2444,12 +2450,18 @@
       "deleteDescriptionWithCount_one": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "{{account}} löschen?",
-      "fallbackName": "Konto #{{id}}",
+      "fallbackByMethod": {
+        "api": "API-Schlüssel",
+        "api-token": "API-Token",
+        "cli": "CLI"
+      },
+      "fallbackUnnamed": "Unbenanntes Konto",
       "find": "Konten suchen",
       "loading": "Konten werden geladen…",
       "loadingMore": "Wird geladen…",
       "loadMore": "Mehr laden",
       "makeDefault": "Als Standard festlegen",
+      "managerDescription": "Neue Ausführungen verwenden dein Standardkonto.",
       "managerTitle": "{{connector}}-Konten verwalten",
       "namePromptDescription": "Sie können diesen Schritt überspringen und das Konto später benennen.",
       "namePromptTitle": "{{connector}}-Konto benennen",
@@ -2670,6 +2682,7 @@
         "connecting": "Verbinden…",
         "continue": "Weitermachen",
         "continueToProvider": "Gehen Sie weiter zum Anbieter, um den Zugriff zu autorisieren.",
+        "continueWithAutomatic": "Weiter, während Okou prüft, wie sich dieser MCP-Server authentifiziert.",
         "description": "Ihr Secret wird im Ruhezustand verschlüsselt und von der Firewall in ausgehende Anfragen eingefügt. Es wird dem Agenten niemals als Umgebungsvariable angezeigt.",
         "save": "Speichern",
         "saving": "Speichern…",
@@ -2684,9 +2697,12 @@
         "authorizationParameters": "Autorisierungsparameter",
         "authorizationParametersDescription": "Fügen Sie nur die Parameter hinzu, die Ihr Anbieter benötigt.",
         "authorizationUrl": "Autorisierungs-URL",
+        "automatic": "Automatisch",
+        "automaticDescription": "Okou erkennt, ob dieser MCP-Server keine Authentifizierung oder OAuth verwendet.",
         "clientId": "Kunden-ID",
         "clientSecret": "Client-Secret",
         "connectorType": "Connector-Typ",
+        "customOauthApp": "Benutzerdefinierte OAuth-App",
         "displayName": "Anzeigename",
         "headerName": "Headername",
         "headerTemplate": "Header-Vorlage",
@@ -2713,10 +2729,12 @@
         },
         "prefixes": "Präfixe",
         "prefixesHint": "(eine pro Zeile, nur https)",
+        "recommended": "(Empfohlen)",
         "redirectCopy": "Kopieren Sie die Weiterleitungs-URL",
         "redirectHint": "(Registrieren Sie diese URL in der OAuth-Anwendung des Anbieters. Lassen Sie vorhandene VM0- oder Okou-Weiterleitungs-URLs ebenfalls registriert.)",
         "redirectUrl": "Weiterleitungs-URL",
         "removeApiAuthentication": "Entfernen Sie die API-Authentifizierung",
+        "removeAutomatic": "Automatische Authentifizierung entfernen",
         "removeNoAuthentication": "„Keine Authentifizierung“ entfernen",
         "removeOauth": "Entfernen Sie OAuth 2.0",
         "scopes": "Bereiche",
@@ -2929,21 +2947,20 @@
       "agentphone": {
         "authorizedSender": "Autorisierter Absender",
         "connectAria": "Telefon anschließen",
-        "connectDescription": "Geben Sie Ihre Telefonnummer ein. Wir senden Ihnen einen Bestätigungslink per SMS, der diesen Arbeitsbereich verbindet.",
+        "connectDescription": "Senden Sie von dem Telefon, das Sie verbinden möchten, eine Nachricht an diese AgentPhone-Nummer.",
         "connectTitle": "Telefon anschließen",
         "copyAria": "Kopieren Sie {{phone}}",
         "copyError": "Telefonnummer konnte nicht kopiert werden",
         "copySuccess": "Telefonnummer kopiert",
         "description": "SMS-Zugriff auf {{assistantName}}",
         "destination": "iMessage oder SMS an",
-        "normalized": "Wir werden {{phone}} eine SMS senden.",
+        "messageInstruction": "Senden Sie „hi“",
+        "openMessages": "Nachrichten öffnen",
         "options": "Telefonoptionen",
         "phoneLabel": "Telefon",
-        "phoneNumber": "Telefonnummer",
-        "risk": "SMS- und MMS-Antworten werden möglicherweise nicht zuverlässig zugestellt. Für ein möglichst zuverlässiges Erlebnis verwenden Sie iMessage mit dieser AgentPhone-Nummer.",
-        "sending": "Senden...",
-        "sendVerification": "Bestätigung senden",
-        "verificationSent": "Bestätigungstext an {{phone}} gesendet. Öffnen Sie den Link in diesem Text, um die Verbindung abzuschließen."
+        "replyInstruction": "Öffnen Sie den Verbindungslink innerhalb von 10 Minuten, um die Verbindung abzuschließen.",
+        "replyTitle": "Öffnen Sie unsere Antwort",
+        "risk": "Verwenden Sie nach Möglichkeit iMessage. SMS- und MMS-Antworten kommen möglicherweise nicht zuverlässig an."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3006,7 +3023,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Geben Sie eine Telefonnummer mit Landesvorwahl ein, z. B. +1 555 555 1212.",
         "githubAuthorizationWindow": "Das Autorisierungsfenster konnte nicht geöffnet werden",
         "telegramDomain": "Die Domain ist für Telegram noch nicht sichtbar. Überprüfen Sie BotFather und versuchen Sie es erneut.",
         "telegramPrivacy": "Der Datenschutzmodus scheint immer noch aktiviert zu sein. Schalten Sie es in BotFather aus und versuchen Sie es dann erneut."
@@ -3212,7 +3228,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone verbunden",
         "agentphoneDisconnected": "AgentPhone getrennt",
-        "agentphoneVerificationSent": "Bestätigungstext gesendet",
         "feishuBotInstalled": "Der Feishu-Bot wurde erfolgreich installiert",
         "feishuBotUninstalled": "Feishu-Bot deinstalliert",
         "feishuConnected": "Feishu hat erfolgreich eine Verbindung hergestellt",
@@ -5000,10 +5015,13 @@
       },
       "reset": {
         "confirmDescription": "Verwenden Sie einen Codex-Reset, um Ihre aktuellen Nutzungsfenster zurückzusetzen. Sie haben {{remaining}}.",
+        "expiresAt": "Nächster Reset läuft {{date}} ab",
         "progress": "Zurücksetzen...",
         "remaining_one": "{{value}} Reset übrig",
         "remaining_other": "{{value}} Resets übrig",
         "remainingUnavailable": "Verbleibende Resets nicht verfügbar",
+        "remainingWithExpiry_one": "{{value}} Reset übrig · läuft {{expiry}} ab",
+        "remainingWithExpiry_other": "{{value}} Resets übrig · laufen {{expiry}} ab",
         "title": "Codex-Nutzung zurücksetzen?"
       },
       "stale": {

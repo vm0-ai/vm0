@@ -43,6 +43,7 @@ interface SubscriptionMetadata {
   readonly subscriptionNextResetAt?: Date | null;
   readonly subscriptionUsage?: SubscriptionUsageMetadata | null;
   readonly subscriptionResetCredits?: number | null;
+  readonly subscriptionResetCreditsNextExpiresAt?: Date | null;
 }
 
 type SerializedSubscriptionUsage = NonNullable<
@@ -160,6 +161,10 @@ function withSubscriptionMetadata(
     subscriptionUsage: serializeSubscriptionUsage(metadata.subscriptionUsage),
     subscriptionResetCredits:
       metadata.subscriptionResetCredits ?? provider.subscriptionResetCredits,
+    // No column backs this field, so there is no stored value to fall back to:
+    // an absent expiry is reported as such rather than deferred to the row.
+    subscriptionResetCreditsNextExpiresAt:
+      metadata.subscriptionResetCreditsNextExpiresAt?.toISOString() ?? null,
   };
 }
 

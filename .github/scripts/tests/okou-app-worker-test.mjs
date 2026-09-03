@@ -414,12 +414,7 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(vm0Page.html, "link", "href").includes(
-    "https://static.vm0.io/public/okou-orange-tight-54b59259.ico",
-  ),
-);
-assert.ok(
-  tagAttributeValues(vm0Page.html, "link", "href").includes(
-    "https://static.vm0.io/public/okou-orange-tight-9d65ae00.svg",
+    "https://static.vm0.io/public/okou-logo-mark-dark-00337dd44485.svg",
   ),
 );
 assert.equal(
@@ -444,12 +439,7 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io/public/okou-orange-tight-54b59259.ico",
-  ),
-);
-assert.ok(
-  tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io/public/okou-orange-tight-9d65ae00.svg",
+    "https://static.okou.io/public/okou-logo-mark-dark-00337dd44485.svg",
   ),
 );
 assert.equal(

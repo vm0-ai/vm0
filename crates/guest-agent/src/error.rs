@@ -28,6 +28,18 @@ pub enum AgentError {
     #[error("execution: {0}")]
     Execution(String),
 
+    /// Codex rejected an app-server turn because its text input exceeded the
+    /// authoritative character limit reported in the structured RPC response.
+    #[error(
+        "execution: Codex input is too large: {actual_chars} characters provided, maximum is {max_chars} characters. Reduce the input and try again."
+    )]
+    CodexInputTooLarge {
+        /// Aggregate Unicode scalar count reported by Codex.
+        actual_chars: u64,
+        /// Maximum Unicode scalar count reported by Codex.
+        max_chars: u64,
+    },
+
     /// Checkpoint, session-history, or artifact snapshot workflow failure inside
     /// the guest-agent; this does not refer to Firecracker/rootfs snapshots.
     #[error("checkpoint: {0}")]

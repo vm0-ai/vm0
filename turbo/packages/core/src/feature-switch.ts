@@ -233,8 +233,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable the first-class Morning Brief experience in Preferences.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -302,6 +301,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PresentationScreenshot]: {
     maintainer: "bingjie@vm0.ai",
@@ -354,6 +354,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
+  [FeatureSwitchKey.VoiceDraft]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Keep raw voice transcription as a durable composer draft and polish it before sending.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -374,6 +381,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.BatchChatEventCatchUp]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Catch up unread, active, and recent ChatEvent threads through one throttled SharedWorker batch.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatRunWorkFolding]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerImageAnnotation]: {
     maintainer: "tongx@vm0.ai",
     description:
@@ -382,6 +403,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // Scoped to the maintainer rather than the whole staff org while the
     // render-on-confirm upload is still unexercised outside tests.
     enabledEmailHashes: ["56bef1aa"], // fnv1a("tongx@vm0.ai")
+  },
+  [FeatureSwitchKey.FollowUpOptimize]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Use a concise, language-matched prompt for recommended chat follow-ups.",
+    enabled: false,
   },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",

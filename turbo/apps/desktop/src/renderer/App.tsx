@@ -15,9 +15,10 @@ import {
   hasDesktopDeveloperToolsBridge,
   setupComputerUseBridge$,
 } from "./computer-use-state";
-import { Panel, ZeroFace } from "./components";
+import { DesktopBrandMark, Panel } from "./components";
 import { ReadyExperience } from "./hero";
 import { currentDesktopIdentity } from "./desktop-identity";
+import okouWordmarkUrl from "./assets/okou-wordmark-dark.svg";
 import {
   AuthStepCard,
   PermissionAutoRefresh,
@@ -52,7 +53,7 @@ function UnsupportedPanel({ platform }: { readonly platform: string }) {
 function StartupLoadingScreen() {
   return (
     <section className="startup-loading" aria-live="polite">
-      <ZeroFace className="zero-face-init" size={92} />
+      <DesktopBrandMark className="desktop-brand-mark-init" size={92} />
       <div className="loading-dots" aria-hidden="true">
         <span />
         <span />
@@ -163,15 +164,27 @@ function Header() {
   return (
     <header className="app-header">
       <div className="titlebar-title">
-        <h1>{identity.displayName}</h1>
+        <h1>
+          {identity.product === "okou" ? (
+            <img
+              className="titlebar-wordmark"
+              src={okouWordmarkUrl}
+              alt={identity.displayName}
+              draggable={false}
+            />
+          ) : (
+            identity.displayName
+          )}
+        </h1>
       </div>
     </header>
   );
 }
 
 export function App() {
+  const identity = currentDesktopIdentity();
   return (
-    <div className="app-shell">
+    <div className={`app-shell desktop-product-${identity.product}`}>
       <BridgeSubscription />
       <Header />
       <main className="content">

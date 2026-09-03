@@ -129,21 +129,13 @@ function connectorStoredValueRef(valueRef: string): ConnectorStoredValueRef {
 }
 
 export async function loadConnectorCredentialConnection(args: {
-  readonly connectorId?: string;
+  readonly connectorId: string;
   readonly connectorSlug: string;
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly userId: string;
 }): Promise<ConnectorCredentialConnectionResult> {
-  const conditions = [
-    eq(connectors.orgId, args.orgId),
-    eq(connectors.userId, args.userId),
-    eq(connectors.connectorSlug, args.connectorSlug),
-  ];
-  if (args.connectorId !== undefined) {
-    conditions.push(eq(connectors.id, args.connectorId));
-  }
   const [row] = await args.db
     .select({
       authMethod: connectors.authMethod,
@@ -158,7 +150,14 @@ export async function loadConnectorCredentialConnection(args: {
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(connectors)
-    .where(and(...conditions))
+    .where(
+      and(
+        eq(connectors.id, args.connectorId),
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.connectorSlug, args.connectorSlug),
+      ),
+    )
     .limit(1);
   if (!row) {
     return { kind: "missing" };

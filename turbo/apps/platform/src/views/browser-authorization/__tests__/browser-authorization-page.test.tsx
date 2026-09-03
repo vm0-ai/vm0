@@ -96,7 +96,9 @@ describe("browser authorization page", () => {
     await expect(
       screen.findByRole("heading", { name: "Enable cloud browser" }),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText("Okou").closest("a")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Okou" }).closest("a"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "VM0" })).not.toBeInTheDocument();
   });
 });

@@ -8,12 +8,29 @@ import {
 import type { ModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { apiClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { now } from "../../lib/time.ts";
 
 /**
  * Reload trigger for personal model provider signals.
  * Increment to force recomputation of personalModelProviders$.
  */
 const internalReloadPersonalModelProviders$ = state(0);
+
+/**
+ * Listing personal providers makes the API read every connected subscription's
+ * usage upstream, so opportunistic callers reuse a recent read instead of
+ * paying for it again. Mutations bypass this window entirely.
+ */
+const PERSONAL_MODEL_PROVIDERS_STALE_MS = 60_000;
+
+const internalPersonalModelProvidersRefreshedAt$ = state<number | null>(null);
+
+const forcePersonalModelProvidersReload$ = command(({ set }) => {
+  set(internalPersonalModelProvidersRefreshedAt$, now());
+  set(internalReloadPersonalModelProviders$, (x) => {
+    return x + 1;
+  });
+});
 
 /**
  * Personal (user-level) model providers for the requesting user.
@@ -41,9 +58,7 @@ export const deletePersonalModelProvider$ = command(
       [204],
     );
 
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
+    set(forcePersonalModelProvidersReload$);
   },
 );
 
@@ -60,9 +75,7 @@ export const activatePersonalModelProviderAccount$ = command(
       [200],
     );
     signal.throwIfAborted();
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
+    set(forcePersonalModelProvidersReload$);
     return result.body;
   },
 );
@@ -79,9 +92,7 @@ export const deletePersonalModelProviderAccount$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
+    set(forcePersonalModelProvidersReload$);
   },
 );
 
@@ -102,9 +113,7 @@ export const resetPersonalCodexAccountSubscriptionUsage$ = command(
       [200],
     );
     signal.throwIfAborted();
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
+    set(forcePersonalModelProvidersReload$);
     return result.body;
   },
 );
@@ -129,9 +138,7 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
     );
     signal.throwIfAborted();
 
-    set(internalReloadPersonalModelProviders$, (x) => {
-      return x + 1;
-    });
+    set(forcePersonalModelProvidersReload$);
 
     return result.body;
   },
@@ -143,7 +150,21 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
  * `reloadOrgModelProviders$` in `external/org-model-providers.ts`.
  */
 export const reloadPersonalModelProviders$ = command(({ set }) => {
-  set(internalReloadPersonalModelProviders$, (x) => {
-    return x + 1;
-  });
+  set(forcePersonalModelProvidersReload$);
+});
+
+/**
+ * Refresh only when the last read has aged out. For callers that refresh on a
+ * recurring UI event rather than after a change, such as opening the account
+ * menu, where a slightly stale usage reading costs nothing.
+ */
+export const refreshPersonalModelProvidersIfStale$ = command(({ get, set }) => {
+  const refreshedAt = get(internalPersonalModelProvidersRefreshedAt$);
+  if (
+    refreshedAt !== null &&
+    now() - refreshedAt < PERSONAL_MODEL_PROVIDERS_STALE_MS
+  ) {
+    return;
+  }
+  set(forcePersonalModelProvidersReload$);
 });
