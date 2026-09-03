@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.309.0](https://github.com/vm0-ai/vm0/compare/cli-v9.308.4...cli-v9.309.0) (2026-09-03)
+
+
+### Features
+
+* **cli:** redesign okou social around user intents ([#31333](https://github.com/vm0-ai/vm0/issues/31333)) ([1dafc7d](https://github.com/vm0-ai/vm0/commit/1dafc7d10900a2f1a5b7c6821090cc287b150093))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.615.0
+
 ## [9.308.4](https://github.com/vm0-ai/vm0/compare/cli-v9.308.3...cli-v9.308.4) (2026-09-03)
 
 
