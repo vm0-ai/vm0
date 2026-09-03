@@ -1793,6 +1793,13 @@
       "when": 1788421077587,
       "tag": "1063_simple_norman_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 1064,
+      "version": "7",
+      "when": 1788426742985,
+      "tag": "1064_migrate_claude_fable_5_to_5_1",
+      "breakpoints": true
     }
   ]
 }
