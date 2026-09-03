@@ -11,9 +11,7 @@ use guest_agent::env::{GuestConfig, GuestConfigRaw};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-const RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "VM0_AGENT_EXECUTION_TIMEOUT_SECS";
 const VALID_TIMEOUT: &str = "37";
-const STALE_TIMEOUT: &str = "43";
 const INVALID_TIMEOUT: &str = "canonical-invalid-timeout-must-not-leak";
 const TOO_LARGE_TIMEOUT: &str = "18446744073709551615";
 const PARSE_ERROR: &str = "agent execution timeout must be a positive integer number of seconds";
@@ -31,7 +29,6 @@ enum EnvInput {
 struct SuccessCase {
     name: &'static str,
     canonical: EnvInput,
-    retired: EnvInput,
     expected_raw: &'static str,
     expected_timeout_secs: Option<u64>,
 }
@@ -40,71 +37,31 @@ struct SuccessCase {
 struct ValidationCase {
     name: &'static str,
     canonical: &'static str,
-    retired: EnvInput,
     expected_error: &'static str,
 }
 
-const SUCCESS_CASES: [SuccessCase; 9] = [
+const SUCCESS_CASES: [SuccessCase; 4] = [
     SuccessCase {
-        name: "both-absent",
+        name: "absent",
         canonical: EnvInput::Absent,
-        retired: EnvInput::Absent,
         expected_raw: "",
         expected_timeout_secs: None,
     },
     SuccessCase {
-        name: "retired-only",
-        canonical: EnvInput::Absent,
-        retired: EnvInput::Readable(STALE_TIMEOUT),
-        expected_raw: "",
-        expected_timeout_secs: None,
-    },
-    SuccessCase {
-        name: "canonical-empty-with-stale-retired",
+        name: "canonical-empty",
         canonical: EnvInput::Readable(""),
-        retired: EnvInput::Readable(STALE_TIMEOUT),
         expected_raw: "",
         expected_timeout_secs: None,
     },
     SuccessCase {
         name: "canonical-non-unicode",
         canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Absent,
-        expected_raw: "",
-        expected_timeout_secs: None,
-    },
-    SuccessCase {
-        name: "canonical-non-unicode-with-stale-retired",
-        canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Readable(STALE_TIMEOUT),
         expected_raw: "",
         expected_timeout_secs: None,
     },
     SuccessCase {
         name: "canonical-valid",
         canonical: EnvInput::Readable(VALID_TIMEOUT),
-        retired: EnvInput::Absent,
-        expected_raw: VALID_TIMEOUT,
-        expected_timeout_secs: Some(37),
-    },
-    SuccessCase {
-        name: "canonical-valid-with-equal-retired",
-        canonical: EnvInput::Readable(VALID_TIMEOUT),
-        retired: EnvInput::Readable(VALID_TIMEOUT),
-        expected_raw: VALID_TIMEOUT,
-        expected_timeout_secs: Some(37),
-    },
-    SuccessCase {
-        name: "canonical-valid-with-different-retired",
-        canonical: EnvInput::Readable(VALID_TIMEOUT),
-        retired: EnvInput::Readable(STALE_TIMEOUT),
-        expected_raw: VALID_TIMEOUT,
-        expected_timeout_secs: Some(37),
-    },
-    SuccessCase {
-        name: "canonical-valid-with-non-unicode-retired",
-        canonical: EnvInput::Readable(VALID_TIMEOUT),
-        retired: EnvInput::NonUnicode,
         expected_raw: VALID_TIMEOUT,
         expected_timeout_secs: Some(37),
     },
@@ -112,27 +69,23 @@ const SUCCESS_CASES: [SuccessCase; 9] = [
 
 const VALIDATION_CASES: [ValidationCase; 4] = [
     ValidationCase {
-        name: "canonical-invalid-with-stale-retired",
+        name: "canonical-invalid",
         canonical: INVALID_TIMEOUT,
-        retired: EnvInput::Readable(VALID_TIMEOUT),
         expected_error: PARSE_ERROR,
     },
     ValidationCase {
-        name: "canonical-whitespace-with-stale-retired",
+        name: "canonical-whitespace",
         canonical: " 37 ",
-        retired: EnvInput::Readable(VALID_TIMEOUT),
         expected_error: PARSE_ERROR,
     },
     ValidationCase {
-        name: "canonical-zero-with-stale-retired",
+        name: "canonical-zero",
         canonical: "0",
-        retired: EnvInput::Readable(VALID_TIMEOUT),
         expected_error: ZERO_ERROR,
     },
     ValidationCase {
-        name: "canonical-too-large-with-stale-retired",
+        name: "canonical-too-large",
         canonical: TOO_LARGE_TIMEOUT,
-        retired: EnvInput::Readable(VALID_TIMEOUT),
         expected_error: TOO_LARGE_ERROR,
     },
 ];
@@ -198,11 +151,6 @@ fn assert_validation_error(error: &str, case: ValidationCase) {
         case.name
     );
     assert!(
-        !error.contains(RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV),
-        "{} named the retired key",
-        case.name
-    );
-    assert!(
         !error.contains(case.canonical),
         "{} exposed the raw canonical input",
         case.name
@@ -210,7 +158,7 @@ fn assert_validation_error(error: &str, case: ValidationCase) {
 }
 
 #[test]
-fn process_env_uses_only_canonical_agent_execution_timeout() -> TestResult {
+fn process_env_preserves_canonical_agent_execution_timeout() -> TestResult {
     let tmp = tempfile::tempdir()?;
 
     for case in SUCCESS_CASES {
@@ -218,7 +166,6 @@ fn process_env_uses_only_canonical_agent_execution_timeout() -> TestResult {
             guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             case.canonical,
         );
-        apply_env(RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV, case.retired);
 
         let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
         assert_eq!(
@@ -242,7 +189,6 @@ fn process_env_uses_only_canonical_agent_execution_timeout() -> TestResult {
             guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
             EnvInput::Readable(case.canonical),
         );
-        apply_env(RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV, case.retired);
 
         let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
         assert_eq!(
@@ -265,6 +211,5 @@ fn process_env_uses_only_canonical_agent_execution_timeout() -> TestResult {
     }
 
     remove_test_env(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV);
-    remove_test_env(RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV);
     Ok(())
 }

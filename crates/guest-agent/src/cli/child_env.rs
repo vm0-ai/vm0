@@ -186,14 +186,12 @@ mod tests {
     }
 
     #[test]
-    fn apply_values_clears_resume_session_bootstrap_aliases() {
+    fn apply_values_clears_resume_session_bootstrap_key() {
         let mut command = tokio::process::Command::new("unused");
-        command
-            .env("VM0_RESUME_SESSION_ID", "legacy-session-id")
-            .env(
-                guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-                "canonical-session-id",
-            );
+        command.env(
+            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
+            "canonical-session-id",
+        );
 
         let values = values_with_inputs("/tmp/home", &HashMap::new(), "");
         apply_values_to_tokio_command(&mut command, &values);
@@ -203,14 +201,10 @@ mod tests {
             .get_envs()
             .map(|(key, _)| key)
             .collect::<Vec<_>>();
-        for key in [
-            "VM0_RESUME_SESSION_ID",
-            guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-        ] {
-            assert!(
-                !explicit_keys.contains(&std::ffi::OsStr::new(key)),
-                "CLI child environment retained bootstrap key {key}"
-            );
-        }
+        let key = guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV;
+        assert!(
+            !explicit_keys.contains(&std::ffi::OsStr::new(key)),
+            "CLI child environment retained bootstrap key {key}"
+        );
     }
 }
