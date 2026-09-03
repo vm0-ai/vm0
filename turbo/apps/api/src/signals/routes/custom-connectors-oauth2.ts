@@ -354,7 +354,7 @@ async function completeAutomaticOAuthCallback(
     };
     readonly context: NonNullable<
       ReturnType<typeof parseValidCustomConnectorOAuthState>
-    > & { readonly oauthSetup: "automatic" };
+    > & { readonly authMode: "automatic" };
     readonly authorizationCode: string;
     readonly iss: string | undefined;
     readonly featureContext: FeatureSwitchContext;

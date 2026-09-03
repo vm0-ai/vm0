@@ -2161,9 +2161,6 @@ async function persistCustomConnectorUpdate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
-        // Clear the legacy mirror so an outgoing API can read definitions
-        // changed away from Automatic during the rollback window.
-        oauthSetup: null,
         skillMarkdown: args.definition.skillMarkdown,
         skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
