@@ -13,10 +13,10 @@ describe("internalApiBaseUrl", () => {
     expect(internalApiBaseUrl()).toBe("https://api.vm0.ai");
     expect(
       new URL(
-        "/api/cron/aggregate-model-stats",
+        "/api/cron/process-usage-events",
         internalApiBaseUrl(),
       ).toString(),
-    ).toBe("https://api.vm0.ai/api/cron/aggregate-model-stats");
+    ).toBe("https://api.vm0.ai/api/cron/process-usage-events");
   });
 
   it("defaults to the API backend origin in production when the backend URL is unset", () => {

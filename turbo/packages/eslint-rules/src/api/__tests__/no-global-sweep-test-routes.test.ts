@@ -80,14 +80,6 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       `,
     },
     {
-      name: "public model rankings do not mount the aggregation sweep",
-      filename: behaviorTest,
-      code: `
-        import { modelStatsPublicRoutes } from "../model-stats";
-        setupApp({ routes: modelStatsPublicRoutes });
-      `,
-    },
-    {
       name: "aggregate route member projection may remain metadata only",
       filename: behaviorTest,
       code: `

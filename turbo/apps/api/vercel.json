@@ -109,10 +109,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/aggregate-model-stats",
-      "schedule": "12 * * * *"
-    },
-    {
       "path": "/api/cron/steer-run-time-budget",
       "schedule": "* * * * *"
     }

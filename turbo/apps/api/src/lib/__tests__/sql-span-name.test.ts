@@ -15,8 +15,8 @@ describe("deriveSqlSpanName", () => {
 
     it('insert into "table" … returning', () => {
       const sql =
-        'insert into "model_stats" ("model", "count") values ($1, $2) returning "id"';
-      expect(deriveSqlSpanName(sql)).toBe("INSERT model_stats");
+        'insert into "usage_events" ("model", "count") values ($1, $2) returning "id"';
+      expect(deriveSqlSpanName(sql)).toBe("INSERT usage_events");
     });
 
     it('update "table" set …', () => {
@@ -33,8 +33,8 @@ describe("deriveSqlSpanName", () => {
 
     it('merge into "table" (postgres 15+)', () => {
       const sql =
-        'merge into "model_stats" using "staging" on "model_stats"."id" = "staging"."id" when matched then update set "count" = "staging"."count"';
-      expect(deriveSqlSpanName(sql)).toBe("MERGE model_stats");
+        'merge into "usage_events" using "staging" on "usage_events"."id" = "staging"."id" when matched then update set "count" = "staging"."count"';
+      expect(deriveSqlSpanName(sql)).toBe("MERGE usage_events");
     });
   });
 
@@ -47,8 +47,8 @@ describe("deriveSqlSpanName", () => {
 
     it("insert into … select from other_table uses the into table", () => {
       const sql =
-        'insert into "model_stats_daily" ("model", "count") select "model", count(*) from "model_stats" group by "model"';
-      expect(deriveSqlSpanName(sql)).toBe("INSERT model_stats_daily");
+        'insert into "usage_events_daily" ("model", "count") select "model", count(*) from "usage_events" group by "model"';
+      expect(deriveSqlSpanName(sql)).toBe("INSERT usage_events_daily");
     });
 
     it("with cte as (…) … takes the first from inside the cte", () => {

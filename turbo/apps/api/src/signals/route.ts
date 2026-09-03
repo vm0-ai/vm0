@@ -35,7 +35,6 @@ import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { healthRoutes } from "./routes/health";
 import { buildInfoRoutes } from "./routes/build-info";
 import { githubOauthRoutes } from "./routes/github-oauth";
-import { modelStatsRoutes } from "./routes/model-stats";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { userExportRoutes } from "./routes/user-export";
@@ -385,6 +384,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...registryResourceDownloadRoutes,
   ...usageMembersRoutes,
   ...usageRecordRoutes,
-  ...modelStatsRoutes,
   ...runnersRoutes,
 ];

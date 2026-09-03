@@ -499,8 +499,8 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
   });
 });
 
-describe("BILL-02: usage, attribution, and model stats reads", () => {
-  it("chains empty usage records, rankings, and attribution through visible APIs", async () => {
+describe("BILL-02: usage and attribution reads", () => {
+  it("chains empty usage records and attribution through visible APIs", async () => {
     const { api, admin } = testActors();
     await completeVisibleOnboarding(admin);
 
@@ -510,10 +510,6 @@ describe("BILL-02: usage, attribution, and model stats reads", () => {
     const usageRecord = await api.readUsageRecord(admin);
     expect(usageRecord.body.pagination.total).toBe(0);
     expect(usageRecord.body.rows).toStrictEqual([]);
-
-    const modelRankings = await api.readModelRankings();
-    expect(modelRankings.body.period).toBe("week");
-    expect(Array.isArray(modelRankings.body.rows)).toBeTruthy();
 
     context.mocks.clerk.users.updateUserMetadata.mockResolvedValue({});
     const attribution = await api.recordSignupAttribution(admin);
