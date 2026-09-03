@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
 import { buildHelpText, registerCommands } from "../okou";
+import { generateCommand } from "../commands/generate";
 import { decodeSandboxTokenPayload } from "../lib/api/sandbox-token";
 
 function buildOkouToken(payload: Record<string, unknown>): string {
@@ -1233,39 +1234,11 @@ describe("registerCommands", () => {
 });
 
 describe("okou generate command visibility", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-
-  async function importGenerateCommand(token: string) {
-    vi.resetModules();
-    vi.stubEnv("OKOU_TOKEN", token);
-    const { generateCommand } = await import("../commands/generate");
-    return generateCommand as Command;
-  }
-
-  it("should show website generation", async () => {
-    const token = buildOkouToken({
-      scope: "okou",
-      capabilities: [],
-    });
-
-    const generateCommand = await importGenerateCommand(token);
-
+  it("should show website generation", () => {
     expect(visibleCommandNames(generateCommand)).toContain("website");
   });
 
-  it("should show source-backed artifact generation", async () => {
-    const token = buildOkouToken({
-      userId: "user-non-staff",
-      orgId: "org-non-staff",
-      scope: "okou",
-      capabilities: ["host:write"],
-    });
-
-    const generateCommand = await importGenerateCommand(token);
-
+  it("should show source-backed artifact generation", () => {
     expect(visibleCommandNames(generateCommand)).toEqual(
       expect.arrayContaining([
         "report",
