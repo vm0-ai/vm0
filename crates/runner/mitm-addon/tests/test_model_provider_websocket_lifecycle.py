@@ -51,6 +51,21 @@ def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
 class TestModelProviderWebSocketLifecycle:
     """Tests for HTTP upgrade and terminal in-flight lifecycle behavior."""
 
+    @pytest.mark.parametrize(
+        "response_headers",
+        [
+            pytest.param(
+                make_openai_responses_websocket_response_headers(),
+                id="standard",
+            ),
+            pytest.param(
+                make_openai_responses_websocket_response_headers(
+                    connection="Upgrade," + "x" * 10_000,
+                ),
+                id="connection-token-before-oversized-suffix",
+            ),
+        ],
+    )
     async def test_model_websocket_response_keeps_usage_flow_tracked_until_end(
         self,
         tmp_path,
@@ -59,6 +74,7 @@ class TestModelProviderWebSocketLifecycle:
         fake_firewall_headers,
         usage_webhook_server,
         sync_usage_executor,
+        response_headers: http.Headers,
     ):
         """The HTTP 101 response hook must not complete the WebSocket usage lifecycle."""
         pending_path = tmp_path / "usage-pending"
@@ -83,7 +99,7 @@ class TestModelProviderWebSocketLifecycle:
 
             flow.response = tutils.tresp(
                 status_code=101,
-                headers=make_openai_responses_websocket_response_headers(),
+                headers=response_headers,
             )
             mitm_addon.responseheaders(flow)
             mitm_addon.response(flow)
@@ -197,6 +213,14 @@ class TestModelProviderWebSocketLifecycle:
             pytest.param(
                 make_openai_responses_websocket_response_headers(accept="wrong"),
                 id="wrong-accept",
+            ),
+            pytest.param(
+                make_openai_responses_websocket_response_headers(upgrade="x" * (8 * 1024 + 1)),
+                id="upgrade-token-work-limit",
+            ),
+            pytest.param(
+                make_openai_responses_websocket_response_headers(accept="x" * (8 * 1024 + 1)),
+                id="accept-work-limit",
             ),
         ],
     )

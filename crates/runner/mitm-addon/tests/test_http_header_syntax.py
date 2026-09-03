@@ -13,6 +13,26 @@ import http_header_syntax
 # independent of http_header_syntax._HTTP_TOKEN_CHARS so mutations are caught.
 _TCHAR = frozenset("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 _ASCII_CODE_POINTS = range(128)
+_TEST_HEADER_WORK_LIMIT = 256
+
+
+class _EarlyMatchSuffixGuard(str):
+    def __getitem__(self, key: int | slice) -> str:
+        if isinstance(key, int) and key >= len("websocket,"):
+            raise AssertionError("token matcher inspected the irrelevant suffix")
+        return super().__getitem__(key)
+
+
+class _WorkLimitGuard(str):
+    def __getitem__(self, key: int | slice) -> str:
+        if isinstance(key, int) and key >= 8:
+            raise AssertionError("token matcher read beyond its work budget")
+        return super().__getitem__(key)
+
+
+class _StripGuard(str):
+    def strip(self, chars: str | None = None) -> str:
+        raise AssertionError("oversized singleton was stripped")
 
 
 def _is_forbidden_value_control(char: str) -> bool:
@@ -128,7 +148,34 @@ def test_header_values_contain_token(
     *,
     contains_token: bool,
 ) -> None:
-    assert http_header_syntax.header_values_contain_token(values, expected_token) is contains_token
+    assert (
+        http_header_syntax.header_values_contain_token(
+            values,
+            expected_token,
+            max_work_units=_TEST_HEADER_WORK_LIMIT,
+        )
+        is contains_token
+    )
+
+
+def test_header_values_contain_token_stops_before_matched_suffix() -> None:
+    value = _EarlyMatchSuffixGuard("websocket," + "x" * 10_000)
+
+    assert http_header_syntax.header_values_contain_token(
+        (value,),
+        "websocket",
+        max_work_units=_TEST_HEADER_WORK_LIMIT,
+    )
+
+
+def test_header_values_contain_token_stops_at_work_limit() -> None:
+    value = _WorkLimitGuard("x" * 10_000)
+
+    assert not http_header_syntax.header_values_contain_token(
+        (value,),
+        "websocket",
+        max_work_units=9,
+    )
 
 
 @pytest.mark.parametrize(
@@ -153,4 +200,16 @@ def test_single_header_value(
     values: tuple[str, ...],
     expected_value: str | None,
 ) -> None:
-    assert http_header_syntax.single_header_value(values) == expected_value
+    assert (
+        http_header_syntax.single_header_value(
+            values,
+            max_value_chars=_TEST_HEADER_WORK_LIMIT,
+        )
+        == expected_value
+    )
+
+
+def test_single_header_value_rejects_oversized_value_before_strip() -> None:
+    value = _StripGuard("  value  ")
+
+    assert http_header_syntax.single_header_value((value,), max_value_chars=8) is None
