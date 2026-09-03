@@ -2235,7 +2235,8 @@
       "viewLogs": "रन लॉग देखें",
       "waitingIn": "प्रतीक्षा कर रहा है",
       "worked": "काम किया",
-      "workedFor": "{{duration}} के लिए काम किया"
+      "workedFor": "{{duration}} के लिए काम किया",
+      "workingFor": "{{duration}} से काम जारी"
     },
     "sharing": {
       "cancel": "रद्द करें",

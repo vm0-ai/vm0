@@ -2232,7 +2232,8 @@
       "viewLogs": "実行ログを表示する",
       "waitingIn": "待機中",
       "worked": "働いた",
-      "workedFor": "{{duration}} で働いていました"
+      "workedFor": "{{duration}} で働いていました",
+      "workingFor": "{{duration}} 作業中"
     },
     "sharing": {
       "cancel": "キャンセル",

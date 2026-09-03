@@ -2232,7 +2232,8 @@
       "viewLogs": "실행 로그 보기",
       "waitingIn": "대기 중",
       "worked": "작업 완료",
-      "workedFor": "{{duration}} 동안 작업 완료"
+      "workedFor": "{{duration}} 동안 작업 완료",
+      "workingFor": "{{duration}} 동안 작업 중"
     },
     "sharing": {
       "cancel": "취소",

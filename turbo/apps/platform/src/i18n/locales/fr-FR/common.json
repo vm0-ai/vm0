@@ -2278,7 +2278,8 @@
       "viewLogs": "Voir les journaux d'exécution",
       "waitingIn": "En attente",
       "worked": "Fonctionné",
-      "workedFor": "Fonctionné pendant {{duration}}"
+      "workedFor": "Fonctionné pendant {{duration}}",
+      "workingFor": "En cours depuis {{duration}}"
     },
     "sharing": {
       "cancel": "Annuler",

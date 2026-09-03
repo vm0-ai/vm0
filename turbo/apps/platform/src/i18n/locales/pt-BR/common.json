@@ -2278,7 +2278,8 @@
       "viewLogs": "Ver logs da execução",
       "waitingIn": "Aguardando na",
       "worked": "Trabalhou",
-      "workedFor": "Trabalhou por {{duration}}"
+      "workedFor": "Trabalhou por {{duration}}",
+      "workingFor": "Trabalhando há {{duration}}"
     },
     "sharing": {
       "cancel": "Cancelar",

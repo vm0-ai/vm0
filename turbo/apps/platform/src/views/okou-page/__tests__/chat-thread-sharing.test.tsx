@@ -204,6 +204,7 @@ describe("chat thread sharing", () => {
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.SharedThreadSharing]: true,
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
       },
     });
 

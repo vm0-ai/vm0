@@ -23,6 +23,7 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
+    expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
   });
 });
 
@@ -167,6 +168,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
@@ -193,6 +195,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);

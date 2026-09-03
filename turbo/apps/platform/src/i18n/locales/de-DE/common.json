@@ -2235,7 +2235,8 @@
       "viewLogs": "Ausführungsprotokolle anzeigen",
       "waitingIn": "Warten",
       "worked": "Ausgeführt",
-      "workedFor": "Ausgeführt in {{duration}}"
+      "workedFor": "Ausgeführt in {{duration}}",
+      "workingFor": "Seit {{duration}} in Arbeit"
     },
     "sharing": {
       "cancel": "Abbrechen",

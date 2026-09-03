@@ -2235,7 +2235,8 @@
       "viewLogs": "View run logs",
       "waitingIn": "Waiting in",
       "worked": "Worked",
-      "workedFor": "Worked for {{duration}}"
+      "workedFor": "Worked for {{duration}}",
+      "workingFor": "Working for {{duration}}"
     },
     "sharing": {
       "cancel": "Cancel",

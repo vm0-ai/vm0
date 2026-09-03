@@ -2232,7 +2232,8 @@
       "viewLogs": "Lihat log eksekusi",
       "waitingIn": "Menunggu di",
       "worked": "Dikerjakan",
-      "workedFor": "Dikerjakan selama {{duration}}"
+      "workedFor": "Dikerjakan selama {{duration}}",
+      "workingFor": "Bekerja selama {{duration}}"
     },
     "sharing": {
       "cancel": "Batal",

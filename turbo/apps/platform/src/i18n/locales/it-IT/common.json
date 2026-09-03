@@ -2278,7 +2278,8 @@
       "viewLogs": "Visualizza i registri di esecuzione",
       "waitingIn": "In attesa",
       "worked": "Ha funzionato",
-      "workedFor": "Ha lavorato per {{duration}}"
+      "workedFor": "Ha lavorato per {{duration}}",
+      "workingFor": "In lavorazione da {{duration}}"
     },
     "sharing": {
       "cancel": "Annulla",
