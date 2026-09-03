@@ -88,6 +88,9 @@ async fn remove_lock_file(lock_path: &Path) -> bool {
 mod tests {
     use super::*;
     use nix::fcntl::FlockArg;
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::CapturedEvents;
 
     #[test]
     fn probe_lock_free_when_no_holder() {
@@ -221,6 +224,25 @@ mod tests {
         assert!(
             path.exists(),
             "cleanup must not remove a lock path recreated after this lock was acquired"
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_lock_file_treats_missing_path_as_benign() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.lock");
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        let removed = remove_lock_file(&path).with_subscriber(subscriber).await;
+
+        assert!(
+            !removed,
+            "a missing path must not count as this pass's removal"
+        );
+        assert!(
+            captured.entries().is_empty(),
+            "a concurrently removed lock path must not produce a warning"
         );
     }
 }
