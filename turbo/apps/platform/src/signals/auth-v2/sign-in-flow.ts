@@ -173,6 +173,7 @@ export interface AuthV2SignInSignals {
   readonly error$: Computed<AuthV2SignInError | null>;
   readonly identifier$: Computed<string>;
   readonly initialize$: Command<Promise<void>, [AbortSignal]>;
+  readonly initializeExternalStrategies$: Command<Promise<void>, [AbortSignal]>;
   readonly newPassword$: Computed<string>;
   readonly pendingFactorId$: Computed<string | null>;
   readonly password$: Computed<string>;
@@ -1909,14 +1910,6 @@ export function createAuthV2SignInSignals(
     applyResource$,
     dependencies,
   );
-  const initializeWithExternalStrategies$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      await set(initialize$, signal);
-      signal.throwIfAborted();
-      await set(runGoogleOneTap$, signal);
-      signal.throwIfAborted();
-    },
-  );
   return {
     ...formCommands,
     code$: computed((get) => {
@@ -1931,7 +1924,8 @@ export function createAuthV2SignInSignals(
     identifier$: computed((get) => {
       return get(atoms.identifier$);
     }),
-    initialize$: initializeWithExternalStrategies$,
+    initialize$,
+    initializeExternalStrategies$: runGoogleOneTap$,
     newPassword$: computed((get) => {
       return get(atoms.newPassword$);
     }),

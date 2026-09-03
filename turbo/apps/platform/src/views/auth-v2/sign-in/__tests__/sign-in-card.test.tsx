@@ -338,11 +338,18 @@ async function editRestoredIdentifier(): Promise<void> {
 }
 
 describe("auth v2 sign-in flow", () => {
-  it("keeps the bootstrap skeleton until the low-level Clerk resource is ready", async () => {
+  it("hides the bootstrap skeleton after Clerk is ready without waiting for Google One Tap", async () => {
     const clerkLoad = createDeferredPromise<void>(context.signal);
     mockedClerk.load.mockImplementation(() => {
       return clerkLoad.promise;
     });
+    context.mocks.browser.fedCm();
+    mockAuthV2Capabilities({
+      googleOAuth: true,
+      googleOneTapClientId: "google-client-id",
+    });
+    mockGoogleOneTapCredential(null);
+    mockedGoogleOneTap.prompt.mockImplementation(() => {});
     const bootstrapSkeleton = document.createElement("div");
     bootstrapSkeleton.id = "app-bootstrap-skeleton";
     document.body.append(bootstrapSkeleton);
@@ -370,6 +377,9 @@ describe("auth v2 sign-in flow", () => {
     ).resolves.toBeVisible();
     await waitFor(() => {
       expect(bootstrapSkeleton).toHaveAttribute("aria-hidden", "true");
+    });
+    await waitFor(() => {
+      expect(mockedGoogleOneTap.prompt).toHaveBeenCalledTimes(1);
     });
   });
 

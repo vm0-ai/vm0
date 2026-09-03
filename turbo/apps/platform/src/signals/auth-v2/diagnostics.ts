@@ -600,8 +600,8 @@ function createSignInInstrumentation(
 
   return {
     ...signals,
-    initialize$: createAsyncDiagnosticCommand(
-      signals.initialize$,
+    initializeExternalStrategies$: createAsyncDiagnosticCommand(
+      signals.initializeExternalStrategies$,
       initializeAttempt$,
       finishInitialize$,
       capture,
