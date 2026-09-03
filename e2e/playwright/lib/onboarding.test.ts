@@ -86,6 +86,46 @@ test(
   },
 );
 
+test(
+  "video onboarding does not retry a rendered route failure",
+  { timeout: 30_000 },
+  async () => {
+    let videoTemplateRequests = 0;
+    const browser = await chromium.launch();
+    try {
+      const fixture = await listen((request, response) => {
+        const url = new URL(request.url ?? "/", "http://fixture.invalid");
+        if (url.pathname === "/onboarding") {
+          sendHtml(response, "<h1>What do you want to make first</h1>");
+          return;
+        }
+        if (url.pathname === "/onboarding/video-template") {
+          videoTemplateRequests += 1;
+          sendHtml(response, "<main>Rendered unexpected page</main>");
+          return;
+        }
+        response.writeHead(404).end();
+      });
+      try {
+        const page = await browser.newPage();
+        try {
+          await assert.rejects(
+            startVideoOnboardingCheckout(page, { appUrl: fixture.origin }),
+            /bootstrapSkeleton=removed/u,
+          );
+          assert.equal(videoTemplateRequests, 1);
+        } finally {
+          await page.close();
+        }
+      } finally {
+        await close(fixture.server);
+      }
+    } finally {
+      await browser.close();
+    }
+  },
+);
+
 async function listen(handler: RequestListener): Promise<TestServer> {
   const server = createServer(handler);
   await new Promise<void>((resolve, reject) => {
