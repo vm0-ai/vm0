@@ -113,6 +113,30 @@ function completedDownload() {
   };
 }
 
+function failedDownload(status: "artifact_failed" | "provider_failed") {
+  const billed = status === "artifact_failed";
+  return {
+    ...completedDownload(),
+    status,
+    provider: billed
+      ? { durationSeconds: 61, fileSizeMB: 2, creditsCost: 2 }
+      : null,
+    billing: billed ? { quantity: 2, creditsCharged: 6 } : null,
+    artifact: null,
+    error: {
+      code: billed
+        ? "ARTIFACT_MATERIALIZATION_FAILED"
+        : "SOCIALKIT_DOWNLOAD_FAILED",
+      message: billed
+        ? "The artifact could not be materialized"
+        : "SocialKit could not prepare the download",
+      retryable: billed,
+      billed,
+    },
+    completedAt: billed ? null : "2026-08-27T00:01:00.000Z",
+  };
+}
+
 describe("okou social command", () => {
   const originalExitCode = process.exitCode;
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -664,6 +688,66 @@ describe("okou social command", () => {
     });
   });
 
+  it("reports progress when a later collection page fails", async () => {
+    let requests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/social/request", () => {
+        requests += 1;
+        if (requests === 1) {
+          return HttpResponse.json(
+            socialResponse(
+              "instagram_comments",
+              {
+                state: "more",
+                itemsReturned: 2,
+                nextInput: { cursor: "next" },
+              },
+              { comments: [{ id: "one" }, { id: "two" }], hasMore: true },
+              2,
+            ),
+          );
+        }
+        return HttpResponse.json(
+          {
+            error: {
+              code: "SOCIALKIT_UPSTREAM_ERROR",
+              message: "SocialKit request failed",
+            },
+          },
+          { status: 502 },
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "okou",
+        "comments",
+        "https://instagram.com/p/example",
+        "--limit",
+        "10",
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "provider_temporary",
+        code: "SOCIAL_UPSTREAM_ERROR",
+        retryable: true,
+      },
+      progress: {
+        pages: 1,
+        itemsReturned: 2,
+        itemsObserved: 2,
+        billingQuantity: 2,
+        creditsCharged: 6,
+      },
+    });
+  });
+
   it("streams only when explicitly requested", async () => {
     let requests = 0;
     server.use(
@@ -914,6 +998,71 @@ describe("okou social command", () => {
     });
   });
 
+  it.each([
+    {
+      caseName: "creation",
+      method: "post",
+      status: 502,
+      args: [
+        "download",
+        "https://youtu.be/example",
+        "--max-duration",
+        "600",
+        "--json",
+      ],
+    },
+    {
+      caseName: "status",
+      method: "get",
+      status: 500,
+      args: [
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "--json",
+      ],
+    },
+  ] as const)(
+    "sanitizes and structures download $caseName API failures",
+    async ({ method, status, args }) => {
+      const response = () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "SOCIALKIT_DOWNLOAD_FAILED",
+              message: "SocialKit download request failed",
+            },
+          },
+          { status },
+        );
+      };
+      server.use(
+        method === "post"
+          ? http.post("http://localhost:3000/api/social/downloads", response)
+          : http.get(
+              "http://localhost:3000/api/social/downloads/:downloadId",
+              response,
+            ),
+      );
+
+      await expect(
+        socialCommand.parseAsync(["node", "okou", ...args]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "provider_temporary",
+          code: "SOCIAL_DOWNLOAD_FAILED",
+          message: "Okou Social download request failed",
+          httpStatus: status,
+          retryable: true,
+        },
+      });
+      expect(errorOutput()).not.toMatch(/socialkit/iu);
+    },
+  );
+
   it("resumes an existing download without a new request", async () => {
     let creates = 0;
     server.use(
@@ -943,6 +1092,163 @@ describe("okou social command", () => {
       },
     });
   });
+
+  it("retries artifact materialization when resuming a download", async () => {
+    let statusRequests = 0;
+    server.use(
+      http.get("http://localhost:3000/api/social/downloads/:downloadId", () => {
+        statusRequests += 1;
+        return HttpResponse.json(
+          statusRequests === 1
+            ? failedDownload("artifact_failed")
+            : completedDownload(),
+        );
+      }),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "download",
+      "--resume",
+      "6bdc3449-41ef-4624-a525-45bce09c67f0",
+      "--json",
+    ]);
+
+    expect(statusRequests).toBe(2);
+    expect(JSON.parse(output()) as unknown).toMatchObject({
+      status: "complete",
+      data: { status: "completed" },
+    });
+    expect(errorOutput()).toBe("");
+  });
+
+  it.each(["provider_failed", "artifact_failed"] as const)(
+    "emits a structured %s download failure",
+    async (status) => {
+      server.use(
+        http.post("http://localhost:3000/api/social/downloads", () => {
+          return HttpResponse.json(failedDownload(status), { status: 202 });
+        }),
+      );
+
+      await expect(
+        socialCommand.parseAsync([
+          "node",
+          "okou",
+          "download",
+          "https://youtu.be/example",
+          "--max-duration",
+          "600",
+          "--json",
+        ]),
+      ).rejects.toThrow("process.exit called");
+
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "download_failed",
+          retryable: status === "artifact_failed",
+          billed: status === "artifact_failed",
+        },
+        download: { status },
+      });
+    },
+  );
+
+  it("rejects mixed resume and new-download arguments", async () => {
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "okou",
+        "download",
+        "https://youtu.be/example",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "invalid_input",
+        message: expect.stringContaining(
+          "okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+        ),
+      },
+    });
+  });
+
+  it.each([
+    ["SIGINT", "SIGTERM", 130],
+    ["SIGTERM", "SIGINT", 143],
+  ] as const)(
+    "emits structured recovery guidance and cleans up after %s",
+    async (signal, secondSignal, exitCode) => {
+      let statusRequestStarted = false;
+      const initialSigintListeners = process.listenerCount("SIGINT");
+      const initialSigtermListeners = process.listenerCount("SIGTERM");
+      server.use(
+        http.get(
+          "http://localhost:3000/api/social/downloads/:downloadId",
+          async ({ request }) => {
+            statusRequestStarted = true;
+            await new Promise<void>((resolve) => {
+              if (request.signal.aborted) {
+                resolve();
+                return;
+              }
+              request.signal.addEventListener(
+                "abort",
+                () => {
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+            return HttpResponse.error();
+          },
+        ),
+      );
+
+      const command = socialCommand.parseAsync([
+        "node",
+        "okou",
+        "download",
+        "--resume",
+        "6bdc3449-41ef-4624-a525-45bce09c67f0",
+        "--json",
+      ]);
+      await vi.waitFor(() => {
+        expect(statusRequestStarted).toBeTruthy();
+      });
+      process.emit(signal, signal);
+      process.emit(secondSignal, secondSignal);
+      await command;
+
+      expect(output()).toBe("");
+      expect(mockConsoleError).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(errorOutput()) as unknown).toMatchObject({
+        status: "error",
+        error: {
+          kind: "interrupted",
+          code: "INTERRUPTED",
+          retryable: true,
+        },
+        interruption: {
+          signal,
+          downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
+          resumeCommand:
+            "okou social download --resume 6bdc3449-41ef-4624-a525-45bce09c67f0",
+        },
+      });
+      expect(process.exitCode).toBe(exitCode);
+      expect(mockExit).not.toHaveBeenCalled();
+      expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+      expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+    },
+  );
 
   it("documents the intent-oriented surface", () => {
     const help = socialCommand.helpInformation();

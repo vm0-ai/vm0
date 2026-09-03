@@ -760,6 +760,7 @@ function resumeDownloadCommand(downloadId: string): string {
 
 async function withDownloadInterruption(
   downloadId: string,
+  machineReadable: boolean,
   action: (signal: AbortSignal) => Promise<void>,
 ): Promise<void> {
   const controller = new AbortController();
@@ -769,10 +770,28 @@ async function withDownloadInterruption(
       return;
     }
     interruption = signal;
-    console.error(
-      `Okou Social download ${downloadId} continues on the server after ${signal}`,
-    );
-    console.error(`Resume: ${resumeDownloadCommand(downloadId)}`);
+    const message = `Okou Social download ${downloadId} continues on the server after ${signal}`;
+    if (machineReadable) {
+      console.error(
+        JSON.stringify({
+          status: "error",
+          error: {
+            kind: "interrupted",
+            code: "INTERRUPTED",
+            message,
+            retryable: true,
+          },
+          interruption: {
+            signal,
+            downloadId,
+            resumeCommand: resumeDownloadCommand(downloadId),
+          },
+        }),
+      );
+    } else {
+      console.error(message);
+      console.error(`Resume: ${resumeDownloadCommand(downloadId)}`);
+    }
     process.exitCode = DOWNLOAD_SIGNAL_EXIT_CODE[signal];
     controller.abort();
   };
@@ -799,6 +818,7 @@ async function withDownloadInterruption(
 async function waitForDownload(
   initial: SocialKitDownloadResponse,
   retryArtifactFailures: boolean,
+  machineReadable: boolean,
   signal: AbortSignal,
 ): Promise<SocialKitDownloadResponse> {
   let current = initial;
@@ -807,7 +827,7 @@ async function waitForDownload(
     retryArtifactFailures && current.status === "artifact_failed";
   for (let attempt = 0; attempt < 900; attempt += 1) {
     signal.throwIfAborted();
-    if (current.status !== previousStatus) {
+    if (!machineReadable && current.status !== previousStatus) {
       console.error(
         `Okou Social download ${current.downloadId}: ${current.status}`,
       );
@@ -1040,17 +1060,22 @@ const downloadCommand = new Command()
             `--resume cannot be combined with a new download request; use: ${resumeDownloadCommand(downloadId)}`,
           );
         }
-        await withDownloadInterruption(downloadId, async (signal) => {
-          const response = await waitForDownload(
-            await getSocialKitDownload(downloadId, signal),
-            true,
-            signal,
-          );
-          printJson(
-            downloadOutput(response, { kind: "download", downloadId }),
-            options.json === true,
-          );
-        });
+        await withDownloadInterruption(
+          downloadId,
+          options.json === true,
+          async (signal) => {
+            const response = await waitForDownload(
+              await getSocialKitDownload(downloadId, signal),
+              true,
+              options.json === true,
+              signal,
+            );
+            printJson(
+              downloadOutput(response, { kind: "download", downloadId }),
+              options.json === true,
+            );
+          },
+        );
         return;
       }
       if (!url || !options.maxDuration) {
@@ -1071,10 +1096,19 @@ const downloadCommand = new Command()
         );
       }
       const created = await createSocialKitDownload(parsed.data);
-      await withDownloadInterruption(created.downloadId, async (signal) => {
-        const response = await waitForDownload(created, false, signal);
-        printJson(downloadOutput(response, target), options.json === true);
-      });
+      await withDownloadInterruption(
+        created.downloadId,
+        options.json === true,
+        async (signal) => {
+          const response = await waitForDownload(
+            created,
+            false,
+            options.json === true,
+            signal,
+          );
+          printJson(downloadOutput(response, target), options.json === true);
+        },
+      );
     });
   });
 
