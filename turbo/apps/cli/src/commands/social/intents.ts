@@ -258,6 +258,7 @@ const FACEBOOK_NON_CHANNEL_PATHS = new Set([
   "login",
   "marketplace",
   "permalink.php",
+  "photo",
   "photo.php",
   "photos",
   "posts",
@@ -265,14 +266,32 @@ const FACEBOOK_NON_CHANNEL_PATHS = new Set([
   "reels",
   "share",
   "sharer",
+  "story.php",
   "video.php",
   "videos",
   "watch",
 ]);
 
+const FACEBOOK_STORY_QUERY_PATHS = new Set(["permalink.php", "story.php"]);
+const FACEBOOK_PHOTO_QUERY_PATHS = new Set(["photo", "photo.php"]);
+
 function hasQueryValue(url: URL, key: string): boolean {
   const value = url.searchParams.get(key);
   return value !== null && value.trim().length > 0;
+}
+
+function hasLegacyFacebookPostQuery(
+  url: URL,
+  path: string | undefined,
+): boolean {
+  return (
+    (path !== undefined &&
+      FACEBOOK_STORY_QUERY_PATHS.has(path) &&
+      hasQueryValue(url, "story_fbid")) ||
+    (path !== undefined &&
+      FACEBOOK_PHOTO_QUERY_PATHS.has(path) &&
+      hasQueryValue(url, "fbid"))
+  );
 }
 
 function facebookTargetKind(url: URL): SocialTargetKind {
@@ -300,8 +319,7 @@ function facebookTargetKind(url: URL): SocialTargetKind {
   });
   if (
     (postIndex >= 0 && segments[postIndex + 1]) ||
-    hasQueryValue(url, "story_fbid") ||
-    hasQueryValue(url, "fbid")
+    hasLegacyFacebookPostQuery(url, segments[0])
   ) {
     return "post";
   }
