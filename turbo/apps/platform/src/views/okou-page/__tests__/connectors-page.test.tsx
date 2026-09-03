@@ -1782,6 +1782,45 @@ describe("connectors page", () => {
     expect(within(dialog).queryByText("No accounts found")).toBeNull();
   });
 
+  it("keeps a default account that a search matches", async () => {
+    const accounts = mockGitHubConnectorAccounts(7);
+    const defaultAccount = accounts.find((account) => {
+      return account.isDefault;
+    });
+    if (!defaultAccount) {
+      throw new Error("Expected a default account fixture");
+    }
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        return respond(200, {
+          connections: query.search ? [defaultAccount] : accounts,
+          nextCursor: null,
+        });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    fireEvent.input(within(dialog).getByPlaceholderText("Find accounts"), {
+      target: { value: "Unnamed" },
+    });
+    // The default is the only match here, so it stays a result row instead of
+    // being replaced by the empty state.
+    await waitFor(() => {
+      expect(within(dialog).queryByText("Work 1")).toBeNull();
+      expect(within(dialog).getByText("Unnamed account")).toBeInTheDocument();
+      expect(within(dialog).queryByText("No accounts found")).toBeNull();
+    });
+  });
+
   it("paginates a feature-on account manager", async () => {
     const accounts = mockGitHubConnectorAccounts(8);
     // The server projects rows away before slicing, so a page can hold fewer
@@ -1903,7 +1942,9 @@ describe("connectors page", () => {
         { search: "Work 2", cursor: null },
       ]);
       expect(within(dialog).getByText("Work 2")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
+      // A search owns the whole list: the default account is unpinned unless it
+      // matches, so the results never mix with a row the query excluded.
+      expect(within(dialog).queryByText("Unnamed account")).toBeNull();
     });
 
     fireEvent.input(searchInput, {
@@ -1915,7 +1956,7 @@ describe("connectors page", () => {
         cursor: null,
       });
       expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
-      expect(within(dialog).getAllByText("Unnamed account")).toHaveLength(1);
+      expect(within(dialog).queryByText("Unnamed account")).toBeNull();
     });
   });
 
