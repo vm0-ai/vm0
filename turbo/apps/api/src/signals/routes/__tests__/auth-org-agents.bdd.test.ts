@@ -30,7 +30,8 @@ const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
 const runsApi = createRunsApi(context);
-const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
+const DEFAULT_AGENT_AVATAR_URL =
+  "https://static.vm0.io/public/default-agent-avatar-ceb298b79964.svg";
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -505,7 +506,7 @@ describe("ORG-03 onboarding status mapping", () => {
     });
   });
 
-  it("projects only the system default assistant by public brand without rewriting storage", async () => {
+  it("projects the system default assistant identity across public brands", async () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
 
@@ -551,12 +552,17 @@ describe("ORG-03 onboarding status mapping", () => {
     const patched = await api.updateAgentMetadata(
       admin,
       defaultAgentId,
-      { displayName: "Okou", description: "Patched from Okou" },
+      {
+        displayName: "Okou",
+        description: "Patched from Okou",
+        avatarUrl: "preset:4",
+      },
       "okou",
     );
     expect(patched).toMatchObject({
       displayName: "Okou",
       description: "Patched from Okou",
+      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
     await expect(
       api.readAgent(admin, defaultAgentId, "vm0"),
@@ -568,12 +574,17 @@ describe("ORG-03 onboarding status mapping", () => {
     const replaced = await api.updateAgent(
       admin,
       defaultAgentId,
-      { displayName: "Okou", description: "Replaced from Okou" },
+      {
+        displayName: "Okou",
+        description: "Replaced from Okou",
+        avatarUrl: "preset:3",
+      },
       "okou",
     );
     expect(replaced).toMatchObject({
       displayName: "Okou",
       description: "Replaced from Okou",
+      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
     await expect(
       api.readAgent(admin, defaultAgentId, "vm0"),

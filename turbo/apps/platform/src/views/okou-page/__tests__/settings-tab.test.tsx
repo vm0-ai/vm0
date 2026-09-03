@@ -6,7 +6,10 @@ import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
-import { AVATAR_PRESET_COUNT } from "@okouai/core/agent-avatar";
+import {
+  AVATAR_PRESET_COUNT,
+  DEFAULT_AGENT_AVATAR_URL,
+} from "@okouai/core/agent-avatar";
 
 import {
   click,
@@ -161,6 +164,25 @@ function prepareMatchingAgentProfiles(): void {
 }
 
 describe("zero settings tab", () => {
+  it("renders the default agent avatar without customization controls", async () => {
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    prepareAgentProfile(DEFAULT_AGENT_AVATAR_URL);
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    await findAgentNameInput();
+    const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+    const avatarRow = avatarLabel.parentElement?.parentElement;
+    if (!avatarRow) {
+      throw new Error("Avatar profile row not found");
+    }
+    const avatarImages = avatarRow.querySelectorAll<HTMLImageElement>("img");
+
+    expect(avatarImages).toHaveLength(1);
+    expect(avatarImages[0]).toHaveAttribute("src", DEFAULT_AGENT_AVATAR_URL);
+    expect(screen.queryByLabelText("Create custom avatar")).toBeNull();
+    expect(screen.queryByLabelText("Customize avatar")).toBeNull();
+  });
+
   it("renders the highest preset the API can assign", async () => {
     prepareAgentProfile(`preset:${AVATAR_PRESET_COUNT - 1}`);
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
