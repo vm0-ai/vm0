@@ -29,6 +29,30 @@ import {
 
 const servers: Server[] = [];
 
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: Error): void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolvePromise: ((value: T) => void) | undefined;
+  let rejectPromise: ((error: Error) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve(value) {
+      resolvePromise?.(value);
+    },
+    reject(error) {
+      rejectPromise?.(error);
+    },
+  };
+}
+
 afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(async (server) => {
@@ -341,7 +365,7 @@ function expectBoundedFailure(
       expect(error).toBeInstanceOf(PiMemoryPhase2EngineError);
       expect(error).toMatchObject({ errorClass });
       expect(error).not.toHaveProperty("files");
-      expect(JSON.stringify(error)).not.toContain("SECRET_31243");
+      expect(JSON.stringify(error)).not.toContain("SECRET_");
     },
   );
 }
@@ -773,6 +797,249 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         return event.stage;
       }),
     ).toStrictEqual(["staged", "heartbeat", "model_started", "failed"]);
+    await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it.each<{
+    readonly description: string;
+    readonly errorClass: PiMemoryPhase2EngineError["errorClass"];
+    readonly settle: (heartbeat: Deferred<boolean>) => void;
+  }>([
+    {
+      description: "returns false",
+      errorClass: "lease_lost",
+      settle(heartbeat) {
+        heartbeat.resolve(false);
+      },
+    },
+    {
+      description: "rejects",
+      errorClass: "heartbeat_failed",
+      settle(heartbeat) {
+        heartbeat.reject(new Error("HEARTBEAT_SECRET_31252"));
+      },
+    },
+  ])(
+    "rejects an in-flight heartbeat that $description after model completion wins",
+    async ({ errorClass, settle }) => {
+      const provider = await startProvider([
+        { type: "text", text: "model completed before heartbeat" },
+      ]);
+      const heartbeatResult = deferred<boolean>();
+      const heartbeatStarted = deferred<void>();
+      const modelCompletionSelected = deferred<void>();
+      const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
+      const usages: PiMemoryPhase2UsageEvent[] = [];
+      let heartbeatCount = 0;
+      let disposedSessions = 0;
+      let cleanupRoot: string | undefined;
+      const promise = runPiMemoryPhase2ConsolidationForTest(
+        args(provider.baseUrl, {
+          heartbeat: async () => {
+            heartbeatCount += 1;
+            if (heartbeatCount === 1) {
+              return true;
+            }
+            heartbeatStarted.resolve();
+            return await heartbeatResult.promise;
+          },
+          onLifecycle(event) {
+            lifecycle.push(event);
+          },
+          onUsage(event) {
+            usages.push(event);
+          },
+        }),
+        {
+          async waitForHeartbeat(signal, cadenceMs) {
+            expect(cadenceMs).toBe(
+              PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
+            );
+            signal.throwIfAborted();
+          },
+          async afterModelCompletionSelected() {
+            await heartbeatStarted.promise;
+            modelCompletionSelected.resolve();
+          },
+          onSessionDisposed() {
+            disposedSessions += 1;
+          },
+          async beforeCleanup(root) {
+            cleanupRoot = root;
+          },
+        },
+        new AbortController().signal,
+      );
+
+      await modelCompletionSelected.promise;
+      settle(heartbeatResult);
+      await expectBoundedFailure(promise, errorClass);
+
+      expect(heartbeatCount).toBe(2);
+      expect(provider.requests).toHaveLength(1);
+      expect(usages).toStrictEqual([]);
+      expect(disposedSessions).toBe(1);
+      expect(
+        lifecycle.some((event) => {
+          return event.stage === "validated" || event.outcome !== undefined;
+        }),
+      ).toBe(false);
+      await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
+
+  it("allows one success after an in-flight heartbeat settles true", async () => {
+    const provider = await startProvider([
+      { type: "text", text: "model completed before heartbeat" },
+    ]);
+    const heartbeatResult = deferred<boolean>();
+    const heartbeatStarted = deferred<void>();
+    const modelCompletionSelected = deferred<void>();
+    const usages: PiMemoryPhase2UsageEvent[] = [];
+    let heartbeatCount = 0;
+    let disposedSessions = 0;
+    const promise = runPiMemoryPhase2ConsolidationForTest(
+      args(provider.baseUrl, {
+        heartbeat: async () => {
+          heartbeatCount += 1;
+          if (heartbeatCount === 1) {
+            return true;
+          }
+          heartbeatStarted.resolve();
+          return await heartbeatResult.promise;
+        },
+        onUsage(event) {
+          usages.push(event);
+        },
+      }),
+      {
+        async waitForHeartbeat(signal, cadenceMs) {
+          expect(cadenceMs).toBe(
+            PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
+          );
+          signal.throwIfAborted();
+        },
+        async afterModelCompletionSelected() {
+          await heartbeatStarted.promise;
+          modelCompletionSelected.resolve();
+        },
+        onSessionDisposed() {
+          disposedSessions += 1;
+        },
+      },
+      new AbortController().signal,
+    );
+
+    await modelCompletionSelected.promise;
+    heartbeatResult.resolve(true);
+    const result = await promise;
+
+    expect(result.status).toBe("prepared");
+    expect(heartbeatCount).toBe(2);
+    expect(provider.requests).toHaveLength(1);
+    expect(usages).toHaveLength(1);
+    expect(disposedSessions).toBe(1);
+  });
+
+  it("observes abort from the staged observer before selecting no-diff", async () => {
+    const controller = new AbortController();
+    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
+    const usages: PiMemoryPhase2UsageEvent[] = [];
+    let heartbeatCount = 0;
+    let cleanupRoot: string | undefined;
+    await expectBoundedFailure(
+      runPiMemoryPhase2ConsolidationForTest(
+        args("http://127.0.0.1:1/v1", {
+          selected: [],
+          heartbeat: async () => {
+            heartbeatCount += 1;
+            return true;
+          },
+          onLifecycle(event) {
+            lifecycle.push(event);
+            if (event.stage === "staged") {
+              controller.abort(new Error("STAGED_ABORT_SECRET_31252"));
+            }
+          },
+          onUsage(event) {
+            usages.push(event);
+          },
+        }),
+        {
+          async beforeCleanup(root) {
+            cleanupRoot = root;
+          },
+        },
+        controller.signal,
+      ),
+      "aborted",
+    );
+
+    expect(heartbeatCount).toBe(0);
+    expect(usages).toStrictEqual([]);
+    expect(
+      lifecycle.map((event) => {
+        return event.stage;
+      }),
+    ).toStrictEqual(["staged", "failed"]);
+    await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("observes post-model abort before output validation can succeed", async () => {
+    const controller = new AbortController();
+    const provider = await startProvider([
+      { type: "text", text: "completed before validation abort" },
+    ]);
+    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
+    const usages: PiMemoryPhase2UsageEvent[] = [];
+    let disposedSessions = 0;
+    let cleanupRoot: string | undefined;
+    await expectBoundedFailure(
+      runPiMemoryPhase2ConsolidationForTest(
+        args(provider.baseUrl, {
+          onLifecycle(event) {
+            lifecycle.push(event);
+          },
+          onUsage(event) {
+            usages.push(event);
+          },
+        }),
+        {
+          async beforeOutputValidation() {
+            controller.abort(new Error("VALIDATION_ABORT_SECRET_31252"));
+          },
+          onSessionDisposed() {
+            disposedSessions += 1;
+          },
+          async beforeCleanup(root) {
+            cleanupRoot = root;
+          },
+        },
+        controller.signal,
+      ),
+      "aborted",
+    );
+
+    expect(provider.requests).toHaveLength(1);
+    expect(usages).toStrictEqual([]);
+    expect(disposedSessions).toBe(1);
+    expect(
+      lifecycle.map((event) => {
+        return event.stage;
+      }),
+    ).toStrictEqual([
+      "staged",
+      "heartbeat",
+      "model_started",
+      "model_completed",
+      "failed",
+    ]);
     await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
       code: "ENOENT",
     });
