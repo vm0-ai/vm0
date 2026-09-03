@@ -70,6 +70,18 @@ import {
   changeChatThreadReadCursor,
 } from "../../../mocks/mock-helpers.ts";
 
+// Base UI Scroll Area reads Web Animations during layout; happy-dom does not
+// implement that browser API. Keep the shim local so other Base UI components
+// retain their synchronous no-animation test behavior.
+if (typeof Element.prototype.getAnimations !== "function") {
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => {
+      return [];
+    },
+  });
+}
+
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
 // can drive it. Keyboard events on a detached editor are silently dropped.
