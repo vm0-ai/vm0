@@ -22,6 +22,10 @@ ruleTester.run("no-logger-info", noLoggerInfo, {
       filename: "/app/src/__tests__/log.test.ts",
       code: 'const L = logger("Test"); L.info("test-only");',
     },
+    {
+      code: 'const L = logger("Server"); L.info("audited outcome");',
+      options: [{ allowedMessages: ["audited outcome"] }],
+    },
   ],
   invalid: [
     {
@@ -30,6 +34,16 @@ ruleTester.run("no-logger-info", noLoggerInfo, {
     },
     {
       code: 'const L = logger("Server"); L.info("started");',
+      errors: [{ messageId: "noLoggerInfo" }],
+    },
+    {
+      code: 'const L = logger("Server"); L.info("different outcome");',
+      options: [{ allowedMessages: ["audited outcome"] }],
+      errors: [{ messageId: "noLoggerInfo" }],
+    },
+    {
+      code: 'const L = logger("Server"); L.info(message);',
+      options: [{ allowedMessages: ["audited outcome"] }],
       errors: [{ messageId: "noLoggerInfo" }],
     },
   ],
