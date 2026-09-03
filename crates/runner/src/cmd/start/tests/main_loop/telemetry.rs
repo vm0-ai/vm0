@@ -342,7 +342,9 @@ async fn cancelled_finalizing_handoff_flushes_outcome_without_executor() {
             when.method(POST)
                 .path("/api/webhooks/agent/telemetry")
                 .body_includes("runner_claim_finalizing_handoff")
-                .body_includes(r#""outcome":"cancelled""#);
+                .body_includes(r#""outcome":"cancelled""#)
+                .body_includes(r#""reason":"successor_cancelled""#)
+                .body_includes(r#""error":"cancelled""#);
             then.status(200)
                 .header("content-type", "application/json")
                 .body(r#"{"success":true,"id":"ok"}"#);
@@ -397,6 +399,137 @@ async fn cancelled_finalizing_handoff_flushes_outcome_without_executor() {
 }
 
 #[tokio::test]
+async fn finalizing_no_exact_fallback_reports_atomic_idle_miss() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_handoff")
+                .body_includes(r#""outcome":"no_exact""#)
+                .body_includes(r#""reason":"predecessor_no_exact""#)
+                .body_includes("runner_claim_finalizing_exact_idle_lookup")
+                .body_includes(r#""outcome":"miss""#)
+                .body_includes(r#""reason":"absent""#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let (config, env) =
+        mock_run_config_with_api_url(test_profiles(), 2, 4096, 1, &server.base_url());
+    let reuse_key = "thread:no-exact-fallback-telemetry";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(predecessor_run_id))
+                .with_runner_preference_for_test(
+                    crate::provider::ActiveRunnerPreference::ranked_for_test(
+                        test_runner_identity(),
+                        crate::provider::RunnerPreferenceTier::FinalizingPredecessor,
+                        std::time::Instant::now() + Duration::from_secs(30),
+                    ),
+                ),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    assert!(predecessor_reuse.publish_no_exact_sandbox());
+    env.handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("no-exact fallback should complete");
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn finalizing_handoff_deadline_reports_fallback_reason() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let telemetry_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("runner_claim_finalizing_handoff")
+                .body_includes(r#""outcome":"not_accepted_before_deadline""#)
+                .body_includes(r#""reason":"handoff_acceptance_deadline""#)
+                .body_includes("runner_claim_finalizing_exact_idle_lookup")
+                .body_includes(r#""outcome":"miss""#)
+                .body_includes(r#""reason":"absent""#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"id":"ok"}"#);
+        })
+        .await;
+
+    let (config, env) =
+        mock_run_config_with_api_url(test_profiles(), 2, 4096, 1, &server.base_url());
+    let reuse_key = "thread:handoff-deadline-telemetry";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    assert!(predecessor_reuse.mark_finalizing(std::time::Instant::now()));
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.to_owned());
+    env.provider.set_claim_result(run_id, Some(context));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_reuse_key(Some(reuse_key.to_owned()))
+                .with_history_generation_run_id(Some(predecessor_run_id))
+                .with_runner_preference_for_test(
+                    crate::provider::ActiveRunnerPreference::ranked_for_test(
+                        test_runner_identity(),
+                        crate::provider::RunnerPreferenceTier::FinalizingPredecessor,
+                        std::time::Instant::now() + Duration::from_secs(1),
+                    ),
+                ),
+        )
+        .unwrap();
+
+    env.handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("deadline fallback should complete");
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+    telemetry_mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
 async fn finalizing_handoff_activation_failure_is_not_reported_as_accepted() {
     use httpmock::prelude::*;
 
@@ -407,7 +540,9 @@ async fn finalizing_handoff_activation_failure_is_not_reported_as_accepted() {
                 .path("/api/webhooks/agent/telemetry")
                 .body_includes("runner_claim_finalizing_wait")
                 .body_includes("runner_claim_finalizing_handoff")
-                .body_includes(r#""outcome":"activation_failed""#);
+                .body_includes(r#""outcome":"activation_failed""#)
+                .body_includes(r#""reason":"exact_activation_fallback""#)
+                .body_includes(r#""error":"activation_failed""#);
             then.status(200)
                 .header("content-type", "application/json")
                 .body(r#"{"success":true,"id":"ok"}"#);
@@ -500,7 +635,11 @@ async fn published_exact_activation_failure_is_reported_as_activation_failed() {
             when.method(POST)
                 .path("/api/webhooks/agent/telemetry")
                 .body_includes("runner_claim_finalizing_handoff")
-                .body_includes(r#""outcome":"activation_failed""#);
+                .body_includes(r#""outcome":"activation_failed""#)
+                .body_includes(r#""reason":"exact_activation_fallback""#)
+                .body_includes(r#""error":"activation_failed""#)
+                .body_includes("runner_claim_finalizing_exact_idle_lookup")
+                .body_includes(r#""outcome":"hit""#);
             then.status(200)
                 .header("content-type", "application/json")
                 .body(r#"{"success":true,"id":"ok"}"#);

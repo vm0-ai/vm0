@@ -5144,6 +5144,14 @@
           "title": "Tema"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Permite que los agentes usen un navegador en la nube en chats nuevos",
+          "title": "Navegador en la nube"
+        },
+        "description": "Elige los valores predeterminados para los chats nuevos y cómo se envían los mensajes.",
+        "sectionTitle": "Chat"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cancelar tiempo de espera",

@@ -127,8 +127,8 @@ export const homeAgentId$ = computed(async (get) => {
     return lastUsedAgentId;
   }
 
-  // Onboarding status already identifies the default agent. Resolve it
-  // directly so the home route can hand off without waiting for /api/team.
+  // Onboarding status already identifies the default agent, so the home route
+  // can hand off directly.
   return await get(defaultAgentId$);
 });
 

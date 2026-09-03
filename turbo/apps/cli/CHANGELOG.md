@@ -1,5 +1,37 @@
 # Changelog
 
+## [9.309.4](https://github.com/vm0-ai/vm0/compare/cli-v9.309.3...cli-v9.309.4) (2026-09-03)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31524](https://github.com/vm0-ai/vm0/issues/31524)) ([2020321](https://github.com/vm0-ai/vm0/commit/202032117158dca3c445b5f6f6d5e0e2d5b660aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.399.1
+    * @okouai/core bumped to 8.618.0
+    * @okouai/pi-agent-runtime bumped to 1.15.5
+
+## [9.309.3](https://github.com/vm0-ai/vm0/compare/cli-v9.309.2...cli-v9.309.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* **cli:** install presentation screenshot dependencies ([#31488](https://github.com/vm0-ai/vm0/issues/31488)) ([220e89a](https://github.com/vm0-ai/vm0/commit/220e89a7cbd051eddc447e0c0a8280f5c83a3d23))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.399.0
+    * @okouai/core bumped to 8.617.0
+    * @okouai/pi-agent-runtime bumped to 1.15.4
+
 ## [9.309.2](https://github.com/vm0-ai/vm0/compare/cli-v9.309.1...cli-v9.309.2) (2026-09-03)
 
 

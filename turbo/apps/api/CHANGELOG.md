@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.541.1](https://github.com/vm0-ai/vm0/compare/api-v1.541.0...api-v1.541.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **api:** refresh API release marker comment ([#31538](https://github.com/vm0-ai/vm0/issues/31538)) ([435603e](https://github.com/vm0-ai/vm0/commit/435603e8598dcf2e0c76c7d9fdc6ca6470826e31))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31524](https://github.com/vm0-ai/vm0/issues/31524)) ([2020321](https://github.com/vm0-ai/vm0/commit/202032117158dca3c445b5f6f6d5e0e2d5b660aa))
+
+
+### Performance Improvements
+
+* **api:** bound run context Axiom query by creation time ([#31509](https://github.com/vm0-ai/vm0/issues/31509)) ([18fa8fc](https://github.com/vm0-ai/vm0/commit/18fa8fcad7bd5023c11d69bd885a33fe2c4060e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.1
+    * @okouai/core bumped to 8.618.0
+    * @okouai/db bumped to 1.240.1
+    * @okouai/pi-agent-runtime bumped to 1.15.5
+
+## [1.541.0](https://github.com/vm0-ai/vm0/compare/api-v1.540.0...api-v1.541.0) (2026-09-03)
+
+
+### Features
+
+* add cloud browser preference ([#31522](https://github.com/vm0-ai/vm0/issues/31522)) ([99b4589](https://github.com/vm0-ai/vm0/commit/99b4589022738a463640e019b97f31c150e50850))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.0
+    * @okouai/core bumped to 8.617.0
+    * @okouai/db bumped to 1.240.0
+    * @okouai/pi-agent-runtime bumped to 1.15.4
+
 ## [1.540.0](https://github.com/vm0-ai/vm0/compare/api-v1.539.1...api-v1.540.0) (2026-09-03)
 
 

@@ -24,6 +24,7 @@ const context = testContext();
 async function openDialog(
   role: "admin" | "member" = "admin",
   section: "debug" | "general" | "model" | "preference" = "general",
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
@@ -41,8 +42,10 @@ async function openDialog(
   detachedSetupPage({
     context,
     path: `/?settings=${section}`,
-    featureSwitches:
-      section === "debug" ? { [FeatureSwitchKey.OkouDebug]: true } : {},
+    featureSwitches: {
+      ...(section === "debug" ? { [FeatureSwitchKey.OkouDebug]: true } : {}),
+      ...featureSwitches,
+    },
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -71,6 +74,7 @@ function createPreferences(
     supportedLocales,
     pinnedAgentIds: [],
     sendMode: "enter",
+    cloudBrowserEnabledByDefault: true,
     theme: "system",
     colorTheme: "blue-horizon",
     captureNetworkBodiesRemaining: 0,
@@ -123,6 +127,35 @@ function buttonWithText(
 }
 
 describe("settings dialog", () => {
+  it("updates the Cloud browser default when the preference switch is enabled", async () => {
+    context.mocks.data.userPreferences({
+      cloudBrowserEnabledByDefault: false,
+    });
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.CloudBrowserPreference]: true,
+    });
+
+    const cloudBrowserSwitch = await screen.findByRole("switch", {
+      name: "Cloud browser",
+    });
+    expect(cloudBrowserSwitch).toHaveAttribute("aria-checked", "false");
+
+    click(cloudBrowserSwitch);
+
+    await waitFor(() => {
+      expect(cloudBrowserSwitch).toHaveAttribute("aria-checked", "true");
+    });
+  });
+
+  it("hides the Cloud browser default while its feature switch is disabled", async () => {
+    await openDialog("admin", "preference");
+
+    expect(
+      screen.queryByRole("switch", { name: "Cloud browser" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps every available locale in the language menu", async () => {
     context.mocks.data.userPreferences(
       createPreferences("en-US", [

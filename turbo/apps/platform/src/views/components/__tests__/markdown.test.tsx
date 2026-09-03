@@ -4,6 +4,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { logsListContract } from "@okouai/api-contracts/contracts/logs";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it } from "vitest";
@@ -231,6 +232,83 @@ describe("assistant markdown", () => {
       screen.findByText("Plain response with punctuation: ready (now)."),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByTestId("rich-content-loading")).toBeNull();
+  });
+
+  it("hides HEX color previews when the feature switch is disabled", async () => {
+    mockThread("Palette #F9E840.");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await expect(
+      screen.findByText("Palette #F9E840."),
+    ).resolves.toBeInTheDocument();
+    expect(document.querySelector("[data-markdown-color-preview]")).toBeNull();
+  });
+
+  it("shows a HEX color preview in syntax-free assistant text", async () => {
+    mockThread("Palette #F9E840.");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.MarkdownHexColorPreview]: true,
+      },
+    });
+
+    const preview = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        '[data-markdown-color-preview="#F9E840"]',
+      );
+      expect(element).not.toBeNull();
+      return element;
+    });
+    expect(preview).toHaveStyle({ backgroundColor: "#F9E840" });
+    expect(preview).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("previews complete HEX colors after ordinary text and inline code", async () => {
+    mockThread(
+      [
+        "**Brand** #A1b2C3 and `#A8B5A2`.",
+        "",
+        "[#445566](https://example.com/#445566)",
+        "",
+        "Not #ABC, #12345678, or word#ABCDEF.",
+        "",
+        "```text\n#77736F\n```",
+      ].join("\n"),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.MarkdownHexColorPreview]: true,
+      },
+    });
+
+    await screen.findByText("Brand", { selector: "strong, b" });
+    const inlineCode = await screen.findByText("#A8B5A2", {
+      selector: "code",
+    });
+    await waitFor(() => {
+      const previews = document.querySelectorAll<HTMLElement>(
+        "[data-markdown-color-preview]",
+      );
+      expect(
+        [...previews].map((preview) => {
+          return preview.dataset.markdownColorPreview;
+        }),
+      ).toStrictEqual(["#A1b2C3", "#A8B5A2"]);
+      expect(
+        inlineCode.querySelector("[data-markdown-color-preview]"),
+      ).toBeNull();
+      expect(inlineCode.nextElementSibling).toBe(previews[1]);
+    });
   });
 
   it("highlights common fenced-code languages with Prism tokens", async () => {

@@ -9,6 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatSearchContract,
   chatThreadByIdContract,
@@ -67,6 +68,18 @@ import {
   changeChatThreadList,
   changeChatThreadReadCursor,
 } from "../../../mocks/mock-helpers.ts";
+
+// Base UI Scroll Area reads Web Animations during layout; happy-dom does not
+// implement that browser API. Keep the shim local so other Base UI components
+// retain their synchronous no-animation test behavior.
+if (typeof Element.prototype.getAnimations !== "function") {
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => {
+      return [];
+    },
+  });
+}
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -1479,6 +1492,9 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.BaseUiSidebarScrollArea]: true,
+      },
     });
 
     await waitFor(() => {
@@ -2834,6 +2850,75 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("drags the Base UI three-column scrollbar when its feature switch is enabled", async () => {
+    prepareDefaultAgent();
+
+    setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.BaseUiSidebarScrollArea]: true,
+      },
+    });
+
+    const nav = await screen.findByTestId("chat-list-column");
+    const scrollArea = within(nav).getByTestId("sidebar-scroll-area");
+    Object.defineProperties(scrollArea, {
+      clientHeight: { configurable: true, value: 200 },
+      clientWidth: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1000 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+      scrollWidth: { configurable: true, value: 200 },
+    });
+    fireEvent.scroll(scrollArea);
+
+    const scrollbar = await within(nav).findByTestId("sidebar-scrollbar");
+    const thumb = within(scrollbar).getByTestId("sidebar-scrollbar-thumb");
+    let capturedPointerId: number | null = null;
+    Object.defineProperties(scrollbar, {
+      offsetHeight: { configurable: true, value: 200 },
+    });
+    Object.defineProperties(thumb, {
+      offsetHeight: { configurable: true, value: 40 },
+      setPointerCapture: {
+        configurable: true,
+        value: (pointerId: number) => {
+          capturedPointerId = pointerId;
+        },
+      },
+      hasPointerCapture: {
+        configurable: true,
+        value: (pointerId: number) => {
+          return capturedPointerId === pointerId;
+        },
+      },
+      releasePointerCapture: {
+        configurable: true,
+        value: (pointerId: number) => {
+          if (capturedPointerId === pointerId) {
+            capturedPointerId = null;
+          }
+        },
+      },
+    });
+
+    fireEvent.pointerDown(thumb, {
+      button: 0,
+      clientY: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(thumb, {
+      buttons: 1,
+      clientY: 80,
+      pointerId: 1,
+    });
+
+    expect(scrollArea.scrollTop).toBe(400);
+
+    fireEvent.pointerUp(thumb, { pointerId: 1 });
+    expect(capturedPointerId).toBeNull();
+  });
+
   it("orders artifacts after connectors in the manage navigation", async () => {
     mockMobileLayout();
     prepareDefaultAgent();
@@ -3240,8 +3325,6 @@ describe("zero sidebar", () => {
                     runId: null,
                   },
                   matchedRanges: [{ start: 11, end: 17 }],
-                  contextBefore: [],
-                  contextAfter: [],
                 },
               ]
             : [],
@@ -3352,8 +3435,6 @@ describe("zero sidebar", () => {
                     runId: null,
                   },
                   matchedRanges: [{ start: 12, end: 18 }],
-                  contextBefore: [],
-                  contextAfter: [],
                 },
               ]
             : [],
@@ -3902,6 +3983,7 @@ describe("zero sidebar", () => {
           ],
           pinnedAgentIds: refreshPinnedAgentIds,
           sendMode: "enter",
+          cloudBrowserEnabledByDefault: true,
           theme: "system",
           colorTheme: "blue-horizon",
           captureNetworkBodiesRemaining: 0,
@@ -4257,6 +4339,7 @@ describe("zero sidebar", () => {
         ],
         pinnedAgentIds: [...nextPinnedAgentIds],
         sendMode: "enter",
+        cloudBrowserEnabledByDefault: true,
         theme: "system",
         colorTheme: "blue-horizon",
         captureNetworkBodiesRemaining: 0,

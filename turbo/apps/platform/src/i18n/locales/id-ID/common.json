@@ -5078,6 +5078,14 @@
           "title": "Tema"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Izinkan agen menggunakan browser cloud di chat baru",
+          "title": "Browser cloud"
+        },
+        "description": "Pilih default untuk chat baru dan cara pesan dikirim.",
+        "sectionTitle": "Chat"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Batalkan cooldown",

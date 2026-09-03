@@ -5087,6 +5087,14 @@
           "title": "Thema"
         }
       },
+      "chat": {
+        "cloudBrowser": {
+          "description": "Agenten die Verwendung eines Cloud-Browsers in neuen Chats erlauben",
+          "title": "Cloud-Browser"
+        },
+        "description": "Lege Standardeinstellungen für neue Chats und die Art des Nachrichtenversands fest.",
+        "sectionTitle": "Chat"
+      },
       "debug": {
         "builtInModelCooldown": {
           "cancelAction": "Cooldown aufheben",

@@ -251,7 +251,7 @@ describe("chat lifecycle", () => {
     ).toBeTruthy();
   });
 
-  it("creates a new chat thread with Cloud browser on by default", async () => {
+  it("keeps Cloud browser on while the preference feature is off", async () => {
     const user = userEvent.setup({ delay: null });
     let sentCloudBrowserEnabled: boolean | undefined;
     let sentComputerUseHostId: string | null | undefined;
@@ -263,6 +263,9 @@ describe("chat lifecycle", () => {
     });
     context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
       return respond(200, { hosts: [] });
+    });
+    context.mocks.data.userPreferences({
+      cloudBrowserEnabledByDefault: false,
     });
 
     detachedSetupPage({
@@ -282,6 +285,47 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(sentCloudBrowserEnabled).toBeTruthy();
       expect(sentComputerUseHostId).toBeUndefined();
+    });
+  });
+
+  it("uses the disabled Cloud browser preference for a new chat thread", async () => {
+    const user = userEvent.setup({ delay: null });
+    let runCreated = false;
+    let sentCloudBrowserEnabled: boolean | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runCreated = true;
+        sentCloudBrowserEnabled = body.cloudBrowserEnabled;
+      },
+    });
+    context.mocks.data.userPreferences({
+      cloudBrowserEnabledByDefault: false,
+    });
+    context.mocks.api(computerUseHostsContract.list, ({ respond }) => {
+      return respond(200, { hosts: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: AGENT_CHAT_PATH,
+      featureSwitches: {
+        [FeatureSwitchKey.CloudBrowserPreference]: true,
+      },
+    });
+
+    const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await composerConnectorsButton());
+    const cloudBrowserSwitch = await screen.findByRole("switch", {
+      name: "Enable Cloud browser",
+    });
+    expect(cloudBrowserSwitch).toHaveAttribute("aria-checked", "false");
+    await user.keyboard("{Escape}");
+
+    await sendMessageInUI(user, textarea, "Keep the cloud browser closed");
+
+    await waitFor(() => {
+      expect(runCreated).toBeTruthy();
+      expect(sentCloudBrowserEnabled).toBeUndefined();
     });
   });
 
@@ -978,6 +1022,70 @@ describe("chat lifecycle", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
+  });
+
+  it("uses the latest assistant message as polish context", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000026";
+    const rawTranscript = "um ship the nebula release";
+    const polishedTranscript = "Ship the Project Nebula release.";
+    const lastAssistantMessage =
+      "The current release is called Project Nebula.";
+    const polishBodies: unknown[] = [];
+    context.mocks.browser.voiceInput({ rms: 0.1 });
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "voice-draft-earlier-assistant",
+          role: "assistant",
+          content: "The earlier release was called Project Aurora.",
+          runId: "voice-draft-earlier-run",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T08:00:00Z",
+        },
+        {
+          id: "voice-draft-latest-assistant",
+          role: "assistant",
+          content: lastAssistantMessage,
+          runId: "voice-draft-latest-run",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-09-03T08:01:00Z",
+        },
+      ],
+    });
+
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: rawTranscript }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
+      polishBodies.push(body);
+      return respond(200, { text: polishedTranscript });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent(polishedTranscript);
+    });
+    expect(polishBodies).toStrictEqual([
+      { text: rawTranscript, lastAssistantMessage },
+    ]);
   });
 
   it("replaces the composer footer while finishing a voice draft at the last selection", async () => {
@@ -1709,6 +1817,132 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the composer footer visible until a voice draft microphone starts", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000026";
+    const microphoneReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    const composerShell = composerElementFrom(composer);
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(
+        within(composerShell).getByLabelText("Starting voice input"),
+      ).toBeDisabled();
+    });
+    expect(within(composerShell).getByLabelText("Send")).toBeInTheDocument();
+    expect(document.querySelector("[data-voice-draft]")).toBeNull();
+    expect(within(composerShell).queryByLabelText("Stop recording")).toBeNull();
+
+    microphoneReady.resolve(undefined);
+
+    await waitFor(() => {
+      expect(
+        within(composerShell).getByLabelText("Stop recording"),
+      ).toBeEnabled();
+    });
+    expect(within(composerShell).queryByLabelText("Send")).toBeNull();
+    expect(document.querySelector("[data-voice-draft]")).not.toBeNull();
+  });
+
+  it("restores the composer footer when a voice draft microphone fails to open", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000027";
+    const microphoneReady = context.mocks.deferred<void>();
+    context.mocks.browser.voiceInput({
+      getUserMediaReady: microphoneReady.promise,
+      rms: 0.1,
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
+    const composerShell = composerElementFrom(composer);
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(
+        within(composerShell).getByLabelText("Starting voice input"),
+      ).toBeDisabled();
+    });
+
+    microphoneReady.reject(
+      new DOMException("Microphone permission denied", "NotAllowedError"),
+    );
+
+    await waitFor(() => {
+      expect(within(composerShell).getByLabelText("Voice input")).toBeEnabled();
+    });
+    expect(within(composerShell).getByLabelText("Send")).toBeInTheDocument();
+    expect(within(composerShell).queryByLabelText("Stop recording")).toBeNull();
+    expect(document.querySelector("[data-voice-draft]")).toBeNull();
+  });
+
+  it("scrolls sampled voice draft levels from right to left", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000028";
+    let currentRms = 0.1;
+    context.mocks.browser.voiceInput({
+      rms: () => {
+        return currentRms;
+      },
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    await user.click(await screen.findByLabelText("Voice input"));
+    await screen.findByLabelText("Stop recording");
+
+    const waveform = await waitFor(() => {
+      const element = document.querySelector("[data-voice-level-waveform]");
+      if (!(element instanceof HTMLElement)) {
+        throw new Error("Voice level waveform not found");
+      }
+      return element;
+    });
+    const waveformHeights = () => {
+      return Array.from(waveform.children, (bar) => {
+        if (!(bar instanceof HTMLElement)) {
+          throw new Error("Voice level bar not found");
+        }
+        return bar.style.height;
+      });
+    };
+
+    await waitFor(() => {
+      expect(waveformHeights().at(-1)).toBe("16px");
+    });
+    currentRms = 0;
+
+    await waitFor(() => {
+      const heights = waveformHeights();
+      expect(heights.at(-1)).toBe("4px");
+      expect(heights.slice(0, -1)).toContain("16px");
     });
   });
 

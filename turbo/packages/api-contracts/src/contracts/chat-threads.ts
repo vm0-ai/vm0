@@ -1790,15 +1790,6 @@ const chatSearchResultSchema = z.object({
   agentName: z.string(),
   matchedMessage: chatSearchMessageSchema,
   matchedRanges: z.array(chatSearchMatchRangeSchema),
-  /**
-   * Deprecated rollout compatibility; always empty. Remove with #30468 after
-   * old web/app builds (up to two days) and pre-change commit-addressed CLI
-   * contexts (up to two hours queued plus two hours executing and bounded
-   * finalization) have drained.
-   */
-  contextBefore: z.array(chatSearchMessageSchema),
-  /** @see contextBefore */
-  contextAfter: z.array(chatSearchMessageSchema),
 });
 
 /**

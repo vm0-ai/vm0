@@ -31,6 +31,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "../okou-page/artifact-thumbnail.tsx";
+import { publicAttachmentUrl } from "../okou-page/attachment-url.ts";
 import { emptyArtifactImg } from "../okou-page/platform-assets.ts";
 import {
   FilePreviewIcon,
@@ -140,6 +141,20 @@ function ArtifactCatalogFallbackPreview({
   );
 }
 
+function ArtifactCatalogVideoPreview({ sourceUrl }: { sourceUrl: string }) {
+  return (
+    <video
+      src={`${publicAttachmentUrl(sourceUrl)}#t=0.001`}
+      preload="metadata"
+      muted
+      playsInline
+      aria-hidden="true"
+      data-testid="artifact-catalog-video-source"
+      className="h-full w-full object-contain"
+    />
+  );
+}
+
 function ArtifactCatalogCard({
   artifact,
   onOpen,
@@ -151,6 +166,16 @@ function ArtifactCatalogCard({
 }) {
   const { t } = useTranslation();
   const scrollArtifactCardIntoViewRef = useSet(scrollArtifactCardIntoViewRef$);
+  const sourceVideo = artifact.videoSourceUrl ? (
+    <ArtifactCatalogVideoPreview sourceUrl={artifact.videoSourceUrl} />
+  ) : null;
+  const fallbackPreview =
+    sourceVideo ??
+    (artifact.kind === "file" ? (
+      <ArtifactCatalogFallbackPreview artifact={artifact} />
+    ) : (
+      <div className="flex h-full w-full items-center justify-center bg-muted/30" />
+    ));
   return (
     <article
       ref={scrollIntoView ? scrollArtifactCardIntoViewRef : undefined}
@@ -189,13 +214,15 @@ function ArtifactCatalogCard({
             })}
             load={artifact.thumbnailLoad}
             className="h-full w-full object-cover"
-            fallback={<ArtifactCatalogFallbackPreview artifact={artifact} />}
+            fallback={
+              sourceVideo ?? (
+                <ArtifactCatalogFallbackPreview artifact={artifact} />
+              )
+            }
             testId="artifact-catalog-thumbnail"
           />
-        ) : artifact.kind === "file" ? (
-          <ArtifactCatalogFallbackPreview artifact={artifact} />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-muted/30" />
+          fallbackPreview
         )}
         <ArtifactKindIcon kind={artifact.kind} />
       </div>

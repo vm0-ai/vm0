@@ -765,16 +765,27 @@ function toArtifactSummary(row: {
   readonly kind: ArtifactKind;
   readonly logicalKey: string;
   readonly projectionMetadata: Record<string, unknown> | null;
+  readonly sourceContentType: string | null;
+  readonly sourceUrl: string | null;
   readonly title: string;
   readonly thumbnail: ArtifactThumbnail | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }): ArtifactSummary {
+  const kind = catalogArtifactKind(
+    row.kind,
+    row.projectionMetadata,
+    row.logicalKey,
+  );
   return {
     id: row.id,
-    kind: catalogArtifactKind(row.kind, row.projectionMetadata, row.logicalKey),
+    kind,
     title: row.title,
     thumbnail: row.thumbnail,
+    ...(row.sourceUrl &&
+    (row.sourceContentType ?? inferMimetype(row.title)).startsWith("video/")
+      ? { videoSourceUrl: row.sourceUrl }
+      : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -862,6 +873,8 @@ export const listArtifactCatalog$ = command(
         kind: artifacts.kind,
         logicalKey: artifacts.logicalKey,
         projectionMetadata: runUploadedFiles.metadata,
+        sourceContentType: runUploadedFiles.contentType,
+        sourceUrl: runUploadedFiles.url,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,
@@ -1046,6 +1059,8 @@ export const getArtifactCatalogEntry$ = command(
         entityId: artifacts.entityId,
         projectionFileId: artifacts.projectionFileId,
         projectionMetadata: runUploadedFiles.metadata,
+        sourceContentType: runUploadedFiles.contentType,
+        sourceUrl: runUploadedFiles.url,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
         createdAt: artifacts.createdAt,

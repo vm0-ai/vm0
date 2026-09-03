@@ -742,6 +742,7 @@ describe("chat inline feedback", () => {
       supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
+      cloudBrowserEnabledByDefault: true,
       theme: "system",
       colorTheme: "blue-horizon",
       captureNetworkBodiesRemaining: 0,

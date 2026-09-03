@@ -133,6 +133,7 @@ import type {
 import { AttachmentChips } from "./attachment-chips.tsx";
 import { ImageAnnotationEditor } from "./image-annotation-editor.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
+import { VoiceLevelWaveform } from "./voice-level-waveform.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 import {
@@ -254,6 +255,7 @@ import {
   sttStarting$,
   sttTranscribing$,
   sttVoiceLevel$,
+  sttVoiceLevelSamples$,
   startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
@@ -358,6 +360,7 @@ interface ComposerComputerUse {
   readonly selectedHostId: string | null;
   readonly onChange: (hostId: string | null) => void;
   readonly cloudBrowserEnabled: boolean;
+  readonly cloudBrowserLoading: boolean;
   readonly onCloudBrowserChange: (enabled: boolean) => void;
   readonly downloadUrl: string;
 }
@@ -7529,7 +7532,7 @@ function ComputerUseConnectorMenuSection({
             onCheckedChange={onDomEventFn((enabled) => {
               computerUse.onCloudBrowserChange(enabled);
             })}
-            loading={false}
+            loading={computerUse.cloudBrowserLoading}
             ariaLabel={
               computerUse.cloudBrowserEnabled
                 ? t(($) => {
@@ -8936,22 +8939,34 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
       return;
     }
     if (voiceDraftEnabled) {
-      const id = startVoiceDraft();
+      let voiceDraftId: string | null = null;
       detach(
         startRec(
           (text) => {
-            appendVoiceDraftTranscript(id, text);
+            if (voiceDraftId === null) {
+              return;
+            }
+            appendVoiceDraftTranscript(voiceDraftId, text);
             detach(saveDraft(signal), Reason.DomCallback);
           },
           quota.limit === null,
           {
+            started: () => {
+              voiceDraftId = startVoiceDraft();
+            },
             finish: async () => {
-              await finishVoiceDraft(id, "automatic", signal);
+              if (voiceDraftId === null) {
+                return;
+              }
+              await finishVoiceDraft(voiceDraftId, "automatic", signal);
               signal.throwIfAborted();
               await saveDraft(signal);
             },
             fail: async () => {
-              markVoiceDraftFailed(id);
+              if (voiceDraftId === null) {
+                return;
+              }
+              markVoiceDraftFailed(voiceDraftId);
               await saveDraft(signal);
             },
           },
@@ -9013,31 +9028,6 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   );
 }
 
-const VOICE_WAVEFORM_WEIGHTS = [
-  0.35, 0.64, 0.43, 0.82, 0.54, 1, 0.68, 0.39, 0.77, 0.49, 0.93, 0.58, 0.33,
-  0.72, 0.47, 0.87, 0.56, 0.97, 0.41, 0.79, 0.52, 0.7, 0.37, 0.62,
-] as const;
-
-function VoiceLevelWaveform({ level }: { level: number }) {
-  return (
-    <div
-      className="flex h-6 min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden"
-      aria-hidden="true"
-    >
-      {VOICE_WAVEFORM_WEIGHTS.map((weight) => {
-        const height = Math.round(4 + level * 4 * weight);
-        return (
-          <span
-            key={weight}
-            className="w-0.5 shrink-0 rounded-full bg-[#2E9E9F] transition-[height] duration-100"
-            style={{ height: `${height}px` }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 function formatVoiceRecordingDuration(elapsedTime: number): string {
   const totalSeconds = Math.floor(elapsedTime / 1000);
   const minutes = Math.floor(totalSeconds / 60)
@@ -9053,7 +9043,7 @@ function VoiceDraftFooter({ status }: { status: "recording" | "processing" }) {
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const recordingStartedAt = useGet(sttRecordingStartedAt$);
-  const voiceLevel = useGet(sttVoiceLevel$);
+  const voiceLevelSamples = useGet(sttVoiceLevelSamples$);
   const stopAndTranscribe = useSet(stopAndTranscribe$);
   const signal = useGet(pageSignal$);
   const processing = transcribing || status === "processing";
@@ -9095,7 +9085,7 @@ function VoiceDraftFooter({ status }: { status: "recording" | "processing" }) {
           {formatVoiceRecordingDuration}
         </ElapsedTime>
       )}
-      <VoiceLevelWaveform level={voiceLevel} />
+      <VoiceLevelWaveform samples={voiceLevelSamples} />
       <Button
         type="button"
         variant="outline"
@@ -10560,7 +10550,16 @@ function ComposerConnectorConnectDialogs({
 
 function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
-  const cloudBrowserEnabled = useGet(signals.computer.cloudBrowserEnabled$);
+  const cloudBrowserState = useLastLoadable(
+    signals.computer.cloudBrowserEnabled$,
+  );
+  const lastCloudBrowserEnabled = useLastResolved(
+    signals.computer.cloudBrowserEnabled$,
+  );
+  const cloudBrowserEnabled =
+    cloudBrowserState.state === "hasData"
+      ? cloudBrowserState.data
+      : (lastCloudBrowserEnabled ?? true);
   const setComputerUseHostId = useSet(signals.computer.setComputerUseHostId$);
   const setCloudBrowserEnabled = useSet(
     signals.computer.setCloudBrowserEnabled$,
@@ -10590,6 +10589,9 @@ function useComposerComputerUse(signals: ComposerSignals): ComposerComputerUse {
       );
     },
     cloudBrowserEnabled,
+    cloudBrowserLoading:
+      cloudBrowserState.state === "loading" &&
+      lastCloudBrowserEnabled === undefined,
     onCloudBrowserChange: (enabled) => {
       detach(
         setCloudBrowserEnabled(enabled, composerPageSignal),
