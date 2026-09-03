@@ -1,6 +1,8 @@
 import { z } from "zod";
 
+import { logger } from "../../lib/log";
 import { now } from "../../lib/time";
+import { tapError } from "../utils";
 import type {
   SubscriptionUsageMetadata,
   SubscriptionUsageWindowMetadata,
@@ -8,10 +10,18 @@ import type {
 import { extractCodexAccountEmailFromIdToken } from "./codex-auth-json-parser";
 
 const CHATGPT_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const CHATGPT_RESET_CREDITS_URL =
+  "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 const CHATGPT_RESET_CREDITS_CONSUME_URL =
   "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume";
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_USER_AGENT = "codex_cli_rs/0.0.0";
+/**
+ * The usage response only carries the reset credit count, so the expiry needs a
+ * second upstream read. It is decorative next to the count that the reset flow
+ * actually depends on, so it gets its own short budget and degrades quietly.
+ */
+const RESET_CREDIT_DETAILS_TIMEOUT_MS = 5000;
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 const DAY_SECONDS = 24 * 60 * 60;
 const HOUR_SECONDS = 60 * 60;
@@ -37,6 +47,19 @@ const rateLimitDetailsSchema = z
 const rateLimitResetCreditsSchema = z
   .object({
     available_count: z.number().int().nonnegative().nullable().optional(),
+  })
+  .passthrough();
+
+const rateLimitResetCreditSchema = z
+  .object({
+    status: z.string().nullable().optional(),
+    expires_at: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const rateLimitResetCreditsDetailsSchema = z
+  .object({
+    credits: z.array(rateLimitResetCreditSchema).nullable().optional(),
   })
   .passthrough();
 
@@ -84,6 +107,8 @@ type RateLimitWindow = z.infer<typeof rateLimitWindowSchema>;
 type CodexNamedMetadata = z.infer<typeof namedMetadataSchema>;
 type CodexUsageResponse = z.infer<typeof codexUsageResponseSchema>;
 
+const L = logger("codex-usage.service");
+
 interface CodexUsageMetadata {
   readonly accountEmail: string | null;
   readonly planType: string | null;
@@ -92,6 +117,7 @@ interface CodexUsageMetadata {
   readonly subscriptionNextResetAt: Date | null;
   readonly subscriptionUsage: SubscriptionUsageMetadata | null;
   readonly subscriptionResetCredits: number | null;
+  readonly subscriptionResetCreditsNextExpiresAt: Date | null;
 }
 
 export type CodexRateLimitResetCreditOutcome =
@@ -298,15 +324,41 @@ function subscriptionUsageFromRateLimit(
   };
 }
 
-export async function fetchCodexUsageMetadata(
+/**
+ * Soonest expiry among the credits the account can still redeem. Credits that
+ * never expire and credits in a non-redeemable status carry no deadline worth
+ * showing, so they drop out here rather than in the view layer.
+ */
+function nextResetCreditExpiry(
+  credits: readonly z.infer<typeof rateLimitResetCreditSchema>[],
+): Date | null {
+  const expiries = credits
+    .filter((credit) => {
+      return credit.status === "available";
+    })
+    .map((credit) => {
+      return credit.expires_at ? new Date(credit.expires_at) : null;
+    })
+    .filter((expiry): expiry is Date => {
+      return expiry !== null && !Number.isNaN(expiry.getTime());
+    });
+
+  if (expiries.length === 0) {
+    return null;
+  }
+  return expiries.reduce((soonest, candidate) => {
+    return candidate < soonest ? candidate : soonest;
+  });
+}
+
+async function fetchCodexResetCreditExpiry(
   args: {
     readonly accessToken: string;
     readonly accountId: string;
-    readonly idToken?: string | null;
   },
   signal: AbortSignal,
-): Promise<CodexUsageMetadata | null> {
-  const response = await fetch(CHATGPT_USAGE_URL, {
+): Promise<Date | null> {
+  const response = await fetch(CHATGPT_RESET_CREDITS_URL, {
     method: "GET",
     headers: {
       authorization: `Bearer ${args.accessToken}`,
@@ -316,6 +368,61 @@ export async function fetchCodexUsageMetadata(
     },
     signal,
   });
+
+  if (!response.ok) {
+    throw new Error(
+      `Codex reset credit details request failed with status ${response.status}`,
+    );
+  }
+
+  const parsed = rateLimitResetCreditsDetailsSchema.safeParse(
+    await response.json(),
+  );
+  if (!parsed.success) {
+    throw new Error("Codex reset credit details response shape unrecognized");
+  }
+
+  return nextResetCreditExpiry(parsed.data.credits ?? []);
+}
+
+export async function fetchCodexUsageMetadata(
+  args: {
+    readonly accessToken: string;
+    readonly accountId: string;
+    readonly idToken?: string | null;
+  },
+  signal: AbortSignal,
+): Promise<CodexUsageMetadata | null> {
+  // The caller's abort still cancels both reads; only the extra detail budget
+  // is scoped here, so a slow expiry read cannot hold up the usage response.
+  const detailsSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(RESET_CREDIT_DETAILS_TIMEOUT_MS),
+  ]);
+  const [response, nextExpiresAt] = await Promise.all([
+    fetch(CHATGPT_USAGE_URL, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${args.accessToken}`,
+        "chatgpt-account-id": args.accountId,
+        originator: CODEX_ORIGINATOR,
+        "user-agent": CODEX_USER_AGENT,
+      },
+      signal,
+    }),
+    tapError(
+      fetchCodexResetCreditExpiry(
+        {
+          accessToken: args.accessToken,
+          accountId: args.accountId,
+        },
+        detailsSignal,
+      ),
+      (error) => {
+        L.warn("failed to read codex reset credit expiry", { error });
+      },
+    ),
+  ]);
 
   if (!response.ok) {
     throw new Error(
@@ -338,6 +445,7 @@ export async function fetchCodexUsageMetadata(
     subscriptionUsage: subscriptionUsageFromRateLimit(parsed.data.rate_limit),
     subscriptionResetCredits:
       parsed.data.rate_limit_reset_credits?.available_count ?? null,
+    subscriptionResetCreditsNextExpiresAt: nextExpiresAt ?? null,
   };
 }
 

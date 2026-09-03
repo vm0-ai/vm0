@@ -19,7 +19,10 @@ import {
 } from "../../signals/okou-page/account-menu-subscriptions.ts";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { formatCodexResetCredits } from "./components/preferences/codex-reset-usage-dialog.tsx";
-import { formatSubscriptionUsageReset } from "./subscription-usage-format.ts";
+import {
+  formatCodexResetCreditExpiry,
+  formatSubscriptionUsageReset,
+} from "./subscription-usage-format.ts";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 
 type SubscriptionUsage = AccountMenuSubscriptionUsage;
@@ -81,6 +84,7 @@ export function AccountMenuSubscriptionsPanel({
                   label={label}
                   usage={row.usage}
                   resetCredits={row.resetCredits}
+                  resetCreditsNextExpiresAt={row.resetCreditsNextExpiresAt}
                   resetPending={resetPending}
                   onResetCodexUsage={onResetCodexUsage}
                 />
@@ -126,6 +130,7 @@ function AccountMenuSubscriptionProviderSection({
   label,
   usage,
   resetCredits,
+  resetCreditsNextExpiresAt,
   resetPending,
   onResetCodexUsage,
 }: {
@@ -134,11 +139,15 @@ function AccountMenuSubscriptionProviderSection({
   readonly label: string;
   readonly usage: SubscriptionUsage;
   readonly resetCredits?: number | null;
+  readonly resetCreditsNextExpiresAt?: string | null;
   readonly resetPending: boolean;
   readonly onResetCodexUsage?: (resetCredits: number | null) => void;
 }) {
   const { t } = useTranslation();
   const windows = accountMenuSubscriptionUsageWindows(usage);
+  const resetExpiry = formatCodexResetCreditExpiry(
+    (resetCredits ?? 0) > 0 ? resetCreditsNextExpiresAt : null,
+  );
   const canResetCodex =
     type === "codex-oauth-token" &&
     onResetCodexUsage !== undefined &&
@@ -188,9 +197,11 @@ function AccountMenuSubscriptionProviderSection({
           }}
           className="mt-1 flex h-7 items-center justify-between gap-2 rounded-md px-2 py-1 text-xs"
         >
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {formatCodexResetCredits(resetCredits)}
-          </span>
+          <ResetCreditsLabel
+            resetCredits={resetCredits}
+            resetCreditsNextExpiresAt={resetCreditsNextExpiresAt}
+            expiryTooltip={resetExpiry?.absoluteText ?? null}
+          />
           <span className="shrink-0 font-medium text-foreground">
             {t(($) => {
               return $.settings.accountMenu.subscriptions.reset;
@@ -199,6 +210,43 @@ function AccountMenuSubscriptionProviderSection({
         </DropdownMenuModalItem>
       ) : null}
     </section>
+  );
+}
+
+function ResetCreditsLabel({
+  resetCredits,
+  resetCreditsNextExpiresAt,
+  expiryTooltip,
+}: {
+  readonly resetCredits?: number | null;
+  readonly resetCreditsNextExpiresAt?: string | null;
+  readonly expiryTooltip: string | null;
+}) {
+  const { t } = useTranslation();
+  // The menu is narrow enough that the inline deadline truncates, so the exact
+  // date stays reachable through the tooltip.
+  const label = (
+    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+      {formatCodexResetCredits(resetCredits, resetCreditsNextExpiresAt)}
+    </span>
+  );
+
+  if (!expiryTooltip) {
+    return label;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{label}</TooltipTrigger>
+      <TooltipContent>
+        {t(
+          ($) => {
+            return $.settings.models.reset.expiresAt;
+          },
+          { date: expiryTooltip },
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

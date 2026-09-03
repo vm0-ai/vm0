@@ -5070,11 +5070,15 @@
       },
       "reset": {
         "confirmDescription": "Usa un restablecimiento de Codex para reiniciar tus periodos de consumo actuales. Te quedan {{remaining}}.",
+        "expiresAt": "El restablecimiento más próximo vence {{date}}",
         "progress": "Restableciendo...",
         "remaining_one": "Queda {{value}} restablecimiento",
         "remaining_many": "Quedan {{value}} restablecimientos",
         "remaining_other": "Quedan {{value}} restablecimientos",
         "remainingUnavailable": "Reinicios no disponibles",
+        "remainingWithExpiry_one": "Queda {{value}} restablecimiento · vence {{expiry}}",
+        "remainingWithExpiry_many": "Quedan {{value}} restablecimientos · vencen {{expiry}}",
+        "remainingWithExpiry_other": "Quedan {{value}} restablecimientos · vencen {{expiry}}",
         "title": "¿Restablecer el uso de Codex?"
       },
       "stale": {

@@ -735,6 +735,29 @@ describe("personal model providers settings", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows when the soonest Codex reset expires in the row menu", async () => {
+    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      {
+        ...connectedPersonalCodexProvider(),
+        subscriptionResetCreditsNextExpiresAt: "2030-01-01T06:30:00.000Z",
+      },
+    ]);
+
+    await openModelSettings();
+
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    click(within(codexRow).getByLabelText("More options"));
+    await expect(
+      screen.findByText("2 resets left · expires in 6h 30m"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("resets connected personal Codex usage from the row menu", async () => {
     context.mocks.data.org({
       id: "org_1",
