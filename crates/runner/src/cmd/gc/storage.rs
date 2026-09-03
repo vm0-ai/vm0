@@ -2,7 +2,6 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use nix::fcntl::Flock;
 use tracing::{info, warn};
 
 use crate::byte_size::human_bytes;
@@ -14,7 +13,7 @@ use super::filesystem::{
     GcDirStatus, collect_dir_stats, dir_stats, gc_entry_is_real_dir, gc_path_dir_status,
     next_entry_warn_or_stop, read_dir_or_missing,
 };
-use super::lock_file::{LockProbe, probe_lock};
+use super::lock_file::{LockProbe, probe_lock, remove_unused_lock_after_probe};
 use super::report::GcReport;
 
 /// Per-host storage archive cache byte target for best-effort eviction.
@@ -410,13 +409,8 @@ async fn evict_storage_candidate(
 
     match tokio::fs::remove_dir_all(&candidate.path).await {
         Ok(()) => {
-            remove_storage_lock_after_eviction(
-                &lock_path,
-                &lock,
-                &candidate.name,
-                &candidate.version,
-            )
-            .await;
+            let lock_name = lock_path.to_string_lossy();
+            remove_unused_lock_after_probe(&lock_path, &lock, &lock_name, false).await;
             remove_empty_storage_name_dir_after_eviction(&candidate.path, &candidate.name).await;
             StorageEvictionResult {
                 freed: size,
@@ -462,36 +456,6 @@ async fn remove_empty_storage_name_dir_after_eviction(version_path: &Path, name_
             warn!(
                 "storages/{name_hash}: failed to remove empty storage directory {}: {e}",
                 name_path.display()
-            );
-        }
-    }
-}
-
-async fn remove_storage_lock_after_eviction(
-    lock_path: &Path,
-    lock: &Flock<std::fs::File>,
-    name_hash: &str,
-    version_hash: &str,
-) {
-    let Ok(lock_meta) = lock.metadata() else {
-        return;
-    };
-
-    match tokio::fs::symlink_metadata(lock_path).await {
-        Ok(path_meta)
-            if path_meta.dev() == lock_meta.dev() && path_meta.ino() == lock_meta.ino() => {}
-        Ok(_) => return,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-        Err(_) => return,
-    }
-
-    match tokio::fs::remove_file(lock_path).await {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            warn!(
-                "storages/{name_hash}/{version_hash}: failed to remove storage lock {}: {e}",
-                lock_path.display()
             );
         }
     }

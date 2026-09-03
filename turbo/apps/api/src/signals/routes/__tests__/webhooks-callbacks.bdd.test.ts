@@ -762,7 +762,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       hasOrg: true,
       hasDefaultAgent: true,
       defaultAgentMetadata: {
-        displayName: "Zero",
+        displayName: "Okou",
         sound: "professional",
         avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
@@ -772,7 +772,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const agents = await bdd.listAgents(admin);
     expect(
       agents.filter((agent) => {
-        return agent.displayName === "Zero";
+        return agent.displayName === "Okou";
       }),
     ).toHaveLength(1);
 

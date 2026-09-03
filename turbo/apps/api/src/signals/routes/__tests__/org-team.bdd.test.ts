@@ -1000,7 +1000,7 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     expect(defaultEntry).toMatchObject({
       id: defaultAgentId,
       ownerId: admin.userId,
-      displayName: "BDD Team Default",
+      displayName: "Okou",
       description: null,
       sound: "calm",
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,

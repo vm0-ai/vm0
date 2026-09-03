@@ -139,7 +139,8 @@ PATH="${fake_bin}:$PATH" \
   "$TARGET" "$body_file" "$target_commit" "$rollback_url" \
   "$(release_tags_for_target "$target_commit")" >"$output_file"
 
-grep -Fqx -- "[Rollback](${rollback_url})" "$output_file"
+grep -Fqx -- "[Rollback Runner and API](${rollback_url})" "$output_file"
+grep -Fqx -- "App Worker versions are rolled back manually in Cloudflare." "$output_file"
 grep -Fqx -- "<summary>07-23-2026 07:39:40 SGT</summary>" "$output_file"
 grep -Fqx -- "* RevertId: \`${target_commit}\`" "$output_file"
 grep -Fqx -- "* PDT 07-22-2026 16:39:40" "$output_file"

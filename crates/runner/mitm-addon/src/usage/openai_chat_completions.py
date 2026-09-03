@@ -1,5 +1,7 @@
 """OpenAI-compatible Chat Completions usage parsing primitives."""
 
+import json
+import math
 from collections.abc import Callable
 
 from mitmproxy import http
@@ -13,6 +15,7 @@ from .json_selective import (
     JsonSelectiveExtractor,
     Path,
     ScalarField,
+    json_nesting_within_limit,
 )
 from .model_http import (
     ModelHttpFailureEvidence,
@@ -33,9 +36,33 @@ from .quantities import MAX_USAGE_QUANTITY
 from .sse import SseUsageScanner
 
 _CHAT_COMPLETIONS_MAX_WORK_UNITS = 65_536
+_CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES = 1024
+_JSON_MAX_NUMBER_BYTES = 128
 _DONE_SENTINEL = b"[DONE]"
 _DONE_PREFIX_MAX_BYTES = 16
 _SseUsageParseErrorCallback = Callable[[str, str], None]
+
+_CHAT_COMPLETIONS_CHUNK_KEYS = frozenset(
+    (
+        "id",
+        "object",
+        "created",
+        "model",
+        "service_tier",
+        "system_fingerprint",
+        "choices",
+    )
+)
+_CHAT_COMPLETIONS_CHOICE_KEYS = frozenset(
+    (
+        "index",
+        "delta",
+        "logprobs",
+        "finish_reason",
+    )
+)
+_UTF8_SURROGATE_MIN = 0xD800
+_UTF8_SURROGATE_MAX = 0xDFFF
 
 _TOP_LEVEL_USAGE_PATH = ("usage",)
 _FIRST_CHOICE_USAGE_PATH = ("choices", FIRST_ARRAY_ELEMENT, "usage")
@@ -75,6 +102,122 @@ _USAGE_VALUE_PRESENCE_PATHS = {
 }
 
 
+class _JsonObjectPairs(list[tuple[str, object]]):
+    """Decoded JSON object that preserves member order and duplicates."""
+
+
+class _FastPathRejectedError(ValueError):
+    """Internal signal that bounded JSON must use the authoritative extractor."""
+
+
+def _parse_bounded_json_int(value: str) -> int:
+    if len(value) > _JSON_MAX_NUMBER_BYTES:
+        raise _FastPathRejectedError
+    return int(value)
+
+
+def _parse_bounded_json_float(value: str) -> float:
+    if len(value) > _JSON_MAX_NUMBER_BYTES:
+        raise _FastPathRejectedError
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise _FastPathRejectedError
+    return parsed
+
+
+def _reject_json_constant(value: str) -> object:
+    raise _FastPathRejectedError(value)
+
+
+def _contains_surrogate(value: str) -> bool:
+    return any(_UTF8_SURROGATE_MIN <= ord(char) <= _UTF8_SURROGATE_MAX for char in value)
+
+
+def _json_value_is_unambiguous(value: object) -> bool:
+    if isinstance(value, str):
+        return not _contains_surrogate(value)
+    if isinstance(value, _JsonObjectPairs):
+        keys: set[str] = set()
+        for key, child in value:
+            if key in keys or _contains_surrogate(key) or not _json_value_is_unambiguous(child):
+                return False
+            keys.add(key)
+        return True
+    if isinstance(value, list):
+        return all(_json_value_is_unambiguous(child) for child in value)
+    return value is None or type(value) in (bool, int, float)
+
+
+def _object_values(value: object) -> dict[str, object] | None:
+    if not isinstance(value, _JsonObjectPairs):
+        return None
+    return dict(value)
+
+
+def _optional_string_has_type(values: dict[str, object], key: str, *, nullable: bool) -> bool:
+    if key not in values:
+        return True
+    value = values[key]
+    return isinstance(value, str) or (nullable and value is None)
+
+
+def _is_canonical_usage_free_delta(body: bytes) -> bool:
+    """Return whether bounded JSON is a strict ordinary Chat Completions chunk."""
+
+    if not body or len(body) > _CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES:
+        return False
+    if not json_nesting_within_limit(body):
+        return False
+    try:
+        decoded = json.loads(
+            body.decode("utf-8"),
+            object_pairs_hook=_JsonObjectPairs,
+            parse_int=_parse_bounded_json_int,
+            parse_float=_parse_bounded_json_float,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, _FastPathRejectedError, RecursionError):
+        return False
+    if not _json_value_is_unambiguous(decoded):
+        return False
+
+    values = _object_values(decoded)
+    if values is None or not set(values).issubset(_CHAT_COMPLETIONS_CHUNK_KEYS):
+        return False
+    if values.get("object") != "chat.completion.chunk":
+        return False
+    if not _optional_string_has_type(values, "id", nullable=False):
+        return False
+    if not _optional_string_has_type(values, "model", nullable=False):
+        return False
+    if not _optional_string_has_type(values, "service_tier", nullable=True):
+        return False
+    if not _optional_string_has_type(values, "system_fingerprint", nullable=True):
+        return False
+    if "created" in values and type(values["created"]) is not int:
+        return False
+
+    choices = values.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return False
+    for choice in choices:
+        choice_values = _object_values(choice)
+        if choice_values is None or not set(choice_values).issubset(_CHAT_COMPLETIONS_CHOICE_KEYS):
+            return False
+        if type(choice_values.get("index")) is not int:
+            return False
+        if not isinstance(choice_values.get("delta"), _JsonObjectPairs):
+            return False
+        if not _optional_string_has_type(choice_values, "finish_reason", nullable=True):
+            return False
+        if "logprobs" in choice_values and not (
+            choice_values["logprobs"] is None
+            or isinstance(choice_values["logprobs"], _JsonObjectPairs)
+        ):
+            return False
+    return True
+
+
 def _new_extractor(
     *,
     include_usage: bool = True,
@@ -92,6 +235,7 @@ def _new_extractor(
             include_usage=include_usage,
             include_failure=include_failure,
         ),
+        max_number_bytes=_JSON_MAX_NUMBER_BYTES,
         max_work_units=_CHAT_COMPLETIONS_MAX_WORK_UNITS,
     )
 
@@ -174,38 +318,41 @@ class _OpenAIChatCompletionsSseUsageHandler:
             include_usage=include_usage,
             include_failure=failure_observer is not None,
         )
-        self._data_prefix = bytearray()
-        self._data_prefix_complete = True
+        self._event_data = bytearray()
+        self._using_extractor = False
 
     def should_capture_event(self, event_name: str | None) -> bool:
         """Capture named and eventless compatible frames."""
         return True
 
     def on_event_start(self, event_name: str | None) -> None:
-        self._data_prefix.clear()
-        self._data_prefix_complete = True
+        self._event_data.clear()
+        self._using_extractor = False
 
     def on_data(self, chunk: bytes) -> None:
-        self._extractor.feed(chunk)
+        if self._using_extractor:
+            self._extractor.feed(chunk)
+            return
 
-        remaining = max(_DONE_PREFIX_MAX_BYTES - len(self._data_prefix), 0)
-        self._data_prefix.extend(chunk[:remaining])
+        remaining = max(
+            _CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES - len(self._event_data),
+            0,
+        )
+        self._event_data.extend(chunk[:remaining])
         if len(chunk) > remaining:
-            self._data_prefix_complete = False
+            self._extractor.feed(bytes(self._event_data))
+            self._event_data.clear()
+            self._using_extractor = True
+            self._extractor.feed(chunk[remaining:])
 
     def on_data_separator(self) -> None:
         self.on_data(b"\n")
 
     def on_event_end(self, event_name: str | None) -> None:
-        data_prefix = bytes(self._data_prefix)
-        data_prefix_complete = self._data_prefix_complete
-        self._data_prefix.clear()
-        self._data_prefix_complete = True
-
-        result = self._extractor.finish()
-        self._extractor.reset()
-        if not result.complete:
-            if data_prefix_complete and data_prefix.strip() == _DONE_SENTINEL:
+        if not self._using_extractor:
+            event_data = bytes(self._event_data)
+            self._event_data.clear()
+            if len(event_data) <= _DONE_PREFIX_MAX_BYTES and event_data.strip() == _DONE_SENTINEL:
                 if self._failure_observer is not None:
                     self._failure_observer.observe(
                         ModelHttpFailureEvidence(
@@ -215,6 +362,22 @@ class _OpenAIChatCompletionsSseUsageHandler:
                         )
                     )
                 return
+            if _is_canonical_usage_free_delta(event_data):
+                if self._failure_observer is not None:
+                    self._failure_observer.observe(
+                        ModelHttpFailureEvidence(
+                            event_name=event_name,
+                            has_choices=True,
+                            is_valid=True,
+                        )
+                    )
+                return
+            self._extractor.feed(event_data)
+        self._using_extractor = False
+
+        result = self._extractor.finish()
+        self._extractor.reset()
+        if not result.complete:
             if self._failure_observer is not None:
                 self._failure_observer.observe(
                     failure_evidence_from_result(result, event_name=event_name)
@@ -244,8 +407,8 @@ class _OpenAIChatCompletionsSseUsageHandler:
 
     def on_event_discard(self, event_name: str | None) -> None:
         self._extractor.reset()
-        self._data_prefix.clear()
-        self._data_prefix_complete = True
+        self._event_data.clear()
+        self._using_extractor = False
         if self._failure_observer is not None:
             self._failure_observer.observe(ModelHttpFailureEvidence(event_name=event_name))
 

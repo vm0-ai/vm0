@@ -171,17 +171,19 @@ describe("okou connector account switch-request command", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("use Work for GitHub in future runs");
     expect(output).toContain("end the current turn");
+    expect(output).toContain("exact callback URL above verbatim");
+    expect(output).toContain("omitting any query parameters");
     const url = actionUrlFromOutput(output);
     expect(url.origin).toBe("http://localhost:3000");
     expect(url.pathname).toBe(
       `/agents/${AGENT_ID}/connector-accounts/${CONNECTION_ID}/select`,
     );
-    expect(Object.fromEntries(url.searchParams)).toStrictEqual({
-      callbackPrompt: "Continue with the selected account & finish",
-      connectorSlug: "github",
-      kind: "builtin",
-      threadId: THREAD_ID,
-    });
+    expect(Array.from(url.searchParams.entries())).toStrictEqual([
+      ["kind", "builtin"],
+      ["connectorSlug", "github"],
+      ["threadId", THREAD_ID],
+      ["callbackPrompt", "Continue with the selected account & finish"],
+    ]);
   });
 
   it("resolves and validates a custom connector target", async () => {
@@ -216,13 +218,14 @@ describe("okou connector account switch-request command", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("use Work for Acme Search");
     expect(
-      Object.fromEntries(actionUrlFromOutput(output).searchParams),
-    ).toStrictEqual({
-      callbackPrompt: "Continue the search",
-      customConnectorId: CUSTOM_CONNECTOR_ID,
-      kind: "custom",
-      threadId: THREAD_ID,
-    });
+      Array.from(actionUrlFromOutput(output).searchParams.entries()),
+    ).toStrictEqual([
+      ["kind", "custom"],
+      ["customConnectorId", CUSTOM_CONNECTOR_ID],
+      ["threadId", THREAD_ID],
+      ["callbackPrompt", "Continue the search"],
+    ]);
+    expect(output).toContain("exact callback URL above verbatim");
   });
 
   it("rejects malformed connection IDs before account discovery", async () => {

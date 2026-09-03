@@ -1,5 +1,6 @@
-# Manual production rollback — converges App, Runner, and API to one release
-# commit recorded by release-please.yml in the rollback dashboard issue.
+# Manual production rollback — converges Runner and API to one release commit
+# recorded by release-please.yml in the rollback dashboard issue. App Worker
+# versions are rolled back directly in Cloudflare when needed.
 
 name: Rollback Production
 
@@ -80,165 +81,14 @@ jobs:
       - name: Resolve and verify rollback target
         id: resolve
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
           TARGET_COMMIT: ${{ inputs.target_commit }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: bash .github/scripts/resolve-production-rollback-target.sh
-
-  rollback-app:
-    name: Roll back App
-    needs: resolve-target
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
-    permissions:
-      contents: read
-      deployments: write
-    environment: production
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: main
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Start GitHub Deployment
-        id: deployment
-        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
-        with:
-          step: start
-          token: ${{ github.token }}
-          env: app/production
-          ref: ${{ needs.resolve-target.outputs.target_commit }}
-          desc: Rolling App back to a release commit
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Production* ⏪ rolling App back to `${{ needs.resolve-target.outputs.target_commit }}`..."
-
-      - name: Install AWS CLI
-        run: |
-          architecture="$(dpkg --print-architecture)"
-          case "$architecture" in
-            amd64) aws_architecture="x86_64" ;;
-            arm64) aws_architecture="aarch64" ;;
-            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
-          esac
-
-          curl -fsSL --retry 3 \
-            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
-            --output /tmp/awscliv2.zip
-          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
-          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
-          /tmp/awscli/aws/install
-
-      - name: Prepare App production deployment
-        id: app
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
-          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
-        run: |
-          set -euo pipefail
-
-          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}"
-          canonical_dist=$(mktemp -d)
-          pages_dist=$(mktemp -d)
-
-          bash .github/scripts/fetch-okou-app-artifact.sh \
-            "$r2_endpoint" \
-            "$artifact_uri" \
-            "$canonical_dist"
-          bash .github/scripts/verify-okou-app-artifact.sh \
-            "$canonical_dist" \
-            "$TARGET_COMMIT"
-          bash .github/scripts/prepare-okou-pages-dist.sh \
-            "$canonical_dist" \
-            "$pages_dist"
-
-          echo "canonical_dist=$canonical_dist" >> "$GITHUB_OUTPUT"
-          echo "pages_dist=$pages_dist" >> "$GITHUB_OUTPUT"
-
-      - name: Upload App source maps to Sentry
-        env:
-          CANONICAL_DIST: ${{ steps.app.outputs.canonical_dist }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
-        working-directory: turbo
-        run: pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
-
-      - name: Deploy App to Cloudflare Pages production
-        env:
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_DIST: ${{ steps.app.outputs.pages_dist }}
-          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
-        run: |
-          set -euo pipefail
-
-          bash .github/scripts/deploy-okou-pages.sh \
-            "$PAGES_DIST" \
-            "$CF_PAGES_PROJECT_NAME" \
-            production \
-            "$TARGET_COMMIT"
-
-      - name: Finish GitHub Deployment
-        if: always()
-        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
-        with:
-          step: finish
-          token: ${{ github.token }}
-          status: ${{ job.status }}
-          env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Production* ✅ App rolled back to `${{ needs.resolve-target.outputs.target_commit }}`\n🌐 <https://app.vm0.ai|VM0 App> · <https://app.okou.ai|Okou App>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Production* ❌ App rollback failed for `${{ needs.resolve-target.outputs.target_commit }}`"
 
   rollback-runner:
     name: Roll back Runner (${{ matrix.label }})
@@ -425,16 +275,11 @@ jobs:
 
   verify-production-domains:
     name: Verify production domains after rollback
-    needs: [rollback-app, rollback-api]
+    needs: rollback-api
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
       - name: Verify production App and API domains
-        env:
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/verify-okou-production-domains.sh \
-            "https://${CF_PAGES_PROJECT_NAME}.pages.dev"
+        run: bash .github/scripts/verify-okou-production-domains.sh

@@ -67,6 +67,20 @@ resource key, define the card's signals and registry, and add its render case.
 The generic URL parser must not treat every `/chats/*` link as a card before
 that card type exists.
 
+## Producing User-facing Action URLs
+
+CLI producers must complete the action path and every action-defining query
+parameter before calling the shared action URL finalizer. For callback-capable
+actions, the finalizer appends `threadId` and then terminal `callbackPrompt`
+and returns the serialized URL. Callers must not append fields after that
+boundary.
+
+The CLI handoff output and run-level Agent Tools prompt require agents to return
+user-facing action URLs exactly as printed. Agents must not rewrite, shorten,
+reconstruct, or omit query parameters. Consumers continue to treat URL fields
+as untrusted claims: an incomplete or context-mismatched mutating action fails
+closed, and the parser must not infer missing authorization or target data.
+
 ## Data Flow
 
 ### 1. Parse content into pure descriptors

@@ -722,7 +722,7 @@ function ChatThreadsListMenuTooltip() {
   );
 }
 
-function useNewChatMenuAction() {
+function useNewChatAction() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const createNewChat = useSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
@@ -744,30 +744,6 @@ function useNewChatMenuAction() {
     disabled: !currentChatAgentId || newChatDisabled,
     onSelect,
   };
-}
-
-function NewChatMenuItem({
-  disabled,
-  onSelect,
-}: {
-  disabled: boolean;
-  onSelect: (pane: NewChatThreadPane) => void;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <DropdownMenuItem
-      onSelect={() => {
-        onSelect("main");
-      }}
-      disabled={disabled}
-    >
-      <Plus size={16} className="mr-2" />
-      {t(($) => {
-        return $.chat.newChat;
-      })}
-    </DropdownMenuItem>
-  );
 }
 
 function useMarkAllReadMenuAction(showMarkAllRead: boolean) {
@@ -861,7 +837,6 @@ function ChatThreadsListMenu({
   showMarkAllRead: boolean;
 }) {
   const { t } = useTranslation();
-  const newChatAction = useNewChatMenuAction();
   const markAllReadAction = useMarkAllReadMenuAction(showMarkAllRead);
 
   return (
@@ -891,11 +866,12 @@ function ChatThreadsListMenu({
             e.stopPropagation();
           }}
         >
-          <NewChatMenuItem {...newChatAction} />
           {markAllReadAction.visible ? (
-            <MarkAllReadMenuItem {...markAllReadAction} />
+            <>
+              <MarkAllReadMenuItem {...markAllReadAction} />
+              <DropdownMenuSeparator />
+            </>
           ) : null}
-          <DropdownMenuSeparator />
           <ChatThreadFilterMenuItems />
         </DropdownMenuContent>
       </DropdownMenu>
@@ -906,7 +882,7 @@ function ChatThreadsListMenu({
 function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
   const { t } = useTranslation();
   const { titleLabel } = useChatThreadsTitleLabels();
-  const newChatAction = useNewChatMenuAction();
+  const newChatAction = useNewChatAction();
   const newChatLabel = t(($) => {
     return $.chat.newChat;
   });

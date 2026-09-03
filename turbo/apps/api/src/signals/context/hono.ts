@@ -22,11 +22,7 @@ import {
 
 const VM0_PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
-const OKOU_ORIGIN_ROOT_DOMAINS = [
-  OKOU_PRODUCTION_DOMAIN,
-  "omby.ai",
-  "okou-app.pages.dev",
-] as const;
+const OKOU_ORIGIN_ROOT_DOMAINS = [OKOU_PRODUCTION_DOMAIN, "omby.ai"] as const;
 
 const innerHonoContext$ = state<Context>({} as Context);
 const innerRoute$ = state<AppRoute | null>(null);

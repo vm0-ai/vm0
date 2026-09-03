@@ -11,7 +11,6 @@ describe("document title branding", () => {
     ["https://app.okou.ai/", "Agents | Okou"],
     ["https://console.okou.ai/", "Agents | Okou"],
     ["https://pr-23382-app.omby.ai/", "Agents | Okou"],
-    ["https://3508a2f5.okou-app.pages.dev/", "Agents | Okou"],
     ["https://pr-23382-app-okou-app-preview.vm0.workers.dev/", "Agents | Okou"],
     ["https://app.okou.ai:8443/", "Agents | Okou"],
     ["https://app.vm0.ai/", "Agents | VM0"],
@@ -19,7 +18,6 @@ describe("document title branding", () => {
     ["http://localhost:3002/", "Agents | VM0"],
     ["https://okou.ai.evil.example/", "Agents | VM0"],
     ["https://omby.ai.evil.example/", "Agents | VM0"],
-    ["https://okou-app.pages.dev.evil.example/", "Agents | VM0"],
   ])("uses the matching brand on %s", async (url, title) => {
     context.mocks.browser.url(url);
 

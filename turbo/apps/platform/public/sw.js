@@ -1,4 +1,4 @@
-const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
+const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
 const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
   /^(?:staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u;
 

@@ -20,7 +20,6 @@ const STATIC_ALLOWED_ORIGINS = Object.freeze(
     "https://app.vm7.ai:8443",
   ]),
 );
-const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
 const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
   /^(?:staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u;
 
@@ -63,9 +62,7 @@ export function allowedCorsOrigin(origin: string | undefined): string | null {
     deployEnv === "preview" &&
     (hostname.endsWith(".vm7.ai") ||
       hostname.endsWith(".omby.ai") ||
-      (url.port === "" &&
-        (hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) ||
-          isOkouAppWorkerPreviewHostname(hostname))))
+      (url.port === "" && isOkouAppWorkerPreviewHostname(hostname)))
   ) {
     return normalizedOrigin;
   }

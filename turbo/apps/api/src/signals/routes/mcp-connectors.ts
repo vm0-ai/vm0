@@ -19,6 +19,7 @@ const listRunMcpConnectorsInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       runId: auth.runId,
+      customConnectorSourceIds: auth.customConnectorSourceIds,
     }),
   );
   return { status: 200 as const, body: { connectors: [...connectors] } };

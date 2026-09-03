@@ -8,7 +8,7 @@ import {
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { getOkouAgentId } from "../../lib/okou-env";
 import {
-  addRequestedCallbackSearchParams,
+  finalizeActionUrl,
   printCallbackTurnInstruction,
 } from "../connector/action-url";
 import { getPlatformOrigin } from "../doctor/platform-url";
@@ -101,17 +101,16 @@ const accessRequestCommand = new Command()
         throw new Error("--reason cannot exceed 500 characters");
       }
 
-      const params = new URLSearchParams({ reason });
-      addRequestedCallbackSearchParams(params, options.callbackPrompt, agentId);
       const origin = await getPlatformOrigin();
-      const url = new URL(
+      const actionUrl = new URL(
         `/agents/${encodeURIComponent(agentId)}/banking`,
         origin,
       );
-      url.search = params.toString();
+      actionUrl.searchParams.set("reason", reason);
+      const url = finalizeActionUrl(actionUrl, options.callbackPrompt, agentId);
 
       console.log("Banking access requires user approval:");
-      console.log(url.toString());
+      console.log(url);
       printCallbackTurnInstruction();
     }),
   );

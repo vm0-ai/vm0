@@ -3,6 +3,7 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import patch
 
 import brotli
 import pytest
@@ -12,10 +13,12 @@ from mitmproxy.test import tutils
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
+import usage.openai_chat_completions as openai_chat_completions
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_model_provider_flow
 from tests.stream_buffer_helpers import set_response_stream_buffer
+from usage.model_http import ModelHttpFailureEvidence
 from usage.quantities import MAX_USAGE_QUANTITY
 
 
@@ -63,6 +66,315 @@ def _run_response(flow: http.HTTPFlow, usage_webhook_api):
         mitm_addon.response(flow)
         usage.flush_usage_events(trigger="test")
     return webhook
+
+
+class _RecordingFailureObserver:
+    def __init__(self) -> None:
+        self.observed: list[ModelHttpFailureEvidence] = []
+
+    def needs_sse_event(self, event_name: str | None) -> bool:
+        return True
+
+    def observe(self, evidence: ModelHttpFailureEvidence) -> None:
+        self.observed.append(evidence)
+
+    def observe_json(self, evidence: ModelHttpFailureEvidence) -> None:
+        raise AssertionError("unexpected JSON evidence")
+
+    def finish(self) -> None:
+        return None
+
+
+def _track_chat_extractor_finishes() -> tuple[list[object], Callable[..., object]]:
+    calls: list[object] = []
+    original_finish = openai_chat_completions.JsonSelectiveExtractor.finish
+
+    def finish(extractor):
+        calls.append(extractor)
+        return original_finish(extractor)
+
+    return calls, finish
+
+
+def _canonical_delta_with_size(size: int) -> bytes:
+    prefix = (
+        b'{"id":"chatcmpl_bound","object":"chat.completion.chunk",'
+        b'"choices":[{"index":0,"delta":{"content":"'
+    )
+    suffix = b'"}}]}'
+    assert size >= len(prefix) + len(suffix)
+    return prefix + b"x" * (size - len(prefix) - len(suffix)) + suffix
+
+
+def test_canonical_sse_deltas_skip_selective_extraction_across_framing_variants():
+    observer = _RecordingFailureObserver()
+    finish_calls, tracked_finish = _track_chat_extractor_finishes()
+    stream = (
+        b'data: {"id":"chatcmpl_text","object":"chat.completion.chunk",'
+        b'"created":1,"model":"gpt-5.5","service_tier":null,'
+        b'"choices":[{"index":0,"delta":{"content":"hello"},'
+        b'"logprobs":null,"finish_reason":null}]}\n\n'
+        b"event: chunk\n"
+        b'data: {"object":"chat.completion.chunk",'
+        b'"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        b'data: {"object":"chat.completion.chunk","choices":\n'
+        b'data: [{"index":0,"delta":{"tool_calls":[]}},'
+        b'{"index":1,"delta":{}}]}\n\n'
+    )
+
+    with patch.object(
+        openai_chat_completions.JsonSelectiveExtractor,
+        "finish",
+        tracked_finish,
+    ):
+        scanner, parsed_usage = (
+            openai_chat_completions.create_openai_chat_completions_sse_usage_extractor(
+                failure_observer=observer
+            )
+        )
+        chunk_sizes = (1, 2, 5, 13, 3, 8)
+        offset = 0
+        chunk_index = 0
+        while offset < len(stream):
+            chunk_size = chunk_sizes[chunk_index % len(chunk_sizes)]
+            scanner(stream[offset : offset + chunk_size])
+            offset += chunk_size
+            chunk_index += 1
+        scanner.finish()
+
+    assert finish_calls == []
+    assert parsed_usage == {}
+    assert observer.observed == [
+        ModelHttpFailureEvidence(has_choices=True, is_valid=True),
+        ModelHttpFailureEvidence(event_name="chunk", has_choices=True, is_valid=True),
+        ModelHttpFailureEvidence(has_choices=True, is_valid=True),
+    ]
+
+
+def test_sse_fast_path_bound_is_inclusive_and_overflow_replays_once():
+    finish_calls, tracked_finish = _track_chat_extractor_finishes()
+    exact = _canonical_delta_with_size(
+        openai_chat_completions._CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES
+    )
+    over = exact[:-1] + b',"usage":{"prompt_tokens":9,"completion_tokens":2}}'
+
+    with patch.object(
+        openai_chat_completions.JsonSelectiveExtractor,
+        "finish",
+        tracked_finish,
+    ):
+        scanner, parsed_usage = (
+            openai_chat_completions.create_openai_chat_completions_sse_usage_extractor()
+        )
+        scanner(b"data: " + exact + b"\n\ndata: " + over + b"\n\n")
+        scanner.finish()
+
+    assert len(finish_calls) == 1
+    assert parsed_usage == {
+        "tokens.input": 9,
+        "tokens.output": 2,
+        "message_id": "chatcmpl_bound",
+    }
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        (
+            b'{"object":"chat.completion.chunk","provider":"compatible",'
+            b'"choices":[{"index":0,"delta":{}}]}',
+            None,
+        ),
+        (
+            b'{"object":"chat.completion.chunk","object":"chat.completion.chunk",'
+            b'"choices":[{"index":0,"delta":{}}]}',
+            None,
+        ),
+        (
+            b'{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"value":NaN}}]}',
+            "expected json value",
+        ),
+        (
+            b'{"object":"chat.completion.chunk",'
+            + rb'"choices":[{"index":0,"delta":{"content":"\ud800"}}]}',
+            None,
+        ),
+        (
+            b'{"object":"chat.completion.chunk",'
+            b'"choices":[{"index":0,"delta":{"value":' + b"9" * 129 + b"}}]}",
+            "number limit exceeded",
+        ),
+        (
+            b'{"object":"chat.completion.chunk",'
+            b'"choices":[{"index":0,"delta":{"value":' + b"[" * 260 + b"0" + b"]" * 260 + b"}}]}",
+            "max depth exceeded",
+        ),
+        (
+            b'{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{}}]}x',
+            "trailing data after root value",
+        ),
+        (
+            b'{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{}}]',
+            "incomplete json",
+        ),
+    ],
+    ids=(
+        "unknown-envelope-key",
+        "duplicate-key",
+        "non-standard-constant",
+        "lone-surrogate",
+        "oversized-number",
+        "excessive-depth",
+        "trailing-data",
+        "malformed",
+    ),
+)
+def test_ambiguous_sse_delta_falls_back_once(payload: bytes, expected_error: str | None):
+    errors: list[tuple[str, str]] = []
+    finish_calls, tracked_finish = _track_chat_extractor_finishes()
+
+    with patch.object(
+        openai_chat_completions.JsonSelectiveExtractor,
+        "finish",
+        tracked_finish,
+    ):
+        scanner, parsed_usage = (
+            openai_chat_completions.create_openai_chat_completions_sse_usage_extractor(
+                lambda event, error: errors.append((event, error))
+            )
+        )
+        scanner(b"data: " + payload + b"\n\n")
+        scanner.finish()
+
+    assert len(finish_calls) == 1
+    assert parsed_usage == {}
+    assert errors == ([] if expected_error is None else [("eventless", expected_error)])
+
+
+def test_escaped_usage_candidate_falls_back_and_reports_usage():
+    payload = (
+        b'{"id":"chatcmpl_escaped","object":"chat.completion.chunk","model":"gpt-5.5",'
+        b'"choices":[{"index":0,"delta":{}}],'
+        + rb'"\u0075sage":{"prompt_tokens":9,"completion_tokens":2}}'
+    )
+    finish_calls, tracked_finish = _track_chat_extractor_finishes()
+
+    with patch.object(
+        openai_chat_completions.JsonSelectiveExtractor,
+        "finish",
+        tracked_finish,
+    ):
+        scanner, parsed_usage = (
+            openai_chat_completions.create_openai_chat_completions_sse_usage_extractor()
+        )
+        scanner(b"data: " + payload + b"\n\n")
+        scanner.finish()
+
+    assert len(finish_calls) == 1
+    assert parsed_usage == {
+        "tokens.input": 9,
+        "tokens.output": 2,
+        "model": "gpt-5.5",
+        "message_id": "chatcmpl_escaped",
+    }
+
+
+@pytest.mark.parametrize(
+    ("usage_members", "expected_usage"),
+    [
+        (
+            b'"usage":{"prompt_tokens":9,"completion_tokens":2},"usage":null',
+            {},
+        ),
+        (
+            rb'"\u0075sage":null,"usage":{"prompt_tokens":9,"completion_tokens":2}',
+            {
+                "tokens.input": 9,
+                "tokens.output": 2,
+                "model": "gpt-5.5",
+                "message_id": "chatcmpl_duplicate",
+            },
+        ),
+    ],
+    ids=("last-null-clears", "escaped-first-last-usage-wins"),
+)
+def test_duplicate_usage_candidates_keep_authoritative_last_member_semantics(
+    usage_members: bytes,
+    expected_usage: dict[str, object],
+):
+    payload = (
+        b'{"id":"chatcmpl_duplicate","object":"chat.completion.chunk",'
+        b'"model":"gpt-5.5","choices":[{"index":0,"delta":{}}],' + usage_members + b"}"
+    )
+    finish_calls, tracked_finish = _track_chat_extractor_finishes()
+
+    with patch.object(
+        openai_chat_completions.JsonSelectiveExtractor,
+        "finish",
+        tracked_finish,
+    ):
+        scanner, parsed_usage = (
+            openai_chat_completions.create_openai_chat_completions_sse_usage_extractor()
+        )
+        scanner(b"data: " + payload + b"\n\n")
+        scanner.finish()
+
+    assert len(finish_calls) == 1
+    assert parsed_usage == expected_usage
+
+
+def test_fast_path_preserves_error_and_done_failure_evidence():
+    observer = _RecordingFailureObserver()
+    finish_calls, tracked_finish = _track_chat_extractor_finishes()
+    canonical_delta = (
+        b'{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"x"}}]}'
+    )
+    top_level_error = b'{"error":{"metadata":{"error_type":"provider_unavailable"}}}'
+    escaped_error = (
+        b'{"choices":[{'
+        + rb'"\u0065rror":{"metadata":{"error_type":"provider_overloaded"}}'
+        + b"}]}"
+    )
+
+    with patch.object(
+        openai_chat_completions.JsonSelectiveExtractor,
+        "finish",
+        tracked_finish,
+    ):
+        scanner, parsed_usage = (
+            openai_chat_completions.create_openai_chat_completions_sse_usage_extractor(
+                include_usage=False,
+                failure_observer=observer,
+            )
+        )
+        scanner(
+            b"data: "
+            + canonical_delta
+            + b"\n\ndata: "
+            + top_level_error
+            + b"\n\ndata: "
+            + escaped_error
+            + b"\n\ndata: [DONE]\n\n"
+        )
+        scanner.finish()
+
+    assert len(finish_calls) == 2
+    assert parsed_usage == {}
+    assert observer.observed == [
+        ModelHttpFailureEvidence(has_choices=True, is_valid=True),
+        ModelHttpFailureEvidence(
+            failure_codes=("provider_unavailable",),
+            has_error=True,
+            is_valid=True,
+        ),
+        ModelHttpFailureEvidence(
+            failure_codes=("provider_overloaded",),
+            has_error=True,
+            has_choices=True,
+            is_valid=True,
+        ),
+        ModelHttpFailureEvidence(is_done=True, is_valid=True),
+    ]
 
 
 class TestOpenAIChatCompletionsUsage:
@@ -239,42 +551,49 @@ class TestOpenAIChatCompletionsUsage:
             content_type="text/event-stream",
         )
         delta = (
-            b'data: {"id":"chatcmpl_delta","model":"gpt-5.5",'
-            b'"choices":[{"delta":{"content":"x"}}]}\n\n'
+            b'data: {"id":"chatcmpl_delta","object":"chat.completion.chunk",'
+            b'"model":"gpt-5.5","choices":[{"index":0,"delta":{"content":"x"}}]}\n\n'
         )
 
-        mitm_addon.responseheaders(flow)
-        callback = response_stream(flow)
-        callback(
-            b"data: "
-            + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
-            + b"\n\n"
-            + delta * 2_560
-            + b'data: {"id":"chatcmpl_discarded"\n'
-            + b"x" * 4_097
-            + b"\n\n"
-            + b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n'
-        )
-        final_payload = {
-            "id": "chatcmpl_final",
-            "model": "gpt-5.5",
-            "choices": [
-                {
-                    "usage": {
-                        "prompt_tokens": 30,
-                        "completion_tokens": 5,
+        finish_calls, tracked_finish = _track_chat_extractor_finishes()
+        with patch.object(
+            openai_chat_completions.JsonSelectiveExtractor,
+            "finish",
+            tracked_finish,
+        ):
+            mitm_addon.responseheaders(flow)
+            callback = response_stream(flow)
+            callback(
+                b"data: "
+                + _chat_payload(usage_payload={"prompt_tokens": 90, "completion_tokens": 40})
+                + b"\n\n"
+                + delta * 2_560
+                + b'data: {"id":"chatcmpl_discarded"\n'
+                + b"x" * 4_097
+                + b"\n\n"
+                + b'data: {"id":"chatcmpl_bad","usage":{"prompt_tokens":30}\n\n'
+            )
+            final_payload = {
+                "id": "chatcmpl_final",
+                "model": "gpt-5.5",
+                "choices": [
+                    {
+                        "usage": {
+                            "prompt_tokens": 30,
+                            "completion_tokens": 5,
+                        }
                     }
-                }
-            ],
-        }
-        callback(
-            b"data: "
-            + json.dumps(final_payload, separators=(",", ":")).encode()
-            + b"\n\ndata: [DONE]\n\n"
-        )
+                ],
+            }
+            callback(
+                b"data: "
+                + json.dumps(final_payload, separators=(",", ":")).encode()
+                + b"\n\ndata: [DONE]\n\n"
+            )
 
-        webhook = _run_response(flow, self._usage_webhook_api)
+            webhook = _run_response(flow, self._usage_webhook_api)
 
+        assert len(finish_calls) == 3
         expected_quantities = {
             "tokens.input": 30,
             "tokens.output": 5,

@@ -31,6 +31,14 @@ interface NonRequestablePolicyCase {
   readonly expected: string;
 }
 
+function permissionActionUrl(output: string): URL {
+  const href = output.match(/\[Manage [^\]]+ permissions\]\(([^)]+)\)/)?.[1];
+  if (!href) {
+    throw new Error("Expected permission action URL");
+  }
+  return new URL(href);
+}
+
 function resolvedUrlDiagnostic(
   args: {
     readonly connectorSlug?: string;
@@ -205,13 +213,18 @@ describe("okou connector permission-request command", () => {
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("connectorSlug=slack");
-    expect(logCalls).toContain("action=allow");
-    expect(logCalls).toContain("threadId=thread-abc-123");
-    expect(logCalls).toContain(
-      "callbackPrompt=Re-check+permission+%26+continue",
-    );
+    expect(
+      Array.from(permissionActionUrl(logCalls).searchParams.entries()),
+    ).toStrictEqual([
+      ["connectorSlug", "slack"],
+      ["permission", SLACK_READ_PERMISSION],
+      ["action", "allow"],
+      ["threadId", "thread-abc-123"],
+      ["callbackPrompt", "Re-check permission & continue"],
+    ]);
     expect(logCalls).toContain("end the current turn");
+    expect(logCalls).toContain("exact callback URL above verbatim");
+    expect(logCalls).toContain("omitting any query parameters");
     expect(logCalls).not.toContain("expiresIn=");
   });
 

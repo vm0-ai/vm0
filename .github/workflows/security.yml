@@ -256,10 +256,8 @@ jobs:
             .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
-            .github/scripts/deploy-okou-pages.sh \
             .github/scripts/download-verified.sh \
             .github/scripts/fetch-okou-desktop-artifact.sh \
-            .github/scripts/list-okou-pages-preview-pr-numbers.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/publish-okou-app-assets.sh \
             .github/scripts/verify-okou-app-assets.sh \
@@ -288,14 +286,12 @@ jobs:
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
             .github/scripts/tests/deploy-desktop-workflow-test.sh \
             .github/scripts/tests/deploy-cli-local-test.sh \
-            .github/scripts/tests/deploy-okou-pages-test.sh \
-            .github/scripts/tests/deploy-okou-pages-workflow-test.sh \
+            .github/scripts/tests/deploy-okou-app-worker-workflow-test.sh \
             .github/scripts/tests/publish-okou-app-assets-test.sh \
             .github/scripts/tests/verify-okou-app-assets-test.sh \
             .github/scripts/tests/verify-okou-app-runtime-test.sh \
             .github/scripts/tests/download-verified-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
-            .github/scripts/tests/list-okou-pages-preview-pr-numbers-test.sh \
             .github/scripts/tests/neon-credential-mask-test.sh \
             .github/scripts/tests/neon-connection-string-ssl-test.sh \
             .github/scripts/tests/okou-desktop-artifact-test.sh \
