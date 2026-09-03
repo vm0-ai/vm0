@@ -26,7 +26,6 @@ use crate::worker_ownership::{
 };
 use crate::writer::GuestWriter;
 
-const PRODUCTION_PROGRAM: &str = "/usr/local/bin/guest-download";
 const THREAD_WORKER: &str = "vsock-guest-storage-manifest";
 const THREAD_STDIN: &str = "vsock-guest-storage-stdin";
 const THREAD_STDOUT: &str = "vsock-guest-storage-stdout";
@@ -50,7 +49,7 @@ impl GuestStorageManifestProgram {
 
     fn path(&self) -> &Path {
         match self {
-            Self::Production => Path::new(PRODUCTION_PROGRAM),
+            Self::Production => Path::new(guest_contracts::guest_binary::DOWNLOAD_PATH),
             Self::Test(path) => path,
         }
     }

@@ -3830,7 +3830,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       integrations.modelPickerSubmission({
         workspaceId: teamId,
         slackUserId,
-        selectedValue: "claude-fable-5",
+        selectedValue: "claude-fable-5-1",
         channelId: "C_BDD_PICK",
       }),
     );
@@ -3839,13 +3839,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.objectContaining({
         channel: "C_BDD_PICK",
         user: slackUserId,
-        text: "Switched to *Claude Fable 5* for new Slack threads.",
+        text: "Switched to *Claude Fable 5.1* for new Slack threads.",
       }),
     );
     await expect(
       integrations.readUserModelPreference(actor),
     ).resolves.toMatchObject({
-      selectedModel: "claude-fable-5",
+      selectedModel: "claude-fable-5-1",
     });
 
     const replaceModel = await integrations.postSlackInteractive(

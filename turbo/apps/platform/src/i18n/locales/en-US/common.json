@@ -4797,12 +4797,16 @@
       },
       "description": "See feature switches by rollout stage.",
       "documentTitle": "Lab",
+      "filters": {
+        "all": "All"
+      },
       "groups": {
         "alpha": "Alpha",
         "beta": "Beta",
         "internal": "Internal",
         "released": "Released"
       },
+      "maintainer": "Maintainer: {{maintainer}}",
       "title": "Lab"
     },
     "models": {

@@ -50,7 +50,8 @@ pub(crate) fn generate_boot_args() -> String {
     format!(
         "console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on \
          quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume \
-         root=/dev/vda rootfstype=ext4 rw init=/sbin/guest-init {}",
+         root=/dev/vda rootfstype=ext4 rw init={} {}",
+        guest_contracts::guest_binary::INIT_PATH,
         generate_guest_network_boot_args(),
     )
 }
@@ -75,8 +76,9 @@ mod tests {
             args.contains("root=/dev/vda rootfstype=ext4 rw"),
             "boot args must specify root device: {args}"
         );
+        let init_arg = format!("init={}", guest_contracts::guest_binary::INIT_PATH);
         assert!(
-            args.contains("init=/sbin/guest-init"),
+            args.contains(&init_arg),
             "boot args must specify init: {args}"
         );
     }

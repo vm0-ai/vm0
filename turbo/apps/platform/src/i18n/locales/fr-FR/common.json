@@ -4860,12 +4860,16 @@
       },
       "description": "Consultez les fonctionnalités par phase de déploiement.",
       "documentTitle": "Laboratoire",
+      "filters": {
+        "all": "Tout"
+      },
       "groups": {
         "alpha": "Alpha",
         "beta": "Bêta",
         "internal": "Internes",
         "released": "Publiées"
       },
+      "maintainer": "Mainteneur : {{maintainer}}",
       "title": "Laboratoire"
     },
     "models": {

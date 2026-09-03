@@ -44,6 +44,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function maintainerFilterButton(label: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim().toLowerCase().startsWith(label);
+  });
+  if (!button) {
+    throw new Error(`${label} maintainer filter not found`);
+  }
+  return button;
+}
+
 function expectBefore(first: HTMLElement, second: HTMLElement): void {
   expect(
     Boolean(
@@ -126,7 +136,48 @@ describe("lab page", () => {
       internal.getAllByRole("listitem").length,
     );
     expect(buttonByText("Reset all")).toBeInTheDocument();
-    expect(screen.queryByText(/^Maintainer:/u)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/^Maintainer:/u)).toHaveLength(
+      Object.values(FeatureSwitchKey).length,
+    );
+    expect(maintainerFilterButton("lancy")).toBeInTheDocument();
+  });
+
+  it("filters feature switches by maintainer", async () => {
+    context.mocks.api(featureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Lab" })).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Maintainer: lancy@vm0.ai").length,
+      ).toBeGreaterThan(0);
+    });
+
+    click(maintainerFilterButton("lancy"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(FeatureSwitchKey.AhrefsConnector),
+      ).not.toBeInTheDocument();
+      expect(maintainerFilterButton("lancy")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    click(maintainerFilterButton("all"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FeatureSwitchKey.AhrefsConnector),
+      ).toBeInTheDocument();
+    });
   });
 
   it("lets users toggle and reset feature switches", async () => {
