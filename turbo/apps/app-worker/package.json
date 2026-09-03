@@ -8,6 +8,9 @@
     "lint": "oxlint && eslint . --max-warnings 0",
     "test": "node ../../../.github/scripts/tests/okou-app-worker-test.mjs src/worker.js ../platform/index.html ../platform/public/manifest.webmanifest"
   },
+  "dependencies": {
+    "@clerk/backend": "^3.13.1"
+  },
   "devDependencies": {
     "@okouai/eslint-config": "workspace:*",
     "@okouai/typescript-config": "workspace:*",

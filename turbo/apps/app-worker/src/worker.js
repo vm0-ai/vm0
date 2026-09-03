@@ -1,3 +1,5 @@
+import { createClerkClient } from "@clerk/backend";
+
 const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
@@ -21,6 +23,10 @@ const PRODUCTION_API_ORIGINS = new Map([
   ["app-worker.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
+const CLERK_EDGE_DEBUG_QUERY_PARAMETER = "__clerk_edge_debug";
+const CLERK_EDGE_DEBUG_TIMEOUT_MS = 1000;
+const CLERK_EDGE_DEBUG_PREVIEW_HOSTNAME_PATTERN =
+  /^pr-[1-9][0-9]*-app-okou-app-preview\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev$/u;
 const SECURITY_HEADERS = {
   "Permissions-Policy":
     "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(self), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)",
@@ -186,12 +192,12 @@ function htmlResponse(indexHtml, assetResponse, status, cacheControl) {
   return new Response(indexHtml, { status, headers });
 }
 
-function noIndexResponse(response) {
+function noIndexResponse(response, cacheControl) {
   const headers = new Headers(response.headers);
   headers.delete("Content-Encoding");
   headers.delete("Content-Length");
   headers.delete("ETag");
-  headers.set("Cache-Control", "public, max-age=0, must-revalidate");
+  headers.set("Cache-Control", cacheControl);
   headers.set("X-Robots-Tag", "noindex, nofollow");
   return new Response(response.body, {
     status: response.status,
@@ -200,7 +206,87 @@ function noIndexResponse(response) {
   });
 }
 
-function rewriteAppPage(response, metadata) {
+function serializeClerkEdgeSession(session) {
+  return JSON.stringify(session)
+    .replaceAll("<", "\\u003c")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
+}
+
+function isClerkEdgeDebugRequest(requestUrl, env) {
+  const debugFlags = requestUrl.searchParams.getAll(
+    CLERK_EDGE_DEBUG_QUERY_PARAMETER,
+  );
+  return (
+    requestUrl.protocol === "https:" &&
+    debugFlags.length === 1 &&
+    debugFlags[0] === "1" &&
+    CLERK_EDGE_DEBUG_PREVIEW_HOSTNAME_PATTERN.test(requestUrl.hostname) &&
+    env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
+  );
+}
+
+async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
+  let timeoutId;
+  try {
+    const publishableKey = env.CLERK_PUBLISHABLE_KEY;
+    const secretKey = env.CLERK_SECRET_KEY;
+    if (
+      typeof publishableKey !== "string" ||
+      publishableKey.length === 0 ||
+      typeof secretKey !== "string" ||
+      secretKey.length === 0
+    ) {
+      return null;
+    }
+
+    const timeout = new Promise((resolve) => {
+      timeoutId = globalThis.setTimeout(() => {
+        resolve(null);
+      }, CLERK_EDGE_DEBUG_TIMEOUT_MS);
+    });
+    const authentication = Promise.resolve().then(() => {
+      const clerk = clerkClientFactory({
+        publishableKey,
+        secretKey,
+        telemetry: { disabled: true },
+      });
+      return clerk.authenticateRequest(request, {
+        acceptsToken: "session_token",
+        authorizedParties: [env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY],
+      });
+    });
+    const requestState = await Promise.race([authentication, timeout]);
+    // Browser mutations are outside this observation-only diagnostic branch.
+    if (
+      requestState === null ||
+      !requestState.isAuthenticated ||
+      requestState.headers.has("Location") ||
+      requestState.headers.has("Set-Cookie")
+    ) {
+      return null;
+    }
+
+    const { userId, orgId } = requestState.toAuth();
+    if (
+      typeof userId !== "string" ||
+      userId.length === 0 ||
+      (orgId !== null && typeof orgId !== "string")
+    ) {
+      return null;
+    }
+    return { userId, orgId };
+  } catch {
+    // Clerk must never affect availability of the existing app shell.
+    return null;
+  } finally {
+    if (timeoutId !== undefined) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+}
+
+function rewriteAppPage(response, metadata, edgeSession) {
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on("title", {
@@ -254,8 +340,23 @@ function rewriteAppPage(response, metadata) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
+  if (edgeSession !== null) {
+    rewriter.on("body", {
+      element(element) {
+        element.append(
+          `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
+          { html: true },
+        );
+      },
+    });
+  }
   const rewrittenResponse = rewriter.transform(response);
-  return noIndexResponse(rewrittenResponse);
+  return noIndexResponse(
+    rewrittenResponse,
+    edgeSession === null
+      ? "public, max-age=0, must-revalidate"
+      : "private, no-store",
+  );
 }
 
 async function rewriteManifest(response, metadata) {
@@ -518,7 +619,13 @@ function withAppHeaders(response, requestUrl) {
   });
 }
 
-async function handleRequest(request, env, requestUrl, embeddedShell) {
+async function handleRequest(
+  request,
+  env,
+  requestUrl,
+  embeddedShell,
+  clerkClientFactory,
+) {
   if (
     (request.method === "GET" || request.method === "HEAD") &&
     requestUrl.pathname.startsWith(APP_ASSET_PATH_PREFIX)
@@ -619,10 +726,16 @@ async function handleRequest(request, env, requestUrl, embeddedShell) {
   ) {
     return assetResponse;
   }
-  return rewriteAppPage(assetResponse, metadata);
+  const edgeSession = isClerkEdgeDebugRequest(requestUrl, env)
+    ? await clerkEdgeSession(request, env, requestUrl, clerkClientFactory)
+    : null;
+  return rewriteAppPage(assetResponse, metadata, edgeSession);
 }
 
-export function createWorker(embeddedShell) {
+export function createWorker(
+  embeddedShell,
+  clerkClientFactory = createClerkClient,
+) {
   return {
     async fetch(request, env) {
       const requestUrl = new URL(request.url);
@@ -631,6 +744,7 @@ export function createWorker(embeddedShell) {
         env,
         requestUrl,
         embeddedShell,
+        clerkClientFactory,
       );
       return withAppHeaders(response, requestUrl);
     },
