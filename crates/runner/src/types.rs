@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use api_contracts::generated::types::runners::runs::CodexRuntimeConfig;
+use api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason;
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
@@ -1643,7 +1644,7 @@ pub struct CompleteRequest {
     pub run_id: RunId,
     pub exit_code: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<String>,
+    pub failure_reason: Option<RequestFailureReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Sandbox the run executed against. `None` when the run failed before
@@ -2146,7 +2147,7 @@ mod tests {
                 .parse::<RunId>()
                 .unwrap(),
             exit_code: 1,
-            failure_reason: Some("provider_rate_limited".to_string()),
+            failure_reason: Some(RequestFailureReason::ProviderRateLimited),
             error: Some("timeout".into()),
             sandbox_id: None,
             sandbox_reuse_result: None,

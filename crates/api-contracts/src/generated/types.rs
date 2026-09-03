@@ -726,6 +726,59 @@ pub mod webhooks {
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub checkpoint: Option<RequestCheckpoint>,
             }
+
+            /// Known failure reason emitted by current Rust producers.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestFailureReason {
+                /// Session history exceeded its size limit.
+                #[serde(rename = "session_history_limit")]
+                SessionHistoryLimit,
+                /// The provider account lacks credits.
+                #[serde(rename = "insufficient_credits")]
+                InsufficientCredits,
+                /// The configured API key is invalid.
+                #[serde(rename = "invalid_api_key")]
+                InvalidApiKey,
+                /// The configured credentials are invalid.
+                #[serde(rename = "invalid_credentials")]
+                InvalidCredentials,
+                /// The provider requires acceptance of updated terms.
+                #[serde(rename = "terms_acceptance_required")]
+                TermsAcceptanceRequired,
+                /// The model context window was exceeded.
+                #[serde(rename = "context_window_exceeded")]
+                ContextWindowExceeded,
+                /// The provider output-token limit was reached.
+                #[serde(rename = "output_token_limit")]
+                OutputTokenLimit,
+                /// The provider rate limited the request.
+                #[serde(rename = "provider_rate_limited")]
+                ProviderRateLimited,
+                /// The provider reported overload.
+                #[serde(rename = "provider_overloaded")]
+                ProviderOverloaded,
+                /// The provider stream timed out.
+                #[serde(rename = "provider_stream_timeout")]
+                ProviderStreamTimeout,
+                /// The provider returned a server error.
+                #[serde(rename = "provider_server_error")]
+                ProviderServerError,
+                /// The response connection was lost.
+                #[serde(rename = "response_connection_lost")]
+                ResponseConnectionLost,
+                /// The provider refused for safety policy.
+                #[serde(rename = "safety_policy_refusal")]
+                SafetyPolicyRefusal,
+                /// The CLI requires reconnecting.
+                #[serde(rename = "reconnect_required")]
+                ReconnectRequired,
+                /// The selected model is unsupported.
+                #[serde(rename = "unsupported_model")]
+                UnsupportedModel,
+                /// The provider reported a usage limit.
+                #[serde(rename = "usage_limit")]
+                UsageLimit,
+            }
         }
 
         /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.

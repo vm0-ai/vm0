@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason;
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
 
@@ -139,7 +140,7 @@ impl BudgetOwnership {
 pub(super) struct CompletionPayload {
     run_id: RunId,
     exit_code: i32,
-    failure_reason: Option<String>,
+    failure_reason: Option<RequestFailureReason>,
     error: Option<String>,
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
@@ -170,7 +171,7 @@ impl CompletionPayload {
     pub(super) fn new(
         run_id: RunId,
         exit_code: i32,
-        failure_reason: Option<String>,
+        failure_reason: Option<RequestFailureReason>,
         error: Option<String>,
         sandbox_id: SandboxId,
         reuse_result: SandboxReuseResult,
@@ -323,7 +324,7 @@ mod tests {
     struct CompletionAuthProvider {
         auth_matches: Arc<AtomicBool>,
         active_input_delivery_ids: Arc<std::sync::Mutex<Vec<String>>>,
-        failure_reason: Arc<std::sync::Mutex<Option<String>>>,
+        failure_reason: Arc<std::sync::Mutex<Option<RequestFailureReason>>>,
     }
 
     #[async_trait]
@@ -398,7 +399,7 @@ mod tests {
         let _ = CompletionPayload::new(
             run_id,
             0,
-            Some("provider_rate_limited".to_string()),
+            Some(RequestFailureReason::ProviderRateLimited),
             None,
             sandbox_id,
             SandboxReuseResult::PoolMiss,
@@ -418,7 +419,7 @@ mod tests {
         );
         assert_eq!(
             *failure_reason.lock().unwrap(),
-            Some("provider_rate_limited".to_string())
+            Some(RequestFailureReason::ProviderRateLimited)
         );
     }
 
