@@ -1,6 +1,47 @@
 use super::support::*;
 
 #[tokio::test]
+async fn claimed_cancelled_submit_survives_non_owner_scan() {
+    let dir = tempfile::tempdir().unwrap();
+    let owner_tokens = empty_cancel_tokens();
+    let run_id = RunId::new_v4();
+    let registration = insert_cancel_registration(&owner_tokens, run_id).await;
+    let job_token = registration.token();
+    let signals = registration.handle().signals();
+    let owner = default_provider(dir.path(), CancellationToken::new(), owner_tokens);
+    write_job(dir.path(), run_id, "cancel me");
+    let candidate = owner.find_unclaimed_job().unwrap();
+    owner.claim(candidate).await.unwrap();
+
+    let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+    std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+    std::fs::write(&cancel_path, b"").unwrap();
+    crate::cmd::abandon_cancelled_submit_for_test(dir.path(), run_id);
+
+    assert!(
+        !local_queue::job_path(dir.path(), crate::profile::DEFAULT_PROFILE, run_id)
+            .unwrap()
+            .exists()
+    );
+    assert!(!local_queue::result_path(dir.path(), run_id).exists());
+    assert!(local_queue::claim_path(dir.path(), run_id).exists());
+    assert!(cancel_path.exists());
+
+    let non_owner = default_provider(dir.path(), CancellationToken::new(), empty_cancel_tokens());
+    non_owner.cancel_scanner.scan_cancel_files().await;
+
+    assert!(cancel_path.exists());
+    assert!(!job_token.is_cancelled());
+
+    owner.cancel_scanner.scan_cancel_files().await;
+
+    assert!(job_token.is_cancelled());
+    assert!(signals.hard().is_cancelled());
+    assert!(!signals.cooperative_user().is_cancelled());
+    assert!(!cancel_path.exists());
+}
+
+#[tokio::test]
 async fn cancel_file_triggers_token() {
     let dir = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();

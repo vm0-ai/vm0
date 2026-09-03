@@ -144,7 +144,7 @@ impl SubmitQueueEntry {
         }
     }
 
-    /// Clean up submit-owned queue files after timing out while waiting for a result.
+    /// Clean up submit-owned queue files after abandoning the wait for a result.
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
         let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
             .remove_job_files_if_present(self.job_id);
@@ -165,6 +165,10 @@ impl SubmitQueueEntry {
     fn abandon(&self, error: &str) {
         let marker = write_abandoned_result_marker(&self.result, self.job_id, error);
         self.cleanup_abandoned(marker.as_ref());
+    }
+
+    fn abandon_cancelled(&self) {
+        self.cleanup_abandoned(None);
     }
 
     fn cleanup_active_inputs(&self) {
@@ -693,14 +697,14 @@ impl SubmitPlan {
                 eprintln!("grace period expired, exiting");
                 // Leave .cancel for the runner to process — don't delete it here
                 // or the cancel request may be lost.
-                self.abandon("local submit cancelled before job completed");
+                self.abandon_cancelled();
                 return SubmitOutcome::Cancelled;
             }
             tokio::select! {
                 () = tokio::time::sleep(POLL_INTERVAL) => {}
                 _ = sigint.recv() => {
                     eprintln!("second interrupt, exiting immediately");
-                    self.abandon("local submit interrupted before job completed");
+                    self.abandon_cancelled();
                     return SubmitOutcome::Cancelled;
                 }
             }
@@ -709,6 +713,10 @@ impl SubmitPlan {
 
     fn abandon(&self, error: &str) {
         self.queue.abandon(error);
+    }
+
+    fn abandon_cancelled(&self) {
+        self.queue.abandon_cancelled();
     }
 
     fn finish_completed(&self, buf: &[u8]) -> RunnerResult<ExitCode> {
@@ -732,6 +740,13 @@ impl SubmitPlan {
             Ok(ExitCode::FAILURE)
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn abandon_cancelled_submit_for_test(group_dir: &Path, job_id: RunId) {
+    SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id)
+        .unwrap()
+        .abandon_cancelled();
 }
 
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
