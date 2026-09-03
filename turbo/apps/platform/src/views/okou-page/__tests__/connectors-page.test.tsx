@@ -2745,14 +2745,20 @@ describe("connectors page", () => {
             });
       },
     );
-    const listEnrichmentValues: ("true" | null)[] = [];
+    const listQueries: {
+      readonly search: string | null;
+      readonly includeScopeMismatch: "true" | null;
+    }[] = [];
     context.mocks.api(
       connectorAccountsContract.connections,
       ({ query, respond }) => {
         if (query.kind !== "builtin") {
           throw new Error("Expected a built-in connector account query");
         }
-        listEnrichmentValues.push(query.includeScopeMismatch ?? null);
+        listQueries.push({
+          search: query.search ?? null,
+          includeScopeMismatch: query.includeScopeMismatch ?? null,
+        });
         const search = query.search?.toLowerCase();
         return respond(200, {
           connections: search
@@ -2808,26 +2814,34 @@ describe("connectors page", () => {
       name: "Manage GitHub accounts",
     });
     await waitFor(() => {
-      expect(listEnrichmentValues).toStrictEqual(["true"]);
+      expect(listQueries).toStrictEqual([
+        { search: null, includeScopeMismatch: "true" },
+      ]);
     });
-    const defaultRow = accountRow(manager, "Unnamed account");
+    const defaultRow = await waitFor(() => {
+      return accountRow(manager, "Unnamed account");
+    });
     expect(within(defaultRow).getByText("Update permissions")).toBeVisible();
     const personalRow = await waitFor(() => {
       return accountRow(manager, personalAccount.displayName ?? "");
     });
     await waitFor(() => {
-      expect(listEnrichmentValues).toContain("true");
       expect(within(personalRow).getByText("Update permissions")).toBeVisible();
     });
     fireEvent.input(within(manager).getByPlaceholderText("Find accounts"), {
       target: { value: personalAccount.displayName },
     });
     await waitFor(() => {
+      expect(listQueries.at(-1)).toStrictEqual({
+        search: personalAccount.displayName,
+        includeScopeMismatch: "true",
+      });
       expect(
-        within(accountRow(manager, "Unnamed account")).getByText(
-          "Update permissions",
-        ),
+        accountRow(manager, personalAccount.displayName ?? ""),
       ).toBeVisible();
+      expect(
+        within(manager).queryByRole("group", { name: "Unnamed account" }),
+      ).toBeNull();
     });
     const filteredPersonalRow = accountRow(
       manager,
