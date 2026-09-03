@@ -1,6 +1,5 @@
 import { computed, type Computed } from "ccstate";
 import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
-import type { TeamComposeItem } from "@okouai/api-contracts/contracts/team";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import {
   connectorSlugSchema,
@@ -216,52 +215,4 @@ export function agentCustomConnectorGrants(args: {
       });
     },
   );
-}
-
-export function teamComposeList(
-  orgId: string,
-  userId: string,
-  publicBrand: PublicBrand,
-): Computed<Promise<readonly TeamComposeItem[]>> {
-  return computed(async (get): Promise<readonly TeamComposeItem[]> => {
-    const rows = await get(db$)
-      .select({
-        id: agents.id,
-        defaultAgentId: orgMetadata.defaultAgentId,
-        name: agents.name,
-        updatedAt: agents.updatedAt,
-        owner: agents.owner,
-        displayName: agents.displayName,
-        description: agents.description,
-        sound: agents.sound,
-        avatarUrl: agents.avatarUrl,
-        visibility: agents.visibility,
-      })
-      .from(agents)
-      .leftJoin(orgMetadata, eq(orgMetadata.orgId, agents.orgId))
-      .where(and(eq(agents.orgId, orgId), visibleAgentCondition(userId)))
-      .orderBy(desc(agents.updatedAt));
-
-    return rows.map((row) => {
-      return {
-        id: row.id,
-        ownerId: row.owner,
-        displayName: agentDisplayNameForPublicBrand({
-          agentId: row.id,
-          defaultAgentId: row.defaultAgentId,
-          displayName: row.displayName,
-          publicBrand,
-        }),
-        description: row.description,
-        sound: row.sound,
-        avatarUrl: agentAvatarUrlForDefaultAgent({
-          agentId: row.id,
-          defaultAgentId: row.defaultAgentId,
-          avatarUrl: row.avatarUrl,
-        }),
-        visibility: row.visibility,
-        updatedAt: row.updatedAt.toISOString(),
-      };
-    });
-  });
 }

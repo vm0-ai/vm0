@@ -61,7 +61,7 @@ describe("okou search --source chat", () => {
     expect(errors).toContain("Query cannot be empty");
   });
 
-  it("renders only the matched message grouped by thread", async () => {
+  it("renders the matched message grouped by thread", async () => {
     server.use(
       http.get("http://localhost:3000/api/chat/search", () => {
         return HttpResponse.json({
@@ -72,12 +72,6 @@ describe("okou search --source chat", () => {
               matchedMessage: makeMessage({
                 content: "OOM killed the build",
               }),
-              contextBefore: [
-                makeMessage({ content: "context before", seqId: 2 }),
-              ],
-              contextAfter: [
-                makeMessage({ content: "context after", seqId: 3 }),
-              ],
             },
           ],
           hasMore: false,
@@ -91,8 +85,6 @@ describe("okou search --source chat", () => {
     expect(logs).toContain("thread-abc");
     expect(logs).toContain("my-agent");
     expect(logs).toContain("OOM killed the build");
-    expect(logs).not.toContain("context before");
-    expect(logs).not.toContain("context after");
   });
 
   it("tolerates invalid chat message timestamps", async () => {
@@ -107,8 +99,6 @@ describe("okou search --source chat", () => {
                 content: "OOM killed the build",
                 createdAt: "not-a-timestamp",
               }),
-              contextBefore: [],
-              contextAfter: [],
             },
           ],
           hasMore: false,
@@ -284,8 +274,6 @@ describe("okou search --source chat", () => {
               chatThreadId: "thread-x",
               agentName: "agent",
               matchedMessage: makeMessage({ content: "match" }),
-              contextBefore: [],
-              contextAfter: [],
             },
           ],
           hasMore: true,

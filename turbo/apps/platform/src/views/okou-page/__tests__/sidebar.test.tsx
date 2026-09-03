@@ -2509,8 +2509,6 @@ describe("zero sidebar", () => {
               runId: null,
             },
             matchedRanges: [{ start: 11, end: 17 }],
-            contextBefore: [],
-            contextAfter: [],
           };
         }),
         hasMore: false,
@@ -3813,8 +3811,6 @@ describe("zero sidebar", () => {
                     runId: null,
                   },
                   matchedRanges: [{ start: 11, end: 17 }],
-                  contextBefore: [],
-                  contextAfter: [],
                 },
               ]
             : [],
@@ -3928,8 +3924,6 @@ describe("zero sidebar", () => {
                     runId: null,
                   },
                   matchedRanges: [{ start: 12, end: 18 }],
-                  contextBefore: [],
-                  contextAfter: [],
                 },
               ]
             : [],
