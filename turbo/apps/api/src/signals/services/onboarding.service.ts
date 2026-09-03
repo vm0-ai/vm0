@@ -265,7 +265,7 @@ export const completeOnboarding$ = command(
       additiveOutcome.ok &&
       additiveOutcome.value.provisioning.outcome !== "failed"
     ) {
-      L.debug("Morning Brief onboarding provisioning outcome", {
+      L.info("Morning Brief onboarding provisioning outcome", {
         orgId: args.orgId,
         userId: args.member.userId,
         ...additiveOutcome.value,
