@@ -37,6 +37,10 @@ function supportsGeneration(
   generation: number,
   capabilities: RunnerClaimCapabilities | undefined,
 ): boolean {
+  // Missing capabilities bridge the backend to pre-capability Runner
+  // artifacts. Remove this legacy-only default after #31373 records that
+  // those Runners have drained through their two-hour run/finalization window
+  // and no supported external claimant still uses the old request shape.
   const supported = capabilities?.piModelConfigGenerations ?? [
     PI_MODEL_CONFIG_LEGACY_GENERATION,
   ];
