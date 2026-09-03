@@ -16,7 +16,10 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
 from body_limits import STREAM_BUFFER_LIMIT
-from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.auth_base_forwarder_helpers import (
+    fake_forwarder_upstream,
+    forwarder_concurrency_harness,
+)
 from tests.firewall_helpers import cancel_pending_task
 from tests.registry_builtin_helpers import write_registry_with_cache
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
@@ -729,6 +732,156 @@ async def test_auth_base_registry_change_during_auth_blocks_resolved_forward(
         metadata_keys.AUTH_URL_REWRITE,
     ):
         assert key not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+    _assert_current_denial(flow, registry_mutation)
+
+
+@pytest.mark.parametrize(
+    "registry_mutation",
+    ["remove", "replace_run", "revoke_permission"],
+)
+async def test_auth_base_registry_change_while_waiting_for_active_slot_blocks_forward(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    monkeypatch,
+    registry_mutation: RegistryMutation,
+):
+    registry_path = _write_registry(
+        tmp_path,
+        client_ip=_CLIENT_IP,
+        sandbox_info=_registry_sandbox(tmp_path, auth_base=True),
+    )
+    flow, tls_data = _firewall_flow(real_flow, make_tls_data, auth_base=True)
+    original_path = flow.request.path
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return _resolved_firewall_auth(auth_base=True)
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+
+    request_task: asyncio.Task[None] | None = None
+    monkeypatch.setattr(auth_base_forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1)
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        async with forwarder_concurrency_harness() as (scenario, upstream):
+            mitm_addon.tls_clienthello(tls_data)
+            assert mitm_addon.requestheaders(flow) is None
+            blocking_task = scenario.track_task(
+                asyncio.create_task(
+                    auth_base_forwarder.forward_request(
+                        "https://occupied.example.com",
+                        "GET",
+                        [],
+                        None,
+                    )
+                )
+            )
+            assert await scenario.wait_started(1)
+
+            request_task = asyncio.create_task(mitm_addon.request(flow))
+            try:
+                await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+                registry_mutated = asyncio.Event()
+
+                def mutate_registry() -> None:
+                    _mutate_registry(
+                        registry_path,
+                        tmp_path,
+                        registry_mutation,
+                        auth_base=True,
+                    )
+                    registry_mutated.set()
+
+                release_auth_resolution.set()
+                asyncio.get_running_loop().call_soon(mutate_registry)
+                await asyncio.wait_for(registry_mutated.wait(), timeout=1)
+                assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+                assert flow.metadata["_usage_flow_tracked"] is True
+                scenario.release()
+                await asyncio.gather(request_task, blocking_task)
+            finally:
+                release_auth_resolution.set()
+                scenario.release()
+                await cancel_pending_task(request_task)
+
+            assert scenario.started == 1
+            assert upstream.resolve_calls == ["occupied.example.com", "webhook.example.com"]
+
+    auth_fetch.assert_awaited_once()
+    assert flow.request.headers["Host"] == "placeholder.example.com"
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.request.path == original_path
+    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+    _assert_current_denial(flow, registry_mutation)
+
+
+@pytest.mark.parametrize(
+    "registry_mutation",
+    ["remove", "replace_run", "revoke_permission"],
+)
+async def test_auth_base_registry_change_while_waiting_for_dns_blocks_forward(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    monkeypatch,
+    registry_mutation: RegistryMutation,
+):
+    registry_path = _write_registry(
+        tmp_path,
+        client_ip=_CLIENT_IP,
+        sandbox_info=_registry_sandbox(tmp_path, auth_base=True),
+    )
+    flow, tls_data = _firewall_flow(real_flow, make_tls_data, auth_base=True)
+    original_path = flow.request.path
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth(auth_base=True))
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+    dns_entered = asyncio.Event()
+    release_dns = asyncio.Event()
+
+    async def resolve_after_release(_host: str) -> list[str]:
+        dns_entered.set()
+        await release_dns.wait()
+        return ["93.184.216.34"]
+
+    request_task: asyncio.Task[None] | None = None
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        fake_forwarder_upstream(lookup_side_effect=resolve_after_release) as upstream,
+    ):
+        mitm_addon.tls_clienthello(tls_data)
+        assert mitm_addon.requestheaders(flow) is None
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(dns_entered.wait(), timeout=1)
+            assert flow.metadata["_usage_flow_tracked"] is True
+            _mutate_registry(
+                registry_path,
+                tmp_path,
+                registry_mutation,
+                auth_base=True,
+            )
+            release_dns.set()
+            await asyncio.gather(request_task)
+        finally:
+            release_dns.set()
+            await cancel_pending_task(request_task)
+
+        assert upstream.resolve_calls == ["webhook.example.com"]
+        assert upstream.socket_calls == []
+
+    auth_fetch.assert_awaited_once()
+    assert flow.request.headers["Host"] == "placeholder.example.com"
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.request.path == original_path
+    assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
     _assert_current_denial(flow, registry_mutation)
 
