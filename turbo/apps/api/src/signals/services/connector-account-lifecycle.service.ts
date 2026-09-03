@@ -12,6 +12,7 @@ import {
   type ConnectorReconnectReason,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import { isIntegrationManagedCustomConnectorProviderAdapter } from "@okouai/api-contracts/contracts/custom-connectors";
+import { connectorAuthMethodHasRequiredScopes } from "@okouai/connectors/connector-auth-method";
 import { connectors } from "@okouai/db/schema/connector";
 import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { chatThreadConnectorSelections } from "@okouai/db/schema/chat-thread-connector-selection";
@@ -424,6 +425,7 @@ function builtinConnection(
   row: ConnectorAccountRow,
   snapshot: ConnectorRuntimeSnapshot,
   now: Date,
+  includeScopeMismatch = false,
 ): ConnectorAccountConnection | null {
   const parsedSlug = connectorSlugSchema.safeParse(row.connectorSlug);
   if (!parsedSlug.success || !snapshot.connectors.has(parsedSlug.data)) {
@@ -469,6 +471,14 @@ function builtinConnection(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthGrantedScopes),
+    ...(includeScopeMismatch && runtimeMethod
+      ? {
+          scopeMismatch: !connectorAuthMethodHasRequiredScopes(
+            runtimeMethod.method,
+            parseOauthScopes(row.oauthScopes),
+          ),
+        }
+      : {}),
     connectionStatus,
     reconnectReason:
       !runtimeMethod || !storageCompatible
@@ -560,9 +570,12 @@ function projectConnection(
   row: ConnectorAccountRow,
   snapshot: ConnectorRuntimeSnapshot | null,
   now: Date,
+  includeBuiltinScopeMismatch = false,
 ): ConnectorAccountConnection | null {
   if (row.connectorSlug !== null) {
-    return snapshot ? builtinConnection(row, snapshot, now) : null;
+    return snapshot
+      ? builtinConnection(row, snapshot, now, includeBuiltinScopeMismatch)
+      : null;
   }
   return customConnection(row, now);
 }
@@ -707,6 +720,7 @@ export async function listConnectorAccountsForTarget(
     readonly cursor?: string;
     readonly limit: number;
     readonly search?: string;
+    readonly includeScopeMismatch?: true;
   },
 ): Promise<
   | {
@@ -744,7 +758,12 @@ export async function listConnectorAccountsForTarget(
   });
   const now = nowDate();
   const projected = rows.flatMap((row) => {
-    const connection = projectConnection(row, snapshot, now);
+    const connection = projectConnection(
+      row,
+      snapshot,
+      now,
+      args.includeScopeMismatch === true,
+    );
     return connection ? [connection] : [];
   });
   if (

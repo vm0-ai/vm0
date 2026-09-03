@@ -14,7 +14,10 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
-import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import {
+  connectorAccountsContract,
+  type ConnectorAccountMutationIntent,
+} from "@okouai/api-contracts/contracts/connector-accounts";
 import {
   connectorScopeDiffContract,
   connectorExternalCodeSessionContract,
@@ -743,28 +746,54 @@ export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
-const internalScopeReviewConnectorSlug$ = state<ConnectorSlug | null>(null);
-export const scopeReviewConnectorSlug$ = computed((get) => {
-  return get(internalScopeReviewConnectorSlug$);
+export type ConnectorScopeReviewSelection =
+  | {
+      readonly kind: "default";
+      readonly connectorSlug: ConnectorSlug;
+    }
+  | {
+      readonly kind: "account";
+      readonly connectorSlug: ConnectorSlug;
+      readonly connectionId: string;
+      readonly authMethod: ConnectorAuthMethodId;
+    };
+
+const internalScopeReviewSelection$ =
+  state<ConnectorScopeReviewSelection | null>(null);
+export const scopeReviewSelection$ = computed((get) => {
+  return get(internalScopeReviewSelection$);
 });
 
 export const scopeDiff$ = computed(async (get) => {
-  const connectorSlug = get(internalScopeReviewConnectorSlug$);
-  if (!connectorSlug) {
+  const selection = get(internalScopeReviewSelection$);
+  if (!selection) {
     return null;
   }
   const createClient = get(apiClient$);
+  if (selection.kind === "account") {
+    const client = createClient(connectorAccountsContract);
+    const result = await accept(
+      client.scopeDiff({
+        params: { connectionId: selection.connectionId },
+        query: { connectorSlug: selection.connectorSlug },
+      }),
+      [200],
+    );
+    return result.body;
+  }
   const client = createClient(connectorScopeDiffContract);
   const result = await accept(
-    client.getScopeDiff({ params: { connectorSlug } }),
+    client.getScopeDiff({
+      params: { connectorSlug: selection.connectorSlug },
+    }),
     [200],
   );
   return result.body;
 });
 
-export const setScopeReviewConnectorSlug$ = command(
-  ({ set }, connectorSlug: ConnectorSlug | null) => {
-    set(internalScopeReviewConnectorSlug$, connectorSlug);
+export const setScopeReviewSelection$ = command(
+  ({ set }, selection: ConnectorScopeReviewSelection | null) => {
+    set(internalScopeReviewSelection$, selection);
   },
 );
 

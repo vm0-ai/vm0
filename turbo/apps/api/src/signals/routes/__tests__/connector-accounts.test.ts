@@ -28,7 +28,11 @@ import { customConnectorsRoutes } from "../custom-connectors";
 import { customConnectorsDeleteRoutes } from "../custom-connectors-delete";
 import { customConnectorsValuesSetRoutes } from "../custom-connectors-values-set";
 import { featureSwitchesRoutes } from "../feature-switches";
-import { seedConnectorStorageRow } from "./helpers/connector-credential-storage-state";
+import {
+  seedConnectorStorageRow,
+  setBuiltinOAuthScopeFacts,
+  setConnectorDefaultState,
+} from "./helpers/connector-credential-storage-state";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
 
@@ -114,31 +118,33 @@ async function setConnectorAccountsEnabled(
 
 async function cleanupFixture(fixture: Fixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  let hasBuiltinAccounts = true;
-  while (hasBuiltinAccounts) {
-    const accounts = await accept(
-      accountClient().connections({
-        headers: authHeaders(),
-        query: { kind: "builtin", connectorSlug: "openai", limit: 100 },
-      }),
-      [200, 404],
-    );
-    hasBuiltinAccounts =
-      accounts.status === 200 && accounts.body.connections.length > 0;
-    if (accounts.status !== 200) {
-      break;
-    }
-    for (const account of accounts.body.connections) {
-      await accept(
-        accountClient().delete({
+  for (const connectorSlug of ["openai", "github"] as const) {
+    let hasBuiltinAccounts = true;
+    while (hasBuiltinAccounts) {
+      const accounts = await accept(
+        accountClient().connections({
           headers: authHeaders(),
-          params: { connectionId: account.id },
-          body: {
-            target: { kind: "builtin", connectorSlug: "openai" },
-          },
+          query: { kind: "builtin", connectorSlug, limit: 100 },
         }),
         [200, 404],
       );
+      hasBuiltinAccounts =
+        accounts.status === 200 && accounts.body.connections.length > 0;
+      if (accounts.status !== 200) {
+        break;
+      }
+      for (const account of accounts.body.connections) {
+        await accept(
+          accountClient().delete({
+            headers: authHeaders(),
+            params: { connectionId: account.id },
+            body: {
+              target: { kind: "builtin", connectorSlug },
+            },
+          }),
+          [200, 404],
+        );
+      }
     }
   }
   const customConnectors = await accept(
@@ -226,6 +232,196 @@ describe("connector account lifecycle routes", () => {
       [404],
     );
     expect(inspection.body.error.message).toBe("Resource not found");
+    const scopeDiff = await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: randomUUID() },
+        query: { connectorSlug: "github" },
+      }),
+      [404],
+    );
+    expect(scopeDiff.body.error.message).toBe("Resource not found");
+  });
+
+  it("reviews requested scopes for one exact account across default changes", async () => {
+    const fixture = await seedFixture();
+    await setConnectorAccountsEnabled(fixture, true);
+    const currentScopes = ["repo", "project", "workflow"] as const;
+    const staleId = await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "github",
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    await setConnectorDefaultState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorId: staleId,
+      isDefault: false,
+    });
+    const currentId = await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "github",
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    await setBuiltinOAuthScopeFacts(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "github",
+      connectorId: staleId,
+      oauthScopes: ["repo"],
+      oauthGrantedScopes: ["repo"],
+    });
+    await setBuiltinOAuthScopeFacts(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "github",
+      connectorId: currentId,
+      oauthScopes: currentScopes,
+      // A provider may return fewer granted scopes than the app requested.
+      // Scope review must compare against the requested snapshot instead.
+      oauthGrantedScopes: ["repo"],
+    });
+
+    const legacyList = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "github", limit: 100 },
+      }),
+      [200],
+    );
+    expect(
+      legacyList.body.connections.every((account) => {
+        return !("scopeMismatch" in account);
+      }),
+    ).toBeTruthy();
+
+    const enrichedList = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: {
+          kind: "builtin",
+          connectorSlug: "github",
+          includeScopeMismatch: "true",
+          limit: 100,
+        },
+      }),
+      [200],
+    );
+    const mismatchById = new Map(
+      enrichedList.body.connections.map((account) => {
+        return [account.id, account.scopeMismatch] as const;
+      }),
+    );
+    expect(mismatchById).toStrictEqual(
+      new Map([
+        [staleId, true],
+        [currentId, false],
+      ]),
+    );
+
+    const staleDiff = await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: staleId },
+        query: { connectorSlug: "github" },
+      }),
+      [200],
+    );
+    expect(staleDiff.body).toStrictEqual({
+      addedScopes: ["project", "workflow"],
+      removedScopes: [],
+      currentScopes,
+      storedScopes: ["repo"],
+    });
+    const currentDiff = await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: currentId },
+        query: { connectorSlug: "github" },
+      }),
+      [200],
+    );
+    expect(currentDiff.body).toStrictEqual({
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes,
+      storedScopes: currentScopes,
+    });
+
+    await accept(
+      accountClient().setDefault({
+        headers: authHeaders(),
+        params: { connectionId: staleId },
+        body: { target: { kind: "builtin", connectorSlug: "github" } },
+      }),
+      [200],
+    );
+    const currentDiffAfterDefaultChange = await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: currentId },
+        query: { connectorSlug: "github" },
+      }),
+      [200],
+    );
+    expect(currentDiffAfterDefaultChange.body).toStrictEqual(currentDiff.body);
+
+    await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: currentId },
+        query: { connectorSlug: "openai" },
+      }),
+      [404],
+    );
+    const foreign = await seedFixture();
+    await setConnectorAccountsEnabled(foreign, true);
+    await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: currentId },
+        query: { connectorSlug: "github" },
+      }),
+      [404],
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await accept(
+      accountClient().delete({
+        headers: authHeaders(),
+        params: { connectionId: currentId },
+        body: { target: { kind: "builtin", connectorSlug: "github" } },
+      }),
+      [200],
+    );
+    await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: currentId },
+        query: { connectorSlug: "github" },
+      }),
+      [404],
+    );
+
+    const unavailableMethodId = await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "openai",
+      authMethod: "unavailable-method",
+      storageVersion: 1,
+    });
+    await accept(
+      accountClient().scopeDiff({
+        headers: authHeaders(),
+        params: { connectionId: unavailableMethodId },
+        query: { connectorSlug: "openai" },
+      }),
+      [404],
+    );
   });
 
   it("inspects only exact owned accounts without leaking credentials", async () => {

@@ -216,12 +216,14 @@ describe("connector account contracts", () => {
       connectorAccountListQuerySchema.parse({
         kind: "builtin",
         connectorSlug: "github",
+        includeScopeMismatch: "true",
         limit: "100",
         search: "  work  ",
       }),
     ).toStrictEqual({
       kind: "builtin",
       connectorSlug: "github",
+      includeScopeMismatch: "true",
       limit: 100,
       search: "work",
     });
@@ -234,11 +236,51 @@ describe("connector account contracts", () => {
     ).toBe(false);
     expect(
       connectorAccountListQuerySchema.safeParse({
+        kind: "custom",
+        customConnectorId,
+        includeScopeMismatch: "true",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorAccountListQuerySchema.safeParse({
         kind: "builtin",
         connectorSlug: "github",
         limit: 101,
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps scope mismatch enrichment optional for legacy account lists", () => {
+    const connection = {
+      id: connectionId,
+      target: { kind: "builtin" as const, connectorSlug: "github" },
+      authMethod: "oauth",
+      displayName: null,
+      isDefault: true,
+      externalId: null,
+      externalUsername: "octocat",
+      externalEmail: null,
+      oauthScopes: ["repo"],
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+    };
+    const response = connectorAccountsContract.connections.responses[200];
+
+    expect(
+      response.parse({ connections: [connection], nextCursor: null }),
+    ).toStrictEqual({ connections: [connection], nextCursor: null });
+    expect(
+      response.parse({
+        connections: [{ ...connection, scopeMismatch: true }],
+        nextCursor: null,
+      }),
+    ).toStrictEqual({
+      connections: [{ ...connection, scopeMismatch: true }],
+      nextCursor: null,
+    });
   });
 
   it("requires an exact target for one account read", () => {
@@ -251,6 +293,23 @@ describe("connector account contracts", () => {
     expect(
       connectorAccountsContract.connection.query.safeParse({
         kind: "builtin",
+        connectorSlug: "github",
+        customConnectorId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("binds scope diff to an exact built-in account and slug", () => {
+    expect(
+      connectorAccountsContract.scopeDiff.pathParams.parse({ connectionId }),
+    ).toStrictEqual({ connectionId });
+    expect(
+      connectorAccountsContract.scopeDiff.query.parse({
+        connectorSlug: "github",
+      }),
+    ).toStrictEqual({ connectorSlug: "github" });
+    expect(
+      connectorAccountsContract.scopeDiff.query.safeParse({
         connectorSlug: "github",
         customConnectorId,
       }).success,

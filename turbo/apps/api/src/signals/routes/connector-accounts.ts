@@ -25,7 +25,10 @@ import {
   setDefaultConnectorAccount,
 } from "../services/connector-account-lifecycle.service";
 import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
-import { deleteConnectorLocalState$ } from "../services/connector-data.service";
+import {
+  connectorScopeDiff,
+  deleteConnectorLocalState$,
+} from "../services/connector-data.service";
 import {
   deleteCustomConnectorAccount$,
   disconnectCustomConnector$,
@@ -125,6 +128,9 @@ const connectionsInner$ = computed(async (get) => {
     limit: query.limit,
     ...(query.cursor ? { cursor: query.cursor } : {}),
     ...(query.search ? { search: query.search } : {}),
+    ...(query.kind === "builtin" && query.includeScopeMismatch === "true"
+      ? { includeScopeMismatch: true }
+      : {}),
   });
   if (result.kind === "invalid-cursor") {
     return badRequestMessage("Invalid connector account cursor");
@@ -156,6 +162,26 @@ const connectionInner$ = computed(async (get) => {
   });
   return account
     ? { status: 200 as const, body: account }
+    : notFound("Connector account not found");
+});
+
+const scopeDiffInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await get(connectorAccountsEnabled$))) {
+    return notFound("Resource not found");
+  }
+  const params = get(pathParamsOf(connectorAccountsContract.scopeDiff));
+  const query = get(queryOf(connectorAccountsContract.scopeDiff));
+  const diff = await get(
+    connectorScopeDiff({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      connectorSlug: query.connectorSlug,
+      connectorId: params.connectionId,
+    }),
+  );
+  return diff
+    ? { status: 200 as const, body: diff }
     : notFound("Connector account not found");
 });
 
@@ -521,6 +547,10 @@ export const connectorAccountRoutes: readonly RouteEntry[] = [
   {
     route: connectorAccountsContract.connections,
     handler: authRoute(readAuth, connectionsInner$),
+  },
+  {
+    route: connectorAccountsContract.scopeDiff,
+    handler: authRoute(readAuth, scopeDiffInner$),
   },
   {
     route: connectorAccountsContract.connection,

@@ -2618,6 +2618,26 @@ describe("connectors page", () => {
         });
       },
     );
+    let exactScopeDiffRequests = 0;
+    context.mocks.api(connectorAccountsContract.scopeDiff, ({ respond }) => {
+      exactScopeDiffRequests += 1;
+      return respond(404, {
+        error: { message: "Account not found", code: "NOT_FOUND" },
+      });
+    });
+    let submittedAccount: unknown;
+    context.mocks.api(
+      connectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.connectorSlug).toBe("google-ads");
+        submittedAccount = body.account;
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/google-ads/authorize",
+        });
+      },
+    );
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
 
     detachedSetupPage({
       context,
@@ -2647,6 +2667,242 @@ describe("connectors page", () => {
     });
     expect(within(dialog).getByText("New permissions")).toBeInTheDocument();
     expect(within(dialog).getByText(addedScopes[0])).toBeInTheDocument();
+    click(buttonByText("Reconnect", dialog));
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/google-ads/authorize",
+      );
+    });
+    expect(submittedAccount).toStrictEqual({ intent: "single-account" });
+    expect(exactScopeDiffRequests).toBe(0);
+  });
+
+  it("reviews and reconnects one exact non-default account", async () => {
+    const accounts = mockGitHubConnectorAccounts(2).map((account) => {
+      return {
+        ...account,
+        connectionStatus: "connected" as const,
+        reconnectReason: null,
+        scopeMismatch: !account.isDefault,
+      };
+    });
+    const defaultAccount = accounts.find((account) => {
+      return account.isDefault;
+    });
+    const personalAccount = accounts.find((account) => {
+      return !account.isDefault;
+    });
+    if (!defaultAccount || !personalAccount) {
+      throw new Error("Expected default and non-default GitHub accounts");
+    }
+    let projectedDefaultId = defaultAccount.id;
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      const defaultConnection =
+        projectedDefaultId === personalAccount.id
+          ? { ...personalAccount, isDefault: true }
+          : defaultAccount;
+      return respond(200, {
+        summaries: [
+          {
+            target: defaultAccount.target,
+            accountCount: 2,
+            attentionCount: 0,
+            defaultConnection,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        return params.connectionId === personalAccount.id
+          ? respond(200, personalAccount)
+          : respond(404, {
+              error: { message: "Account not found", code: "NOT_FOUND" },
+            });
+      },
+    );
+    const listEnrichmentValues: ("true" | null)[] = [];
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        if (query.kind !== "builtin") {
+          throw new Error("Expected a built-in connector account query");
+        }
+        listEnrichmentValues.push(query.includeScopeMismatch ?? null);
+        return respond(200, {
+          connections: [defaultAccount, personalAccount],
+          nextCursor: null,
+        });
+      },
+    );
+    const exactScopeDiffIds: string[] = [];
+    context.mocks.api(
+      connectorAccountsContract.scopeDiff,
+      ({ params, query, respond }) => {
+        exactScopeDiffIds.push(params.connectionId);
+        expect(query.connectorSlug).toBe("github");
+        if (params.connectionId !== personalAccount.id) {
+          return respond(404, {
+            error: { message: "Account not found", code: "NOT_FOUND" },
+          });
+        }
+        return respond(200, {
+          addedScopes: ["scope-new"],
+          removedScopes: [],
+          currentScopes: ["scope-old", "scope-new"],
+          storedScopes: ["scope-old"],
+        });
+      },
+    );
+    let submittedAccount: unknown;
+    context.mocks.api(
+      connectorOauthStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.connectorSlug).toBe("github");
+        submittedAccount = body.account;
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/github/authorize",
+        });
+      },
+    );
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    await waitFor(() => {
+      expect(listEnrichmentValues).toStrictEqual(["true"]);
+    });
+    const personalRow = await waitFor(() => {
+      return accountRow(manager, personalAccount.displayName ?? "");
+    });
+    await waitFor(() => {
+      expect(listEnrichmentValues).toContain("true");
+      expect(within(personalRow).getByText("Update permissions")).toBeVisible();
+    });
+    click(within(personalRow).getByLabelText("Account actions"));
+    click(menuItemByText("Review permissions"));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "GitHub permissions update",
+    });
+    await expect(
+      within(reviewDialog).findByText("scope-new"),
+    ).resolves.toBeInTheDocument();
+    expect(exactScopeDiffIds).toStrictEqual([personalAccount.id]);
+
+    // Changing the projected default while review is open must not retarget
+    // the reconnect selected from the account manager.
+    projectedDefaultId = personalAccount.id;
+    click(buttonByText("Reconnect", reviewDialog));
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "GitHub",
+    });
+    click(buttonByText("Reconnect", connectDialog));
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
+      );
+    });
+    expect(submittedAccount).toStrictEqual({
+      intent: "reconnect",
+      connectionId: personalAccount.id,
+    });
+  });
+
+  it("fails closed when an exact scope-review account becomes unavailable", async () => {
+    const accounts = mockGitHubConnectorAccounts(2).map((account) => {
+      return account.isDefault ? account : { ...account, scopeMismatch: true };
+    });
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        if (query.kind !== "builtin") {
+          throw new Error("Expected a built-in connector account query");
+        }
+        expect(query.includeScopeMismatch).toBe("true");
+        return respond(200, { connections: accounts, nextCursor: null });
+      },
+    );
+    context.mocks.api(connectorAccountsContract.scopeDiff, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Account not found", code: "NOT_FOUND" },
+      });
+    });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    const nonDefaultAccount = accounts.find((account) => {
+      return !account.isDefault;
+    });
+    if (!nonDefaultAccount) {
+      throw new Error("Expected a non-default GitHub account");
+    }
+    const row = await waitFor(() => {
+      return accountRow(manager, nonDefaultAccount.displayName ?? "");
+    });
+    click(within(row).getByLabelText("Account actions"));
+    click(menuItemByText("Review permissions"));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "GitHub permissions update",
+    });
+    await expect(
+      within(reviewDialog).findByText("Failed to load scope changes."),
+    ).resolves.toBeInTheDocument();
+    expect(queryButtonByText("Reconnect", reviewDialog)).toBeNull();
+  });
+
+  it("retries account listing without enrichment against an older API", async () => {
+    const accounts = mockGitHubConnectorAccounts(2).map((account) => {
+      const { scopeMismatch: _scopeMismatch, ...legacyAccount } = account;
+      return legacyAccount;
+    });
+    const enrichmentValues: ("true" | null)[] = [];
+    context.mocks.api(
+      connectorAccountsContract.connections,
+      ({ query, respond }) => {
+        if (query.kind !== "builtin") {
+          throw new Error("Expected a built-in connector account query");
+        }
+        enrichmentValues.push(query.includeScopeMismatch ?? null);
+        return query.includeScopeMismatch === "true"
+          ? respond(400, {
+              error: { message: "Invalid query", code: "BAD_REQUEST" },
+            })
+          : respond(200, { connections: accounts, nextCursor: null });
+      },
+    );
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
+    });
+
+    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
+    const manager = await screen.findByRole("dialog", {
+      name: "Manage GitHub accounts",
+    });
+    await waitFor(() => {
+      expect(enrichmentValues).toStrictEqual(["true", null]);
+      expect(within(manager).getByText("Work 1")).toBeInTheDocument();
+    });
+    expect(within(manager).queryByText("Update permissions")).toBeNull();
   });
 
   it("navigates connector categories and opens a connector from the keyboard", async () => {
