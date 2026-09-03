@@ -302,7 +302,7 @@ describe("chat composer models", () => {
     const matchedSubstring = screen.getByText("research", {
       selector: "span",
     });
-    expect(matchedSubstring).toHaveClass("text-brand-text/60");
+    expect(matchedSubstring).toHaveClass("text-primary/60");
 
     await user.keyboard("{Enter}");
 
@@ -316,7 +316,7 @@ describe("chat composer models", () => {
       .find((element) => {
         return element.tagName.toLowerCase() === "span";
       });
-    expect(highlightedWorkflow).toHaveClass("text-brand-text");
+    expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
   it("matches slash skills by substring while prioritizing prefixes", async () => {
@@ -407,9 +407,7 @@ describe("chat composer models", () => {
     expect(mountedComposerText()).toContain(
       "https://www.vm0.ai/en/use-cases/pr-review",
     );
-    expect(
-      editor.querySelector("span.text-brand-text"),
-    ).not.toBeInTheDocument();
+    expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
   });
 
   it("suggests threads from every agent with aligned agent avatars", async () => {
@@ -759,7 +757,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(initialEditor).toHaveTextContent("/new-chat-workflow");
       expect(
-        initialEditor.querySelector("span.text-brand-text"),
+        initialEditor.querySelector("span.text-primary"),
       ).not.toBeInTheDocument();
     });
 
@@ -775,7 +773,7 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(within(initialEditor).getByText("/new-chat-workflow")).toHaveClass(
-        "text-brand-text",
+        "text-primary",
       );
     });
     await expect(findComposerEditor()).resolves.toBe(initialEditor);
@@ -796,7 +794,7 @@ describe("chat composer models", () => {
       .find((element) => {
         return element.tagName.toLowerCase() === "span";
       });
-    expect(highlightedWorkflow).toHaveClass("text-brand-text");
+    expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
   it("keeps the latest workflow highlights when split-pane reloads resolve out of order", async () => {
@@ -944,7 +942,7 @@ describe("chat composer models", () => {
       .find((element) => {
         return element.tagName.toLowerCase() === "span";
       });
-    expect(highlightedWorkflow).toHaveClass("text-brand-text");
+    expect(highlightedWorkflow).toHaveClass("text-primary");
     releaseBarrierRequests.resolve();
   });
 

@@ -45,8 +45,8 @@ function clerkVariables(): Record<string, string> {
     colorInputBackground: "hsl(var(--input))",
     colorInputText: "hsl(var(--foreground))",
     colorDanger: "hsl(var(--destructive))",
-    colorSuccess: "hsl(170 100% 27.6%)",
-    colorWarning: "hsl(38.8 100% 50%)",
+    colorSuccess: "hsl(142 71% 45%)",
+    colorWarning: "hsl(38 92% 50%)",
     colorShimmer: "hsl(var(--muted))",
     fontFamily:
       "var(--font-family-sans, 'Noto Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)",
@@ -66,7 +66,7 @@ function cardElements(): Elements {
       border: "0.7px solid hsl(var(--border))",
       borderRadius: "1rem",
       boxShadow:
-        "0 2px 12px hsl(30 6% 45% / 0.09), 0 0 0 0.5px hsl(30 6% 45% / 0.05)",
+        "0 2px 12px hsl(220 12% 50% / 0.08), 0 0 0 0.5px hsl(220 12% 50% / 0.04)",
     },
     card: {
       backgroundColor: "hsl(var(--card))",
@@ -222,7 +222,7 @@ function chromeElements(): Elements {
       backgroundColor: "hsl(var(--popover))",
       border: "0.7px solid hsl(var(--border))",
       borderRadius: "0.5rem",
-      boxShadow: "0 8px 24px hsl(30 5% 18% / 0.12)",
+      boxShadow: "0 8px 24px hsl(220 12% 20% / 0.12)",
     },
     menuItem: {
       color: "hsl(var(--foreground))",
@@ -231,7 +231,7 @@ function chromeElements(): Elements {
     },
     avatarBox: { borderRadius: "0.5rem" },
     modalBackdrop: {
-      backgroundColor: "hsl(30 4.3% 13.5% / 0.55)",
+      backgroundColor: "hsl(220 12% 5% / 0.55)",
       backdropFilter: "blur(2px)",
     },
     modalContent: { backgroundColor: "transparent" },
@@ -288,7 +288,7 @@ function userButtonElements(): Elements {
       backgroundColor: "hsl(var(--popover))",
       border: "0.7px solid hsl(var(--border))",
       borderRadius: "0.75rem",
-      boxShadow: "0 8px 24px hsl(30 5% 18% / 0.12)",
+      boxShadow: "0 8px 24px hsl(220 12% 20% / 0.12)",
     },
     userButtonPopoverActionButton: {
       color: "hsl(var(--foreground))",

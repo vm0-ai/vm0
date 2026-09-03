@@ -53,6 +53,7 @@ export enum FeatureSwitchKey {
   ChatErrorRecovery = "chatErrorRecovery",
   BatchChatEventCatchUp = "batchChatEventCatchUp",
   ChatRunWorkFolding = "chatRunWorkFolding",
+  ChatThinkingSpinner = "chatThinkingSpinner",
   MarkdownHexColorPreview = "markdownHexColorPreview",
   FollowUpOptimize = "followUpOptimize",
   ResponsiveFollowupCards = "responsiveFollowupCards",
@@ -63,8 +64,6 @@ export enum FeatureSwitchKey {
   CustomConnectorMcp = "customConnectorMcp",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
-  PiMemoryRecall = "piMemoryRecall",
-  PiMemoryGeneration = "piMemoryGeneration",
   PresentationScreenshot = "presentationScreenshot",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
@@ -76,5 +75,4 @@ export enum FeatureSwitchKey {
   IosPwaStartupImages = "iosPwaStartupImages",
   GeistTypeface = "geistTypeface",
   SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
-  NewUi = "newUi",
 }

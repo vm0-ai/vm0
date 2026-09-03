@@ -33,7 +33,7 @@ function SelectionCheck({ selected }: { readonly selected: boolean }) {
   return selected ? (
     <CircleCheckBig
       size={18}
-      className="shrink-0 text-brand-text"
+      className="shrink-0 text-primary"
       aria-hidden="true"
     />
   ) : null;

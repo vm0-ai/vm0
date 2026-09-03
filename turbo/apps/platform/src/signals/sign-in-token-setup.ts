@@ -1,5 +1,11 @@
 import { command } from "ccstate";
-import { clerk$ } from "./auth.ts";
+import {
+  buildSignInRedirectUrl,
+  clerk$,
+  getAllowedAuthRedirectOriginsForCurrentPage,
+  resolveAppAuthUrl,
+  resolveSatelliteAuthRouteRedirectUrl,
+} from "./auth.ts";
 import { searchParams$, detachedNavigateTo$ } from "./route.ts";
 import { logger } from "./log.ts";
 
@@ -9,12 +15,25 @@ const L = logger("SignInToken");
  * Setup command for /sign-in-token route.
  *
  * Accepts a Clerk sign-in token via `?token=...` query parameter,
- * authenticates the user on the platform domain, and redirects to /.
+ * authenticates the user on the primary platform domain, and redirects to the
+ * validated completion URL.
  *
  * This route has no auth guard — the user is not yet authenticated.
  */
 export const setupSignInTokenPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const satelliteAuthRedirectUrl =
+      resolveSatelliteAuthRouteRedirectUrl("sign-in");
+    if (satelliteAuthRedirectUrl) {
+      location.replace(satelliteAuthRedirectUrl);
+      return;
+    }
+
+    const completionRedirectUrl = buildSignInRedirectUrl(
+      location.search,
+      getAllowedAuthRedirectOriginsForCurrentPage(),
+      location.hash,
+    );
     const params = get(searchParams$);
     const token = params.get("token");
 
@@ -49,8 +68,10 @@ export const setupSignInTokenPage$ = command(
       session: result.createdSessionId,
       navigate: ({ session, decorateUrl }) => {
         const destination = session.currentTask
-          ? `/sign-in/tasks/${session.currentTask.key}`
-          : "/";
+          ? resolveAppAuthUrl(`/sign-in/tasks/${session.currentTask.key}`, {
+              redirectUrl: completionRedirectUrl,
+            })
+          : completionRedirectUrl;
         window.location.href = decorateUrl(destination);
       },
     });

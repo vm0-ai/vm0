@@ -98,7 +98,7 @@ ruleTester.run("prefer-ui-components", rule, {
     {
       code: `
         const cta = (
-          <button className="h-9 rounded-[10px] bg-[#ffa500] px-4 text-white">
+          <button className="h-9 rounded-[10px] bg-[#ed4e01] px-4 text-white">
             {label}
           </button>
         );

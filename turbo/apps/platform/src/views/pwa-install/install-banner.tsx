@@ -33,7 +33,7 @@ export function InstallBanner() {
 
   return (
     <div className="shrink-0 flex items-center gap-2 bg-primary/5 border-b border-primary/20 px-3 py-2 text-sm">
-      <Download size={16} className="text-brand-text shrink-0" />
+      <Download size={16} className="text-primary shrink-0" />
       <span className="flex-1 min-w-0 truncate text-foreground">
         {t(($) => {
           return $.lifecycle.pwaInstall.banner;

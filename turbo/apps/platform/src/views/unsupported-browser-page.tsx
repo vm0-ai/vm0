@@ -62,12 +62,12 @@ export function UnsupportedBrowserPage({
               stroke="currentColor"
               strokeLinecap="round"
               strokeWidth="2.5"
-              className="text-brand-text"
+              className="text-primary"
             />
             <path
               d="m24 11 1 4-4 1M16 29l-1-4 4-1"
               fill="currentColor"
-              className="text-brand-text"
+              className="text-primary"
             />
           </svg>
         </div>
