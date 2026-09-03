@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.539.1](https://github.com/vm0-ai/vm0/compare/api-v1.539.0...api-v1.539.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+    * @okouai/db bumped to 1.239.1
+    * @okouai/pi-agent-runtime bumped to 1.15.2
+
+## [1.539.0](https://github.com/vm0-ai/vm0/compare/api-v1.538.2...api-v1.539.0) (2026-09-03)
+
+
+### Features
+
+* **chat:** persist v7 run failure reasons ([#31419](https://github.com/vm0-ai/vm0/issues/31419)) ([8739601](https://github.com/vm0-ai/vm0/commit/873960155fa9fd61c1e4db80f3e4275672696ee0))
+* **cli:** redesign okou social around user intents ([#31333](https://github.com/vm0-ai/vm0/issues/31333)) ([1dafc7d](https://github.com/vm0-ai/vm0/commit/1dafc7d10900a2f1a5b7c6821090cc287b150093))
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
+
+### Performance Improvements
+
+* **api:** skip unchanged chat event catch-up reads ([#31492](https://github.com/vm0-ai/vm0/issues/31492)) ([eac0955](https://github.com/vm0-ai/vm0/commit/eac09551e159c571114c1dbfc9039ddaba11eb56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.615.0
+    * @okouai/db bumped to 1.239.0
+
+## [1.538.2](https://github.com/vm0-ai/vm0/compare/api-v1.538.1...api-v1.538.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agent:** lock default agent name ([#31440](https://github.com/vm0-ai/vm0/issues/31440)) ([1c40b16](https://github.com/vm0-ai/vm0/commit/1c40b16066635e282d31752e6ce654b1422f5ecb))
+* **cli:** make action url handoffs loss-resistant ([#31461](https://github.com/vm0-ai/vm0/issues/31461)) ([da3fa0d](https://github.com/vm0-ai/vm0/commit/da3fa0d9df45c76e052ff9d3c6a99e3cc7ffa040))
+* **social:** classify mp4 downloads by media tracks ([#31418](https://github.com/vm0-ai/vm0/issues/31418)) ([23dd595](https://github.com/vm0-ai/vm0/commit/23dd5951c24da38ea4c8e3cbfaa839a1de974e42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.2
+    * @okouai/db bumped to 1.238.6
+
 ## [1.538.1](https://github.com/vm0-ai/vm0/compare/api-v1.538.0...api-v1.538.1) (2026-09-03)
 
 

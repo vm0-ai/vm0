@@ -147,22 +147,26 @@ replace it from the Okou update ZIP, and launch it again.
 
 ### Zero and Okou update compatibility
 
-Zero and Okou desktop releases are independent products during the rename
-rollout. Existing Zero installations keep using
-`/api/desktop/updates/stable/darwin/arm64` and the `desktop-updates` manifest.
 Final `ai.okou.desktop` installations use
-`/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64` and the separate
+`/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64` and the
 `ai-okou-desktop-updates` manifest. The stable Okou download route at
 `/api/desktop/updates/stable/darwin/arm64` also resolves through this
-final-identity manifest. The pre-adoption Okou manifest
-remains frozen without a final-identity artifact, and its explicit product
-routes return `404`. Each manifest identifies its product, and the API rejects
-ZIP assets whose product filename does not match the requested feed. A Zero
-feed must never publish an Okou artifact, and the pre-adoption Okou feed must
-never publish a final-identity archive.
+final-identity manifest. The manifest identifies its product, and the API
+rejects ZIP assets whose product filename does not match it, so an Okou feed
+never publishes a Zero archive.
 
-The release systems may deploy independently. The API therefore preserves the
-legacy Zero routes and accepts both Zero callback schemes
+`ai-okou-desktop` is the only line the API still resolves. The pre-adoption
+`okou` manifest remains frozen without a final-identity artifact, and #31475
+retired the `zero` line the same way: its manifest had been frozen since the
+`hard` migration policy went live, and the Squirrel clients still polling it
+could not have crossed to the Okou bundle anyway. Both retired lines answer
+`404` on their explicit `:product` routes, and the unqualified
+`RELEASES.json` route — the only route that ever resolved to Zero — is gone.
+Only the unqualified `release` and `dmg` routes remain unqualified, and both
+resolve to Okou.
+
+The release systems may deploy independently. The API therefore accepts both
+Zero callback schemes
 (`ai.vm0.zero.desktop` and `ai.vm0.zero.desktop.dev`) while also accepting the
 Okou schemes (`ai.okou.desktop` and `ai.okou.desktop.dev`). Desktop
 builds select exactly one product feed and one callback scheme from their

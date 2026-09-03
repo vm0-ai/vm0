@@ -143,8 +143,8 @@ describe("iOS PWA startup image entrypoint", () => {
       }
       if (element.matches(BOOTSTRAP_AVATAR_LAYERS_SELECTOR)) {
         return portraitOrientation
-          ? { height: 80, width: 80, x: 161, y: 384 }
-          : { height: 80, width: 80, x: 397, y: 155 };
+          ? { height: 64, width: 64, x: 169, y: 392 }
+          : { height: 64, width: 64, x: 405, y: 163 };
       }
       return undefined;
     });
@@ -212,13 +212,10 @@ describe("iOS PWA startup image entrypoint", () => {
     expect(canvas.renders).toStrictEqual([
       {
         avatar: {
-          centerX: 603,
-          centerY: 1272,
-          clipRadius: 96,
-          height: 240,
-          width: 240,
-          x: 483,
-          y: 1152,
+          height: 192,
+          width: 192,
+          x: 507,
+          y: 1176,
         },
         background: "#19191b",
         height: 2622,
@@ -245,13 +242,10 @@ describe("iOS PWA startup image entrypoint", () => {
     });
     expect(canvas.renders[1]).toStrictEqual({
       avatar: {
-        centerX: 1311,
-        centerY: 585,
-        clipRadius: 96,
-        height: 240,
-        width: 240,
-        x: 1191,
-        y: 465,
+        height: 192,
+        width: 192,
+        x: 1215,
+        y: 489,
       },
       background: "#19191b",
       height: 1206,

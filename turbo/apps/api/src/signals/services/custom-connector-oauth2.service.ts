@@ -93,7 +93,7 @@ import {
   refreshCustomConnectorAutomaticOAuthToken,
   retireCustomConnectorDcrRegistration,
   type CustomConnectorAutomaticOAuthBinding,
-  type CustomConnectorAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
+  type LegacyCustomConnectorAutomaticOAuthStateContext,
 } from "./custom-connector-automatic-oauth.service";
 import { configuredOkouMcpOAuthClientMetadata } from "./mcp-oauth-client-metadata.service";
 
@@ -106,27 +106,59 @@ const oauthHttpsUrlSchema = z
     return new URL(value).protocol === "https:";
   });
 
-const customConnectorCustomOAuthStateContextSchema = z
+const customConnectorCustomOAuthProviderContextSchema = z
   .object({
-    version: z.never().optional(),
-    oauthSetup: z.literal("custom").optional(),
-    connectorId: z.string().uuid(),
-    storageVersion: z.number().int().positive(),
-    providerContext: z
-      .object({
-        provider: z.literal("feishu"),
-        completionTarget: z.enum(["custom", "feishu"]),
-        installationId: z.string().uuid().optional(),
-        expectedOpenId: z.string().min(1).optional(),
-      })
-      .strict()
-      .optional(),
+    provider: z.literal("feishu"),
+    completionTarget: z.enum(["custom", "feishu"]),
+    installationId: z.string().uuid().optional(),
+    expectedOpenId: z.string().min(1).optional(),
   })
   .strict();
 
-const customConnectorAutomaticOAuthStateContextBaseSchema = z.object({
-  version: z.literal(1),
-  oauthSetup: z.literal("automatic"),
+const customConnectorLegacyCustomOAuthStateContextSchema = z
+  .object({
+    version: z.never().optional(),
+    authMode: z.never().optional(),
+    oauthSetup: z.literal("custom").optional(),
+    connectorId: z.string().uuid(),
+    storageVersion: z.number().int().positive(),
+    providerContext: customConnectorCustomOAuthProviderContextSchema.optional(),
+  })
+  .strict();
+
+const customConnectorCanonicalCustomOAuthStateContextSchema = z
+  .object({
+    version: z.literal(2),
+    authMode: z.literal("oauth"),
+    oauthSetup: z.never().optional(),
+    connectorId: z.string().uuid(),
+    storageVersion: z.number().int().positive(),
+    providerContext: customConnectorCustomOAuthProviderContextSchema.optional(),
+  })
+  .strict();
+
+type CustomConnectorCanonicalCustomOAuthStateContext = z.infer<
+  typeof customConnectorCanonicalCustomOAuthStateContextSchema
+>;
+
+const customConnectorCustomOAuthStateContextSchema = z.union([
+  customConnectorCanonicalCustomOAuthStateContextSchema,
+  customConnectorLegacyCustomOAuthStateContextSchema.transform(
+    (value): CustomConnectorCanonicalCustomOAuthStateContext => {
+      return {
+        version: 2,
+        authMode: "oauth",
+        connectorId: value.connectorId,
+        storageVersion: value.storageVersion,
+        ...(value.providerContext
+          ? { providerContext: value.providerContext }
+          : {}),
+      };
+    },
+  ),
+]);
+
+const customConnectorAutomaticOAuthStateContextCoreSchema = z.object({
   connectorId: z.string().uuid(),
   storageVersion: z.number().int().positive(),
   issuer: oauthHttpsUrlSchema,
@@ -144,19 +176,86 @@ const customConnectorAutomaticOAuthStateContextBaseSchema = z.object({
   providerContext: z.never().optional(),
 });
 
-const customConnectorAutomaticOAuthStateContextSchema = z.union([
-  customConnectorAutomaticOAuthStateContextBaseSchema
+const customConnectorLegacyAutomaticOAuthStateContextBaseSchema =
+  customConnectorAutomaticOAuthStateContextCoreSchema.extend({
+    version: z.literal(1),
+    authMode: z.never().optional(),
+    oauthSetup: z.literal("automatic"),
+  });
+
+const customConnectorLegacyAutomaticOAuthStateContextSchema = z.union([
+  customConnectorLegacyAutomaticOAuthStateContextBaseSchema
     .extend({
       registrationMethod: z.literal("cimd"),
       dcrRegistrationId: z.never().optional(),
     })
     .strict(),
-  customConnectorAutomaticOAuthStateContextBaseSchema
+  customConnectorLegacyAutomaticOAuthStateContextBaseSchema
     .extend({
       registrationMethod: z.literal("dcr"),
       dcrRegistrationId: z.string().uuid(),
     })
     .strict(),
+]);
+
+const customConnectorCanonicalAutomaticOAuthStateContextBaseSchema =
+  customConnectorAutomaticOAuthStateContextCoreSchema.extend({
+    version: z.literal(2),
+    authMode: z.literal("automatic"),
+    oauthSetup: z.never().optional(),
+  });
+
+const customConnectorCanonicalAutomaticOAuthStateContextSchema = z.union([
+  customConnectorCanonicalAutomaticOAuthStateContextBaseSchema
+    .extend({
+      registrationMethod: z.literal("cimd"),
+      dcrRegistrationId: z.never().optional(),
+    })
+    .strict(),
+  customConnectorCanonicalAutomaticOAuthStateContextBaseSchema
+    .extend({
+      registrationMethod: z.literal("dcr"),
+      dcrRegistrationId: z.string().uuid(),
+    })
+    .strict(),
+]);
+
+type CustomConnectorCanonicalAutomaticOAuthStateContext = z.infer<
+  typeof customConnectorCanonicalAutomaticOAuthStateContextSchema
+>;
+
+function normalizeLegacyAutomaticOAuthStateContext(
+  value: z.infer<typeof customConnectorLegacyAutomaticOAuthStateContextSchema>,
+): CustomConnectorCanonicalAutomaticOAuthStateContext {
+  const common = {
+    version: 2 as const,
+    authMode: "automatic" as const,
+    connectorId: value.connectorId,
+    storageVersion: value.storageVersion,
+    issuer: value.issuer,
+    resource: value.resource,
+    resourceMetadataUrl: value.resourceMetadataUrl,
+    authorizationEndpoint: value.authorizationEndpoint,
+    tokenEndpoint: value.tokenEndpoint,
+    authorizationResponseIssParameterSupported:
+      value.authorizationResponseIssParameterSupported,
+    clientId: value.clientId,
+    tokenEndpointAuthMethod: value.tokenEndpointAuthMethod,
+  };
+  return value.registrationMethod === "cimd"
+    ? { ...common, registrationMethod: "cimd" }
+    : {
+        ...common,
+        registrationMethod: "dcr",
+        dcrRegistrationId: value.dcrRegistrationId,
+      };
+}
+
+const customConnectorAutomaticOAuthStateContextSchema = z.union([
+  customConnectorCanonicalAutomaticOAuthStateContextSchema,
+  customConnectorLegacyAutomaticOAuthStateContextSchema.transform(
+    normalizeLegacyAutomaticOAuthStateContext,
+  ),
 ]);
 
 const customConnectorOAuthStateContextSchema = z.union([
@@ -167,6 +266,14 @@ const customConnectorOAuthStateContextSchema = z.union([
 type CustomConnectorOAuthStateContext = z.infer<
   typeof customConnectorOAuthStateContextSchema
 >;
+
+type CustomConnectorLegacyCustomOAuthStateContext = z.infer<
+  typeof customConnectorLegacyCustomOAuthStateContextSchema
+>;
+
+type CustomConnectorLegacyOAuthStateContext =
+  | CustomConnectorLegacyCustomOAuthStateContext
+  | LegacyCustomConnectorAutomaticOAuthStateContext;
 
 export type CustomConnectorCustomOAuthStateContext = z.infer<
   typeof customConnectorCustomOAuthStateContextSchema
@@ -179,13 +286,13 @@ type CustomConnectorAutomaticOAuthStateContext = z.infer<
 export function isCustomConnectorCustomOAuthStateContext(
   context: CustomConnectorOAuthStateContext,
 ): context is CustomConnectorCustomOAuthStateContext {
-  return context.oauthSetup !== "automatic";
+  return context.authMode === "oauth";
 }
 
 export function isCustomConnectorAutomaticOAuthStateContext(
   context: CustomConnectorOAuthStateContext,
 ): context is CustomConnectorAutomaticOAuthStateContext {
-  return context.oauthSetup === "automatic";
+  return context.authMode === "automatic";
 }
 
 const oauthTokenResponseSchema = z.object({
@@ -572,7 +679,8 @@ interface PreparedOAuthStart {
   readonly authorizationUrl: string;
   readonly codeVerifier: string | null;
   readonly oauthRequestedScopes: string | null;
-  readonly context: CustomConnectorOAuthStateContext;
+  // Keep emitting the legacy callback state until #31471 is deployed.
+  readonly context: CustomConnectorLegacyOAuthStateContext;
 }
 
 function connectorConnectionMutationFailure(
@@ -723,7 +831,7 @@ async function prepareAutomaticOAuthStart(
         codeVerifier: prepared.codeVerifier,
         oauthRequestedScopes: prepared.requestedScope,
         context:
-          prepared.context satisfies PreparedCustomConnectorAutomaticOAuthStateContext,
+          prepared.context satisfies LegacyCustomConnectorAutomaticOAuthStateContext,
       } satisfies PreparedOAuthStart,
     },
   };

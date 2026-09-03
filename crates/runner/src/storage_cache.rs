@@ -12,13 +12,12 @@
 //! so `guest-download` reads the guest-local staged archive instead of
 //! re-fetching.
 //!
-//! Eligible fresh sandbox attempts can assign bounded cold identities
-//! to a runner owner before sandbox creation. That owner performs one full
-//! request, keeps the cache writer through atomic publication and the
-//! runner-wide permit through guest application, and stages only complete
-//! content. A terminal owner is drained before the unchanged remote URL is
-//! allowed to fall back to guest download.
-//! Reused live sandboxes continue through the ordinary guest-owned path.
+//! Eligible fresh and reused sandbox attempts can assign bounded cold
+//! identities to a runner owner before independent pre-spawn preparation.
+//! That owner performs one full request, keeps the cache writer through atomic
+//! publication and the runner-wide permit through guest application, and
+//! stages only complete content. A terminal owner is drained before the
+//! unchanged remote URL is allowed to fall back to guest download.
 //! Keying on both name and version gives same-version entries with different
 //! storage names separate collision-resistant staged filenames in normal
 //! operation, so they do not clobber each other on the guest tmpfs.
@@ -263,7 +262,7 @@ impl FreshDeliveryScanSummary {
     }
 }
 
-/// Runner-wide admission control for fresh archive delivery.
+/// Runner-wide admission control for bounded archive delivery.
 ///
 /// Clones share one semaphore, so concurrent executor attempts draw from the
 /// same `FRESH_DELIVERY_RUNNER_LIMIT`. For an admitted archive, the owned
@@ -801,11 +800,12 @@ enum FreshArchiveResolved {
     },
 }
 
-/// In-flight runner ownership for archives selected from one fresh storage plan.
+/// In-flight runner ownership for archives selected from one storage plan.
 ///
-/// Fetch tasks start before sandbox creation, but a completed fetch waits on
-/// its apply gate until guest storage application resolves this delivery. The
-/// delivery then owns any atomic cache publication tasks until they finish.
+/// Fetch tasks start during fresh or reused pre-spawn preparation, but a
+/// completed fetch waits on its apply gate until guest storage application
+/// resolves this delivery. The delivery then owns any atomic cache publication
+/// tasks until they finish.
 ///
 /// Callers must either pass this value with its original plan to
 /// `populate_cache_with_fresh_delivery` or call
@@ -820,13 +820,13 @@ pub(crate) struct FreshArchiveDelivery {
     publications: JoinSet<FreshArchivePublicationTaskResult>,
 }
 
-/// A fresh storage plan paired with the delivery prepared for its plan inputs.
+/// A storage plan paired with the delivery prepared for its plan inputs.
 ///
 /// The plan and delivery must remain together. A retry that changes the
 /// workspace-image selection must drain the previous delivery and rebuild both
 /// values; a retry such as DNS-only sandbox replacement may retain the pair
 /// when the plan inputs are unchanged.
-pub(crate) struct PreparedFreshStorage {
+pub(crate) struct PreparedStorage {
     pub(crate) plan: StoragePlan,
     pub(crate) delivery: FreshArchiveDelivery,
 }
@@ -874,14 +874,14 @@ impl FreshArchiveDelivery {
             if let Err(error) = result
                 && !error.is_cancelled()
             {
-                warn!(%error, "fresh archive fetch task failed while draining");
+                warn!(%error, "runner-owned archive fetch task failed while draining");
             }
         }
         // Once a complete response enters publication, wait for the atomic
         // cache transaction even when the run itself has been cancelled.
         while let Some(result) = self.publications.join_next().await {
             if let Err(error) = result {
-                warn!(%error, "fresh archive publication task failed while draining");
+                warn!(%error, "runner-owned archive publication task failed while draining");
             }
         }
         if had_owned_work {
@@ -906,7 +906,7 @@ impl FreshArchiveDelivery {
         let mut resolved = Vec::new();
         while let Some(task) = self.fetches.join_next().await {
             match task.map_err(|error| {
-                RunnerError::Internal(format!("fresh archive fetch task: {error}"))
+                RunnerError::Internal(format!("runner-owned archive fetch task: {error}"))
             })? {
                 FreshArchiveFetchTaskResult::Downloaded(downloaded) => {
                     telemetry.record(
@@ -936,7 +936,7 @@ impl FreshArchiveDelivery {
                         None,
                     );
                     let target = group.targets.first().ok_or_else(|| {
-                        RunnerError::Internal("empty fresh archive target group".to_string())
+                        RunnerError::Internal("empty runner-owned archive target group".to_string())
                     })?;
                     let cache_dir = home.storage_cache_dir(&target.name, &target.version);
                     self.publications.spawn(async move {
@@ -961,7 +961,7 @@ impl FreshArchiveDelivery {
 
         while let Some(task) = self.publications.join_next().await {
             let task = task.map_err(|error| {
-                RunnerError::Internal(format!("fresh archive publication task: {error}"))
+                RunnerError::Internal(format!("runner-owned archive publication task: {error}"))
             })?;
             match task.result {
                 Ok(archive) => {
@@ -1495,7 +1495,7 @@ async fn stage_fresh_archives(
             FreshArchiveResolved::Ready { group, archive } => {
                 let FreshArchivePublished { bytes, permit } = archive;
                 let target = group.targets.first().ok_or_else(|| {
-                    RunnerError::Internal("empty fresh archive target group".to_string())
+                    RunnerError::Internal("empty runner-owned archive target group".to_string())
                 })?;
                 let write = GuestStageWrite {
                     guest_path: guest_archive_path(&target.name, &target.version),
@@ -1890,13 +1890,14 @@ fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
         .collect()
 }
 
-/// Starts bounded runner-owned archive delivery for one fresh storage plan.
+/// Starts bounded runner-owned archive delivery for one storage plan.
 ///
-/// The executor calls this after workspace-image selection fixes the plan and
-/// before sandbox creation, allowing eligible full-archive fetches to overlap
-/// sandbox startup. Preparation examines at most `FRESH_DELIVERY_SCAN_LIMIT` target
-/// groups, admits at most `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each
-/// admission from the shared `FRESH_DELIVERY_RUNNER_LIMIT`.
+/// The executor calls this after previous-storage selection fixes the plan and
+/// before fresh or reused sandbox preparation, allowing eligible full-archive
+/// fetches to overlap pre-spawn work. Preparation examines at most
+/// `FRESH_DELIVERY_SCAN_LIMIT` target groups, admits at most
+/// `FRESH_DELIVERY_PER_RUN_LIMIT`, and draws each admission from the shared
+/// `FRESH_DELIVERY_RUNNER_LIMIT`.
 ///
 /// Each admitted group acquires its cache-writer flock before fetching. After
 /// validating a complete response, the fetch waits on a one-shot apply gate;
@@ -1937,7 +1938,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|error| {
-                RunnerError::Internal(format!("build fresh archive client: {error}"))
+                RunnerError::Internal(format!("build runner-owned archive client: {error}"))
             })?;
 
         let mut scanned = 0;
@@ -1977,7 +1978,7 @@ pub(crate) async fn prepare_fresh_archive_delivery(
                 }
             };
             let target = group.targets.first().ok_or_else(|| {
-                RunnerError::Internal("empty fresh archive target group".to_string())
+                RunnerError::Internal("empty runner-owned archive target group".to_string())
             })?;
             let lock_path = home.storage_lock(&target.name, &target.version);
             let cache_dir = home.storage_cache_dir(&target.name, &target.version);
@@ -2101,8 +2102,8 @@ pub(crate) async fn prepare_fresh_archive_delivery(
     Ok(delivery)
 }
 
-/// Fresh storage delivery uses the shared bounded timeout and falls back to
-/// guest-download when its best-effort request cannot complete successfully.
+/// Runner-owned archive delivery uses the shared bounded timeout and falls
+/// back to guest-download when its best-effort request cannot complete.
 async fn fetch_fresh_archive(
     http: &Client,
     archive_url: &str,

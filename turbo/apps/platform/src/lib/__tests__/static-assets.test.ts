@@ -126,9 +126,12 @@ describe("published static asset URLs", () => {
     const document = new DOMParser().parseFromString(indexHtml, "text/html");
     const skeleton = document.getElementById("app-bootstrap-skeleton");
 
-    expect(
-      skeleton?.querySelector("svg.app-bootstrap-skeleton__avatar-layers"),
-    ).toBeInstanceOf(SVGSVGElement);
+    const illustration = skeleton?.querySelector(
+      "svg.app-bootstrap-skeleton__avatar-layers",
+    );
+
+    expect(illustration).toBeInstanceOf(SVGSVGElement);
+    expect(illustration).toHaveAttribute("viewBox", "0 0 518 512");
     expect(skeleton?.querySelectorAll("img[src]")).toHaveLength(0);
     expect(indexHtml).not.toContain(`${FROZEN_CDN_PREFIX}assets/avatar-svg/`);
   });

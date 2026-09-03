@@ -22,7 +22,11 @@ printf 'git %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
 case "${1:-}" in
   fetch|cat-file) exit 0 ;;
   merge-base)
-    [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
+    if [ "${3:-}" = "c093e0ffdab988d2a8a071809f90d87fa3e79f20" ]; then
+      [ "${MOCK_READER_FLOOR_VALID:-1}" = "1" ]
+    else
+      [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
+    fi
     ;;
   tag)
     printf 'vm0-v1.2.3\n'
@@ -139,6 +143,17 @@ target_commit=$invalid_commit
 assert_failure "must be a full lowercase SHA-1" run_resolver "${tmp_dir}/invalid.output"
 target_commit=$target_commit_before
 [ ! -s "${tmp_dir}/boundaries.log" ] || fail "invalid target must fail before external boundaries"
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure \
+  "first compatible release is 89c6a521944e2ac8550da424f164db08f4f80f0c" \
+  run_resolver \
+  "${tmp_dir}/reader-floor.output" \
+  MOCK_READER_FLOOR_VALID=0
+[ ! -s "${tmp_dir}/reader-floor.output" ] || fail "incompatible reader target must not publish outputs"
+if grep -qE '^(curl|aws) ' "${tmp_dir}/boundaries.log"; then
+  fail "reader-floor rejection must happen before artifact resolution"
+fi
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
 ruby -e '

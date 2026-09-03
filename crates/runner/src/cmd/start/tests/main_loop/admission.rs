@@ -1562,12 +1562,12 @@ async fn finalizing_immediate_handoff_reuses_matching_sandbox_past_preference_de
 }
 
 #[tokio::test(start_paused = true)]
-async fn finalizing_handoff_grace_starts_when_claim_returns() {
+async fn pre_finalization_wait_ends_at_preference_deadline() {
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
-    let reuse_key = "thread:claim-relative-handoff-grace";
+    let reuse_key = "thread:pre-finalization-preference-deadline";
     let predecessor_run_id = RunId::new_v4();
     let predecessor_guard = env.active_runs.register(
         predecessor_run_id,
@@ -1599,29 +1599,96 @@ async fn finalizing_handoff_grace_starts_when_claim_returns() {
             .any(|candidate| candidate.run_id() == run_id)
     );
 
-    tokio::time::advance(
-        super::super::super::finalizing_claim::FINALIZING_HANDOFF_ACCEPTANCE_GRACE
-            - Duration::from_millis(1),
-    )
-    .await;
+    tokio::time::advance(Duration::from_millis(99)).await;
     tokio::task::yield_now().await;
     assert_eq!(
         wait_gate.entered_count(),
         0,
-        "fresh fallback must not start inside the claim-relative handoff grace"
+        "fresh fallback must not start before the API preference deadline"
     );
 
     tokio::time::advance(Duration::from_millis(2)).await;
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("fresh fallback should start after the handoff grace expires");
+        .expect("fresh fallback should start when pre-finalization outlives the preference");
     wait_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await
-        .expect("fallback run should complete after the claim-relative grace");
+        .expect("fallback run should complete after the preference deadline");
+    assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn finalizing_handoff_grace_starts_when_predecessor_enters_finalization() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, overrides);
+    let reuse_key = "thread:producer-relative-handoff-grace";
+    let predecessor_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        predecessor_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    let finalization_started = tokio::time::Instant::now().into_std();
+    assert!(predecessor_reuse.mark_finalizing(finalization_started));
+    tokio::time::advance(Duration::from_millis(500)).await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            predecessor_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + Duration::from_secs(5),
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id)
+    );
+
+    let finalization_deadline = finalization_started
+        + super::super::super::finalizing_claim::FINALIZING_HANDOFF_ACCEPTANCE_GRACE;
+    let remaining =
+        finalization_deadline.saturating_duration_since(tokio::time::Instant::now().into_std());
+    tokio::time::advance(remaining - Duration::from_millis(1)).await;
+    tokio::task::yield_now().await;
+    assert_eq!(
+        wait_gate.entered_count(),
+        0,
+        "fresh fallback must not start inside the producer-relative finalization grace"
+    );
+
+    tokio::time::advance(Duration::from_millis(2)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("fresh fallback should start after the finalization grace expires");
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("fallback run should complete after the finalization grace");
     assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
 
     drop(predecessor_guard);

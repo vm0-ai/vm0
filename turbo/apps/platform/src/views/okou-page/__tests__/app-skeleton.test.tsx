@@ -91,7 +91,7 @@ describe("app skeleton", () => {
     expect(screen.queryByTestId("app-skeleton")).not.toBeInTheDocument();
   });
 
-  it("renders the first avatar preset with a locale-free pulse", async () => {
+  it("renders the inline illustration with a locale-free pulse", async () => {
     detachedSetupPage({
       context,
       path: "/_/skeleton",
@@ -100,10 +100,10 @@ describe("app skeleton", () => {
     const skeletons = await screen.findAllByRole("status", { name: "Loading" });
     expect(skeletons.length).toBeGreaterThan(0);
     expect(skeletons[0]).toHaveTextContent("");
-    expect(skeletons[0]?.querySelectorAll("img")).toHaveLength(3);
-    expect(skeletons[0]?.querySelectorAll("img")[0]).toHaveAttribute(
-      "src",
-      expect.stringContaining("/head-r1-s0.svg"),
+    expect(skeletons[0]?.querySelectorAll("img")).toHaveLength(0);
+    expect(skeletons[0]?.querySelector("svg")).toHaveAttribute(
+      "viewBox",
+      "0 0 518 512",
     );
   });
 });
