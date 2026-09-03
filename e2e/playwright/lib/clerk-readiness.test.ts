@@ -12,7 +12,7 @@ import {
 } from "./clerk-readiness";
 
 const BOOTSTRAPPING_APP: ClerkReadinessState = {
-  bootstrapSkeletonPresent: true,
+  bootstrapSkeleton: "active",
   client: "absent",
   organizationId: null,
   readyState: "complete",
@@ -21,7 +21,7 @@ const BOOTSTRAPPING_APP: ClerkReadinessState = {
 };
 
 const SIGNED_OUT_CLIENT: ClerkReadinessState = {
-  bootstrapSkeletonPresent: false,
+  bootstrapSkeleton: "removed",
   client: "loaded",
   organizationId: null,
   readyState: "complete",
@@ -48,7 +48,7 @@ test("a stalled Clerk bootstrap is described by its observed state", async (cont
       state: BOOTSTRAPPING_APP,
     });
     assert.match(stalled, /client=absent/u);
-    assert.match(stalled, /bootstrapSkeleton=present/u);
+    assert.match(stalled, /bootstrapSkeleton=active/u);
 
     const signedOut = describeClerkReadiness({
       kind: "observed",
