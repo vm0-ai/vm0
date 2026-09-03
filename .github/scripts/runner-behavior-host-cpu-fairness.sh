@@ -74,37 +74,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-CPU_CANDIDATES=()
-load_online_cpus() {
-  local cpu_list=$1
-  local range start end cpu
-  local -a ranges
-
-  if [[ ! "$cpu_list" =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]]; then
-    echo "invalid online CPU list: $cpu_list" >&2
+mapfile -t CPU_CANDIDATES < <(
+  lscpu --parse=CPU,ONLINE | awk -F, '$2 == "Y" { print $1 }'
+)
+if [ "${#CPU_CANDIDATES[@]}" -eq 0 ]; then
+  echo "host has no online CPUs" >&2
+  exit 1
+fi
+for cpu in "${CPU_CANDIDATES[@]}"; do
+  if [[ ! "$cpu" =~ ^[0-9]+$ ]]; then
+    echo "invalid online CPU: $cpu" >&2
     exit 1
   fi
-
-  IFS=',' read -r -a ranges <<< "$cpu_list"
-  for range in "${ranges[@]}"; do
-    if [[ "$range" == *-* ]]; then
-      start=$((10#${range%%-*}))
-      end=$((10#${range#*-}))
-    else
-      start=$((10#$range))
-      end=$start
-    fi
-    if [ "$start" -gt "$end" ]; then
-      echo "invalid online CPU range: $range" >&2
-      exit 1
-    fi
-    for ((cpu = start; cpu <= end; cpu++)); do
-      CPU_CANDIDATES+=("$cpu")
-    done
-  done
-}
-
-load_online_cpus "$(</sys/devices/system/cpu/online)"
+done
 if [ "${#CPU_CANDIDATES[@]}" -gt 1 ]; then
   NONZERO_CPUS=()
   for cpu in "${CPU_CANDIDATES[@]}"; do
