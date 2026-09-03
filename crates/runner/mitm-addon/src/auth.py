@@ -21,6 +21,7 @@ import http_local_responses
 import matching
 from auth_base_forwarder import (
     AuthBaseForwardingSaturatedError,
+    ForwardRequestPreSubmitRejectedError,
     forward_request,
     release_forward_request_admission_from_flow,
     take_forward_request_admission_from_flow,
@@ -1451,6 +1452,7 @@ async def _apply_url_rewrite(
     resolved_query: dict | None,
     firewall_base: str,
     proxy_log_path: str,
+    revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallAuthHandlingResult:
     # The addon forwards the request itself because mitmproxy's eager
     # connection already connected to the placeholder IP. Setting
@@ -1489,6 +1491,7 @@ async def _apply_url_rewrite(
             req_headers,
             req_body,
             admission=admission,
+            pre_submit_guard=revalidate_current_firewall_authorization,
         )
         is_head_representation = flow.request.method == "HEAD" and not (
             _HTTP_STATUS_INFORMATIONAL_MIN <= status < _HTTP_STATUS_SUCCESS_MIN
@@ -1520,6 +1523,8 @@ async def _apply_url_rewrite(
                 flow.response.headers["Content-Length"] = representation_content_length
         if content_encodings:
             flow.response.headers.set_all("Content-Encoding", content_encodings)
+    except ForwardRequestPreSubmitRejectedError:
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except ForwardedRequestTooLargeError:
         _set_auth_base_request_too_large(
             flow,
@@ -1564,6 +1569,7 @@ async def _apply_resolved_firewall_auth(
     resolved_auth: _ResolvedFirewallAuth,
     auth_base_client_headers: list[tuple[str, str]] | None,
     aws_sigv4_body_hash: AwsSigV4BodyHash | None,
+    revalidate_current_firewall_authorization: CurrentFirewallAuthorizationGuard,
 ) -> FirewallAuthHandlingResult:
     """Apply resolved firewall auth and return request ownership outcome."""
     try:
@@ -1583,6 +1589,9 @@ async def _apply_resolved_firewall_auth(
                 resolved_query=resolved_auth.query,
                 firewall_base=context.firewall_base,
                 proxy_log_path=context.proxy_log_path,
+                revalidate_current_firewall_authorization=(
+                    revalidate_current_firewall_authorization
+                ),
             )
 
         release_forward_request_admission_from_flow(flow)
@@ -1733,6 +1742,7 @@ async def handle_firewall_request(
             resolved_auth=resolved_auth,
             auth_base_client_headers=auth_base_client_headers,
             aws_sigv4_body_hash=aws_sigv4_body_hash,
+            revalidate_current_firewall_authorization=(revalidate_current_firewall_authorization),
         )
         if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
             return _finish_firewall_auth_result(flow, auth_result)
