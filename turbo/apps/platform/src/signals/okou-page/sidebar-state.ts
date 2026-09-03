@@ -234,7 +234,7 @@ export const endPinnedAgentDrag$ = command(({ set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Agent card / pinned section collapse state (TalkToSection) — persisted in localStorage
+// Agent card / pinned section collapse state — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
   get$: agentCardCollapsedRaw$,

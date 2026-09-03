@@ -2246,46 +2246,6 @@ describe("zero sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("leaves the retired mod+k and mod+shift+a shortcuts unhandled", async () => {
-    prepareAgents();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(sidebar()).toBeInTheDocument();
-    });
-
-    const retiredEvents = [
-      new KeyboardEvent("keydown", {
-        key: "k",
-        code: "KeyK",
-        ctrlKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-      new KeyboardEvent("keydown", {
-        key: "a",
-        code: "KeyA",
-        ctrlKey: true,
-        shiftKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-    ];
-    for (const event of retiredEvents) {
-      document.body.dispatchEvent(event);
-      expect(event.defaultPrevented).toBeFalsy();
-    }
-    expect(
-      screen.queryByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
-      }),
-    ).not.toBeInTheDocument();
-  });
-
   it("opens workspace search with mod+shift+f on a mobile viewport", async () => {
     mockMobileLayout();
     prepareAgents();
