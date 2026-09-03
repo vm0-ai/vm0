@@ -15190,7 +15190,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       name: "OKOU_TOKEN",
       value: "***",
     });
-    expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
     expect(claim.environment ?? {}).not.toHaveProperty(
       "ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED",

@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  stubRetiredTestWebUrlEnvironment,
-  stubTestWebUrlEnvironment,
-} from "../../__tests__/env-stub";
+import { stubTestWebUrlEnvironment } from "../../__tests__/env-stub";
 import { mockEnv } from "../env";
 import {
   getOAuthApiOrigin,
@@ -25,7 +22,6 @@ async function importEnvWithRawWebUrl(
 describe("web URL", () => {
   afterEach(() => {
     stubTestWebUrlEnvironment("http://localhost:3001");
-    stubRetiredTestWebUrlEnvironment(undefined);
     vi.resetModules();
   });
 
@@ -43,14 +39,6 @@ describe("web URL", () => {
     await expect(
       importEnvWithRawWebUrl("https://configured.example.test/path"),
     ).resolves.toBeUndefined();
-  });
-
-  it("requires canonical raw input when only the retired key is present", async () => {
-    stubRetiredTestWebUrlEnvironment("https://legacy-only.example.test/path");
-
-    await expect(importEnvWithRawWebUrl(undefined)).rejects.toThrow(
-      /Invalid environment variables/u,
-    );
   });
 
   it("preserves Web URL bytes and OAuth origins", () => {

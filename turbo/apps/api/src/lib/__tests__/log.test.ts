@@ -8,7 +8,6 @@ import { testContext } from "../../__tests__/test-context";
 const { axiom, axiomLogging, console: consoleOutput } = testContext().mocks;
 
 const CANONICAL_DEBUG_KEY = "OKOU_DEBUG";
-const LEGACY_DEBUG_KEY = "VM0_DEBUG";
 function configureDebug(value: string | undefined): void {
   mockEnv(CANONICAL_DEBUG_KEY, value);
 }
@@ -74,24 +73,6 @@ describe("debug environment", () => {
     for (const name of disabled) {
       expect(logger(name).level).toBe("info");
     }
-  });
-
-  it("ignores a retired legacy-only input", () => {
-    configureDebug(undefined);
-    mockOptionalEnv(LEGACY_DEBUG_KEY, "legacy-only-target");
-
-    expect(logger("legacy-only-target").level).toBe("info");
-  });
-
-  it("does not let a retired legacy value override or conflict with canonical", () => {
-    configureDebug("canonical:*");
-    mockOptionalEnv(LEGACY_DEBUG_KEY, "legacy:*");
-
-    expect(() => {
-      logger("canonical:child");
-    }).not.toThrow();
-    expect(logger("canonical:child").level).toBe("debug");
-    expect(logger("legacy:child").level).toBe("info");
   });
 
   it("does not emit the canonical environment value to logs", () => {

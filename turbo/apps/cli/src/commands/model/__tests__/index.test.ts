@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../mocks/server";
-import { switchCommand, modelCommand } from "../index";
+import { modelCommand } from "../index";
 
 const MODEL_POLICIES_RESPONSE = {
   workspaceDefaultModel: "claude-sonnet-4-6",
@@ -81,18 +81,5 @@ describe("okou model command", () => {
     expect(logCalls).toContain("provider: api key");
     expect(logCalls).not.toContain("price tier: $$$");
     expect(logCalls).toContain("okou model-provider set --help");
-  });
-
-  it("should ignore the inherited legacy prompt when showing switch guidance", async () => {
-    vi.stubEnv(
-      "VM0_APPEND_SYSTEM_PROMPT",
-      "You are currently running inside: Telegram",
-    );
-
-    await switchCommand.parseAsync(["node", "cli"]);
-
-    expect(mockConsoleLog).toHaveBeenCalledWith(
-      "Open https://app.okou.ai and switch models from the model selector next to the input box.",
-    );
   });
 });
