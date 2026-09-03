@@ -18,6 +18,7 @@ import {
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
+  ArtifactPreview,
   ArtifactSummary,
 } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
@@ -919,6 +920,7 @@ async function fileDetail(
   readonly size: number;
   readonly url: string;
   readonly previewImageUrl: string | null;
+  readonly preview: ArtifactPreview | null;
 } | null> {
   const [row] = await db
     .select({
@@ -929,6 +931,9 @@ async function fileDetail(
       sizeBytes: runUploadedFiles.sizeBytes,
       url: runUploadedFiles.url,
       previewImageUrl: runUploadedFiles.previewImageUrl,
+      previewStatus: runUploadedFiles.previewStatus,
+      previewError: runUploadedFiles.previewError,
+      previewAttemptCount: runUploadedFiles.previewAttemptCount,
     })
     .from(runUploadedFiles)
     .where(eq(runUploadedFiles.id, fileId))
@@ -945,6 +950,19 @@ async function fileDetail(
     size: row.sizeBytes ?? 0,
     url: row.url,
     previewImageUrl: row.previewImageUrl,
+    preview: row.previewStatus
+      ? {
+          status: row.previewStatus,
+          error: row.previewError
+            ? {
+                code: row.previewError.code,
+                message: row.previewError.message,
+                retryable: row.previewError.retryable,
+              }
+            : null,
+          attemptCount: row.previewAttemptCount,
+        }
+      : null,
   };
 }
 

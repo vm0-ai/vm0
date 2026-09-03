@@ -1,6 +1,8 @@
 import { command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import type { ArtifactPreviewStatus } from "@okouai/api-contracts/contracts/artifact-catalog";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { ArtifactPreviewError } from "@okouai/db/jsonb-contracts/run-uploaded-file";
 import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { z } from "zod";
 
@@ -11,7 +13,12 @@ import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { putImmutableS3Object } from "../external/s3";
-import { safeJsonParse, tapError } from "../utils";
+import {
+  readBoundedResponseText,
+  safeJsonParse,
+  settle,
+  tapError,
+} from "../utils";
 import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
@@ -69,6 +76,10 @@ const browserSnapshotErrorSchema = z.object({
 // Transformations frame endpoint only outputs jpg/png.
 const VIDEO_POSTER_FILENAME = "poster-v2.jpg";
 const VIDEO_POSTER_CONTENT_TYPE = "image/jpeg";
+const CLOUDFLARE_MEDIA_MAX_INPUT_BYTES = 100_000_000;
+const CLOUDFLARE_MEDIA_MAX_DURATION_SECONDS = 10 * 60;
+const ARTIFACT_PREVIEW_MAX_ATTEMPTS = 3;
+const PROVIDER_ERROR_RESPONSE_MAX_BYTES = 4 * 1024;
 
 export interface RenderArtifactPreviewArgs {
   // The run_uploaded_files row id; also namespaces the R2 object key.
@@ -80,6 +91,10 @@ export interface RenderArtifactPreviewArgs {
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
   readonly contentType: string | null;
+  readonly sizeBytes?: number | null;
+  readonly durationSeconds?: number | null;
+  // A bounded, non-user-identifying producer label for outcome telemetry.
+  readonly producer: string;
   readonly publicBrand: PublicBrand;
   // Versions the preview key so each deployment gets a fresh, CDN-cache-busting
   // URL instead of overwriting a stale object at a fixed key.
@@ -99,11 +114,141 @@ function isVideoContentType(contentType: string | null): boolean {
   return contentType?.startsWith("video/") ?? false;
 }
 
-// Cloudflare Media Transformations only decodes MP4 input, so a WebM artifact
-// can never yield a poster frame. Recognizing that up front avoids a request
-// that always fails and a warning nobody can act on.
-function canExtractVideoPoster(contentType: string | null): boolean {
-  return !(contentType?.startsWith("video/webm") ?? false);
+type ArtifactPreviewFailureStatus = Extract<
+  ArtifactPreviewStatus,
+  "unsupported" | "permanent_failure" | "transient_failure"
+>;
+
+interface UnsupportedVideoPreview {
+  readonly status: "unsupported";
+  readonly error: ArtifactPreviewError;
+}
+
+class PreviewRenderFailure extends Error {
+  readonly previewError: ArtifactPreviewError;
+
+  constructor(previewError: ArtifactPreviewError) {
+    super(previewError.message);
+    this.name = "PreviewRenderFailure";
+    this.previewError = previewError;
+  }
+}
+
+function normalizedContentType(contentType: string | null): string | null {
+  return contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? null;
+}
+
+function unsupportedVideoPreview(
+  args: RenderArtifactPreviewArgs,
+): UnsupportedVideoPreview | null {
+  const contentType = normalizedContentType(args.contentType);
+  if (contentType !== "video/mp4") {
+    return {
+      status: "unsupported",
+      error: {
+        code: "unsupported_video_container",
+        message:
+          "Cloudflare Media Transformations does not support this video container.",
+        retryable: false,
+        source: "preflight",
+      },
+    };
+  }
+  if (
+    args.sizeBytes !== null &&
+    args.sizeBytes !== undefined &&
+    args.sizeBytes >= CLOUDFLARE_MEDIA_MAX_INPUT_BYTES
+  ) {
+    return {
+      status: "unsupported",
+      error: {
+        code: "video_too_large",
+        message:
+          "The video exceeds Cloudflare Media Transformations' 100 MB input limit.",
+        retryable: false,
+        source: "preflight",
+      },
+    };
+  }
+  if (
+    args.durationSeconds !== null &&
+    args.durationSeconds !== undefined &&
+    args.durationSeconds > CLOUDFLARE_MEDIA_MAX_DURATION_SECONDS
+  ) {
+    return {
+      status: "unsupported",
+      error: {
+        code: "video_too_long",
+        message:
+          "The video exceeds Cloudflare Media Transformations' 10 minute duration limit.",
+        retryable: false,
+        source: "preflight",
+      },
+    };
+  }
+  return null;
+}
+
+function isRetryableProviderStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+async function cloudflareMediaFailure(
+  response: Response,
+): Promise<PreviewRenderFailure> {
+  const body = await readBoundedResponseText(
+    response,
+    PROVIDER_ERROR_RESPONSE_MAX_BYTES,
+  );
+  const providerCode =
+    body.kind === "text"
+      ? /MEDIA_TRANSFORMATION_ERROR\s+(\d+)/u.exec(body.text)?.[1]
+      : undefined;
+  const retryable =
+    providerCode === "9412"
+      ? false
+      : providerCode === "9523" || isRetryableProviderStatus(response.status);
+  return new PreviewRenderFailure({
+    code: providerCode
+      ? `cloudflare_media_${providerCode}`
+      : `cloudflare_media_http_${response.status}`,
+    message:
+      providerCode === "9412"
+        ? "Cloudflare could not parse the artifact as a supported video."
+        : retryable
+          ? "Cloudflare media frame extraction failed temporarily."
+          : "Cloudflare media frame extraction rejected the artifact.",
+    retryable,
+    source: "cloudflare-media",
+    ...(providerCode ? { providerCode } : {}),
+  });
+}
+
+async function cloudflareBrowserFailure(
+  response: Response,
+): Promise<PreviewRenderFailure> {
+  await readBoundedResponseText(response, PROVIDER_ERROR_RESPONSE_MAX_BYTES);
+  const retryable = isRetryableProviderStatus(response.status);
+  return new PreviewRenderFailure({
+    code: `cloudflare_browser_http_${response.status}`,
+    message: retryable
+      ? "Cloudflare browser rendering failed temporarily."
+      : "Cloudflare browser rendering rejected the preview request.",
+    retryable,
+    source: "cloudflare-browser",
+  });
+}
+
+function previewErrorFrom(error: unknown): ArtifactPreviewError {
+  if (error instanceof PreviewRenderFailure) {
+    return error.previewError;
+  }
+  return {
+    code: "preview_render_failed",
+    message: "The preview renderer failed before producing an image.",
+    retryable: true,
+    source: "preview-service",
+  };
 }
 
 // Extract a poster frame from a video via Cloudflare Media Transformations.
@@ -118,9 +263,8 @@ async function extractVideoPoster(
   const transformUrl = `${base}/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoUrl}`;
   const response = await fetch(transformUrl, { signal });
   if (!response.ok) {
-    throw new Error(
-      `media frame extraction failed (${response.status}): ${await response.text()}`,
-    );
+    const failure = await cloudflareMediaFailure(response);
+    throw failure;
   }
   return Buffer.from(await response.arrayBuffer());
 }
@@ -271,61 +415,150 @@ async function renderArtifactSnapshot(
     );
   }
   if (!response.ok) {
-    throw new Error(
-      `browser-rendering snapshot failed (${response.status}): ${await response.text()}`,
-    );
+    const failure = await cloudflareBrowserFailure(response);
+    throw failure;
   }
 
   const responseBody: unknown = await response.json();
   const snapshot = browserSnapshotSchema.parse(responseBody);
   if (snapshot.meta.status !== undefined && snapshot.meta.status >= 400) {
-    throw new Error(
-      `browser-rendering snapshot returned page status ${snapshot.meta.status}`,
-    );
+    throw new PreviewRenderFailure({
+      code: `artifact_page_http_${snapshot.meta.status}`,
+      message: "The hosted artifact returned an error while rendering.",
+      retryable: isRetryableProviderStatus(snapshot.meta.status),
+      source: "cloudflare-browser",
+    });
   }
   if (isCloudflareChallenge(snapshot.result.content, snapshot.meta.title)) {
-    throw new Error(
-      "browser-rendering snapshot returned a Cloudflare challenge",
-    );
+    throw new PreviewRenderFailure({
+      code: "cloudflare_browser_challenge",
+      message: "Cloudflare browser rendering returned a challenge page.",
+      retryable: true,
+      source: "cloudflare-browser",
+    });
   }
   return Buffer.from(snapshot.result.screenshot, "base64");
 }
 
-/**
- * Render a static preview image for a single hosted-site/HTML artifact row,
- * upload it to the user-artifacts R2 bucket next to the artifact, and persist
- * the CDN URL on the row. Returns false (no-op) when the browser-rendering
- * token is unset, or when the video container has no poster frame we can
- * extract. Keyed by the row id so it always targets the exact artifact of that
- * run.
- */
+interface ClaimedArtifactPreviewArgs extends RenderArtifactPreviewArgs {
+  readonly attemptCount: number;
+}
+
+const claimArtifactPreviewAttempt$ = command(
+  async (
+    { set },
+    args: RenderArtifactPreviewArgs,
+    signal: AbortSignal,
+  ): Promise<number | null> => {
+    const db = set(writeDb$);
+    const attemptedAt = nowDate();
+    const [claimed] = await db
+      .update(runUploadedFiles)
+      .set({
+        previewStatus: "pending",
+        previewError: null,
+        previewAttemptCount: sql`${runUploadedFiles.previewAttemptCount} + 1`,
+        previewUpdatedAt: attemptedAt,
+        updatedAt: attemptedAt,
+      })
+      .where(
+        and(
+          eq(runUploadedFiles.id, args.id),
+          isNull(runUploadedFiles.previewImageUrl),
+          lt(
+            runUploadedFiles.previewAttemptCount,
+            ARTIFACT_PREVIEW_MAX_ATTEMPTS,
+          ),
+          or(
+            isNull(runUploadedFiles.previewStatus),
+            eq(runUploadedFiles.previewStatus, "transient_failure"),
+            and(
+              eq(runUploadedFiles.previewStatus, "pending"),
+              or(
+                isNull(runUploadedFiles.previewUpdatedAt),
+                sql`${runUploadedFiles.previewUpdatedAt} < now() - interval '5 minutes'`,
+              ),
+            ),
+          ),
+        ),
+      )
+      .returning({ attemptCount: runUploadedFiles.previewAttemptCount });
+    signal.throwIfAborted();
+    return claimed?.attemptCount ?? null;
+  },
+);
+
+const persistArtifactPreviewFailure$ = command(
+  async (
+    { set },
+    args: {
+      readonly id: string;
+      readonly status: ArtifactPreviewFailureStatus;
+      readonly error: ArtifactPreviewError;
+      readonly attemptCount?: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const failedAt = nowDate();
+    const db = set(writeDb$);
+    await db
+      .update(runUploadedFiles)
+      .set({
+        previewStatus: args.status,
+        previewError: args.error,
+        previewUpdatedAt: failedAt,
+        updatedAt: failedAt,
+      })
+      .where(
+        args.attemptCount === undefined
+          ? and(
+              eq(runUploadedFiles.id, args.id),
+              isNull(runUploadedFiles.previewImageUrl),
+            )
+          : and(
+              eq(runUploadedFiles.id, args.id),
+              isNull(runUploadedFiles.previewImageUrl),
+              eq(runUploadedFiles.previewStatus, "pending"),
+              eq(runUploadedFiles.previewAttemptCount, args.attemptCount),
+            ),
+      );
+    signal.throwIfAborted();
+  },
+);
+
+/** Render, store, and publish a preview for one claimed attempt. */
 const renderAndStoreArtifactPreview$ = command(
   async (
     { get, set },
-    args: RenderArtifactPreviewArgs,
+    args: ClaimedArtifactPreviewArgs,
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<void> => {
     const isVideo = isVideoContentType(args.contentType);
     let image: Buffer;
     let filename: string;
     let contentType: string;
     if (isVideo) {
-      if (!canExtractVideoPoster(args.contentType)) {
-        return false;
-      }
       image = await extractVideoPoster(args.url, args.publicBrand, signal);
       filename = VIDEO_POSTER_FILENAME;
       contentType = VIDEO_POSTER_CONTENT_TYPE;
     } else {
       const token = env("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN");
       if (!token) {
-        return false;
+        throw new PreviewRenderFailure({
+          code: "browser_renderer_unconfigured",
+          message: "Cloudflare browser rendering is not configured.",
+          retryable: true,
+          source: "preview-service",
+        });
       }
       const wafSecret = env("ARTIFACT_PREVIEW_WAF_SECRET");
       if (!wafSecret) {
-        throw new Error(
-          "ARTIFACT_PREVIEW_WAF_SECRET is required when browser rendering is configured",
-        );
+        throw new PreviewRenderFailure({
+          code: "browser_renderer_waf_unconfigured",
+          message: "Artifact preview WAF access is not configured.",
+          retryable: true,
+          source: "preview-service",
+        });
       }
       image = await renderArtifactSnapshot(token, wafSecret, args.url, signal);
       filename = previewImageFilename(args.deploymentId);
@@ -360,14 +593,95 @@ const renderAndStoreArtifactPreview$ = command(
       .update(runUploadedFiles)
       .set({
         previewImageUrl: artifact.url,
+        previewStatus: "ready",
+        previewError: null,
+        previewUpdatedAt: nowDate(),
         updatedAt: nowDate(),
       })
-      .where(eq(runUploadedFiles.id, args.id));
+      .where(
+        and(
+          eq(runUploadedFiles.id, args.id),
+          isNull(runUploadedFiles.previewImageUrl),
+        ),
+      );
     signal.throwIfAborted();
 
     await set(syncArtifactCatalogForFile$, args.id, signal);
     await publishArtifactsChangedForRun(db, args.runId, signal);
-    return true;
+  },
+);
+
+const runArtifactPreview$ = command(
+  async (
+    { set },
+    args: RenderArtifactPreviewArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (isVideoContentType(args.contentType)) {
+      const unsupported = unsupportedVideoPreview(args);
+      if (unsupported) {
+        await set(
+          persistArtifactPreviewFailure$,
+          { id: args.id, ...unsupported },
+          signal,
+        );
+        log.debug("Artifact preview outcome", {
+          event: "artifact_preview_outcome",
+          artifactId: args.id,
+          contentType: args.contentType,
+          producer: args.producer,
+          outcome: unsupported.status,
+          reason: unsupported.error.code,
+          retryable: false,
+          attemptCount: 0,
+        });
+        return;
+      }
+    } else if (!env("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN")) {
+      return;
+    }
+
+    const attemptCount = await set(claimArtifactPreviewAttempt$, args, signal);
+    if (attemptCount === null) {
+      return;
+    }
+
+    const result = await settle(
+      set(renderAndStoreArtifactPreview$, { ...args, attemptCount }, signal),
+      signal,
+    );
+    if (result.ok) {
+      log.debug("Artifact preview outcome", {
+        event: "artifact_preview_outcome",
+        artifactId: args.id,
+        contentType: args.contentType,
+        producer: args.producer,
+        outcome: "ready",
+        attemptCount,
+      });
+      return;
+    }
+
+    const error = previewErrorFrom(result.error);
+    const status: ArtifactPreviewFailureStatus = error.retryable
+      ? "transient_failure"
+      : "permanent_failure";
+    await set(
+      persistArtifactPreviewFailure$,
+      { id: args.id, status, error, attemptCount },
+      signal,
+    );
+    log.warn("Artifact preview outcome", {
+      event: "artifact_preview_outcome",
+      artifactId: args.id,
+      contentType: args.contentType,
+      producer: args.producer,
+      outcome: status,
+      reason: error.code,
+      providerCode: error.providerCode,
+      retryable: error.retryable,
+      attemptCount,
+    });
   },
 );
 
@@ -383,13 +697,14 @@ export const scheduleArtifactPreviewRender$ = command(
     }
     waitUntil(
       tapError(
-        set(renderAndStoreArtifactPreview$, args, new AbortController().signal),
+        set(runArtifactPreview$, args, new AbortController().signal),
         (error) => {
-          log.warn("Failed to render artifact preview", {
+          log.warn("Artifact preview processing failed", {
+            event: "artifact_preview_processing_error",
             artifactId: args.id,
-            url: args.url,
             contentType: args.contentType,
-            error: error instanceof Error ? error.message : String(error),
+            producer: args.producer,
+            errorClass: error instanceof Error ? error.name : "unknown",
           });
         },
       ),

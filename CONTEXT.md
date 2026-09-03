@@ -1,5 +1,16 @@
 # Domain glossary
 
+## Artifact preview state
+
+The persisted outcome of creating a static thumbnail for one artifact. `null`
+means preview creation was never scheduled, is not applicable, or predates the
+state model. Scheduled previews move through `pending` to `ready`,
+`unsupported`, `permanent_failure`, or `transient_failure`. The state describes
+the thumbnail derivative, not whether the source artifact itself is valid or
+playable.
+
+_Avoid_: Artifact validity, video processing status
+
 ## Voice draft
 
 A composer-owned, durable block containing raw speech transcription that is

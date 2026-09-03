@@ -2,6 +2,18 @@ import type { JsonObject } from "./shared";
 
 export type RunUploadedFileMetadata = JsonObject;
 
+export interface ArtifactPreviewError {
+  readonly code: string;
+  readonly message: string;
+  readonly retryable: boolean;
+  readonly source:
+    | "preflight"
+    | "cloudflare-media"
+    | "cloudflare-browser"
+    | "preview-service";
+  readonly providerCode?: string;
+}
+
 export type CanonicalAssetProvenance =
   | {
       readonly provider: "slack";

@@ -111,6 +111,9 @@ function videoArtifactPreviewArgs(
     readonly orgId: string | null | undefined;
     readonly url: string | null;
     readonly contentType: string | null;
+    readonly sizeBytes: number | null;
+    readonly metadata: Record<string, unknown>;
+    readonly producer: RunUploadedFileSource;
     readonly publicBrand: PublicBrand;
   },
   row: RecordedUploadedFile | undefined,
@@ -124,6 +127,7 @@ function videoArtifactPreviewArgs(
   ) {
     return null;
   }
+  const durationSeconds = args.metadata.durationSeconds;
   return {
     id: row.id,
     runId: args.runId,
@@ -131,6 +135,14 @@ function videoArtifactPreviewArgs(
     orgId: args.orgId,
     url: args.url,
     contentType: args.contentType,
+    sizeBytes: args.sizeBytes,
+    durationSeconds:
+      typeof durationSeconds === "number" &&
+      Number.isFinite(durationSeconds) &&
+      durationSeconds >= 0
+        ? durationSeconds
+        : null,
+    producer: args.producer,
     publicBrand: args.publicBrand,
   };
 }
@@ -159,6 +171,10 @@ export const recordHostedSiteArtifact$ = command(
       args.deploymentVersion === null
         ? `${args.publicSlug}.html`
         : `${args.site}-v${args.deploymentVersion}.html`;
+    const legacyDeploymentUnchanged = eq(
+      sql`${runUploadedFiles.metadata}->>'deploymentId'`,
+      args.deploymentId,
+    );
 
     const write = writeDb
       .insert(runUploadedFiles)
@@ -219,11 +235,28 @@ export const recordHostedSiteArtifact$ = command(
           ...(args.deploymentVersion === null
             ? {
                 previewImageUrl: sql`case
-                  when ${eq(
-                    sql`${runUploadedFiles.metadata}->>'deploymentId'`,
-                    args.deploymentId,
-                  )}
+                  when ${legacyDeploymentUnchanged}
                   then ${runUploadedFiles.previewImageUrl}
+                  else null
+                end`,
+                previewStatus: sql`case
+                  when ${legacyDeploymentUnchanged}
+                  then ${runUploadedFiles.previewStatus}
+                  else null
+                end`,
+                previewError: sql`case
+                  when ${legacyDeploymentUnchanged}
+                  then ${runUploadedFiles.previewError}
+                  else null
+                end`,
+                previewAttemptCount: sql`case
+                  when ${legacyDeploymentUnchanged}
+                  then ${runUploadedFiles.previewAttemptCount}
+                  else 0
+                end`,
+                previewUpdatedAt: sql`case
+                  when ${legacyDeploymentUnchanged}
+                  then ${runUploadedFiles.previewUpdatedAt}
                   else null
                 end`,
               }
@@ -329,6 +362,9 @@ export const recordWebUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,
@@ -425,6 +461,9 @@ export const recordTelegramUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,
@@ -563,6 +602,9 @@ export const recordGithubUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,
@@ -636,6 +678,9 @@ export const recordFeishuUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,
@@ -709,6 +754,9 @@ export const recordTeamsUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,
@@ -793,6 +841,9 @@ export const recordAgentPhoneUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,
@@ -877,6 +928,9 @@ export const recordSlackUploadedFile$ = command(
           orgId: args.orgId,
           url: args.url,
           contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          metadata: args.metadata,
+          producer: source,
           publicBrand: args.publicBrand,
         },
         row,

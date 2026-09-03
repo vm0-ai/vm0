@@ -24,6 +24,27 @@ export const ARTIFACT_CATALOG_KINDS = [
 
 export type ArtifactCatalogKind = (typeof ARTIFACT_CATALOG_KINDS)[number];
 
+export const ARTIFACT_PREVIEW_STATUSES = [
+  "pending",
+  "ready",
+  "unsupported",
+  "permanent_failure",
+  "transient_failure",
+] as const;
+export type ArtifactPreviewStatus = (typeof ARTIFACT_PREVIEW_STATUSES)[number];
+
+export interface ArtifactPreviewError {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface ArtifactPreview {
+  status: ArtifactPreviewStatus;
+  error: ArtifactPreviewError | null;
+  attemptCount: number;
+}
+
 interface ArtifactThumbnail {
   url: string;
 }
@@ -44,6 +65,9 @@ interface ArtifactFile {
   size: number;
   url: string;
   previewImageUrl: string | null;
+  // Optional during the additive API rollout. Null means no preview work has
+  // been scheduled, the file is not previewable, or the row predates tracking.
+  preview?: ArtifactPreview | null;
 }
 
 interface ArtifactHostedSite {
@@ -198,6 +222,18 @@ const artifactThumbnailSchema = z.object({
   url: z.string(),
 });
 
+const artifactPreviewSchema = z.object({
+  status: z.enum(ARTIFACT_PREVIEW_STATUSES),
+  error: z
+    .object({
+      code: z.string(),
+      message: z.string(),
+      retryable: z.boolean(),
+    })
+    .nullable(),
+  attemptCount: z.number().int().nonnegative(),
+});
+
 /**
  * The catalog list returns only the metadata every kind shares. Kind-specific
  * attributes are loaded from the detail endpoint after a card is opened, so the
@@ -243,6 +279,7 @@ const artifactFileSchema = z.object({
   size: z.number(),
   url: z.string(),
   previewImageUrl: z.string().nullable(),
+  preview: artifactPreviewSchema.nullable().optional(),
 });
 
 /**

@@ -121,6 +121,7 @@ function mockCloudflareSnapshot(
 function mockCloudflareVideoFrame(
   userId: string,
   status = 200,
+  failureBody = "unsupported video",
 ): MediaFrameRequest[] {
   const requests: MediaFrameRequest[] = [];
   server.use(
@@ -130,7 +131,7 @@ function mockCloudflareVideoFrame(
       }
       requests.push({ url: request.url });
       if (status !== 200) {
-        return new HttpResponse("unsupported video", { status });
+        return new HttpResponse(failureBody, { status });
       }
       return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
         headers: { "Content-Type": "image/jpeg" },
@@ -290,21 +291,22 @@ async function createRunUploadedFile(args: {
   readonly prompt: string;
   readonly filename: string;
   readonly contentType: string;
-}): Promise<{ readonly url: string }> {
+  readonly sizeBytes?: number;
+}): Promise<{
+  readonly url: string;
+  readonly fileId: string;
+  readonly bearer: string;
+}> {
   const run = await sendChatRun(args.owner.actor, {
     agentId: args.owner.agentId,
     prompt: args.prompt,
   });
-  const { claim, sandboxHeaders } = await claimChatRun(
-    args.owner.runnerGroup,
-    run.runId,
-  );
-  const bearer = `Bearer ${okouTokenFromClaim(claim)}`;
+  const bearer = `Bearer ${fileWriteToken(args.owner, run.runId)}`;
   const fileId = randomUUID();
   args.owner.objectStore.addObject({
     bucket: "test-user-artifacts",
     key: `artifacts/${args.owner.actor.userId}/${fileId}/${args.filename}`,
-    size: 1024,
+    size: args.sizeBytes ?? 1024,
   });
   const completed = await chat.completeUploadWithBearer(
     bearer,
@@ -314,8 +316,19 @@ async function createRunUploadedFile(args: {
   if (completed.status !== 200) {
     throw new Error("Expected run upload completion to succeed");
   }
-  await completeChatRunOk(run.runId, sandboxHeaders);
-  return { url: completed.body.url };
+  return { url: completed.body.url, fileId, bearer };
+}
+
+async function previewStateForArtifact(actor: ApiTestUser, title: string) {
+  const artifact = await findCatalogArtifact(actor, title);
+  if (!artifact) {
+    throw new Error("Expected a catalog artifact");
+  }
+  const detail = await chat.getArtifactCatalogEntry(actor, artifact.id);
+  if (!("file" in detail)) {
+    throw new Error("Expected a file-backed catalog artifact");
+  }
+  return detail.file.preview;
 }
 
 async function findCatalogArtifact(
@@ -366,6 +379,9 @@ describe("video Artifact previews", () => {
     expect(previewedArtifact?.thumbnail?.url).toMatch(
       /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
     );
+    await expect(
+      previewStateForArtifact(owner.actor, "reference-footage.mp4"),
+    ).resolves.toMatchObject({ status: "ready", error: null, attemptCount: 1 });
   }, 180_000);
 
   it("skips the poster request for a container the transformer cannot decode", async () => {
@@ -389,6 +405,38 @@ describe("video Artifact previews", () => {
       "session-recording.webm",
     );
     expect(previewedArtifact?.thumbnail).toBeNull();
+    await expect(
+      previewStateForArtifact(owner.actor, "session-recording.webm"),
+    ).resolves.toMatchObject({
+      status: "unsupported",
+      error: { code: "unsupported_video_container", retryable: false },
+      attemptCount: 0,
+    });
+  }, 180_000);
+
+  it("skips the poster request at Cloudflare's input-size boundary", async () => {
+    const owner = await artifactActor(
+      "Artifacts API large video preview agent",
+    );
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
+
+    await createRunUploadedFile({
+      owner,
+      prompt: "upload a large video",
+      filename: "large-video.mp4",
+      contentType: "video/mp4",
+      sizeBytes: 100_000_000,
+    });
+    await flushWaitUntilForTest();
+
+    expect(frameRequests).toHaveLength(0);
+    await expect(
+      previewStateForArtifact(owner.actor, "large-video.mp4"),
+    ).resolves.toMatchObject({
+      status: "unsupported",
+      error: { code: "video_too_large", retryable: false },
+      attemptCount: 0,
+    });
   }, 180_000);
 
   it("reuses an existing write-once poster after a concurrent upload", async () => {
@@ -415,11 +463,15 @@ describe("video Artifact previews", () => {
     );
   }, 180_000);
 
-  it("leaves video preview empty when media frame extraction fails", async () => {
+  it("records 9412 as permanent and does not retry the same artifact", async () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
-    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId, 415);
+    const frameRequests = mockCloudflareVideoFrame(
+      owner.actor.userId,
+      400,
+      "MEDIA_TRANSFORMATION_ERROR 9412: Input is not a video file",
+    );
 
-    await createRunUploadedFile({
+    const videoArtifact = await createRunUploadedFile({
       owner,
       prompt: "create unsupported video artifact",
       filename: "unsupported-video.mp4",
@@ -440,6 +492,57 @@ describe("video Artifact previews", () => {
     );
     expect(failedArtifact).toMatchObject({ kind: "file" });
     expect(failedArtifact?.thumbnail).toBeNull();
+    await expect(
+      previewStateForArtifact(owner.actor, "unsupported-video.mp4"),
+    ).resolves.toMatchObject({
+      status: "permanent_failure",
+      error: { code: "cloudflare_media_9412", retryable: false },
+      attemptCount: 1,
+    });
+
+    await chat.completeUploadWithBearer(
+      videoArtifact.bearer,
+      { id: videoArtifact.fileId, contentType: "video/mp4" },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(frameRequests).toHaveLength(1);
+  }, 180_000);
+
+  it("retries 9523 outcomes but caps provider attempts", async () => {
+    const owner = await artifactActor(
+      "Artifacts API transient video preview agent",
+    );
+    const frameRequests = mockCloudflareVideoFrame(
+      owner.actor.userId,
+      503,
+      "MEDIA_TRANSFORMATION_ERROR 9523: Internal service error",
+    );
+    const videoArtifact = await createRunUploadedFile({
+      owner,
+      prompt: "create temporarily unavailable video preview",
+      filename: "transient-video.mp4",
+      contentType: "video/mp4",
+    });
+    await flushWaitUntilForTest();
+
+    for (let replay = 0; replay < 3; replay += 1) {
+      await chat.completeUploadWithBearer(
+        videoArtifact.bearer,
+        { id: videoArtifact.fileId, contentType: "video/mp4" },
+        [200],
+      );
+      await flushWaitUntilForTest();
+    }
+
+    expect(frameRequests).toHaveLength(3);
+    await expect(
+      previewStateForArtifact(owner.actor, "transient-video.mp4"),
+    ).resolves.toMatchObject({
+      status: "transient_failure",
+      error: { code: "cloudflare_media_9523", retryable: true },
+      attemptCount: 3,
+    });
   }, 180_000);
 });
 

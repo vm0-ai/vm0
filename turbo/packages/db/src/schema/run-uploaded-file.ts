@@ -11,9 +11,11 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { ArtifactPreviewStatus } from "@okouai/api-contracts/contracts/artifact-catalog";
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
 import type {
+  ArtifactPreviewError,
   CanonicalAssetDeliveryError,
   CanonicalAssetMaterializationError,
   CanonicalAssetProvenance,
@@ -92,6 +94,12 @@ export const runUploadedFiles = pgTable(
     sizeBytes: bigint("size_bytes", { mode: "number" }),
     url: text("url"),
     previewImageUrl: text("preview_image_url"),
+    previewStatus: varchar("preview_status", {
+      length: 32,
+    }).$type<ArtifactPreviewStatus>(),
+    previewError: jsonb("preview_error").$type<ArtifactPreviewError>(),
+    previewAttemptCount: integer("preview_attempt_count").notNull().default(0),
+    previewUpdatedAt: timestamp("preview_updated_at"),
     metadata: jsonb("metadata")
       .$type<RunUploadedFileMetadata>()
       .notNull()

@@ -498,6 +498,7 @@ describe("GET /api/artifacts/catalog", () => {
       size: 256,
       url: uploaded.url,
       previewImageUrl: null,
+      preview: null,
     });
   }, 180_000);
 
