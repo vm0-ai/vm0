@@ -830,8 +830,14 @@ body {
   opacity: 1;
 }
 
+/* Dark carries the brand hue instead of a lighter neutral. The light ring can
+   stay neutral because there it darkens, and darker-than-the-border already
+   reads as emphasis. Lifting a neutral against a dark card does not: it lands
+   on a bright grey that reads as a white outline rather than as focus, which is
+   what `--ring` means on every other control. Saturation, not lightness, does
+   the work, so the ring stays quieter than the full Amber stop. */
 :where([data-theme="dark"]) .zero-app .zero-composer {
-  --zero-composer-ring: 42.9 1.6% 37.5%;
+  --zero-composer-ring: 38.8 38% 38%;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1385,6 +1391,29 @@ details > summary {
     transparent 50%
   );
   background-size: 100% 100%;
+}
+
+/* Workspace card: the routed page is a white sheet laid over the shell's grey
+   rather than a white half of the window. The gap runs on all four sides, so
+   the chat column's surface continues around the sheet and reads as one frame.
+   Padding insets the content and `inset` insets the paint by the same amount,
+   which is why the sheet needs no clipping: nothing lays out in the gutter, and
+   only the corner triangles could ever escape the radius.
+
+   Desktop only. Below the sidebar breakpoint the columns are gone and a frame
+   would just spend width the page does not have. */
+@media (min-width: 48rem) {
+  .zero-workspace-card {
+    --zero-workspace-card-gap: 8px;
+    background-color: hsl(var(--sidebar));
+    padding: var(--zero-workspace-card-gap);
+  }
+
+  .zero-workspace-card.zero-workspace-bg::before {
+    inset: var(--zero-workspace-card-gap);
+    border: 0.7px solid hsl(var(--border));
+    border-radius: 12px;
+  }
 }
 
 .dark .zero-workspace-bg::before,

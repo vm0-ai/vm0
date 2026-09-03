@@ -399,7 +399,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       <AttachmentLightboxMount />
       <QueueDrawer />
       {isDesktop ? <Sidebar isDesktop /> : <MobileSidebarMount />}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
         <InstallBanner />
         <IosInstallModal />
         {!isDesktop && <MobileTopBar />}

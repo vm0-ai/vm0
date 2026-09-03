@@ -64,7 +64,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
           />
         </div>
       </aside>
-      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg zero-workspace-card">
         {children}
       </div>
     </div>
