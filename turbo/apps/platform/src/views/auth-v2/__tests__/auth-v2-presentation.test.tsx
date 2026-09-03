@@ -22,6 +22,19 @@ function setBrowserUrl(url: string): void {
   context.mocks.browser.url(url);
 }
 
+function useOkouPrimaryClerkTopology(): void {
+  Reflect.set(window, "__vm0ClerkBootstrap", {
+    productionPrimaryAppDomain: "app.okou.ai",
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
+    },
+    { once: true },
+  );
+}
+
 function useJapaneseLocale(): void {
   document.documentElement.lang = "ja-JP";
   context.mocks.data.userPreferences({
@@ -211,6 +224,7 @@ describe("auth v2 presentation", () => {
   it("switches both Okou wordmarks with the resolved theme", async () => {
     const user = userEvent.setup();
     context.mocks.browser.matchMedia(false);
+    useOkouPrimaryClerkTopology();
     setBrowserUrl("https://app.okou.ai/sign-in");
 
     detachedSetupPage({ context, path: "/sign-in" });
@@ -237,6 +251,7 @@ describe("auth v2 presentation", () => {
 
   it("localizes Okou app copy while keeping document metadata English", async () => {
     useJapaneseLocale();
+    useOkouPrimaryClerkTopology();
     setBrowserUrl("https://app.okou.ai/sign-up");
 
     detachedSetupPage({ context, path: "/sign-up" });
@@ -259,6 +274,7 @@ describe("auth v2 presentation", () => {
 
   it("substitutes the Okou brand in a non-English Auth v2 template", async () => {
     useGermanLocale();
+    useOkouPrimaryClerkTopology();
     setBrowserUrl("https://app.okou.ai/sign-up");
 
     detachedSetupPage({ context, path: "/sign-up" });
