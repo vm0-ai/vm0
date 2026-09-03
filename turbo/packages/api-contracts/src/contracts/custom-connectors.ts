@@ -172,50 +172,60 @@ const customConnectorResponseBaseSchema = z.object({
   updatedAt: z.string(),
 });
 
-const customConnectorManualAuthResponseSchema = z.object({
-  authMode: z.literal("manual"),
-  oauthSetup: z.never().optional(),
-  oauthConfig: z.never().optional(),
-});
+type CustomConnectorNonOAuthAuthResponse<
+  TMode extends "manual" | "none" | "automatic",
+> = {
+  readonly authMode: TMode;
+  readonly oauthConfig?: never;
+};
 
-const customConnectorNoAuthResponseSchema = z.object({
-  authMode: z.literal("none"),
-  oauthSetup: z.never().optional(),
-  oauthConfig: z.never().optional(),
-});
+const customConnectorManualAuthResponseSchema = z
+  .object({
+    authMode: z.literal("manual"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"manual"> => {
+    return { authMode: value.authMode };
+  });
 
-const customConnectorCustomOAuthResponseSchema = z.object({
-  authMode: z.literal("oauth"),
-  oauthSetup: z.literal("custom"),
-  oauthConfig: customConnectorOAuthConfigSchema,
-});
+const customConnectorNoAuthResponseSchema = z
+  .object({
+    authMode: z.literal("none"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"none"> => {
+    return { authMode: value.authMode };
+  });
 
-const customConnectorLegacyOAuthResponseSchema = z
+const customConnectorCustomOAuthResponseSchema = z
   .object({
     authMode: z.literal("oauth"),
-    oauthSetup: z.undefined().optional(),
+    oauthSetup: z.literal("custom").optional(),
     oauthConfig: customConnectorOAuthConfigSchema,
   })
   .transform((value) => {
-    return { ...value, oauthSetup: "custom" as const };
+    return {
+      authMode: value.authMode,
+      oauthConfig: value.oauthConfig,
+    };
   });
 
-const customConnectorAutomaticResponseSchema = z.object({
-  authMode: z.literal("automatic"),
-  oauthSetup: z.never().optional(),
-  oauthConfig: z.never().optional(),
-});
-
-const customConnectorOAuthResponseSchema = z.union([
-  customConnectorCustomOAuthResponseSchema,
-  customConnectorLegacyOAuthResponseSchema,
-]);
+const customConnectorAutomaticResponseSchema = z
+  .object({
+    authMode: z.literal("automatic"),
+    oauthSetup: z.never().optional(),
+    oauthConfig: z.never().optional(),
+  })
+  .transform((value): CustomConnectorNonOAuthAuthResponse<"automatic"> => {
+    return { authMode: value.authMode };
+  });
 
 const customConnectorHttpAuthResponseSchema = z.union([
   customConnectorNoAuthResponseSchema,
   customConnectorManualAuthResponseSchema,
   customConnectorCustomOAuthResponseSchema,
-  customConnectorLegacyOAuthResponseSchema,
 ]);
 
 export const customConnectorHttpResponseCoreSchema =
@@ -244,7 +254,7 @@ export const customConnectorMcpResponseSchema = z.intersection(
   z.union([
     customConnectorNoAuthResponseSchema,
     customConnectorManualAuthResponseSchema,
-    customConnectorOAuthResponseSchema,
+    customConnectorCustomOAuthResponseSchema,
     customConnectorAutomaticResponseSchema,
   ]),
 );

@@ -1,12 +1,11 @@
 :root {
-  color: #1d2026;
-  background: #f6f7f9;
-  /* Zero brand palette (mirrors design-system.css / tokens.css in vm0). */
-  --brand: #ed4e01;
-  --brand-hover: #ff6a1f;
-  --brand-press: #d54501;
-  --brand-soft: rgba(237, 78, 1, 0.1);
-  --brand-ring: rgba(237, 78, 1, 0.3);
+  color: #26221d;
+  background: #faf5f3;
+  --brand: #ffa500;
+  --brand-hover: #e19100;
+  --brand-press: #c37d00;
+  --brand-soft: rgba(255, 165, 0, 0.14);
+  --brand-ring: rgba(255, 165, 0, 0.35);
   --desktop-titlebar-height: 52px;
   --desktop-titlebar-left-inset: 92px;
   font-family:
@@ -42,9 +41,9 @@ body {
     linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.92),
-      rgba(246, 247, 249, 0.86)
+      rgba(250, 245, 243, 0.86)
     ),
-    #f6f7f9;
+    #faf5f3;
 }
 
 button {
@@ -57,6 +56,14 @@ button {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.desktop-product-zero {
+  --brand: #ed4e01;
+  --brand-hover: #ff6a1f;
+  --brand-press: #d54501;
+  --brand-soft: rgba(237, 78, 1, 0.1);
+  --brand-ring: rgba(237, 78, 1, 0.3);
 }
 
 .app-header {
@@ -92,6 +99,13 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.titlebar-wordmark {
+  display: block;
+  width: 64px;
+  height: auto;
+  user-select: none;
 }
 
 .panel-actions,
@@ -183,7 +197,7 @@ button {
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
-  color: #ffffff;
+  color: #242121;
   background: var(--brand);
   font-size: 12px;
   line-height: 1;
@@ -191,6 +205,7 @@ button {
 }
 
 .step-index-ready {
+  color: #ffffff;
   background: #067647;
 }
 
@@ -354,7 +369,7 @@ button {
 }
 
 .button-primary {
-  color: #ffffff;
+  color: #242121;
   border-color: var(--brand);
   background: var(--brand);
 }
@@ -1070,51 +1085,65 @@ button {
   }
 }
 
-/* ---- Okou avatar face ---- */
-.okou-face {
+/* ---- Product mark ---- */
+.desktop-brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 24%;
   overflow: hidden;
-  background: #ffffff;
+  background: #faf5f3;
   flex: 0 0 auto;
 }
 
-.okou-face img {
-  width: 92%;
-  height: 92%;
+.desktop-brand-mark img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  transform: translateY(4%);
   user-select: none;
 }
 
-.okou-face-init {
+.desktop-brand-mark-zero {
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.desktop-brand-mark-zero img {
+  width: 92%;
+  height: 92%;
+  transform: translateY(4%);
+}
+
+.desktop-brand-mark-init {
   box-shadow:
     0 6px 20px -8px rgba(20, 23, 29, 0.2),
     0 0 0 1px rgba(20, 23, 29, 0.06);
-  animation: okou-breathe 4.5s ease-in-out infinite;
+  animation: brand-mark-breathe 4.5s ease-in-out infinite;
 }
 
-.okou-face-chip {
-  background: var(--brand-soft);
+.desktop-brand-mark-chip {
+  box-shadow: 0 0 0 1px rgba(20, 23, 29, 0.08);
 }
 
-.okou-face-hero {
+.desktop-brand-mark-hero {
   position: relative;
   z-index: 3;
   box-shadow:
-    0 8px 26px -8px rgba(237, 78, 1, 0.5),
-    0 0 0 1px rgba(237, 78, 1, 0.12);
-  animation: okou-breathe 3.4s ease-in-out infinite;
+    0 8px 26px -8px rgba(255, 165, 0, 0.5),
+    0 0 0 1px rgba(255, 165, 0, 0.14);
+  animation: brand-mark-breathe 3.4s ease-in-out infinite;
 }
 
-.okou-face-offline {
+.desktop-brand-mark-offline {
   box-shadow: 0 0 0 1px rgba(20, 23, 29, 0.08);
-  filter: grayscale(0.85) opacity(0.55);
+  opacity: 0.62;
 }
 
-@keyframes okou-breathe {
+.desktop-brand-mark-zero.desktop-brand-mark-offline {
+  filter: grayscale(0.85);
+}
+
+@keyframes brand-mark-breathe {
   0%,
   100% {
     transform: scale(1);
@@ -1211,7 +1240,7 @@ button {
   border-radius: 50%;
   background: radial-gradient(
     circle at 50% 46%,
-    rgba(237, 78, 1, 0.18),
+    rgba(255, 165, 0, 0.2),
     rgba(255, 153, 10, 0.09) 42%,
     transparent 70%
   );
@@ -1224,7 +1253,7 @@ button {
 .radar-wave {
   position: absolute;
   border-radius: 50%;
-  border: 1.5px solid rgba(237, 78, 1, 0.42);
+  border: 1.5px solid rgba(255, 165, 0, 0.42);
   animation: radar-breathe 2.8s ease-in-out infinite;
 }
 
@@ -1236,14 +1265,14 @@ button {
 .radar-wave-2 {
   width: 166px;
   height: 166px;
-  border-color: rgba(237, 78, 1, 0.2);
+  border-color: rgba(255, 165, 0, 0.2);
   animation-delay: 0.25s;
 }
 
 .radar-wave-3 {
   width: 214px;
   height: 214px;
-  border-color: rgba(237, 78, 1, 0.09);
+  border-color: rgba(255, 165, 0, 0.09);
   animation-delay: 0.5s;
 }
 
@@ -1281,12 +1310,12 @@ button {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #ffffff;
+  color: #242121;
   background: var(--brand);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 8px 18px -8px rgba(237, 78, 1, 0.6);
+  box-shadow: 0 8px 18px -8px rgba(255, 165, 0, 0.6);
   transition: background 120ms ease;
 }
 
@@ -1425,13 +1454,13 @@ button {
       rgba(255, 255, 255, 0.9),
       transparent 48%
     ),
-    radial-gradient(circle at 50% 50%, #ff8a3d, #ed4e01 72%);
+    radial-gradient(circle at 50% 50%, #ffd17a, var(--brand) 72%);
 }
 
 .arrival-label {
   position: relative;
   z-index: 1;
-  color: #ffffff;
+  color: #242121;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1476,8 +1505,8 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .okou-face-init,
-  .okou-face-hero,
+  .desktop-brand-mark-init,
+  .desktop-brand-mark-hero,
   .radar-aura,
   .radar-wave,
   .loading-dots span {
@@ -1487,6 +1516,13 @@ button {
   .arrival-label {
     animation-duration: 0.4s;
   }
+}
+
+.desktop-product-zero .step-index,
+.desktop-product-zero .button-primary,
+.desktop-product-zero .go-online-button,
+.desktop-product-zero .arrival-label {
+  color: #ffffff;
 }
 
 .screenshot-lightbox {

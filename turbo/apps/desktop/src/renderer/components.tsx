@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
-import { okouAvatarDataUrl } from "./okou-avatar";
 import type { DesktopComputerUseState } from "../computer-use-types";
 import { previewValue } from "./format";
+import { currentDesktopIdentity } from "./desktop-identity";
+import okouSymbolUrl from "./assets/okou-symbol-light.svg";
+import { zeroAvatarDataUrl } from "./zero-avatar";
 
 export type HostStatus = DesktopComputerUseState["host"]["status"];
 
@@ -138,20 +140,27 @@ export function KeyValueList({
   );
 }
 
-export function OkouFace({
+export function DesktopBrandMark({
   className,
   size,
 }: {
   readonly className?: string;
   readonly size: number;
 }) {
+  const product = currentDesktopIdentity().product;
   return (
     <span
-      className={`okou-face${className ? ` ${className}` : ""}`}
+      className={`desktop-brand-mark desktop-brand-mark-${product}${
+        className ? ` ${className}` : ""
+      }`}
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
-      <img src={okouAvatarDataUrl} alt="" draggable={false} />
+      <img
+        src={product === "okou" ? okouSymbolUrl : zeroAvatarDataUrl}
+        alt=""
+        draggable={false}
+      />
     </span>
   );
 }

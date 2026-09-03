@@ -5853,7 +5853,6 @@ describe("connectors page", () => {
           displayName: body.displayName,
           endpoint: body.endpoint,
           authMode: "automatic",
-          oauthSetup: undefined,
           oauthConfig: undefined,
           storageVersion: body.storageVersion ?? connector.storageVersion,
         });
@@ -6674,7 +6673,6 @@ describe("connectors page", () => {
         headerInjections: body.headerInjections,
         queryInjections: body.queryInjections,
         authMode: "oauth",
-        oauthSetup: "custom",
         oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
         storageVersion: body.storageVersion ?? 1,
         connected: false,
@@ -6690,7 +6688,7 @@ describe("connectors page", () => {
           throw new Error("Expected an OAuth MCP custom connector update");
         }
         updatedBodies.push(body);
-        connector = {
+        connector = customConnectorMcpResponseSchema.parse({
           ...connector,
           displayName: body.displayName,
           endpoint: body.endpoint,
@@ -6698,10 +6696,9 @@ describe("connectors page", () => {
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
           authMode: "oauth",
-          oauthSetup: "custom",
           oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
           storageVersion: body.storageVersion ?? connector.storageVersion,
-        };
+        });
         return respond(200, connector);
       },
     );
@@ -7094,7 +7091,6 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
-      oauthSetup: "custom",
       permissionBundleRef: "builtin:feishu@1",
       oauthConfig: {
         providerAdapter: "feishu",
@@ -7171,7 +7167,6 @@ describe("connectors page", () => {
         headerInjections: body.headerInjections ?? [],
         queryInjections: body.queryInjections ?? [],
         authMode: "oauth",
-        oauthSetup: "custom",
         storageVersion: body.storageVersion,
         ...(body.oauthConfig
           ? {
@@ -7956,7 +7951,6 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
-      oauthSetup: "custom",
       oauthConfig: {
         providerAdapter: "standard",
         clientId: "acme-client",

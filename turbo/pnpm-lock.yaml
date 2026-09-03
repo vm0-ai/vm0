@@ -519,6 +519,9 @@ importers:
       oxlint:
         specifier: ^1.75.0
         version: 1.75.0(oxlint-tsgolint@7.0.2001)
+      sharp:
+        specifier: 0.34.5
+        version: 0.34.5
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.15.46(@swc/helpers@0.5.21))(jiti@2.7.0)(postcss@8.5.25)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.9.0)
