@@ -15,6 +15,15 @@ import {
 } from "@okouai/ui";
 import { Wand, ChevronLeft, ChevronRight, Dices } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  AVATAR_COMPOSER_EXPRESSIONS,
+  AVATAR_COMPOSER_FACE_SHAPES,
+  AVATAR_COMPOSER_HAIR_COLORS,
+  AVATAR_COMPOSER_HAIR_STYLES,
+  AVATAR_COMPOSER_SKIN_TONES,
+  isAvatarComposerCombinationCompatible,
+  updateAvatarComposerConfig,
+} from "@okouai/core/agent-avatar";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
@@ -24,6 +33,7 @@ import {
   Reason,
 } from "../../signals/utils.ts";
 import {
+  type AvatarMakerSelection,
   type Step,
   AVATAR_MAKER_STEPS,
   avatarMakerOpen$,
@@ -108,6 +118,41 @@ function Sparkles({ active }: { active: boolean }) {
   );
 }
 
+function avatarMakerSelections(step: Step): readonly AvatarMakerSelection[] {
+  switch (step) {
+    case "face": {
+      return AVATAR_COMPOSER_FACE_SHAPES.map((value) => {
+        return { field: "face", value };
+      });
+    }
+    case "hair": {
+      return AVATAR_COMPOSER_HAIR_STYLES.map((value) => {
+        return { field: "hair", value };
+      });
+    }
+    case "expression": {
+      return AVATAR_COMPOSER_EXPRESSIONS.map((value) => {
+        return { field: "expression", value };
+      });
+    }
+    case "skin": {
+      return AVATAR_COMPOSER_SKIN_TONES.map((value) => {
+        return { field: "skin", value };
+      });
+    }
+    case "hairColor": {
+      return AVATAR_COMPOSER_HAIR_COLORS.map((value) => {
+        return { field: "hairColor", value };
+      });
+    }
+  }
+}
+
+function avatarOptionLabel(value: string): string {
+  const label = value.replaceAll("-", " ");
+  return `${label.slice(0, 1).toLocaleUpperCase()}${label.slice(1)}`;
+}
+
 function StepOptions({
   step,
   config,
@@ -117,95 +162,35 @@ function StepOptions({
   step: Step;
   config: AvatarSvgConfig;
   justPicked: string | null;
-  selectOption: (field: Step, value: number | string) => void;
+  selectOption: (selection: AvatarMakerSelection) => void;
 }) {
-  const { t } = useTranslation("agents");
-  const intensityLabels = {
-    d: t(($) => {
-      return $.avatar.intensity.chill;
-    }),
-    m: t(($) => {
-      return $.avatar.intensity.normal;
-    }),
-    h: t(($) => {
-      return $.avatar.intensity.hyped;
-    }),
-  };
-
-  if (step === "intensity") {
-    return (["d", "m", "h"] as const).map((val, i) => {
-      const isPicked = justPicked === `intensity-${val}`;
-      const preview = { ...config, intensity: val };
-      return (
-        <button
-          key={val}
-          type="button"
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-full transition-all hover:scale-110",
-            isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
-          )}
-          style={{
-            animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
-          }}
-          onClick={() => {
-            return selectOption("intensity", val);
-          }}
-        >
-          <AvatarSvgPreview config={preview} size={56} />
-          <span className="text-[10px] text-muted-foreground">
-            {intensityLabels[val]}
-          </span>
-        </button>
+  return avatarMakerSelections(step).map((selection, index) => {
+    const isPicked = justPicked === `${selection.field}-${selection.value}`;
+    const disabled =
+      selection.field === "hair" &&
+      !isAvatarComposerCombinationCompatible(
+        selection.value,
+        config.expression,
       );
-    });
-  }
-
-  if (step === "skin") {
-    return Array.from({ length: 5 }, (_, i) => {
-      const val = i;
-      const isPicked = justPicked === `skin-${val}`;
-      const preview = { ...config, skin: val };
-      return (
-        <button
-          key={val}
-          type="button"
-          className={cn(
-            "rounded-full transition-all hover:scale-110",
-            isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
-          )}
-          style={{
-            animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
-          }}
-          onClick={() => {
-            return selectOption("skin", val);
-          }}
-        >
-          <AvatarSvgPreview config={preview} size={56} />
-        </button>
-      );
-    });
-  }
-
-  return Array.from({ length: 5 }, (_, i) => {
-    const val = i + 1;
-    const isPicked = justPicked === `${step}-${val}`;
-    const preview = { ...config, [step]: val };
+    const preview = updateAvatarComposerConfig(config, selection);
     return (
       <button
-        key={val}
+        key={selection.value}
         type="button"
+        disabled={disabled}
         className={cn(
-          "rounded-full transition-all hover:scale-110",
-          isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
+          "rounded-full transition-all hover:scale-110 disabled:opacity-30 disabled:hover:scale-100",
+          isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
         )}
         style={{
-          animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
+          animation: `avatar-option-appear 0.2s ease-out ${index * 0.05}s both`,
         }}
         onClick={() => {
-          return selectOption(step, val);
+          return selectOption(selection);
         }}
+        aria-label={avatarOptionLabel(selection.value)}
       >
-        <AvatarSvgPreview config={preview as AvatarSvgConfig} size={56} />
+        <AvatarSvgPreview config={preview} size={56} />
       </button>
     );
   });
@@ -273,23 +258,20 @@ function StepNavigator() {
   const goBack = useSet(goBackStep$);
   const goForward = useSet(goForwardStep$);
   const stepLabels: Record<Step, string> = {
-    rotation: t(($) => {
-      return $.avatar.steps.angle;
+    face: t(($) => {
+      return $.avatar.steps.face;
+    }),
+    hair: t(($) => {
+      return $.avatar.steps.hair;
+    }),
+    expression: t(($) => {
+      return $.avatar.steps.mood;
     }),
     skin: t(($) => {
       return $.avatar.steps.skin;
     }),
-    hairStyle: t(($) => {
-      return $.avatar.steps.hair;
-    }),
     hairColor: t(($) => {
       return $.avatar.steps.color;
-    }),
-    expression: t(($) => {
-      return $.avatar.steps.face;
-    }),
-    intensity: t(($) => {
-      return $.avatar.steps.mood;
     }),
   };
 
@@ -419,16 +401,13 @@ function AvatarMakerDialogBody({
           </p>
         </div>
         <StepNavigator />
-        <div className="flex gap-3 flex-wrap justify-center">
+        <div className="flex max-h-48 w-full flex-wrap justify-center gap-3 overflow-y-auto px-1 py-1">
           <StepOptions
             step={step}
             config={config}
             justPicked={justPicked}
-            selectOption={(field, value) => {
-              detach(
-                selectOption(field, value, pageSignal),
-                Reason.DomCallback,
-              );
+            selectOption={(selection) => {
+              detach(selectOption(selection, pageSignal), Reason.DomCallback);
             }}
           />
         </div>

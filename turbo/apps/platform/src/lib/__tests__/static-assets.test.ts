@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import indexHtml from "../../../index.html?raw";
 import { settingsIconAssetUrl } from "../../views/okou-page/components/settings/settings-icon-assets.ts";
 import {
+  avatarComposerAssetUrl,
   avatarSvgAssetUrl,
   computerUseIllustrationImg,
   emptyArtifactImg,
@@ -119,6 +120,9 @@ describe("published static asset URLs", () => {
   it("keeps the frozen CDN prefix for generated avatar SVGs", () => {
     expect(avatarSvgAssetUrl("head-1.svg")).toContain(
       `${FROZEN_CDN_PREFIX}assets/avatar-svg/`,
+    );
+    expect(avatarComposerAssetUrl("faces/round-gold.svg")).toContain(
+      `${FROZEN_CDN_PREFIX}assets/avatar-svg-v2/v31-contained-hair-fill-20260830/`,
     );
   });
 

@@ -36,17 +36,11 @@
     },
     "create": "Buat avatar kustom",
     "description": "Pilih gaya atau tekan acak untuk kejutan.",
-    "intensity": {
-      "chill": "Santai",
-      "hyped": "Semangat",
-      "normal": "Normal"
-    },
     "nextStep": "Langkah berikutnya",
     "previousStep": "Langkah sebelumnya",
     "randomize": "Acak avatar",
     "shuffleHint": "Acak — coba tampilan acak!",
     "steps": {
-      "angle": "Sudut",
       "color": "Warna",
       "face": "Wajah",
       "hair": "Rambut",

@@ -31,7 +31,7 @@ function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
   return Array.from(root.querySelectorAll<HTMLImageElement>("img"), (img) => {
     return img.src;
   }).filter((src) => {
-    return src.includes("/platform/views/zero-page/assets/avatar-svg/");
+    return src.includes("/platform/views/zero-page/assets/avatar-svg");
   });
 }
 
@@ -200,7 +200,7 @@ describe("zero settings tab", () => {
     expect(nameRow.querySelector("input")).toBeNull();
   });
 
-  it("renders the highest preset the API can assign", async () => {
+  it("keeps rendering the highest legacy preset", async () => {
     prepareAgentProfile(`preset:${AVATAR_PRESET_COUNT - 1}`);
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
@@ -218,6 +218,24 @@ describe("zero settings tab", () => {
     ]);
   });
 
+  it("keeps rendering a legacy custom SVG avatar", async () => {
+    prepareAgentProfile("svg:r3s2h4c1f5h");
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    await findAgentNameInput();
+    const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+    const avatarRow = avatarLabel.parentElement?.parentElement;
+    if (!avatarRow) {
+      throw new Error("Avatar profile row not found");
+    }
+
+    expect(renderedAvatarSvgLayerSrcs(avatarRow)).toStrictEqual([
+      expect.stringContaining("/head-r3-s2.svg"),
+      expect.stringContaining("/face-r3-f5-h.svg"),
+      expect.stringContaining("/hair-r3-h4-c1.svg"),
+    ]);
+  });
+
   it("loads only the visible avatar SVG layers", async () => {
     prepareAgentProfile();
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
@@ -227,9 +245,9 @@ describe("zero settings tab", () => {
     const dialog = await screen.findByRole("dialog");
     const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
 
-    expect(layerSrcs).toHaveLength(18);
+    expect(layerSrcs).toHaveLength(28);
     const uniqueSrcs = new Set(layerSrcs);
-    expect(uniqueSrcs.size).toBe(15);
+    expect(uniqueSrcs.size).toBe(24);
   });
 
   it("creates and saves a custom avatar from the profile page", async () => {
@@ -243,32 +261,45 @@ describe("zero settings tab", () => {
       expect(
         screen.getAllByText("Give your agent a face").length,
       ).toBeGreaterThan(0);
-      expect(screen.getByText("Angle")).toBeInTheDocument();
+      expect(screen.getByText("Face")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Randomize avatar"));
     click(screen.getByLabelText("Next step"));
 
     await waitFor(() => {
-      expect(screen.getByText("Skin")).toBeInTheDocument();
+      expect(screen.getByText("Hair")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Next step"));
     click(screen.getByLabelText("Next step"));
     click(screen.getByLabelText("Next step"));
     click(screen.getByLabelText("Next step"));
 
     await waitFor(() => {
-      expect(screen.getByText("Mood")).toBeInTheDocument();
+      expect(screen.getByText("Color")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Chill"));
+    click(screen.getByLabelText("Blue"));
     click(screen.getByText("Use this avatar"));
 
     await waitFor(() => {
       expect(screen.queryAllByText("Give your agent a face")).toHaveLength(0);
       expect(screen.getByText("Profile saved")).toBeInTheDocument();
     });
+
+    const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+    const avatarRow = avatarLabel.parentElement?.parentElement;
+    if (!avatarRow) {
+      throw new Error("Avatar profile row not found");
+    }
+    const newAvatarLayers = renderedAvatarSvgLayerSrcs(avatarRow);
+    expect(newAvatarLayers).toHaveLength(4);
+    expect(newAvatarLayers).toStrictEqual([
+      expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-rear\.svg$/u),
+      expect.stringMatching(/\/avatar-svg-v2\/.*\/faces\//u),
+      expect.stringMatching(/\/avatar-svg-v2\/.*\/hairs\/.*-blue-front\.svg$/u),
+      expect.stringMatching(/\/avatar-svg-v2\/.*\/expressions\//u),
+    ]);
 
     click(screen.getByLabelText("Create custom avatar"));
 

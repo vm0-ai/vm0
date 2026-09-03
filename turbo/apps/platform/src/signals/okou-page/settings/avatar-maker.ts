@@ -1,25 +1,24 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import {
+  updateAvatarComposerConfig,
+  type AvatarComposerSelection,
+} from "@okouai/core/agent-avatar";
+import {
   type AvatarSvgConfig,
   randomAvatarSvgConfig,
 } from "../../../views/okou-page/avatar-svg-utils.ts";
 
-export type Step =
-  | "rotation"
-  | "skin"
-  | "hairStyle"
-  | "hairColor"
-  | "expression"
-  | "intensity";
+export type Step = "face" | "hair" | "expression" | "skin" | "hairColor";
+
+export type AvatarMakerSelection = AvatarComposerSelection;
 
 export const AVATAR_MAKER_STEPS = [
-  "rotation",
-  "skin",
-  "hairStyle",
-  "hairColor",
+  "face",
+  "hair",
   "expression",
-  "intensity",
+  "skin",
+  "hairColor",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -44,7 +43,7 @@ export const avatarMakerConfig$ = computed((get) => {
 // Current step
 // ---------------------------------------------------------------------------
 
-const internalStep$ = state<Step>("rotation");
+const internalStep$ = state<Step>("face");
 export const avatarMakerStep$ = computed((get) => {
   return get(internalStep$);
 });
@@ -110,7 +109,7 @@ export const shuffleAvatar$ = command(async ({ set }, signal: AbortSignal) => {
 /** Open the dialog with a fresh random avatar. */
 export const openAvatarMaker$ = command(({ set }) => {
   set(internalConfig$, randomAvatarSvgConfig());
-  set(internalStep$, "rotation");
+  set(internalStep$, "face");
   set(internalJustPicked$, null);
   set(internalShowSparkles$, false);
   set(internalShuffling$, false);
@@ -121,19 +120,18 @@ export const openAvatarMaker$ = command(({ set }) => {
 export const selectAvatarOption$ = command(
   async (
     { get, set },
-    field: Step,
-    value: number | string,
+    selection: AvatarMakerSelection,
     signal: AbortSignal,
   ) => {
-    set(internalJustPicked$, `${field}-${value}`);
+    set(internalJustPicked$, `${selection.field}-${selection.value}`);
     set(internalShowSparkles$, true);
     const prev = get(internalConfig$);
-    set(internalConfig$, { ...prev, [field]: value });
+    set(internalConfig$, updateAvatarComposerConfig(prev, selection));
 
     await delay(350, { signal });
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
-    const idx = AVATAR_MAKER_STEPS.indexOf(field);
+    const idx = AVATAR_MAKER_STEPS.indexOf(selection.field);
     if (idx + 1 < AVATAR_MAKER_STEPS.length) {
       set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!);
     }

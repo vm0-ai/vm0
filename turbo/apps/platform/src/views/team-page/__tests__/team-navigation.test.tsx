@@ -1101,7 +1101,7 @@ describe("team page navigation", () => {
     const avatarDialog = await screen.findByRole("dialog", {
       name: "Give your agent a face",
     });
-    expect(within(avatarDialog).getByText("Angle")).toBeInTheDocument();
+    expect(within(avatarDialog).getByText("Face")).toBeInTheDocument();
   });
 
   it("deletes an agent from the profile tab", async () => {

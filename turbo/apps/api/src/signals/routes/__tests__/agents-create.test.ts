@@ -4,6 +4,7 @@ import {
   agentsByIdContract,
   agentsMainContract,
 } from "@okouai/api-contracts/contracts/agents";
+import { parseAvatarComposerUrl } from "@okouai/core/agent-avatar";
 import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -138,7 +139,7 @@ describe("POST /api/agents", () => {
     expect(response.body.agentId).toStrictEqual(expect.any(String));
   });
 
-  it("assigns a preset avatar when the request omits one", async () => {
+  it("assigns a composer avatar when the request omits one", async () => {
     const fixture = agentsFixture("avatar");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
@@ -152,7 +153,7 @@ describe("POST /api/agents", () => {
       [201],
     );
 
-    expect(response.body.avatarUrl).toMatch(/^preset:[0-4]$/);
+    expect(parseAvatarComposerUrl(response.body.avatarUrl)).not.toBeNull();
   });
 
   it("returns 409 when the public agent limit has been reached", async () => {

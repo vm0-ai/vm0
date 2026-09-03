@@ -14,6 +14,7 @@ import {
   agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { parseAvatarComposerUrl } from "@okouai/core/agent-avatar";
 
 const context = testContext();
 
@@ -279,23 +280,19 @@ describe("zero jobs page", () => {
     const avatarDialog = await screen.findByRole("dialog", {
       name: "Give your agent a face",
     });
-    expect(screen.getByText("Angle")).toBeInTheDocument();
+    expect(screen.getByText("Face")).toBeInTheDocument();
     click(screen.getByLabelText("Randomize avatar"));
     click(screen.getByLabelText("Next step"));
     await waitFor(() => {
-      expect(screen.getByText("Skin")).toBeInTheDocument();
+      expect(screen.getByText("Hair")).toBeInTheDocument();
     });
-    click(screen.getByLabelText("Next step"));
     click(screen.getByLabelText("Next step"));
     click(screen.getByLabelText("Next step"));
     click(screen.getByLabelText("Next step"));
     await waitFor(() => {
-      expect(screen.getByText("Mood")).toBeInTheDocument();
-      expect(screen.getByText("Chill")).toBeInTheDocument();
-      expect(screen.getByText("Normal")).toBeInTheDocument();
-      expect(screen.getByText("Hyped")).toBeInTheDocument();
+      expect(screen.getByText("Color")).toBeInTheDocument();
     });
-    click(screen.getByText("Chill"));
+    click(screen.getByLabelText("Blue"));
     click(screen.getByText("Use this avatar"));
     await waitFor(() => {
       expect(avatarDialog).not.toBeInTheDocument();
@@ -331,6 +328,9 @@ describe("zero jobs page", () => {
     await waitFor(() => {
       expect(screen.getByText("Private Analyst")).toBeInTheDocument();
     });
+    for (const agent of agents.slice(1)) {
+      expect(parseAvatarComposerUrl(agent.avatarUrl)).not.toBeNull();
+    }
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(dialog).not.toBeInTheDocument();
 

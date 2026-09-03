@@ -1,37 +1,43 @@
-import { avatarSvgAssetUrl } from "./platform-assets.ts";
+import {
+  avatarComposerUrl,
+  parseAvatarComposerUrl,
+  randomAvatarComposerConfig,
+  type AvatarComposerConfig,
+} from "@okouai/core/agent-avatar";
+import {
+  avatarComposerAssetUrl,
+  avatarSvgAssetUrl,
+} from "./platform-assets.ts";
 
 export const AVATAR_SVG_PREFIX = "svg:";
 
-export interface AvatarSvgConfig {
-  rotation: number; // 1-5
-  skin: number; // 0-4
-  hairStyle: number; // 1-5
-  hairColor: number; // 1-5 (1=yellow, 2=teal, 3=grey, 4=pink, 5=brown)
-  expression: number; // 1-5
-  intensity: "d" | "m" | "h"; // default, medium, high
+export type AvatarSvgConfig = AvatarComposerConfig;
+
+export interface LegacyAvatarSvgConfig {
+  rotation: number;
+  skin: number;
+  hairStyle: number;
+  hairColor: number;
+  expression: number;
+  intensity: "d" | "m" | "h";
 }
 
-const AVATAR_INTENSITIES = ["d", "m", "h"] as const;
+export type ResolvedAvatarSvgConfig = AvatarSvgConfig | LegacyAvatarSvgConfig;
 
-const INTENSITY_MAP = {
-  d: "d",
-  m: "m",
-  h: "h",
-} as const;
-
-/**
- * Serialize an avatar config to a storable string like `svg:r1s0h3c2f1d`.
- */
 export function serializeAvatarSvgConfig(config: AvatarSvgConfig): string {
-  return `${AVATAR_SVG_PREFIX}r${config.rotation}s${config.skin}h${config.hairStyle}c${config.hairColor}f${config.expression}${config.intensity}`;
+  return avatarComposerUrl(config);
 }
 
-/**
- * Parse a `svg:r1s0h3c2f1d` string back into config, or return null.
- */
-export function parseAvatarSvgConfig(
+function legacyAvatarIntensity(value: string | undefined): "d" | "m" | "h" {
+  if (value === "d" || value === "m" || value === "h") {
+    return value;
+  }
+  throw new Error("Invalid legacy avatar intensity");
+}
+
+function parseLegacyAvatarSvgConfig(
   value: string | null | undefined,
-): AvatarSvgConfig | null {
+): LegacyAvatarSvgConfig | null {
   if (!value?.startsWith(AVATAR_SVG_PREFIX)) {
     return null;
   }
@@ -40,43 +46,55 @@ export function parseAvatarSvgConfig(
   if (!match) {
     return null;
   }
-  const intensityKey = match[6] as keyof typeof INTENSITY_MAP;
   return {
     rotation: Number(match[1]),
     skin: Number(match[2]),
     hairStyle: Number(match[3]),
     hairColor: Number(match[4]),
     expression: Number(match[5]),
-    intensity: INTENSITY_MAP[intensityKey],
+    intensity: legacyAvatarIntensity(match[6]),
   };
 }
 
-export function avatarSvgLayerUrls(config: AvatarSvgConfig): {
-  head: string;
-  face: string;
-  hair: string;
-} {
-  return {
-    head: avatarSvgAssetUrl(`head-r${config.rotation}-s${config.skin}.svg`),
-    face: avatarSvgAssetUrl(
-      `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
+export function parseAvatarSvgConfig(
+  value: string | null | undefined,
+): ResolvedAvatarSvgConfig | null {
+  return parseAvatarComposerUrl(value) ?? parseLegacyAvatarSvgConfig(value);
+}
+
+export function isLegacyAvatarSvgConfig(
+  config: ResolvedAvatarSvgConfig,
+): config is LegacyAvatarSvgConfig {
+  return "rotation" in config;
+}
+
+export function avatarSvgLayerUrls(
+  config: ResolvedAvatarSvgConfig,
+): readonly string[] {
+  if (isLegacyAvatarSvgConfig(config)) {
+    return [
+      avatarSvgAssetUrl(`head-r${config.rotation}-s${config.skin}.svg`),
+      avatarSvgAssetUrl(
+        `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
+      ),
+      avatarSvgAssetUrl(
+        `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
+      ),
+    ];
+  }
+
+  const hairBase = `hairs/${config.face}/${config.hair}-${config.hairColor}`;
+  const expressionSkin = config.expression === "calm" ? `-${config.skin}` : "";
+  return [
+    avatarComposerAssetUrl(`${hairBase}-rear.svg`),
+    avatarComposerAssetUrl(`faces/${config.face}-${config.skin}.svg`),
+    avatarComposerAssetUrl(`${hairBase}-front.svg`),
+    avatarComposerAssetUrl(
+      `expressions/${config.expression}-${config.face}${expressionSkin}.svg`,
     ),
-    hair: avatarSvgAssetUrl(
-      `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
-    ),
-  };
+  ];
 }
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {
-  const rand = (min: number, max: number) => {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-  };
-  return {
-    rotation: rand(1, 5),
-    skin: rand(0, 4),
-    hairStyle: rand(1, 5),
-    hairColor: rand(1, 5),
-    expression: rand(1, 5),
-    intensity: AVATAR_INTENSITIES[rand(0, AVATAR_INTENSITIES.length - 1)]!,
-  };
+  return randomAvatarComposerConfig();
 }

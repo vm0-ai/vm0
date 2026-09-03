@@ -36,17 +36,11 @@
     },
     "create": "Crear avatar personalizado",
     "description": "Elige un estilo o pulsa Mezclar para llevarte una sorpresa.",
-    "intensity": {
-      "chill": "Tranquilo",
-      "hyped": "Muy emocionado",
-      "normal": "Normal"
-    },
     "nextStep": "Siguiente paso",
     "previousStep": "Paso anterior",
     "randomize": "Cambiar avatar al azar",
     "shuffleHint": "Mezcla los rasgos y prueba un aspecto aleatorio.",
     "steps": {
-      "angle": "Ángulo",
       "color": "Color",
       "face": "Rostro",
       "hair": "Cabello",

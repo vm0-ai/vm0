@@ -36,17 +36,11 @@
     },
     "create": "カスタムアバターを作成する",
     "description": "スタイルを選ぶか、シャッフルしてランダムな見た目を試せます。",
-    "intensity": {
-      "chill": "チル",
-      "hyped": "ハイテンション",
-      "normal": "ノーマル"
-    },
     "nextStep": "次のステップ",
     "previousStep": "前のステップ",
     "randomize": "アバターをランダム化する",
     "shuffleHint": "シャッフル — ランダムに見てみましょう!",
     "steps": {
-      "angle": "角度",
       "color": "色",
       "face": "顔",
       "hair": "髪",

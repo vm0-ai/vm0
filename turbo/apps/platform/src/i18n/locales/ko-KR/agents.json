@@ -36,17 +36,11 @@
     },
     "create": "맞춤 아바타 생성",
     "description": "스타일을 선택하거나 셔플을 눌러 놀라움을 경험하세요.",
-    "intensity": {
-      "chill": "차분함",
-      "hyped": "활기참",
-      "normal": "보통"
-    },
     "nextStep": "다음 단계",
     "previousStep": "이전 단계",
     "randomize": "아바타 무작위 설정",
     "shuffleHint": "셔플 — 무작위 외모를 시도해 보세요!",
     "steps": {
-      "angle": "각도",
       "color": "색상",
       "face": "얼굴",
       "hair": "머리카락",
