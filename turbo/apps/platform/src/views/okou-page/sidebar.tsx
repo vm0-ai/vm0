@@ -20,7 +20,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-  getShortcutLabel,
 } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
@@ -561,7 +560,6 @@ function ThreeColumnChatListToggle({
     : t(($) => {
         return $.appShell.sidebar.hideChatList;
       });
-  const shortcutLabel = getShortcutLabel("mod+b");
 
   return (
     <Tooltip>
@@ -585,10 +583,7 @@ function ThreeColumnChatListToggle({
         </Button>
       </TooltipTrigger>
       <TooltipContent side={tooltipSide}>
-        <p className="text-xs">
-          {label}
-          <span aria-hidden="true">{` · ${shortcutLabel}`}</span>
-        </p>
+        <p className="text-xs">{label}</p>
       </TooltipContent>
     </Tooltip>
   );
@@ -731,7 +726,6 @@ function ChatListColumn() {
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchWorkspace;
   });
-  const searchShortcutLabel = getShortcutLabel("mod+k");
   const newChatLabel = t(($) => {
     return $.chat.newChat;
   });
@@ -772,10 +766,7 @@ function ChatListColumn() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">
-                {searchLabel}
-                <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
-              </p>
+              <p className="text-xs">{searchLabel}</p>
             </TooltipContent>
           </Tooltip>
           <Tooltip>
