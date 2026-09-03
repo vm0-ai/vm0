@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.307.4](https://github.com/vm0-ai/vm0/compare/cli-v9.307.3...cli-v9.307.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* **mail:** preserve exact reconnect account ([#31224](https://github.com/vm0-ai/vm0/issues/31224)) ([87a73d3](https://github.com/vm0-ai/vm0/commit/87a73d3f81fc8c7aa229a18d0c70c99a054bf121))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.396.2
+    * @okouai/core bumped to 8.611.5
+    * @okouai/pi-agent-runtime bumped to 1.14.2
+
 ## [9.307.3](https://github.com/vm0-ai/vm0/compare/cli-v9.307.2...cli-v9.307.3) (2026-09-03)
 
 
