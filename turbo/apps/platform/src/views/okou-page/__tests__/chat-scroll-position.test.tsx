@@ -393,6 +393,26 @@ function scrollTo(container: HTMLElement, scrollTop: number): void {
   fireEvent.scroll(container);
 }
 
+function selectAssistantText(element: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  Object.defineProperty(range, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return domRect(120, 20);
+    },
+  });
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+  element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
 function buttonByName(name: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {
     return (
@@ -1161,6 +1181,83 @@ describe("chat scroll position", () => {
     expect(container.scrollTop).toBe(820);
   });
 
+  it("keeps the selection toolbar through an automatic anchor restore", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000821";
+    const prefix = "selection-restore";
+    const runIds = Array.from({ length: 8 }, (_, index) => {
+      return `${prefix}-run-${index}`;
+    });
+    mockChatLifecycleWithoutBrowserSession({
+      threadId,
+      threadTitle: "Selection restore",
+      activeRunIds: runIds,
+      chatEvents: runIds.map((runId, index) => {
+        return {
+          id: `${prefix}-${index}`,
+          role: "assistant" as const,
+          content: `${prefix} message ${index}`,
+          runId,
+          createdAt: new Date(Date.UTC(2026, 6, 30, 10, index)).toISOString(),
+        };
+      }),
+    });
+    let contentGrowth = 0;
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return 1000 + contentGrowth;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100 + contentGrowth, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+    const resizeObserver = installResizeObserver();
+
+    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText(`${prefix} message 7`)).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    const messageContainer = container.querySelector(
+      "[data-message-container]",
+    );
+    if (!messageContainer) {
+      throw new Error("Chat message container not found");
+    }
+    scrollTo(container, 420);
+    selectAssistantText(screen.getByText(`${prefix} message 4`));
+    await screen.findByText("Quote");
+
+    contentGrowth = 400;
+    resizeObserver.trigger(messageContainer);
+    fireEvent.scroll(container);
+
+    expect(container.scrollTop).toBe(820);
+    expect(screen.getByText("Quote")).toBeInTheDocument();
+    expect(window.getSelection()?.toString()).toBe(`${prefix} message 4`);
+
+    scrollTo(container, 830);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps following the tail when a nested scroller scrolls after late content growth", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000810";
     const { publishAppendedEvents, growContent } = mockLateGrowingThread({
@@ -1865,91 +1962,111 @@ describe("chat scroll position", () => {
     });
   });
 
-  it("keeps a completed-work scroll target expanded when its run finishes", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000804";
-    const runId = "scroll-completed-work-run";
-    const initialEvents: MockChatEventInput[] = [
-      {
-        id: "completed-work-user",
-        role: "user",
-        content: "Complete the release review",
-        runId,
-        createdAt: "2026-07-30T10:00:00Z",
-      },
-      {
-        id: "completed-work-intermediate",
-        role: "assistant",
-        content: "Intermediate release analysis",
-        runId,
-        createdAt: "2026-07-30T10:00:01Z",
-      },
-    ];
-    const appendedEvents: MockChatEventInput[] = [
-      {
-        id: "completed-work-final",
-        role: "assistant",
-        content: "Final release analysis",
-        runId,
-        runLifecycleEvent: "completed",
-        createdAt: "2026-07-30T10:00:02Z",
-      },
-    ];
-    const { publishAppendedEvents } = mockLiveThread({
-      threadId,
-      initialEvents,
-      appendedEvents,
-    });
-    const eventTops = new Map([
-      ["completed-work-user", 200],
-      ["completed-work-intermediate", 400],
-      ["completed-work-final", 600],
-    ]);
-    installChatLayout(
-      new Map([
-        [
-          threadId,
-          {
-            clientHeight: () => {
-              return 300;
+  it.each([
+    {
+      name: "legacy completed-work",
+      runWorkFoldingEnabled: false,
+      workSelector: "[data-chat-completed-work-fold]",
+    },
+    {
+      name: "run-work",
+      runWorkFoldingEnabled: true,
+      workSelector: "[data-chat-run-work]",
+    },
+  ])(
+    "keeps a $name scroll target expanded when its run finishes",
+    async ({ runWorkFoldingEnabled, workSelector }) => {
+      const threadId = "b0000000-0000-4000-a000-000000000804";
+      const runId = "scroll-completed-work-run";
+      const initialEvents: MockChatEventInput[] = [
+        {
+          id: "completed-work-user",
+          role: "user",
+          content: "Complete the release review",
+          runId,
+          createdAt: "2026-07-30T10:00:00Z",
+        },
+        {
+          id: "completed-work-intermediate",
+          role: "assistant",
+          content: "Intermediate release analysis",
+          runId,
+          createdAt: "2026-07-30T10:00:01Z",
+        },
+      ];
+      const appendedEvents: MockChatEventInput[] = [
+        {
+          id: "completed-work-final",
+          role: "assistant",
+          content: "Final release analysis",
+          runId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-07-30T10:00:02Z",
+        },
+      ];
+      const { publishAppendedEvents } = mockLiveThread({
+        threadId,
+        initialEvents,
+        appendedEvents,
+      });
+      const eventTops = new Map([
+        ["completed-work-user", 200],
+        ["completed-work-intermediate", 400],
+        ["completed-work-final", 600],
+      ]);
+      installChatLayout(
+        new Map([
+          [
+            threadId,
+            {
+              clientHeight: () => {
+                return 300;
+              },
+              scrollHeight: () => {
+                return 1000;
+              },
+              eventRect: (eventId) => {
+                const top = eventTops.get(eventId);
+                return top === undefined ? undefined : { top, height: 80 };
+              },
             },
-            scrollHeight: () => {
-              return 1000;
-            },
-            eventRect: (eventId) => {
-              const top = eventTops.get(eventId);
-              return top === undefined ? undefined : { top, height: 80 };
-            },
-          },
-        ],
-      ]),
-    );
+          ],
+        ]),
+      );
 
-    await setupVisibleChatPage({ context, path: `/chats/${threadId}` });
+      await setupVisibleChatPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatRunWorkFolding]: runWorkFoldingEnabled,
+        },
+      });
 
-    const container = await waitFor(() => {
-      expect(
-        screen.getByText("Intermediate release analysis"),
-      ).toBeInTheDocument();
-      return chatScrollContainer();
-    });
-    scrollTo(container, 420);
-    expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
-
-    publishAppendedEvents();
-
-    await waitFor(() => {
-      expect(screen.getByText("Final release analysis")).toBeInTheDocument();
-      expect(
-        screen.getByText("Intermediate release analysis"),
-      ).toBeInTheDocument();
+      const container = await waitFor(() => {
+        expect(
+          screen.getByText("Intermediate release analysis"),
+        ).toBeInTheDocument();
+        return chatScrollContainer();
+      });
+      scrollTo(container, 420);
       expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
-      expect(
-        document.querySelector(
-          "[data-chat-completed-work-fold] button[aria-expanded='true']",
-        ),
-      ).not.toBeNull();
-    });
-  });
+
+      publishAppendedEvents();
+
+      await waitFor(() => {
+        expect(screen.getByText("Final release analysis")).toBeInTheDocument();
+        expect(
+          screen.getByText("Intermediate release analysis"),
+        ).toBeInTheDocument();
+        expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
+        expect(
+          document.querySelector(
+            `${workSelector} button[aria-expanded='true']`,
+          ),
+        ).not.toBeNull();
+      });
+    },
+  );
 
   it("preserves its visible anchor when composer or viewport resize changes layout", async () => {
     const threadId = "e8000000-0000-4000-a000-000000000002";

@@ -20,6 +20,12 @@ export const platformVm0LogoImg = platformStaticAssetUrl(
 export const platformVm0LogoDarkImg = platformStaticAssetUrl(
   "assets/vm0-logo-dark-f3de8c7713f8.svg",
 );
+export const platformOkouWordmarkDarkImg = platformPublicStaticUrl(
+  "https://static.vm0.io/public/okou-logo-wordmark-dark-40e256bb155e.svg",
+);
+export const platformOkouWordmarkLightImg = platformPublicStaticUrl(
+  "https://static.vm0.io/public/okou-logo-wordmark-light-1ebf9d0e7a50.svg",
+);
 export const platformFeishuAppIconImg = platformStaticAssetUrl(
   "views/zero-page/assets/feishu/app-icon-okou-fefdc683bf5c.png",
 );

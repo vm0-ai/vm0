@@ -18,6 +18,7 @@ import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,
   type DefaultModelFirstPin,
+  type ExternalModelProviderPlanCapabilitiesSource,
   resolveModelFirstProviderAdmission,
   resolvePersistedModelFirstRoute,
   type ModelFirstPin,
@@ -302,6 +303,9 @@ async function evaluatePersistedChatThreadModel(
 ): Promise<PersistedChatThreadModelEvaluationResult> {
   let pin: ModelFirstPin;
   let selectedModelChanged: boolean;
+  let externalPlanCapabilities: ExternalModelProviderPlanCapabilitiesSource = {
+    kind: "load-current",
+  };
   if (thread.selectedModel === null) {
     const defaultPin = await resolveDefaultModelFirstPin(
       db,
@@ -348,6 +352,10 @@ async function evaluatePersistedChatThreadModel(
     selectedModelChanged =
       modelResolution.selectedModelChanged ||
       thread.selectedModel !== pin.selectedModel;
+    externalPlanCapabilities = {
+      kind: "resolved",
+      capabilities: modelResolution.orgPlanCapabilities,
+    };
   }
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db,
@@ -355,6 +363,7 @@ async function evaluatePersistedChatThreadModel(
     userId: params.userId,
     modelPin: pin,
     requestedModelProvider: undefined,
+    externalPlanCapabilities,
   });
   const tier = resolveCodexTier({
     persistedTier: thread.codexServiceTier,

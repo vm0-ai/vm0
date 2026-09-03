@@ -398,9 +398,9 @@ mod tests {
 
         let _ = CompletionPayload::new(
             run_id,
-            0,
-            Some(RequestFailureReason::ProviderRateLimited),
-            None,
+            1,
+            Some(RequestFailureReason::InputTooLarge),
+            Some("Codex input exceeded the app-server limit".to_string()),
             sandbox_id,
             SandboxReuseResult::PoolMiss,
             CompletionAuth::sandbox_token(run_id, "completion-token".to_string()),
@@ -419,7 +419,7 @@ mod tests {
         );
         assert_eq!(
             *failure_reason.lock().unwrap(),
-            Some(RequestFailureReason::ProviderRateLimited)
+            Some(RequestFailureReason::InputTooLarge)
         );
     }
 

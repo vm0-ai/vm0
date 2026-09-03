@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { request$, setResHeader$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
@@ -28,6 +28,7 @@ import {
 } from "../services/chat-thread.service";
 import { chatSearch } from "../services/chat-search.service";
 import {
+  catchUpChatThreadEvents,
   chatThreadEventRows,
   chatThreadEventSnapshot,
 } from "../services/chat-event-snapshot.service";
@@ -56,6 +57,7 @@ import { chatThreadRenameRoutes } from "./chat-threads-rename";
 import { chatThreadUnpinRoutes } from "./chat-threads-unpin";
 
 const chatThreadIdSchema = z.string().uuid();
+const catchUpChatEventsBody$ = bodyResultOf(chatThreadEventsContract.catchUp);
 
 function chatThreadNotFound() {
   return notFound("Chat thread not found");
@@ -143,6 +145,47 @@ const listChatIndicatorsInner$ = computed(async (get) => {
 
   return { status: 200 as const, body: indicators };
 });
+
+const catchUpChatEventsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const version = resolveChatEventSchemaVersion(
+      get(request$).header(CHAT_EVENT_SCHEMA_VERSION_HEADER),
+    );
+    if (version.kind === "error") {
+      return version.response;
+    }
+    set(
+      setResHeader$,
+      CHAT_EVENT_SCHEMA_VERSION_HEADER,
+      version.version.toString(),
+    );
+    const body = await get(catchUpChatEventsBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await get(
+      catchUpChatThreadEvents({
+        cursors: body.data,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      }),
+    );
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        events: Object.fromEntries(
+          Object.entries(result.events).map(([threadId, events]) => {
+            return [threadId, [...events]];
+          }),
+        ),
+        notFoundThreads: [...result.notFoundThreads],
+      },
+    };
+  },
+);
 
 const getChatEventSnapshotInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -383,6 +426,17 @@ export const chatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadArtifactsContract.list,
     handler: authRoute({}, listChatThreadArtifactsInner$),
+  },
+  {
+    route: chatThreadEventsContract.catchUp,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-event:read",
+      },
+      catchUpChatEventsInner$,
+    ),
   },
   {
     route: chatThreadEventsContract.snapshot,

@@ -457,6 +457,9 @@ impl From<Option<&WorkloadResourceLimitDiagnostic>> for JobWorkloadResourceLogFi
 
 fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
     match diagnostic.failure_class {
+        FailureClass::CliExecutionError => {
+            diagnostic.failure_reason == Some(FailureReason::InputTooLarge)
+        }
         FailureClass::CliNonzero => matches!(
             diagnostic.failure_reason,
             Some(
@@ -649,6 +652,64 @@ mod tests {
             assert_field_eq(&event, "failure_class", "cli_nonzero");
             assert_field_eq(&event, "failure_framework", "codex");
             assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
+        }
+    }
+
+    #[test]
+    fn oversized_codex_input_logs_cli_execution_failure_at_info() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliExecutionError,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("oversized prompt"),
+        )
+        .with_failure_reason(FailureReason::InputTooLarge)
+        .with_session_history_status(SessionHistoryStatus::NotApplicable);
+        let failure = executor::ExecutionFailure::new(
+            1,
+            "Codex input exceeded the app-server limit",
+            Some(diagnostic),
+        );
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::INFO);
+        assert_field_eq(&event, "failure_class", "cli_execution_error");
+        assert_field_eq(&event, "failure_framework", "codex");
+        assert_field_eq(&event, "failure_reason", "input_too_large");
+        assert!(!event.fields.contains_key("failure_detail_source"));
+    }
+
+    #[test]
+    fn oversized_input_near_misses_remain_error_level() {
+        let diagnostics = [
+            FailureDiagnostic::new(
+                FailureClass::CliExecutionError,
+                AgentFramework::Codex,
+                PromptMetadata::from_prompt("plain prompt"),
+            ),
+            FailureDiagnostic::new(
+                FailureClass::CliNonzero,
+                AgentFramework::Codex,
+                PromptMetadata::from_prompt("plain prompt"),
+            )
+            .with_failure_reason(FailureReason::InputTooLarge),
+            FailureDiagnostic::new(
+                FailureClass::CliExecutionError,
+                AgentFramework::Codex,
+                PromptMetadata::from_prompt("plain prompt"),
+            )
+            .with_failure_reason(FailureReason::ContextWindowExceeded),
+        ];
+
+        for diagnostic in diagnostics {
+            let failure = executor::ExecutionFailure::new(
+                1,
+                "unclassified execution failure",
+                Some(diagnostic),
+            );
+            let event = capture_job_failure_log(&failure);
+
+            assert_eq!(event.level, Level::ERROR);
         }
     }
 

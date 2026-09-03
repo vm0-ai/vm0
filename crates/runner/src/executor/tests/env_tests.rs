@@ -289,22 +289,6 @@ fn execution_context_validation_checks_arbitrary_vm0_user_env_before_sandbox() {
 }
 
 #[test]
-fn execution_context_validation_rejects_translated_tuning_env_nul_before_sandbox() {
-    let secret = "3\0";
-    let ctx = context_with_env(HashMap::from([(
-        "VM0_STUCK_TOOL_TIMEOUT_SECS".into(),
-        secret.into(),
-    )]));
-
-    let error = validate_context_for_test(&ctx).unwrap_err();
-
-    assert!(error.contains("bootstrap environment"));
-    assert!(error.contains("NUL byte"));
-    assert!(error.contains(guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV));
-    assert!(!error.contains(secret));
-}
-
-#[test]
 fn execution_context_validation_rejects_prompt_nul_before_sandbox() {
     let secret = "before\0after";
     let mut ctx = minimal_context();
@@ -314,7 +298,7 @@ fn execution_context_validation_rejects_prompt_nul_before_sandbox() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_PROMPT"));
+    assert!(error.contains("OKOU_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -328,7 +312,7 @@ fn execution_context_validation_rejects_append_system_prompt_nul_before_sandbox(
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_APPEND_SYSTEM_PROMPT"));
+    assert!(error.contains("OKOU_APPEND_SYSTEM_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -342,7 +326,7 @@ fn execution_context_validation_rejects_claude_settings_nul_before_sandbox() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_SETTINGS"));
+    assert!(error.contains("OKOU_SETTINGS"));
     assert!(!error.contains(secret));
 }
 
@@ -373,7 +357,7 @@ fn execution_context_validation_rejects_tool_nul_before_sandbox() {
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
-    assert!(error.contains("VM0_TOOLS"));
+    assert!(error.contains("OKOU_TOOLS"));
     assert!(error.contains("NUL"));
 }
 
@@ -713,20 +697,6 @@ fn platform_environment_claim_filters_reserved_keys_and_applies_trusted_last() {
 #[test]
 fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     let mut ctx = minimal_context();
-    ctx.environment = Some(HashMap::from([
-        (
-            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV.into(),
-            "3".into(),
-        ),
-        (
-            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV.into(),
-            "1".into(),
-        ),
-        (
-            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV.into(),
-            "2".into(),
-        ),
-    ]));
     ctx.append_system_prompt = Some("Use terse answers.".into());
     ctx.resume_session = Some(ResumeSession::inline("sess-123".into(), "{}".into()));
     ctx.disallowed_tools = Some(vec!["CronCreate".into()]);
@@ -777,70 +747,29 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     }
     assert!(is_runner_owned_env_key("OKOU_TOKEN"));
     assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        assert!(is_runner_owned_env_key(key));
-    }
     assert!(!is_runner_owned_env_key("VM0_FUTURE_RUNNER_KEY"));
 }
 
 #[test]
-fn build_env_json_translates_guest_agent_tuning_inputs_to_canonical_outputs() {
-    let mut ctx = minimal_context();
-    let expected_values = ["3", "", " 4 ", "not-a-duration"];
-    let mut environment = HashMap::new();
-    for ((legacy_input, canonical_bootstrap_output), expected_value) in
-        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
-            .into_iter()
-            .zip(expected_values)
-    {
-        environment.insert(legacy_input.into(), expected_value.into());
-        environment.insert(
-            canonical_bootstrap_output.into(),
-            "hostile-canonical-must-not-override".into(),
-        );
-    }
-    ctx.environment = Some(environment);
-
-    let env = build_env_for_test(&ctx, "http://localhost");
-
-    for ((legacy_input, canonical_bootstrap_output), expected_value) in
-        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
-            .into_iter()
-            .zip(expected_values)
-    {
-        assert_eq!(
-            env.get(canonical_bootstrap_output).map(String::as_str),
-            Some(expected_value)
-        );
-        assert!(
-            !env.contains_key(legacy_input),
-            "runner writer emitted legacy output {legacy_input}"
-        );
-    }
-}
-
-#[test]
-fn build_env_json_does_not_author_guest_agent_tuning_output_without_legacy_inputs() {
-    let canonical_only_environment = guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
+fn build_env_json_does_not_author_guest_agent_tuning_from_user_environment() {
+    let canonical_keys = [
+        guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+    ];
+    let canonical_environment = canonical_keys
+        .map(|key| (key.into(), "hostile-canonical-must-not-author".into()))
         .into_iter()
-        .map(|(_, canonical_bootstrap_output)| {
-            (
-                canonical_bootstrap_output.into(),
-                "hostile-canonical-must-not-author".into(),
-            )
-        })
         .collect();
 
-    for environment in [None, Some(canonical_only_environment)] {
+    for environment in [None, Some(canonical_environment)] {
         let mut ctx = minimal_context();
         ctx.environment = environment;
         let env = build_env_for_test(&ctx, "http://localhost");
 
-        for (legacy_input, canonical_bootstrap_output) in
-            guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
-        {
-            assert!(!env.contains_key(legacy_input));
-            assert!(!env.contains_key(canonical_bootstrap_output));
+        for key in canonical_keys {
+            assert!(!env.contains_key(key));
         }
     }
 }
@@ -1234,7 +1163,7 @@ fn build_run_payload_for_run_rejects_prompt_nul() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_PROMPT"));
+    assert!(error.contains("OKOU_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -1501,7 +1430,7 @@ fn execution_context_validation_rejects_codex_runtime_config_nul() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_CODEX_RUNTIME_CONFIG"));
+    assert!(error.contains("OKOU_CODEX_RUNTIME_CONFIG"));
     assert!(!error.contains(secret));
 }
 
@@ -1517,7 +1446,7 @@ fn execution_context_validation_rejects_codex_runtime_config_catalog_nul() {
 
     assert!(error.contains("run payload"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_CODEX_RUNTIME_CONFIG"));
+    assert!(error.contains("OKOU_CODEX_RUNTIME_CONFIG"));
     assert!(!error.contains(secret));
 }
 
@@ -1807,7 +1736,7 @@ fn build_env_json_rejects_invalid_disallowed_tools_entries() {
         let mut ctx = minimal_context();
         ctx.disallowed_tools = Some(vec![tool.into()]);
         let result = build_run_payload_for_run(&ctx);
-        assert_tool_env_error(result, "VM0_DISALLOWED_TOOLS", expected);
+        assert_tool_env_error(result, "OKOU_DISALLOWED_TOOLS", expected);
     }
 }
 
@@ -1824,7 +1753,7 @@ fn build_env_json_rejects_invalid_tools_entries() {
         let mut ctx = minimal_context();
         ctx.tools = Some(vec![tool.into()]);
         let result = build_run_payload_for_run(&ctx);
-        assert_tool_env_error(result, "VM0_TOOLS", expected);
+        assert_tool_env_error(result, "OKOU_TOOLS", expected);
     }
 }
 

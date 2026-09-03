@@ -31,27 +31,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "http://127.0.0.1:1",
         );
-        std::env::set_var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV, "300");
         std::env::set_var(
             guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            std::env::var(guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV)?,
+            "300",
         );
-        for (legacy, canonical) in [
-            (
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            ),
-            (
-                guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            ),
-            (
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            ),
-        ] {
-            std::env::set_var(legacy, std::env::var(canonical)?);
-        }
         std::env::set_var("VM0_SECRET_VALUES", "runner-secret-values");
         std::env::set_var(
             process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
@@ -311,13 +294,9 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         RETIRED_AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-        guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
         guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
         guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-        guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
         guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-        guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
     ] {
         assert!(
             !cli_env.contains_key(key),

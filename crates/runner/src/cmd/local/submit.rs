@@ -144,7 +144,7 @@ impl SubmitQueueEntry {
         }
     }
 
-    /// Clean up submit-owned queue files after timing out while waiting for a result.
+    /// Clean up submit-owned queue files after abandoning the wait for a result.
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
         let jobs_removed = local_queue::LocalQueue::new(self.group_dir.clone())
             .remove_job_files_if_present(self.job_id);
@@ -165,6 +165,10 @@ impl SubmitQueueEntry {
     fn abandon(&self, error: &str) {
         let marker = write_abandoned_result_marker(&self.result, self.job_id, error);
         self.cleanup_abandoned(marker.as_ref());
+    }
+
+    fn abandon_cancelled(&self) {
+        self.cleanup_abandoned(None);
     }
 
     fn cleanup_active_inputs(&self) {
@@ -377,8 +381,8 @@ impl SubmitPlan {
         };
 
         let feature_flags = Self::parse_feature_flags(&feature_flags)?;
-        let environment = Self::parse_env_entries("--env", &env, true)?;
-        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
+        let environment = Self::parse_env_entries("--env", &env)?;
+        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let timeout = Self::validate_timeout(timeout)?;
         let group_dir = home.groups_dir().join(&group);
@@ -560,7 +564,6 @@ impl SubmitPlan {
     fn parse_env_entries(
         flag: &str,
         entries: &[String],
-        allow_guest_agent_tuning_keys: bool,
     ) -> RunnerResult<Option<HashMap<String, String>>> {
         if entries.is_empty() {
             return Ok(None);
@@ -596,14 +599,7 @@ impl SubmitPlan {
                     "invalid {flag} key '{key}': the OKOU_ environment variable namespace is platform-reserved"
                 )));
             }
-            let is_guest_agent_tuning_key =
-                guest_contracts::env::is_guest_agent_tuning_env_key(key);
-            if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {
-                return Err(RunnerError::Config(format!(
-                    "invalid {flag} key '{key}': guest-agent tuning environment variables must be passed with --env"
-                )));
-            }
-            if guest_contracts::env::is_runner_owned_env_key(key) && !is_guest_agent_tuning_key {
+            if guest_contracts::env::is_runner_owned_env_key(key) {
                 return Err(RunnerError::Config(format!(
                     "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
                 )));
@@ -701,14 +697,14 @@ impl SubmitPlan {
                 eprintln!("grace period expired, exiting");
                 // Leave .cancel for the runner to process — don't delete it here
                 // or the cancel request may be lost.
-                self.abandon("local submit cancelled before job completed");
+                self.abandon_cancelled();
                 return SubmitOutcome::Cancelled;
             }
             tokio::select! {
                 () = tokio::time::sleep(POLL_INTERVAL) => {}
                 _ = sigint.recv() => {
                     eprintln!("second interrupt, exiting immediately");
-                    self.abandon("local submit interrupted before job completed");
+                    self.abandon_cancelled();
                     return SubmitOutcome::Cancelled;
                 }
             }
@@ -717,6 +713,10 @@ impl SubmitPlan {
 
     fn abandon(&self, error: &str) {
         self.queue.abandon(error);
+    }
+
+    fn abandon_cancelled(&self) {
+        self.queue.abandon_cancelled();
     }
 
     fn finish_completed(&self, buf: &[u8]) -> RunnerResult<ExitCode> {
@@ -740,6 +740,13 @@ impl SubmitPlan {
             Ok(ExitCode::FAILURE)
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn abandon_cancelled_submit_for_test(group_dir: &Path, job_id: RunId) {
+    SubmitQueueEntry::for_job(group_dir, crate::profile::DEFAULT_PROFILE, job_id)
+        .unwrap()
+        .abandon_cancelled();
 }
 
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {

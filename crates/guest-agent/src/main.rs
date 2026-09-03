@@ -592,9 +592,8 @@ async fn execute(
                 1,
                 1,
                 msg,
-                Some(failure_diagnostics::base_failure_diagnostic_for_config(
-                    config,
-                    FailureClass::CliExecutionError,
+                Some(failure_diagnostics::cli_execution_error_for_config(
+                    config, &e,
                 )),
                 false,
             )
@@ -1254,13 +1253,9 @@ mod tests {
             guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
             guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD,
             guest_contracts::env::FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
-            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
             guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
             guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
             guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             guest_contracts::env::USE_MOCK_CLAUDE_ENV,
             guest_contracts::env::USE_MOCK_CODEX_ENV,

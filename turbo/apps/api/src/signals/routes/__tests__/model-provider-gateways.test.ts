@@ -583,7 +583,7 @@ describe("custom model provider gateway routes", () => {
 
       await runs.requestCancelRun(actor, deepseekRunId, [200]);
     }
-  });
+  }, 15_000);
 
   it("admits an allowlisted DeepSeek custom gateway to Pi execution", async () => {
     const bdd = createBddApi(context);

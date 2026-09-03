@@ -3,7 +3,7 @@ import type {
   ModelProviderResponse,
   ModelProviderType,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { reloadPersonalModelProviders$ } from "../external/personal-model-providers.ts";
+import { refreshPersonalModelProvidersIfStale$ } from "../external/personal-model-providers.ts";
 import { personalConfiguredProviders$ } from "./settings/personal-model-providers.ts";
 
 export type AccountMenuSubscriptionUsage = NonNullable<
@@ -17,6 +17,7 @@ export interface AccountMenuSubscriptionUsageRow {
   readonly type: ModelProviderType;
   readonly usage: AccountMenuSubscriptionUsage;
   readonly resetCredits?: number | null;
+  readonly resetCreditsNextExpiresAt?: string | null;
 }
 
 export type AccountMenuSubscriptionUsageRowsCacheKey = string | null;
@@ -64,7 +65,7 @@ export const reloadAccountMenuSubscriptionUsageRows$ = command(
     set(internalAccountMenuSubscriptionUsageRowsRequestId$, requestId);
 
     const promise = (async () => {
-      set(reloadPersonalModelProviders$);
+      set(refreshPersonalModelProvidersIfStale$);
       const providers = await get(personalConfiguredProviders$);
       signal.throwIfAborted();
       if (
@@ -103,6 +104,10 @@ function accountMenuSubscriptionUsageRows(
         resetCredits:
           provider.type === "codex-oauth-token"
             ? (provider.subscriptionResetCredits ?? null)
+            : undefined,
+        resetCreditsNextExpiresAt:
+          provider.type === "codex-oauth-token"
+            ? (provider.subscriptionResetCreditsNextExpiresAt ?? null)
             : undefined,
       },
     ];

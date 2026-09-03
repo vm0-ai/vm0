@@ -176,6 +176,7 @@ class _FlowState:
 
 
 _report_lock = threading.Lock()
+_report_condition = threading.Condition(_report_lock)
 _report_api_url = ""
 _report_bearer_credential = ""
 _report_slots = threading.BoundedSemaphore(_MAX_PENDING_REPORTS)
@@ -218,13 +219,18 @@ def reset_for_tests() -> None:
 
 
 def drain_reports_for_tests(timeout: float = 5.0) -> None:
-    """Wait for reports admitted before this call to finish."""
-    with _report_lock:
-        pending = tuple(_report_futures)
-    if pending:
-        _, not_done = wait(pending, timeout=timeout)
-        if not_done:
-            raise TimeoutError(f"{len(not_done)} model-provider failure reports did not finish")
+    """Wait for reports admitted before this call and their callbacks to finish."""
+    with _report_condition:
+        pending = set(_report_futures)
+        callbacks_finished = _report_condition.wait_for(
+            lambda: pending.isdisjoint(_report_futures),
+            timeout=timeout,
+        )
+        if not callbacks_finished:
+            remaining = len(pending.intersection(_report_futures))
+            raise TimeoutError(
+                f"{remaining} model-provider failure report callbacks did not finish"
+            )
 
 
 def admit_flow(flow: http.HTTPFlow) -> None:
@@ -994,9 +1000,10 @@ def _finish_report(future: Future[int], context: _ReportContext) -> None:
                 if not _HTTP_STATUS_SUCCESS_MIN <= status < _HTTP_STATUS_REDIRECT_MIN:
                     _log_report_omitted(context, "http_error", http_status=status)
     finally:
-        with _report_lock:
+        with _report_condition:
+            _report_slots.release()
             _report_futures.discard(future)
-        _report_slots.release()
+            _report_condition.notify_all()
 
 
 def _log_suppressed(flow: http.HTTPFlow, reason: str) -> None:

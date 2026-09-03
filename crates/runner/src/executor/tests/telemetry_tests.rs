@@ -667,23 +667,65 @@ const FRESH_SANDBOX_START_STAGE_ACTIONS: &[&str] = &[
     "runner_fresh_sandbox_start_runtime_finalize",
 ];
 
-const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
-    "runner_claim_resume_session_validation",
-    "runner_claim_session_history_materializer_start",
-    "runner_claim_device_rate_limits",
-    "runner_claim_idle_reuse_lookup",
-    "runner_claim_workspace_cache_state_lookup",
-    "runner_claim_workspace_promotion_validation",
-    "runner_claim_idle_unpark",
-    "runner_claim_active_status_publish",
-    "runner_claim_spawn_job_setup",
-    "runner_claim_task_schedule_wait",
+const RUNNER_PRE_SPAWN_PHASE_CASES: &[(RunnerPreSpawnPhase, &str, u64)] = &[
+    (
+        RunnerPreSpawnPhase::ResumeSessionValidation,
+        "runner_claim_resume_session_validation",
+        1,
+    ),
+    (
+        RunnerPreSpawnPhase::FinalizingWait,
+        "runner_claim_finalizing_wait",
+        2,
+    ),
+    (
+        RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
+        "runner_claim_session_history_materializer_start",
+        3,
+    ),
+    (
+        RunnerPreSpawnPhase::DeviceRateLimits,
+        "runner_claim_device_rate_limits",
+        4,
+    ),
+    (
+        RunnerPreSpawnPhase::IdleReuseLookup,
+        "runner_claim_idle_reuse_lookup",
+        5,
+    ),
+    (
+        RunnerPreSpawnPhase::WorkspaceCacheStateLookup,
+        "runner_claim_workspace_cache_state_lookup",
+        6,
+    ),
+    (
+        RunnerPreSpawnPhase::WorkspacePromotionValidation,
+        "runner_claim_workspace_promotion_validation",
+        7,
+    ),
+    (
+        RunnerPreSpawnPhase::IdleUnpark,
+        "runner_claim_idle_unpark",
+        8,
+    ),
+    (
+        RunnerPreSpawnPhase::ActiveStatusPublish,
+        "runner_claim_active_status_publish",
+        9,
+    ),
+    (
+        RunnerPreSpawnPhase::SpawnJobSetup,
+        "runner_claim_spawn_job_setup",
+        10,
+    ),
 ];
 
 fn assert_pre_spawn_phase_actions_succeeded(telemetry: &JobTelemetry) {
-    for action in RUNNER_PRE_SPAWN_PHASE_ACTIONS {
+    for &(_, action, duration_ms) in RUNNER_PRE_SPAWN_PHASE_CASES {
         assert_action_success(telemetry, action, true);
+        assert_action_once_with_duration(telemetry, action, duration_ms);
     }
+    assert_action_success(telemetry, "runner_claim_task_schedule_wait", true);
 }
 
 fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
@@ -704,17 +746,7 @@ fn pre_spawn_timing_with_phases_and_concurrency(
         )),
         concurrency,
     );
-    for (phase, duration_ms) in [
-        (RunnerPreSpawnPhase::ResumeSessionValidation, 1),
-        (RunnerPreSpawnPhase::SessionHistoryMaterializerStart, 2),
-        (RunnerPreSpawnPhase::DeviceRateLimits, 3),
-        (RunnerPreSpawnPhase::IdleReuseLookup, 4),
-        (RunnerPreSpawnPhase::WorkspaceCacheStateLookup, 5),
-        (RunnerPreSpawnPhase::WorkspacePromotionValidation, 6),
-        (RunnerPreSpawnPhase::IdleUnpark, 7),
-        (RunnerPreSpawnPhase::ActiveStatusPublish, 8),
-        (RunnerPreSpawnPhase::SpawnJobSetup, 9),
-    ] {
+    for &(phase, _, duration_ms) in RUNNER_PRE_SPAWN_PHASE_CASES {
         timing.record_phase(phase, Duration::from_millis(duration_ms));
     }
     timing.record_finalizing_handoff_outcome(FinalizingHandoffOutcome::Accepted);

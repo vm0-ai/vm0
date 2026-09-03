@@ -110,6 +110,12 @@ interface ChatThreadEventCache {
   readonly degraded: boolean;
 }
 
+interface ChatEventBatchWrite {
+  readonly dataKey: ScopedChatEventDataKey;
+  readonly rows: readonly ChatEventRow[];
+  readonly cursor: ChatEventCursor;
+}
+
 interface SharedDatabaseWorkerRuntimeOptions {
   readonly identity: SharedDatabaseIdentity;
   readonly emit: (message: WorkerRuntimeEvent) => void;
@@ -120,6 +126,13 @@ class SharedDatabaseHttpError extends Error {
   constructor(readonly status: number) {
     super(`Shared database request failed with status ${status}`);
     this.name = "SharedDatabaseHttpError";
+  }
+}
+
+class ChatThreadNotFoundError extends Error {
+  constructor() {
+    super("Chat thread not found");
+    this.name = "ChatThreadNotFoundError";
   }
 }
 
@@ -188,6 +201,17 @@ function mergeChatEventRows(
   return Array.from(byId.values()).sort((left, right) => {
     return left.seqId - right.seqId;
   });
+}
+
+function requireChatEventCursor(
+  cursors: ReadonlyMap<string, ChatEventCursor>,
+  threadId: string,
+): ChatEventCursor {
+  const cursor = cursors.get(threadId);
+  if (!cursor) {
+    throw new Error("ChatEvent catch-up cursor is missing");
+  }
+  return cursor;
 }
 
 function chatThreadEventCursor(
@@ -259,6 +283,263 @@ export class SharedDatabaseWorkerRuntime {
       durationMs: now() - startedAt,
     });
     return result.value;
+  }
+
+  async catchUpChatEvents(
+    requestedThreadIds: readonly string[],
+    signal: AbortSignal,
+  ): Promise<readonly string[]> {
+    signal.throwIfAborted();
+    const threadIds = [...new Set(requestedThreadIds)];
+    if (threadIds.length === 0) {
+      return [];
+    }
+    const dataKeys = threadIds.map((threadId) => {
+      return scopeSharedDatabaseDataKey(
+        { kind: "chat-event", threadId },
+        this.identity,
+      );
+    });
+    const diagnosticDataKey = dataKeys[0];
+    if (!diagnosticDataKey) {
+      throw new Error("ChatEvent catch-up requires a diagnostic data key");
+    }
+    const cachedCursorsResult = await settle(
+      this.runChatIdbOperation(
+        createIdbEventRowStores,
+        (stores) => {
+          return stores.readStore.readCursors(threadIds, signal);
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!cachedCursorsResult.ok) {
+      reportDataKeyError(
+        diagnosticDataKey,
+        "indexeddb.chat-event-cursors.read.error",
+        cachedCursorsResult.error,
+      );
+    }
+    const cachedCursors = cachedCursorsResult.ok
+      ? cachedCursorsResult.value
+      : new Map<string, ChatEventCursor>();
+    const cursors = new Map<string, ChatEventCursor>(
+      threadIds.map((threadId) => {
+        const cursor: ChatEventCursor = cachedCursors.get(threadId) ?? {
+          lastEventId: null,
+          lastSeqId: THREAD_START_SEQ_ID,
+        };
+        return [threadId, cursor] as const;
+      }),
+    );
+
+    const client = this.createContractClient(chatThreadEventsContract);
+    const response = await client.catchUp({
+      headers: CHAT_EVENT_SCHEMA_VERSION_HEADERS,
+      body: threadIds.map((threadId) => {
+        return [threadId, requireChatEventCursor(cursors, threadId).lastSeqId];
+      }),
+      fetchOptions: { signal },
+    });
+    signal.throwIfAborted();
+    if (response.status === 401) {
+      throw new SharedDatabaseHttpError(response.status);
+    }
+    assertChatEventSchemaVersion(response.headers);
+    if (response.status !== 200) {
+      throw new SharedDatabaseHttpError(response.status);
+    }
+    this.assertChatEventCatchUpPartition(
+      threadIds,
+      cursors,
+      response.body.events,
+      response.body.notFoundThreads,
+    );
+
+    const writes: ChatEventBatchWrite[] = Object.entries(
+      response.body.events,
+    ).map(([threadId, rows]) => {
+      const last = rows.at(-1);
+      return {
+        dataKey: scopeSharedDatabaseDataKey(
+          { kind: "chat-event", threadId },
+          this.identity,
+        ),
+        rows,
+        cursor:
+          last === undefined
+            ? requireChatEventCursor(cursors, threadId)
+            : { lastEventId: last.id, lastSeqId: last.seqId },
+      };
+    });
+    const batchWritten = await this.persistChatEventBatch(writes, signal);
+    const rebuiltThreadIds = await Promise.all(
+      response.body.notFoundThreads.map(async (threadId) => {
+        const dataKey = scopeSharedDatabaseDataKey(
+          { kind: "chat-event", threadId },
+          this.identity,
+        );
+        const rebuilt = await this.replaceChatEventsFromSnapshot(
+          client,
+          dataKey,
+          signal,
+        );
+        return rebuilt ? threadId : null;
+      }),
+    );
+    return [
+      ...(batchWritten
+        ? writes.map(({ dataKey }) => {
+            return dataKey.threadId;
+          })
+        : []),
+      ...rebuiltThreadIds.filter((threadId) => {
+        return threadId !== null;
+      }),
+    ];
+  }
+
+  private assertChatEventCatchUpPartition(
+    threadIds: readonly string[],
+    cursors: ReadonlyMap<string, ChatEventCursor>,
+    events: Readonly<Record<string, readonly ChatEventRow[]>>,
+    notFoundThreads: readonly string[],
+  ): void {
+    const requested = new Set(threadIds);
+    const notFound = new Set(notFoundThreads);
+    if (notFound.size !== notFoundThreads.length) {
+      throw new Error("ChatEvent catch-up returned duplicate missing threads");
+    }
+    for (const threadId of notFound) {
+      if (!requested.has(threadId)) {
+        throw new Error(
+          "ChatEvent catch-up returned an unknown missing thread",
+        );
+      }
+    }
+    for (const [threadId, rows] of Object.entries(events)) {
+      if (!requested.has(threadId) || notFound.has(threadId)) {
+        throw new Error(
+          "ChatEvent catch-up returned an invalid event partition",
+        );
+      }
+      let lastSeqId = requireChatEventCursor(cursors, threadId).lastSeqId;
+      for (const row of rows) {
+        if (row.chatThreadId !== threadId || row.seqId <= lastSeqId) {
+          throw new Error("ChatEvent catch-up returned an invalid event tail");
+        }
+        lastSeqId = row.seqId;
+      }
+    }
+    for (const threadId of requested) {
+      if (!Object.hasOwn(events, threadId) && !notFound.has(threadId)) {
+        throw new Error("ChatEvent catch-up response is incomplete");
+      }
+    }
+  }
+
+  private async persistChatEventBatch(
+    writes: readonly ChatEventBatchWrite[],
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    if (writes.length === 0) {
+      return true;
+    }
+    const written = await settle(
+      this.runChatIdbOperation(
+        createIdbEventRowStores,
+        (stores) => {
+          return stores.writeStore.upsertRowsAndCursors(
+            writes.map(({ dataKey, rows, cursor }) => {
+              return { threadId: dataKey.threadId, rows, cursor };
+            }),
+            signal,
+          );
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!written.ok) {
+      const firstWrite = writes[0];
+      if (!firstWrite) {
+        throw new Error("ChatEvent batch write diagnostic is missing");
+      }
+      reportDataKeyError(
+        firstWrite.dataKey,
+        "indexeddb.chat-event-batch.write.error",
+        written.error,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  private async replaceChatEventsFromSnapshot(
+    client: ChatEventContractClient,
+    dataKey: ScopedChatEventDataKey,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const snapshot = await settle(
+      this.fetchChatEventSnapshot(client, dataKey, signal),
+      signal,
+    );
+    if (!snapshot.ok) {
+      if (snapshot.error instanceof ChatThreadNotFoundError) {
+        return await this.clearChatEventCache(dataKey, signal);
+      }
+      throw snapshot.error;
+    }
+    const state = await settle(
+      this.fetchChatEventRows(
+        { client, dataKey },
+        {
+          remoteRows: snapshot.value.rows,
+          cursor: snapshot.value.cursor,
+          cursorFromServer: true,
+          needsColdStartTailConfirmation: true,
+          replacedCache: true,
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!state.ok) {
+      if (
+        state.error instanceof SharedDatabaseHttpError &&
+        state.error.status === 404
+      ) {
+        return await this.clearChatEventCache(dataKey, signal);
+      }
+      throw state.error;
+    }
+    return await this.persistChatEventRows(dataKey, state.value, signal);
+  }
+
+  private async clearChatEventCache(
+    dataKey: ScopedChatEventDataKey,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const cleared = await settle(
+      this.runChatIdbOperation(
+        createIdbEventRowStores,
+        (stores) => {
+          return stores.writeStore.clearThread(dataKey.threadId, signal);
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!cleared.ok) {
+      reportDataKeyError(
+        dataKey,
+        "indexeddb.chat-event.clear.error",
+        cleared.error,
+      );
+      return false;
+    }
+    return true;
   }
 
   private async queryData<TKey extends SharedDatabaseDataKey>(
@@ -376,9 +657,9 @@ export class SharedDatabaseWorkerRuntime {
     dataKey: ScopedChatEventDataKey,
     state: ChatEventRemoteState,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!state.replacedCache && state.remoteRows.length === 0) {
-      return;
+      return false;
     }
     const written = await settle(
       this.runChatIdbOperation(
@@ -408,7 +689,9 @@ export class SharedDatabaseWorkerRuntime {
         "indexeddb.chat-event.write.error",
         written.error,
       );
+      return false;
     }
+    return true;
   }
 
   private async fetchChatEventRows(
@@ -491,6 +774,9 @@ export class SharedDatabaseWorkerRuntime {
     }
     assertChatEventSchemaVersion(snapshot.headers);
     if (snapshot.status === 404) {
+      if (snapshot.body.error.code !== "CHAT_EVENT_SNAPSHOT_NOT_FOUND") {
+        throw new ChatThreadNotFoundError();
+      }
       return {
         rows: [],
         cursor: { lastEventId: null, lastSeqId: THREAD_START_SEQ_ID },

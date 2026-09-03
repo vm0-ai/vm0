@@ -14,7 +14,7 @@ const desktopDir = path.resolve(scriptDir, "..");
 const defaultBackgroundSvg = path.join(
   desktopDir,
   "assets",
-  "dmg-background.svg",
+  "dmg-background-okou.svg",
 );
 
 const windowBounds = {
@@ -43,7 +43,7 @@ function usage() {
 
 function parseArgs(argv) {
   const options = {
-    volumeName: "Zero Computer Use",
+    volumeName: "Okou",
     backgroundSvg: defaultBackgroundSvg,
   };
 
@@ -360,7 +360,7 @@ async function createStyledDmg({
         console.warn("Failed to detach DMG mount", { mountPath, error });
       }
     }
-    if (process.env.ZERO_DESKTOP_KEEP_DMG_TEMP !== "true") {
+    if (process.env.OKOU_DESKTOP_KEEP_DMG_TEMP !== "true") {
       await rm(tempDir, { force: true, recursive: true });
     } else {
       console.log(`Kept temporary DMG directory: ${tempDir}`);

@@ -54,7 +54,10 @@ class TestResponseHeadersModelJsonParser:
 
         mitm_addon.responseheaders(flow)
 
-        assert response_streaming.uses_model_json_fallback(flow)
+        assert response_streaming.uses_model_json_fallback(
+            flow,
+            websocket_header_work_limit=8 * 1024,
+        )
         assert "model_json_usage_finish" in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
         body = b'{"model":"gpt-5.5","usage":{"input_tokens":12,"output_tokens":7}}'

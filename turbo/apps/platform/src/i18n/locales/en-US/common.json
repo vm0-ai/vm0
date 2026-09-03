@@ -2235,7 +2235,8 @@
       "viewLogs": "View run logs",
       "waitingIn": "Waiting in",
       "worked": "Worked",
-      "workedFor": "Worked for {{duration}}"
+      "workedFor": "Worked for {{duration}}",
+      "workingFor": "Working for {{duration}}"
     },
     "sharing": {
       "cancel": "Cancel",
@@ -2396,6 +2397,10 @@
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",
+      "draft": "Voice draft",
+      "draftTooLong": "This voice draft is too long to finish. Start a new recording.",
+      "finishDraft": "Finish",
+      "finishingDraft": "Finishing...",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
       "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
@@ -2404,6 +2409,7 @@
       "inputLimitReachedReset": "Voice input limit reached. Please wait for your limit to reset.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
+      "removeDraft": "Remove voice draft",
       "starting": "Starting voice input",
       "stopRecording": "Stop recording",
       "transcribing": "Transcribing",
@@ -2442,12 +2448,18 @@
       "deleteDescription": "Threads using this account will return to default inheritance.",
       "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
       "deleteTitle": "Delete {{account}}?",
-      "fallbackName": "Account #{{id}}",
+      "fallbackByMethod": {
+        "api": "API key",
+        "api-token": "API token",
+        "cli": "CLI"
+      },
+      "fallbackUnnamed": "Unnamed account",
       "find": "Find accounts",
       "loading": "Loading accounts…",
       "loadingMore": "Loading…",
       "loadMore": "Load more",
       "makeDefault": "Make default",
+      "managerDescription": "New runs use your default account.",
       "managerTitle": "Manage {{connector}} accounts",
       "namePromptDescription": "You can skip this and name the account later.",
       "namePromptTitle": "Name your {{connector}} account",
@@ -2662,6 +2674,7 @@
         "connecting": "Connecting…",
         "continue": "Continue",
         "continueToProvider": "Continue to the provider to authorize access.",
+        "continueWithAutomatic": "Continue while Okou checks how this MCP server authenticates.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
         "save": "Save",
         "saving": "Saving…",
@@ -2676,9 +2689,12 @@
         "authorizationParameters": "Authorization parameters",
         "authorizationParametersDescription": "Add only the parameters your provider requires.",
         "authorizationUrl": "Authorization URL",
+        "automatic": "Automatic",
+        "automaticDescription": "Let Okou discover whether this MCP server uses no authentication or OAuth.",
         "clientId": "Client ID",
         "clientSecret": "Client secret",
         "connectorType": "Connector type",
+        "customOauthApp": "Custom OAuth app",
         "displayName": "Display name",
         "headerName": "Header name",
         "headerTemplate": "Header template",
@@ -2705,10 +2721,12 @@
         },
         "prefixes": "Prefixes",
         "prefixesHint": "(one per line, https only)",
+        "recommended": "(Recommended)",
         "redirectCopy": "Copy Redirect URL",
         "redirectHint": "(Register this URL in the provider's OAuth application. Keep any existing VM0 or Okou redirect URL registered too.)",
         "redirectUrl": "Redirect URL",
         "removeApiAuthentication": "Remove API authentication",
+        "removeAutomatic": "Remove Automatic authentication",
         "removeNoAuthentication": "Remove no authentication",
         "removeOauth": "Remove OAuth 2.0",
         "scopes": "Scopes",
@@ -2921,21 +2939,20 @@
       "agentphone": {
         "authorizedSender": "Authorized sender",
         "connectAria": "Connect phone",
-        "connectDescription": "Enter your phone number. We will text a verification link that connects this workspace.",
+        "connectDescription": "Message this AgentPhone number from the phone you want to connect.",
         "connectTitle": "Connect phone",
         "copyAria": "Copy {{phone}}",
         "copyError": "Failed to copy phone number",
         "copySuccess": "Phone number copied",
         "description": "Text-message access to {{assistantName}}",
         "destination": "iMessage or SMS to",
-        "normalized": "We will text {{phone}}.",
+        "messageInstruction": "Send “hi”",
+        "openMessages": "Open Messages",
         "options": "Phone options",
         "phoneLabel": "Phone",
-        "phoneNumber": "Phone number",
-        "risk": "SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.",
-        "sending": "Sending...",
-        "sendVerification": "Send verification",
-        "verificationSent": "Verification text sent to {{phone}}. Open the link in that text to finish connecting."
+        "replyInstruction": "Tap the connection link within 10 minutes to finish.",
+        "replyTitle": "Open our reply",
+        "risk": "Use iMessage when possible. SMS and MMS replies may not arrive reliably."
       },
       "catalogDiagnostics": {
         "fields": {
@@ -2998,7 +3015,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "Enter a phone number with country code, like +1 555 555 1212.",
         "githubAuthorizationWindow": "Failed to open authorization window",
         "telegramDomain": "Domain is not visible to Telegram yet. Check BotFather and try again.",
         "telegramPrivacy": "Privacy mode still appears to be on. Turn it off in BotFather, then try again."
@@ -3204,7 +3220,6 @@
       "toasts": {
         "agentphoneConnected": "AgentPhone connected",
         "agentphoneDisconnected": "AgentPhone disconnected",
-        "agentphoneVerificationSent": "Verification text sent",
         "feishuBotInstalled": "Feishu bot installed successfully",
         "feishuBotUninstalled": "Feishu bot uninstalled",
         "feishuConnected": "Feishu connected successfully",
@@ -4992,10 +5007,13 @@
       },
       "reset": {
         "confirmDescription": "Use one Codex reset to reset your current usage windows. You have {{remaining}}.",
+        "expiresAt": "Soonest reset expires {{date}}",
         "progress": "Resetting...",
         "remaining_one": "{{value}} reset left",
         "remaining_other": "{{value}} resets left",
         "remainingUnavailable": "Resets left unavailable",
+        "remainingWithExpiry_one": "{{value}} reset left · expires {{expiry}}",
+        "remainingWithExpiry_other": "{{value}} resets left · expires {{expiry}}",
         "title": "Reset Codex usage?"
       },
       "stale": {

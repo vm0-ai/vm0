@@ -58,15 +58,6 @@ assert_playbook_contains() {
   grep -qF "$expected" "$playbook" || fail "playbook is missing: $expected"
 }
 
-assert_stderr_excludes_values() {
-  local value
-  for value in "$@"; do
-    if grep -Fq -- "$value" "$stderr_file"; then
-      fail "collector diagnostics exposed an ignored value"
-    fi
-  done
-}
-
 assert_stderr_empty() {
   [ ! -s "$stderr_file" ] || fail "collector emitted unexpected diagnostics"
 }
@@ -309,39 +300,6 @@ test_runners_dir_canonical_and_defaults() {
   assert_stderr_empty
 }
 
-test_retired_runners_dir_is_ignored() {
-  reset_dirs
-  local retired_runners_dir="$tmp_root/retired-runners"
-  mkdir -p "$retired_runners_dir/retired-runner"
-  printf '%s\n' '{"mode":"draining"}' \
-    >"$retired_runners_dir/retired-runner/status.json"
-
-  run_with_path_env \
-    VM0_RUNNERS_DIR="$retired_runners_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_zero_snapshot
-  assert_stderr_excludes_values \
-    "$retired_runners_dir" \
-    VM0_RUNNERS_DIR \
-    "monitoring path alias"
-  assert_stderr_empty
-
-  mkdir -p "$runners_dir/canonical-runner"
-  printf '%s\n' '{"mode":"running"}' \
-    >"$runners_dir/canonical-runner/status.json"
-  run_with_path_env \
-    OKOU_RUNNERS_DIR="$runners_dir" \
-    VM0_RUNNERS_DIR="$retired_runners_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir"
-  assert_line 'vm0_runner_instances{mode="running"} 1'
-  assert_line 'vm0_runner_instances{mode="draining"} 0'
-  assert_stderr_excludes_values \
-    "$retired_runners_dir" \
-    VM0_RUNNERS_DIR \
-    "monitoring path alias"
-  assert_stderr_empty
-}
-
 test_monitoring_textfile_dir_canonical_and_defaults() {
   reset_dirs
   mkdir -p "$runners_dir/canonical-runner"
@@ -372,43 +330,6 @@ test_monitoring_textfile_dir_canonical_and_defaults() {
     'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
     "$stderr_file" || fail "empty canonical textfile path did not use the fixed default"
   assert_output_absent
-}
-
-test_retired_monitoring_textfile_dir_is_ignored() {
-  reset_dirs
-  local retired_textfile_dir="$tmp_root/retired-textfile"
-  mkdir -p "$runners_dir/canonical-runner" "$retired_textfile_dir"
-  printf '%s\n' '{"mode":"running"}' \
-    >"$runners_dir/canonical-runner/status.json"
-
-  if run_with_path_env \
-    OKOU_RUNNERS_DIR="$runners_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$retired_textfile_dir"; then
-    fail "expected the retired textfile path to be ignored in favor of the missing default"
-  fi
-  grep -qF \
-    'missing textfile directory: /var/lib/vm0-monitoring/textfile-collector' \
-    "$stderr_file" || fail "retired textfile path redirected the collector"
-  assert_stderr_excludes_values \
-    "$retired_textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR \
-    "monitoring path alias"
-  assert_output_absent
-  [ ! -e "$retired_textfile_dir/runner-status.prom" ] ||
-    fail "retired textfile path received collector output"
-
-  run_with_path_env \
-    OKOU_RUNNERS_DIR="$runners_dir" \
-    OKOU_MONITORING_TEXTFILE_DIR="$textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR="$retired_textfile_dir"
-  assert_line 'vm0_runner_instances{mode="running"} 1'
-  assert_stderr_excludes_values \
-    "$retired_textfile_dir" \
-    VM0_MONITORING_TEXTFILE_DIR \
-    "monitoring path alias"
-  assert_stderr_empty
-  [ ! -e "$retired_textfile_dir/runner-status.prom" ] ||
-    fail "retired textfile path overrode the canonical path"
 }
 
 test_missing_textfile_dir_fails() {
@@ -442,9 +363,7 @@ test_invalid_files_publish_partial_metrics
 test_rejects_runner_and_status_symlinks
 test_output_is_deterministic_and_replaced_atomically
 test_runners_dir_canonical_and_defaults
-test_retired_runners_dir_is_ignored
 test_monitoring_textfile_dir_canonical_and_defaults
-test_retired_monitoring_textfile_dir_is_ignored
 test_missing_textfile_dir_fails
 test_playbook_provisions_collector_identity_and_cadence
 

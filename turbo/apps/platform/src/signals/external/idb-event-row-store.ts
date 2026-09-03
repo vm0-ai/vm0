@@ -19,6 +19,10 @@ import { disabledChatIdbError, logChatIdbDisabled } from "./chat-idb-safe.ts";
 const L = logger("ChatEventRowIndexedDb");
 
 interface ChatEventRowReadStore {
+  readCursors(
+    threadIds: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<ReadonlyMap<string, ChatEventCursor>>;
   readCursor(
     threadId: string,
     signal?: AbortSignal,
@@ -31,6 +35,14 @@ interface ChatEventRowReadStore {
 }
 
 interface ChatEventRowWriteStore {
+  upsertRowsAndCursors(
+    entries: readonly {
+      readonly threadId: string;
+      readonly rows: readonly ChatEventRow[];
+      readonly cursor: ChatEventCursor;
+    }[],
+    signal?: AbortSignal,
+  ): Promise<void>;
   upsertRowsAndCursor(
     threadId: string,
     rows: readonly ChatEventRow[],
@@ -99,6 +111,28 @@ function createRowReadStore(
   getDb: GetDb,
 ): ChatEventRowReadStore {
   return {
+    async readCursors(threadIds, signal) {
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction(cursorStoreName, "readonly");
+      const rawCursors = await Promise.all(
+        threadIds.map((threadId) => {
+          return tx.store.get(threadId);
+        }),
+      );
+      signal?.throwIfAborted();
+      const cursors = new Map<string, ChatEventCursor>();
+      for (const [index, rawCursor] of rawCursors.entries()) {
+        if (rawCursor !== undefined) {
+          const threadId = threadIds[index];
+          if (threadId === undefined) {
+            throw new Error("Chat Event cursor batch index is invalid");
+          }
+          cursors.set(threadId, storedChatEventCursor(rawCursor));
+        }
+      }
+      return cursors;
+    },
     async readCursor(threadId, signal) {
       const db = await getDb();
       signal?.throwIfAborted();
@@ -140,6 +174,37 @@ function createRowWriteStore(
   getDb: GetDb,
 ): ChatEventRowWriteStore {
   return {
+    async upsertRowsAndCursors(entries, signal) {
+      if (entries.length === 0) {
+        return;
+      }
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction([storeName, cursorStoreName], "readwrite");
+      const rowStore = tx.objectStore(storeName);
+      const cursorStore = tx.objectStore(cursorStoreName);
+      const requests = entries.flatMap((entry) => {
+        signal?.throwIfAborted();
+        return [
+          ...entry.rows.map((row) => {
+            return rowStore.put(row);
+          }),
+          cursorStore.put({
+            threadId: entry.threadId,
+            schemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+            lastEventId: entry.cursor.lastEventId,
+            lastSeqId: entry.cursor.lastSeqId,
+          }),
+        ];
+      });
+      await Promise.all([...requests, tx.done]);
+      L.debug("upsertRowsAndCursors:done", {
+        threadCount: entries.length,
+        rowCount: entries.reduce((count, entry) => {
+          return count + entry.rows.length;
+        }, 0),
+      });
+    },
     async upsertRowsAndCursor(threadId, rows, cursor, signal) {
       L.debug("upsertRows:start", { count: rows.length });
       const db = await getDb();

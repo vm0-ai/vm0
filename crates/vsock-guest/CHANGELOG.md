@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.146](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.145...vsock-guest-v0.19.146) (2026-09-03)
+
+## [0.19.145](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.144...vsock-guest-v0.19.145) (2026-09-03)
+
+
+### Refactoring
+
+* **rust:** centralize guest binary paths ([#31298](https://github.com/vm0-ai/vm0/issues/31298)) ([73e59f8](https://github.com/vm0-ai/vm0/commit/73e59f8d4d7337226d3143e2ca688e124878372f))
+
 ## [0.19.144](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.143...vsock-guest-v0.19.144) (2026-09-03)
 
 ## [0.19.143](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.142...vsock-guest-v0.19.143) (2026-09-02)

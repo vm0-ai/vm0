@@ -3,7 +3,7 @@ import { delay } from "signal-timers";
 
 import { localStorageSignals } from "./external/local-storage.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { jsonParseOr } from "./utils.ts";
+import { jsonParseOr, setLoop } from "./utils.ts";
 import { resolvePlatformServiceStatusConfig } from "../lib/platform-host.ts";
 
 const STATUS_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
@@ -138,11 +138,17 @@ export const pollInstatusIssues$ = command(
       return;
     }
 
-    while (!signal.aborted) {
-      await delay(STATUS_REFRESH_INTERVAL_MS, { signal });
-      set(refreshVersion$, (version) => {
-        return version + 1;
-      });
-    }
+    await setLoop(
+      async (loopSignal) => {
+        await delay(STATUS_REFRESH_INTERVAL_MS, { signal: loopSignal });
+        set(refreshVersion$, (version) => {
+          return version + 1;
+        });
+        return false;
+      },
+      0,
+      signal,
+      { retryTransientErrors: false },
+    );
   },
 );

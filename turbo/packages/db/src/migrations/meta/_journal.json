@@ -1783,8 +1783,15 @@
     {
       "idx": 1062,
       "version": "7",
-      "when": 1788404880206,
-      "tag": "1062_migrate_claude_fable_5_to_5_1",
+      "when": 1788421025545,
+      "tag": "1062_detach_custom_connector_oauth_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 1063,
+      "version": "7",
+      "when": 1788421077587,
+      "tag": "1063_simple_norman_osborn",
       "breakpoints": true
     }
   ]

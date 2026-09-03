@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.830.0](https://github.com/vm0-ai/vm0/compare/app-v0.829.5...app-v0.830.0) (2026-09-03)
+
+
+### Features
+
+* **chat:** batch shared worker event catch-up ([#31261](https://github.com/vm0-ai/vm0/issues/31261)) ([127f8e8](https://github.com/vm0-ai/vm0/commit/127f8e8cfc5cc91750a5ca7a1ac90529f10d4ef9))
+* **platform:** expose custom mcp automatic authorization ([#31307](https://github.com/vm0-ai/vm0/issues/31307)) ([c71fc16](https://github.com/vm0-ai/vm0/commit/c71fc16cc227bcd1fc4f2389bbc7992a4d95df0c))
+* polish voice drafts before sending ([#31190](https://github.com/vm0-ai/vm0/issues/31190)) ([12b2532](https://github.com/vm0-ai/vm0/commit/12b2532a6400c7c62ba705a782e3e209f0440091))
+
+
+### Bug Fixes
+
+* **platform:** sync okou theme across subdomains ([#31310](https://github.com/vm0-ai/vm0/issues/31310)) ([8154e0a](https://github.com/vm0-ai/vm0/commit/8154e0adc989f5e2119908888ef4bc3b9c2445c5))
+* **platform:** use selected drive account for artifact readiness ([#31316](https://github.com/vm0-ai/vm0/issues/31316)) ([65d4ac5](https://github.com/vm0-ai/vm0/commit/65d4ac58bb3df45a52c97658bde0f594f554b6ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.397.0
+    * @okouai/core bumped to 8.613.0
+
+## [0.829.5](https://github.com/vm0-ai/vm0/compare/app-v0.829.4...app-v0.829.5) (2026-09-03)
+
+
+### Bug Fixes
+
+* **connectors:** rework account manager dialog and drop opaque account names ([#31181](https://github.com/vm0-ai/vm0/issues/31181)) ([5706ac3](https://github.com/vm0-ai/vm0/commit/5706ac352dcad40e52c3a18827bf0f5a3ea253b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.612.0
+    * @okouai/ui bumped to 1.1.1
+
+## [0.829.4](https://github.com/vm0-ai/vm0/compare/app-v0.829.3...app-v0.829.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* **platform:** restore lab maintainer filters ([#31293](https://github.com/vm0-ai/vm0/issues/31293)) ([db97b7b](https://github.com/vm0-ai/vm0/commit/db97b7b3b95c66528d16206d0d1ec335eda16c31))
+* **platform:** stop hidden uploaded cover preloading ([#31284](https://github.com/vm0-ai/vm0/issues/31284)) ([1a41ae6](https://github.com/vm0-ai/vm0/commit/1a41ae663bc4ae1ed8cccbb0f47d93af308aba8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.3
+    * @okouai/core bumped to 8.611.6
+
 ## [0.829.3](https://github.com/vm0-ai/vm0/compare/app-v0.829.2...app-v0.829.3) (2026-09-03)
 
 

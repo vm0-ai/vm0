@@ -71,6 +71,7 @@ export const orgCustomConnectors = pgTable(
       .$type<OrgCustomConnectorAuthMode>()
       .notNull()
       .default("manual"),
+    // Retained only until #30891 after the #31387 API rollback window drains.
     oauthSetup: varchar("oauth_setup", {
       length: 16,
     }).$type<OrgCustomConnectorOAuthSetup>(),
@@ -114,24 +115,6 @@ export const orgCustomConnectors = pgTable(
       check(
         "chk_org_custom_connectors_auth_mode",
         sql`${table.authMode} IN ('none', 'manual', 'oauth', 'automatic')`,
-      ),
-      check(
-        "chk_org_custom_connectors_oauth_setup",
-        sql`(
-          (
-            ${table.authMode} IN ('none', 'manual')
-            AND ${table.oauthSetup} IS NULL
-          ) OR (
-            ${table.authMode} = 'oauth'
-            AND (
-              ${table.oauthSetup} IS NULL
-              OR ${table.oauthSetup} = 'custom'
-            )
-          ) OR (
-            ${table.authMode} = 'automatic'
-            AND ${table.oauthSetup} = 'automatic'
-          )
-        )`,
       ),
       check(
         "chk_org_custom_connectors_automatic_oauth_mcp",

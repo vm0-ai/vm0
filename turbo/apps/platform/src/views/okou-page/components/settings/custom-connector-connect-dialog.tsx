@@ -20,9 +20,9 @@ import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCustomConnectorDialog$,
-  connectCustomConnectorOAuth2$,
-  connectCustomConnectorAccountOAuth2$,
-  connectCustomConnectorOAuth2ForAgent$,
+  connectCustomConnectorAuthorization$,
+  connectCustomConnectorAccountAuthorization$,
+  connectCustomConnectorAuthorizationForAgent$,
   customConnectorConnectForm$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
@@ -158,18 +158,17 @@ function useCustomConnectorConnectionSubmitters(
   const [agentValuesLoadable, submitAgentValues] = useLoadableSet(
     setCustomConnectorValuesForAgent$,
   );
-  const [oauthLoadable, submitOAuth2] = useLoadableSet(
-    connectCustomConnectorOAuth2$,
+  const [authorizationLoadable, submitAuthorization] = useLoadableSet(
+    connectCustomConnectorAuthorization$,
   );
-  const [agentOAuthLoadable, submitAgentOAuth2] = useLoadableSet(
-    connectCustomConnectorOAuth2ForAgent$,
+  const [agentAuthorizationLoadable, submitAgentAuthorization] = useLoadableSet(
+    connectCustomConnectorAuthorizationForAgent$,
   );
   const [accountValuesLoadable, submitAccountValues] = useLoadableSet(
     setCustomConnectorAccountValues$,
   );
-  const [accountOAuthLoadable, submitAccountOAuth2] = useLoadableSet(
-    connectCustomConnectorAccountOAuth2$,
-  );
+  const [accountAuthorizationLoadable, submitAccountAuthorization] =
+    useLoadableSet(connectCustomConnectorAccountAuthorization$);
   const account = accountOptions.account;
   const usesDefaultProjection =
     accountOptions.useDefaultConnectorProjection === true;
@@ -196,15 +195,18 @@ function useCustomConnectorConnectionSubmitters(
       signal,
     );
   };
-  const submitOAuth = async (
+  const submitAuthorizationMode = async (
     connectorId: string,
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionSubmission> => {
     if (managesAccount && account) {
-      return await submitAccountOAuth2({ id: connectorId, account }, signal);
+      return await submitAccountAuthorization(
+        { id: connectorId, account },
+        signal,
+      );
     }
     if (agentId) {
-      return await submitAgentOAuth2(
+      return await submitAgentAuthorization(
         {
           id: connectorId,
           agentId,
@@ -216,7 +218,7 @@ function useCustomConnectorConnectionSubmitters(
         signal,
       );
     }
-    return await submitOAuth2(
+    return await submitAuthorization(
       {
         id: connectorId,
         ...(account ? { account } : {}),
@@ -232,23 +234,23 @@ function useCustomConnectorConnectionSubmitters(
     submitting:
       valuesLoadable.state === "loading" ||
       agentValuesLoadable.state === "loading" ||
-      oauthLoadable.state === "loading" ||
-      agentOAuthLoadable.state === "loading" ||
+      authorizationLoadable.state === "loading" ||
+      agentAuthorizationLoadable.state === "loading" ||
       accountValuesLoadable.state === "loading" ||
-      accountOAuthLoadable.state === "loading",
+      accountAuthorizationLoadable.state === "loading",
     submitDeclaredValues,
-    submitOAuth,
+    submitAuthorizationMode,
   };
 }
 
 function ConnectDialogFooter({
-  oauth,
+  authorization,
   noAuth,
   submitting,
   canSubmit,
   onClose,
 }: {
-  readonly oauth: boolean;
+  readonly authorization: boolean;
   readonly noAuth: boolean;
   readonly submitting: boolean;
   readonly canSubmit: boolean;
@@ -256,14 +258,14 @@ function ConnectDialogFooter({
 }) {
   const { t } = useTranslation();
   const submitLabel = submitting
-    ? oauth || noAuth
+    ? authorization || noAuth
       ? t(($) => {
           return $.connectors.custom.connect.connecting;
         })
       : t(($) => {
           return $.connectors.custom.connect.saving;
         })
-    : oauth
+    : authorization
       ? t(($) => {
           return $.connectors.custom.connect.continue;
         })
@@ -325,14 +327,17 @@ function CustomConnectorConnectForm({
   readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const { t } = useTranslation();
-  const oauth = connector.authMode === "oauth";
+  const authorization =
+    connector.authMode === "oauth" || connector.authMode === "automatic";
   const noAuth = connector.authMode === "none";
   return (
     <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-      {oauth ? (
+      {authorization ? (
         <p className="text-sm text-muted-foreground">
           {t(($) => {
-            return $.connectors.custom.connect.continueToProvider;
+            return connector.authMode === "automatic"
+              ? $.connectors.custom.connect.continueWithAutomatic
+              : $.connectors.custom.connect.continueToProvider;
           })}
         </p>
       ) : (
@@ -344,7 +349,7 @@ function CustomConnectorConnectForm({
         />
       )}
       <ConnectDialogFooter
-        oauth={oauth}
+        authorization={authorization}
         noAuth={noAuth}
         submitting={submitting}
         canSubmit={canSubmit}
@@ -369,10 +374,11 @@ export function CustomConnectorConnectDialog({
   const closeDialog = useSet(closeCustomConnectorDialog$);
   const resolvedAccountOptions =
     accountOptions ?? connectorAccountOptionsFor(accountMode);
-  const { submitting, submitDeclaredValues, submitOAuth } =
+  const { submitting, submitDeclaredValues, submitAuthorizationMode } =
     useCustomConnectorConnectionSubmitters(agentId, resolvedAccountOptions);
   const signal = useGet(pageSignal$);
-  const oauth = connector.authMode === "oauth";
+  const authorization =
+    connector.authMode === "oauth" || connector.authMode === "automatic";
   const noAuth = connector.authMode === "none";
   const values = declaredValuesFromForm(connector, form.values);
   const submittedKeys = new Set(
@@ -391,9 +397,9 @@ export function CustomConnectorConnectDialog({
   });
   const canSubmit =
     !submitting &&
-    (oauth || (hasRequiredValues && (noAuth || values.length > 0)));
+    (authorization || (hasRequiredValues && (noAuth || values.length > 0)));
   const showSecretDescription =
-    !oauth &&
+    !authorization &&
     connector.fields.length === 1 &&
     connector.fields[0]?.kind === "secret";
 
@@ -413,8 +419,8 @@ export function CustomConnectorConnectDialog({
     }
     detach(
       (async () => {
-        const result = oauth
-          ? await submitOAuth(connector.id, signal)
+        const result = authorization
+          ? await submitAuthorizationMode(connector.id, signal)
           : await submitDeclaredValues({ id: connector.id, values }, signal);
         if (!result.connected) {
           return;

@@ -1,12 +1,21 @@
 import { z } from "zod";
 
-export const runFailureReasonSchema = z.enum([
+export const runFailureReasonTokenSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/);
+
+export type RunFailureReasonToken = z.infer<typeof runFailureReasonTokenSchema>;
+
+export const knownRunFailureReasonSchema = z.enum([
   "session_history_limit",
   "insufficient_credits",
   "invalid_api_key",
   "invalid_credentials",
   "terms_acceptance_required",
   "context_window_exceeded",
+  "input_too_large",
   "output_token_limit",
   "provider_rate_limited",
   "provider_overloaded",
@@ -19,4 +28,4 @@ export const runFailureReasonSchema = z.enum([
   "usage_limit",
 ]);
 
-export type RunFailureReason = z.infer<typeof runFailureReasonSchema>;
+export type KnownRunFailureReason = z.infer<typeof knownRunFailureReasonSchema>;

@@ -945,6 +945,47 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(disposedSessions).toBe(1);
   });
 
+  it("awaits terminal usage before a later output-validation failure", async () => {
+    const provider = await startProvider([
+      { type: "text", text: "finished without required files" },
+    ]);
+    const usages: PiMemoryPhase2UsageEvent[] = [];
+    await expectBoundedFailure(
+      runPiMemoryPhase2Consolidation(
+        args(provider.baseUrl, {
+          baseFiles: [],
+          async onUsage(event) {
+            await Promise.resolve();
+            usages.push(event);
+          },
+        }),
+        new AbortController().signal,
+      ),
+      "agent_output_invalid",
+    );
+
+    expect(usages).toHaveLength(1);
+    expect(usages[0]?.responseId).toBe("resp_phase2_final_0");
+  });
+
+  it("classifies an asynchronous usage persistence failure as observer failure", async () => {
+    const provider = await startProvider([
+      { type: "text", text: "finished before usage observer" },
+    ]);
+    await expectBoundedFailure(
+      runPiMemoryPhase2Consolidation(
+        args(provider.baseUrl, {
+          async onUsage() {
+            await Promise.resolve();
+            throw new Error("USAGE_PERSISTENCE_SECRET_31291");
+          },
+        }),
+        new AbortController().signal,
+      ),
+      "observer_failed",
+    );
+  });
+
   it("observes abort from the staged observer before selecting no-diff", async () => {
     const controller = new AbortController();
     const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
@@ -1027,7 +1068,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     );
 
     expect(provider.requests).toHaveLength(1);
-    expect(usages).toStrictEqual([]);
+    expect(usages).toHaveLength(1);
     expect(disposedSessions).toBe(1);
     expect(
       lifecycle.map((event) => {

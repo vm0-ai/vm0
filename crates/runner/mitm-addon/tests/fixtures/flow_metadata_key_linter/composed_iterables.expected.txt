@@ -12,4 +12,7 @@ composed_iterables.py:11: use metadata_keys.SANDBOX_RUN_ID for flow.metadata acc
 composed_iterables.py:12: use metadata_keys.FIREWALL_NAME for flow.metadata access
 composed_iterables.py:13: use metadata_keys.FIREWALL_ACTION for flow.metadata access
 composed_iterables.py:14: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
-composed_iterables.py:18: use metadata_keys.SANDBOX_PROXY_LOG_PATH for flow.metadata access
+composed_iterables.py:15: use metadata_keys.SANDBOX_RUN_ID for flow.metadata access
+composed_iterables.py:16: use metadata_keys.FIREWALL_NAME for flow.metadata access
+composed_iterables.py:17: use metadata_keys.FIREWALL_ACTION for flow.metadata access
+composed_iterables.py:21: use metadata_keys.SANDBOX_PROXY_LOG_PATH for flow.metadata access
