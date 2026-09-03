@@ -58,6 +58,8 @@ pub(super) struct JobProfile {
     pub(super) budget_lease: BudgetLease,
     pub(super) restore_guest_state: bool,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(super) workspace_image_prepare_lock_policy:
+        crate::workspace_image_cache::WorkspaceImagePrepareLockPolicy,
     pub(super) factory: SharedFactory,
     pub(super) cancellation: RunCancellationRegistration,
 }
@@ -591,6 +593,7 @@ pub(super) async fn run_job(
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let workspace_disk_mb = job_profile.workspace_disk_mb;
+    let workspace_image_prepare_lock_policy = job_profile.workspace_image_prepare_lock_policy;
     let active_lease = job_profile.budget_lease;
     let profile_name = job_profile.profile_name;
     let factory = job_profile.factory;
@@ -603,6 +606,7 @@ pub(super) async fn run_job(
         workspace_disk_mb,
         restore_guest_state: job_profile.restore_guest_state,
         device_rate_limits: job_profile.device_rate_limits.clone(),
+        workspace_image_prepare_lock_policy,
     };
     let job_device_rate_limits = params.device_rate_limits.clone();
 

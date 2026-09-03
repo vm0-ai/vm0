@@ -57,12 +57,15 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function prepareAgentProfile(avatarUrl = "preset:0"): void {
+function prepareAgentProfile(
+  avatarUrl = "preset:0",
+  displayName = "Research Agent",
+): void {
   let detail: AgentResponse = {
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     description: "A helpful agent",
-    displayName: "Research Agent",
+    displayName,
     sound: "professional",
     avatarUrl,
     visibility: "public",
@@ -84,7 +87,7 @@ function prepareAgentProfile(avatarUrl = "preset:0"): void {
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
-      displayName: detail.displayName,
+      displayName,
       description: detail.description,
       sound: detail.sound,
       avatarUrl: detail.avatarUrl,
@@ -169,7 +172,6 @@ describe("zero settings tab", () => {
     prepareAgentProfile(DEFAULT_AGENT_AVATAR_URL);
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
-    await findAgentNameInput();
     const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
     const avatarRow = avatarLabel.parentElement?.parentElement;
     if (!avatarRow) {
@@ -181,6 +183,21 @@ describe("zero settings tab", () => {
     expect(avatarImages[0]).toHaveAttribute("src", DEFAULT_AGENT_AVATAR_URL);
     expect(screen.queryByLabelText("Create custom avatar")).toBeNull();
     expect(screen.queryByLabelText("Customize avatar")).toBeNull();
+  });
+
+  it("renders the default agent name as text without an input", async () => {
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    prepareAgentProfile("preset:0", "Renamed default agent");
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    const nameLabel = await screen.findByText("Name", { selector: "p" });
+    const nameRow = nameLabel.parentElement?.parentElement;
+    if (!nameRow) {
+      throw new Error("Name profile row not found");
+    }
+
+    expect(nameRow).toHaveTextContent("Okou");
+    expect(nameRow.querySelector("input")).toBeNull();
   });
 
   it("renders the highest preset the API can assign", async () => {

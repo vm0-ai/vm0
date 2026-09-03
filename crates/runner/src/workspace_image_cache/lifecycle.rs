@@ -32,11 +32,12 @@ use super::path_safety::{
 };
 use super::types::{
     CacheBudget, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
-    WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
-    WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch,
-    WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
-    WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss,
-    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
+    WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareLockPolicy,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentity,
+    WorkspaceImagePromotionIdentityMismatch, WorkspaceImagePromotionIdentityRequest,
+    WorkspaceImagePromotionRequest, WorkspaceSessionHistorySidecar,
+    WorkspaceSessionHistorySidecarMiss, WorkspaceSessionHistorySidecarPromotionSource,
+    WorkspaceSessionHistorySidecarPublication,
 };
 use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
 
@@ -212,7 +213,15 @@ impl WorkspaceImageLease {
 }
 
 impl WorkspaceImageCache {
-    async fn acquire_prepare_lock(&self, lock_path: PathBuf) -> RunnerResult<crate::lock::TryLock> {
+    async fn acquire_prepare_lock(
+        &self,
+        lock_path: PathBuf,
+        lock_policy: WorkspaceImagePrepareLockPolicy,
+    ) -> RunnerResult<crate::lock::TryLock> {
+        if lock_policy == WorkspaceImagePrepareLockPolicy::ImmediateFallback {
+            return crate::lock::try_acquire_or_busy(lock_path).await;
+        }
+
         #[cfg(test)]
         if let Some(gate) = &self.prepare_lock_test_gate {
             return crate::lock::acquire_with_contention_timeout_after_busy_for_test(
@@ -309,6 +318,18 @@ impl WorkspaceImageCache {
     pub(crate) async fn prepare(
         &self,
         request: WorkspaceImagePrepareRequest<'_>,
+    ) -> WorkspaceImageLease {
+        self.prepare_with_lock_policy(
+            request,
+            WorkspaceImagePrepareLockPolicy::WaitForTransientContention,
+        )
+        .await
+    }
+
+    pub(crate) async fn prepare_with_lock_policy(
+        &self,
+        request: WorkspaceImagePrepareRequest<'_>,
+        lock_policy: WorkspaceImagePrepareLockPolicy,
     ) -> WorkspaceImageLease {
         let common = WorkspaceImageLeaseCommon::new(self, request.identity);
         let workspace_drive = |result,
@@ -413,15 +434,23 @@ impl WorkspaceImageCache {
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
-        let lock = match self.acquire_prepare_lock(lock_path).await {
+        let lock = match self.acquire_prepare_lock(lock_path, lock_policy).await {
             Ok(crate::lock::TryLock::Acquired(lock)) => lock,
             Ok(crate::lock::TryLock::Busy) => {
-                info!(
-                    run_id = %common.run_id,
-                    cache_key,
-                    wait_ms = duration_ms(WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT),
-                    "workspace image cache lock remained busy; using fresh workspace image"
-                );
+                match lock_policy {
+                    WorkspaceImagePrepareLockPolicy::WaitForTransientContention => info!(
+                        run_id = %common.run_id,
+                        cache_key,
+                        wait_ms = duration_ms(WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT),
+                        "workspace image cache lock remained busy; using fresh workspace image"
+                    ),
+                    WorkspaceImagePrepareLockPolicy::ImmediateFallback => info!(
+                        run_id = %common.run_id,
+                        cache_key,
+                        wait_ms = 0,
+                        "workspace image cache lock busy without retry; using fresh workspace image"
+                    ),
+                }
                 return workspace_drive(
                     WorkspaceCacheCheckoutResult::LockBusy,
                     None,

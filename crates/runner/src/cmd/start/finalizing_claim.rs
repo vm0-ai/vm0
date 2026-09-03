@@ -28,7 +28,9 @@
 //! when there is no executor to emit ordinary job telemetry.
 //!
 //! When no direct or published exact resource is available, fallback first retries matching idle
-//! exact reuse, then consumes retiring idle capacity, and finally uses fresh budget capacity.
+//! exact reuse, then consumes retiring idle capacity, and finally uses fresh budget capacity. A
+//! fresh fallback still attempts workspace-cache checkout, but skips its transient-contention
+//! retry when the predecessor state proves that a live or transferred sandbox retains the entry.
 //! Retiring leases are retained while the loop waits for capacity. The wait observes both budget
 //! availability and idle-pool changes: either can make the next exact or fresh-resource attempt
 //! viable, while cancellation exits through the same no-sandbox completion path. The admission
@@ -73,6 +75,7 @@ use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::RunCancellationRegistration;
 use crate::telemetry::JobTelemetry;
 use crate::types::{CompleteRequest, SandboxReuseResult};
+use crate::workspace_image_cache::WorkspaceImagePrepareLockPolicy;
 
 pub(super) const FINALIZING_HANDOFF_ACCEPTANCE_GRACE: Duration = Duration::from_millis(1500);
 
@@ -243,6 +246,7 @@ async fn run_finalizing_claim(
         }
     };
 
+    let fresh_fallback = matches!(&resource, FinalizingResource::Fresh(_));
     let active_run_guard = ctx.active_runs.register(
         run_id,
         claimed.context().reuse_key().map(str::to_owned),
@@ -453,7 +457,7 @@ async fn run_finalizing_claim(
         },
         &ctx,
     );
-    let request = match AssertUnwindSafe(build_spawn_job_request(&mut activation, &ctx))
+    let mut request = match AssertUnwindSafe(build_spawn_job_request(&mut activation, &ctx))
         .catch_unwind()
         .await
     {
@@ -478,6 +482,23 @@ async fn run_finalizing_claim(
         }
     };
     drop(activation_transfer_guard);
+    let predecessor_state = admission.predecessor.state();
+    if fresh_fallback
+        && matches!(
+            predecessor_state,
+            ActiveRunReuseState::Pending
+                | ActiveRunReuseState::ExactSandboxPublished
+                | ActiveRunReuseState::ExactSandboxHandedOff
+        )
+    {
+        request.job_profile.workspace_image_prepare_lock_policy =
+            WorkspaceImagePrepareLockPolicy::ImmediateFallback;
+        info!(
+            run_id = %run_id,
+            ?predecessor_state,
+            "finalizing fallback will skip workspace cache lock retry"
+        );
+    }
     run_job(request, ctx).await
 }
 

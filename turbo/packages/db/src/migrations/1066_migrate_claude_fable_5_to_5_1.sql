@@ -1,4 +1,4 @@
--- Custom SQL migration file, put your code below! --
+-- Custom SQL migration file; preserved after migration renumbering.
 -- Operationally replace Claude Fable 5 with Claude Fable 5.1 while keeping
 -- the predecessor available during the compatibility window. Current
 -- configuration is migrated; immutable run history, usage history, prior

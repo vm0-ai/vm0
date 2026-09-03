@@ -17,7 +17,8 @@ use crate::provider::{
 };
 use crate::runner_process_identity::RunnerProcessIdentity;
 use crate::types::SandboxReuseResult;
-use crate::workspace_image_cache::WorkspaceImageCache;
+use crate::types::WorkspaceReuseResult;
+use crate::workspace_image_cache::{WorkspaceImageCache, WorkspaceImagePrepareLockTestGate};
 
 const NON_SELECTED_RUNNER_ID: u128 = 1;
 const FINALIZING_TEST_PREFERENCE_LIFETIME: Duration = Duration::from_secs(30);
@@ -1854,6 +1855,83 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
         .expect("expired finalizing preference should enter ordinary admission");
     assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
 
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn pending_finalizing_fallback_skips_workspace_cache_lock_retry() {
+    let reuse_key = "thread:pending-finalizing-workspace-lock";
+    let image_size_bytes = 1024 * 1024;
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+    let (mut config, env) = mock_run_config(profiles, 2, 4096, 1);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let prepare_lock_gate = WorkspaceImagePrepareLockTestGate::default();
+    let workspace_cache =
+        WorkspaceImageCache::shared(runner_paths, &config.paths.home, &config.runner.group)
+            .with_prepare_lock_test_gate(prepare_lock_gate);
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &config.runner.group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        image_size_bytes,
+    );
+    let held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
+        &config.paths.home.locks_dir(),
+        &cache_key,
+    ))
+    .await
+    .unwrap();
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate_until(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+            std::time::Instant::now() + FINALIZING_TEST_PREFERENCE_LIFETIME,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .any(|candidate| candidate.run_id() == run_id),
+        "finalizing successor should be claimed before its deadline"
+    );
+
+    tokio::time::advance(FINALIZING_TEST_PREFERENCE_LIFETIME + Duration::from_millis(1)).await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("known long-lived workspace lock should not enter bounded retry");
+    assert_eq!(
+        completion.workspace_reuse_result,
+        Some(WorkspaceReuseResult::LockBusy),
+    );
+
+    drop(held_lock);
     drop(predecessor_guard);
     shutdown(&env, run_handle).await;
 }

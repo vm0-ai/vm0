@@ -1804,8 +1804,15 @@
     {
       "idx": 1065,
       "version": "7",
-      "when": 1788431591615,
-      "tag": "1065_migrate_claude_fable_5_to_5_1",
+      "when": 1788429364361,
+      "tag": "1065_lock_default_agent_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 1066,
+      "version": "7",
+      "when": 1788433102518,
+      "tag": "1066_migrate_claude_fable_5_to_5_1",
       "breakpoints": true
     }
   ]

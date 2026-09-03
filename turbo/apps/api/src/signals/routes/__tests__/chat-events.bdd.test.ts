@@ -16659,7 +16659,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 });
 
 describe("CHAT-02: public-brand default assistant identity", () => {
-  it("uses each request brand for immediate and auto-sent runs without renaming custom agents", async () => {
+  it("keeps the default name as Okou across request brands without renaming custom agents", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");
     const { actor, runnerGroup } = await entitledChatActor();
     bdd.acceptAgentStorageWrites();
@@ -16671,8 +16671,8 @@ describe("CHAT-02: public-brand default assistant identity", () => {
 
     const brandPresentation = {
       vm0: {
-        assistantName: "Zero",
-        otherAssistantName: "Okou",
+        assistantName: "Okou",
+        otherAssistantName: "Zero",
         appUrl: "https://app.vm0.ai",
         contextId: "e1884e98-ab77-4eca-a420-90e591078804",
       },
