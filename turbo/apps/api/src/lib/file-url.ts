@@ -9,8 +9,11 @@ const ARTIFACT_HASH_LENGTH = 10;
 const ARTIFACT_HASH_SPACE = 36n ** BigInt(ARTIFACT_HASH_LENGTH);
 const CLOUDFLARE_IMAGE_RESIZE_PATH_PREFIX = "/cdn-cgi/image/";
 
+// Both origins are durable public URL contracts. New Okou links may use the
+// short origin, while previously persisted or externally shared CDN links
+// remain valid for the lifetime of their artifacts.
 export const OKOU_SHORT_ARTIFACTS_ORIGIN = "https://a.okou.io";
-export const OKOU_LEGACY_ARTIFACTS_ORIGIN = "https://cdn.okou.io";
+export const OKOU_CDN_ARTIFACTS_ORIGIN = "https://cdn.okou.io";
 
 /**
  * Sanitize a user-supplied filename for use in an artifact object key.
@@ -110,15 +113,16 @@ export function artifactKeyFromShortOkouUrl(url: URL): string | null {
 }
 
 /**
- * Keep catalog identity stable while the same object moves from the legacy
- * Okou CDN URL to its short alias. Existing catalog rows therefore need no
+ * Use the CDN form as the canonical catalog identity for both durable public
+ * aliases. This is identity normalization rather than a rollout fallback:
+ * neither public origin is retired. Existing catalog rows therefore need no
  * migration and completion retries cannot create a second logical artifact.
  */
-export function legacyOkouArtifactUrlForShortUrl(url: URL): string | null {
+export function canonicalOkouArtifactCatalogUrl(url: URL): string | null {
   const key = artifactKeyFromShortOkouUrl(url);
   return key === null
     ? null
-    : `${OKOU_LEGACY_ARTIFACTS_ORIGIN}/${key}${url.search}${url.hash}`;
+    : `${OKOU_CDN_ARTIFACTS_ORIGIN}/${key}${url.search}${url.hash}`;
 }
 
 export function buildFileUrlFromKey(

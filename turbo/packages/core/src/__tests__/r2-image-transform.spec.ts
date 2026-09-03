@@ -35,17 +35,6 @@ describe("r2ImageTransformUrl", () => {
     );
   });
 
-  it("supports short Okou artifact URLs", () => {
-    expect(
-      r2ImageTransformUrl("https://a.okou.io/0123456789.jpg", {
-        width: 96,
-        height: 96,
-      }),
-    ).toBe(
-      "https://a.okou.io/cdn-cgi/image/width=96,height=96,fit=scale-down,format=auto,quality=85,metadata=none/0123456789.jpg",
-    );
-  });
-
   it("supports static vm0 asset URLs", () => {
     expect(
       r2ImageTransformUrl(

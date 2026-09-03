@@ -37,7 +37,7 @@ import { runUploadedFiles } from "@okouai/db/schema/run-uploaded-file";
 import { sharedThreads } from "@okouai/db/schema/shared-thread";
 import { z } from "zod";
 
-import { legacyOkouArtifactUrlForShortUrl } from "../../lib/file-url";
+import { canonicalOkouArtifactCatalogUrl } from "../../lib/file-url";
 import { nowDate } from "../../lib/time";
 import {
   isSharedThreadArtifactLogicalKey,
@@ -602,7 +602,7 @@ async function syncArtifactCatalogFile(
 
   const parsedFileUrl = safeUrlParse(row.url);
   const logicalFileUrl = parsedFileUrl
-    ? (legacyOkouArtifactUrlForShortUrl(parsedFileUrl) ?? row.url)
+    ? (canonicalOkouArtifactCatalogUrl(parsedFileUrl) ?? row.url)
     : row.url;
   const logicalKey = `file:${logicalFileUrl}`;
 

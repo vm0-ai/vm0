@@ -17,7 +17,8 @@ import { mockEnv } from "../../../lib/env";
 import {
   buildArtifactKeyV2,
   buildFileUrlFromKey,
-  OKOU_LEGACY_ARTIFACTS_ORIGIN,
+  OKOU_CDN_ARTIFACTS_ORIGIN,
+  OKOU_SHORT_ARTIFACTS_ORIGIN,
 } from "../../../lib/file-url";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -2669,12 +2670,17 @@ describe("POST /api/image-io/generate", () => {
       randomUUID(),
       "short-reference.png",
     );
-    const legacyArtifactKey = buildArtifactKeyV2(
+    const cdnArtifactKey = buildArtifactKeyV2(
       randomUUID(),
-      "legacy-reference.png",
+      "cdn-reference.png",
     );
     const shortArtifactUrl = buildFileUrlFromKey(shortArtifactKey, "okou");
-    const legacyArtifactUrl = `${OKOU_LEGACY_ARTIFACTS_ORIGIN}/${legacyArtifactKey}`;
+    const shortArtifactPath = new URL(shortArtifactUrl).pathname.replace(
+      /^\/+/u,
+      "",
+    );
+    const transformedShortArtifactUrl = `${OKOU_SHORT_ARTIFACTS_ORIGIN}/cdn-cgi/image/width=96,height=96,fit=scale-down,format=auto,quality=85,metadata=none/${shortArtifactPath}`;
+    const cdnArtifactUrl = `${OKOU_CDN_ARTIFACTS_ORIGIN}/${cdnArtifactKey}`;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       if (command instanceof HeadObjectCommand) {
         return Promise.resolve({
@@ -2689,8 +2695,8 @@ describe("POST /api/image-io/generate", () => {
       },
     );
     const sourceImageUrls = [
-      shortArtifactUrl,
-      legacyArtifactUrl,
+      transformedShortArtifactUrl,
+      cdnArtifactUrl,
       THIRD_MOCKUP_IMAGE_URL,
     ];
     const response = await app.request("/api/image-io/generate", {
@@ -2749,7 +2755,7 @@ describe("POST /api/image-io/generate", () => {
     expect(providerImageUrls[2]).toBe(THIRD_MOCKUP_IMAGE_URL);
     for (const [providerImageUrl, artifactKey] of [
       [providerImageUrls[0], shortArtifactKey],
-      [providerImageUrls[1], legacyArtifactKey],
+      [providerImageUrls[1], cdnArtifactKey],
     ] as const) {
       const signedArtifactUrl = new URL(String(providerImageUrl));
       expect(signedArtifactUrl.origin).toBe("https://r2.example.com");
@@ -2765,7 +2771,7 @@ describe("POST /api/image-io/generate", () => {
     expect(headObjectInputs).toStrictEqual(
       expect.arrayContaining([
         { Bucket: TEST_BUCKET, Key: shortArtifactKey },
-        { Bucket: TEST_BUCKET, Key: legacyArtifactKey },
+        { Bucket: TEST_BUCKET, Key: cdnArtifactKey },
       ]),
     );
     await expect(orgCredits(fixture)).resolves.toBe(

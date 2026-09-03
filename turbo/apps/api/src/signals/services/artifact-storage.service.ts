@@ -12,7 +12,7 @@ import {
   buildFileUrlFromKey,
   artifactKeyFromShortOkouUrl,
   isArtifactKeyV2,
-  OKOU_LEGACY_ARTIFACTS_ORIGIN,
+  OKOU_CDN_ARTIFACTS_ORIGIN,
   OKOU_SHORT_ARTIFACTS_ORIGIN,
   publicArtifactsBaseUrlForBrand,
   sanitizeArtifactFilename,
@@ -86,7 +86,7 @@ function publicArtifactKeyFromUrl(value: string): string | null {
   const allowedOrigins = new Set([
     new URL(publicArtifactsBaseUrlForBrand("vm0")).origin,
     new URL(publicArtifactsBaseUrlForBrand("okou")).origin,
-    OKOU_LEGACY_ARTIFACTS_ORIGIN,
+    OKOU_CDN_ARTIFACTS_ORIGIN,
   ]);
   if (!allowedOrigins.has(url.origin)) {
     return null;

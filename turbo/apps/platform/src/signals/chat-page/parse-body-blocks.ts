@@ -139,6 +139,8 @@ interface ParseBodyBlocksOptions {
 const LEGACY_PLATFORM_FILE_PATH_PATTERN =
   /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
+// CDN and short links are both durable public artifact contracts. Only the
+// short origin uses the flat path, so keep its recognition origin-exact.
 const OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/[0-9a-z]{10}\.[^/]+$/;
 const OKOU_SHORT_ARTIFACT_ORIGIN = "https://a.okou.io";
 const PLATFORM_FILE_CDN_HOSTS = [
