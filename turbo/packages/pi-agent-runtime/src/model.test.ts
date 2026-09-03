@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { resolvePiAgentModel } from "./model";
+import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
 
 const OPENAI_TERRA = {
   provider: "openai",
@@ -167,5 +167,81 @@ describe("Pi agent model adapter", () => {
         apiKey: "test-key",
       }),
     ).toBeNull();
+  });
+
+  it("selects the native OpenAI Codex catalog only from the Codex dialect", () => {
+    expect(
+      resolvePiAgentModel({
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        model: "gpt-5.6-terra",
+        apiKey: "opaque-access-token",
+        accountId: "account-id",
+        dialect: "openai-codex-responses",
+        transport: "sse",
+      }),
+    ).toMatchObject({
+      id: "gpt-5.6-terra",
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      api: "openai-codex-responses",
+    });
+    expect(
+      resolvePiAgentModel({
+        ...OPENAI_TERRA,
+        dialect: "openai-codex-responses",
+        accountId: "account-id",
+        transport: "sse",
+      }),
+    ).toBeNull();
+  });
+
+  it("passes an explicit account ID to native Codex Responses over SSE", async () => {
+    const config = {
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: "gpt-5.6-terra",
+      apiKey: "opaque-not-a-jwt",
+      accountId: "account-id-from-binding",
+      dialect: "openai-codex-responses",
+      transport: "sse",
+    } as const;
+    const model = resolvePiAgentModel(config);
+    if (!model || model.api !== "openai-codex-responses") {
+      throw new Error("Expected a native Codex Responses model");
+    }
+    let requestHeaders: Headers | undefined;
+    const providerFetch = vi.fn(
+      async (
+        _input: Parameters<typeof globalThis.fetch>[0],
+        init?: Parameters<typeof globalThis.fetch>[1],
+      ) => {
+        requestHeaders = new Headers(init?.headers);
+        return new Response(JSON.stringify({ error: { message: "stop" } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+
+    const stream = piAgentStreamForConfig(config)(
+      model,
+      {
+        messages: [{ role: "user", content: "hello", timestamp: 1 }],
+        tools: [],
+      },
+      { apiKey: config.apiKey, fetch: providerFetch },
+    );
+    for await (const _event of stream) {
+      // Drain the expected provider error so the adapter completes its task.
+    }
+
+    expect(providerFetch).toHaveBeenCalledOnce();
+    expect(requestHeaders?.get("authorization")).toBe(
+      "Bearer opaque-not-a-jwt",
+    );
+    expect(requestHeaders?.get("chatgpt-account-id")).toBe(
+      "account-id-from-binding",
+    );
   });
 });

@@ -18,6 +18,7 @@ import {
   type ConnectorRuntimeSyncResult,
   type ExecutionContext,
   type Job as RunnerJob,
+  type PiModelConfigV2,
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -157,6 +158,7 @@ import {
   setRunModelProviderStateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
+  setRunnerJobPiContextAsV2Writer,
 } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import {
@@ -10302,6 +10304,51 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("leaves Pi V2 jobs queued until a capable Runner claims them", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim a dialect-aware Pi route",
+      modelProvider: "anthropic-api-key",
+    });
+    const piModelConfig: PiModelConfigV2 = {
+      schemaVersion: 2,
+      dialect: "openai-responses",
+      transport: "sse",
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.4",
+      credentialBindings: [
+        {
+          kind: "api-key",
+          environment: "OPENAI_API_KEY",
+          secretName: "OPENAI_API_KEY",
+        },
+      ],
+    };
+    await setRunnerJobPiContextAsV2Writer(context, run.runId, piModelConfig);
+    await api.heartbeatRunner(runnerGroup);
+
+    const legacyClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(legacyClaim.body);
+    expect(legacyClaim.body.error.message).toBe("Job not found in queue");
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    const capableClaim = await api.claimRunnerJob(run.runId, {
+      capabilities: { piModelConfigGenerations: [1, 2] },
+    });
+    expect(capableClaim).toMatchObject({
+      cliAgentType: "pi",
+      piSessionId: run.runId,
+      piModelConfig,
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("restores prepared masking values from direct run environments", async () => {

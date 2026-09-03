@@ -47,6 +47,7 @@ const CONFIG: PiSandboxAgentConfig = {
     baseUrl: "https://api.deepseek.com/",
     model: "deepseek-v4-flash",
     api: "openai-responses",
+    dialect: "openai-responses",
     apiKey: "test-api-key",
   },
 };
@@ -667,6 +668,7 @@ describe("sandbox Pi agent loop", () => {
           baseUrl: "https://api.openai.com/v1",
           model: "gpt-5.6-terra",
           api: "openai-responses",
+          dialect: "openai-responses",
           thinkingLevel: "low",
           serviceTier: "priority",
           apiKey: "test-api-key",
@@ -699,11 +701,53 @@ describe("sandbox Pi agent loop", () => {
         model: "company-deepseek-production",
         catalogModel: "deepseek-v4-flash",
         api: "openai-responses",
+        dialect: "openai-responses",
         apiKey: "unused",
         requestHeaders: {
           authorization: null,
           "x-api-key": "safe-gateway-placeholder",
         },
+      },
+    });
+  });
+
+  it("materializes only the opaque subscription placeholders from V2", async () => {
+    const env = piEnv({ OKOU_RUN_ID: RUN_ID });
+    env.OKOU_PI_MODEL_CONFIG = JSON.stringify({
+      schemaVersion: 2,
+      dialect: "openai-codex-responses",
+      transport: "sse",
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: "gpt-5.6-terra",
+      thinkingLevel: "low",
+      credentialBindings: [
+        {
+          kind: "access-token",
+          environment: "CHATGPT_ACCESS_TOKEN",
+          secretName: "CHATGPT_ACCESS_TOKEN",
+        },
+        {
+          kind: "account-id",
+          environment: "CHATGPT_ACCOUNT_ID",
+          secretName: "CHATGPT_ACCOUNT_ID",
+        },
+      ],
+    });
+    delete env.OPENAI_API_KEY;
+    env.CHATGPT_ACCESS_TOKEN = "opaque-access-token-placeholder";
+    env.CHATGPT_ACCOUNT_ID = "opaque-account-id-placeholder";
+
+    await expect(piSandboxAgentConfigFromEnv(env)).resolves.toMatchObject({
+      model: {
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        model: "gpt-5.6-terra",
+        api: "openai-codex-responses",
+        dialect: "openai-codex-responses",
+        transport: "sse",
+        apiKey: "opaque-access-token-placeholder",
+        accountId: "opaque-account-id-placeholder",
       },
     });
   });

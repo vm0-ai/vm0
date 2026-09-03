@@ -12,6 +12,10 @@ export type PiAgentThinkingLevel = (typeof PI_AGENT_THINKING_LEVELS)[number];
 
 export type PiAgentServiceTier = "priority";
 
+export type PiAgentDialect = "openai-responses" | "openai-codex-responses";
+
+export type PiAgentTransport = "sse";
+
 export type PiAgentCredentialTarget = "direct" | "sandbox-firewall";
 
 export type PiAgentRequestHeaders = Readonly<Record<string, string | null>>;
@@ -19,6 +23,13 @@ export type PiAgentRequestHeaders = Readonly<Record<string, string | null>>;
 export interface PiAgentCredentialHeaderTemplate {
   readonly name: string;
   readonly valueTemplate: string;
+}
+
+export interface PiAgentCredentialReference {
+  readonly kind: "api-key" | "access-token" | "account-id";
+  readonly environment: string;
+  readonly secretName: string;
+  readonly credentialHeader?: PiAgentCredentialHeaderTemplate;
 }
 
 /** Model endpoint and credential resolved at a Pi execution edge. */
@@ -33,6 +44,12 @@ export interface PiAgentModelConfig {
   readonly catalogModel?: string;
   /** Execution-edge headers that override provider defaults case-insensitively. */
   readonly requestHeaders?: PiAgentRequestHeaders;
+  /** Authoritative native adapter selected by the materialized route. */
+  readonly dialect?: PiAgentDialect;
+  /** Explicit ChatGPT account identity required by the Codex dialect. */
+  readonly accountId?: string;
+  /** Route-owned transport policy. Codex subscriptions are SSE-only. */
+  readonly transport?: PiAgentTransport;
   /**
    * Cross-version input only. New writers emit `openai-responses`; the runtime
    * ignores absent or legacy values. Remove with #31085 after the previous API

@@ -80,6 +80,9 @@ export const CANCELLATION_RECOVERY_STALE_AFTER_MS =
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS + 30_000;
 export const BUILTIN_FIREWALL_CATALOG_CACHE_SCHEMA_VERSION = 1;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
+export const PI_MODEL_CONFIG_LEGACY_GENERATION = 1;
+export const PI_MODEL_CONFIG_CURRENT_GENERATION = 2;
+export const RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX = 8;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
@@ -128,6 +131,19 @@ const runnerProcessIdentitySchema = z
     heartbeatGeneration: runnerHeartbeatGenerationSchema,
   })
   .strict();
+
+export const runnerClaimCapabilitiesSchema = z
+  .object({
+    piModelConfigGenerations: z
+      .array(z.number().int().positive().max(255))
+      .min(1)
+      .max(RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX)
+      .refine((generations) => {
+        return new Set(generations).size === generations.length;
+      }, "Pi model-config generations must be unique"),
+  })
+  .strict()
+  .readonly();
 
 export const builtInModelProviderConnectionSourceSchema = z.enum([
   "provider_response",
@@ -934,7 +950,7 @@ const piCredentialHeaderSchema = z
   .strict()
   .readonly();
 
-export const piModelConfigSchema = z
+export const piModelConfigLegacySchema = z
   .object({
     provider: z.enum([
       "deepseek",
@@ -973,6 +989,133 @@ export const piModelConfigSchema = z
   })
   .strict()
   .readonly();
+
+const piApiKeyCredentialSecretNameSchema = z.enum([
+  "DEEPSEEK_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "VERCEL_AI_GATEWAY_API_KEY",
+  "OKOU_MODEL_PROVIDER_API_KEY",
+]);
+
+const piModelCredentialBindingSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("api-key"),
+      environment: z.enum(["OPENAI_API_KEY"]),
+      secretName: piApiKeyCredentialSecretNameSchema,
+      credentialHeader: piCredentialHeaderSchema.optional(),
+    })
+    .strict()
+    .readonly(),
+  z
+    .object({
+      kind: z.literal("access-token"),
+      environment: z.enum(["CHATGPT_ACCESS_TOKEN"]),
+      secretName: z.enum(["CHATGPT_ACCESS_TOKEN"]),
+    })
+    .strict()
+    .readonly(),
+  z
+    .object({
+      kind: z.literal("account-id"),
+      environment: z.enum(["CHATGPT_ACCOUNT_ID"]),
+      secretName: z.enum(["CHATGPT_ACCOUNT_ID"]),
+    })
+    .strict()
+    .readonly(),
+]);
+
+/**
+ * Additive Pi route generation for dialect-aware readers. Current writers keep
+ * emitting `piModelConfigLegacySchema` until a later activation slice.
+ */
+export const piModelConfigV2Schema = z
+  .object({
+    schemaVersion: z.literal(PI_MODEL_CONFIG_CURRENT_GENERATION),
+    dialect: z.enum(["openai-responses", "openai-codex-responses"]),
+    transport: z.literal("sse"),
+    provider: z.enum(["deepseek", "openai", "openrouter", "openai-codex"]),
+    baseUrl: z.url(),
+    model: z.string().min(1).max(512),
+    catalogModel: z.string().min(1).max(512).optional(),
+    thinkingLevel: z
+      .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+      .optional(),
+    serviceTier: z.enum(["priority"]).optional(),
+    credentialBindings: z.array(piModelCredentialBindingSchema).min(1).max(2),
+  })
+  .strict()
+  .superRefine((config, refinement) => {
+    const bindingKinds = config.credentialBindings.map((binding) => {
+      return binding.kind;
+    });
+    if (new Set(bindingKinds).size !== bindingKinds.length) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["credentialBindings"],
+        message: "Pi credential binding kinds must be unique",
+      });
+    }
+
+    if (config.dialect === "openai-responses") {
+      if (config.provider === "openai-codex") {
+        refinement.addIssue({
+          code: "custom",
+          path: ["provider"],
+          message: "Public Responses cannot use the OpenAI Codex catalog",
+        });
+      }
+      if (bindingKinds.length !== 1 || bindingKinds[0] !== "api-key") {
+        refinement.addIssue({
+          code: "custom",
+          path: ["credentialBindings"],
+          message: "Public Responses requires exactly one API-key binding",
+        });
+      }
+      return;
+    }
+
+    if (config.provider !== "openai-codex") {
+      refinement.addIssue({
+        code: "custom",
+        path: ["provider"],
+        message: "Codex Responses requires the OpenAI Codex catalog",
+      });
+    }
+    if (
+      bindingKinds.length !== 2 ||
+      !bindingKinds.includes("access-token") ||
+      !bindingKinds.includes("account-id")
+    ) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["credentialBindings"],
+        message:
+          "Codex Responses requires one access-token and one account-ID binding",
+      });
+    }
+    if (config.catalogModel !== undefined) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["catalogModel"],
+        message: "Codex Responses uses its provider model as the catalog model",
+      });
+    }
+    if (config.serviceTier !== undefined) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["serviceTier"],
+        message: "Codex Responses does not accept a public API service tier",
+      });
+    }
+  })
+  .readonly();
+
+export const piModelConfigSchema = z.union([
+  piModelConfigLegacySchema,
+  piModelConfigV2Schema,
+]);
 
 /**
  * Version marker for the sandbox Pi launch contract. Runtime resources are
@@ -1133,6 +1276,18 @@ export const compatibleStoredExecutionContextSchema =
     .superRefine(requireCompletePiFields);
 
 /**
+ * Claim-time reader that inspects Pi generation support before decoding the
+ * generation-specific route. Other stored-context readers remain fully typed.
+ */
+export const claimCompatibleStoredExecutionContextSchema =
+  storedExecutionContextObjectSchema
+    .extend({
+      connectorPermissionBaseline: z.unknown().optional(),
+      piModelConfig: z.unknown().optional(),
+    })
+    .superRefine(requireCompletePiFields);
+
+/**
  * Execution context returned when claiming a job.
  *
  * This is the canonical producer schema. The runner's `ExecutionContext` is a
@@ -1257,6 +1412,7 @@ export const runnersJobClaimContract = c.router({
     body: z.object({
       runnerIdentity: runnerProcessIdentitySchema.optional(),
       runnerHostname: runnerHostnameSchema.optional(),
+      capabilities: runnerClaimCapabilitiesSchema.optional(),
       telemetry: runnerClaimTelemetrySchema.optional(),
     }),
     responses: {
@@ -1529,6 +1685,14 @@ export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema
 >;
 export type PiModelConfig = z.infer<typeof piModelConfigSchema>;
+export type PiModelConfigLegacy = z.infer<typeof piModelConfigLegacySchema>;
+export type PiModelConfigV2 = z.infer<typeof piModelConfigV2Schema>;
+export type PiModelCredentialBinding = z.infer<
+  typeof piModelCredentialBindingSchema
+>;
+export type RunnerClaimCapabilities = z.infer<
+  typeof runnerClaimCapabilitiesSchema
+>;
 export type PiLaunchConfig = z.infer<typeof piLaunchConfigSchema>;
 export type PiMemoryRecallSelection = z.infer<
   typeof piMemoryRecallSelectionSchema
@@ -1544,6 +1708,9 @@ export type PiResourceSnapshot = z.infer<typeof piResourceSnapshotSchema>;
 export type PiLaunchPayload = z.infer<typeof piLaunchPayloadSchema>;
 export type CompatibleStoredExecutionContext = z.infer<
   typeof compatibleStoredExecutionContextSchema
+>;
+export type ClaimCompatibleStoredExecutionContext = z.infer<
+  typeof claimCompatibleStoredExecutionContextSchema
 >;
 export type StoredConnectorPermissionBaseline = z.infer<
   typeof storedConnectorPermissionBaselineSchema

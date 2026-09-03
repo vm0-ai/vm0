@@ -1,9 +1,11 @@
+import { stream as streamCodexResponses } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import {
   stream as streamResponses,
   streamSimple as streamSimpleResponses,
 } from "@earendil-works/pi-ai/api/openai-responses";
 import { buildBaseOptions } from "@earendil-works/pi-ai/api/simple-options";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import type {
@@ -27,6 +29,9 @@ function providerModels(provider: string): readonly Model<Api>[] {
     case "openai": {
       return openaiProvider().getModels();
     }
+    case "openai-codex": {
+      return openaiCodexProvider().getModels();
+    }
     case "openrouter": {
       return openrouterProvider().getModels();
     }
@@ -40,6 +45,12 @@ function isResponsesModel(
   model: Model<Api>,
 ): model is Model<"openai-responses"> {
   return model.api === "openai-responses";
+}
+
+function isCodexResponsesModel(
+  model: Model<Api>,
+): model is Model<"openai-codex-responses"> {
+  return model.api === "openai-codex-responses";
 }
 
 function sourceModel(provider: string, model: string): Model<Api> | undefined {
@@ -196,6 +207,33 @@ const piAgentStream = (
   return streamSimpleResponsesWithPolicy(model, context, options);
 };
 
+function piAgentCodexStream(
+  model: Model<"openai-codex-responses">,
+  context: Context,
+  accountId: string,
+  options?: PiAgentStreamOptions,
+): AssistantMessageEventStream {
+  const base = buildBaseOptions(model, context, options, options?.apiKey);
+  const clampedReasoning =
+    options?.reasoning === undefined
+      ? undefined
+      : clampThinkingLevel(model, options.reasoning);
+  return streamCodexResponses(model, context, {
+    ...base,
+    fetch:
+      options?.onObservedServiceTier === undefined
+        ? base.fetch
+        : observeResponsesServiceTier(
+            base.fetch ?? globalThis.fetch,
+            options.onObservedServiceTier,
+          ),
+    reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
+    serviceTier: options?.serviceTier,
+    accountId,
+    transport: "sse",
+  });
+}
+
 /** Type bridge for Pi's API-generic provider registration callback. */
 export const piAgentRegisteredStream = (
   model: Model<Api>,
@@ -210,7 +248,10 @@ export const piAgentRegisteredStream = (
 
 /** Apply API-owned per-request policy to both API-first and Sandbox turns. */
 export function piAgentStreamForConfig(
-  config: Pick<PiAgentModelConfig, "requestHeaders" | "serviceTier">,
+  config: Pick<
+    PiAgentModelConfig,
+    "accountId" | "dialect" | "requestHeaders" | "serviceTier" | "transport"
+  >,
 ): typeof piAgentRegisteredStream {
   return (model, context, options) => {
     const configuredHeaderNames = new Set(
@@ -223,7 +264,7 @@ export function piAgentStreamForConfig(
         return !configuredHeaderNames.has(name.toLowerCase());
       }),
     );
-    return piAgentRegisteredStream(model, context, {
+    const configuredOptions = {
       ...options,
       headers: {
         ...inheritedHeaders,
@@ -233,19 +274,51 @@ export function piAgentStreamForConfig(
       ...(config.serviceTier === undefined
         ? {}
         : { serviceTier: config.serviceTier }),
-    });
+    };
+    if ((config.dialect ?? "openai-responses") === "openai-responses") {
+      if (!isResponsesModel(model)) {
+        throw new Error(
+          `Pi public Responses route received unexpected ${model.api} model`,
+        );
+      }
+      return piAgentStream(model, context, configuredOptions);
+    }
+    if (!isCodexResponsesModel(model)) {
+      throw new Error(
+        `Pi Codex Responses route received unexpected ${model.api} model`,
+      );
+    }
+    if (config.transport !== "sse") {
+      throw new Error("Pi Codex Responses requires SSE transport");
+    }
+    if (!config.accountId?.trim()) {
+      throw new Error("Pi Codex Responses requires an explicit account ID");
+    }
+    return piAgentCodexStream(
+      model,
+      context,
+      config.accountId,
+      configuredOptions,
+    );
   };
 }
 
 /** Resolve model metadata from Pi's native provider catalog. */
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
-): Model<"openai-responses"> | null {
+): Model<"openai-responses"> | Model<"openai-codex-responses"> | null {
   const source = sourceModel(
     config.provider,
     config.catalogModel ?? config.model,
   );
   if (!source) {
+    return null;
+  }
+  const dialect = config.dialect ?? "openai-responses";
+  if (dialect === "openai-responses" && config.provider === "openai-codex") {
+    return null;
+  }
+  if (dialect === "openai-codex-responses" && !isCodexResponsesModel(source)) {
     return null;
   }
   const base = {
@@ -262,12 +335,13 @@ export function resolvePiAgentModel(
     headers: source.headers,
     // Pi's catalog API tag controls only whether its API-specific compatibility
     // metadata is safe to reuse. It never selects Okou's runtime transport.
-    ...(source.api === "openai-responses" && source.compat !== undefined
+    ...(source.api === dialect && source.compat !== undefined
       ? { compat: source.compat }
       : {}),
-    api: "openai-responses" as const,
   };
-  return base;
+  return dialect === "openai-codex-responses"
+    ? { ...base, api: "openai-codex-responses" }
+    : { ...base, api: "openai-responses" };
 }
 
 export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {

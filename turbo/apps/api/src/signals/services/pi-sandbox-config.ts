@@ -1,4 +1,4 @@
-import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
+import type { PiModelConfigLegacy as PiModelConfig } from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderPiEndpoint,
