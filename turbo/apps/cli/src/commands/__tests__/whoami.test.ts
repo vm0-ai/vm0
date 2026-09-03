@@ -1,12 +1,43 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { ConnectorAccountInspectionResult } from "@okouai/api-contracts/contracts/connector-accounts";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
 import { server } from "../../mocks/server";
 import {
+  catalogItem,
   catalogPermissionDetail,
+  stubConnectorCatalog,
   stubConnectorCatalogPermissions,
 } from "./helpers/connector-catalog";
+import { stubCustomConnectors } from "./helpers/custom-connectors";
+import {
+  stubRunConnectorAccountInspection,
+  writeRunConnectorAccountContext,
+} from "./helpers/run-connector-accounts";
 import { whoamiCommand } from "../whoami";
+
+type AvailableConnectorAccount = Extract<
+  ConnectorAccountInspectionResult,
+  { readonly kind: "available" }
+>;
+
+interface RunConnectorFixture {
+  readonly connectorSlug: string;
+  readonly connectionId?: string | null;
+  readonly metadataAvailable?: boolean;
+  readonly authMethod?: AvailableConnectorAccount["authMethod"];
+  readonly displayName?: string | null;
+  readonly externalId?: string | null;
+  readonly externalUsername?: string | null;
+  readonly externalEmail?: string | null;
+  readonly connectionStatus?: AvailableConnectorAccount["connectionStatus"];
+  readonly reconnectReason?: AvailableConnectorAccount["reconnectReason"];
+}
 
 function buildJwt(payload: Record<string, unknown>, prefix: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -71,16 +102,86 @@ const defaultPermissionDetails = [
 
 describe("okou whoami command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  let directory = "";
+  let contextPath = "";
 
   beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), "okou-whoami-run-account-"));
+    contextPath = join(directory, "context.json");
     chalk.level = 0;
-    server.use(stubConnectorCatalogPermissions(defaultPermissionDetails));
+    vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", contextPath);
+    writeRunConnectorAccountContext(contextPath, []);
+    server.use(
+      stubConnectorCatalog([]),
+      stubCustomConnectors([]),
+      stubConnectorCatalogPermissions(defaultPermissionDetails),
+    );
   });
 
   afterEach(() => {
     mockConsoleLog.mockClear();
     vi.unstubAllEnvs();
+    rmSync(directory, { recursive: true, force: true });
   });
+
+  function fixtureConnectionId(
+    fixture: RunConnectorFixture,
+    index: number,
+  ): string | null {
+    return fixture.connectionId === undefined
+      ? `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, "0")}`
+      : fixture.connectionId;
+  }
+
+  function setRunConnectors(fixtures: readonly RunConnectorFixture[]): void {
+    const targets = fixtures.map((fixture, index) => {
+      return {
+        kind: "builtin" as const,
+        connectorSlug: fixture.connectorSlug,
+        connectionId: fixtureConnectionId(fixture, index),
+      };
+    });
+    const availableAccounts = fixtures.flatMap((fixture, index) => {
+      const connectionId = fixtureConnectionId(fixture, index);
+      if (connectionId === null || fixture.metadataAvailable === false) {
+        return [];
+      }
+      const target = {
+        kind: "builtin" as const,
+        connectorSlug: fixture.connectorSlug,
+      };
+      const connectionStatus = fixture.connectionStatus ?? "connected";
+      return [
+        {
+          kind: "available" as const,
+          target,
+          connectionId,
+          authMethod: fixture.authMethod ?? "oauth",
+          displayName: fixture.displayName ?? null,
+          externalId: fixture.externalId ?? null,
+          externalUsername: fixture.externalUsername ?? null,
+          externalEmail: fixture.externalEmail ?? null,
+          connectionStatus,
+          reconnectReason:
+            fixture.reconnectReason ??
+            (connectionStatus === "reconnect-required"
+              ? "authorization_expired_or_revoked"
+              : null),
+        } satisfies AvailableConnectorAccount,
+      ];
+    });
+    writeRunConnectorAccountContext(contextPath, targets);
+    server.use(
+      stubConnectorCatalog(
+        fixtures.map((fixture) => {
+          return catalogItem({ connectorSlug: fixture.connectorSlug });
+        }),
+      ),
+      stubCustomConnectors([]),
+      stubRunConnectorAccountInspection(availableAccounts),
+    );
+  }
 
   function getAllOutput(): string[] {
     return mockConsoleLog.mock.calls
@@ -296,39 +397,19 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
-      server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-              {
-                id: "2",
-                slug: "google",
-                authMethod: "oauth",
-                externalId: "67890",
-                externalUsername: null,
-                externalEmail: "user@gmail.com",
-                oauthScopes: ["email"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
-      );
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+        {
+          connectorSlug: "google",
+          externalId: "67890",
+          externalEmail: "user@gmail.com",
+        },
+      ]);
 
       await runWhoami();
 
@@ -369,19 +450,32 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      let ownerDefaultRequests = 0;
+      setRunConnectors([
+        {
+          connectorSlug: "slack",
+          displayName: "Run account B",
+          externalId: "S123",
+          externalUsername: "john.doe",
+          connectionStatus: "reconnect-required",
+        },
+      ]);
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
+          ownerDefaultRequests += 1;
           return HttpResponse.json({
             connectors: [
               {
-                id: "1",
+                id: "00000000-0000-4000-8000-000000000099",
                 slug: "slack",
                 authMethod: "oauth",
-                externalId: "S123",
-                externalUsername: "john.doe",
+                externalId: "default-a",
+                externalUsername: "default-a",
                 externalEmail: null,
                 oauthScopes: ["chat:write"],
-                connectionStatus: "reconnect-required",
+                connectionStatus: "connected",
+                reconnectReason: null,
+                tokenExpiresAt: null,
                 createdAt: "2025-01-01T00:00:00Z",
                 updatedAt: "2025-01-01T00:00:00Z",
               },
@@ -401,9 +495,68 @@ describe("okou whoami command", () => {
           );
         }),
       ).toBe(true);
+      expect(output.join("\n")).not.toContain("default-a");
+      expect(ownerDefaultRequests).toBe(0);
     });
 
-    it("should gracefully handle connector API error", async () => {
+    it("should ignore a reconnect-required default when the run account is healthy", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildOkouToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "okou",
+          capabilities: ["agent:read", "connector:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      let ownerDefaultRequests = 0;
+      setRunConnectors([
+        {
+          connectorSlug: "slack",
+          displayName: "Run account B",
+          externalUsername: "run-b",
+          connectionStatus: "connected",
+        },
+      ]);
+      server.use(
+        http.get("http://localhost:3000/api/connectors", () => {
+          ownerDefaultRequests += 1;
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "00000000-0000-4000-8000-000000000099",
+                slug: "slack",
+                authMethod: "oauth",
+                externalId: "default-a",
+                externalUsername: "default-a",
+                externalEmail: null,
+                oauthScopes: ["chat:write"],
+                connectionStatus: "reconnect-required",
+                reconnectReason: "authorization_expired_or_revoked",
+                tokenExpiresAt: null,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            connectorProvidedBindings: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput().join("\n");
+      expect(output).toContain("@run-b");
+      expect(output).not.toContain("needs reconnect");
+      expect(output).not.toContain("default-a");
+      expect(ownerDefaultRequests).toBe(0);
+    });
+
+    it("should gracefully handle exact account inspection errors", async () => {
       const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
@@ -417,13 +570,22 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalUsername: "run-account",
+        },
+      ]);
       server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json(
-            { error: { message: "Forbidden", code: "FORBIDDEN" } },
-            { status: 403 },
-          );
-        }),
+        http.post(
+          "http://localhost:3000/api/connector-accounts/inspect",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Forbidden", code: "FORBIDDEN" } },
+              { status: 403 },
+            );
+          },
+        ),
       );
 
       await runWhoami();
@@ -446,7 +608,7 @@ describe("okou whoami command", () => {
       ).toBe(false);
     });
 
-    it("should skip connected services section when no connectors have identity", async () => {
+    it("should skip the connector section for a valid empty run projection", async () => {
       const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
@@ -459,15 +621,6 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
-
-      server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [],
-            connectorProvidedBindings: [],
-          });
-        }),
-      );
 
       await runWhoami();
 
@@ -484,6 +637,127 @@ describe("okou whoami command", () => {
       ).toBe(false);
     });
 
+    it("should retain a deleted exact account without falling back", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildOkouToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "okou",
+          capabilities: ["agent:read", "connector:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      const deletedConnectionId = "33333333-3333-4333-8333-333333333333";
+      let ownerDefaultRequests = 0;
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          connectionId: deletedConnectionId,
+          metadataAvailable: false,
+        },
+      ]);
+      server.use(
+        http.get("http://localhost:3000/api/connectors", () => {
+          ownerDefaultRequests += 1;
+          return HttpResponse.json({
+            connectors: [],
+            connectorProvidedBindings: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput().join("\n");
+      expect(output).toContain(deletedConnectionId);
+      expect(output).toContain("metadata unavailable or deleted");
+      expect(ownerDefaultRequests).toBe(0);
+    });
+
+    it("should show a null run account as unavailable without falling back", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildOkouToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "okou",
+          capabilities: ["agent:read", "connector:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      let ownerDefaultRequests = 0;
+      setRunConnectors([{ connectorSlug: "github", connectionId: null }]);
+      server.use(
+        http.get("http://localhost:3000/api/connectors", () => {
+          ownerDefaultRequests += 1;
+          return HttpResponse.json({
+            connectors: [],
+            connectorProvidedBindings: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput().join("\n");
+      expect(output).toContain("github");
+      expect(output).toContain("unavailable for this run");
+      expect(ownerDefaultRequests).toBe(0);
+    });
+
+    it("should show unavailable when a legacy run has no projection", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildOkouToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "okou",
+          capabilities: ["agent:read", "connector:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      vi.stubEnv("OKOU_CONNECTOR_ACCOUNT_CONTEXT_FILE", "");
+
+      await runWhoami();
+
+      const output = getAllOutput().join("\n");
+      expect(output).toContain("Connectors:");
+      expect(output).toContain("started without connector account context");
+    });
+
+    it("should show unavailable when the run projection is malformed", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        buildOkouToken({
+          userId: "user-1",
+          runId: "run-abc",
+          orgId: "org-xyz",
+          scope: "okou",
+          capabilities: ["agent:read", "connector:read"],
+          iat: 1000,
+          exp: 2000,
+        }),
+      );
+      writeFileSync(contextPath, "{", "utf8");
+
+      await runWhoami();
+
+      const output = getAllOutput().join("\n");
+      expect(output).toContain("Connectors:");
+      expect(output).toContain("connector account context is malformed");
+    });
+
     it("should show identity without permission details by default", async () => {
       const token = buildOkouToken({
         userId: "user-1",
@@ -498,27 +772,14 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
-      server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
-      );
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+      ]);
 
       await runWhoami();
 
@@ -562,23 +823,21 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      let ownerDefaultRequests = 0;
+      setRunConnectors([
+        {
+          connectorSlug: "slack",
+          displayName: "Run account B",
+          externalId: "S12345",
+          externalUsername: "john.doe",
+          externalEmail: "john@example.com",
+        },
+      ]);
       server.use(
         http.get("http://localhost:3000/api/connectors", () => {
+          ownerDefaultRequests += 1;
           return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "slack",
-                authMethod: "oauth",
-                externalId: "S12345",
-                externalUsername: "john.doe",
-                externalEmail: "john@example.com",
-                oauthScopes: ["chat:write"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
+            connectors: [],
             connectorProvidedBindings: [],
           });
         }),
@@ -625,6 +884,7 @@ describe("okou whoami command", () => {
           return line.includes("✗") && line.includes("chat:write");
         }),
       ).toBe(true);
+      expect(ownerDefaultRequests).toBe(0);
     });
 
     it("should show permissions for a server-authored connector slug", async () => {
@@ -652,30 +912,19 @@ describe("okou whoami command", () => {
           unknownPolicy: "deny",
         },
       });
+      setRunConnectors([
+        {
+          connectorSlug: "server-only",
+          authMethod: "api-token",
+          externalId: "server-user",
+          externalUsername: "server-user",
+        },
+      ]);
       server.use(
         stubConnectorCatalogPermissions([
           ...defaultPermissionDetails,
           serverOnlyDetail,
         ]),
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "server-only",
-                authMethod: "api-token",
-                externalId: "server-user",
-                externalUsername: "server-user",
-                externalEmail: null,
-                oauthScopes: null,
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
             connectorSlug: "server-only",
@@ -722,26 +971,15 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+      ]);
       server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
         mockUserPermissionGrantsHandler(),
         http.get(
           "http://localhost:3000/api/agents/agent-123/user-connectors",
@@ -780,26 +1018,15 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+      ]);
       server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
         http.get("http://localhost:3000/api/user-permission-grants", () => {
           return HttpResponse.json(
             { error: { message: "Internal Server Error", code: "INTERNAL" } },
@@ -854,26 +1081,15 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+      ]);
       server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
         mockUserPermissionGrantsHandler(),
         http.get(
           "http://localhost:3000/api/agents/agent-123/user-connectors",
@@ -926,26 +1142,15 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+      ]);
       server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
         mockUserPermissionGrantsHandler([
           makePermissionGrant({
             connectorSlug: "github",
@@ -986,7 +1191,7 @@ describe("okou whoami command", () => {
       ).toBe(false);
     });
 
-    it("should skip connectors without identity info", async () => {
+    it("should show an exact account fallback when external identity is absent", async () => {
       const token = buildOkouToken({
         userId: "user-1",
         runId: "run-abc",
@@ -1000,39 +1205,19 @@ describe("okou whoami command", () => {
       vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("OKOU_API_BACKEND_URL", "http://localhost:3000");
 
-      server.use(
-        http.get("http://localhost:3000/api/connectors", () => {
-          return HttpResponse.json({
-            connectors: [
-              {
-                id: "1",
-                slug: "github",
-                authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-              {
-                id: "2",
-                slug: "axiom",
-                authMethod: "api-token",
-                externalId: null,
-                externalUsername: null,
-                externalEmail: null,
-                oauthScopes: null,
-                connectionStatus: "connected",
-                createdAt: "2025-01-01T00:00:00Z",
-                updatedAt: "2025-01-01T00:00:00Z",
-              },
-            ],
-            connectorProvidedBindings: [],
-          });
-        }),
-      );
+      setRunConnectors([
+        {
+          connectorSlug: "github",
+          externalId: "12345",
+          externalUsername: "octocat",
+          externalEmail: "octocat@github.com",
+        },
+        {
+          connectorSlug: "axiom",
+          connectionId: "22222222-2222-4222-8222-222222222222",
+          authMethod: "api-token",
+        },
+      ]);
 
       await runWhoami();
 
@@ -1049,9 +1234,9 @@ describe("okou whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("axiom");
+          return line.includes("axiom") && line.includes("Account #22222222");
         }),
-      ).toBe(false);
+      ).toBe(true);
     });
   });
 
