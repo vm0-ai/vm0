@@ -2,13 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import type { ArtifactSummary } from "@okouai/api-contracts/contracts/artifact-catalog";
+import { cronBackfillArtifactPreviewsContract } from "@okouai/api-contracts/contracts/cron";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -19,6 +21,7 @@ import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readRunUploadedFileSources } from "./helpers/runtime-state";
+import { cronBackfillArtifactPreviewsRoutes } from "../cron-backfill-artifact-previews";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -32,6 +35,7 @@ const CLOUDFLARE_SNAPSHOT_URL =
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//;
 const ARTIFACT_PREVIEW_WAF_SECRET = "test-artifact-preview-waf-secret-value";
+const CRON_SECRET = "test-artifact-preview-cron-secret";
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 type ChatObjectStorage = ReturnType<
   typeof chatCallbacks.acceptChatObjectStorage
@@ -116,6 +120,22 @@ function mockCloudflareSnapshot(
     }),
   );
   return requests;
+}
+
+function videoSnapshotFixture(
+  state: "ready" | "no-video-track" | "media-error-3" = "ready",
+): SnapshotFixture {
+  return {
+    content: `<!doctype html><html><body><video id="preview" class="frame-settled" data-preview-state="${state}"></video></body></html>`,
+    screenshot: "/9j/",
+  };
+}
+
+function artifactPreviewCronClient() {
+  return setupApp({
+    context,
+    routes: cronBackfillArtifactPreviewsRoutes,
+  })(cronBackfillArtifactPreviewsContract);
 }
 
 function mockCloudflareVideoFrame(
@@ -384,14 +404,16 @@ describe("video Artifact previews", () => {
     ).resolves.toMatchObject({ status: "ready", error: null, attemptCount: 1 });
   }, 180_000);
 
-  it("skips the poster request for a container the transformer cannot decode", async () => {
+  it("uses the browser fallback for a WebM recording", async () => {
     const owner = await artifactActor("Artifacts API webm preview agent");
     if (!owner.actor.orgId) {
       throw new Error("Expected webm preview test actor to have an org");
     }
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
+    const snapshotRequests = mockCloudflareSnapshot(videoSnapshotFixture());
 
-    await createRunUploadedFile({
+    const videoArtifact = await createRunUploadedFile({
       owner,
       prompt: "upload a webm recording",
       filename: "session-recording.webm",
@@ -400,25 +422,45 @@ describe("video Artifact previews", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toHaveLength(0);
+    expect(snapshotRequests).toHaveLength(1);
+    expect(snapshotRequests[0]).toMatchObject({
+      authorization: "Bearer preview-token",
+      body: {
+        html: expect.stringContaining('data-preview-state="pending"'),
+        addScriptTag: [{ content: expect.stringContaining(videoArtifact.url) }],
+        waitForSelector: {
+          selector: ".frame-settled",
+          visible: true,
+          timeout: 15_000,
+        },
+        actionTimeout: 15_000,
+        allowResourceTypes: ["media"],
+        screenshotOptions: { type: "jpeg", quality: 80 },
+      },
+    });
     const previewedArtifact = await findCatalogArtifact(
       owner.actor,
       "session-recording.webm",
     );
-    expect(previewedArtifact?.thumbnail).toBeNull();
+    expect(previewedArtifact?.thumbnail?.url).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+    );
     await expect(
       previewStateForArtifact(owner.actor, "session-recording.webm"),
     ).resolves.toMatchObject({
-      status: "unsupported",
-      error: { code: "unsupported_video_container", retryable: false },
-      attemptCount: 0,
+      status: "ready",
+      error: null,
+      attemptCount: 1,
     });
   }, 180_000);
 
-  it("skips the poster request at Cloudflare's input-size boundary", async () => {
+  it("uses the browser fallback at Cloudflare's input-size boundary", async () => {
     const owner = await artifactActor(
       "Artifacts API large video preview agent",
     );
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
+    const snapshotRequests = mockCloudflareSnapshot(videoSnapshotFixture());
 
     await createRunUploadedFile({
       owner,
@@ -430,12 +472,13 @@ describe("video Artifact previews", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toHaveLength(0);
+    expect(snapshotRequests).toHaveLength(1);
     await expect(
       previewStateForArtifact(owner.actor, "large-video.mp4"),
     ).resolves.toMatchObject({
-      status: "unsupported",
-      error: { code: "video_too_large", retryable: false },
-      attemptCount: 0,
+      status: "ready",
+      error: null,
+      attemptCount: 1,
     });
   }, 180_000);
 
@@ -463,12 +506,47 @@ describe("video Artifact previews", () => {
     );
   }, 180_000);
 
-  it("records 9412 as permanent and does not retry the same artifact", async () => {
+  it("falls back after 9412 and persists a browser-decoded frame", async () => {
+    const owner = await artifactActor(
+      "Artifacts API video preview fallback agent",
+    );
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    const frameRequests = mockCloudflareVideoFrame(
+      owner.actor.userId,
+      400,
+      "MEDIA_TRANSFORMATION_ERROR 9412: Unable to determine media duration",
+    );
+    const snapshotRequests = mockCloudflareSnapshot(videoSnapshotFixture());
+
+    await createRunUploadedFile({
+      owner,
+      prompt: "create durationless web-compatible video artifact",
+      filename: "durationless-video.mp4",
+      contentType: "video/mp4",
+    });
+    await flushWaitUntilForTest();
+
+    expect(frameRequests).toHaveLength(1);
+    expect(snapshotRequests).toHaveLength(1);
+    await expect(
+      previewStateForArtifact(owner.actor, "durationless-video.mp4"),
+    ).resolves.toMatchObject({
+      status: "ready",
+      error: null,
+      attemptCount: 1,
+    });
+  }, 180_000);
+
+  it("rejects audio mislabeled as MP4 video after the 9412 fallback", async () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     const frameRequests = mockCloudflareVideoFrame(
       owner.actor.userId,
       400,
       "MEDIA_TRANSFORMATION_ERROR 9412: Input is not a video file",
+    );
+    const snapshotRequests = mockCloudflareSnapshot(
+      videoSnapshotFixture("no-video-track"),
     );
 
     const videoArtifact = await createRunUploadedFile({
@@ -480,6 +558,7 @@ describe("video Artifact previews", () => {
     await flushWaitUntilForTest();
 
     expect(frameRequests).toHaveLength(1);
+    expect(snapshotRequests).toHaveLength(1);
     expect(
       owner.objectStore.puts.some((put) => {
         return put.key.endsWith("/poster-v2.jpg");
@@ -496,7 +575,7 @@ describe("video Artifact previews", () => {
       previewStateForArtifact(owner.actor, "unsupported-video.mp4"),
     ).resolves.toMatchObject({
       status: "permanent_failure",
-      error: { code: "cloudflare_media_9412", retryable: false },
+      error: { code: "browser_video_no_visual_track", retryable: false },
       attemptCount: 1,
     });
 
@@ -507,6 +586,7 @@ describe("video Artifact previews", () => {
     );
     await flushWaitUntilForTest();
     expect(frameRequests).toHaveLength(1);
+    expect(snapshotRequests).toHaveLength(1);
   }, 180_000);
 
   it("retries 9523 outcomes but caps provider attempts", async () => {
@@ -543,6 +623,62 @@ describe("video Artifact previews", () => {
       error: { code: "cloudflare_media_9523", retryable: true },
       attemptCount: 3,
     });
+  }, 180_000);
+
+  it("backfills a legacy null-state WebM once with the same row claim", async () => {
+    const owner = await artifactActor(
+      "Artifacts API legacy webm backfill agent",
+    );
+    mockOptionalEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
+
+    const videoArtifact = await createRunUploadedFile({
+      owner,
+      prompt: "upload legacy webm recording",
+      filename: "legacy-recording.webm",
+      contentType: "video/webm",
+    });
+    await flushWaitUntilForTest();
+    await expect(
+      previewStateForArtifact(owner.actor, "legacy-recording.webm"),
+    ).resolves.toBeNull();
+
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    const snapshotRequests = mockCloudflareSnapshot(videoSnapshotFixture());
+    let targetReady = false;
+    for (let attempt = 0; attempt < 10 && !targetReady; attempt += 1) {
+      const response = await accept(
+        artifactPreviewCronClient().backfill({
+          headers: { authorization: `Bearer ${CRON_SECRET}` },
+        }),
+        [200],
+      );
+      expect(response.body.success).toBeTruthy();
+      expect(response.body.selected).toBeLessThanOrEqual(4);
+      expect(response.body.claimed + response.body.skipped).toBe(
+        response.body.selected,
+      );
+      targetReady =
+        (await previewStateForArtifact(owner.actor, "legacy-recording.webm"))
+          ?.status === "ready";
+    }
+    expect(targetReady).toBeTruthy();
+    const targetSnapshotRequests = snapshotRequests.filter((request) => {
+      return JSON.stringify(request.body).includes(videoArtifact.url);
+    });
+    expect(targetSnapshotRequests).toHaveLength(1);
+
+    await accept(
+      artifactPreviewCronClient().backfill({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [200],
+    );
+    expect(
+      snapshotRequests.filter((request) => {
+        return JSON.stringify(request.body).includes(videoArtifact.url);
+      }),
+    ).toHaveLength(1);
   }, 180_000);
 });
 

@@ -1,0 +1,2 @@
+-- vm0:non-transactional
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "idx_run_uploaded_files_preview_backfill" ON "run_uploaded_files" USING btree ("preview_status","created_at","id") WHERE "run_uploaded_files"."preview_image_url" IS NULL AND "run_uploaded_files"."url" IS NOT NULL AND "run_uploaded_files"."run_id" IS NOT NULL AND "run_uploaded_files"."org_id" IS NOT NULL AND "run_uploaded_files"."content_type" IN ('video/mp4', 'video/webm');

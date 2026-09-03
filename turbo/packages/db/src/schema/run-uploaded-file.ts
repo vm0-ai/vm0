@@ -140,6 +140,11 @@ export const runUploadedFiles = pgTable(
       index("idx_run_uploaded_files_updated")
         .on(table.updatedAt, table.id)
         .where(sql`${table.url} IS NOT NULL`),
+      index("idx_run_uploaded_files_preview_backfill")
+        .on(table.previewStatus, table.createdAt, table.id)
+        .where(
+          sql`${table.previewImageUrl} IS NULL AND ${table.url} IS NOT NULL AND ${table.runId} IS NOT NULL AND ${table.orgId} IS NOT NULL AND ${table.contentType} IN ('video/mp4', 'video/webm')`,
+        ),
       uniqueIndex("run_uploaded_files_canonical_idempotency_unique")
         .on(table.userId, table.idempotencyScope, table.idempotencyKey)
         .where(sql`${table.assetVersion} = 1`),

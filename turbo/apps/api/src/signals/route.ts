@@ -3,6 +3,7 @@ import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
+import { cronBackfillArtifactPreviewsRoutes } from "./routes/cron-backfill-artifact-previews";
 import { cronProjectChatEventSearchRoutes } from "./routes/cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "./routes/cron-snapshot-chat-events";
 import { cronRetainChatEventsRoutes } from "./routes/cron-retain-chat-events";
@@ -221,6 +222,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentFirewallAuthRoutes,
   ...webhooksAgentStorageRoutes,
   ...connectorsSlugCallbackRoutes,
+  ...cronBackfillArtifactPreviewsRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...cronSnapshotChatEventsRoutes,

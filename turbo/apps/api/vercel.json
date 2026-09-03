@@ -5,6 +5,10 @@
   "installCommand": "cd ../.. && pnpm install",
   "crons": [
     {
+      "path": "/api/cron/backfill-artifact-previews",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/cleanup-sandboxes",
       "schedule": "* * * * *"
     },

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import { cronBackfillArtifactPreviewsRoutes } from "../cron-backfill-artifact-previews";
 import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "../cron-drain-email-outbox";
@@ -28,6 +29,14 @@ describe("production-global sweep route contracts", () => {
       context,
       cronCleanupSandboxesRoutes,
       "/api/cron/cleanup-sandboxes",
+    );
+  });
+
+  it("rejects artifact preview backfill requests without authorization", async () => {
+    await expectGlobalSweepMissingAuth(
+      context,
+      cronBackfillArtifactPreviewsRoutes,
+      "/api/cron/backfill-artifact-previews",
     );
   });
 

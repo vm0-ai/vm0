@@ -80,6 +80,16 @@ const cronReconcileSocialKitDownloadsResponseSchema = z.object({
   processed: z.number().int().nonnegative(),
 });
 
+const cronBackfillArtifactPreviewsResponseSchema = z.object({
+  success: z.literal(true),
+  selected: z.number().int().nonnegative(),
+  claimed: z.number().int().nonnegative(),
+  ready: z.number().int().nonnegative(),
+  permanentFailure: z.number().int().nonnegative(),
+  transientFailure: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+});
+
 const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   success: z.literal(true),
   scopes: z.number(),
@@ -331,6 +341,19 @@ export const cronReconcileSocialKitDownloadsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Reconcile managed SocialKit downloads",
+  },
+});
+
+export const cronBackfillArtifactPreviewsContract = c.router({
+  backfill: {
+    method: "GET",
+    path: "/api/cron/backfill-artifact-previews",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronBackfillArtifactPreviewsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Backfill bounded artifact video previews",
   },
 });
 
@@ -666,6 +689,8 @@ export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronReconcileSocialKitDownloadsContract =
   typeof cronReconcileSocialKitDownloadsContract;
+export type CronBackfillArtifactPreviewsContract =
+  typeof cronBackfillArtifactPreviewsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
 export type CronMonitorChatEventQueueContract =
@@ -713,6 +738,7 @@ export {
   cronRetainChatEventsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileSocialKitDownloadsResponseSchema,
+  cronBackfillArtifactPreviewsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
   cronConnectorOauthStateCleanupResponseSchema,

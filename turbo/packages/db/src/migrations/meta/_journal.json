@@ -1800,6 +1800,13 @@
       "when": 1788428468119,
       "tag": "1064_white_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 1065,
+      "version": "7",
+      "when": 1788429039003,
+      "tag": "1065_steep_lyja",
+      "breakpoints": true
     }
   ]
 }
