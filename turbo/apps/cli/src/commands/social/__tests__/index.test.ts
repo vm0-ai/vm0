@@ -255,6 +255,7 @@ describe("okou social command", () => {
     ["https://x.com/example/status/1", "twitter_tweet"],
     ["https://facebook.com/example", "facebook_channel_stats"],
     ["https://facebook.com/example/posts/1", "facebook_stats"],
+    ["https://fb.watch/example", "facebook_stats"],
     ["https://facebook.com/watch?v=example", "facebook_stats"],
     ["https://facebook.com/video.php?v=example", "facebook_stats"],
     [
@@ -270,6 +271,9 @@ describe("okou social command", () => {
     ["https://instagram.com/reel/example", "instagram_stats"],
     ["https://tiktok.com/@example", "tiktok_channel_stats"],
     ["https://tiktok.com/@example/video/1", "tiktok_stats"],
+    ["https://tiktok.com/t/example", "tiktok_stats"],
+    ["https://vm.tiktok.com/example", "tiktok_stats"],
+    ["https://vt.tiktok.com/example", "tiktok_stats"],
     ["https://youtube.com/@example", "youtube_channel_stats"],
     ["https://youtube.com/watch?v=example", "youtube_stats"],
   ])("routes inspect %s to %s", async (url, expectedTool) => {
