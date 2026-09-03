@@ -97,6 +97,12 @@ runner_api_curl() {
     # appended behind a marker and read back from the last occurrence. That
     # keeps the emitted response byte-for-byte identical to an unbuffered curl.
     local exit_marker=$'\nRUNNER_API_CURL_EXIT:'
+
+    # Bats combines both streams in `$output`. Hold transient diagnostics until
+    # the overall request fails so a recovered GET remains machine-readable.
+    local diagnostics_file
+    diagnostics_file="$(mktemp "${BATS_TEST_TMPDIR:-/tmp}/runner-api-curl-stderr.XXXXXX")" || return
+
     local body="" curl_status=0 attempt
     for ((attempt = 1; attempt <= max_attempts; attempt += 1)); do
         body="$(
@@ -106,7 +112,8 @@ runner_api_curl() {
                 --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
                 "${headers[@]}" \
                 "$@" \
-                "$request_url"
+                "$request_url" \
+                2>>"$diagnostics_file"
             printf '%s%d' "$exit_marker" "$?"
         )"
         curl_status="${body##*"$exit_marker"}"
@@ -117,12 +124,13 @@ runner_api_curl() {
             break
         fi
         printf 'runner_api_curl retrying %s after no response (attempt %d of %d)\n' \
-            "$diagnostic_url" "$attempt" "$max_attempts" >&2
+            "$diagnostic_url" "$attempt" "$max_attempts" >>"$diagnostics_file"
     done
 
     printf '%s' "$body"
 
     if ((curl_status != 0)); then
+        cat "$diagnostics_file" >&2
         printf 'runner_api_curl failed: url=%s curl_status=%d\n' \
             "$diagnostic_url" "$curl_status" >&2
         if ((curl_status == no_response_status)); then
@@ -134,6 +142,7 @@ runner_api_curl() {
                 "$attempt" "$vercel_logs_url_prefix" >&2
         fi
     fi
+    rm -f "$diagnostics_file"
     return "$curl_status"
 }
 
