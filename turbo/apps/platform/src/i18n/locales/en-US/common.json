@@ -2397,6 +2397,7 @@
     },
     "voice": {
       "checkingLimit": "Checking voice input limit",
+      "confirmRecording": "OK",
       "draft": "Voice draft",
       "draftTooLong": "This voice draft is too long to finish. Start a new recording.",
       "finishDraft": "Finish",
