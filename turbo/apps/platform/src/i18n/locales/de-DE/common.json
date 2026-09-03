@@ -5017,10 +5017,13 @@
       },
       "reset": {
         "confirmDescription": "Verwenden Sie einen Codex-Reset, um Ihre aktuellen Nutzungsfenster zurückzusetzen. Sie haben {{remaining}}.",
+        "expiresAt": "Nächster Reset läuft {{date}} ab",
         "progress": "Zurücksetzen...",
         "remaining_one": "{{value}} Reset übrig",
         "remaining_other": "{{value}} Resets übrig",
         "remainingUnavailable": "Verbleibende Resets nicht verfügbar",
+        "remainingWithExpiry_one": "{{value}} Reset übrig · läuft {{expiry}} ab",
+        "remainingWithExpiry_other": "{{value}} Resets übrig · laufen {{expiry}} ab",
         "title": "Codex-Nutzung zurücksetzen?"
       },
       "stale": {

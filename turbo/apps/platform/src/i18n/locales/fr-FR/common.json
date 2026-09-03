@@ -5072,11 +5072,15 @@
       },
       "reset": {
         "confirmDescription": "Utilisez une réinitialisation de Codex pour remettre à zéro vos fenêtres d'utilisation actuelles. Il vous en reste {{remaining}}.",
+        "expiresAt": "La réinitialisation la plus proche expire {{date}}",
         "progress": "Réinitialisation en cours...",
         "remaining_one": "{{value}} réinitialisation restante",
         "remaining_many": "{{value}} réinitialisations restantes",
         "remaining_other": "{{value}} réinitialisations restantes",
         "remainingUnavailable": "Réinitialisations restantes non disponibles",
+        "remainingWithExpiry_one": "{{value}} réinitialisation restante · expire {{expiry}}",
+        "remainingWithExpiry_many": "{{value}} réinitialisations restantes · expirent {{expiry}}",
+        "remainingWithExpiry_other": "{{value}} réinitialisations restantes · expirent {{expiry}}",
         "title": "Réinitialiser l'utilisation de Codex ?"
       },
       "stale": {

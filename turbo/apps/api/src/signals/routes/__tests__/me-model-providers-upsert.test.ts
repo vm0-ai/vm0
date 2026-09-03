@@ -370,6 +370,44 @@ describe("POST /api/me/model-providers (upsert)", () => {
           },
         });
       }),
+      http.get(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+        () => {
+          return HttpResponse.json({
+            available_count: 3,
+            credits: [
+              {
+                id: "credit-later",
+                reset_type: "codex_rate_limits",
+                status: "available",
+                granted_at: "2029-12-01T00:00:00Z",
+                expires_at: "2030-02-01T00:00:00Z",
+              },
+              {
+                id: "credit-soonest",
+                reset_type: "codex_rate_limits",
+                status: "available",
+                granted_at: "2029-12-02T00:00:00Z",
+                expires_at: "2030-01-15T00:00:00Z",
+              },
+              {
+                id: "credit-never-expires",
+                reset_type: "codex_rate_limits",
+                status: "available",
+                granted_at: "2029-12-03T00:00:00Z",
+                expires_at: null,
+              },
+              {
+                id: "credit-redeemed",
+                reset_type: "codex_rate_limits",
+                status: "redeemed",
+                granted_at: "2029-11-01T00:00:00Z",
+                expires_at: "2029-12-15T00:00:00Z",
+              },
+            ],
+          });
+        },
+      ),
     );
 
     const client = setupApp({
@@ -410,6 +448,7 @@ describe("POST /api/me/model-providers (upsert)", () => {
       type: "codex-oauth-token",
       accountEmail: "codex.user@example.com",
       subscriptionResetCredits: 3,
+      subscriptionResetCreditsNextExpiresAt: "2030-01-15T00:00:00.000Z",
       subscriptionUsage: {
         fiveHour: {
           usedPercent: 25,
@@ -425,6 +464,56 @@ describe("POST /api/me/model-providers (upsert)", () => {
         },
       },
     });
+  });
+
+  it("keeps reset credits when the expiry read fails", async () => {
+    const fixture = uniqueOrgUser("zmmp-codex-expiry-degraded");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    server.use(
+      http.get("https://chatgpt.com/backend-api/wham/usage", () => {
+        return HttpResponse.json({
+          plan_type: "pro",
+          rate_limit_reset_credits: {
+            available_count: 2,
+          },
+        });
+      }),
+      http.get(
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+        () => {
+          return new HttpResponse(null, { status: 500 });
+        },
+      ),
+    );
+
+    const client = setupApp({
+      context,
+      routes: personalModelProvidersMainTestRoutes,
+    })(personalModelProvidersMainContract);
+    await accept(
+      client.upsert({
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+
+    const listed = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const [provider] = listed.body.modelProviders;
+    expect(provider).toMatchObject({
+      type: "codex-oauth-token",
+      subscriptionResetCredits: 2,
+    });
+    expect(provider?.subscriptionResetCreditsNextExpiresAt ?? null).toBeNull();
   });
 
   it("consumes a Codex subscription reset credit", async () => {

@@ -5017,10 +5017,13 @@
       },
       "reset": {
         "confirmDescription": "अपनी वर्तमान उपयोग विंडो को रीसेट करने के लिए एक Codex रीसेट का उपयोग करें। आपके पास {{remaining}} है।",
+        "expiresAt": "निकटतम रीसेट {{date}} को समाप्त होगा",
         "progress": "रीसेट किया जा रहा है...",
         "remaining_one": "{{value}} रीसेट बचे हैं",
         "remaining_other": "{{value}} रीसेट बचे हैं",
         "remainingUnavailable": "रीसेट उपलब्ध नहीं हैं",
+        "remainingWithExpiry_one": "{{value}} रीसेट बचा है · {{expiry}} समाप्त",
+        "remainingWithExpiry_other": "{{value}} रीसेट बचे हैं · {{expiry}} समाप्त",
         "title": "Codex उपयोग रीसेट करें?"
       },
       "stale": {

@@ -43,6 +43,7 @@ interface SubscriptionMetadata {
   readonly subscriptionNextResetAt?: Date | null;
   readonly subscriptionUsage?: SubscriptionUsageMetadata | null;
   readonly subscriptionResetCredits?: number | null;
+  readonly subscriptionResetCreditsNextExpiresAt?: Date | null;
 }
 
 type SerializedSubscriptionUsage = NonNullable<
@@ -160,6 +161,9 @@ function withSubscriptionMetadata(
     subscriptionUsage: serializeSubscriptionUsage(metadata.subscriptionUsage),
     subscriptionResetCredits:
       metadata.subscriptionResetCredits ?? provider.subscriptionResetCredits,
+    subscriptionResetCreditsNextExpiresAt:
+      metadata.subscriptionResetCreditsNextExpiresAt?.toISOString() ??
+      provider.subscriptionResetCreditsNextExpiresAt,
   };
 }
 
