@@ -3655,7 +3655,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       },
     );
 
-    const continuedRunPromise = api.createDirectRun(actor, {
+    const continuationBody = {
       sessionId: initialRun.sessionId,
       prompt: "overlap request and canonical session storage",
       secrets: { OKOU_TOKEN: "bdd-okou-direct-token" },
@@ -3666,7 +3666,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           mountPath: "/request-overlap",
         },
       ],
-    });
+    };
+    const continuedRunPromise = api.createDirectRun(actor, continuationBody);
     await Promise.all([
       requestPresignStarted.promise,
       sessionPresignStarted.promise,
@@ -3676,6 +3677,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const failed = await continuedRunPromise;
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe(requestError.message);
+
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      (_client: unknown, command: unknown) => {
+        if (s3CommandKey(command) === sessionArchiveKey) {
+          return Promise.reject(sessionError);
+        }
+        return Promise.resolve(
+          "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+        );
+      },
+    );
+    const sessionFailed = await api.createDirectRun(actor, continuationBody);
+    expect(sessionFailed.status).toBe("failed");
+    expect(sessionFailed.error).toBe(sessionError.message);
   });
 
   it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
