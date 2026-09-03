@@ -57,6 +57,13 @@ const chatEventSnapshotResponseSchema = z.union([
     lastSeqId: z.number().int().positive(),
   }),
 ]);
+const chatEventCatchUpBodySchema = z.array(
+  z.tuple([z.string().uuid(), z.number().int().nonnegative()]),
+);
+const chatEventCatchUpResponseSchema = z.object({
+  events: z.record(z.string().uuid(), z.array(chatEventRowSchema)),
+  notFoundThreads: z.array(z.string().uuid()),
+});
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -1809,6 +1816,27 @@ export const chatSearchContract = c.router({
 
 /** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
+  /**
+   * Batch tail read for the SharedWorker cache. Every requested thread is
+   * returned exactly once: either as a complete raw-row tail (including an
+   * empty tail) or in `notFoundThreads` when the supplied cursor cannot be
+   * continued and the client must rebuild from a Snapshot.
+   */
+  catchUp: {
+    method: "POST",
+    path: "/api/chat/events/catch-up",
+    headers: chatEventReadHeadersSchema,
+    body: chatEventCatchUpBodySchema,
+    responses: {
+      200: chatEventCatchUpResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      426: apiErrorSchema,
+    },
+    summary: "Catch up raw chat events for multiple threads",
+  },
   /**
    * Snapshot-read cold start: a presigned download for the thread's head
    * archive object. The object is gzip NDJSON of chatEventRowSchema lines
