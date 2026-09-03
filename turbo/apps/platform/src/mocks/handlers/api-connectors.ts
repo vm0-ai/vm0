@@ -7,6 +7,7 @@ import type {
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
   ConnectorResponse,
+  ScopeDiffResponse,
 } from "@okouai/api-contracts/contracts/connector-schemas";
 import {
   connectorCatalogContract,
@@ -327,6 +328,36 @@ function mockConnectorHasRequestedScopes(
   });
 }
 
+function mockConnectorScopeDiff(
+  connector: ConnectorResponse,
+): ScopeDiffResponse | null {
+  const definition = testConnectorCatalogDefinitions.find((candidate) => {
+    return candidate.connectorSlug === connector.slug;
+  });
+  const method = definition?.authMethods.find((candidate) => {
+    return candidate.detail.id === connector.authMethod;
+  });
+  if (!method) {
+    return null;
+  }
+  const currentScopes = [...method.requestedScopes];
+  const storedScopes = [
+    ...(mockConnectorRequestedScopes.get(connector.id) ?? []),
+  ];
+  const current = new Set(currentScopes);
+  const stored = new Set(storedScopes);
+  return {
+    addedScopes: currentScopes.filter((scope) => {
+      return !stored.has(scope);
+    }),
+    removedScopes: storedScopes.filter((scope) => {
+      return !current.has(scope);
+    }),
+    currentScopes,
+    storedScopes,
+  };
+}
+
 function mockConnectorCatalogStatusItem(
   definition: TestConnectorCatalogDefinition,
   authMethods: readonly PublicConnectorCatalogAuthMethodDetail[],
@@ -518,8 +549,24 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(connectorAccountsContract.connections, ({ query, respond }) => {
-    const accounts = mockConnectors
-      .map(mockAccountForConnector)
+    const allAccounts = mockConnectors.map((connector) => {
+      const account = mockAccountForConnector(connector);
+      const definition = testConnectorCatalogDefinitions.find((candidate) => {
+        return candidate.connectorSlug === connector.slug;
+      });
+      return query.kind === "builtin" &&
+        query.includeScopeMismatch === "true" &&
+        definition
+        ? {
+            ...account,
+            scopeMismatch: !mockConnectorHasRequestedScopes(
+              definition,
+              connector,
+            ),
+          }
+        : account;
+    });
+    const accounts = allAccounts
       .filter((account) => {
         return mockAccountMatchesTarget(account, query);
       })
@@ -539,9 +586,15 @@ export const apiConnectorsHandlers = [
     const start = query.cursor ? Number(query.cursor) : 0;
     const page = accounts.slice(start, start + query.limit);
     const next = start + page.length;
+    const defaultConnection = allAccounts.find((account) => {
+      return account.isDefault && mockAccountMatchesTarget(account, query);
+    });
     return respond(200, {
       connections: page,
       nextCursor: next < accounts.length ? String(next) : null,
+      ...(query.kind === "builtin" && query.includeScopeMismatch === "true"
+        ? { defaultConnection: defaultConnection ?? null }
+        : {}),
     });
   }),
 
@@ -559,6 +612,24 @@ export const apiConnectorsHandlers = [
           });
     },
   ),
+
+  mockApi(connectorAccountsContract.scopeDiff, ({ params, query, respond }) => {
+    const connector = mockConnectors.find((candidate) => {
+      return (
+        candidate.id === params.connectionId &&
+        candidate.slug === query.connectorSlug
+      );
+    });
+    const diff = connector ? mockConnectorScopeDiff(connector) : null;
+    return diff
+      ? respond(200, diff)
+      : respond(404, {
+          error: {
+            message: "Connector account not found",
+            code: "NOT_FOUND",
+          },
+        });
+  }),
 
   mockApi(connectorAccountsContract.rename, ({ params, body, respond }) => {
     const account = findMockAccount(params.connectionId, body.target);
@@ -675,13 +746,16 @@ export const apiConnectorsHandlers = [
     return respond(200, connector);
   }),
 
-  mockApi(connectorScopeDiffContract.getScopeDiff, ({ respond }) => {
-    return respond(200, {
-      addedScopes: [],
-      removedScopes: [],
-      currentScopes: [],
-      storedScopes: [],
+  mockApi(connectorScopeDiffContract.getScopeDiff, ({ params, respond }) => {
+    const connector = mockConnectors.find((candidate) => {
+      return candidate.slug === params.connectorSlug;
     });
+    const diff = connector ? mockConnectorScopeDiff(connector) : null;
+    return diff
+      ? respond(200, diff)
+      : respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
   }),
 
   mockApi(

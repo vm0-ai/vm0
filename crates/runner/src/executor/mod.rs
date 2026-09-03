@@ -65,7 +65,8 @@ use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
 };
 pub(crate) use telemetry::{
-    ExactReuseSpeculationTiming, FinalizingHandoffOutcome, RunnerPreSpawnConcurrency,
+    ExactReuseSpeculationTiming, FinalizingDiagnostics, FinalizingExactIdleLookup,
+    FinalizingHandoffOutcome, FinalizingHandoffReason, RunnerPreSpawnConcurrency,
     RunnerPreSpawnOperationTiming, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
 };
 use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};

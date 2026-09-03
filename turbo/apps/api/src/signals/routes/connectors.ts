@@ -218,6 +218,7 @@ const getScopeDiffInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       connectorSlug: params.connectorSlug,
+      selection: { kind: "default" },
     }),
   );
   if (!diff) {

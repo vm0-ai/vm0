@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.834.0](https://github.com/vm0-ai/vm0/compare/app-v0.833.0...app-v0.834.0) (2026-09-03)
+
+
+### Features
+
+* add cloud browser preference ([#31522](https://github.com/vm0-ai/vm0/issues/31522)) ([99b4589](https://github.com/vm0-ai/vm0/commit/99b4589022738a463640e019b97f31c150e50850))
+* **platform:** preview hex colors in markdown ([#31511](https://github.com/vm0-ai/vm0/issues/31511)) ([cfa6740](https://github.com/vm0-ai/vm0/commit/cfa67403943362e9a5b46fef7f8a9cc64aaab0d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.0
+    * @okouai/core bumped to 8.617.0
+
 ## [0.833.0](https://github.com/vm0-ai/vm0/compare/app-v0.832.1...app-v0.833.0) (2026-09-03)
 
 

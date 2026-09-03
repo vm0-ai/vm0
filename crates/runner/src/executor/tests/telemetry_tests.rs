@@ -20,10 +20,10 @@ use super::super::telemetry::{
 };
 use super::super::{
     ExactReuseSpeculationTiming, ExecutionHooks, ExecutorConfig, FinalizingHandoffOutcome,
-    JobParams, NewSandboxDispatch, RunnerPreSpawnConcurrency, RunnerPreSpawnOperationTiming,
-    RunnerPreSpawnTiming, SandboxReuseDisposition, SandboxReuseRejection,
-    SessionHistoryRestorePlan, execute_job, execute_job_reuse, execute_job_reuse_with_hooks,
-    execute_job_with_prepared_notifier,
+    FinalizingHandoffReason, JobParams, NewSandboxDispatch, RunnerPreSpawnConcurrency,
+    RunnerPreSpawnOperationTiming, RunnerPreSpawnTiming, SandboxReuseDisposition,
+    SandboxReuseRejection, SessionHistoryRestorePlan, execute_job, execute_job_reuse,
+    execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
 };
 use super::support::{
     api_storage, context_with_env, default_params, make_reusable_idle_sandbox, minimal_context,
@@ -67,8 +67,16 @@ fn elapsed_since_api_start_ms_rejects_seconds_shaped_start() {
 #[test]
 fn pre_finalization_deadline_records_bounded_handoff_outcome() {
     let mut telemetry = new_telemetry();
+    let mut timing = RunnerPreSpawnTiming::start_after_claim();
 
-    FinalizingHandoffOutcome::PreFinalizationDeadline.record(&mut telemetry);
+    timing.record_finalizing_handoff(
+        FinalizingHandoffOutcome::PreFinalizationDeadline,
+        Some(FinalizingHandoffReason::PreFinalizationDeadline),
+    );
+    timing
+        .finalizing_diagnostics()
+        .expect("pre-finalization diagnostics")
+        .record(&mut telemetry);
 
     assert_action_outcome(
         &telemetry,
@@ -83,6 +91,7 @@ fn pre_finalization_deadline_records_bounded_handoff_outcome() {
             .any(|operation| {
                 operation.0 == "runner_claim_finalizing_handoff"
                     && operation.2.as_deref() == Some("pre_finalization_deadline")
+                    && operation.3.as_deref() == Some("pre_finalization_deadline")
             })
     );
 }

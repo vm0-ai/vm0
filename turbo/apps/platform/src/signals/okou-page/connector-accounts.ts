@@ -60,6 +60,7 @@ interface ConnectorAccountPage {
   readonly connections: readonly ConnectorAccountConnection[];
   readonly nextCursor: string | null;
   readonly available: boolean;
+  readonly defaultConnection?: ConnectorAccountConnection | null;
 }
 
 function emptyConnectorAccountPage(): ConnectorAccountPage {
@@ -70,6 +71,7 @@ export interface ConnectorAccountList {
   readonly connections: readonly ConnectorAccountConnection[];
   readonly nextCursor: string | null;
   readonly available: boolean;
+  readonly defaultConnection?: ConnectorAccountConnection | null;
 }
 
 function mergeConnectorAccountPages(
@@ -88,6 +90,9 @@ function mergeConnectorAccountPages(
     // keep "Load more" alive and re-request the page after the first one.
     nextCursor: (pages.at(-1) ?? firstPage).nextCursor,
     available: firstPage.available,
+    ...(firstPage.defaultConnection !== undefined
+      ? { defaultConnection: firstPage.defaultConnection }
+      : {}),
   };
 }
 
@@ -95,6 +100,7 @@ function targetListQuery(
   target: ConnectorAccountTarget,
   search: string,
   cursor?: string,
+  includeBuiltinScopeMismatch = false,
 ) {
   const page = {
     limit: CONNECTOR_ACCOUNT_PAGE_SIZE,
@@ -102,7 +108,14 @@ function targetListQuery(
     ...(cursor ? { cursor } : {}),
   };
   return target.kind === "builtin"
-    ? { ...page, kind: target.kind, connectorSlug: target.connectorSlug }
+    ? {
+        ...page,
+        kind: target.kind,
+        connectorSlug: target.connectorSlug,
+        ...(includeBuiltinScopeMismatch
+          ? { includeScopeMismatch: "true" as const }
+          : {}),
+      }
     : {
         ...page,
         kind: target.kind,
@@ -110,15 +123,21 @@ function targetListQuery(
       };
 }
 
-async function fetchConnectorAccountFirstPage(
-  createClient: ApiClientFactory,
-  target: ConnectorAccountTarget,
-  search: string,
+async function fetchConnectorAccountPage(
+  args: {
+    readonly createClient: ApiClientFactory;
+    readonly target: ConnectorAccountTarget;
+    readonly search: string;
+    readonly cursor?: string;
+    readonly includeBuiltinScopeMismatch: boolean;
+  },
   signal: AbortSignal,
 ): Promise<ConnectorAccountPage> {
+  const enriched =
+    args.includeBuiltinScopeMismatch && args.target.kind === "builtin";
   const result = await accept(
-    createClient(connectorAccountsContract).connections({
-      query: targetListQuery(target, search),
+    args.createClient(connectorAccountsContract).connections({
+      query: targetListQuery(args.target, args.search, args.cursor, enriched),
       fetchOptions: { signal },
     }),
     [200, 404],
@@ -133,6 +152,7 @@ async function fetchConnectorAccountFirstPage(
 function createConnectorAccountFirstPageQuery(
   effectiveSearch$: State<string>,
   resetPages$: Command<void, []>,
+  includeBuiltinScopeMismatch: boolean,
 ) {
   return command(
     async (
@@ -148,17 +168,22 @@ function createConnectorAccountFirstPageQuery(
       signal.throwIfAborted();
       set(effectiveSearch$, search);
       set(resetPages$);
-      return fetchConnectorAccountFirstPage(
-        get(apiClient$),
-        target,
-        search,
+      return fetchConnectorAccountPage(
+        {
+          createClient: get(apiClient$),
+          target,
+          search,
+          includeBuiltinScopeMismatch,
+        },
         signal,
       );
     },
   );
 }
 
-function createConnectorAccountFirstPageSignals() {
+function createConnectorAccountFirstPageSignals(
+  includeBuiltinScopeMismatch: boolean,
+) {
   const target$ = state<ConnectorAccountTarget | null>(null);
   const search$ = state("");
   const effectiveSearch$ = state("");
@@ -181,6 +206,7 @@ function createConnectorAccountFirstPageSignals() {
   const queryFirstPage$ = createConnectorAccountFirstPageQuery(
     effectiveSearch$,
     resetPages$,
+    includeBuiltinScopeMismatch,
   );
 
   const startFirstPageQuery$ = command(
@@ -283,8 +309,14 @@ function createConnectorAccountFirstPageSignals() {
   };
 }
 
-export function createConnectorAccountListSignals() {
-  const firstPageSignals = createConnectorAccountFirstPageSignals();
+export function createConnectorAccountListSignals(
+  options: { readonly includeBuiltinScopeMismatch?: true } = {},
+) {
+  const includeBuiltinScopeMismatch =
+    options.includeBuiltinScopeMismatch === true;
+  const firstPageSignals = createConnectorAccountFirstPageSignals(
+    includeBuiltinScopeMismatch,
+  );
   const loadMore$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const generation = get(firstPageSignals.generation$);
@@ -303,16 +335,14 @@ export function createConnectorAccountListSignals() {
       }
       set(firstPageSignals.loadingCursor$, cursor);
       const result = await onRejection(
-        accept(
-          get(apiClient$)(connectorAccountsContract).connections({
-            query: targetListQuery(
-              target,
-              get(firstPageSignals.effectiveSearch$),
-              cursor,
-            ),
-            fetchOptions: { signal },
-          }),
-          [200, 404],
+        fetchConnectorAccountPage(
+          {
+            createClient: get(apiClient$),
+            target,
+            search: get(firstPageSignals.effectiveSearch$),
+            cursor,
+            includeBuiltinScopeMismatch,
+          },
           signal,
         ),
         () => {
@@ -326,12 +356,12 @@ export function createConnectorAccountListSignals() {
       if (get(firstPageSignals.generation$) !== generation) {
         return;
       }
-      if (result.status === 404) {
+      if (!result.available) {
         set(firstPageSignals.reload$, signal);
         return;
       }
       set(firstPageSignals.pages$, (pages) => {
-        return [...pages, { ...result.body, available: true }];
+        return [...pages, result];
       });
       set(firstPageSignals.loadingCursor$, null);
     },
