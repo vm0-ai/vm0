@@ -1537,8 +1537,13 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       screen.queryByText("The release check has started."),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("The first release check passed."),
-    ).not.toBeInTheDocument();
+      screen.getByText("The first release check passed."),
+    ).toBeInTheDocument();
+    expectTextBefore(
+      document.body,
+      "The first release check passed.",
+      "Paused mid-thought — pick it back up whenever.",
+    );
     expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
     expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();
     expect(
@@ -1550,9 +1555,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     await waitFor(() => {
       expect(
         screen.getByText("The release check has started."),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("The first release check passed."),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(goalBrief)).not.toBeInTheDocument();

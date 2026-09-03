@@ -1649,7 +1649,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps chat work visible when the run was cancelled", async () => {
+  it("folds a cancelled run around its last assistant output", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000016",
       chatEvents: [
@@ -1664,6 +1664,18 @@ describe("chat lifecycle", () => {
           content: "Checking launch status.",
           runId: "run-work-folding-cancelled",
           createdAt: "2026-06-09T10:00:25Z",
+        },
+        {
+          role: "assistant",
+          content: "The latest launch status is ready.",
+          runId: "run-work-folding-cancelled",
+          createdAt: "2026-06-09T10:00:45Z",
+        },
+        {
+          role: "user",
+          content: null,
+          interruptsRunId: "run-work-folding-cancelled",
+          createdAt: "2026-06-09T10:00:50Z",
         },
         {
           role: "assistant",
@@ -1682,12 +1694,29 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Checking launch status.")).toBeInTheDocument();
+      expect(
+        screen.getByText("The latest launch status is ready."),
+      ).toBeInTheDocument();
       expect(
         screen.getByText("Paused mid-thought — pick it back up whenever."),
       ).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expect(
+      screen.queryByText("Checking launch status."),
+    ).not.toBeInTheDocument();
+    const expandWork = screen.getByLabelText("Expand work history");
+    expect(expandWork).toHaveTextContent(/^Worked for /);
+    expectTextBefore(
+      document.body,
+      "The latest launch status is ready.",
+      "Paused mid-thought — pick it back up whenever.",
+    );
+
+    fireEvent.click(expandWork);
+
+    await expect(
+      screen.findByText("Checking launch status."),
+    ).resolves.toBeInTheDocument();
   });
 
   it("shows only Worked when a completed run has no assistant message", async () => {

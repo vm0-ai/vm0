@@ -4,6 +4,7 @@ import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
+  isChatInputEventType,
   isChatRunTerminalEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
 import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
@@ -75,8 +76,12 @@ export function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   );
 }
 
-function isRunWorkAssistantEvent(event: EnrichedChatEvent): boolean {
-  return event.eventType !== "run.queued" && isRenderableAssistantEvent(event);
+function isRunWorkAssistantOutput(event: EnrichedChatEvent): boolean {
+  return (
+    event.eventType !== "run.queued" &&
+    !isCancelledRunEvent(event) &&
+    isRenderableAssistantEvent(event)
+  );
 }
 
 export function runWorkSectionForGroup(
@@ -267,7 +272,11 @@ function runWorkEventSegments(
 ): RunWorkEventSegment[] {
   const segments: RunWorkEventSegment[] = [];
   for (const event of events) {
-    const runId = event.runId;
+    const runId =
+      event.runId ??
+      (event.eventType === "control.interrupt"
+        ? event.interruptsRunId
+        : undefined);
     const last = segments[segments.length - 1];
     if (runId !== undefined && last?.runId === runId) {
       last.events.push(event);
@@ -392,8 +401,7 @@ function visibleRunWorkUserEvent(
   hiddenUserEventIds: ReadonlySet<string>,
 ): boolean {
   return (
-    chatEventCompatibilityRole(event.eventType) === "user" &&
-    !hiddenUserEventIds.has(event.id)
+    isChatInputEventType(event.eventType) && !hiddenUserEventIds.has(event.id)
   );
 }
 
@@ -471,14 +479,14 @@ function foldRunWorkPhase(
   endTime: number | undefined,
   hiddenUserEventIds: ReadonlySet<string>,
 ): RunWorkPhaseFolding {
-  const latestAssistantEvent = lastEventMatching(
+  const latestAssistantOutput = lastEventMatching(
     events,
-    isRunWorkAssistantEvent,
+    isRunWorkAssistantOutput,
   );
   const terminalEvent = lastEventMatching(events, (event) => {
     return isChatRunTerminalEventType(event.eventType);
   });
-  const anchorEvent = latestAssistantEvent ?? terminalEvent;
+  const anchorEvent = latestAssistantOutput ?? terminalEvent;
   const startTime = firstEventTime(events);
   if (anchorEvent === undefined || startTime === null) {
     return {
@@ -491,14 +499,21 @@ function foldRunWorkPhase(
 
   const anchorIndex = events.indexOf(anchorEvent);
   const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
-    return isRunWorkAssistantEvent(event);
+    return isRunWorkAssistantOutput(event);
+  });
+  const trailingStatusEvents = events.slice(anchorIndex + 1).filter((event) => {
+    return (
+      !hiddenUserEventIds.has(event.id) &&
+      isRenderableAssistantEvent(event) &&
+      !isRunWorkAssistantOutput(event)
+    );
   });
   const userEvents = events.filter((event) => {
     return visibleRunWorkUserEvent(event, hiddenUserEventIds);
   });
 
   return {
-    visibleEvents: [...userEvents, anchorEvent],
+    visibleEvents: [...userEvents, anchorEvent, ...trailingStatusEvents],
     section: {
       key: `${key}:${events[0]!.id}`,
       anchorEventId: anchorEvent.id,
@@ -533,16 +548,6 @@ function terminalEventForLatestRun(
       event.runId === latestRunId && isChatRunTerminalEventType(event.eventType)
     );
   });
-}
-
-function latestRunWasCancelled(events: readonly EnrichedChatEvent[]): boolean {
-  const latestRunId = latestRunIdForEvents(events);
-  return (
-    latestRunId !== undefined &&
-    events.some((event) => {
-      return event.runId === latestRunId && isCancelledRunEvent(event);
-    })
-  );
 }
 
 function mergedUsageForRunIds(
@@ -584,15 +589,6 @@ export function buildRunWorkFolding(
 
   for (const unit of runWorkUnits(events)) {
     if (unit.key === undefined) {
-      visibleEvents.push(
-        ...unit.events.filter((event) => {
-          return !unit.hiddenUserEventIds.has(event.id);
-        }),
-      );
-      continue;
-    }
-
-    if (!unit.isGoal && latestRunWasCancelled(unit.events)) {
       visibleEvents.push(
         ...unit.events.filter((event) => {
           return !unit.hiddenUserEventIds.has(event.id);
