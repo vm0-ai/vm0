@@ -21,23 +21,23 @@
     "Noto Color Emoji", sans-serif;
 
   /* Sidebar colors - using tokens for dark mode support */
-  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
 
   /* Credit balance breakdown segment colors (usage bar chart) */
-  --color-credit-free: #3eb7b8;
-  --color-credit-promotional: #e88033;
-  --color-credit-plan-pro: #edc43e;
-  --color-credit-plan-team: #6b8de3;
+  --color-credit-free: #008d76;
+  --color-credit-promotional: #ff6030;
+  --color-credit-plan-pro: #ffa500;
+  --color-credit-plan-team: #3462d3;
 
-  /* Usage record kind breakdown segment colors. Model uses a cool indigo so
-     the dominant LLM segment separates cleanly from the pink image hue; image
-     and video also sit far apart (pink vs teal). */
-  --color-usage-kind-model: #5e6ad2;
-  --color-usage-kind-image: #ec70a5;
-  --color-usage-kind-video: #358a8e;
-  --color-usage-kind-connector: #98928b;
-  --color-usage-kind-other: #e1c43c;
+  /* Usage record kind breakdown segment colors, drawn from the palette's
+     categorical set. Model keeps a cool blue so the dominant LLM segment
+     separates cleanly from the image hue; image and video also sit far apart
+     (blossom vs jade). */
+  --color-usage-kind-model: #3462d3;
+  --color-usage-kind-image: #ce9cb5;
+  --color-usage-kind-video: #008d76;
+  --color-usage-kind-connector: #779aad;
+  --color-usage-kind-other: #c8b800;
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
@@ -451,25 +451,28 @@ body {
    stay unchanged for contrast and hierarchy. Because these variables live on
    the document root, portaled dialogs and popovers inherit the same system. */
 :root[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 24% 98%;
-  --gray-50: var(--zero-color-theme-hue) 22% 96.5%;
-  --gray-100: var(--zero-color-theme-hue) 20% 93.5%;
-  --gray-200: var(--zero-color-theme-hue) 18% 91.5%;
-  --gray-300: var(--zero-color-theme-hue) 17% 88.5%;
-  --gray-400: var(--zero-color-theme-hue) 16% 84.5%;
-  --gray-500: var(--zero-color-theme-hue) 16% 76%;
+  --gray-0: var(--zero-color-theme-hue) 24% 98.3%;
+  --gray-50: var(--zero-color-theme-hue) 22% 97.7%;
+  --gray-100: var(--zero-color-theme-hue) 20% 96.7%;
+  --gray-200: var(--zero-color-theme-hue) 18% 86.9%;
+  --gray-300: var(--zero-color-theme-hue) 17% 79.4%;
+  --gray-400: var(--zero-color-theme-hue) 16% 71.2%;
+  --gray-500: var(--zero-color-theme-hue) 16% 62.2%;
 
   --divider: var(--gray-200);
   --background: var(--zero-color-theme-hue) 24% 98.8%;
   --card: var(--zero-color-theme-hue) 30% 99.4%;
   --popover: var(--card);
-  --secondary: var(--zero-color-theme-hue) 22% 96%;
+  --secondary: var(--zero-color-theme-hue) 22% 96.7%;
   --muted: var(--gray-100);
-  --accent: var(--zero-color-theme-hue) 24% 94.5%;
-  --border: var(--gray-400);
+  --accent: var(--zero-color-theme-hue) 24% 96.7%;
+  --border: var(--gray-200);
   --input: var(--card);
   --ring: var(--zero-color-theme-ring);
-  --sidebar: var(--zero-color-theme-hue) 30% 96%;
+  /* Halved with the neutral sidebar: this surface now frames the workspace
+     card as well as backing the chat column, and a full-strength tint around a
+     white sheet overpowers it. The rail keeps its depth and stays the anchor. */
+  --sidebar: var(--zero-color-theme-hue) 30% 98.4%;
   --zero-nav-rail: var(--zero-color-theme-hue) 36% 93.5%;
   --zero-nav-foreground: var(--zero-color-theme-hue) 24% 18%;
   --zero-nav-muted-foreground: var(--zero-color-theme-hue) 18% 38%;
@@ -492,22 +495,22 @@ body {
     .dark,
     [data-theme="dark"]
   )[data-gradient-color-themes][data-color-theme] {
-  --gray-0: var(--zero-color-theme-hue) 5% 7%;
-  --gray-50: var(--zero-color-theme-hue) 6% 10%;
-  --gray-100: var(--zero-color-theme-hue) 8% 15%;
-  --gray-200: var(--zero-color-theme-hue) 9% 19%;
-  --gray-300: var(--zero-color-theme-hue) 10% 23%;
-  --gray-400: var(--zero-color-theme-hue) 11% 27%;
-  --gray-500: var(--zero-color-theme-hue) 12% 33%;
+  --gray-0: var(--zero-color-theme-hue) 5% 10.5%;
+  --gray-50: var(--zero-color-theme-hue) 6% 13.5%;
+  --gray-100: var(--zero-color-theme-hue) 8% 18.5%;
+  --gray-200: var(--zero-color-theme-hue) 9% 22.5%;
+  --gray-300: var(--zero-color-theme-hue) 10% 26.5%;
+  --gray-400: var(--zero-color-theme-hue) 11% 30.5%;
+  --gray-500: var(--zero-color-theme-hue) 12% 36.5%;
 
   --divider: var(--gray-200);
   --background: var(--gray-50);
-  --card: var(--zero-color-theme-hue) 8% 14%;
+  --card: var(--zero-color-theme-hue) 8% 16.5%;
   --popover: var(--gray-100);
-  --secondary: var(--zero-color-theme-hue) 9% 17%;
+  --secondary: var(--zero-color-theme-hue) 9% 20.5%;
   --muted: var(--gray-200);
-  --accent: var(--zero-color-theme-hue) 12% 23%;
-  --border: var(--gray-300);
+  --accent: var(--zero-color-theme-hue) 12% 26.5%;
+  --border: var(--gray-200);
   --input: var(--gray-200);
   --ring: var(--zero-color-theme-hue) 45% 62%;
   --sidebar: var(--zero-color-theme-hue) 14% 12%;
@@ -553,13 +556,13 @@ body {
   /* The composer is the largest surface on the page and leads the radius scale. */
   --zero-composer-radius: 1.5rem;
   --zero-card-shadow:
-    0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
+    0 2px 12px hsl(30 6% 45% / 0.05), 0 0 0 0.5px hsl(30 6% 45% / 0.025);
   /* A card inside a message is not elevated off the page the way a page-level
      card is, so it gets contact rather than lift: a 2px blur instead of 12px. */
-  --zero-chat-card-shadow: 0 1px 2px hsl(220 12% 50% / 0.04);
+  --zero-chat-card-shadow: 0 1px 2px hsl(30 6% 45% / 0.05);
   /* Static focus veil for the composer. Fading this layer through opacity lets
      the browser composite it without interpolating the wide blur every frame. */
-  --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
@@ -698,8 +701,19 @@ body {
 
 /* Zero left nav */
 .zero-nav {
-  --color-sidebar: hsl(var(--gray-0));
   --color-sidebar-border: hsl(var(--gray-200));
+}
+
+/* Shell surfaces, gated on the `newUi` switch. Off, both sidebars sit on the
+   flats they had before the workspace became a card. On, they take the site's
+   own two greys and the chat column doubles as the frame around that card. */
+.zero-app {
+  --color-sidebar: hsl(var(--gray-0));
+  --color-sidebar-rail: hsl(var(--gray-50));
+}
+:where([data-new-ui]) .zero-app {
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-rail: hsl(var(--sidebar-rail));
 }
 .zero-app[data-gradient-color-themes] .zero-nav {
   --color-sidebar: hsl(var(--sidebar));
@@ -717,10 +731,6 @@ body {
 .zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
   background-color: hsl(var(--zero-nav-rail));
 }
-:where([data-theme="dark"]) .zero-nav {
-  --color-sidebar: hsl(240 5% 8%);
-}
-
 /* Morandi outline buttons */
 .zero-app .zero-btn-morandi {
   background-color: hsl(var(--gray-50));
@@ -802,6 +812,9 @@ body {
 
 /* Composer / input card (white, light border — “Just ask” / chat input) */
 .zero-app .zero-composer {
+  /* Seven points from the resting border in both themes: down from it in light,
+     up from it in dark, where the border is far darker than the surface. */
+  --zero-composer-ring: 42.9 2.05% 77%;
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-composer-radius);
@@ -814,7 +827,13 @@ body {
   content: "";
   position: absolute;
   inset: -0.7px;
-  border: 0.7px solid hsl(var(--gray-500));
+  /* Seven points below the resting border, which is the lift this ring has
+     always had. It cannot borrow `--gray-500`: that stop also draws syntax
+     gutter marks and the workflow diagram's grid dots, and it now sits far
+     enough below the lightened hairline to read as a hard outline rather than
+     as focus. The composer autofocuses on the chat home, so this ring is the
+     first border a user sees. */
+  border: 0.7px solid hsl(var(--zero-composer-ring));
   border-radius: inherit;
   box-shadow: var(--zero-composer-focus-veil);
   opacity: 0;
@@ -824,6 +843,21 @@ body {
 }
 .zero-app .zero-composer:focus-within::after {
   opacity: 1;
+}
+
+:where([data-theme="dark"]) .zero-app .zero-composer {
+  --zero-composer-ring: 42.9 1.6% 37.5%;
+}
+
+/* Under the `newUi` switch dark carries the brand hue instead of a lighter
+   neutral. The light ring can stay neutral because there it darkens, and
+   darker-than-the-border already reads as emphasis. Lifting a neutral against a
+   dark card does not: it lands on a bright grey that reads as a white outline
+   rather than as focus, which is what `--ring` means on every other control.
+   Saturation, not lightness, does the work, so the ring stays quieter than the
+   full Amber stop. */
+:where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
+  --zero-composer-ring: 38.8 38% 38%;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -883,7 +917,7 @@ body {
 
 /* Global selection color */
 ::selection {
-  background-color: hsl(var(--primary-200));
+  background-color: hsl(var(--brand-subtle));
   color: hsl(var(--foreground));
 }
 
@@ -905,11 +939,11 @@ body {
   --color-border-default: hsl(var(--border));
   --color-border-muted: hsl(var(--border));
   --color-neutral-muted: hsl(var(--gray-100));
-  --color-accent-fg: hsl(var(--primary-700));
-  --color-accent-emphasis: hsl(var(--primary-700));
-  --color-attention-subtle: hsl(var(--primary-50));
-  --color-attention-fg: hsl(var(--primary-800));
-  --color-attention-emphasis: hsl(var(--primary-800));
+  --color-accent-fg: hsl(var(--brand-text));
+  --color-accent-emphasis: hsl(var(--brand-text));
+  --color-attention-subtle: hsl(var(--brand-subtle));
+  --color-attention-fg: hsl(var(--brand-text));
+  --color-attention-emphasis: hsl(var(--brand-text));
   --color-danger-fg: hsl(var(--destructive));
   --color-danger-emphasis: hsl(var(--destructive));
   --color-success-fg: #2a7a4b;
@@ -935,7 +969,7 @@ body {
   --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
   --color-prettylights-syntax-constant-other-reference-link: #4a6fa5;
   --color-prettylights-syntax-meta-diff-range: #6a5acd;
-  --color-prettylights-syntax-markup-heading: hsl(var(--primary-800));
+  --color-prettylights-syntax-markup-heading: hsl(var(--brand-text));
   --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
   --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
   --color-prettylights-syntax-markup-deleted-text: #8b2020;
@@ -943,7 +977,7 @@ body {
   --color-prettylights-syntax-markup-inserted-text: #2a7a4b;
   --color-prettylights-syntax-markup-inserted-bg: #e6f6ed;
   --color-prettylights-syntax-markup-changed-text: #b35a00;
-  --color-prettylights-syntax-markup-changed-bg: hsl(var(--primary-50));
+  --color-prettylights-syntax-markup-changed-bg: hsl(var(--brand-subtle));
   --color-prettylights-syntax-markup-list: #b35a00;
 }
 
@@ -958,11 +992,11 @@ body {
   --color-border-default: hsl(var(--border));
   --color-border-muted: hsl(var(--border));
   --color-neutral-muted: hsl(var(--gray-200));
-  --color-accent-fg: hsl(var(--primary-900));
-  --color-accent-emphasis: hsl(var(--primary-700));
-  --color-attention-subtle: hsl(var(--primary-100));
-  --color-attention-fg: hsl(var(--primary-900));
-  --color-attention-emphasis: hsl(var(--primary-700));
+  --color-accent-fg: hsl(var(--brand-text));
+  --color-accent-emphasis: hsl(var(--brand-text));
+  --color-attention-subtle: hsl(var(--brand-subtle));
+  --color-attention-fg: hsl(var(--brand-text));
+  --color-attention-emphasis: hsl(var(--brand-text));
   --color-danger-fg: hsl(var(--destructive));
   --color-danger-emphasis: hsl(var(--destructive));
   --color-success-fg: #7dba97;
@@ -988,7 +1022,7 @@ body {
   --color-prettylights-syntax-sublimelinter-gutter-mark: hsl(var(--gray-500));
   --color-prettylights-syntax-constant-other-reference-link: #8aabcc;
   --color-prettylights-syntax-meta-diff-range: #b8a0d8;
-  --color-prettylights-syntax-markup-heading: hsl(var(--primary-900));
+  --color-prettylights-syntax-markup-heading: hsl(var(--brand-text));
   --color-prettylights-syntax-markup-italic: hsl(var(--foreground));
   --color-prettylights-syntax-markup-bold: hsl(var(--foreground));
   --color-prettylights-syntax-markup-deleted-text: #e8a0a0;
@@ -1099,22 +1133,22 @@ body {
 
 /* --- Links -------------------------------------------------------------- */
 .wmde-markdown a {
-  color: hsl(216 70% 45%);
+  color: hsl(222.6 64.4% 51.6%);
   text-decoration: none;
   overflow-wrap: break-word;
 }
 
 .wmde-markdown a:hover {
   text-decoration: underline;
-  color: hsl(216 75% 38%);
+  color: hsl(222.2 57.3% 40.4%);
 }
 
 :where([data-theme="dark"]) .wmde-markdown a {
-  color: hsl(216 65% 62%);
+  color: hsl(220.5 100% 84.3%);
 }
 
 :where([data-theme="dark"]) .wmde-markdown a:hover {
-  color: hsl(216 70% 70%);
+  color: hsl(220.4 100% 90.4%);
 }
 
 /* --- Blockquote --------------------------------------------------------- */
@@ -1169,7 +1203,7 @@ body {
 
 /* --- Mark / highlight --------------------------------------------------- */
 .wmde-markdown mark {
-  background-color: hsl(var(--primary-100));
+  background-color: hsl(var(--brand-subtle));
   color: hsl(var(--foreground));
 }
 
@@ -1346,11 +1380,11 @@ body {
 }
 
 .wmde-markdown .markdown-alert.markdown-alert-note {
-  border-left-color: hsl(var(--primary-600));
+  border-left-color: hsl(var(--brand-text));
 }
 
 .wmde-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
-  color: hsl(var(--primary-700));
+  color: hsl(var(--brand-text));
 }
 
 /* Details/summary animation */
@@ -1377,6 +1411,29 @@ details > summary {
     transparent 50%
   );
   background-size: 100% 100%;
+}
+
+/* Workspace card: the routed page is a white sheet laid over the shell's grey
+   rather than a white half of the window. The gap runs on all four sides, so
+   the chat column's surface continues around the sheet and reads as one frame.
+   Padding insets the content and `inset` insets the paint by the same amount,
+   which is why the sheet needs no clipping: nothing lays out in the gutter, and
+   only the corner triangles could ever escape the radius.
+
+   Desktop only. Below the sidebar breakpoint the columns are gone and a frame
+   would just spend width the page does not have. */
+@media (min-width: 48rem) {
+  [data-new-ui] .zero-workspace-card {
+    --zero-workspace-card-gap: 8px;
+    background-color: hsl(var(--sidebar));
+    padding: var(--zero-workspace-card-gap);
+  }
+
+  [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
+    inset: var(--zero-workspace-card-gap);
+    border: 0.7px solid hsl(var(--border));
+    border-radius: 12px;
+  }
 }
 
 .dark .zero-workspace-bg::before,
