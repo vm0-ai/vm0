@@ -177,7 +177,7 @@ const scopeDiffInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       connectorSlug: query.connectorSlug,
-      connectorId: params.connectionId,
+      selection: { kind: "exact", connectorId: params.connectionId },
     }),
   );
   return diff
