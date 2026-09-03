@@ -34,18 +34,20 @@ const DESKTOP_ARTIFACT_NAME = "Okou";
 const DESKTOP_RELEASE_TAG_PREFIX = "okou-desktop-v";
 
 /**
- * The update lines this service can resolve a manifest for.
+ * The update lines whose manifest this service can still name.
  *
- * The Zero line is excluded rather than left unreachable, so that the compiler
- * rejects any future caller that tries to resolve a Zero artifact. The route
- * layer narrows `:product` past the retired lines before calling in.
+ * Narrower than `DesktopUpdateLine` and wider than what actually reaches here:
+ * the Zero line is excluded so the compiler rejects any future caller that
+ * tries to resolve a Zero artifact, while `okou` remains nameable but is
+ * rejected by every `:product` route before it gets this far. Only
+ * `ai-okou-desktop` is served in practice.
  */
-type ServedDesktopUpdateLine = Exclude<
+type ResolvableDesktopUpdateLine = Exclude<
   DesktopUpdateLine,
   typeof DESKTOP_UPDATE_LINE_ZERO
 >;
 
-function desktopUpdateManifestUrl(line: ServedDesktopUpdateLine): string {
+function desktopUpdateManifestUrl(line: ResolvableDesktopUpdateLine): string {
   if (line === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
     return "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json";
   }
@@ -85,7 +87,7 @@ const desktopUpdateManifestSchema = z.object({
 type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
 
 interface DesktopUpdateFeedRequest {
-  readonly line: ServedDesktopUpdateLine;
+  readonly line: ResolvableDesktopUpdateLine;
   readonly channel: DesktopUpdateChannel;
   readonly platform: DesktopUpdatePlatform;
   readonly arch: DesktopUpdateArchitecture;
@@ -97,13 +99,13 @@ interface DesktopUpdateManifestCacheEntry {
 }
 
 const desktopUpdateManifestCache = testOverride<
-  Partial<Record<ServedDesktopUpdateLine, DesktopUpdateManifestCacheEntry>>
+  Partial<Record<ResolvableDesktopUpdateLine, DesktopUpdateManifestCacheEntry>>
 >(() => {
   return {};
 });
 
 const desktopUpdateManifestOverride = testOverride<
-  Partial<Record<ServedDesktopUpdateLine, DesktopUpdateManifest>>
+  Partial<Record<ResolvableDesktopUpdateLine, DesktopUpdateManifest>>
 >(() => {
   return {};
 });
@@ -238,7 +240,7 @@ function buildDesktopUpdateFeed(
 }
 
 async function fetchDesktopUpdateManifest(
-  line: ServedDesktopUpdateLine,
+  line: ResolvableDesktopUpdateLine,
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
   const override = desktopUpdateManifestOverride.get()[line];
@@ -268,7 +270,7 @@ async function fetchDesktopUpdateManifest(
 }
 
 async function loadDesktopUpdateManifest(
-  line: ServedDesktopUpdateLine,
+  line: ResolvableDesktopUpdateLine,
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
   const cache = desktopUpdateManifestCache.get();

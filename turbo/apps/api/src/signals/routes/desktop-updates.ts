@@ -117,16 +117,13 @@ const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
   });
 });
 
-/**
- * The update lines the `:product` routes still accept in the path but no longer
- * serve.
- *
- * `okou` is the pre-adoption Okou line. `zero` joined it in #31475: its
- * manifest had been frozen since the `hard` migration policy went live, and the
- * only clients left polling it were Squirrel auto-updaters that cannot cross
- * from the Zero bundle to the Okou one, so the feed could not upgrade anyone.
- * Neither line is removed from the contract union — see the note there.
- */
+// All three `:product` handlers below reject the same retired lines. `okou` is
+// the pre-adoption Okou line. `zero` joined it in #31475: its manifest had been
+// frozen since the `hard` migration policy went live, and the only clients left
+// polling it were Squirrel auto-updaters that cannot cross from the Zero bundle
+// to the Okou one, so the feed could not upgrade anyone. Neither line is
+// removed from the contract union — see the note there.
+
 const getProductDesktopReleasePage$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productReleasePageParams$);

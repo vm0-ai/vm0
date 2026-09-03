@@ -7,10 +7,10 @@ const c = initContract();
 /**
  * Every desktop update line the `:product` routes accept.
  *
- * `ai-okou-desktop` is the only line the API still resolves a manifest for.
- * `okou` and `zero` are retired: their `:product` routes answer 404, and the
- * API can no longer name their manifests. They stay in the union because it is
- * not API-private — `apps/desktop/src/config.ts` validates
+ * `ai-okou-desktop` is the only line the API still serves. `okou` and `zero`
+ * are retired and their `:product` routes answer 404; `zero` is retired harder,
+ * because the API can no longer name its manifest at all. They stay in the
+ * union because it is not API-private — `apps/desktop/src/config.ts` validates
  * `desktop-identities.json`'s `updateLine` against it, and the desktop `zero`
  * identity that #31372 deliberately kept still declares `updateLine: "zero"`.
  * Keeping them here also lets a retired line answer a truthful 404 rather than
