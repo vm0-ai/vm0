@@ -14,7 +14,11 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { apiTestS3PresignedUrl } from "../../../__tests__/mocks";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { buildArtifactKeyV2, buildFileUrlFromKey } from "../../../lib/file-url";
+import {
+  buildArtifactKeyV2,
+  buildFileUrlFromKey,
+  OKOU_LEGACY_ARTIFACTS_ORIGIN,
+} from "../../../lib/file-url";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -1283,11 +1287,12 @@ describe("POST /api/image-io/generate", () => {
     const putInput = putObjectInput();
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toMatch(/^artifacts\/[0-9a-z]{10}\.webp$/u);
-    expect(url).toBe(`https://cdn.okou.io/${String(putInput.Key)}`);
+    const publicPath = String(putInput.Key).replace(/^artifacts\//u, "");
+    expect(url).toBe(`https://a.okou.io/${publicPath}`);
     // The embed URL serves the same stored object through the CDN image
     // transform so a PNG-only model still reaches browsers as AVIF/WebP.
     expect(body).toMatchObject({
-      embedUrl: `https://cdn.okou.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/${String(putInput.Key)}`,
+      embedUrl: `https://a.okou.io/cdn-cgi/image/fit=scale-down,format=auto,quality=85,metadata=none/${publicPath}`,
     });
     expect(putInput.Metadata).toStrictEqual({
       "artifact-id": fileId,
@@ -2660,8 +2665,16 @@ describe("POST /api/image-io/generate", () => {
     });
     expect(falCalls).toBe(0);
 
-    const ownedArtifactKey = buildArtifactKeyV2(randomUUID(), "reference.png");
-    const ownedArtifactUrl = buildFileUrlFromKey(ownedArtifactKey, "vm0");
+    const shortArtifactKey = buildArtifactKeyV2(
+      randomUUID(),
+      "short-reference.png",
+    );
+    const legacyArtifactKey = buildArtifactKeyV2(
+      randomUUID(),
+      "legacy-reference.png",
+    );
+    const shortArtifactUrl = buildFileUrlFromKey(shortArtifactKey, "okou");
+    const legacyArtifactUrl = `${OKOU_LEGACY_ARTIFACTS_ORIGIN}/${legacyArtifactKey}`;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       if (command instanceof HeadObjectCommand) {
         return Promise.resolve({
@@ -2670,9 +2683,14 @@ describe("POST /api/image-io/generate", () => {
       }
       return Promise.resolve({});
     });
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      (_client: unknown, command: unknown) => {
+        return Promise.resolve(apiTestS3PresignedUrl(command));
+      },
+    );
     const sourceImageUrls = [
-      ownedArtifactUrl,
-      SECOND_MOCKUP_IMAGE_URL,
+      shortArtifactUrl,
+      legacyArtifactUrl,
       THIRD_MOCKUP_IMAGE_URL,
     ];
     const response = await app.request("/api/image-io/generate", {
@@ -2724,21 +2742,32 @@ describe("POST /api/image-io/generate", () => {
     if (!Array.isArray(providerImageUrls)) {
       throw new Error("Expected Fal image references");
     }
-    expect(providerImageUrls.slice(1)).toStrictEqual(sourceImageUrls.slice(1));
-    const signedArtifactUrl = new URL(String(providerImageUrls[0]));
-    expect(signedArtifactUrl.origin).toBe("https://r2.example.com");
-    expect(signedArtifactUrl.searchParams.get("object")).toBe(
-      `${TEST_BUCKET}/${ownedArtifactKey}`,
-    );
+    expect(providerImageUrls.slice(0, 2)).toStrictEqual([
+      expect.stringMatching(/^https:\/\/r2\.example\.com\//u),
+      expect.stringMatching(/^https:\/\/r2\.example\.com\//u),
+    ]);
+    expect(providerImageUrls[2]).toBe(THIRD_MOCKUP_IMAGE_URL);
+    for (const [providerImageUrl, artifactKey] of [
+      [providerImageUrls[0], shortArtifactKey],
+      [providerImageUrls[1], legacyArtifactKey],
+    ] as const) {
+      const signedArtifactUrl = new URL(String(providerImageUrl));
+      expect(signedArtifactUrl.origin).toBe("https://r2.example.com");
+      expect(signedArtifactUrl.searchParams.get("object")).toBe(
+        `${TEST_BUCKET}/${artifactKey}`,
+      );
+    }
     const headObjectInputs = context.mocks.s3.send.mock.calls.flatMap(
       ([command]) => {
         return command instanceof HeadObjectCommand ? [command.input] : [];
       },
     );
-    expect(headObjectInputs).toContainEqual({
-      Bucket: TEST_BUCKET,
-      Key: ownedArtifactKey,
-    });
+    expect(headObjectInputs).toStrictEqual(
+      expect.arrayContaining([
+        { Bucket: TEST_BUCKET, Key: shortArtifactKey },
+        { Bucket: TEST_BUCKET, Key: legacyArtifactKey },
+      ]),
+    );
     await expect(orgCredits(fixture)).resolves.toBe(
       1000 - FAL_QWEN_IMAGE_3_STANDARD_TIER_CREDITS,
     );

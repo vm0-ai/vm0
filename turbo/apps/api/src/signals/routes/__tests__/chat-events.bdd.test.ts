@@ -16222,7 +16222,9 @@ describe("CHAT-02: generation templates and attachments", () => {
       throw new Error("Expected a file artifact for the legacy attachment");
     }
     expect(detail.file.url).toMatch(/^https:\/\/cdn\.vm7\.io\//);
-    expect(detail.file.url).not.toMatch(/^https:\/\/cdn\.okou\.io\//);
+    expect(detail.file.url).not.toMatch(
+      /^https:\/\/(?:a\.okou\.io|cdn\.okou\.io)\//,
+    );
 
     await cancelChatRun(actor, run.runId);
   }, 60_000);

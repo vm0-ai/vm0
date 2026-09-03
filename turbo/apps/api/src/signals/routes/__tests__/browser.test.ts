@@ -2276,13 +2276,11 @@ describe("okou browser route", () => {
       [200],
     );
     const firstScreenshotUrl = afterFirstCapture.body.browser.screenshotUrl;
-    expect(firstScreenshotUrl).toMatch(
-      /^https:\/\/cdn\.okou\.io\/artifacts\/.+\.webp$/u,
-    );
+    expect(firstScreenshotUrl).toMatch(/^https:\/\/a\.okou\.io\/.+\.webp$/u);
     if (!firstScreenshotUrl) {
       throw new Error("Expected the first browser screenshot URL");
     }
-    const firstScreenshotKey = new URL(firstScreenshotUrl).pathname.slice(1);
+    const firstScreenshotKey = `artifacts/${new URL(firstScreenshotUrl).pathname.slice(1)}`;
     const screenshotPut = context.mocks.s3.send.mock.calls
       .map(([command]) => {
         return commandInput(command);
@@ -2325,7 +2323,7 @@ describe("okou browser route", () => {
     if (!secondScreenshotUrl) {
       throw new Error("Expected the second browser screenshot URL");
     }
-    const secondScreenshotKey = new URL(secondScreenshotUrl).pathname.slice(1);
+    const secondScreenshotKey = `artifacts/${new URL(secondScreenshotUrl).pathname.slice(1)}`;
     expect(captureCount).toBe(2);
     expect(
       context.mocks.browserUseCdp.command.mock.calls
@@ -2409,7 +2407,7 @@ describe("okou browser route", () => {
     if (!finalScreenshotUrl) {
       throw new Error("Expected the third browser screenshot URL");
     }
-    const finalScreenshotKey = new URL(finalScreenshotUrl).pathname.slice(1);
+    const finalScreenshotKey = `artifacts/${new URL(finalScreenshotUrl).pathname.slice(1)}`;
     expect(captureCount).toBe(3);
     expect(
       context.mocks.s3.send.mock.calls.filter(([command]) => {

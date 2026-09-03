@@ -139,6 +139,8 @@ interface ParseBodyBlocksOptions {
 const LEGACY_PLATFORM_FILE_PATH_PATTERN =
   /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
+const OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/[0-9a-z]{10}\.[^/]+$/;
+const OKOU_SHORT_ARTIFACT_ORIGIN = "https://a.okou.io";
 const PLATFORM_FILE_CDN_HOSTS = [
   "cdn.vm0.io",
   "cdn.okou.io",
@@ -442,13 +444,19 @@ function isPlatformFileUrl(url: string): boolean {
   const isShortArtifactPath = SHORT_ARTIFACT_FILE_PATH_PATTERN.test(
     parsed.pathname,
   );
-  if (!isLegacyPath && !isShortArtifactPath) {
+  const isOkouShortArtifactPath =
+    parsed.origin === OKOU_SHORT_ARTIFACT_ORIGIN &&
+    parsed.username === "" &&
+    parsed.password === "" &&
+    OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN.test(parsed.pathname);
+  if (!isLegacyPath && !isShortArtifactPath && !isOkouShortArtifactPath) {
     return false;
   }
   if (!hasExplicitUrlOrigin(url)) {
     return isLegacyPath;
   }
   return (
+    isOkouShortArtifactPath ||
     platformFileHosts().has(parsed.host) ||
     isPlatformFileHostname(parsed.hostname)
   );
