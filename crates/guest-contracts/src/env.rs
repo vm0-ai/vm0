@@ -37,16 +37,16 @@ pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT"
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
-pub const PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_PROMPT";
+pub const PROMPT_RUN_PAYLOAD_FIELD: &str = "OKOU_PROMPT";
 
 /// Logical run-payload field name for optional extra system prompt text.
 ///
 /// Unset or empty means there is no extra system prompt.
-pub const APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_APPEND_SYSTEM_PROMPT";
+pub const APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD: &str = "OKOU_APPEND_SYSTEM_PROMPT";
 
 /// Sensitive Vercel protection bypass secret for guest API calls.
 ///
-/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// This runner-owned bootstrap key intentionally does not use the `OKOU_`
 /// prefix because the guest-agent HTTP client uses this established name to
 /// attach the Vercel bypass header. The runner omits this key when no bypass
 /// secret is configured.
@@ -78,30 +78,30 @@ pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTI
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
-pub const SECRET_VALUES_RUN_PAYLOAD_FIELD: &str = "VM0_SECRET_VALUES";
+pub const SECRET_VALUES_RUN_PAYLOAD_FIELD: &str = "OKOU_SECRET_VALUES";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
-pub const DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_DISALLOWED_TOOLS";
+pub const DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD: &str = "OKOU_DISALLOWED_TOOLS";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
-pub const TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_TOOLS";
+pub const TOOLS_RUN_PAYLOAD_FIELD: &str = "OKOU_TOOLS";
 
 /// Logical run-payload field name for the raw Claude Code settings payload
 /// passed to the guest-agent.
 ///
 /// The runner treats this as an opaque string. Unset or empty means there is no
 /// settings override.
-pub const SETTINGS_RUN_PAYLOAD_FIELD: &str = "VM0_SETTINGS";
+pub const SETTINGS_RUN_PAYLOAD_FIELD: &str = "OKOU_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
 ///
-/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// This runner-owned bootstrap key intentionally does not use the `OKOU_`
 /// prefix because the runner and guest-agent framework selection contract uses
 /// this exact name.
 pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
@@ -152,7 +152,7 @@ pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
-pub const ARTIFACTS_RUN_PAYLOAD_FIELD: &str = "VM0_ARTIFACTS";
+pub const ARTIFACTS_RUN_PAYLOAD_FIELD: &str = "OKOU_ARTIFACTS";
 
 /// One artifact mount in the runner-to-guest run payload.
 ///
@@ -188,21 +188,31 @@ pub enum RunArtifactMissingRootPolicy {
 /// enabled states.
 ///
 /// Unset or empty means there are no feature flags.
-pub const FEATURE_FLAGS_RUN_PAYLOAD_FIELD: &str = "VM0_FEATURE_FLAGS";
+pub const FEATURE_FLAGS_RUN_PAYLOAD_FIELD: &str = "OKOU_FEATURE_FLAGS";
 
 /// Logical run-payload field name for API-owned Codex runtime metadata.
-pub const CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD: &str = "VM0_CODEX_RUNTIME_CONFIG";
+pub const CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD: &str = "OKOU_CODEX_RUNTIME_CONFIG";
 
-/// Logical run-payload field name for the schema-v2 Pi launch config marker.
+/// Runner-owned bootstrap key reserved for the schema-v2 Pi launch config
+/// marker.
 ///
 /// The value is the serialized `{"schemaVersion":2}` version marker. Pi's
 /// runtime resources are discovered from canonical filesystem locations by the
 /// official loader. The value never reaches the Pi CLI child as an environment
 /// value; the guest-agent republishes it through
-/// [`PI_LAUNCH_PAYLOAD_FILE_ENV`]. See `piLaunchConfigSchema` in
+/// [`PI_LAUNCH_PAYLOAD_FILE_ENV`]. The name is still classified as an env key
+/// so user env carrying it is scrubbed before the guest-agent starts. See
+/// `piLaunchConfigSchema` in
 /// `turbo/packages/api-contracts/src/contracts/runners.ts` for the canonical
 /// wire schema.
 pub const PI_LAUNCH_CONFIG_ENV: &str = "OKOU_PI_LAUNCH_CONFIG";
+
+/// Logical run-payload field name for the schema-v2 Pi launch config marker.
+///
+/// Same spelling as the reserved bootstrap key [`PI_LAUNCH_CONFIG_ENV`]; this
+/// alias names the [`RunPayload::fields`] role so diagnostics read as payload
+/// fields rather than environment keys.
+pub const PI_LAUNCH_CONFIG_RUN_PAYLOAD_FIELD: &str = PI_LAUNCH_CONFIG_ENV;
 
 /// Path to the private guest-agent-owned Pi launch payload JSON file.
 ///
@@ -218,11 +228,27 @@ pub const PI_LAUNCH_PAYLOAD_PRIVATE_DIR_NAME: &str = "pi-launch-payload";
 /// Private runtime filename used by [`PI_LAUNCH_PAYLOAD_FILE_ENV`].
 pub const PI_LAUNCH_PAYLOAD_FILENAME: &str = "payload.json";
 
-/// Logical run-payload field name for non-secret Pi model metadata.
+/// Runner-owned bootstrap key carrying non-secret Pi model metadata into the
+/// Pi CLI child environment.
 pub const PI_MODEL_CONFIG_ENV: &str = "OKOU_PI_MODEL_CONFIG";
 
-/// Logical run-payload field name for the Chat Thread-owned Pi session id.
+/// Logical run-payload field name for non-secret Pi model metadata.
+///
+/// Same spelling as the bootstrap key [`PI_MODEL_CONFIG_ENV`]; this alias
+/// names the [`RunPayload::fields`] role so diagnostics read as payload fields
+/// rather than environment keys.
+pub const PI_MODEL_CONFIG_RUN_PAYLOAD_FIELD: &str = PI_MODEL_CONFIG_ENV;
+
+/// Runner-owned bootstrap key carrying the Chat Thread-owned Pi session id
+/// into the Pi CLI child environment.
 pub const PI_SESSION_ID_ENV: &str = "OKOU_PI_SESSION_ID";
+
+/// Logical run-payload field name for the Chat Thread-owned Pi session id.
+///
+/// Same spelling as the bootstrap key [`PI_SESSION_ID_ENV`]; this alias names
+/// the [`RunPayload::fields`] role so diagnostics read as payload fields
+/// rather than environment keys.
+pub const PI_SESSION_ID_RUN_PAYLOAD_FIELD: &str = PI_SESSION_ID_ENV;
 
 /// Runner-owned variable-length run payload sent through
 /// [`CANONICAL_RUN_PAYLOAD_FILE_ENV`].
@@ -333,15 +359,15 @@ impl RunPayload {
                 value: codex_runtime_config,
             },
             RunPayloadField {
-                name: PI_LAUNCH_CONFIG_ENV,
+                name: PI_LAUNCH_CONFIG_RUN_PAYLOAD_FIELD,
                 value: pi_launch_config,
             },
             RunPayloadField {
-                name: PI_MODEL_CONFIG_ENV,
+                name: PI_MODEL_CONFIG_RUN_PAYLOAD_FIELD,
                 value: pi_model_config,
             },
             RunPayloadField {
-                name: PI_SESSION_ID_ENV,
+                name: PI_SESSION_ID_RUN_PAYLOAD_FIELD,
                 value: pi_session_id,
             },
         ]
@@ -386,7 +412,7 @@ pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
 ///
-/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// This runner-owned bootstrap key intentionally does not use the `OKOU_`
 /// prefix because the mock launcher contract uses this exact name. The
 /// guest-agent treats exactly `true` as enabled.
 pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
@@ -394,7 +420,7 @@ pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Codex
 /// binary.
 ///
-/// This runner-owned bootstrap key intentionally does not use the `VM0_`
+/// This runner-owned bootstrap key intentionally does not use the `OKOU_`
 /// prefix because the mock launcher contract uses this exact name. The
 /// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
@@ -691,15 +717,15 @@ mod tests {
                     value: r#"{"providerId":"deepseek"}"#
                 },
                 RunPayloadField {
-                    name: PI_LAUNCH_CONFIG_ENV,
+                    name: PI_LAUNCH_CONFIG_RUN_PAYLOAD_FIELD,
                     value: r#"{"schemaVersion":2}"#
                 },
                 RunPayloadField {
-                    name: PI_MODEL_CONFIG_ENV,
+                    name: PI_MODEL_CONFIG_RUN_PAYLOAD_FIELD,
                     value: r#"{"provider":"deepseek"}"#
                 },
                 RunPayloadField {
-                    name: PI_SESSION_ID_ENV,
+                    name: PI_SESSION_ID_RUN_PAYLOAD_FIELD,
                     value: "22222222-2222-4222-8222-222222222222"
                 },
             ]
