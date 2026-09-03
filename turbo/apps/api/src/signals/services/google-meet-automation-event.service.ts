@@ -250,7 +250,7 @@ async function resolveGoogleMeetAccess(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorId?: string;
+    readonly connectorId: string;
     readonly refreshExpiredToken?: boolean;
   },
   signal: AbortSignal,
@@ -264,9 +264,7 @@ async function resolveGoogleMeetAccess(
     orgId: args.orgId,
     userId: args.userId,
     connectorSlug: "google-meet",
-    ...(args.connectorId === undefined
-      ? {}
-      : { connectorId: args.connectorId }),
+    connectorId: args.connectorId,
   });
   signal.throwIfAborted();
   if (loaded.kind === "missing") {
