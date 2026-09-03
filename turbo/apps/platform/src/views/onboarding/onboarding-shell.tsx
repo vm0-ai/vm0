@@ -94,7 +94,7 @@ export function OnboardingFooter({
       {onBack ? (
         <button
           type="button"
-          className="h-10 border-0 bg-transparent px-0 text-sm font-medium text-brand-text hover:text-brand-text-hover"
+          className="h-10 border-0 bg-transparent px-0 text-sm font-medium text-primary hover:text-[hsl(var(--primary-800))]"
           onClick={onBack}
         >
           {t(($) => {
@@ -112,7 +112,7 @@ export function OnboardingFooter({
           aria-busy={busy}
           variant="default"
           size="lg"
-          className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-100))]"
+          className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-500))]"
         >
           {busy ? (
             <Loader2 size={16} className="animate-spin" aria-hidden="true" />

@@ -262,9 +262,11 @@ export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
     !run ||
     !completedAt ||
     run.status !== "completed" ||
-    launchSnapshot?.schemaVersion !== 2
+    (launchSnapshot?.schemaVersion !== 2 && launchSnapshot?.schemaVersion !== 3)
   ) {
-    throw new Error("Expected a completed V2 Run for Pi memory readmission");
+    throw new Error(
+      "Expected a completed V2 or V3 Run for Pi memory readmission",
+    );
   }
   return await db().transaction(async (tx) => {
     return await admitPiMemoryStage1Candidate(tx, {
@@ -273,7 +275,10 @@ export async function readmitPiMemoryStage1CandidateFixture(runId: string) {
       userId: run.userId,
       status: "completed",
       framework: launchSnapshot.framework,
-      generationEnabled: launchSnapshot.piMemoryGenerationEnabled,
+      generationEnabled:
+        launchSnapshot.schemaVersion === 2
+          ? launchSnapshot.piMemoryGenerationEnabled
+          : launchSnapshot.framework === "pi",
       triggerSource: run.triggerSource,
       chatThreadId: run.chatThreadId,
       completedAt,

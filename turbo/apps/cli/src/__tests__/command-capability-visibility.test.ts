@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
 import { buildHelpText, registerCommands } from "../okou";
+import { generateCommand } from "../commands/generate";
 import { decodeSandboxTokenPayload } from "../lib/api/sandbox-token";
 
 function buildOkouToken(payload: Record<string, unknown>): string {
@@ -251,22 +252,6 @@ describe("registerCommands", () => {
       "banking",
       "goal",
     ]);
-  });
-
-  it("prefers OKOU_TOKEN when both token names are present", () => {
-    vi.stubEnv(
-      "OKOU_TOKEN",
-      buildOkouToken({ scope: "okou", capabilities: ["agent:read"] }),
-    );
-    vi.stubEnv(
-      "ZERO_TOKEN",
-      buildOkouToken({ scope: "okou", capabilities: ["connector:read"] }),
-    );
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("agent");
-    expect(visibleCommandNames(prog)).not.toContain("connector");
   });
 
   it("should hide run-only commands and keep global commands visible with malformed token", () => {
@@ -1233,39 +1218,11 @@ describe("registerCommands", () => {
 });
 
 describe("okou generate command visibility", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.resetModules();
-  });
-
-  async function importGenerateCommand(token: string) {
-    vi.resetModules();
-    vi.stubEnv("OKOU_TOKEN", token);
-    const { generateCommand } = await import("../commands/generate");
-    return generateCommand as Command;
-  }
-
-  it("should show website generation", async () => {
-    const token = buildOkouToken({
-      scope: "okou",
-      capabilities: [],
-    });
-
-    const generateCommand = await importGenerateCommand(token);
-
+  it("should show website generation", () => {
     expect(visibleCommandNames(generateCommand)).toContain("website");
   });
 
-  it("should show source-backed artifact generation", async () => {
-    const token = buildOkouToken({
-      userId: "user-non-staff",
-      orgId: "org-non-staff",
-      scope: "okou",
-      capabilities: ["host:write"],
-    });
-
-    const generateCommand = await importGenerateCommand(token);
-
+  it("should show source-backed artifact generation", () => {
     expect(visibleCommandNames(generateCommand)).toEqual(
       expect.arrayContaining([
         "report",

@@ -239,6 +239,23 @@ export default [
     },
   },
   {
+    files: [
+      "src/signals/services/pi-memory-stage1-worker.service.ts",
+      "src/signals/services/pi-memory-phase2-worker.service.ts",
+    ],
+    rules: {
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: [
+            "Pi memory Stage 1 candidate processed",
+            "Pi memory Phase 2 work completed",
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/**/*.ts"],
     ignores: [
       "src/**/__tests__/**",

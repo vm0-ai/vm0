@@ -215,22 +215,6 @@ export function applyTypefaceDocumentAttribute(enabled: boolean) {
 }
 
 /**
- * Keep the new shell attribute on the document while the app shell is mounted.
- * Document scope matches the two above: the shell's surfaces are read by the
- * sidebars and the workspace card, and portaled dialogs inherit the same
- * sidebar token.
- */
-export function applyNewUiDocumentAttribute(enabled: boolean) {
-  const root = document.documentElement;
-
-  if (enabled) {
-    root.dataset.newUi = "";
-  } else {
-    delete root.dataset.newUi;
-  }
-}
-
-/**
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ get, set }) => {
@@ -266,6 +250,9 @@ export const initTheme$ = command(({ get, set }) => {
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
   applyTheme(resolved);
+  if (isOkou) {
+    writeOkouThemePreferenceToDocument(preference);
+  }
 
   // Listen for system theme changes when preference is "system"
   window

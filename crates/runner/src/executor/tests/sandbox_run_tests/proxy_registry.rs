@@ -1,8 +1,7 @@
 use super::*;
 use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
 use crate::executor::{SandboxReuseDisposition, SandboxReuseRejection};
-use httpmock::Method::GET;
-use httpmock::MockServer;
+use crate::test_fixtures::raw_http::{RawHttpAction, RawHttpTestServer, http_response};
 
 fn capture_proxy_register_events(action: impl FnOnce()) -> Vec<CapturedEvent> {
     let captured = CapturedEvents::default();
@@ -197,17 +196,11 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
     let source_ip = sandbox.source_ip().to_string();
-    let server = MockServer::start_async().await;
     let body = b"reused proxy failure".to_vec();
-    let full_get = server
-        .mock_async(|when, then| {
-            when.method(GET)
-                .path("/reused-proxy-failure.tar.gz")
-                .header_missing("range");
-            then.status(200).body(body.clone());
-        })
-        .await;
-    let archive_url = server.url("/reused-proxy-failure.tar.gz");
+    let mut server =
+        RawHttpTestServer::spawn(vec![RawHttpAction::Respond(http_response("200 OK", &body))])
+            .await;
+    let archive_url = format!("{}/reused-proxy-failure.tar.gz", server.url());
     let mut ctx = minimal_context();
     let mut storage = api_storage("reused-proxy-failure", "/data", "v1", &archive_url);
     storage.archive_size = Some(body.len() as u64);
@@ -236,13 +229,11 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
         (outcome, telemetry)
     });
 
-    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
-        while full_get.calls_async().await == 0 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("archive request should start while proxy registration is blocked");
+    let request = server
+        .next_request("archive request while proxy registration is blocked")
+        .await;
+    assert!(request.starts_with("GET /reused-proxy-failure.tar.gz HTTP/1.1\r\n"));
+    assert!(!request.to_ascii_lowercase().contains("\r\nrange:"));
     assert!(
         !task.is_finished(),
         "proxy lock should keep registration from completing"
@@ -262,7 +253,7 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     );
     assert!(outcome.sandbox.is_some());
     assert!(outcome.network_log_session.is_none());
-    full_get.assert_calls_async(1).await;
+    server.assert_finished().await;
     assert!(
         overrides.start_agent_process_calls().is_empty(),
         "reused sandbox must not start an agent when proxy registration fails"

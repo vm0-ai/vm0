@@ -2441,6 +2441,7 @@
     },
     "voice": {
       "checkingLimit": "Controllo del limite di input vocale",
+      "confirmRecording": "OK",
       "draft": "Bozza vocale",
       "draftTooLong": "Questa bozza vocale è troppo lunga. Avvia una nuova registrazione.",
       "finishDraft": "Completa",

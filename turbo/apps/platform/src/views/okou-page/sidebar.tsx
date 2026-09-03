@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   LayoutGrid,
   Package,
@@ -21,7 +20,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-  getShortcutLabel,
 } from "@okouai/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import {
@@ -62,7 +60,6 @@ import { SidebarUpgradeCard } from "./sidebar-upgrade.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { InstatusStatusNotice } from "../components/instatus-status-notice.tsx";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -563,7 +560,6 @@ function ThreeColumnChatListToggle({
     : t(($) => {
         return $.appShell.sidebar.hideChatList;
       });
-  const shortcutLabel = getShortcutLabel("mod+b");
 
   return (
     <Tooltip>
@@ -587,10 +583,7 @@ function ThreeColumnChatListToggle({
         </Button>
       </TooltipTrigger>
       <TooltipContent side={tooltipSide}>
-        <p className="text-xs">
-          {label}
-          <span aria-hidden="true">{` · ${shortcutLabel}`}</span>
-        </p>
+        <p className="text-xs">{label}</p>
       </TooltipContent>
     </Tooltip>
   );
@@ -644,7 +637,7 @@ function LabeledNavRail() {
   return (
     <aside
       data-testid="labeled-nav-rail"
-      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar-rail px-1.5 pb-2 pt-3"
+      className="zero-nav zero-nav-rail hidden md:flex h-full w-[68px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-gray-50 px-1.5 pb-2 pt-3"
     >
       <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="mb-3 shrink-0">
@@ -726,7 +719,6 @@ function ThreeColumnSearchDialogContainer() {
 }
 
 function ChatListColumn() {
-  const newUiEnabled = useGet(featureSwitch$)[FeatureSwitchKey.NewUi] ?? false;
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const navigate = useSet(detachedNavigateTo$);
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
@@ -734,7 +726,6 @@ function ChatListColumn() {
   const searchLabel = t(($) => {
     return $.appShell.sidebar.searchWorkspace;
   });
-  const searchShortcutLabel = getShortcutLabel("mod+k");
   const newChatLabel = t(($) => {
     return $.chat.newChat;
   });
@@ -749,13 +740,7 @@ function ChatListColumn() {
   return (
     <aside
       data-testid="chat-list-column"
-      className={cn(
-        "zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col bg-sidebar",
-        // Under the new shell this column and the gutter around the workspace
-        // card are one surface, so a divider here would run parallel to the
-        // card's own border eight pixels away and read as a double rule.
-        !newUiEnabled && "border-r-[0.7px] border-sidebar-border",
-      )}
+      className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
     >
       <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
         <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
@@ -781,10 +766,7 @@ function ChatListColumn() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">
-                {searchLabel}
-                <span aria-hidden="true">{` · ${searchShortcutLabel}`}</span>
-              </p>
+              <p className="text-xs">{searchLabel}</p>
             </TooltipContent>
           </Tooltip>
           <Tooltip>

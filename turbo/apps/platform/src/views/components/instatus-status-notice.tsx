@@ -79,7 +79,7 @@ function InstatusIssueNotice({
       <CardContent className={compact ? "p-3" : "p-4"}>
         <div className="flex items-start gap-3">
           <span
-            className={`${compact ? "size-8" : "size-9"} flex shrink-0 items-center justify-center rounded-lg bg-gray-50 text-brand-text`}
+            className={`${compact ? "size-8" : "size-9"} flex shrink-0 items-center justify-center rounded-lg bg-gray-50 text-primary`}
           >
             <StatusIcon aria-hidden="true" size={18} />
           </span>
@@ -98,7 +98,7 @@ function InstatusIssueNotice({
               href={`${pageBaseUrl}/${encodeURIComponent(issue.id)}`}
               target="_blank"
               rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-brand-text transition-colors hover:text-brand-text-hover"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary-900 transition-colors hover:text-primary-950"
             >
               {t(($) => {
                 return $.serviceStatus.viewUpdates;

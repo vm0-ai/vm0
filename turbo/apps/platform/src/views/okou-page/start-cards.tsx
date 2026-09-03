@@ -418,7 +418,7 @@ function IntroVideoStartCard({ onOpen }: { readonly onOpen: () => void }) {
       className="zero-card group relative flex min-h-28 items-center gap-3 overflow-hidden p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary/[0.025] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="pointer-events-none absolute -right-8 -top-10 size-28 rounded-full bg-primary/[0.06] blur-2xl" />
-      <span className="grid size-[72px] shrink-0 place-items-center rounded-xl bg-primary/10 text-brand-text">
+      <span className="grid size-[72px] shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
         <span className="grid size-9 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
           <Clapperboard size={18} />
         </span>

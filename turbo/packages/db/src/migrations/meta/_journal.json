@@ -1814,6 +1814,20 @@
       "when": 1788432327889,
       "tag": "1066_curvy_mercury",
       "breakpoints": true
+    },
+    {
+      "idx": 1067,
+      "version": "7",
+      "when": 1788434594792,
+      "tag": "1067_migrate_claude_fable_5_to_5_1",
+      "breakpoints": true
+    },
+    {
+      "idx": 1068,
+      "version": "7",
+      "when": 1788434594793,
+      "tag": "1068_piloop_launch_snapshot_v3",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.184.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.11...runner-rs-v0.184.12) (2026-09-03)
+
+
+### Performance Improvements
+
+* **runner:** overlap reused archive delivery ([#31480](https://github.com/vm0-ai/vm0/issues/31480)) ([9f7e0d2](https://github.com/vm0-ai/vm0/commit/9f7e0d232cead371148717413f08e0d07b2e9da4))
+
 ## [0.184.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.10...runner-rs-v0.184.11) (2026-09-03)
 
 

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.832.1](https://github.com/vm0-ai/vm0/compare/app-v0.832.0...app-v0.832.1) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.1
+    * @okouai/core bumped to 8.615.1
+
+## [0.832.0](https://github.com/vm0-ai/vm0/compare/app-v0.831.2...app-v0.832.0) (2026-09-03)
+
+
+### Features
+
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
+
+### Bug Fixes
+
+* **auth:** prevent decorative overflow from scrolling ([#31494](https://github.com/vm0-ai/vm0/issues/31494)) ([b13c2b2](https://github.com/vm0-ai/vm0/commit/b13c2b224df84165d74ea3e898ed6b68212bc931))
+* **platform:** hide account manager empty state for a single account ([#31453](https://github.com/vm0-ai/vm0/issues/31453)) ([0716f7b](https://github.com/vm0-ai/vm0/commit/0716f7b85d810f61186743c75388de969197a059))
+* **platform:** replace app skeleton illustration ([#31477](https://github.com/vm0-ai/vm0/issues/31477)) ([00930ff](https://github.com/vm0-ai/vm0/commit/00930ff193ac0e04eb4f3326d1bb07a1552982a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.615.0
+    * @okouai/ui bumped to 1.3.0
+
 ## [0.831.2](https://github.com/vm0-ai/vm0/compare/app-v0.831.1...app-v0.831.2) (2026-09-03)
 
 

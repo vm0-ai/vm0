@@ -11,8 +11,6 @@ import {
 import {
   DESKTOP_PRODUCTS,
   DESKTOP_PRODUCT_OKOU,
-  DESKTOP_PRODUCT_ZERO,
-  type DesktopProduct,
 } from "@okouai/api-contracts/contracts/client-headers";
 import { z } from "zod";
 
@@ -27,10 +25,29 @@ const MIN_DESKTOP_DMG_VERSION = "0.12.0";
 
 const DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS = 60_000;
 
-function desktopUpdateManifestUrl(line: DesktopUpdateLine): string {
-  if (line === DESKTOP_UPDATE_LINE_ZERO) {
-    return "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
-  }
+/**
+ * Every artifact this service can still name belongs to the Okou desktop
+ * product. #31475 removed the Zero line, so the artifact name and release tag
+ * prefix are no longer derived per line.
+ */
+const DESKTOP_ARTIFACT_NAME = "Okou";
+const DESKTOP_RELEASE_TAG_PREFIX = "okou-desktop-v";
+
+/**
+ * The update lines whose manifest this service can still name.
+ *
+ * Narrower than `DesktopUpdateLine` and wider than what actually reaches here:
+ * the Zero line is excluded so the compiler rejects any future caller that
+ * tries to resolve a Zero artifact, while `okou` remains nameable but is
+ * rejected by every `:product` route before it gets this far. Only
+ * `ai-okou-desktop` is served in practice.
+ */
+type ResolvableDesktopUpdateLine = Exclude<
+  DesktopUpdateLine,
+  typeof DESKTOP_UPDATE_LINE_ZERO
+>;
+
+function desktopUpdateManifestUrl(line: ResolvableDesktopUpdateLine): string {
   if (line === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
     return "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json";
   }
@@ -38,20 +55,6 @@ function desktopUpdateManifestUrl(line: DesktopUpdateLine): string {
     return "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
   }
   return line satisfies never;
-}
-
-function desktopProductForUpdateLine(line: DesktopUpdateLine): DesktopProduct {
-  return line === DESKTOP_UPDATE_LINE_ZERO
-    ? DESKTOP_PRODUCT_ZERO
-    : DESKTOP_PRODUCT_OKOU;
-}
-
-function desktopProductArtifactName(product: DesktopProduct): string {
-  return product === DESKTOP_PRODUCT_OKOU ? "Okou" : "Zero";
-}
-
-function desktopProductReleaseTagPrefix(product: DesktopProduct): string {
-  return product === DESKTOP_PRODUCT_OKOU ? "okou-desktop-v" : "desktop-v";
 }
 
 const desktopUpdateAssetSchema = z.object({
@@ -84,7 +87,7 @@ const desktopUpdateManifestSchema = z.object({
 type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
 
 interface DesktopUpdateFeedRequest {
-  readonly line: DesktopUpdateLine;
+  readonly line: ResolvableDesktopUpdateLine;
   readonly channel: DesktopUpdateChannel;
   readonly platform: DesktopUpdatePlatform;
   readonly arch: DesktopUpdateArchitecture;
@@ -96,13 +99,13 @@ interface DesktopUpdateManifestCacheEntry {
 }
 
 const desktopUpdateManifestCache = testOverride<
-  Partial<Record<DesktopUpdateLine, DesktopUpdateManifestCacheEntry>>
+  Partial<Record<ResolvableDesktopUpdateLine, DesktopUpdateManifestCacheEntry>>
 >(() => {
   return {};
 });
 
 const desktopUpdateManifestOverride = testOverride<
-  Partial<Record<DesktopUpdateLine, DesktopUpdateManifest>>
+  Partial<Record<ResolvableDesktopUpdateLine, DesktopUpdateManifest>>
 >(() => {
   return {};
 });
@@ -139,8 +142,7 @@ function assetForRelease(
     return null;
   }
 
-  const product = desktopProductForUpdateLine(request.line);
-  const expectedAssetName = `${desktopProductArtifactName(product)}-${request.platform}-${request.arch}-${release.version}.zip`;
+  const expectedAssetName = `${DESKTOP_ARTIFACT_NAME}-${request.platform}-${request.arch}-${release.version}.zip`;
   const actualAssetName = decodeURIComponent(
     new URL(asset.url).pathname.split("/").at(-1) ?? "",
   );
@@ -150,14 +152,11 @@ function assetForRelease(
 function squirrelRelease(
   release: DesktopUpdateManifest["releases"][string],
   asset: { readonly url: string },
-  product: DesktopProduct,
 ) {
   return {
     version: release.version,
     updateTo: {
-      name:
-        release.name ??
-        `${desktopProductArtifactName(product)} ${release.version}`,
+      name: release.name ?? `${DESKTOP_ARTIFACT_NAME} ${release.version}`,
       version: release.version,
       pub_date: release.pubDate,
       url: asset.url,
@@ -168,9 +167,8 @@ function squirrelRelease(
 
 function desktopReleasePageUrl(
   release: DesktopUpdateManifest["releases"][string],
-  product: DesktopProduct,
 ): string {
-  const tagName = `${desktopProductReleaseTagPrefix(product)}${release.version}`;
+  const tagName = `${DESKTOP_RELEASE_TAG_PREFIX}${release.version}`;
   return `${DESKTOP_RELEASE_PAGE_URL_PREFIX}/${encodeURIComponent(tagName)}`;
 }
 
@@ -178,9 +176,8 @@ function desktopDmgDownloadUrl(
   release: DesktopUpdateManifest["releases"][string],
   request: DesktopUpdateFeedRequest,
 ): string {
-  const product = desktopProductForUpdateLine(request.line);
-  const tagName = `${desktopProductReleaseTagPrefix(product)}${release.version}`;
-  const assetName = `${desktopProductArtifactName(product)}-${request.platform}-${request.arch}-${release.version}.dmg`;
+  const tagName = `${DESKTOP_RELEASE_TAG_PREFIX}${release.version}`;
+  const assetName = `${DESKTOP_ARTIFACT_NAME}-${request.platform}-${request.arch}-${release.version}.dmg`;
   return `${DESKTOP_RELEASE_DOWNLOAD_URL_PREFIX}/${encodeURIComponent(
     tagName,
   )}/${encodeURIComponent(assetName)}`;
@@ -238,18 +235,12 @@ function buildDesktopUpdateFeed(
 
   return {
     currentRelease: selected.release.version,
-    releases: [
-      squirrelRelease(
-        selected.release,
-        selected.asset,
-        desktopProductForUpdateLine(request.line),
-      ),
-    ],
+    releases: [squirrelRelease(selected.release, selected.asset)],
   };
 }
 
 async function fetchDesktopUpdateManifest(
-  line: DesktopUpdateLine,
+  line: ResolvableDesktopUpdateLine,
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
   const override = desktopUpdateManifestOverride.get()[line];
@@ -268,18 +259,18 @@ async function fetchDesktopUpdateManifest(
   }
 
   const manifest = desktopUpdateManifestSchema.parse(await response.json());
-  const manifestProduct = manifest.product ?? DESKTOP_PRODUCT_ZERO;
-  const expectedProduct = desktopProductForUpdateLine(line);
-  if (manifestProduct !== expectedProduct) {
+  // Fail closed: a manifest that does not declare the Okou product is not
+  // served, including one that omits the field entirely.
+  if (manifest.product !== DESKTOP_PRODUCT_OKOU) {
     throw new Error(
-      `Desktop update manifest product mismatch: expected ${expectedProduct}, received ${manifestProduct}`,
+      `Desktop update manifest product mismatch: expected ${DESKTOP_PRODUCT_OKOU}, received ${manifest.product ?? "none"}`,
     );
   }
   return manifest;
 }
 
 async function loadDesktopUpdateManifest(
-  line: DesktopUpdateLine,
+  line: ResolvableDesktopUpdateLine,
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
   const cache = desktopUpdateManifestCache.get();
@@ -314,12 +305,7 @@ export async function loadDesktopReleasePageUrl(
 ): Promise<string | null> {
   const manifest = await loadDesktopUpdateManifest(request.line, signal);
   const selected = selectDesktopRelease(manifest, request);
-  return selected
-    ? desktopReleasePageUrl(
-        selected.release,
-        desktopProductForUpdateLine(request.line),
-      )
-    : null;
+  return selected ? desktopReleasePageUrl(selected.release) : null;
 }
 
 export async function loadDesktopDmgDownloadUrl(
