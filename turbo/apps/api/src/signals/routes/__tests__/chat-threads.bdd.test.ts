@@ -3429,6 +3429,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       })?.googleDriveSync,
     ).toStrictEqual({
       status: "synced",
+      accountReady: true,
       id: "drive-file-1",
       name: "data.csv",
       webViewLink: "https://drive.google.com/file/d/drive-file-1/view",
@@ -3437,7 +3438,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       artifacts.runs[0]?.files.find((file) => {
         return file.id === pdfId;
       })?.googleDriveSync,
-    ).toStrictEqual({ status: "not_synced" });
+    ).toStrictEqual({ status: "not_synced", accountReady: true });
     expect(listRecorder.queries[0]).toContain("vm0Artifact");
     expect(listRecorder.queries[0]).toContain(run.threadId);
 
@@ -3476,7 +3477,11 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       artifacts.runs[0]?.files.find((file) => {
         return file.id === csvId;
       })?.googleDriveSync,
-    ).toMatchObject({ status: "synced", id: "drive-file-refreshed" });
+    ).toMatchObject({
+      status: "synced",
+      accountReady: true,
+      id: "drive-file-refreshed",
+    });
     await chat.listThreadArtifacts(actor, run.threadId);
     expect(successfulRefresh.refreshBodies).toHaveLength(1);
     expect(refreshedList.authorizationHeaders).toStrictEqual([
@@ -3494,7 +3499,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-      expectDriveStatuses(artifacts, { status: "unknown" });
+      expectDriveStatuses(artifacts, {
+        status: "unknown",
+        accountReady: true,
+      });
     }
     expect(transientRefresh.refreshBodies).toHaveLength(2);
     await expect(
@@ -3571,7 +3579,11 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       artifacts.runs[0]?.files.find((file) => {
         return file.id === csvId;
       })?.googleDriveSync,
-    ).toMatchObject({ status: "synced", id: "drive-file-reconnected" });
+    ).toMatchObject({
+      status: "synced",
+      accountReady: true,
+      id: "drive-file-reconnected",
+    });
 
     // Google session-control expiry retains its precise reconnect reason.
     const sessionExpiredRefresh = mockGoogleDriveConnectorOAuth({
@@ -3765,7 +3777,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       return { status: 200, files: [] };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, { status: "not_synced" });
+    expectDriveStatuses(artifacts, {
+      status: "not_synced",
+      accountReady: true,
+    });
     expect(selectedStatusRecorder.authorizationHeaders).toStrictEqual([
       "Bearer drive-access-drive-selected",
     ]);
@@ -3985,7 +4000,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     artifacts = await chat.listThreadArtifacts(actor, run1.threadId);
     for (const group of artifacts.runs) {
       for (const file of group.files) {
-        expect(file.googleDriveSync).toStrictEqual({ status: "unknown" });
+        expect(file.googleDriveSync).toStrictEqual({
+          status: "unknown",
+          accountReady: true,
+        });
       }
     }
 
