@@ -304,7 +304,10 @@ describe("prompt query parameter injection", () => {
 
     await waitFor(() => {
       expect(sentPrompt).toContain("- Source: demo.mp4");
-      expect(sentPrompt).toContain("- Source type: recording");
+      expect(sentPrompt).toContain("- Source type: video");
+      // A take from the recorder is edited by the click-driven camera pass, not
+      // by the deck workflow the same wizard sends for a slide source.
+      expect(sentPrompt).toContain("okou video camera");
     });
     // The recording and its click track ride along as the uploads the desktop
     // already made: no second copy of either file.

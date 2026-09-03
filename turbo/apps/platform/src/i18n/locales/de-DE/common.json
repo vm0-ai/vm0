@@ -521,7 +521,6 @@
       "agentLoading": "Der Agent wird noch geladen",
       "connect": "Verbinden Sie Google Drive",
       "connectTooltip": "Verbinden Sie Google Drive, um Artefakte hochzuladen",
-      "failedToOpenConnect": "Die Google Drive-Verbindungsseite konnte nicht geöffnet werden",
       "noArtifacts": "Keine zu synchronisierenden Artefakte",
       "partial_one": "{{synced}} von {{count}} Datei mit Google Drive synchronisiert",
       "partial_other": "{{synced}} von {{count}} Dateien mit Google Drive synchronisiert",
@@ -4800,6 +4799,10 @@
       "title": "Daten exportieren"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Alles zurücksetzen",
+        "resetting": "Zurücksetzen…"
+      },
       "description": "Feature-Schalter nach Einführungsphase anzeigen.",
       "documentTitle": "Labor",
       "groups": {
@@ -5104,8 +5107,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "Wiederherstellung",
+          "refresh": "Aktualisieren",
           "title": "Echtzeit-Verbindungsdiagnose",
-          "unavailable": "nicht verfügbar"
+          "unavailable": "nicht verfügbar",
+          "workerDescription": "Die Aufzeichnung des Shared Workers prüfen, der die Echtzeitverbindung hält.",
+          "workerLoading": "Laden",
+          "workerTitle": "Verbindungsdiagnose des Shared Workers",
+          "workerUnavailable": "Nicht verfügbar"
         }
       },
       "language": {

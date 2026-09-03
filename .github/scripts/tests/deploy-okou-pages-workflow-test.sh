@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
+bash -n "${repo_root}/.github/scripts/verify-okou-production-domains.sh"
+
 python3 - \
   "${repo_root}/.github/workflows/turbo.yml" \
   "${repo_root}/.github/workflows/release-please.yml" \
@@ -88,19 +90,22 @@ verify_release_assets_step = find_step(
     release_job, "Verify immutable app assets on CDN"
 )
 verify_worker_release_assets_step = find_step(
-    worker_release_job, "Verify immutable App assets for Worker canaries"
+    worker_release_job, "Verify immutable App assets for Worker production"
 )
 release_sentry_step = find_step(
-    release_job, "Upload Cloudflare Pages source maps to Sentry"
+    release_job, "Upload App source maps to Sentry"
 )
-release_step = find_step(release_job, "Deploy Cloudflare Pages production")
+release_step = find_step(release_job, "Deploy Cloudflare Pages production fallback")
 worker_release_step = find_step(
-    worker_release_job, "Deploy standalone App Worker production canaries"
+    worker_release_job, "Deploy App Worker production"
 )
+worker_release_start_step = find_step(worker_release_job, "Start GitHub Deployment")
 worker_release_finish_step = find_step(
     worker_release_job, "Finish GitHub Deployment"
 )
+release_start_step = find_step(release_job, "Start GitHub Deployment")
 release_finish_step = find_step(release_job, "Finish GitHub Deployment")
+release_failure_step = find_step(release_job, "Notify Slack - Pages fallback failure")
 release_api_verification_step = find_step(
     release_api_job, "Verify production App and API domains"
 )
@@ -170,20 +175,30 @@ if "needs.release-please.outputs.app_deploy_required == 'true'" not in str(
     worker_release_job.get("if", "")
 ):
     raise RuntimeError("standalone Worker promotion must follow every App deployment")
-if worker_release_job.get("continue-on-error") is not True:
-    raise RuntimeError("standalone Worker promotion must not block the live Pages path")
+if "continue-on-error" in worker_release_job:
+    raise RuntimeError("production Worker promotion must fail closed")
 if worker_release_job.get("timeout-minutes") != 45:
-    raise RuntimeError("standalone Worker promotion must have a bounded runtime")
+    raise RuntimeError("production Worker promotion must have a bounded runtime")
 if worker_release_job.get("environment") != "production":
-    raise RuntimeError("standalone Worker promotion must use production credentials")
-if "promote-app-worker-production" in release_dashboard_job.get("needs", []):
-    raise RuntimeError("shadow Worker promotion must not gate the rollback dashboard")
+    raise RuntimeError("production Worker promotion must use production credentials")
+if "promote-app-production" not in worker_release_job.get("needs", []):
+    raise RuntimeError("production Worker must wait for the Pages fallback")
+if "needs.promote-app-production.result == 'success'" not in str(
+    worker_release_job.get("if", "")
+):
+    raise RuntimeError("production Worker must require a ready Pages fallback")
+if "promote-app-worker-production" not in release_dashboard_job.get("needs", []):
+    raise RuntimeError("production Worker must gate the rollback dashboard")
 if "needs.release-please.outputs.app_deploy_required != 'true'" not in str(
     release_dashboard_job.get("if", "")
 ):
     raise RuntimeError(
         "rollback dashboard must wait for every applicable App deployment"
     )
+if "needs.promote-app-worker-production.result == 'success'" not in str(
+    release_dashboard_job.get("if", "")
+):
+    raise RuntimeError("rollback dashboard must require the production Worker")
 
 for step in (
     prepare_preview_step,
@@ -312,9 +327,12 @@ worker_release_source = require_fragments(
         "wrangler deploy",
         "--env production",
         '--message "app artifact ${ARTIFACT_SHA}"',
-        "bash .github/scripts/verify-okou-app-runtime.sh",
+        '"https://app.vm0.ai|https://api.vm0.ai"',
+        '"https://app.okou.ai|https://api.okou.ai"',
         '"https://app-worker.vm0.ai|https://api.vm0.ai"',
         '"https://app-worker.okou.ai|https://api.okou.ai"',
+        "bash .github/scripts/verify-okou-production-domains.sh",
+        '"$pages_url"',
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -324,13 +342,31 @@ if worker_release_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
-if worker_release_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
-    raise RuntimeError("production Worker canaries must use bounded convergence probes")
+if worker_release_step.get("env", {}).get("CF_PAGES_PROJECT_NAME") != (
+    "${{ vars.CF_PAGES_PROJECT_NAME }}"
+):
+    raise RuntimeError("production Worker must verify the synchronized Pages fallback")
 if worker_release_source.count("wrangler deploy") != 1:
-    raise RuntimeError("standalone Worker production must deploy exactly once")
+    raise RuntimeError("production Worker must deploy exactly once")
 if worker_release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
-    raise RuntimeError("standalone Worker deployment must report failed verification")
+    raise RuntimeError("production Worker deployment must report its final job status")
+if worker_release_start_step.get("with", {}).get("env") != "app/production":
+    raise RuntimeError("production Worker must own the canonical App deployment")
+if release_start_step.get("with", {}).get("env") != "app-pages/production-shadow":
+    raise RuntimeError("Pages must be recorded as the production fallback")
+if release_failure_step.get("if") != (
+    "${{ failure() && vars.SLACK_RELEASE_CHANNEL_ID != '' }}"
+):
+    raise RuntimeError("Pages fallback failure notification must fail visibly")
+if "Worker production was not advanced" not in str(
+    release_failure_step.get("with", {}).get("payload", "")
+):
+    raise RuntimeError("Pages fallback failure must explain that Worker stayed put")
 for fragment in (
+    '"pattern": "app.okou.ai/*"',
+    '"zone_name": "okou.ai"',
+    '"pattern": "app.vm0.ai/*"',
+    '"zone_name": "vm0.ai"',
     '"pattern": "app-worker.okou.ai"',
     '"pattern": "app-worker.vm0.ai"',
     '"custom_domain": true',
@@ -382,45 +418,41 @@ release_step_source = require_fragments(
         '"$CF_PAGES_PROJECT_NAME"',
         "production",
         '"$ARTIFACT_SHA"',
-        "bash .github/scripts/verify-okou-app-runtime.sh",
-        '"$pages_url"',
-        '"https://static.okou.io/okou-app/assets"',
-        '"$CANONICAL_ASSETS"',
-        '"https://app.vm0.ai"',
-        '"https://app.okou.ai"',
+        'echo "url=$pages_url"',
     ],
 )
 if release_step_source.count(shared_script) != 1:
-    raise RuntimeError(
-        "production readiness polling must follow exactly one Pages deployment"
-    )
+    raise RuntimeError("production must run exactly one Pages deployment")
 runtime_verifier = "bash .github/scripts/verify-okou-app-runtime.sh"
 domain_verifier = "bash .github/scripts/verify-okou-production-domains.sh"
 if not (
     release_step_source.index(shared_script)
-    < release_step_source.index(runtime_verifier)
-    < release_step_source.index(domain_verifier)
-    < release_step_source.index('echo "url=$production_url"')
+    < release_step_source.index('echo "url=$pages_url"')
+):
+    raise RuntimeError("Pages fallback deployment must finish before success output")
+for deployment_source in (release_step_source, worker_release_source):
+    if runtime_verifier in deployment_source:
+        raise RuntimeError("Release Please App deployment must trust Cloudflare success")
+for fragment in (domain_verifier, '"https://app.vm0.ai"', '"https://app.okou.ai"'):
+    if fragment in release_step_source:
+        raise RuntimeError(
+            f"Pages fallback deployment must not verify the live Worker route: {fragment}"
+        )
+if not (
+    worker_release_source.index("wrangler deploy")
+    < worker_release_source.index(domain_verifier)
 ):
     raise RuntimeError(
-        "production readiness and domain verification must finish before success output"
+        "production Worker deployment must verify domains after Cloudflare succeeds"
     )
-if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
-    "${{ steps.pages-production.outputs.canonical-dist }}/assets"
-):
-    raise RuntimeError("production deploy must verify the canonical App bundles")
-if release_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
-    raise RuntimeError("production runtime convergence must use 60 bounded probes")
 if not (
     release_steps.index(release_step) < release_steps.index(release_finish_step)
 ):
     raise RuntimeError(
-        "production readiness must finish before the GitHub Deployment is reported"
+        "production deployment must finish before the GitHub Deployment is reported"
     )
 if release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
-    raise RuntimeError(
-        "GitHub Deployment completion must fail closed on readiness verification"
-    )
+    raise RuntimeError("GitHub Deployment completion must report its final job status")
 require_fragments(
     rollback_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$TARGET_COMMIT"'],
@@ -444,7 +476,7 @@ if preview_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     raise RuntimeError("preview Worker deployment must use the Worker deploy token")
 
 require_fragments(
-    release_step,
+    worker_release_step,
     ["verify-okou-production-domains.sh", '"$pages_url"'],
 )
 require_fragments(
@@ -452,7 +484,6 @@ require_fragments(
     [
         "verify-okou-production-domains.sh",
         '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
-        "api-promotion",
     ],
 )
 if release_api_verification_step.get("shell") != "bash":
@@ -479,7 +510,6 @@ for fragment in (
     "%header{access-control-allow-origin}",
     "%header{access-control-allow-credentials}",
     "/api/__brand-smoke__",
-    "api-promotion",
 ):
     if fragment not in production_verifier_source:
         raise RuntimeError(f"production verifier is missing: {fragment}")

@@ -4,6 +4,7 @@ use api_contracts::generated::constants::model_provider_env::placeholders as mod
 use api_contracts::generated::types::runners::{
     runs::CodexRuntimeConfig, storage::ArtifactEntryMissingRootPolicy,
 };
+use guest_contracts::env::{RunArtifact, RunArtifactMissingRootPolicy};
 use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
 use serde_json::json;
@@ -244,7 +245,7 @@ fn execution_context_validation_rejects_user_timezone_nul_before_sandbox() {
 fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
-        ("VM0_PROMPT".into(), "ignored\0secret".into()),
+        ("OKOU_FUTURE_PLATFORM_KEY".into(), "ignored\0secret".into()),
         (
             guest_contracts::env::RUN_ID_ENV.into(),
             "ignored\0run-identity".into(),
@@ -267,11 +268,24 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
     assert!(validate_context_for_test(&ctx).is_ok());
     let user_env = build_user_env_json(&ctx);
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
-    assert!(!user_env.contains_key("VM0_PROMPT"));
+    assert!(!user_env.contains_key("OKOU_FUTURE_PLATFORM_KEY"));
     assert!(!user_env.contains_key(guest_contracts::env::RUN_ID_ENV));
     assert!(!user_env.contains_key(guest_contracts::env::PI_SESSION_ID_ENV));
     assert!(!user_env.contains_key(guest_contracts::env::PI_LAUNCH_CONFIG_ENV));
     assert!(!user_env.contains_key(guest_contracts::env::PI_MODEL_CONFIG_ENV));
+}
+
+#[test]
+fn execution_context_validation_checks_arbitrary_vm0_user_env_before_sandbox() {
+    let secret = "ordinary\0vm0-secret";
+    let ctx = context_with_env(HashMap::from([("VM0_PROMPT".into(), secret.into())]));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("user environment"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_PROMPT"));
+    assert!(!error.contains(secret));
 }
 
 #[test]
@@ -446,7 +460,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "https://api.example.com"
     );
-    assert!(!env.contains_key(guest_contracts::env::API_URL_ENV));
     assert_eq!(
         env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &RunId::nil().to_string()
@@ -471,7 +484,6 @@ fn build_env_json_required_keys() {
     );
     assert!(!env.contains_key("VM0_GUEST_RUNTIME_DIR"));
     assert!(!env.contains_key("VM0_PROMPT"));
-    assert!(!env.contains_key("VM0_WORKING_DIR"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
     assert_eq!(
@@ -505,22 +517,6 @@ fn build_env_json_required_keys() {
             "canonical writer emitted legacy key {legacy_key}"
         );
     }
-}
-
-#[test]
-fn build_env_json_keeps_api_url_writer_canonical_only() {
-    let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "https://api.example.com");
-
-    assert_eq!(
-        env.get(guest_contracts::env::CANONICAL_API_URL_ENV)
-            .map(String::as_str),
-        Some("https://api.example.com")
-    );
-    assert!(
-        !env.contains_key(guest_contracts::env::API_URL_ENV),
-        "canonical Runner bootstrap writer emitted the legacy API URL alias"
-    );
 }
 
 #[test]
@@ -673,7 +669,7 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 }
 
 #[test]
-fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_last() {
+fn platform_environment_claim_filters_reserved_keys_and_applies_trusted_last() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_ENV".into(), "kept".into()),
@@ -702,6 +698,7 @@ fn platform_environment_claim_filters_untrusted_namespaces_and_applies_trusted_l
         HashMap::from([
             ("CUSTOM_ENV".into(), "kept".into()),
             ("DUPLICATE".into(), "trusted".into()),
+            ("VM0_FUTURE_RUNNER_KEY".into(), "untrusted".into()),
             ("OKOU_TOKEN".into(), "trusted-token".into()),
             ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
             ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
@@ -780,6 +777,10 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     }
     assert!(is_runner_owned_env_key("OKOU_TOKEN"));
     assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
+    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
+        assert!(is_runner_owned_env_key(key));
+    }
+    assert!(!is_runner_owned_env_key("VM0_FUTURE_RUNNER_KEY"));
 }
 
 #[test]
@@ -865,7 +866,6 @@ fn build_env_json_codex_keeps_shared_runner_env() {
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
     assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
-    assert!(!env.contains_key("VM0_WORKING_DIR"));
 }
 
 #[test]
@@ -909,13 +909,13 @@ fn build_env_json_with_single_artifact() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0]["name"], "my-vol");
-    assert_eq!(parsed[0]["mountPath"], "/artifacts");
-    assert_eq!(parsed[0]["storageId"], "sid-1");
-    assert_eq!(parsed[0]["versionId"], "v1");
-    assert!(parsed[0].get("missingRootPolicy").is_none());
+    assert_eq!(parsed[0].name, "my-vol");
+    assert_eq!(parsed[0].mount_path, "/artifacts");
+    assert_eq!(parsed[0].storage_id, "sid-1");
+    assert_eq!(parsed[0].version_id, "v1");
+    assert_eq!(parsed[0].missing_root_policy, None);
     // Legacy singleton env vars must no longer be emitted.
     assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
     assert!(!env.contains_key("VM0_ARTIFACT_MOUNT_PATH"));
@@ -943,11 +943,14 @@ fn build_env_json_with_artifact_missing_root_policy() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
 
     assert_eq!(parsed.len(), 1);
-    assert_eq!(parsed[0]["name"], "memory");
-    assert_eq!(parsed[0]["missingRootPolicy"], "preserveParentVersion");
+    assert_eq!(parsed[0].name, "memory");
+    assert_eq!(
+        parsed[0].missing_root_policy,
+        Some(RunArtifactMissingRootPolicy::PreserveParentVersion)
+    );
 }
 
 #[test]
@@ -977,14 +980,14 @@ fn build_env_json_with_two_artifacts() {
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
-    let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+    let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
     assert_eq!(parsed.len(), 2);
-    assert_eq!(parsed[0]["name"], "art-a");
-    assert_eq!(parsed[0]["mountPath"], "/workspace");
-    assert_eq!(parsed[0]["storageId"], "sid-a");
-    assert_eq!(parsed[1]["name"], "art-b");
-    assert_eq!(parsed[1]["mountPath"], "/data");
-    assert_eq!(parsed[1]["storageId"], "sid-b");
+    assert_eq!(parsed[0].name, "art-a");
+    assert_eq!(parsed[0].mount_path, "/workspace");
+    assert_eq!(parsed[0].storage_id, "sid-a");
+    assert_eq!(parsed[1].name, "art-b");
+    assert_eq!(parsed[1].mount_path, "/data");
+    assert_eq!(parsed[1].storage_id, "sid-b");
 }
 
 #[test]
@@ -1060,12 +1063,13 @@ fn build_env_json_user_vars_cannot_override_system() {
     let env = build_env_for_test(&ctx, "http://localhost");
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let user_env = build_user_env_json(&ctx);
-    // System variables take precedence over user environment
+    // The private run payload remains authoritative even though its retired
+    // diagnostic label is now an ordinary user environment key.
     assert!(!env.contains_key("VM0_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
-    assert!(!user_env.contains_key("VM0_PROMPT"));
+    assert_eq!(user_env.get("VM0_PROMPT").unwrap(), "overridden");
 }
 
 #[tokio::test]
@@ -1302,8 +1306,6 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
         json!("first-turn");
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["sandboxEventSequenceStart"] = json!(4);
-    ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["ownershipTransfer"] =
-        json!({ "schemaVersion": 1 });
     ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
     let sandbox_id = SandboxId::new_v4().to_string();
     let payload = validate_execution_context_before_sandbox(
@@ -1325,10 +1327,6 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     assert_eq!(launch["futureLaunchField"], "launch-root");
     assert_eq!(launch["apiFirstTurn"]["futureFirstTurnField"], "first-turn");
     assert_eq!(launch["apiFirstTurn"]["sandboxEventSequenceStart"], 4);
-    assert_eq!(
-        launch["apiFirstTurn"]["ownershipTransfer"]["schemaVersion"],
-        1
-    );
     let model: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
@@ -1347,17 +1345,6 @@ fn pi_execution_context_rejects_missing_handoff_fields_before_sandbox() {
     let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("apiFirstTurn"));
-}
-
-#[test]
-fn pi_execution_context_rejects_future_ownership_transfer_capability() {
-    let mut context = pi_context_for_test();
-    context.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["ownershipTransfer"] =
-        json!({ "schemaVersion": 2 });
-
-    let error = validate_context_for_test(&context).unwrap_err();
-
-    assert!(error.contains("ownership-transfer capability schemaVersion must be 1"));
 }
 
 #[test]
@@ -1559,7 +1546,7 @@ fn build_env_json_user_timezone_not_override_environment() {
 }
 
 #[test]
-fn build_env_json_environment_cannot_override_system() {
+fn retired_env_names_cannot_override_canonical_or_private_payload() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("VM0_PROMPT".into(), "hacked".into()),
@@ -1570,7 +1557,8 @@ fn build_env_json_environment_cannot_override_system() {
     let env = build_env_for_test(&ctx, "http://localhost");
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let user_env = build_user_env_json(&ctx);
-    // System variables take precedence over user environment
+    // Legacy-looking user keys stay isolated from canonical bootstrap and the
+    // private run payload while remaining visible as ordinary user env.
     assert!(!env.contains_key("VM0_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
     assert_eq!(
@@ -1581,8 +1569,8 @@ fn build_env_json_environment_cannot_override_system() {
     assert!(!env.contains_key("VM0_API_TOKEN"));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
-    assert!(!user_env.contains_key("VM0_PROMPT"));
-    assert!(!user_env.contains_key("VM0_API_TOKEN"));
+    assert_eq!(user_env.get("VM0_PROMPT").unwrap(), "hacked");
+    assert_eq!(user_env.get("VM0_API_TOKEN").unwrap(), "stolen");
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
 }
 

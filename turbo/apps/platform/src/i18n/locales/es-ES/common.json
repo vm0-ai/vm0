@@ -536,7 +536,6 @@
       "agentLoading": "El agente sigue cargando",
       "connect": "Conectar Google Drive",
       "connectTooltip": "Conecta Google Drive para subir artefactos",
-      "failedToOpenConnect": "No se pudo abrir la página de conexión de Google Drive",
       "noArtifacts": "No hay artefactos que sincronizar",
       "partial_one": "Se sincronizó {{synced}} de {{count}} archivo con Google Drive",
       "partial_many": "Se sincronizaron {{synced}} de {{count}} archivos con Google Drive",
@@ -4855,6 +4854,10 @@
       "title": "Datos de exportación"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Restablecer todo",
+        "resetting": "Restableciendo..."
+      },
       "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
       "groups": {
@@ -5161,8 +5164,13 @@
           "offline": "sin conexión",
           "online": "en línea",
           "recovery": "recuperación",
+          "refresh": "Actualizar",
           "title": "Diagnóstico de conexión en tiempo real",
-          "unavailable": "no disponible"
+          "unavailable": "no disponible",
+          "workerDescription": "Inspecciona el registro del shared worker que mantiene la conexión en tiempo real.",
+          "workerLoading": "Cargando",
+          "workerTitle": "Diagnóstico de conexión del shared worker",
+          "workerUnavailable": "No disponible"
         }
       },
       "language": {

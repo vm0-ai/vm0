@@ -372,6 +372,10 @@ export class GoalSchedulerTimingCollector {
     this.previousBoundaryAt = boundedFinishedAt;
   }
 
+  checkpointZero(actionType: GoalSchedulerTimingActionType): void {
+    this.checkpoint(actionType, this.previousBoundaryAt);
+  }
+
   appendTo(
     timing: ApiDispatchTimingCollector,
     dimensions: ApiDispatchTimingDimensions,

@@ -32,7 +32,10 @@ import { and, eq, or } from "drizzle-orm";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./model-policy.service";
-import { checkOrgCreditsForRunAdmission } from "./run-admission.service";
+import {
+  checkOrgCreditsForRunAdmission,
+  checkOrgPlanRunAdmission,
+} from "./run-admission.service";
 import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
@@ -666,13 +669,19 @@ export async function resolveModelFirstProviderAdmission(params: {
       ),
     };
   }
-  const error = await checkOrgCreditsForRunAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelProviderType: effectiveModelProvider,
-    selectedModel,
-  });
+  const error = isBuiltInModelProviderType(effectiveModelProvider)
+    ? await checkOrgCreditsForRunAdmission({
+        db: params.db,
+        orgId: params.orgId,
+        userId: params.userId,
+        modelProviderType: effectiveModelProvider,
+        selectedModel,
+      })
+    : checkOrgPlanRunAdmission({
+        capabilities: await loadOrgPlanCapabilities(params.db, params.orgId),
+        modelProviderType: effectiveModelProvider,
+        selectedModel,
+      });
   return { effectiveModelProvider, cliAgentType, error };
 }
 

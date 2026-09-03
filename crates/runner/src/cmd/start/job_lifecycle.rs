@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::types::webhooks::agent::complete::RequestFailureReason;
 use chrono::{DateTime, Utc};
 use sandbox::SandboxId;
 
@@ -139,6 +140,7 @@ impl BudgetOwnership {
 pub(super) struct CompletionPayload {
     run_id: RunId,
     exit_code: i32,
+    failure_reason: Option<RequestFailureReason>,
     error: Option<String>,
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
@@ -169,6 +171,7 @@ impl CompletionPayload {
     pub(super) fn new(
         run_id: RunId,
         exit_code: i32,
+        failure_reason: Option<RequestFailureReason>,
         error: Option<String>,
         sandbox_id: SandboxId,
         reuse_result: SandboxReuseResult,
@@ -177,6 +180,7 @@ impl CompletionPayload {
         Self {
             run_id,
             exit_code,
+            failure_reason,
             error,
             sandbox_id,
             reuse_result,
@@ -206,6 +210,7 @@ impl CompletionPayload {
         let Self {
             run_id,
             exit_code,
+            failure_reason,
             error,
             sandbox_id,
             reuse_result,
@@ -219,6 +224,7 @@ impl CompletionPayload {
                 CompleteRequest {
                     run_id,
                     exit_code,
+                    failure_reason,
                     error,
                     sandbox_id: Some(sandbox_id),
                     sandbox_reuse_result: Some(reuse_result),
@@ -318,6 +324,7 @@ mod tests {
     struct CompletionAuthProvider {
         auth_matches: Arc<AtomicBool>,
         active_input_delivery_ids: Arc<std::sync::Mutex<Vec<String>>>,
+        failure_reason: Arc<std::sync::Mutex<Option<RequestFailureReason>>>,
     }
 
     #[async_trait]
@@ -335,6 +342,7 @@ mod tests {
                 completion_auth.matches_sandbox_token_for_test(request.run_id, "completion-token"),
                 Ordering::SeqCst,
             );
+            *self.failure_reason.lock().unwrap() = request.failure_reason;
             *self.active_input_delivery_ids.lock().unwrap() = request.active_input_delivery_ids;
         }
 
@@ -379,9 +387,11 @@ mod tests {
     async fn completion_payload_forwards_completion_auth() {
         let auth_matches = Arc::new(AtomicBool::new(false));
         let active_input_delivery_ids = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let failure_reason = Arc::new(std::sync::Mutex::new(None));
         let provider = CompletionAuthProvider {
             auth_matches: Arc::clone(&auth_matches),
             active_input_delivery_ids: Arc::clone(&active_input_delivery_ids),
+            failure_reason: Arc::clone(&failure_reason),
         };
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -389,6 +399,7 @@ mod tests {
         let _ = CompletionPayload::new(
             run_id,
             0,
+            Some(RequestFailureReason::ProviderRateLimited),
             None,
             sandbox_id,
             SandboxReuseResult::PoolMiss,
@@ -405,6 +416,10 @@ mod tests {
         assert_eq!(
             *active_input_delivery_ids.lock().unwrap(),
             vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()]
+        );
+        assert_eq!(
+            *failure_reason.lock().unwrap(),
+            Some(RequestFailureReason::ProviderRateLimited)
         );
     }
 

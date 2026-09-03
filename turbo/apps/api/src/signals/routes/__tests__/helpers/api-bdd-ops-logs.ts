@@ -4,7 +4,6 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { createDeferredPromise } from "../../../utils";
-import { modelStatsContract, modelStatsPublicRoutes } from "../../model-stats";
 import type { ApiTestUser } from "./api-bdd";
 import { createRouteMocks } from "./route-test";
 import { userExportRoutes } from "../../user-export";
@@ -57,15 +56,6 @@ function authenticate(
 
 export function createOpsLogsApi(context: TestContext) {
   return {
-    async readModelRankings(period?: string) {
-      return await accept(
-        setupApp({ context, routes: modelStatsPublicRoutes })(
-          modelStatsContract,
-        ).rankings({ query: { period } }),
-        [200],
-      );
-    },
-
     async requestGetUserExport<TStatus extends 200 | 401 | 403 | 500>(
       actor: ApiTestUser | null,
       statuses: readonly TStatus[],

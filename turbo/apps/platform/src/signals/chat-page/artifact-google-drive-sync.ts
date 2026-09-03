@@ -1,17 +1,9 @@
-import { command } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { chatThreadArtifactsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
-import { apiClient$, type ApiClientFactory } from "../api-client.ts";
-import { isConnectorChangedPayloadFor } from "../connector-change.ts";
-import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
-import { setAblyPayloadLoop$ } from "../realtime.ts";
-import {
-  isAgentConnectorAuthorized,
-  reloadAgentConnectorAuthorizations$,
-} from "../okou-page/agent-connector-authorizations.ts";
+import type { ApiClientFactory } from "../api-client.ts";
 import { settle, withCleanup } from "../utils.ts";
 
 type ArtifactGoogleDriveSyncParams = {
@@ -194,7 +186,7 @@ export async function syncArtifactFileToGoogleDrive(
   );
 }
 
-async function authorizeGoogleDriveForAgent(
+export async function authorizeGoogleDriveForAgent(
   params: {
     readonly agentId: string;
     readonly createClient: ApiClientFactory;
@@ -215,71 +207,3 @@ async function authorizeGoogleDriveForAgent(
   );
   signal.throwIfAborted();
 }
-
-export const waitForGoogleDriveAuthorization$ = command(
-  async (
-    { get, set },
-    params: {
-      readonly agentId: string;
-      readonly authorizeConnected?: boolean;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (params.authorizeConnected) {
-      await authorizeGoogleDriveForAgent(
-        {
-          agentId: params.agentId,
-          createClient: get(apiClient$),
-        },
-        signal,
-      );
-    }
-
-    const authorizationReady$ = command(
-      async ({ get, set }, sig: AbortSignal): Promise<boolean> => {
-        set(reloadConnectors$);
-        set(reloadAgentConnectorAuthorizations$);
-        const [{ connectors }, authorized] = await Promise.all([
-          get(connectors$),
-          get(
-            isAgentConnectorAuthorized({
-              agentId: params.agentId,
-              connectorSlug: "google-drive",
-            }),
-          ),
-        ]);
-        sig.throwIfAborted();
-        const connected = connectors.some((connector) => {
-          return (
-            connector.slug === "google-drive" &&
-            connector.connectionStatus === "connected"
-          );
-        });
-        return connected && authorized;
-      },
-    );
-
-    if (await set(authorizationReady$, signal)) {
-      return;
-    }
-    signal.throwIfAborted();
-    const matchingConnectorChanged$ = command(
-      async ({ set }, payload: unknown, sig: AbortSignal): Promise<boolean> => {
-        if (!isConnectorChangedPayloadFor(payload, "google-drive")) {
-          return false;
-        }
-        return await set(authorizationReady$, sig);
-      },
-    );
-    await set(
-      setAblyPayloadLoop$,
-      {
-        topic: "connector:changed",
-        loopCommand$: matchingConnectorChanged$,
-        catchUpCommand$: authorizationReady$,
-        options: { runOnSubscribe: true },
-      },
-      signal,
-    );
-  },
-);

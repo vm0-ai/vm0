@@ -120,6 +120,8 @@ describe("auth tokens", () => {
 
   it("generates one Okou-scoped run token with the complete run claims", () => {
     const computerUseHostId = "00000000-0000-4000-8000-000000000001";
+    const customConnectorId = "00000000-0000-4000-8000-000000000002";
+    const customConnectorSourceId = "00000000-0000-4000-8000-000000000003";
     const okouToken = generateOkouToken(
       "user_shared",
       "run_shared",
@@ -130,6 +132,9 @@ describe("auth tokens", () => {
         computerUseHostId,
         cloudBrowserEnabled: true,
         imageRecognitionAvailable: true,
+        customConnectorSourceIds: {
+          [customConnectorId]: customConnectorSourceId,
+        },
       },
     );
 
@@ -142,6 +147,9 @@ describe("auth tokens", () => {
       orgId: "org_shared",
       computerUseHostId,
       cloudBrowserEnabled: true,
+      customConnectorSourceIds: {
+        [customConnectorId]: customConnectorSourceId,
+      },
       capabilities: expect.arrayContaining([
         "banking:read",
         "browser:read",
@@ -160,6 +168,9 @@ describe("auth tokens", () => {
       publicBrand: "okou",
       computerUseHostId,
       cloudBrowserEnabled: true,
+      customConnectorSourceIds: {
+        [customConnectorId]: customConnectorSourceId,
+      },
     });
   });
 

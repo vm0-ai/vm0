@@ -995,6 +995,97 @@ describe("CONN-02: OAuth device authorization", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
+  it("re-polls the exact non-default account added by a device authorization session", async () => {
+    const provider = mockTestOAuthDeviceConnectorProvider();
+    const actor = createBddApi(context).user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+
+    const defaultSession = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      { intent: "add" },
+    );
+    const defaultPoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      defaultSession.sessionId,
+      defaultSession.sessionToken,
+    );
+    if (defaultPoll.status !== "complete") {
+      throw new Error(
+        `Expected complete default device auth, received ${defaultPoll.status}`,
+      );
+    }
+
+    const siblingSession = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+      undefined,
+      { intent: "add" },
+    );
+    const siblingPoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      siblingSession.sessionId,
+      siblingSession.sessionToken,
+    );
+    if (siblingPoll.status !== "complete") {
+      throw new Error(
+        `Expected complete sibling device auth, received ${siblingPoll.status}`,
+      );
+    }
+
+    expect(siblingPoll.connector.id).not.toBe(defaultPoll.connector.id);
+    const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "test-oauth-device",
+    );
+    expect(accounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: defaultPoll.connector.id,
+          isDefault: true,
+        }),
+        expect.objectContaining({
+          id: siblingPoll.connector.id,
+          isDefault: false,
+        }),
+      ]),
+    );
+
+    const rePoll = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      siblingSession.sessionId,
+      siblingSession.sessionToken,
+    );
+    if (rePoll.status !== "complete") {
+      throw new Error(
+        `Expected complete device auth replay, received ${rePoll.status}`,
+      );
+    }
+    expect(rePoll.connector.id).toBe(siblingPoll.connector.id);
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "test-oauth-device",
+      siblingPoll.connector.id,
+    );
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "test-oauth-device",
+      defaultPoll.connector.id,
+    );
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
   it("starts and completes the Stripe CLI device authorization method", async () => {
     const stripeProvider = mockStripeCliDashboardAuth();
 
@@ -2465,6 +2556,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     if ("error" in unlabeledAdd.body) {
       throw new Error("Expected an unlabeled custom OAuth addition to start");
     }
+    if (unlabeledAdd.body.result !== "authorization") {
+      throw new Error("Expected an unlabeled custom OAuth authorization");
+    }
     const connectionId = unlabeledAdd.body.connectionId;
     expect(connectionId).toStrictEqual(expect.any(String));
     const authorizationUrl = unlabeledAdd.body.authorizationUrl;
@@ -3219,7 +3313,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const provider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
     });
-    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Automatic OAuth Agent",
+    });
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
       [FeatureSwitchKey.ConnectorAccounts]: true,
@@ -3230,19 +3328,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: provider.endpoint,
       transport: "streamable-http",
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
 
     const authorizationUrl = new URL(
-      await connectorsApi.startCustomConnectorOAuth2(admin, connector.id),
+      await connectorsApi.startCustomConnectorOAuth2(
+        admin,
+        connector.id,
+        agent.agentId,
+      ),
     );
     expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
       `${provider.issuer}/authorize`,
@@ -3279,7 +3375,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     await expect(
       connectorsApi.readCustomConnector(admin, connector.id),
-    ).resolves.toMatchObject({ connected: true, oauthSetup: "automatic" });
+    ).resolves.toMatchObject({ connected: true, authMode: "automatic" });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toContain(connector.id);
     const accounts = await connectorsApi.listCustomConnectorAccounts(
       admin,
       connector.id,
@@ -3288,6 +3387,143 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(accounts[0]?.oauthScopes).toStrictEqual(["read", "write"]);
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
+  it("resolves Automatic MCP auth and reconnects the exact account across none and OAuth", async () => {
+    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+    mockEnv("APP_URL", "https://app.vm0.ai");
+    mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      authentication: "none",
+    });
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Automatic auth Agent",
+    });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Automatic auth outcomes",
+      endpoint: "https://automatic-mcp.example.test/server",
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+    });
+
+    const noAuth = await connectorsApi.requestStartCustomConnectorOAuth2(
+      admin,
+      connector.id,
+      [200],
+      agent.agentId,
+    );
+    if ("error" in noAuth.body || noAuth.body.result !== "connected") {
+      throw new Error("Expected Automatic MCP no-auth connection");
+    }
+    const connectionId = noAuth.body.connectedAccountId;
+    expect(noAuth.body.connector).toMatchObject({
+      id: connector.id,
+      authMode: "automatic",
+      connected: true,
+      connectedAccountId: connectionId,
+    });
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, connector.id),
+    ).resolves.toMatchObject([
+      { id: connectionId, authMethod: "none", connectionStatus: "connected" },
+    ]);
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toContain(connector.id);
+
+    const oauthProvider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+    });
+    const authorization = await connectorsApi.requestStartCustomConnectorOAuth2(
+      admin,
+      connector.id,
+      [200],
+      undefined,
+      { intent: "reconnect", connectionId },
+    );
+    if (
+      "error" in authorization.body ||
+      authorization.body.result !== "authorization"
+    ) {
+      throw new Error("Expected Automatic MCP OAuth authorization");
+    }
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, connector.id),
+    ).resolves.toMatchObject([{ id: connectionId, authMethod: "none" }]);
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "automatic-transition-code",
+      state: stateFromAuthorizationUrl(authorization.body.authorizationUrl),
+      iss: oauthProvider.issuer,
+    });
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, connector.id),
+    ).resolves.toMatchObject([
+      { id: connectionId, authMethod: "oauth", connectionStatus: "connected" },
+    ]);
+    await expect(
+      readAutomaticOAuthBindingState(context, connectionId),
+    ).resolves.toMatchObject({ exists: true, valid: true });
+
+    mockAutomaticMcpOAuthProvider(context, {
+      registration: "cimd",
+      authentication: "none",
+    });
+    const restoredNoAuth =
+      await connectorsApi.requestStartCustomConnectorOAuth2(
+        admin,
+        connector.id,
+        [200],
+        undefined,
+        { intent: "reconnect", connectionId },
+      );
+    if (
+      "error" in restoredNoAuth.body ||
+      restoredNoAuth.body.result !== "connected"
+    ) {
+      throw new Error("Expected Automatic MCP no-auth reconnect");
+    }
+    expect(restoredNoAuth.body.connectedAccountId).toBe(connectionId);
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, connector.id),
+    ).resolves.toMatchObject([
+      { id: connectionId, authMethod: "none", connectionStatus: "connected" },
+    ]);
+    await expect(
+      readAutomaticOAuthBindingState(context, connectionId),
+    ).resolves.toMatchObject({ exists: false, valid: false });
+
+    const addedNoAuth = await connectorsApi.requestStartCustomConnectorOAuth2(
+      admin,
+      connector.id,
+      [200],
+      undefined,
+      { intent: "add", displayName: "No-auth sibling" },
+    );
+    if (
+      "error" in addedNoAuth.body ||
+      addedNoAuth.body.result !== "connected"
+    ) {
+      throw new Error("Expected an added Automatic MCP no-auth account");
+    }
+    expect(addedNoAuth.body.connectedAccountId).not.toBe(connectionId);
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, connector.id),
+    ).resolves.toHaveLength(2);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await bdd.deleteAgent(admin, agent.agentId);
   });
 
   it("rejects Automatic OAuth callback authority drift before token exchange", async () => {
@@ -3307,15 +3543,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: provider.endpoint,
       transport: "streamable-http" as const,
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth" as const,
-      oauthSetup: "automatic" as const,
+      authMode: "automatic" as const,
     };
     const connector = await connectorsApi.createCustomConnector(
       admin,
@@ -3389,15 +3619,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: provider.endpoint,
       transport: "streamable-http",
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
 
     const firstAuthorization = await connectorsApi.startCustomConnectorOAuth2(
@@ -3482,15 +3706,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         endpoint: provider.endpoint,
         transport: "streamable-http",
         fields: [],
-        headerInjections: [
-          {
-            name: "Authorization",
-            valueTemplate: "Bearer {{oauth.access_token}}",
-          },
-        ],
+        headerInjections: [],
         queryInjections: [],
-        authMode: "oauth",
-        oauthSetup: "automatic",
+        authMode: "automatic",
       });
 
       const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
@@ -3539,15 +3757,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: provider.endpoint,
       transport: "streamable-http",
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
 
     const authorizationUrl = new URL(
@@ -3584,15 +3796,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: provider.endpoint,
       transport: "streamable-http",
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
 
     const authorizationUrls = await Promise.all([
@@ -3620,15 +3826,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: "https://automatic-mcp.example.test/server",
       transport: "streamable-http" as const,
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth" as const,
-      oauthSetup: "automatic" as const,
+      authMode: "automatic" as const,
     };
     const discoveryProvider = mockAutomaticMcpOAuthProvider(context, {
       registration: "cimd",
@@ -3711,15 +3911,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: provider.endpoint,
       transport: "streamable-http",
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
 
     const rejected = await connectorsApi.requestStartCustomConnectorOAuth2(
@@ -3741,6 +3935,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const admin = bdd.user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     const definition = {
       kind: "mcp" as const,
@@ -3748,15 +3943,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       endpoint: "https://automatic-mcp.example.test/server",
       transport: "streamable-http" as const,
       fields: [],
-      headerInjections: [
-        {
-          name: "Authorization",
-          valueTemplate: "Bearer {{oauth.access_token}}",
-        },
-      ],
+      headerInjections: [],
       queryInjections: [],
-      authMode: "oauth" as const,
-      oauthSetup: "automatic" as const,
+      authMode: "automatic" as const,
     };
 
     const createdDefinition = await connectorsApi.createCustomConnector(
@@ -3764,8 +3953,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       definition,
     );
     expect(createdDefinition).toMatchObject({
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
     });
     await connectorsApi.deleteCustomConnector(admin, createdDefinition.id);
 
@@ -3800,8 +3988,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(persisted).toMatchObject({
       id: customConnectorId,
       kind: "mcp",
-      authMode: "oauth",
-      oauthSetup: "automatic",
+      authMode: "automatic",
       connected: false,
     });
     expect(persisted).not.toHaveProperty("oauthConfig");
@@ -3845,12 +4032,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       orgId: requiredOrgId(admin),
       userId: admin.userId,
       customConnectorId,
-      authMethod: "manual",
+      authMethod: "none",
       storageVersion: 1,
     });
     await expect(
       readAutomaticOAuthBindingState(context, connectorAccountId),
     ).resolves.toMatchObject({ exists: true, valid: false });
+    await expect(
+      connectorsApi.listCustomConnectorAccounts(admin, customConnectorId),
+    ).resolves.toMatchObject([
+      { authMethod: "none", connectionStatus: "reconnect-required" },
+    ]);
     await setCustomConnectorCredentialStorageState(context, {
       orgId: requiredOrgId(admin),
       userId: admin.userId,
@@ -3942,7 +4134,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       customConnectorId,
       {
         ...definition,
+        authMode: "oauth",
         oauthSetup: "custom",
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{oauth.access_token}}",
+          },
+        ],
         oauthConfig: {
           providerAdapter: "standard",
           clientId: "static-oauth-client",
@@ -3984,7 +4183,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       definition,
     );
     expect(automaticUpdate).toMatchObject({
-      oauthSetup: "automatic",
+      authMode: "automatic",
       storageVersion: 3,
     });
     await connectorsApi.deleteCustomConnector(admin, customConnectorId);

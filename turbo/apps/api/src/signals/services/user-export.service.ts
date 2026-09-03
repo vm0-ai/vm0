@@ -27,6 +27,7 @@ import { blobs } from "@okouai/db/schema/blob";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { userCache } from "@okouai/db/schema/user-cache";
@@ -738,6 +739,55 @@ function collectPiMemoryStage1Candidates(
   });
 }
 
+function collectPiMemoryPhase2Jobs(
+  runtime: ExportRuntime,
+  userId: string,
+  signal: AbortSignal,
+): Computed<
+  Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }>
+> {
+  return computed(async () => {
+    const rows = await runtime.db
+      .select({
+        memoryStorageId: piMemoryPhase2Jobs.memoryStorageId,
+        orgId: piMemoryPhase2Jobs.orgId,
+        userId: piMemoryPhase2Jobs.userId,
+        status: piMemoryPhase2Jobs.status,
+        inputRevision: piMemoryPhase2Jobs.inputRevision,
+        completedRevision: piMemoryPhase2Jobs.completedRevision,
+        claimedRevision: piMemoryPhase2Jobs.claimedRevision,
+        leaseExpiresAt: piMemoryPhase2Jobs.leaseExpiresAt,
+        retryCount: piMemoryPhase2Jobs.retryCount,
+        retryAt: piMemoryPhase2Jobs.retryAt,
+        lastErrorClass: piMemoryPhase2Jobs.lastErrorClass,
+        lastSucceededAt: piMemoryPhase2Jobs.lastSucceededAt,
+        claimedSelectedCount: piMemoryPhase2Jobs.claimedSelectedCount,
+        claimedSelectedUtf8Bytes: piMemoryPhase2Jobs.claimedSelectedUtf8Bytes,
+        createdAt: piMemoryPhase2Jobs.createdAt,
+        updatedAt: piMemoryPhase2Jobs.updatedAt,
+      })
+      .from(piMemoryPhase2Jobs)
+      .where(eq(piMemoryPhase2Jobs.userId, userId))
+      .orderBy(
+        asc(piMemoryPhase2Jobs.orgId),
+        asc(piMemoryPhase2Jobs.memoryStorageId),
+      );
+    signal.throwIfAborted();
+    return {
+      entries:
+        rows.length === 0
+          ? []
+          : [
+              {
+                path: "memory/phase2-jobs.json",
+                content: JSON.stringify(rows, null, 2),
+              },
+            ],
+      count: rows.length,
+    };
+  });
+}
+
 interface ResolveSessionHistoryArgs {
   readonly sessionId: string;
   readonly hash: string | null;
@@ -991,6 +1041,9 @@ function collectUserData(
     const memoryStage1Candidates = await get(
       collectPiMemoryStage1Candidates(runtime, userId, signal),
     );
+    const memoryPhase2Jobs = await get(
+      collectPiMemoryPhase2Jobs(runtime, userId, signal),
+    );
     const conversationsResult = await get(
       collectConversationMessages(runtime, userId, signal),
     );
@@ -999,6 +1052,7 @@ function collectUserData(
       ...workflows.entries,
       ...memory.entries,
       ...memoryStage1Candidates.entries,
+      ...memoryPhase2Jobs.entries,
       ...conversationsResult.entries,
     ];
 
@@ -1014,6 +1068,7 @@ function collectUserData(
             workflowFiles: workflows.count,
             memoryFiles: memory.count,
             memoryStage1Candidates: memoryStage1Candidates.count,
+            memoryPhase2Jobs: memoryPhase2Jobs.count,
             conversationThreads: conversationsResult.threadCount,
             sessionHistories: conversationsResult.sessionHistoryCount,
           },

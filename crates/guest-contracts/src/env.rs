@@ -5,32 +5,18 @@
 //! through [`CANONICAL_USER_ENV_FILE_ENV`], so user-provided keys cannot override runner
 //! bootstrap controls directly.
 //!
-//! The `OKOU_` and `VM0_` namespaces are runner-owned, including keys defined
-//! in sibling modules such as
-//! [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
-//! User env filtering should treat current and future `OKOU_` keys plus current,
-//! future, and retired `VM0_` keys as protected. Bootstrap keys outside those
-//! namespaces are listed explicitly below.
+//! The `OKOU_` namespace is runner-owned, including keys defined in sibling
+//! modules such as [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
+//! User env filtering protects every current and future `OKOU_` key. Bootstrap
+//! keys outside that namespace and the four retained local-only timing inputs
+//! are classified explicitly below.
 //!
 //! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
 //! selected runner-owned keys may cross the local user-env boundary as
 //! guest-agent timing overrides.
 
-/// Legacy backend API URL spelling retained outside Guest root capture.
-///
-/// Guest root capture reads only [`CANONICAL_API_URL_ENV`]. This spelling
-/// remains an independent compatibility input for the Runner operator and the
-/// managed CLI reader, and remains named by user-environment filtering and
-/// negative coverage. The production Runner and the guest-agent's curated
-/// managed CLI-child environment do not emit this alias.
-pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
-
 /// Canonical backend API URL spelling written by the production Runner, read at
 /// Guest root bootstrap, and exposed to managed CLI children.
-///
-/// The production Runner emits only this spelling and Guest root capture reads
-/// it without consulting [`API_URL_ENV`]. The Runner operator and downstream
-/// managed CLI reader retain independent compatibility contracts.
 pub const CANONICAL_API_URL_ENV: &str = "OKOU_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
@@ -56,12 +42,12 @@ pub const CANONICAL_SANDBOX_REUSE_RESULT_ENV: &str = "OKOU_SANDBOX_REUSE_RESULT"
 pub const CANONICAL_WORKSPACE_REUSE_RESULT_ENV: &str = "OKOU_WORKSPACE_REUSE_RESULT";
 
 /// Logical run-payload field name for the user prompt.
-pub const PROMPT_ENV: &str = "VM0_PROMPT";
+pub const PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_PROMPT";
 
 /// Logical run-payload field name for optional extra system prompt text.
 ///
 /// Unset or empty means there is no extra system prompt.
-pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
+pub const APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD: &str = "VM0_APPEND_SYSTEM_PROMPT";
 
 /// Sensitive Vercel protection bypass secret for guest API calls.
 ///
@@ -97,26 +83,26 @@ pub const CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV: &str = "OKOU_AGENT_EXECUTI
 /// The payload is a comma-separated list of base64-encoded secret values, not
 /// secret names. The runner includes the sandbox token so event payloads and
 /// CLI diagnostics can redact it.
-pub const SECRET_VALUES_ENV: &str = "VM0_SECRET_VALUES";
+pub const SECRET_VALUES_RUN_PAYLOAD_FIELD: &str = "VM0_SECRET_VALUES";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be disallowed.
 ///
 /// Unset or empty means there is no explicit deny list.
-pub const DISALLOWED_TOOLS_ENV: &str = "VM0_DISALLOWED_TOOLS";
+pub const DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_DISALLOWED_TOOLS";
 
 /// Logical run-payload field name for comma-separated Claude Code tool names
 /// that should be allowed.
 ///
 /// Unset or empty means there is no explicit allow list.
-pub const TOOLS_ENV: &str = "VM0_TOOLS";
+pub const TOOLS_RUN_PAYLOAD_FIELD: &str = "VM0_TOOLS";
 
 /// Logical run-payload field name for the raw Claude Code settings payload
 /// passed to the guest-agent.
 ///
 /// The runner treats this as an opaque string. Unset or empty means there is no
 /// settings override.
-pub const SETTINGS_ENV: &str = "VM0_SETTINGS";
+pub const SETTINGS_RUN_PAYLOAD_FIELD: &str = "VM0_SETTINGS";
 
 /// CLI framework selector, for example `claude-code` or `codex`.
 ///
@@ -171,16 +157,46 @@ pub const RUN_PAYLOAD_FILENAME: &str = "payload.json";
 /// Each entry uses camelCase wire keys: `name`, `mountPath`, `storageId`,
 /// `versionId`, and optional `missingRootPolicy`. Unset or empty means there
 /// are no artifact mounts.
-pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
+pub const ARTIFACTS_RUN_PAYLOAD_FIELD: &str = "VM0_ARTIFACTS";
+
+/// One artifact mount in the runner-to-guest run payload.
+///
+/// The complete artifact list is serialized as a JSON array inside
+/// [`RunPayload::artifacts`].
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunArtifact {
+    /// VAS storage name reported in artifact checkpoint snapshots.
+    pub name: String,
+    /// Absolute guest path containing the mounted artifact.
+    pub mount_path: String,
+    /// VAS storage identifier used to recompute the artifact content hash.
+    pub storage_id: String,
+    /// VAS version identifier mounted at startup.
+    pub version_id: String,
+    /// Behavior when the artifact root is absent during checkpointing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_root_policy: Option<RunArtifactMissingRootPolicy>,
+}
+
+/// Runner-to-guest policy for an artifact root missing during checkpointing.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RunArtifactMissingRootPolicy {
+    /// Treat the missing artifact root as a checkpoint error.
+    Fail,
+    /// Preserve the artifact version mounted at startup.
+    PreserveParentVersion,
+}
 
 /// Logical run-payload field name for the JSON map of feature flag names to
 /// enabled states.
 ///
 /// Unset or empty means there are no feature flags.
-pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+pub const FEATURE_FLAGS_RUN_PAYLOAD_FIELD: &str = "VM0_FEATURE_FLAGS";
 
 /// Logical run-payload field name for API-owned Codex runtime metadata.
-pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
+pub const CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Logical run-payload field name for the schema-v2 Pi launch config marker.
 ///
@@ -286,39 +302,39 @@ impl RunPayload {
 
         [
             RunPayloadField {
-                name: PROMPT_ENV,
+                name: PROMPT_RUN_PAYLOAD_FIELD,
                 value: prompt,
             },
             RunPayloadField {
-                name: APPEND_SYSTEM_PROMPT_ENV,
+                name: APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
                 value: append_system_prompt,
             },
             RunPayloadField {
-                name: SECRET_VALUES_ENV,
+                name: SECRET_VALUES_RUN_PAYLOAD_FIELD,
                 value: secret_values,
             },
             RunPayloadField {
-                name: DISALLOWED_TOOLS_ENV,
+                name: DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
                 value: disallowed_tools,
             },
             RunPayloadField {
-                name: TOOLS_ENV,
+                name: TOOLS_RUN_PAYLOAD_FIELD,
                 value: tools,
             },
             RunPayloadField {
-                name: SETTINGS_ENV,
+                name: SETTINGS_RUN_PAYLOAD_FIELD,
                 value: settings,
             },
             RunPayloadField {
-                name: ARTIFACTS_ENV,
+                name: ARTIFACTS_RUN_PAYLOAD_FIELD,
                 value: artifacts,
             },
             RunPayloadField {
-                name: FEATURE_FLAGS_ENV,
+                name: FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
                 value: feature_flags,
             },
             RunPayloadField {
-                name: CODEX_RUNTIME_CONFIG_ENV,
+                name: CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
                 value: codex_runtime_config,
             },
             RunPayloadField {
@@ -457,10 +473,6 @@ pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
 
-/// Retired runner bootstrap key that must remain protected at the user-env
-/// boundary.
-pub const WORKING_DIR_ENV: &str = "VM0_WORKING_DIR";
-
 /// Retained legacy Guest Agent tuning inputs that local user env may provide.
 ///
 /// These are the only `VM0_` keys intentionally allowed to cross the local
@@ -520,13 +532,13 @@ pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
 
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
-/// This covers every `OKOU_` and `VM0_` key, including future and retired names,
-/// plus the explicit bootstrap keys required by established runner, guest-agent,
-/// or integration contracts. Runner and local-submit code use this predicate to
-/// scrub or reject user-provided env keys before the guest-agent starts.
+/// This covers every `OKOU_` key, the four exact retained local-only timing
+/// inputs, and the explicit bootstrap keys required by established runner,
+/// guest-agent, or integration contracts. Runner and local-submit code use this
+/// predicate to scrub or reject those keys before the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
     key.starts_with("OKOU_")
-        || key.starts_with("VM0_")
+        || is_guest_agent_tuning_env_key(key)
         || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
@@ -555,8 +567,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn run_artifacts_round_trip_with_and_without_missing_root_policy() {
+        let artifacts = vec![
+            RunArtifact {
+                name: "plain".to_string(),
+                mount_path: "/plain".to_string(),
+                storage_id: "storage-plain".to_string(),
+                version_id: "version-plain".to_string(),
+                missing_root_policy: None,
+            },
+            RunArtifact {
+                name: "memory".to_string(),
+                mount_path: "/memory".to_string(),
+                storage_id: "storage-memory".to_string(),
+                version_id: "version-memory".to_string(),
+                missing_root_policy: Some(RunArtifactMissingRootPolicy::PreserveParentVersion),
+            },
+        ];
+
+        let json = serde_json::to_value(&artifacts).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!([
+                {
+                    "name": "plain",
+                    "mountPath": "/plain",
+                    "storageId": "storage-plain",
+                    "versionId": "version-plain"
+                },
+                {
+                    "name": "memory",
+                    "mountPath": "/memory",
+                    "storageId": "storage-memory",
+                    "versionId": "version-memory",
+                    "missingRootPolicy": "preserveParentVersion"
+                }
+            ])
+        );
+        assert_eq!(
+            serde_json::from_value::<Vec<RunArtifact>>(json).unwrap(),
+            artifacts
+        );
+    }
+
+    #[test]
+    fn run_artifact_requires_all_string_fields() {
+        let artifact = serde_json::json!({
+            "name": "artifact",
+            "mountPath": "/artifact",
+            "storageId": "storage",
+            "versionId": "version"
+        });
+
+        for field in ["name", "mountPath", "storageId", "versionId"] {
+            let mut missing = artifact.clone();
+            missing.as_object_mut().unwrap().remove(field);
+
+            assert!(serde_json::from_value::<RunArtifact>(missing).is_err());
+        }
+    }
+
+    #[test]
     fn contract_names_match_wire_values() {
-        assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(CANONICAL_API_URL_ENV, "OKOU_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "OKOU_RUN_ID");
         assert_eq!(CANONICAL_API_TOKEN_ENV, "OKOU_API_TOKEN");
@@ -670,39 +743,39 @@ mod tests {
             fields,
             [
                 RunPayloadField {
-                    name: PROMPT_ENV,
+                    name: PROMPT_RUN_PAYLOAD_FIELD,
                     value: "prompt"
                 },
                 RunPayloadField {
-                    name: APPEND_SYSTEM_PROMPT_ENV,
+                    name: APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
                     value: "system"
                 },
                 RunPayloadField {
-                    name: SECRET_VALUES_ENV,
+                    name: SECRET_VALUES_RUN_PAYLOAD_FIELD,
                     value: "secret"
                 },
                 RunPayloadField {
-                    name: DISALLOWED_TOOLS_ENV,
+                    name: DISALLOWED_TOOLS_RUN_PAYLOAD_FIELD,
                     value: "WebFetch"
                 },
                 RunPayloadField {
-                    name: TOOLS_ENV,
+                    name: TOOLS_RUN_PAYLOAD_FIELD,
                     value: "Bash"
                 },
                 RunPayloadField {
-                    name: SETTINGS_ENV,
+                    name: SETTINGS_RUN_PAYLOAD_FIELD,
                     value: "{}"
                 },
                 RunPayloadField {
-                    name: ARTIFACTS_ENV,
+                    name: ARTIFACTS_RUN_PAYLOAD_FIELD,
                     value: "[]"
                 },
                 RunPayloadField {
-                    name: FEATURE_FLAGS_ENV,
+                    name: FEATURE_FLAGS_RUN_PAYLOAD_FIELD,
                     value: r#"{"flag":true}"#
                 },
                 RunPayloadField {
-                    name: CODEX_RUNTIME_CONFIG_ENV,
+                    name: CODEX_RUNTIME_CONFIG_RUN_PAYLOAD_FIELD,
                     value: r#"{"providerId":"deepseek"}"#
                 },
                 RunPayloadField {
@@ -728,7 +801,7 @@ mod tests {
             ..RunPayload::default()
         };
 
-        assert_eq!(payload.first_nul_field(), Some(SETTINGS_ENV));
+        assert_eq!(payload.first_nul_field(), Some(SETTINGS_RUN_PAYLOAD_FIELD));
     }
 
     #[test]
@@ -788,32 +861,22 @@ mod tests {
     }
 
     #[test]
-    fn runner_owned_key_detection_covers_bootstrap_namespaces() {
+    fn runner_owned_key_detection_covers_terminal_contract() {
         for key in [
-            API_URL_ENV,
             CANONICAL_API_URL_ENV,
             RUN_ID_ENV,
-            "VM0_API_TOKEN",
             CANONICAL_API_TOKEN_ENV,
             CANONICAL_SANDBOX_ID_ENV,
             CANONICAL_SANDBOX_REUSE_RESULT_ENV,
             CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
             CANONICAL_RESUME_SESSION_ID_ENV,
             CANONICAL_API_START_TIME_ENV,
-            "VM0_SANDBOX_ID",
-            "VM0_SANDBOX_REUSE_RESULT",
-            "VM0_WORKSPACE_REUSE_RESULT",
-            "VM0_RESUME_SESSION_ID",
-            "VM0_API_START_TIME",
             PI_SESSION_ID_ENV,
             PI_LAUNCH_CONFIG_ENV,
             PI_LAUNCH_PAYLOAD_FILE_ENV,
             PI_MODEL_CONFIG_ENV,
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
-            WORKING_DIR_ENV,
-            "VM0_USER_ENV_FILE",
             CANONICAL_USER_ENV_FILE_ENV,
-            "VM0_RUN_PAYLOAD_FILE",
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
@@ -824,7 +887,20 @@ mod tests {
         }
         assert!(is_runner_owned_env_key("OKOU_TOKEN"));
         assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-        assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
+        for key in [
+            "VM0_API_TOKEN",
+            "VM0_SANDBOX_ID",
+            "VM0_SANDBOX_REUSE_RESULT",
+            "VM0_WORKSPACE_REUSE_RESULT",
+            "VM0_RESUME_SESSION_ID",
+            "VM0_API_START_TIME",
+            "VM0_USER_ENV_FILE",
+            "VM0_RUN_PAYLOAD_FILE",
+            "VM0_FUTURE_RUNNER_KEY",
+            "CUSTOM_ENV",
+        ] {
+            assert!(!is_runner_owned_env_key(key), "{key} should be user-owned");
+        }
     }
 
     #[test]
@@ -859,6 +935,10 @@ mod tests {
                 POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             ]
         );
+        for key in GUEST_AGENT_TUNING_ENV_KEYS {
+            assert!(is_guest_agent_tuning_env_key(key));
+            assert!(is_runner_owned_env_key(key));
+        }
         for key in [
             CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
             CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
@@ -870,12 +950,10 @@ mod tests {
                 "canonical bootstrap output {key} must not become a local tuning input"
             );
         }
-        for key in [API_URL_ENV, CANONICAL_API_URL_ENV] {
-            assert!(
-                !is_guest_agent_tuning_env_key(key),
-                "API URL bootstrap key {key} must not become a local tuning input"
-            );
-        }
+        assert!(
+            !is_guest_agent_tuning_env_key(CANONICAL_API_URL_ENV),
+            "API URL bootstrap key must not become a local tuning input"
+        );
     }
 
     /// Contract sources scanned for declared environment key constants.
@@ -954,14 +1032,15 @@ mod tests {
         }
 
         assert!(
-            total >= 37,
-            "expected at least 37 declared *_ENV keys across the contract sources, found {total}; \
+            total >= 28,
+            "expected at least 28 declared *_ENV keys across the contract sources, found {total}; \
              lower this bound only when a key is deliberately removed"
         );
         assert!(
             unprotected.is_empty(),
             "these bootstrap env keys are not protected from user env injection. Add each to \
-             EXPLICIT_RUNNER_OWNED_ENV_KEYS, or keep an OKOU_/VM0_ prefix:\n  {}",
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS, register an exact local timing input, or keep an \
+             OKOU_ prefix:\n  {}",
             unprotected.join("\n  ")
         );
     }

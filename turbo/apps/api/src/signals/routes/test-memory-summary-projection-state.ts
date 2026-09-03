@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   testMemorySummaryProjectionStateContract,
   type TestMemorySummaryProjectionStateActionBody,
@@ -6,6 +8,7 @@ import { memorySummaryProjections } from "@okouai/db/schema/memory-summary-proje
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { encode } from "gpt-tokenizer/encoding/o200k_base";
 
 import { nowDate } from "../../lib/time";
 import { request$ } from "../context/hono";
@@ -173,6 +176,29 @@ async function corruptReadyProjection(
   return actionOk();
 }
 
+async function seedReadyProjection(
+  db: Db,
+  body: ProjectionAction<"seed-ready">,
+  signal: AbortSignal,
+) {
+  const bytes = Buffer.from(body.content, "utf8");
+  await db
+    .update(memorySummaryProjections)
+    .set({
+      status: "ready",
+      leaseId: null,
+      leaseExpiresAt: null,
+      lastErrorClass: null,
+      content: body.content,
+      sourceHash: createHash("sha256").update(bytes).digest("hex"),
+      sourceSize: bytes.byteLength,
+      tokenCount: encode(body.content).length,
+    })
+    .where(projectionCondition(body));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 const action$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!isTestEndpointAllowed(get(request$))) {
     return testEndpointNotFoundResponse();
@@ -223,6 +249,9 @@ const action$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
     case "expire-lease": {
       return await expireProjectionLease(db, body, signal);
+    }
+    case "seed-ready": {
+      return await seedReadyProjection(db, body, signal);
     }
     case "corrupt-ready": {
       return await corruptReadyProjection(db, body, signal);

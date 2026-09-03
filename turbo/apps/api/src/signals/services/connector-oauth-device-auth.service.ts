@@ -49,6 +49,7 @@ import {
   type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
 import {
+  connectorById,
   connectorBySlug,
   connectorConnectionWriteRejection,
   upsertConnectorTokenConnection$,
@@ -93,6 +94,8 @@ const deviceAuthSessionSelection = Object.freeze({
   accountMutation: storedConnectorAccountMutationSelection(
     connectorOauthDeviceAuthorizationSessions.accountMutation,
   ),
+  completedConnectorId:
+    connectorOauthDeviceAuthorizationSessions.completedConnectorId,
   oauthRequestedScopes:
     connectorOauthDeviceAuthorizationSessions.oauthRequestedScopes,
   userCode: connectorOauthDeviceAuthorizationSessions.userCode,
@@ -718,7 +721,12 @@ async function markClaimComplete(
   const completedAt = nowDate();
   const [completedSession] = await args.writeDb
     .update(connectorOauthDeviceAuthorizationSessions)
-    .set({ status: "complete", updatedAt: completedAt, completedAt })
+    .set({
+      status: "complete",
+      completedConnectorId: args.connector.id,
+      updatedAt: completedAt,
+      completedAt,
+    })
     .where(
       and(
         eq(connectorOauthDeviceAuthorizationSessions.id, args.session.id),
@@ -876,13 +884,25 @@ const completedDeviceSessionResponse$ = command(
     const response = await completeSessionResponse(
       {
         connectorLoader: () => {
+          // Previous API releases completed sessions without an exact
+          // connector ID. Preserve their single-account replay until the old
+          // API rollback targets and persisted sessions drain; remove with
+          // #29777 after its contraction gate passes.
           return get(
-            connectorBySlug({
-              orgId: args.orgId,
-              userId: args.userId,
-              connectorSlug: args.method.connectorSlug,
-              snapshot: args.method.snapshot,
-            }),
+            args.session.completedConnectorId
+              ? connectorById({
+                  orgId: args.orgId,
+                  userId: args.userId,
+                  connectorSlug: args.method.connectorSlug,
+                  connectorId: args.session.completedConnectorId,
+                  snapshot: args.method.snapshot,
+                })
+              : connectorBySlug({
+                  orgId: args.orgId,
+                  userId: args.userId,
+                  connectorSlug: args.method.connectorSlug,
+                  snapshot: args.method.snapshot,
+                }),
           );
         },
       },

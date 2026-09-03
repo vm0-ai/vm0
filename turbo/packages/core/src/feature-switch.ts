@@ -303,6 +303,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
     enabled: false,
   },
+  [FeatureSwitchKey.PresentationScreenshot]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable local presentation rendering to ordered page screenshots.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PresentationTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -315,16 +322,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
     enabled: false,
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DesktopScreenRecording]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
     enabled: false,
-    // Scoped to the maintainer while the native capture helper is still
-    // unproven outside CI; widen once it has run on real hardware.
-    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.IosPwaStartupImages]: {
     maintainer: "ethan@vm0.ai",

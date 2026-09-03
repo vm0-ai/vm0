@@ -5,9 +5,13 @@ import type { PiAgentModelConfig } from "./types";
 export const isPiAgentModelSupported: (config: PiAgentModelConfig) => boolean =
   isPiAgentModelSupportedImpl;
 
+export { resolvePiAgentCredential } from "./credential";
 export { PI_AGENT_THINKING_LEVELS } from "./types";
 export type {
+  PiAgentCredentialHeaderTemplate,
+  PiAgentCredentialTarget,
   PiAgentModelConfig,
+  PiAgentRequestHeaders,
   PiAgentServiceTier,
   PiAgentThinkingLevel,
 } from "./types";

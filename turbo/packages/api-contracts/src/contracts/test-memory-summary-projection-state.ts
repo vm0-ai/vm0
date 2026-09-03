@@ -54,6 +54,10 @@ export const testMemorySummaryProjectionStateActionBodySchema =
     projectionScopeSchema.extend({ action: z.literal("make-due") }),
     projectionScopeSchema.extend({ action: z.literal("expire-lease") }),
     projectionScopeSchema.extend({
+      action: z.literal("seed-ready"),
+      content: z.string(),
+    }),
+    projectionScopeSchema.extend({
       action: z.literal("corrupt-ready"),
       content: z.string(),
     }),

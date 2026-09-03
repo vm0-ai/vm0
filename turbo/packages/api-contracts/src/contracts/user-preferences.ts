@@ -76,9 +76,7 @@ export const CHAT_TRANSLATION_LANGUAGE_BY_USER_LOCALE = {
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   locale: userLocaleSchema.nullable(),
-  // A new app can briefly reach an API rollback target from before this
-  // additive field existed. Remove after those targets are retired (#30862).
-  translationLanguage: chatTranslationLanguageSchema.nullable().optional(),
+  translationLanguage: chatTranslationLanguageSchema.nullable(),
   supportedLocales: z.array(userLocaleSchema),
   // Pinned agents are exposed as membership only. The API returns a stable
   // canonical order and ignores client-provided order on writes.

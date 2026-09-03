@@ -5391,9 +5391,9 @@ function AssistantErrorRecoveryCard({
       <div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2.5">
         {recovery.kind === "usage-limit" ||
         recovery.kind === "execution-timeout" ? (
-          <Clock size={16} className="shrink-0 text-primary-950" />
+          <Clock size={16} className="shrink-0 text-brand-text" />
         ) : (
-          <Coffee size={16} className="shrink-0 text-primary-950" />
+          <Coffee size={16} className="shrink-0 text-brand-text" />
         )}
         <span className="shrink-0 text-[0.9375rem] font-medium leading-6">
           {title}

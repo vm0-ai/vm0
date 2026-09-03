@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.11](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.10...guest-mock-codex-v0.10.11) (2026-09-03)
+
+## [0.10.10](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.9...guest-mock-codex-v0.10.10) (2026-09-02)
+
+## [0.10.9](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.8...guest-mock-codex-v0.10.9) (2026-09-02)
+
+## [0.10.8](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.7...guest-mock-codex-v0.10.8) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
+## [0.10.7](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.6...guest-mock-codex-v0.10.7) (2026-09-02)
+
 ## [0.10.6](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.5...guest-mock-codex-v0.10.6) (2026-09-02)
 
 ## [0.10.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.4...guest-mock-codex-v0.10.5) (2026-09-01)

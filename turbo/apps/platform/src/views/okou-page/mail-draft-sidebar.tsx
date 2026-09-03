@@ -144,13 +144,17 @@ function UnavailableMailDraftSidebar({
 
 function GmailReconnectButton({
   signals,
+  connectionId,
 }: {
   readonly signals: MailDraftSignals;
+  readonly connectionId: string | undefined;
 }) {
   const { t } = useTranslation();
   const reloadDraft = useSet(signals.reloadDraft$);
-  const { reconnect, reconnectDisabled, reconnecting } =
-    useGmailReconnect(reloadDraft);
+  const { reconnect, reconnectDisabled, reconnecting } = useGmailReconnect(
+    connectionId,
+    reloadDraft,
+  );
   return (
     <Button
       type="button"
@@ -1169,7 +1173,12 @@ export function MailDraftSidebar({ signals, onClose }: MailDraftSidebarProps) {
         message={t(($) => {
           return $.chat.mail.reconnectDescription;
         })}
-        action={<GmailReconnectButton signals={signals} />}
+        action={
+          <GmailReconnectButton
+            signals={signals}
+            connectionId={draftLoadable.data.reconnectConnectionId}
+          />
+        }
       />
     );
   }

@@ -115,9 +115,8 @@ end
 expected_api_backend_url = "${{ needs.deploy-api.outputs.preview-url }}"
 assert_canonical_api_backend_url = lambda do |step, name|
   environment = step.fetch("env")
-  unless environment["OKOU_API_BACKEND_URL"] == expected_api_backend_url &&
-      !environment.key?("VM0_API_BACKEND_URL")
-    raise "#{name} must receive only the canonical API preview URL"
+  unless environment["OKOU_API_BACKEND_URL"] == expected_api_backend_url
+    raise "#{name} must receive the canonical API preview URL"
   end
 end
 browser_run = browser.fetch("steps").find do |step|

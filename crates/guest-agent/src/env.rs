@@ -133,12 +133,11 @@ fn optional_positive_duration_secs(
 // the run payload. If the value is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
-/// One artifact mount described by the runner-provided artifact JSON array.
+/// Checkpoint state materialized from one runner-provided artifact entry.
 ///
-/// The wire value is encoded as camelCase JSON, so this struct expects
-/// `mountPath`, `storageId`, and `versionId` keys at the guest-agent boundary.
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// [`guest_contracts::env::RunArtifact`] owns the wire representation parsed
+/// before this guest-agent type is constructed.
+#[derive(Clone, Debug)]
 pub struct ArtifactEnv {
     /// VAS storage name for the mounted artifact. This is also the artifact
     /// name reported in checkpoint snapshot payloads.
@@ -153,8 +152,34 @@ pub struct ArtifactEnv {
     pub version_id: String,
     /// Optional internal checkpoint policy. Absence means strict failure on a
     /// missing or unreadable artifact root.
-    #[serde(default)]
     pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
+}
+
+impl From<guest_contracts::env::RunArtifact> for ArtifactEnv {
+    fn from(artifact: guest_contracts::env::RunArtifact) -> Self {
+        Self {
+            name: artifact.name,
+            mount_path: artifact.mount_path,
+            storage_id: artifact.storage_id,
+            version_id: artifact.version_id,
+            missing_root_policy: artifact
+                .missing_root_policy
+                .map(artifact_env_missing_root_policy),
+        }
+    }
+}
+
+fn artifact_env_missing_root_policy(
+    policy: guest_contracts::env::RunArtifactMissingRootPolicy,
+) -> ArtifactEntryMissingRootPolicy {
+    match policy {
+        guest_contracts::env::RunArtifactMissingRootPolicy::Fail => {
+            ArtifactEntryMissingRootPolicy::Fail
+        }
+        guest_contracts::env::RunArtifactMissingRootPolicy::PreserveParentVersion => {
+            ArtifactEntryMissingRootPolicy::PreserveParentVersion
+        }
+    }
 }
 
 /// Raw runner bootstrap values used to build an owned guest-agent run config.
@@ -499,12 +524,16 @@ impl GuestConfig {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
         let claude_config_dir = resolve_claude_config_dir(&raw);
         let codex_home_dir = resolve_codex_home_dir(&raw);
-        let artifacts = parse_artifacts_value(&payload.artifacts)
-            .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
+        let artifacts = parse_artifacts_value(&payload.artifacts).map_err(|e| {
+            format!(
+                "parse {} JSON: {e}",
+                guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD
+            )
+        })?;
         let feature_flags = parse_feature_flags_value(&payload.feature_flags).map_err(|e| {
             format!(
                 "parse {} JSON: {e}",
-                guest_contracts::env::FEATURE_FLAGS_ENV
+                guest_contracts::env::FEATURE_FLAGS_RUN_PAYLOAD_FIELD
             )
         })?;
 
@@ -612,7 +641,8 @@ fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Erro
     if raw.is_empty() {
         return Ok(Vec::new());
     }
-    serde_json::from_str::<Vec<ArtifactEnv>>(raw)
+    serde_json::from_str::<Vec<guest_contracts::env::RunArtifact>>(raw)
+        .map(|artifacts| artifacts.into_iter().map(ArtifactEnv::from).collect())
 }
 
 fn parse_feature_flags_value(raw: &str) -> Result<HashMap<String, bool>, serde_json::Error> {
@@ -1236,7 +1266,7 @@ mod tests {
 
         let err = load_run_payload_from_path(&path).unwrap_err();
 
-        assert!(err.contains(guest_contracts::env::PROMPT_ENV));
+        assert!(err.contains(guest_contracts::env::PROMPT_RUN_PAYLOAD_FIELD));
         assert!(!err.contains("secret"));
         assert!(!err.contains("prompt"));
         assert!(!path.exists());
@@ -1342,7 +1372,7 @@ mod tests {
 
         let err = GuestConfig::from_raw(raw).err().unwrap();
 
-        assert!(err.contains(guest_contracts::env::ARTIFACTS_ENV));
+        assert!(err.contains(guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD));
     }
 
     #[test]

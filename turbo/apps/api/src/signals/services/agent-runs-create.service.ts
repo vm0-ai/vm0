@@ -418,6 +418,7 @@ function buildAgentToolsPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
   const okouCliCommand = `npx --yes --package="\${CLI_PKG_URL}" okou`;
@@ -465,6 +466,11 @@ function buildAgentToolsPrompt(args: {
     ...buildIntegrationToolsPrompt(args.triggerSource),
     "- Maps, geocoding, directions, and places: use `okou maps --help`.",
     "- Current weather, forecasts, and recent history: use `okou weather --help`.",
+    ...(args.presentationScreenshotEnabled
+      ? [
+          "- Presentation page images: use `okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>` to render any presentation source to ordered `page-001.png` files at one fixed page size. PPT, PPTX, and PDF are rasterised through LibreOffice and Poppler; HTML pages, layout directories, and URLs are captured through a browser, one image per slide. It only writes local image files: it uploads nothing, publishes nothing, and is unrelated to `okou presentation-template publish`, so it is the right tool whenever page images are the goal, including deck-to-video work, review, and analysis. Prefer it over `pdftoppm`, `soffice`, or hand-driven `agent-browser` screenshot calls, because a screenshot of a page the browser never painted looks like a successful screenshot. Run `okou presentation screenshot --help` for the current interface.",
+        ]
+      : []),
     "- Static web artifacts can be published with `okou host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `okou host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `okou connector search <keyword>`. List connected: `okou connector list`. Inspect: `okou connector status <slug>`.",
     ...(args.connectorAccountsEnabled
@@ -551,6 +557,7 @@ function buildAppendSystemPrompt(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
@@ -562,6 +569,7 @@ function buildAppendSystemPrompt(args: {
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
       connectorAccountsEnabled: args.connectorAccountsEnabled,
+      presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
@@ -742,6 +750,7 @@ function createRunBody(args: {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
   readonly connectorAccountsEnabled: boolean;
+  readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
@@ -753,6 +762,7 @@ function createRunBody(args: {
     cloudBrowserEnabled: args.cloudBrowserEnabled,
     bankingEnabled: args.bankingEnabled,
     connectorAccountsEnabled: args.connectorAccountsEnabled,
+    presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
   });
   return {
@@ -954,6 +964,10 @@ function buildZeroCreateAgentRunArgs(args: {
       ),
       connectorAccountsEnabled: isFeatureEnabled(
         FeatureSwitchKey.ConnectorAccounts,
+        args.featureSwitchContext,
+      ),
+      presentationScreenshotEnabled: isFeatureEnabled(
+        FeatureSwitchKey.PresentationScreenshot,
         args.featureSwitchContext,
       ),
       presentationTemplatesEnabled: isFeatureEnabled(

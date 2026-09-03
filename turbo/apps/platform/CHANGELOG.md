@@ -1,5 +1,91 @@
 # Changelog
 
+## [0.829.2](https://github.com/vm0-ai/vm0/compare/app-v0.829.1...app-v0.829.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **platform:** restore lab feature switch controls ([#31195](https://github.com/vm0-ai/vm0/issues/31195)) ([28d0924](https://github.com/vm0-ai/vm0/commit/28d092431268d2f2e9369ed14ceb147ab2a6174d))
+
+## [0.829.1](https://github.com/vm0-ai/vm0/compare/app-v0.829.0...app-v0.829.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **platform:** send shared worker clerk requests to the frontend api host ([#31254](https://github.com/vm0-ai/vm0/issues/31254)) ([b954bd9](https://github.com/vm0-ai/vm0/commit/b954bd96b27ef3c5372af97de91a795719554eba))
+
+## [0.829.0](https://github.com/vm0-ai/vm0/compare/app-v0.828.0...app-v0.829.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** give each intro video source entry its own hidden workflow ([#31139](https://github.com/vm0-ai/vm0/issues/31139)) ([d9e28d8](https://github.com/vm0-ai/vm0/commit/d9e28d847648795fb9af5c3e777cee679ae77fe0))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31245](https://github.com/vm0-ai/vm0/issues/31245)) ([fd5bddf](https://github.com/vm0-ai/vm0/commit/fd5bddff5b967a67e226076dea2d391467b12a8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.1
+    * @okouai/connectors bumped to 3.3.1
+    * @okouai/core bumped to 8.611.4
+
+## [0.828.0](https://github.com/vm0-ai/vm0/compare/app-v0.827.0...app-v0.828.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** send timezone on onboarding completion ([#31233](https://github.com/vm0-ai/vm0/issues/31233)) ([00b7296](https://github.com/vm0-ai/vm0/commit/00b7296dfd4bac4dfb840d3871b9767ac3139f35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.0
+    * @okouai/core bumped to 8.611.3
+
+## [0.827.0](https://github.com/vm0-ai/vm0/compare/app-v0.826.0...app-v0.827.0) (2026-09-02)
+
+
+### Features
+
+* **platform:** expose shared worker connection diagnostics to the app ([#31194](https://github.com/vm0-ai/vm0/issues/31194)) ([79b72bd](https://github.com/vm0-ai/vm0/commit/79b72bd4fcc9bc7a3294397f3d2298380641cce0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+    * @okouai/core bumped to 8.611.2
+
+## [0.826.0](https://github.com/vm0-ai/vm0/compare/app-v0.825.0...app-v0.826.0) (2026-09-02)
+
+
+### Features
+
+* **api:** resolve automatic mcp auth as none or oauth ([#31135](https://github.com/vm0-ai/vm0/issues/31135)) ([d84a7e0](https://github.com/vm0-ai/vm0/commit/d84a7e0cd556e91916858ea18cd5256efde6ed03))
+
+
+### Bug Fixes
+
+* **platform:** let clerk own shared worker authentication ([#31037](https://github.com/vm0-ai/vm0/issues/31037)) ([6ba1dbe](https://github.com/vm0-ai/vm0/commit/6ba1dbeb842c60a8b5c8f014bcfc7a624b2a7817))
+* **platform:** prevent custom credit amount layout shift ([#31175](https://github.com/vm0-ai/vm0/issues/31175)) ([a3a6300](https://github.com/vm0-ai/vm0/commit/a3a6300676d4fec516868f695d63d1de8d5650e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+
 ## [0.825.0](https://github.com/vm0-ai/vm0/compare/app-v0.824.0...app-v0.825.0) (2026-09-02)
 
 

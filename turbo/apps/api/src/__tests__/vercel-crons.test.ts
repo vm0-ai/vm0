@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  cronAggregateModelStatsContract,
   cronBrowserReconcileContract,
   cronCompactChatThreadSnapshotsContract,
   cronCompactUsageEventsContract,
@@ -14,6 +13,7 @@ import {
   cronExecuteWorkflowAutomationsContract,
   cronMonitorChatEventQueueContract,
   cronMaterializeMemorySummariesContract,
+  cronExtractPiMemoryStage1Contract,
   cronOfficialWorkflowCatalogContract,
   cronProcessUsageEventsContract,
   cronProjectChatEventSearchContract,
@@ -144,16 +144,16 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
+    path: cronExtractPiMemoryStage1Contract.extract.path,
+    schedule: "* * * * *",
+  },
+  {
     path: cronComputerUseScreenshotCleanupContract.cleanup.path,
     schedule: "30 2 * * *",
   },
   {
     path: cronBrowserReconcileContract.reconcile.path,
     schedule: "* * * * *",
-  },
-  {
-    path: cronAggregateModelStatsContract.aggregate.path,
-    schedule: "12 * * * *",
   },
   {
     path: cronSteerRunTimeBudgetContract.steer.path,
@@ -186,17 +186,5 @@ describe("vercel cron config", () => {
         `${path} must be registered in API routes`,
       ).toBeTruthy();
     }
-  });
-
-  it("does not register the previous internal model stats cron path", () => {
-    const routePaths = new Set(
-      ROUTES.map(({ route }) => {
-        return route.path;
-      }),
-    );
-
-    expect(
-      routePaths.has("/api/internal/cron/aggregate-model-stats"),
-    ).toBeFalsy();
   });
 });

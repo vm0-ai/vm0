@@ -5,7 +5,6 @@ use std::thread;
 
 use guest_contracts::process_containment::{
     CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-    TOOL_CGROUP_PROCS_ENDPOINT_ENV, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
 };
 use vsock_proto::{
     self, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy, ExecOutputPolicy,
@@ -188,9 +187,8 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         agent_path.as_str(),
         r#"#!/bin/sh
 printf '%s' "$$" > "$VM0_TEST_AGENT_PID_PATH"
-if [ "${VM0_PROCESS_CONTROL_ENDPOINT+x}" = x ]; then exit 42; fi
-if [ "${VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT-}" = stale-legacy-workload-endpoint ] || [ "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-workload-endpoint ]; then exit 43; fi
-if [ "${VM0_TOOL_CGROUP_PROCS_ENDPOINT-}" = stale-legacy-tool-endpoint ] || [ "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-tool-endpoint ]; then exit 43; fi
+if [ "${OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-workload-endpoint ]; then exit 43; fi
+if [ "${OKOU_TOOL_CGROUP_PROCS_ENDPOINT-}" = stale-canonical-tool-endpoint ]; then exit 43; fi
 printf '%s' "$OKOU_PROCESS_CONTROL_ENDPOINT"
 sleep 60
 "#,
@@ -216,20 +214,14 @@ sleep 60
             command: "",
             env: &[
                 ("VM0_TEST_AGENT_PID_PATH", pid_path.as_str()),
-                ("VM0_PROCESS_CONTROL_ENDPOINT", "stale-legacy-endpoint"),
                 (
                     process_control_ipc::CANONICAL_BOOTSTRAP_ENV,
                     "stale-canonical-endpoint",
                 ),
                 (
-                    WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
-                    "stale-legacy-workload-endpoint",
-                ),
-                (
                     CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
                     "stale-canonical-workload-endpoint",
                 ),
-                (TOOL_CGROUP_PROCS_ENDPOINT_ENV, "stale-legacy-tool-endpoint"),
                 (
                     CANONICAL_TOOL_CGROUP_PROCS_ENV,
                     "stale-canonical-tool-endpoint",

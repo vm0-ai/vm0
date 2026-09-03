@@ -450,6 +450,8 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
     private let windowID: CGWindowID?
     private var currentGeometry: CaptureGeometry
     private var windowBoundsTimer: DispatchSourceTimer?
+    /// The content's rectangle inside the frame, in pixels, from the latest frame.
+    private var contentPixelRect: CGRect?
 
     init(
         id: String,
@@ -475,6 +477,78 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         defer { lock.unlock() }
         return currentGeometry
+    }
+
+    /// Where the content sits in the frame right now: the captured region's
+    /// screen bounds paired with the content rectangle the latest frame
+    /// reported. `nil` until the first frame has said where the content is.
+    private func currentMappingNow() -> ContentMapping? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let pixelRect = contentPixelRect else {
+            return nil
+        }
+        return ContentMapping(
+            screenOriginX: currentGeometry.originX,
+            screenOriginY: currentGeometry.originY,
+            screenWidth: currentGeometry.widthPoints,
+            screenHeight: currentGeometry.heightPoints,
+            pixelOriginX: pixelRect.origin.x,
+            pixelOriginY: pixelRect.origin.y,
+            pixelWidth: pixelRect.width,
+            pixelHeight: pixelRect.height
+        )
+    }
+
+    /// Reads where this frame's content sits, from the frame's own attachments.
+    ///
+    /// `contentRect` is in points and `scaleFactor` turns it into pixels. If
+    /// that product does not fit the frame, the rectangle was already in
+    /// pixels and is used as is; either way the result is checked against the
+    /// frame rather than trusted.
+    private func noteContentRect(_ sampleBuffer: CMSampleBuffer) {
+        guard
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                sampleBuffer,
+                createIfNecessary: false
+            ) as? [[SCStreamFrameInfo: Any]],
+            let info = attachments.first,
+            let rectValue = info[.contentRect] as? NSDictionary,
+            let contentRect = CGRect(dictionaryRepresentation: rectValue as CFDictionary),
+            contentRect.width > 0, contentRect.height > 0
+        else {
+            return
+        }
+        let scaleFactor = (info[.scaleFactor] as? NSNumber)?.doubleValue ?? 1
+        let frameWidth = Double(outputSize.width)
+        let frameHeight = Double(outputSize.height)
+        var pixelRect = CGRect(
+            x: contentRect.origin.x * scaleFactor,
+            y: contentRect.origin.y * scaleFactor,
+            width: contentRect.width * scaleFactor,
+            height: contentRect.height * scaleFactor
+        )
+        if pixelRect.maxX > frameWidth + 1 || pixelRect.maxY > frameHeight + 1 {
+            pixelRect = contentRect
+        }
+        guard pixelRect.maxX <= frameWidth + 1, pixelRect.maxY <= frameHeight + 1 else {
+            return
+        }
+        lock.lock()
+        let changed = contentPixelRect.map { $0 != pixelRect } ?? true
+        contentPixelRect = pixelRect
+        lock.unlock()
+        if changed {
+            FileHandle.standardError.write(
+                Data(
+                    String(
+                        format: "content rect in frame: %.0fx%.0f at (%.0f, %.0f) of %dx%d\n",
+                        pixelRect.width, pixelRect.height, pixelRect.origin.x, pixelRect.origin.y,
+                        outputSize.width, outputSize.height
+                    ).utf8
+                )
+            )
+        }
     }
 
     /// Follows the recorded window's bounds while recording. Four times a
@@ -536,6 +610,23 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
             return nil
         }
         return UInt64(nanoseconds)
+    }
+
+    /// Where the content sat in the frame at the end, for anyone checking a
+    /// letterboxed recording against its track.
+    var describedContent: [String: Any] {
+        lock.lock()
+        let pixelRect = contentPixelRect
+        lock.unlock()
+        guard let pixelRect else {
+            return [:]
+        }
+        return [
+            "pixelRect": [
+                "x": pixelRect.origin.x, "y": pixelRect.origin.y,
+                "width": pixelRect.width, "height": pixelRect.height,
+            ]
+        ]
     }
 
     var describedGeometry: [String: Any] {
@@ -671,6 +762,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         lock.lock()
         startedAtUnixMs = Int(Date().timeIntervalSince1970 * 1000)
         lock.unlock()
+        clickTracker.mappingProvider = { [weak self] in
+            self?.currentMappingNow()
+        }
         clickTracker.geometryProvider = { [weak self] in
             self?.currentGeometryNow()
         }
@@ -857,7 +951,7 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                     geometry: geometry,
                     outputSize: outputSize
                 )
-            } ?? (clicks: [], pointerEvents: [], droppedOutOfFrame: 0, warnings: [])
+            } ?? (clicks: [], pointerEvents: [], typingBursts: [], droppedOutOfFrame: 0, warnings: [])
 
         let payload: [String: Any] = [
             "version": 1,
@@ -870,9 +964,11 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
                     "frameRate": Int(captureFrameRate),
                 ],
                 "capture": describedGeometry,
+                "content": describedContent,
             ],
             "clicks": projected.clicks,
             "pointerEvents": projected.pointerEvents,
+            "typingBursts": projected.typingBursts,
             "droppedOutOfFrameClicks": projected.droppedOutOfFrame,
             "warnings": projected.warnings,
         ]
@@ -1061,6 +1157,9 @@ private final class RecorderSession: NSObject, SCStreamDelegate, SCStreamOutput,
         // idle, blank, and the bookkeeping frames around start and stop. They
         // are not images the encoder can take, and handing one to the writer
         // is a way to fail it. Only a complete frame goes on.
+        if type == .screen {
+            noteContentRect(sampleBuffer)
+        }
         if type == .screen, !isCompleteFrame(sampleBuffer) {
             return
         }

@@ -1744,6 +1744,34 @@
       "when": 1788354222793,
       "tag": "1056_little_johnny_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 1057,
+      "version": "7",
+      "when": 1788356460321,
+      "tag": "1057_goofy_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 1058,
+      "version": "7",
+      "when": 1788360292386,
+      "tag": "1058_wide_tyger_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 1059,
+      "version": "7",
+      "when": 1788370196726,
+      "tag": "1059_restore_pi_memory_selection_watermark",
+      "breakpoints": true
+    },
+    {
+      "idx": 1060,
+      "version": "7",
+      "when": 1788376783204,
+      "tag": "1060_steady_talisman",
+      "breakpoints": true
     }
   ]
 }

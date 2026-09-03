@@ -140,8 +140,7 @@ export const piMemoryStage1Candidates = pgTable(
           ${table.lastErrorClass} IS NULL AND
           ${table.rawMemory} IS NOT NULL AND
           ${table.rolloutSummary} IS NOT NULL AND
-          ${table.generatedAt} IS NOT NULL AND
-          ${table.lastSelectedSourceHistoryHash} = ${table.sourceHistoryHash}
+          ${table.generatedAt} IS NOT NULL
         ) OR (
           ${table.status} = 'succeeded_no_output' AND
           ${table.retryAt} IS NULL AND
@@ -149,8 +148,7 @@ export const piMemoryStage1Candidates = pgTable(
           ${table.rawMemory} IS NULL AND
           ${table.rolloutSummary} IS NULL AND
           ${table.rolloutSlug} IS NULL AND
-          ${table.generatedAt} IS NOT NULL AND
-          ${table.lastSelectedSourceHistoryHash} = ${table.sourceHistoryHash}
+          ${table.generatedAt} IS NOT NULL
         ) OR (
           ${table.status} = 'retryable_failure' AND
           ${table.retryAt} IS NOT NULL AND

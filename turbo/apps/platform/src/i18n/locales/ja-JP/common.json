@@ -520,7 +520,6 @@
       "agentLoading": "エージェントを読み込み中",
       "connect": "Google Drive を接続します",
       "connectTooltip": "Google Drive を接続してアーティファクトをアップロードする",
-      "failedToOpenConnect": "Google Drive 接続ページを開けませんでした",
       "noArtifacts": "同期するアーティファクトがありません",
       "partial_one": "{{count}} ファイルの {{synced}} を Google Drive に同期しました",
       "partial_other": "{{count}} ファイルの {{synced}} を Google Drive に同期しました",
@@ -4792,6 +4791,10 @@
       "title": "データのエクスポート"
     },
     "lab": {
+      "actions": {
+        "resetAll": "すべてリセット",
+        "resetting": "リセット中…"
+      },
       "description": "ロールアウト段階別に機能スイッチを確認できます。",
       "documentTitle": "研究室",
       "groups": {
@@ -5096,8 +5099,13 @@
           "offline": "オフライン",
           "online": "オンライン",
           "recovery": "復旧",
+          "refresh": "更新",
           "title": "リアルタイム接続診断",
-          "unavailable": "利用不可"
+          "unavailable": "利用不可",
+          "workerDescription": "リアルタイム接続を保持する共有ワーカーが記録した診断を確認します。",
+          "workerLoading": "読み込み中",
+          "workerTitle": "共有ワーカーの接続診断",
+          "workerUnavailable": "利用不可"
         }
       },
       "language": {

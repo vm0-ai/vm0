@@ -475,6 +475,21 @@ describe("POST /api/mail/drafts/link", () => {
       [200],
     );
     expect(gmail.draftReadCount).toBe(2);
+
+    gmail.unauthorized = true;
+    const reconnect = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(reconnect.body.mailDraft.reconnectConnectionId).toBe(
+      selectedConnectorId,
+    );
+    expect(reconnect.body.mailDraft.reconnectConnectionId).not.toBe(
+      fixture.gmail.id,
+    );
   });
 
   it("does not fall back from a reconnect-required thread selection", async () => {
@@ -1071,7 +1086,70 @@ describe("POST /api/mail/drafts/link", () => {
       status: "draft",
       subject: "Attachment review",
     });
+    expect(detached.body.mailDraft.reconnectConnectionId).toBeUndefined();
     expect(gmail.draftReadCount).toBe(1);
+  });
+
+  it("retains the resolved account when a legacy draft needs reconnect", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+
+    mockGmailConnectorOAuth({
+      accessToken: "replacement-gmail-token",
+      subject: "replacement-gmail-account",
+      email: "replacement@example.com",
+    });
+    const replacement = await connectors.startOauth(
+      fixture.actor,
+      "gmail",
+      "oauth",
+    );
+    const replacementState = new URL(
+      replacement.authorizationUrl,
+    ).searchParams.get("state");
+    if (!replacementState) {
+      throw new Error("Expected Gmail OAuth state");
+    }
+    await connectors.completeOauthCallback("gmail", {
+      code: "replace-original-mail-account",
+      state: replacementState,
+    });
+
+    const recoveredConnectorId = await addGmailAccount(fixture, {
+      accessToken: "recovered-gmail-token",
+      email: "sender@example.com",
+      subject: "recovered-gmail-account",
+    });
+    await connectors.setDefaultBuiltinConnectorAccount(
+      fixture.actor,
+      "gmail",
+      recoveredConnectorId,
+    );
+    const orgId = fixture.actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected an organization-scoped mail fixture");
+    }
+    await setConnectorAccountState(context, {
+      orgId,
+      userId: fixture.actor.userId,
+      connectorId: recoveredConnectorId,
+      needsReconnect: true,
+    });
+
+    const recovered = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(recovered.body.mailDraft).toMatchObject({
+      accessStatus: "reconnect",
+      reconnectConnectionId: recoveredConnectorId,
+      subject: "Attachment review",
+    });
+    expect(recoveredConnectorId).not.toBe(fixture.gmail.id);
   });
 
   it("rejects a missing Gmail draft and cross-chat relinking", async () => {

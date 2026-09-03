@@ -231,12 +231,12 @@ OKOU_RUNNER_NET_RX_MIB_PER_SEC=250
 
     #[test]
     fn parse_host_env_file_rejects_unknown_keys() {
-        let err = parse_host_env_file("VM0_API_BACKEND_URL=https://example.test\n")
+        let err = parse_host_env_file("UNSUPPORTED_HOST_KEY=example-value\n")
             .unwrap_err()
             .to_string();
 
         assert!(err.contains("unsupported host env key"));
-        assert!(err.contains("VM0_API_BACKEND_URL"));
+        assert!(err.contains("UNSUPPORTED_HOST_KEY"));
         assert!(err.contains(RUNNER_CONCURRENCY_FACTOR_ENV));
         assert!(err.contains(RUNNER_DISK_IOPS_ENV));
     }

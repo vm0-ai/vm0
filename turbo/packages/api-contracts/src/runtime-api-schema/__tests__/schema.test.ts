@@ -21,19 +21,6 @@ function binding(id: string, path: string): RuntimeApiRouteBinding {
 }
 
 describe("runtime API schema document", () => {
-  it("publishes official runner model usage observation ingestion", () => {
-    const document = buildRuntimeApiSchemaDocument("2026-08-12T00:00:00.000Z");
-    const route = document.routes.find(({ id }) => {
-      return id === "runners.modelUsageObservations";
-    });
-
-    expect(route).toMatchObject({
-      method: "POST",
-      owner: "mitm-addon",
-      path: "/api/runners/model-usage-observations",
-    });
-  });
-
   it("publishes the strict model provider failure report contract", () => {
     const document = buildRuntimeApiSchemaDocument("2026-08-12T00:00:00.000Z");
     const route = document.routes.find(({ id }) => {

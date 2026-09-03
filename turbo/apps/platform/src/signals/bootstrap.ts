@@ -238,6 +238,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupDirectedAuthorizePage$),
   },
   {
+    path: ROUTES.directedReconnect,
+    setup: setupAuthPageWrapper(setupDirectedConnectPage$),
+  },
+  {
     path: ROUTES.directedConnect,
     setup: setupAuthPageWrapper(setupDirectedConnectPage$),
   },

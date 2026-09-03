@@ -293,6 +293,18 @@ export async function readRunFailureReasonFixture(
   return response.failure_reason ?? null;
 }
 
+export async function setRunModelProviderStateFixture(
+  context: TestContext,
+  runId: string,
+  modelProvider: string | null,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-run-model-provider",
+    run_id: runId,
+    model_provider: modelProvider,
+  });
+}
+
 /**
  * Launch snapshots are intentionally writer-only in Stage 2, so persistence
  * cannot be observed through a production API. Keep this test-only exception
@@ -668,16 +680,6 @@ export async function setRunnerJobContextProfileAsPreviousApi(
     action: "set-runner-job-context-profile-as-previous-api",
     run_id: runId,
     profile,
-  });
-}
-
-export async function setRunnerJobPiOwnershipTransferAsPreviousApi(
-  context: TestContext,
-  runId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-runner-job-pi-ownership-transfer-as-previous-api",
-    run_id: runId,
   });
 }
 

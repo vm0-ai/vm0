@@ -52,8 +52,7 @@ TEST_BIN=$1
 ROOTFS_HASH=$2
 EXECUTION_KEY=$3
 BASE_DIR="/var/lib/vm0-runner/host-cpu-fairness/${EXECUTION_KEY}"
-BASELINE_UNIT="vm0-host-cpu-baseline-${EXECUTION_KEY}"
-MANAGED_UNIT="vm0-host-cpu-managed-${EXECUTION_KEY}"
+UNIT="vm0-host-cpu-managed-${EXECUTION_KEY}"
 
 case "$EXECUTION_KEY" in
   ''|*[!a-zA-Z0-9._-]*)
@@ -63,8 +62,7 @@ case "$EXECUTION_KEY" in
 esac
 
 cleanup() {
-  sudo systemctl stop "${BASELINE_UNIT}.service" 2>/dev/null || true
-  sudo systemctl stop "${MANAGED_UNIT}.service" 2>/dev/null || true
+  sudo systemctl stop "${UNIT}.service" 2>/dev/null || true
   sudo rm -f -- "$TEST_BIN"
   sudo rm -rf -- "$BASE_DIR"
 }
@@ -95,52 +93,22 @@ for fixture in "$TEST_BIN" "$FIRECRACKER" "$KERNEL" "$ROOTFS"; do
 done
 
 sudo modprobe nbd nbds_max=4096
-sudo mkdir -p "$BASE_DIR/baseline" "$BASE_DIR/managed"
-
-run_test() {
-  local mode=$1
-  local unit=$2
-  local base_dir=$3
-  local max_ratio=${4:-}
-  local args=(
-    --wait
-    --collect
-    --pipe
-    "--unit=${unit}"
-    --property=Type=exec
-    --property=Delegate=cpu
-    --property=DelegateSubgroup=control
-    --property=AllowedCPUs=0-3
-    --property=TimeoutStopSec=60
-    "--setenv=VM0_HOST_CPU_TEST_MODE=${mode}"
-    "--setenv=VM0_HOST_CPU_TEST_FIRECRACKER=${FIRECRACKER}"
-    "--setenv=VM0_HOST_CPU_TEST_KERNEL=${KERNEL}"
-    "--setenv=VM0_HOST_CPU_TEST_ROOTFS=${ROOTFS}"
-    "--setenv=VM0_HOST_CPU_TEST_BASE_DIR=${base_dir}"
-  )
-  if [ -n "$max_ratio" ]; then
-    args+=("--setenv=VM0_HOST_CPU_TEST_MAX_NORMALIZED_RATIO=${max_ratio}")
-  fi
-  sudo systemd-run "${args[@]}" \
-    "$TEST_BIN" --ignored --test-threads=1 --nocapture
-}
-
-echo "=== Unmanaged host CPU baseline ==="
-BASELINE_OUTPUT=$(run_test baseline "$BASELINE_UNIT" "$BASE_DIR/baseline")
-printf '%s\n' "$BASELINE_OUTPUT"
-# libtest writes the first nocapture record after its `test ...` prefix, so
-# extract the marker suffix while retaining strict numeric validation below.
-BASELINE_RATIO=$(printf '%s\n' "$BASELINE_OUTPUT" \
-  | sed -n 's/.*HOST_CPU_NORMALIZED_RATIO=//p' | tail -1)
-if ! awk -v value="$BASELINE_RATIO" \
-  'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value + 0 > 0) }'; then
-  echo "baseline did not publish a valid normalized ratio: $BASELINE_RATIO" >&2
-  exit 1
-fi
-MAX_RATIO=$(awk -v baseline="$BASELINE_RATIO" \
-  'BEGIN { value = baseline * 1.25; if (value < 1.75) value = 1.75; printf "%.6f", value }')
-echo "Baseline normalized ratio: $BASELINE_RATIO; managed tolerance: $MAX_RATIO"
+sudo mkdir -p "$BASE_DIR"
 
 echo "=== Managed weighted host CPU proof ==="
-run_test managed "$MANAGED_UNIT" "$BASE_DIR/managed" "$MAX_RATIO"
+sudo systemd-run \
+  --wait \
+  --collect \
+  --pipe \
+  "--unit=${UNIT}" \
+  --property=Type=exec \
+  --property=Delegate=cpu \
+  --property=DelegateSubgroup=control \
+  --property=AllowedCPUs=0 \
+  --property=TimeoutStopSec=60 \
+  "--setenv=VM0_HOST_CPU_TEST_FIRECRACKER=${FIRECRACKER}" \
+  "--setenv=VM0_HOST_CPU_TEST_KERNEL=${KERNEL}" \
+  "--setenv=VM0_HOST_CPU_TEST_ROOTFS=${ROOTFS}" \
+  "--setenv=VM0_HOST_CPU_TEST_BASE_DIR=${BASE_DIR}" \
+  "$TEST_BIN" --ignored --test-threads=1 --nocapture
 REMOTE_SCRIPT

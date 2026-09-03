@@ -1,7 +1,4 @@
-import {
-  cameraTransitionMidpointMs,
-  createCameraFrameStates,
-} from "./camera-plan";
+import { createCameraFrameStates } from "./camera-plan";
 import type { CameraPlan, CameraFrameState } from "./camera-plan";
 
 const CLICK_BEFORE_MS = 300;
@@ -15,9 +12,9 @@ export type CameraCheckpointReason =
       readonly clickMs: number;
       readonly offsetMs: (typeof CLICK_AFTER_MS)[number];
     }
-  | { readonly kind: "pan-midpoint"; readonly focusId: string }
-  | { readonly kind: "zoom-enter"; readonly rangeId: string }
-  | { readonly kind: "zoom-exit"; readonly rangeId: string }
+  | { readonly kind: "move-start"; readonly keyId: string }
+  | { readonly kind: "move-end"; readonly keyId: string }
+  | { readonly kind: "shot-end"; readonly shotId: string }
   | { readonly kind: "maximum-camera-speed" };
 
 export interface CameraReviewCheckpoint {
@@ -102,15 +99,13 @@ export function createCameraReviewCheckpoints(
     }
   }
 
-  const panHalfTimeMs = cameraTransitionMidpointMs(plan.source.frameRate);
-  for (const range of plan.ranges) {
-    add(range.startMs, { kind: "zoom-enter", rangeId: range.id });
-    add(range.endMs, { kind: "zoom-exit", rangeId: range.id });
-    for (const focus of range.focuses.slice(1)) {
-      add(Math.min(focus.startMs + panHalfTimeMs, range.endMs), {
-        kind: "pan-midpoint",
-        focusId: focus.id,
-      });
+  for (const shot of plan.shots) {
+    for (const key of shot.keys) {
+      add(Math.max(0, key.startMs), { kind: "move-start", keyId: key.id });
+      add(key.startMs + key.durationMs, { kind: "move-end", keyId: key.id });
+    }
+    if (shot.endMs < plan.source.durationMs) {
+      add(shot.endMs, { kind: "shot-end", shotId: shot.id });
     }
   }
 

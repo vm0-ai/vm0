@@ -18,6 +18,7 @@ import {
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
+import { compile } from "tailwindcss";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import {
@@ -30,6 +31,20 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
+
+function cssLengthInPixels(value: string): number {
+  const pixels = value.match(/^(\d+(?:\.\d+)?)px$/);
+  if (pixels !== null) {
+    return Number(pixels[1]);
+  }
+  const multipliedPixels = value.match(
+    /^calc\((\d+(?:\.\d+)?)px \* (\d+(?:\.\d+)?)\)$/,
+  );
+  if (multipliedPixels !== null) {
+    return Number(multipliedPixels[1]) * Number(multipliedPixels[2]);
+  }
+  throw new Error(`Unsupported CSS length: ${value}`);
+}
 
 function queryButtonByText(
   text: string,
@@ -4389,5 +4404,44 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByRole("dialog", { name: "Review credit purchase" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the custom credit amount editor aligned with preset amounts", async () => {
+    mockBillingStory();
+    await openBillingTab("/?settings=billing");
+
+    const presetAmount = await screen.findByText("$10");
+    click(screen.getByText("Custom"));
+
+    const customAmount = screen.getByLabelText("Custom dollar amount");
+    const tailwindCompiler = await compile(`
+      @theme {
+        --spacing: 0.25rem;
+        --text-sm: 0.875rem;
+        --text-sm--line-height: 1.25rem;
+      }
+      @tailwind utilities;
+    `);
+    const styleElement = document.createElement("style");
+    styleElement.textContent = [
+      tailwindCompiler.build([
+        ...presetAmount.classList,
+        ...customAmount.classList,
+      ]),
+      // happy-dom does not apply Tailwind's grouped `:root, :host` theme rule.
+      ":root { --spacing: 0.25rem; --text-sm: 0.875rem; --text-sm--line-height: 1.25rem; }",
+    ].join("\n");
+    document.head.append(styleElement);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        styleElement.remove();
+      },
+      { once: true },
+    );
+
+    expect(cssLengthInPixels(getComputedStyle(customAmount).height)).toBe(
+      cssLengthInPixels(getComputedStyle(presetAmount).lineHeight),
+    );
   });
 });

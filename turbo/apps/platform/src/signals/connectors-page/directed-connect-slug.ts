@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
+  connectorAccountsContract,
+  type ConnectorAccountConnection,
+} from "@okouai/api-contracts/contracts/connector-accounts";
+import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@okouai/api-contracts/contracts/connector-identity";
@@ -7,8 +11,12 @@ import {
   customConnectorSlugSchema,
   type CustomConnectorSlug,
 } from "@okouai/api-contracts/contracts/custom-connectors";
+import { z } from "zod";
+import { accept } from "../../lib/accept.ts";
+import { apiClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
+import { pageSignal$ } from "../page-signal.ts";
 import { resetManualGrantForm$ } from "../okou-page/settings/connectors.ts";
 
 /**
@@ -31,6 +39,45 @@ export const directedConnectCustomSlug$ = computed(
       typeof connectorSlug === "string" ? connectorSlug.toLowerCase() : null,
     );
     return parsed.success ? parsed.data : null;
+  },
+);
+
+type DirectedConnectAccountTarget =
+  | { readonly kind: "default" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "exact"; readonly connectionId: string };
+
+export const directedConnectAccountTarget$ = computed(
+  (get): DirectedConnectAccountTarget => {
+    const connectionId = get(pathParams$)?.connectionId;
+    if (connectionId === undefined) {
+      return { kind: "default" };
+    }
+    const parsed = z.uuid().safeParse(connectionId);
+    return parsed.success
+      ? { kind: "exact", connectionId: parsed.data }
+      : { kind: "invalid" };
+  },
+);
+
+export const directedConnectExactAccount$ = computed(
+  async (get): Promise<ConnectorAccountConnection | null> => {
+    const target = get(directedConnectAccountTarget$);
+    const connectorSlug = get(directedConnectSlug$);
+    if (target.kind !== "exact" || !connectorSlug) {
+      return null;
+    }
+    const signal = get(pageSignal$);
+    const result = await accept(
+      get(apiClient$)(connectorAccountsContract).connection({
+        params: { connectionId: target.connectionId },
+        query: { kind: "builtin", connectorSlug },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+    );
+    signal.throwIfAborted();
+    return result.status === 200 ? result.body : null;
   },
 );
 

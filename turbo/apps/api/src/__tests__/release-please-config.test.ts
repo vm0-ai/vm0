@@ -169,14 +169,25 @@ describe("release-please API deployment graph", () => {
     expect(promoteAppWorkerProductionJob).toContain(
       "needs.release-please.outputs.app_deploy_required == 'true'",
     );
-    expect(promoteAppWorkerProductionJob).toContain("continue-on-error: true");
+    expect(promoteAppWorkerProductionJob).not.toContain("continue-on-error");
+    expect(promoteAppWorkerProductionJob).toContain(
+      "needs: [release-please, promote-app-production]",
+    );
+    expect(promoteAppWorkerProductionJob).toContain(
+      "needs.promote-app-production.result == 'success'",
+    );
+    expect(promoteAppWorkerProductionJob).toContain("app.okou.ai");
+    expect(promoteAppWorkerProductionJob).toContain("app.vm0.ai");
     expect(promoteAppWorkerProductionJob).toContain("app-worker.okou.ai");
     expect(promoteAppWorkerProductionJob).toContain("app-worker.vm0.ai");
     expect(updateRollbackDashboardJob).toContain(
       "needs.release-please.outputs.app_deploy_required != 'true'",
     );
-    expect(updateRollbackDashboardJob).not.toContain(
+    expect(updateRollbackDashboardJob).toContain(
       "promote-app-worker-production",
+    );
+    expect(updateRollbackDashboardJob).toContain(
+      "needs.promote-app-worker-production.result == 'success'",
     );
   });
 
@@ -352,12 +363,19 @@ describe("release-please API deployment graph", () => {
       workflow,
       "promote-app-production",
     );
+    const promoteAppWorkerProductionJob = workflowJobBlock(
+      workflow,
+      "promote-app-worker-production",
+    );
 
     expect(promoteAppProductionJob).toContain(
       "needs: [release-please, builds-complete, promote-api-production]",
     );
     expect(promoteAppProductionJob).toContain(
       "needs.promote-api-production.result == 'success'",
+    );
+    expect(promoteAppWorkerProductionJob).toContain(
+      "needs: [release-please, promote-app-production]",
     );
   });
 });
