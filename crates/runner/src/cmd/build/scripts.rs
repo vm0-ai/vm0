@@ -587,6 +587,20 @@ wait
     }
 
     #[test]
+    fn template_installs_and_verifies_legacy_timezone_links() {
+        assert!(
+            template_build_installs_apt_package("tzdata-legacy"),
+            "build-template.sh should install legacy IANA timezone links"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(
+                r#"check_required_file_contains "/usr/share/zoneinfo/Asia/Calcutta" "TZif" \"#
+            ),
+            "verify-rootfs.sh should verify the legacy IANA timezone link resolves to a timezone file"
+        );
+    }
+
+    #[test]
     fn template_installs_and_verifies_noto_fonts() {
         for package in [
             "fonts-noto-core",
