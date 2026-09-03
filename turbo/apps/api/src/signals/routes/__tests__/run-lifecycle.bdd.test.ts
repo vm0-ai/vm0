@@ -666,6 +666,7 @@ async function expectBuiltInModelRunRuntimeRoute(
 }
 
 function useSecretKmsClientForTests(args: {
+  readonly decryptError?: Error;
   readonly failAfterGenerateDataKeys?: number;
   readonly onDecrypt?: () => void;
   readonly onGenerateDataKey?: (callNumber: number) => void;
@@ -696,6 +697,9 @@ function useSecretKmsClientForTests(args: {
     },
     decrypt(): Promise<Uint8Array> {
       args.onDecrypt?.();
+      if (args.decryptError) {
+        return Promise.reject(args.decryptError);
+      }
       return Promise.resolve(TEST_DATA_KEY);
     },
   };
@@ -2503,6 +2507,61 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         return candidate.prompt === cancelledPrompt;
       }),
     ).toHaveLength(0);
+  });
+
+  it("keeps a catalog rejection above concurrent abort and provider failure", async () => {
+    const api = createRunsApi(context);
+    mockEnv(
+      "R2_USER_STORAGES_BUCKET_NAME",
+      `test-run-lifecycle-runtime-context-priority-${randomUUID()}`,
+    );
+    await installApiTestConnectorCatalog({
+      catalogVersion: `api-test-runtime-context-priority-${randomUUID()}`,
+      runtimeProjection: true,
+    });
+    const { actor, agentId } = await entitledRunActor();
+    await api.createOrgModelProvider(actor, {
+      type: "aws-bedrock",
+      authMethod: "access-keys",
+      secrets: {
+        AWS_ACCESS_KEY_ID: "runtime-context-priority-access-key",
+        AWS_SECRET_ACCESS_KEY: "runtime-context-priority-secret-key",
+        AWS_REGION: "us-east-1",
+      },
+    });
+    await invalidateApiTestConnectorCatalogCompatibility();
+
+    const requestController = new AbortController();
+    const abortError = new Error("runtime context priority abort");
+    abortError.name = "AbortError";
+    const providerError = new Error("model provider below catalog failure");
+    let providerDecryptCalls = 0;
+    useSecretKmsClientForTests({
+      decryptError: providerError,
+      onDecrypt: () => {
+        providerDecryptCalls += 1;
+        requestController.abort(abortError);
+      },
+    });
+    const cancellableApi = createRunsApi({
+      ...context,
+      signal: requestController.signal,
+    });
+    await expect(
+      cancellableApi.createDirectRun(actor, {
+        ...zeroBackedDirectRunBody({
+          agentId,
+          prompt: "prefer catalog failure during runtime preparation",
+        }),
+        modelProviderType: "aws-bedrock",
+        connectorScope: {
+          allowedConnectorSlugs: ["x"],
+          allowedCustomConnectorIds: [],
+        },
+      }),
+    ).rejects.toThrow("Accepted external connector catalog is unavailable");
+    expect(providerDecryptCalls).toBeGreaterThan(0);
+    expect(requestController.signal.reason).toBe(abortError);
   });
 
   it("memoizes scoped runtime entries by exact catalog identity", async () => {
