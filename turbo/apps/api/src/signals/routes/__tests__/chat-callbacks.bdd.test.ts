@@ -1636,7 +1636,16 @@ describe("CHAT-02: completed chat callback", () => {
       "Express exactly one intent in one simple clause or question.",
     );
     expect(followupSystemPrompts[0]).toContain(
-      "Return fewer than 3 suggestions, including an empty array",
+      "responding to it takes priority over all other follow-up ideas.",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "accept or proceed; decline, stop, or defer; adjust the proposal",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Do not revive an older topic merely for variety.",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Always return exactly 3 suggestions.",
     );
     expect(followupSystemPrompts[0]).not.toContain("Chinese");
     expect(followupPrompts).toHaveLength(1);

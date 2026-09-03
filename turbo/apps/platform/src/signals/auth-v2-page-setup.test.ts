@@ -103,6 +103,88 @@ async function setupUnknownContinuation(path: string): Promise<void> {
   });
 }
 
+describe("auth v2 satellite route normalization", () => {
+  it("moves a sign-in callback to primary auth without losing its return URL", async () => {
+    const completionRedirectUrl =
+      "https://app.okou.ai/agents?source=direct-sign-in";
+    const path =
+      `/sign-in/sso-callback?ticket=clerk-ticket&redirect_url=${encodeURIComponent(completionRedirectUrl)}` +
+      "#state=oauth-state";
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {});
+
+    await setupPage({
+      context,
+      path,
+      session: null,
+      user: null,
+      withoutRender: true,
+    });
+
+    expect(replace).toHaveBeenCalledOnce();
+    const replacement = replace.mock.calls[0]?.[0];
+    if (!replacement) {
+      throw new Error("Expected the satellite auth route to be replaced");
+    }
+    const redirectUrl = new URL(String(replacement));
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/sign-in/sso-callback");
+    expect(redirectUrl.searchParams.get("ticket")).toBe("clerk-ticket");
+    expect(redirectUrl.searchParams.get("redirect_url")).toBe(
+      completionRedirectUrl,
+    );
+    expect(redirectUrl.hash).toBe("#state=oauth-state");
+    expect(mockedClerk.handleRedirectCallback).not.toHaveBeenCalled();
+  });
+
+  it("moves a nested sign-up route to primary auth with Okou attribution", async () => {
+    const path =
+      "/sign-up/verify-email-address?gclid=click-123&utm_campaign=launch" +
+      "#attempt=verification";
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {});
+
+    await setupPage({
+      context,
+      path,
+      session: null,
+      user: null,
+      withoutRender: true,
+    });
+
+    expect(replace).toHaveBeenCalledOnce();
+    const replacement = replace.mock.calls[0]?.[0];
+    if (!replacement) {
+      throw new Error("Expected the satellite auth route to be replaced");
+    }
+    const redirectUrl = new URL(String(replacement));
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/sign-up/verify-email-address");
+    expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(redirectUrl.searchParams.get("utm_campaign")).toBe("launch");
+    expect(redirectUrl.hash).toBe("#attempt=verification");
+
+    const completionRedirectUrl = redirectUrl.searchParams.get("redirect_url");
+    if (!completionRedirectUrl) {
+      throw new Error("Expected a sign-up completion URL");
+    }
+    const completionUrl = new URL(completionRedirectUrl);
+    expect(completionUrl.origin).toBe("https://app.okou.ai");
+    expect(completionUrl.pathname).toBe("/onboarding");
+    expect(completionUrl.searchParams.get("vm0_source")).toBe("homepage");
+    expect(completionUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(completionUrl.searchParams.get("utm_campaign")).toBe("launch");
+    expect(completionUrl.searchParams.get("landing_host")).toBe("app.okou.ai");
+    expect(completionUrl.searchParams.get("landing_path")).toBe(
+      "/sign-up/verify-email-address",
+    );
+  });
+});
+
 describe("auth v2 route diagnostics", () => {
   it.each([
     ["sign-in", "/sign-in/tasks/ticket_private_15c9"],

@@ -2393,6 +2393,7 @@
     },
     "voice": {
       "checkingLimit": "音声入力制限を確認する",
+      "confirmRecording": "OK",
       "draft": "音声ドラフト",
       "draftTooLong": "この音声ドラフトは長すぎます。新しい録音を開始してください。",
       "finishDraft": "仕上げる",

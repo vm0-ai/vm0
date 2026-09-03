@@ -18,6 +18,7 @@ import {
   type ConnectorRuntimeSyncResult,
   type ExecutionContext,
   type Job as RunnerJob,
+  type PiModelConfigV2,
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
@@ -157,6 +158,7 @@ import {
   setRunModelProviderStateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
+  setRunnerJobPiContextAsV2Writer,
 } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import {
@@ -7576,7 +7578,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       throw new Error("Expected the promoted claim to expose the Okou token");
     }
     expect(thirdClaim.secretValues).toContain(okouToken);
-    expect(thirdClaim.environment ?? {}).not.toHaveProperty("ZERO_TOKEN");
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
     expect(thirdClaim).not.toHaveProperty("runContextStorage");
     expectClaimNetworkPolicyRefreshPath(third.runId, "no_builtin_targets");
@@ -10299,6 +10300,51 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("leaves Pi V2 jobs queued until a capable Runner claims them", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim a dialect-aware Pi route",
+      modelProvider: "anthropic-api-key",
+    });
+    const piModelConfig: PiModelConfigV2 = {
+      schemaVersion: 2,
+      dialect: "openai-responses",
+      transport: "sse",
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.4",
+      credentialBindings: [
+        {
+          kind: "api-key",
+          environment: "OPENAI_API_KEY",
+          secretName: "OPENAI_API_KEY",
+        },
+      ],
+    };
+    await setRunnerJobPiContextAsV2Writer(context, run.runId, piModelConfig);
+    await api.heartbeatRunner(runnerGroup);
+
+    const legacyClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(legacyClaim.body);
+    expect(legacyClaim.body.error.message).toBe("Job not found in queue");
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    const capableClaim = await api.claimRunnerJob(run.runId, {
+      capabilities: { piModelConfigGenerations: [1, 2] },
+    });
+    expect(capableClaim).toMatchObject({
+      cliAgentType: "pi",
+      piSessionId: run.runId,
+      piModelConfig,
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("restores prepared masking values from direct run environments", async () => {
@@ -14907,7 +14953,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
 
     const directEnvironment = {
       ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
-      ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
+      CUSTOM_API_TOKEN: `\${{ secrets.CUSTOM_API_TOKEN }}`,
     };
     const directAgent = await api.createDirectAgent(actor, {
       version: "1",
@@ -14929,13 +14975,13 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       prompt: "consume an application-owned Zero context",
       modelProviderType: "anthropic-api-key",
       vars: { ZERO_AGENT_ID: directAgent.agentId },
-      secrets: { ZERO_TOKEN: directOkouToken },
+      secrets: { CUSTOM_API_TOKEN: directOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
     const directClaim = await api.claimRunnerJob(direct.runId);
     expect(directClaim.environment).toMatchObject({
       ZERO_AGENT_ID: directAgent.agentId,
-      ZERO_TOKEN: directOkouToken,
+      CUSTOM_API_TOKEN: directOkouToken,
     });
     expect(directClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
     expect(sandboxTokenPayload(directOkouToken)).toMatchObject({
@@ -15241,7 +15287,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
     const runContextSnapshot = runContextSnapshotForRun(run.runId);
     expect(runContextSnapshot.secretNames).toContain("OKOU_TOKEN");
-    expect(runContextSnapshot.secretNames).not.toContain("ZERO_TOKEN");
     expect(runContextSnapshot.environmentEntries).toContainEqual({
       name: "OKOU_TOKEN",
       value: "***",

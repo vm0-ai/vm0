@@ -49,6 +49,7 @@ const internalVoiceDetectedDuringRecording$ = state(false);
 const internalVoiceActivityAvailable$ = state(false);
 const internalVoiceActivityCoversRecording$ = state(false);
 const internalRecordingStartedAt$ = state<number | null>(null);
+const internalRecordingStartedAtEpochMs$ = state<number | null>(null);
 const internalStream$ = state<MediaStream | null>(null);
 const internalRecorder$ = state<MediaRecorder | null>(null);
 const internalRecordingSession$ = state<VoiceRecordingSession | null>(null);
@@ -87,6 +88,9 @@ export const sttTranscribing$ = computed((get) => {
 });
 export const sttVoiceLevel$ = computed((get) => {
   return get(internalVoiceLevel$);
+});
+export const sttRecordingStartedAt$ = computed((get) => {
+  return get(internalRecordingStartedAtEpochMs$);
 });
 
 export const audioInputAvailable$ = computed(() => {
@@ -494,6 +498,7 @@ const resetState$ = command(({ set }) => {
   set(internalVoiceActivityAvailable$, false);
   set(internalVoiceActivityCoversRecording$, false);
   set(internalRecordingStartedAt$, null);
+  set(internalRecordingStartedAtEpochMs$, null);
   set(internalRecorder$, null);
   set(internalRecordingSession$, null);
   set(internalAudioActivityMonitor$, null);
@@ -518,6 +523,7 @@ const startMediaRecorder$ = command(
     recorder.start();
     const recordingStartedAt = audioActivityNow();
     set(internalRecordingStartedAt$, recordingStartedAt);
+    set(internalRecordingStartedAtEpochMs$, currentTimeMs());
     set(internalRecording$, true);
     return recordingStartedAt;
   },

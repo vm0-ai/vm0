@@ -11,6 +11,7 @@ use tracing::{error, info, warn};
 use api_contracts::generated::{
     constants::runners::{
         BUILTIN_FIREWALL_CATALOG_MAX_BYTES, CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+        PI_MODEL_CONFIG_CURRENT_GENERATION, PI_MODEL_CONFIG_LEGACY_GENERATION,
         RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     decode_paths, routes,
@@ -63,7 +64,14 @@ struct ClaimRequestBody<'a> {
     runner_identity: &'a RunnerProcessIdentity,
     #[serde(skip_serializing_if = "Option::is_none")]
     runner_hostname: Option<&'a str>,
+    capabilities: RunnerClaimCapabilities,
     telemetry: ClaimRequestTelemetry,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RunnerClaimCapabilities {
+    pi_model_config_generations: [u32; 2],
 }
 
 #[derive(Serialize)]
@@ -1684,6 +1692,12 @@ fn claim_request_body<'a>(
     ClaimRequestBody {
         runner_identity,
         runner_hostname,
+        capabilities: RunnerClaimCapabilities {
+            pi_model_config_generations: [
+                PI_MODEL_CONFIG_LEGACY_GENERATION,
+                PI_MODEL_CONFIG_CURRENT_GENERATION,
+            ],
+        },
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -3140,7 +3154,10 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert!(body.get("capabilities").is_none());
+        assert_eq!(
+            body["capabilities"]["piModelConfigGenerations"],
+            serde_json::json!([1, 2])
+        );
 
         let runner_identity = test_runner_identity();
         let attributed = serde_json::to_value(claim_request_body(

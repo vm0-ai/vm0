@@ -3081,6 +3081,42 @@ describe("zero attachment chips", () => {
     expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
   });
 
+  it("renders short Okou artifact cards without trusting lookalike hosts", async () => {
+    const bareVideoUrl = "https://a.okou.io/0123456789.mp4";
+    const linkedVideoUrl = "https://a.okou.io/abcdefghij.mp4";
+    const legacyVideoUrl = "https://cdn.okou.io/artifacts/9876543210.mp4";
+    const lookalikeVideoUrl =
+      "https://a.okou.io.attacker.example/klmnopqrst.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-short-okou-artifact-video-links",
+          role: "assistant",
+          content: [
+            bareVideoUrl,
+            `[Generated clip](${linkedVideoUrl})`,
+            legacyVideoUrl,
+            `[Forged clip](${lookalikeVideoUrl})`,
+          ].join("\n"),
+          runId: "run-short-okou-artifact-video-links",
+          createdAt: "2026-09-03T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 0123456789.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview 9876543210.mp4")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Preview klmnopqrst.mp4"),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders exact Okou public links without trusting lookalike hosts", async () => {
     context.mocks.browser.url(`https://app.okou.ai/chats/${THREAD_ID}`);
     const legacySiteUrl = "https://legacy-site.sites.vm0.io/";

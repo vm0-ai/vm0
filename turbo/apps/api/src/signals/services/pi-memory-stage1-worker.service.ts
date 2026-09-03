@@ -611,7 +611,7 @@ function logOutcome(args: {
   readonly outputTokens?: number;
   readonly errorClass?: string;
 }): void {
-  log.debug("Pi memory Stage 1 candidate processed", {
+  log.info("Pi memory Stage 1 candidate processed", {
     orgId: args.work.orgId,
     userId: args.work.userId,
     memoryStorageId: args.work.memoryStorageId,
@@ -706,6 +706,7 @@ function providerConfig(args: {
     apiKey: args.apiKey,
     model: args.route.upstreamModel,
     api: "openai-responses" as const,
+    dialect: "openai-responses" as const,
     thinkingLevel: "low" as const,
   };
 }

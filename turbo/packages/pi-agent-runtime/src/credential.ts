@@ -1,6 +1,10 @@
+import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";
+
 import type {
   PiAgentCredentialHeaderTemplate,
+  PiAgentCredentialReference,
   PiAgentCredentialTarget,
+  PiAgentModelConfig,
   PiAgentRequestHeaders,
 } from "./types";
 
@@ -65,4 +69,128 @@ export function resolvePiAgentCredential(args: {
     }),
   };
   return { apiKey: UNUSED_OPENAI_API_KEY, requestHeaders };
+}
+
+function legacyCredentialBinding(
+  config: Exclude<PiModelConfig, { readonly schemaVersion: number }>,
+): PiAgentCredentialReference {
+  return {
+    kind: "api-key",
+    environment: config.apiKeyEnv,
+    secretName: config.credentialSecretName,
+    ...(config.credentialHeader === undefined
+      ? {}
+      : { credentialHeader: config.credentialHeader }),
+  };
+}
+
+function requiredBinding(
+  config: Extract<PiModelConfig, { readonly schemaVersion: number }>,
+  kind: PiAgentCredentialReference["kind"],
+): PiAgentCredentialReference {
+  const binding = config.credentialBindings.find((candidate) => {
+    return candidate.kind === kind;
+  });
+  if (!binding) {
+    throw new Error(`Pi model config is missing its ${kind} binding`);
+  }
+  return binding;
+}
+
+async function resolvedCredentialValue(args: {
+  readonly binding: PiAgentCredentialReference;
+  readonly resolveCredential: (
+    binding: PiAgentCredentialReference,
+  ) => string | Promise<string>;
+}): Promise<string> {
+  const value = await args.resolveCredential(args.binding);
+  if (!value.trim()) {
+    throw new Error(`Pi ${args.binding.kind} credential is unavailable`);
+  }
+  return value;
+}
+
+/**
+ * Materialize one validated route at an execution edge. Callers control where
+ * values come from: API-first supplies decrypted secrets, while Sandbox launch
+ * supplies only its existing opaque environment placeholders.
+ */
+export async function materializePiAgentModelConfig(args: {
+  readonly config: PiModelConfig;
+  readonly target: PiAgentCredentialTarget;
+  readonly resolveCredential: (
+    binding: PiAgentCredentialReference,
+  ) => string | Promise<string>;
+}): Promise<PiAgentModelConfig> {
+  if (!("schemaVersion" in args.config)) {
+    const {
+      api: _legacyApi,
+      apiKeyEnv: _apiKeyEnv,
+      credentialHeader: _credentialHeader,
+      credentialSecretName: _credentialSecretName,
+      ...route
+    } = args.config;
+    const binding = legacyCredentialBinding(args.config);
+    const credential = await resolvedCredentialValue({
+      binding,
+      resolveCredential: args.resolveCredential,
+    });
+    return {
+      ...route,
+      api: "openai-responses",
+      dialect: "openai-responses",
+      ...resolvePiAgentCredential({
+        credential,
+        header: binding.credentialHeader,
+        target: args.target,
+      }),
+    };
+  }
+
+  const {
+    schemaVersion: _schemaVersion,
+    credentialBindings: _credentialBindings,
+    dialect,
+    transport,
+    ...route
+  } = args.config;
+  if (dialect === "openai-responses") {
+    const binding = requiredBinding(args.config, "api-key");
+    const credential = await resolvedCredentialValue({
+      binding,
+      resolveCredential: args.resolveCredential,
+    });
+    return {
+      ...route,
+      api: dialect,
+      dialect,
+      transport,
+      ...resolvePiAgentCredential({
+        credential,
+        header: binding.credentialHeader,
+        target: args.target,
+      }),
+    };
+  }
+
+  const accessTokenBinding = requiredBinding(args.config, "access-token");
+  const accountIdBinding = requiredBinding(args.config, "account-id");
+  const [apiKey, accountId] = await Promise.all([
+    resolvedCredentialValue({
+      binding: accessTokenBinding,
+      resolveCredential: args.resolveCredential,
+    }),
+    resolvedCredentialValue({
+      binding: accountIdBinding,
+      resolveCredential: args.resolveCredential,
+    }),
+  ]);
+  return {
+    ...route,
+    api: dialect,
+    dialect,
+    transport,
+    apiKey,
+    accountId,
+  };
 }

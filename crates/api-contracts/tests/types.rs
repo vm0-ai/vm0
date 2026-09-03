@@ -6,7 +6,7 @@ use api_contracts::generated::types::{
             CodexRuntimeConfig, PiLaunchConfig, PiLaunchConfigApiFirstTurn,
             PiLaunchConfigApiFirstTurnBaseSession, PiLaunchConfigMemoryRecall, PiModelConfig,
             PiModelConfigApiKeyEnv, PiModelConfigProvider, PiModelConfigServiceTier,
-            model_provider_failures,
+            PiModelConfigV2, model_provider_failures,
         },
         storage as runner_storage,
     },
@@ -355,6 +355,51 @@ fn generated_pi_model_config_rejects_unknown_enums() {
             serde_json::from_value::<PiModelConfig>(config).is_err(),
             "{field} should reject {value}"
         );
+    }
+}
+
+#[test]
+fn generated_pi_model_config_v2_round_trips_both_dialects() {
+    let public_responses = json!({
+        "schemaVersion": 2,
+        "dialect": "openai-responses",
+        "transport": "sse",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-5.6-terra",
+        "thinkingLevel": "low",
+        "credentialBindings": [{
+            "kind": "api-key",
+            "environment": "OPENAI_API_KEY",
+            "secretName": "OPENAI_API_KEY",
+        }],
+    });
+    let codex_responses = json!({
+        "schemaVersion": 2,
+        "dialect": "openai-codex-responses",
+        "transport": "sse",
+        "provider": "openai-codex",
+        "baseUrl": "https://chatgpt.com/backend-api",
+        "model": "gpt-5.6-terra",
+        "thinkingLevel": "low",
+        "credentialBindings": [
+            {
+                "kind": "access-token",
+                "environment": "CHATGPT_ACCESS_TOKEN",
+                "secretName": "CHATGPT_ACCESS_TOKEN",
+            },
+            {
+                "kind": "account-id",
+                "environment": "CHATGPT_ACCOUNT_ID",
+                "secretName": "CHATGPT_ACCOUNT_ID",
+            },
+        ],
+    });
+
+    for value in [public_responses, codex_responses] {
+        let decoded: PiModelConfigV2 = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+        assert!(serde_json::from_value::<PiModelConfig>(value).is_err());
     }
 }
 

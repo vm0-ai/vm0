@@ -25,7 +25,10 @@ import { ZipArchive } from "archiver";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
-import { isArtifactKeyV2 } from "../../lib/file-url";
+import {
+  artifactKeyFromShortOkouUrl,
+  isArtifactKeyV2,
+} from "../../lib/file-url";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { downloadHostedSitesS3Buffer, downloadS3Buffer } from "../external/s3";
 import {
@@ -806,7 +809,9 @@ function resolveArtifactS3ObjectFromUrl(
   if (!URL.canParse(value)) {
     return null;
   }
-  const key = new URL(value).pathname.replace(/^\/+/, "");
+  const url = new URL(value);
+  const key =
+    artifactKeyFromShortOkouUrl(url) ?? url.pathname.replace(/^\/+/, "");
   return resolveArtifactS3ObjectFromKey(key, userId);
 }
 

@@ -1110,7 +1110,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
         ("VM0_PROMPT".into(), "hostile-user-prompt".into()),
-        ("VM0_API_TOKEN".into(), "stolen-token".into()),
+        ("CUSTOM_API_TOKEN".into(), "user-token".into()),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
             "/tmp/evil-connector-account-context.json".into(),
@@ -1159,7 +1159,6 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .unwrap(),
         "tok"
     );
-    assert!(!start_env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         start_env
             .get(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV)
@@ -1193,6 +1192,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "OKOU_APP_URL",
         "ZERO_APP_URL",
         "VM0_FUTURE_RUNNER_KEY",
+        "CUSTOM_API_TOKEN",
         "BASH_ENV",
         "NODE_OPTIONS",
         "TZ",
@@ -1254,8 +1254,8 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         Some("hostile-user-prompt")
     );
     assert_eq!(
-        user_env.get("VM0_API_TOKEN").map(String::as_str),
-        Some("stolen-token")
+        user_env.get("CUSTOM_API_TOKEN").map(String::as_str),
+        Some("user-token")
     );
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
     assert_eq!(

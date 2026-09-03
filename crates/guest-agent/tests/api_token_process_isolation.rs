@@ -19,23 +19,17 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[tokio::test]
-async fn guest_agent_hides_canonical_and_retired_api_tokens_from_its_cli_child() -> TestResult {
+async fn guest_agent_hides_canonical_api_token_from_its_cli_child() -> TestResult {
     assert!(
         Path::new("/proc/self/environ").is_file(),
         "the process-isolation test requires procfs"
     );
     common::ensure_canonical_workspace_for_test()?;
 
-    for (case, token_env) in [
-        ("retired", "VM0_API_TOKEN"),
-        ("canonical", guest_contracts::env::CANONICAL_API_TOKEN_ENV),
-    ] {
-        assert_api_token_process_isolation(case, token_env).await?;
-    }
-    Ok(())
+    assert_api_token_process_isolation().await
 }
 
-async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> TestResult {
+async fn assert_api_token_process_isolation() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let home = tmp.path().join("home");
     let runtime_dir = tmp.path().join("runtime");
@@ -69,8 +63,8 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
             guest_contracts::env::CANONICAL_API_URL_ENV,
             "http://127.0.0.1:1",
         )
-        .env(token_env, API_TOKEN)
-        .env(guest_contracts::env::RUN_ID_ENV, format!("{RUN_ID}-{case}"))
+        .env(guest_contracts::env::CANONICAL_API_TOKEN_ENV, API_TOKEN)
+        .env(guest_contracts::env::RUN_ID_ENV, RUN_ID)
         .env(
             guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
             "00000000-0000-4000-8000-000000000abc",
@@ -110,24 +104,24 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         !stderr.contains(API_TOKEN),
-        "{case} guest-agent stderr exposed API token material"
+        "guest-agent stderr exposed API token material"
     );
     assert!(
         !stdout.contains(API_TOKEN),
-        "{case} guest-agent stdout exposed API token material"
+        "guest-agent stdout exposed API token material"
     );
     let system_log_path = guest_contracts::runtime_paths::system_log_file(&runtime_dir);
     if let Ok(system_log) = std::fs::read_to_string(system_log_path) {
         assert!(
             !system_log.contains(API_TOKEN),
-            "{case} guest-agent system log exposed API token material"
+            "guest-agent system log exposed API token material"
         );
     }
     let observed = std::fs::read_to_string(&marker_path).map_err(|error| {
         std::io::Error::new(
             error.kind(),
             format!(
-                "read {case} process-inspection marker after guest-agent exited with {}: {error}",
+                "read process-inspection marker after guest-agent exited with {}: {error}",
                 output.status
             ),
         )
@@ -135,13 +129,12 @@ async fn assert_api_token_process_isolation(case: &str, token_env: &str) -> Test
 
     assert_eq!(
         observed, "parent-access-denied",
-        "{case} CLI process inspection result was {observed}"
+        "CLI process inspection result was {observed}"
     );
     Ok(())
 }
 
 fn write_process_inspection_probe(path: &Path, marker_path: &Path) -> TestResult {
-    let expected_retired = format!("VM0_API_TOKEN={API_TOKEN}");
     let expected_canonical = format!(
         "{}={API_TOKEN}",
         guest_contracts::env::CANONICAL_API_TOKEN_ENV
@@ -150,13 +143,10 @@ fn write_process_inspection_probe(path: &Path, marker_path: &Path) -> TestResult
         "#!/bin/sh\n\
          set -eu\n\
          marker={}\n\
-         expected_legacy={}\n\
          expected_canonical={}\n\
-         if env | grep -Fqx -- \"$expected_legacy\" \
-             || env | grep -Fqx -- \"$expected_canonical\"; then\n\
+         if env | grep -Fqx -- \"$expected_canonical\"; then\n\
            result=child-env-visible\n\
-         elif grep -aFq -- \"$expected_legacy\" \"/proc/$PPID/environ\" 2>/dev/null \
-             || grep -aFq -- \"$expected_canonical\" \"/proc/$PPID/environ\" 2>/dev/null; then\n\
+         elif grep -aFq -- \"$expected_canonical\" \"/proc/$PPID/environ\" 2>/dev/null; then\n\
            result=parent-token-visible\n\
          elif cat \"/proc/$PPID/environ\" >/dev/null 2>&1; then\n\
            result=parent-readable-token-absent\n\
@@ -166,7 +156,6 @@ fn write_process_inspection_probe(path: &Path, marker_path: &Path) -> TestResult
          printf '%s' \"$result\" > \"$marker\"\n\
          exit 1\n",
         quote_shell_arg(&marker_path.to_string_lossy()),
-        quote_shell_arg(&expected_retired),
         quote_shell_arg(&expected_canonical),
     );
     std::fs::write(path, script)?;

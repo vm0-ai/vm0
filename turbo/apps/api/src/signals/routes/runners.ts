@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import {
-  compatibleStoredExecutionContextSchema,
+  claimCompatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -13,12 +13,14 @@ import {
   runnersPollContract,
   runnerVersionSchema,
   storedConnectorPermissionBaselineSchema,
-  type CompatibleStoredExecutionContext,
+  type ClaimCompatibleStoredExecutionContext,
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
+  type PiModelConfig,
   type RunnerPreference,
   type RunnerPreferenceClaimState,
+  type RunnerClaimCapabilities,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -87,6 +89,7 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-run-lifecycle.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
+import { resolvePiModelConfigForClaim } from "../services/pi-model-config-claim-capability";
 import { reportBuiltInModelProviderFailure } from "../services/built-in-model-provider-failure.service";
 import {
   recordActiveInputDeliveryReceipt,
@@ -1250,8 +1253,15 @@ type ConnectorPermissionBaselineRead =
       readonly value: StoredConnectorPermissionBaseline;
     };
 
+type DecodableCompatibleStoredExecutionContext = Omit<
+  ClaimCompatibleStoredExecutionContext,
+  "piModelConfig"
+> & {
+  readonly piModelConfig?: PiModelConfig;
+};
+
 function decodeCompatibleStoredExecutionContext(
-  context: CompatibleStoredExecutionContext,
+  context: DecodableCompatibleStoredExecutionContext,
 ): {
   readonly context: StoredExecutionContext;
   readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
@@ -2417,6 +2427,71 @@ async function claimResponseBuildErrorResponse(
   );
 }
 
+async function resolveStoredExecutionContextForClaim(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly orgId: string;
+    readonly executionContext: unknown;
+    readonly capabilities: RunnerClaimCapabilities | undefined;
+    readonly timing: ClaimRouteTimingCollector;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
+  const contextParseStartedAt = now();
+  const storedContextResult =
+    claimCompatibleStoredExecutionContextSchema.safeParse(
+      args.executionContext,
+    );
+  args.timing.recordElapsed(
+    "claim_route_context_parse",
+    "top_level",
+    contextParseStartedAt,
+  );
+  signal.throwIfAborted();
+  if (!storedContextResult.success) {
+    warnInvalidStoredExecutionContext(
+      args.runId,
+      storedContextResult.error.issues,
+    );
+    return {
+      compatible: false as const,
+      response: await failClaimForInvalidStoredExecutionContext(args, signal),
+    };
+  }
+  const piModelConfigResolution = resolvePiModelConfigForClaim({
+    cliAgentType: storedContextResult.data.cliAgentType,
+    modelConfig: storedContextResult.data.piModelConfig,
+    capabilities: args.capabilities,
+  });
+  if (piModelConfigResolution.status === "unsupported") {
+    return {
+      compatible: false as const,
+      response: notFound("Job not found in queue"),
+    };
+  }
+  if (piModelConfigResolution.status === "invalid") {
+    warnInvalidStoredExecutionContext(
+      args.runId,
+      piModelConfigResolution.error.issues,
+    );
+    return {
+      compatible: false as const,
+      response: await failClaimForInvalidStoredExecutionContext(args, signal),
+    };
+  }
+  return {
+    compatible: true as const,
+    value: decodeCompatibleStoredExecutionContext({
+      ...storedContextResult.data,
+      piModelConfig: piModelConfigResolution.modelConfig,
+    }),
+  };
+}
+
 const claimAuthorizedJob$ = command(
   async (
     { set },
@@ -2425,6 +2500,7 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly runnerAttribution: RunnerClaimAttribution | undefined;
+      readonly capabilities: RunnerClaimCapabilities | undefined;
       readonly jobWithRun: ClaimableJob;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
@@ -2435,36 +2511,25 @@ const claimAuthorizedJob$ = command(
     const { db, runId, jobWithRun, claimRouteTiming } = args;
     const run = jobWithRun.run;
 
-    const contextParseStartedAt = now();
-    const storedContextResult =
-      compatibleStoredExecutionContextSchema.safeParse(
-        jobWithRun.job.executionContext,
-      );
-    claimRouteTiming.recordElapsed(
-      "claim_route_context_parse",
-      "top_level",
-      contextParseStartedAt,
-    );
-    signal.throwIfAborted();
-    if (!storedContextResult.success) {
-      warnInvalidStoredExecutionContext(
+    const storedContextResult = await resolveStoredExecutionContextForClaim(
+      {
+        db,
         runId,
-        storedContextResult.error.issues,
-      );
-      return await failClaimForInvalidStoredExecutionContext(
-        {
-          db,
-          runId,
-          orgId: run.orgId,
-          scheduleFailedSideEffects(failedArgs) {
-            set(scheduleClaimFailedSideEffects$, failedArgs);
-          },
+        orgId: run.orgId,
+        executionContext: jobWithRun.job.executionContext,
+        capabilities: args.capabilities,
+        timing: claimRouteTiming,
+        scheduleFailedSideEffects(failedArgs) {
+          set(scheduleClaimFailedSideEffects$, failedArgs);
         },
-        signal,
-      );
+      },
+      signal,
+    );
+    if (!storedContextResult.compatible) {
+      return storedContextResult.response;
     }
     const { context: storedContext, connectorPermissionBaseline } =
-      decodeCompatibleStoredExecutionContext(storedContextResult.data);
+      storedContextResult.value;
 
     const responseBodyResult = await settle(
       set(
@@ -2605,6 +2670,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId,
       authType: auth.type,
       runnerAttribution,
+      capabilities: body.data.capabilities,
       jobWithRun,
       telemetry: body.data.telemetry,
       claimRequestStartedAtMs,
