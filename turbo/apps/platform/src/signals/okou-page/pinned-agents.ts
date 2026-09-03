@@ -4,7 +4,7 @@ import { onboardingStatus$ } from "./onboarding.ts";
 import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { unreadAgentIds$ } from "../chat-page/chat-thread-indicators-from-worker.ts";
-import { clerk$ } from "../auth.ts";
+import { clerk$, currentOrgInfo$, currentUserInfo$ } from "../auth.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { bestEffort, jsonParseOr } from "../utils.ts";
 import {
@@ -116,11 +116,11 @@ export const cachedPinnedAgentPreviewSnapshot$ = computed(async (get) => {
   if (cached === null) {
     return null;
   }
-  const clerk = await get(clerk$);
-  if (
-    clerk.user?.id !== cached.userId ||
-    clerk.organization?.id !== cached.orgId
-  ) {
+  const [user, organization] = await Promise.all([
+    get(currentUserInfo$),
+    get(currentOrgInfo$),
+  ]);
+  if (user?.id !== cached.userId || organization?.id !== cached.orgId) {
     return null;
   }
   return {
@@ -146,7 +146,11 @@ const persistPinnedAgentPreviewCache$ = command(
       get(defaultAgentId$),
     ]);
     signal.throwIfAborted();
-    if (get(pinnedAgentPreviewCacheSyncGeneration$) !== generation) {
+    if (
+      get(pinnedAgentPreviewCacheSyncGeneration$) !== generation ||
+      clerk.user?.id !== userId ||
+      clerk.organization?.id !== orgId
+    ) {
       return;
     }
     const serialized = JSON.stringify({

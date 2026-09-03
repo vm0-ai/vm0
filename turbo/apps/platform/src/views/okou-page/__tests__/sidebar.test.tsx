@@ -47,8 +47,10 @@ import {
   fill,
   holdElementAnimations,
   queryAllByRoleFast,
+  setupPage,
   setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
+import { mockOrganization } from "../../../__tests__/mock-auth.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
 import {
@@ -333,9 +335,11 @@ function mockChatThreadSnapshot(
 function deferPinnedAgentPreferences(
   targetContext: ReturnType<typeof testContext>,
   pinnedAgentIds: readonly string[],
+  onRequest: () => void = () => {},
 ) {
   const gate = targetContext.mocks.deferred<void>();
   targetContext.mocks.api(userPreferencesContract.get, async ({ respond }) => {
+    onRequest();
     await gate.promise;
     return respond(200, {
       timezone: null,
@@ -4509,6 +4513,58 @@ describe("zero sidebar", () => {
     expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
 
     preferencesGate.resolve();
+    await waitFor(() => {
+      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    });
+  });
+
+  it("discards an in-flight pinned agent preview refresh after the organization changes", async () => {
+    const pinnedAgentIds = prepareOverflowingPinnedAgents();
+    const requestStarted = context.mocks.deferred<void>();
+    const preferencesGate = deferPinnedAgentPreferences(
+      context,
+      pinnedAgentIds,
+      () => {
+        if (!requestStarted.settled()) {
+          requestStarted.resolve();
+        }
+      },
+    );
+
+    const setup = setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+    await requestStarted.promise;
+
+    mockOrganization({
+      activeOrg: { id: "org_other", name: "Other Org" },
+      memberships: [{ id: "org_other" }],
+    });
+    preferencesGate.resolve();
+    await setup;
+
+    cleanup();
+
+    const refreshPinnedAgentIds =
+      prepareOverflowingPinnedAgents(refreshContext);
+    const refreshPreferencesGate = deferPinnedAgentPreferences(
+      refreshContext,
+      refreshPinnedAgentIds,
+    );
+    setupSidebarPage({
+      context: refreshContext,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const grid = await screen.findByTestId("pinned-agents-grid");
+    expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
+      4,
+    );
+    expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
+
+    refreshPreferencesGate.resolve();
     await waitFor(() => {
       expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
