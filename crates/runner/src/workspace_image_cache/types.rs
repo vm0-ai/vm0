@@ -42,6 +42,13 @@ pub(crate) struct WorkspaceImagePrepareRequest<'a> {
     pub(crate) workspace_drive_required: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum WorkspaceImagePrepareLockPolicy {
+    #[default]
+    WaitForTransientContention,
+    ImmediateFallback,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct WorkspaceImageActiveLeaseRequest<'a> {
     pub(crate) identity: WorkspaceImageLeaseIdentity<'a>,

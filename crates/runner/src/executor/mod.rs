@@ -159,7 +159,7 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCache, WorkspaceImageLease,
-    WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
+    WorkspaceImageLeaseIdentity, WorkspaceImagePrepareLockPolicy, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionIdentityFailure, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
 };
@@ -212,6 +212,7 @@ pub struct JobParams {
     pub workspace_disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(crate) workspace_image_prepare_lock_policy: WorkspaceImagePrepareLockPolicy,
 }
 
 #[derive(Clone)]

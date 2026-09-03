@@ -912,6 +912,7 @@ pub(super) async fn build_spawn_job_request(
             budget_lease: active_lease,
             restore_guest_state,
             device_rate_limits,
+            workspace_image_prepare_lock_policy: Default::default(),
             factory,
             cancellation,
         },
