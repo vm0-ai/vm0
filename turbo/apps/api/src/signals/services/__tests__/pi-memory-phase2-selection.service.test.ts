@@ -13,13 +13,13 @@ import { db } from "../../../lib/db";
 import {
   claimPiMemoryPhase2Job,
   failPiMemoryPhase2Job,
+  finalizePiMemoryPhase2Job,
   PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
   PI_MEMORY_PHASE2_LEASE_DURATION_MS,
   PI_MEMORY_PHASE2_MAX_UNUSED_AGE_MS,
   PI_MEMORY_PHASE2_RETRY_DELAY_MS,
   PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS,
   piMemoryPhase2SelectionDigest,
-  succeedPiMemoryPhase2Job,
 } from "../pi-memory-phase2-job.service";
 import {
   createPhase2TestScope,
@@ -30,6 +30,17 @@ import {
 
 const NOW = Object.freeze(new Date("2026-09-03T04:00:00.000Z"));
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function succeedPiMemoryPhase2Job(
+  database: Parameters<typeof finalizePiMemoryPhase2Job>[0],
+  args: Omit<Parameters<typeof finalizePiMemoryPhase2Job>[1], "result">,
+): Promise<boolean> {
+  const result = await finalizePiMemoryPhase2Job(database, {
+    ...args,
+    result: { kind: "no_diff" },
+  });
+  return result.outcome === "no_diff";
+}
 
 describe("Pi memory Phase 2 selection", () => {
   it("pins every timing, attempt, count, byte, and digest constant", () => {
@@ -233,6 +244,7 @@ describe("Pi memory Phase 2 selection", () => {
         ...scope,
         leaseToken: exact?.leaseToken ?? "missing",
         claimedRevision: exact?.claimedRevision ?? -1,
+        claimedBaseVersionId: exact?.baseVersion.versionId ?? "missing",
         currentTime: new Date(NOW.getTime() + 1),
         errorClass: "test_retry",
       }),
@@ -297,6 +309,7 @@ describe("Pi memory Phase 2 selection", () => {
       ...scope,
       leaseToken: claimed.leaseToken,
       claimedRevision: claimed.claimedRevision,
+      claimedBaseVersionId: claimed.baseVersion.versionId,
       currentTime: new Date(NOW.getTime() + 1),
     };
     const jobBefore = await db()

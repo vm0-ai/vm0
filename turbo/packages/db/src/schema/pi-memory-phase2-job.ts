@@ -45,7 +45,11 @@ export const piMemoryPhase2Jobs = pgTable(
       .notNull(),
     inputRevision: integer("input_revision").default(1).notNull(),
     completedRevision: integer("completed_revision").default(0).notNull(),
+    reconciliationRevision: integer("reconciliation_revision")
+      .default(0)
+      .notNull(),
     claimedRevision: integer("claimed_revision"),
+    claimedBaseVersionId: varchar("claimed_base_version_id", { length: 64 }),
     leaseToken: uuid("lease_token"),
     leaseExpiresAt: timestamp("lease_expires_at"),
     retryCount: integer("retry_count").default(0).notNull(),
@@ -57,6 +61,18 @@ export const piMemoryPhase2Jobs = pgTable(
     }),
     claimedSelectedCount: integer("claimed_selected_count"),
     claimedSelectedUtf8Bytes: integer("claimed_selected_utf8_bytes"),
+    lastObservedHeadVersionId: varchar("last_observed_head_version_id", {
+      length: 64,
+    }),
+    conflictCount: integer("conflict_count").default(0).notNull(),
+    lastConflictAt: timestamp("last_conflict_at"),
+    lastConflictingHeadVersionId: varchar("last_conflicting_head_version_id", {
+      length: 64,
+    }),
+    lastPublishedVersionId: varchar("last_published_version_id", {
+      length: 64,
+    }),
+    lastPublishedAt: timestamp("last_published_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -97,6 +113,8 @@ export const piMemoryPhase2Jobs = pgTable(
         sql`${table.inputRevision} > 0 AND
           ${table.completedRevision} >= 0 AND
           ${table.completedRevision} <= ${table.inputRevision} AND
+          ${table.reconciliationRevision} >= 0 AND
+          ${table.reconciliationRevision} <= ${table.inputRevision} AND
           (
             ${table.claimedRevision} IS NULL OR (
               ${table.completedRevision} < ${table.claimedRevision} AND
@@ -111,6 +129,23 @@ export const piMemoryPhase2Jobs = pgTable(
       check(
         "pi_memory_phase2_jobs_error_class_check",
         sql`${table.lastErrorClass} IS NULL OR ${table.lastErrorClass} ~ '^[a-z][a-z0-9_]{0,127}$'`,
+      ),
+      check(
+        "pi_memory_phase2_jobs_version_ids_check",
+        sql`(${table.claimedBaseVersionId} IS NULL OR ${table.claimedBaseVersionId} ~ '^[0-9a-f]{64}$') AND
+          (${table.lastObservedHeadVersionId} IS NULL OR ${table.lastObservedHeadVersionId} ~ '^[0-9a-f]{64}$') AND
+          (${table.lastConflictingHeadVersionId} IS NULL OR ${table.lastConflictingHeadVersionId} ~ '^[0-9a-f]{64}$') AND
+          (${table.lastPublishedVersionId} IS NULL OR ${table.lastPublishedVersionId} ~ '^[0-9a-f]{64}$')`,
+      ),
+      check(
+        "pi_memory_phase2_jobs_conflict_check",
+        sql`(${table.conflictCount} = 0 AND ${table.lastConflictAt} IS NULL AND ${table.lastConflictingHeadVersionId} IS NULL) OR
+          (${table.conflictCount} > 0 AND ${table.lastConflictAt} IS NOT NULL AND ${table.lastConflictingHeadVersionId} IS NOT NULL)`,
+      ),
+      check(
+        "pi_memory_phase2_jobs_publication_check",
+        sql`(${table.lastPublishedVersionId} IS NULL AND ${table.lastPublishedAt} IS NULL) OR
+          (${table.lastPublishedVersionId} IS NOT NULL AND ${table.lastPublishedAt} IS NOT NULL)`,
       ),
       check(
         "pi_memory_phase2_jobs_selection_check",
@@ -135,6 +170,7 @@ export const piMemoryPhase2Jobs = pgTable(
           ${table.status} = 'idle' AND
           ${table.completedRevision} = ${table.inputRevision} AND
           ${table.claimedRevision} IS NULL AND
+          ${table.claimedBaseVersionId} IS NULL AND
           ${table.leaseToken} IS NULL AND
           ${table.leaseExpiresAt} IS NULL AND
           ${table.retryCount} = 0 AND
@@ -147,6 +183,7 @@ export const piMemoryPhase2Jobs = pgTable(
           ${table.status} = 'pending' AND
           ${table.completedRevision} < ${table.inputRevision} AND
           ${table.claimedRevision} IS NULL AND
+          ${table.claimedBaseVersionId} IS NULL AND
           ${table.leaseToken} IS NULL AND
           ${table.leaseExpiresAt} IS NULL AND
           ${table.retryCount} = 0 AND
@@ -158,6 +195,7 @@ export const piMemoryPhase2Jobs = pgTable(
         ) OR (
           ${table.status} = 'leased' AND
           ${table.claimedRevision} IS NOT NULL AND
+          ${table.claimedBaseVersionId} IS NOT NULL AND
           ${table.completedRevision} < ${table.claimedRevision} AND
           ${table.claimedRevision} <= ${table.inputRevision} AND
           ${table.leaseToken} IS NOT NULL AND
@@ -173,6 +211,7 @@ export const piMemoryPhase2Jobs = pgTable(
           ${table.status} = 'retryable_failure' AND
           ${table.completedRevision} < ${table.inputRevision} AND
           ${table.claimedRevision} IS NULL AND
+          ${table.claimedBaseVersionId} IS NULL AND
           ${table.leaseToken} IS NULL AND
           ${table.leaseExpiresAt} IS NULL AND
           ${table.retryCount} > 0 AND
@@ -186,6 +225,7 @@ export const piMemoryPhase2Jobs = pgTable(
           ${table.status} = 'terminal_failure' AND
           ${table.completedRevision} < ${table.inputRevision} AND
           ${table.claimedRevision} IS NULL AND
+          ${table.claimedBaseVersionId} IS NULL AND
           ${table.leaseToken} IS NULL AND
           ${table.leaseExpiresAt} IS NULL AND
           ${table.retryCount} = 3 AND
