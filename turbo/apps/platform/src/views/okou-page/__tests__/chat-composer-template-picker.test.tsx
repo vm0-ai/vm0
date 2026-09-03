@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -3912,7 +3913,7 @@ describe("chat composer templates", () => {
     expect(previewUrlRequestCount).toBe(1);
   });
 
-  it("loads resized uploaded deck previews with bounded thumbnail priority", async () => {
+  it("loads resized uploaded deck previews without a blank transition and with bounded thumbnail priority", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const templateId = "6fbcce0d-cb09-42de-8d8a-d525f813f312";
@@ -4012,6 +4013,43 @@ describe("chat composer templates", () => {
       );
     });
     expect(highResolutionImage).toHaveAttribute("src", highResolutionUrl);
+
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = tailwindCompiler.build([
+      ...lowResolutionImage.classList,
+      ...highResolutionImage.classList,
+    ]);
+    const testMotionOverride = Array.from(
+      document.head.querySelectorAll("style"),
+    ).find((candidate) => {
+      return candidate.textContent?.includes(
+        "transition-duration: 0s !important",
+      );
+    });
+    if (testMotionOverride === undefined) {
+      throw new Error("Test motion override not found");
+    }
+    // The shared test harness suppresses transitions globally. Isolate this
+    // assertion from that override so the rendered Tailwind utilities retain
+    // the transition duration a real browser would use.
+    testMotionOverride.remove();
+    document.head.append(styleElement);
+    try {
+      expect(
+        detailPreview.querySelectorAll(
+          '[data-imported-presentation-template-image][data-active="true"]',
+        ),
+      ).toHaveLength(1);
+      const activeImageStyle = getComputedStyle(highResolutionImage);
+      expect(["1", "100%"] as const).toContain(activeImageStyle.opacity);
+      expect(["", "0s"] as const).toContain(
+        activeImageStyle.transitionDuration,
+      );
+    } finally {
+      styleElement.remove();
+      document.head.prepend(testMotionOverride);
+    }
 
     const thumbnailCases = [
       { slideNumber: 1, loading: "eager", priority: "high" },
