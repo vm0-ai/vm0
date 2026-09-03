@@ -40,7 +40,7 @@ describe("Pi memory Phase 2 job schema", () => {
       "idx_pi_memory_phase2_jobs_claimable",
       "idx_pi_memory_phase2_jobs_user_export",
     ]);
-    expect(config.columns).toHaveLength(18);
+    expect(config.columns).toHaveLength(26);
   });
 
   it("pins every status, revision, retry, selection, and payload boundary", () => {
@@ -66,6 +66,9 @@ describe("Pi memory Phase 2 job schema", () => {
       "pi_memory_phase2_jobs_revisions_check",
       "pi_memory_phase2_jobs_retry_count_check",
       "pi_memory_phase2_jobs_error_class_check",
+      "pi_memory_phase2_jobs_version_ids_check",
+      "pi_memory_phase2_jobs_conflict_check",
+      "pi_memory_phase2_jobs_publication_check",
       "pi_memory_phase2_jobs_selection_check",
       "pi_memory_phase2_jobs_state_check",
     ]);
@@ -77,6 +80,15 @@ describe("Pi memory Phase 2 job schema", () => {
     );
     expect(checks.pi_memory_phase2_jobs_retry_count_check).toContain("<= 3");
     expect(checks.pi_memory_phase2_jobs_error_class_check).toContain("{0,127}");
+    expect(checks.pi_memory_phase2_jobs_version_ids_check).toContain(
+      "claimed_base_version_id",
+    );
+    expect(checks.pi_memory_phase2_jobs_conflict_check).toContain(
+      "last_conflicting_head_version_id",
+    );
+    expect(checks.pi_memory_phase2_jobs_publication_check).toContain(
+      "last_published_at",
+    );
     expect(checks.pi_memory_phase2_jobs_selection_check).toContain("<= 256");
     expect(checks.pi_memory_phase2_jobs_selection_check).toContain(
       '"claimed_selected_count" IS NOT NULL',
@@ -97,7 +109,7 @@ describe("Pi memory Phase 2 job schema", () => {
       /"status" = 'pending'[\s\S]*?"completed_revision" < "pi_memory_phase2_jobs"\."input_revision"/u,
     );
     expect(stateCheck).toMatch(
-      /"status" = 'leased'[\s\S]*?"claimed_revision" IS NOT NULL[\s\S]*?"claimed_selection_digest" IS NOT NULL/u,
+      /"status" = 'leased'[\s\S]*?"claimed_revision" IS NOT NULL[\s\S]*?"claimed_base_version_id" IS NOT NULL[\s\S]*?"claimed_selection_digest" IS NOT NULL/u,
     );
     expect(stateCheck).toMatch(
       /"status" = 'retryable_failure'[\s\S]*?"retry_count" < 3/u,

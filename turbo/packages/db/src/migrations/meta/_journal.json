@@ -1772,6 +1772,13 @@
       "when": 1788376783204,
       "tag": "1060_steady_talisman",
       "breakpoints": true
+    },
+    {
+      "idx": 1061,
+      "version": "7",
+      "when": 1788399098548,
+      "tag": "1061_faithful_rafael_vega",
+      "breakpoints": true
     }
   ]
 }
