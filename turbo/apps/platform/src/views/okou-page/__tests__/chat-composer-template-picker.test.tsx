@@ -9,9 +9,10 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
 } from "@okouai/core";
-import type {
-  GenerationTemplateRequest,
-  UserMessageDocument,
+import {
+  chatThreadByIdContract,
+  type GenerationTemplateRequest,
+  type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   presentationTemplatesContract,
@@ -39,6 +40,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { now } from "../../../lib/time.ts";
+import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -757,6 +759,91 @@ describe("chat composer templates", () => {
       expect(
         screen.getByLabelText(`Preview template ${replacement.title}`),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("opens and removes a template attachment restored from a legacy editor draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const generationTemplate = {
+      type: "presentation",
+      selection: { templateId: template.templateId },
+    } satisfies GenerationTemplateRequest;
+    const draftPatches: Record<string, unknown>[] = [];
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await findComposerEditor();
+    const thread = await waitFor(() => {
+      const current = context.store.get(currentLeftThread$);
+      if (!current) {
+        throw new Error("Current chat thread is not ready");
+      }
+      return current;
+    });
+    context.store.set(
+      thread.composer.template.setGenerationTemplate$,
+      generationTemplate,
+    );
+    thread.composer.editor.editor.commands.setContent({
+      type: "doc",
+      content: [
+        {
+          type: "templateAttachment",
+          attrs: {
+            templateType: "presentation",
+            title: template.title,
+            category: "slides",
+            previewImageUrl: null,
+          },
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Keep the legacy draft text" }],
+        },
+      ],
+    });
+
+    await user.click(
+      await screen.findByLabelText(`Preview template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+
+    await user.click(screen.getByLabelText("Close"));
+    await user.click(
+      await screen.findByLabelText(`Remove template ${template.title}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText(`Preview template ${template.title}`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "Keep the legacy draft text" }],
+        },
+        draftAttachments: null,
+      });
     });
   });
 
