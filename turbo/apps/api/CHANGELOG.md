@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.538.1](https://github.com/vm0-ai/vm0/compare/api-v1.538.0...api-v1.538.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **api:** bind mcp discovery to exact run accounts ([#31459](https://github.com/vm0-ai/vm0/issues/31459)) ([b021508](https://github.com/vm0-ai/vm0/commit/b0215087ca388de4ea1713b727617f74a4f686cf))
+* **core:** return morning brief to gated beta ([#31463](https://github.com/vm0-ai/vm0/issues/31463)) ([8bc5f29](https://github.com/vm0-ai/vm0/commit/8bc5f295f68bf600f1b97cf044ccad29d465b700))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.1
+    * @okouai/db bumped to 1.238.5
+
 ## [1.538.0](https://github.com/vm0-ai/vm0/compare/api-v1.537.0...api-v1.538.0) (2026-09-03)
 
 

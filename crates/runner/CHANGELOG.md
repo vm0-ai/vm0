@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.184.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.9...runner-rs-v0.184.10) (2026-09-03)
+
+
+### Refactoring
+
+* **runner:** reuse shared gc lock removal ([#31444](https://github.com/vm0-ai/vm0/issues/31444)) ([555d557](https://github.com/vm0-ai/vm0/commit/555d557849b4ba8a46ad7df9005b7b2a1146669e))
+
 ## [0.184.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.8...runner-rs-v0.184.9) (2026-09-03)
 
 

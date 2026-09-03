@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.614.1](https://github.com/vm0-ai/vm0/compare/core-v8.614.0...core-v8.614.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **core:** return morning brief to gated beta ([#31463](https://github.com/vm0-ai/vm0/issues/31463)) ([8bc5f29](https://github.com/vm0-ai/vm0/commit/8bc5f295f68bf600f1b97cf044ccad29d465b700))
+
 ## [8.614.0](https://github.com/vm0-ai/vm0/compare/core-v8.613.0...core-v8.614.0) (2026-09-03)
 
 
