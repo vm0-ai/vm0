@@ -16,7 +16,18 @@ import {
 import {
   featureSwitch$,
   imageRecognitionAvailable$,
+  voiceDraftEnabled$,
 } from "../external/feature-switch.ts";
+import {
+  audioInputAvailable$,
+  audioInputQuota$,
+  openAudioInputQuotaRecovery$,
+  sttRecording$,
+  sttStarting$,
+  sttTranscribing$,
+  startRecording$,
+  stopAndTranscribe$,
+} from "../voice-io/voice-io-stt.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 import type { DraftSignals, ChatAttachment } from "./chat-draft.ts";
 import { createComposerFeedbackModel } from "./chat-feedback.ts";
@@ -250,9 +261,14 @@ interface ComposerTemplateSignals
   >;
 }
 
+interface ComposerVoiceInputSignals {
+  readonly toggle$: Command<Promise<void>, [AbortSignal]>;
+}
+
 export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
+  readonly voice: ComposerVoiceInputSignals;
   readonly voiceDraft: WorkflowComposerVoiceDraftSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
@@ -484,6 +500,75 @@ function createRemoveQueuedMessage(
   );
 }
 
+function createComposerVoiceInputSignals(
+  draft: DraftSignals,
+  workflowComposer: WorkflowComposerSignals,
+): ComposerVoiceInputSignals {
+  return {
+    toggle$: command(async ({ get, set }, signal: AbortSignal) => {
+      if (
+        !get(audioInputAvailable$) ||
+        get(sttStarting$) ||
+        get(sttTranscribing$)
+      ) {
+        return;
+      }
+      if (get(sttRecording$)) {
+        await set(stopAndTranscribe$, signal);
+        return;
+      }
+
+      const quota = await get(audioInputQuota$);
+      signal.throwIfAborted();
+      if (!quota.allowed) {
+        await set(openAudioInputQuotaRecovery$, signal);
+        return;
+      }
+
+      if (get(voiceDraftEnabled$)) {
+        const id = set(workflowComposer.voiceDraft.start$);
+        await set(
+          startRecording$,
+          async (text) => {
+            set(workflowComposer.voiceDraft.appendTranscript$, id, text);
+            await set(draft.save$, signal);
+          },
+          quota.limit === null,
+          {
+            finish: async () => {
+              await set(
+                workflowComposer.voiceDraft.finish$,
+                id,
+                "automatic",
+                signal,
+              );
+              signal.throwIfAborted();
+              await set(draft.save$, signal);
+            },
+            fail: async () => {
+              set(workflowComposer.voiceDraft.markFailed$, id);
+              await set(draft.save$, signal);
+            },
+          },
+          signal,
+        );
+        return;
+      }
+
+      await set(
+        startRecording$,
+        async (text) => {
+          set(workflowComposer.editor.appendText$, text);
+          await set(draft.save$, signal);
+        },
+        quota.limit === null,
+        undefined,
+        signal,
+      );
+    }),
+  };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -510,6 +595,7 @@ export function createComposerSignals(
     },
     feedback,
   );
+  const voice = createComposerVoiceInputSignals(draft, workflowComposer);
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,
@@ -553,6 +639,7 @@ export function createComposerSignals(
   return {
     agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
+    voice,
     voiceDraft: workflowComposer.voiceDraft,
     feedback: workflowComposer.feedback,
     workflow: {

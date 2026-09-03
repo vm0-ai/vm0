@@ -26,10 +26,7 @@ import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
-import {
-  clickComposerVoiceInput,
-  COMPOSER_VOICE_INPUT_SHORTCUT,
-} from "../../lib/composer-voice-input-shortcut.ts";
+import { COMPOSER_VOICE_INPUT_SHORTCUT } from "../../lib/composer-voice-input-shortcut.ts";
 import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
@@ -299,11 +296,10 @@ const setupChatPageShortcutActions$ = command(
               await set(setFocusedThreadEmoji$, { thread, emoji }, signal);
             }
           },
-          toggleVoiceInput: () => {
+          toggleVoiceInput: async () => {
             const thread = focusedThread();
-            const container = thread ? get(thread.containerEl$) : null;
-            if (container) {
-              clickComposerVoiceInput(container);
+            if (thread) {
+              await set(thread.composer.voice.toggle$, signal);
             }
           },
         },

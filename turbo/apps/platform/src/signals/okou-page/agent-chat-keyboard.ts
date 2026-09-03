@@ -1,11 +1,9 @@
 import { command } from "ccstate";
 import { matchShortcut } from "@okouai/ui";
 import { currentChatThreadListIds$ } from "../agent-chat.ts";
+import { agentChatComposerSignals$ } from "./agent-composer-signals.ts";
 import { onDomEventFn } from "../utils.ts";
-import {
-  clickComposerVoiceInput,
-  COMPOSER_VOICE_INPUT_SHORTCUT,
-} from "../../lib/composer-voice-input-shortcut.ts";
+import { COMPOSER_VOICE_INPUT_SHORTCUT } from "../../lib/composer-voice-input-shortcut.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { navigateToChat$ } from "./nav.ts";
 
@@ -15,8 +13,8 @@ export const setupAgentChatKeyboardShortcuts$ = command(
       {
         [COMPOSER_VOICE_INPUT_SHORTCUT]: {
           allowInEditableTarget: true,
-          run: () => {
-            clickComposerVoiceInput(document);
+          run: async () => {
+            await set(get(agentChatComposerSignals$).voice.toggle$, signal);
           },
         },
       },

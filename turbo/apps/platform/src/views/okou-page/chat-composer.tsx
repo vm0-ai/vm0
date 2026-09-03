@@ -222,7 +222,6 @@ import {
   codexFastModeEnabled$,
   customConnectorMcpEnabled$,
   imageRecognitionAvailable$,
-  voiceDraftEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   selectedComputerUseHostId,
@@ -253,13 +252,11 @@ import type {
 import {
   audioInputAvailable$,
   audioInputQuota$,
-  openAudioInputQuotaRecovery$,
   sttRecording$,
   sttRecordingStartedAt$,
   sttStarting$,
   sttTranscribing$,
   sttVoiceLevel$,
-  startRecording$,
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/okou-page/clipboard.ts";
@@ -8895,19 +8892,8 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const voiceLevel = useGet(sttVoiceLevel$);
-  const voiceDraftEnabled = useGet(voiceDraftEnabled$);
   const voiceLevelFill = `${Math.round((voiceLevel / 3) * 100)}%`;
-  const startRec = useSet(startRecording$);
-  const stopAndTranscribe = useSet(stopAndTranscribe$);
-  const openQuotaRecovery = useSet(openAudioInputQuotaRecovery$);
-  const appendText = useSet(signals.editor.appendText$);
-  const startVoiceDraft = useSet(signals.voiceDraft.start$);
-  const appendVoiceDraftTranscript = useSet(
-    signals.voiceDraft.appendTranscript$,
-  );
-  const markVoiceDraftFailed = useSet(signals.voiceDraft.markFailed$);
-  const finishVoiceDraft = useSet(signals.voiceDraft.finish$);
-  const saveDraft = useSet(signals.draft.save$);
+  const toggleVoiceInput = useSet(signals.voice.toggle$);
   const signal = useGet(pageSignal$);
   const disabled = starting || transcribing || (!recording && !quotaResolved);
   const status = {
@@ -8921,56 +8907,8 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
     return null;
   }
 
-  const onTranscribed = (text: string) => {
-    appendText(text);
-    detach(saveDraft(signal), Reason.DomCallback);
-  };
-
   const handleClick = () => {
-    if (starting || transcribing) {
-      return;
-    }
-    if (recording) {
-      detach(stopAndTranscribe(signal), Reason.DomCallback);
-      return;
-    }
-    if (!quota) {
-      return;
-    }
-    if (!quota.allowed) {
-      detach(openQuotaRecovery(signal), Reason.DomCallback);
-      return;
-    }
-    if (voiceDraftEnabled) {
-      const id = startVoiceDraft();
-      detach(
-        startRec(
-          (text) => {
-            appendVoiceDraftTranscript(id, text);
-            detach(saveDraft(signal), Reason.DomCallback);
-          },
-          quota.limit === null,
-          {
-            finish: async () => {
-              await finishVoiceDraft(id, "automatic", signal);
-              signal.throwIfAborted();
-              await saveDraft(signal);
-            },
-            fail: async () => {
-              markVoiceDraftFailed(id);
-              await saveDraft(signal);
-            },
-          },
-          signal,
-        ),
-        Reason.DomCallback,
-      );
-      return;
-    }
-    detach(
-      startRec(onTranscribed, quota.limit === null, undefined, signal),
-      Reason.DomCallback,
-    );
+    detach(toggleVoiceInput(signal), Reason.DomCallback);
   };
 
   return (
@@ -9055,14 +8993,20 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
   return `${minutes}:${seconds}`;
 }
 
-function VoiceDraftFooter({ status }: { status: "recording" | "processing" }) {
+function VoiceDraftFooter({
+  signals,
+  status,
+}: {
+  signals: ComposerSignals;
+  status: "recording" | "processing";
+}) {
   const { t } = useTranslation();
   const recording = useGet(sttRecording$);
   const starting = useGet(sttStarting$);
   const transcribing = useGet(sttTranscribing$);
   const recordingStartedAt = useGet(sttRecordingStartedAt$);
   const voiceLevel = useGet(sttVoiceLevel$);
-  const stopAndTranscribe = useSet(stopAndTranscribe$);
+  const toggleVoiceInput = useSet(signals.voice.toggle$);
   const signal = useGet(pageSignal$);
   const processing = transcribing || status === "processing";
 
@@ -9113,7 +9057,7 @@ function VoiceDraftFooter({ status }: { status: "recording" | "processing" }) {
         aria-keyshortcuts={COMPOSER_VOICE_INPUT_ARIA_KEY_SHORTCUTS}
         disabled={starting || !recording}
         onClick={() => {
-          detach(stopAndTranscribe(signal), Reason.DomCallback);
+          detach(toggleVoiceInput(signal), Reason.DomCallback);
         }}
       >
         {t(($) => {
@@ -11007,7 +10951,7 @@ function ComposerFooter({ signals }: { signals: ComposerSignals }) {
   return (
     <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
       {voiceDraftStatus === "recording" || voiceDraftStatus === "processing" ? (
-        <VoiceDraftFooter status={voiceDraftStatus} />
+        <VoiceDraftFooter signals={signals} status={voiceDraftStatus} />
       ) : (
         <>
           <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
