@@ -716,10 +716,6 @@ body {
 .zero-app[data-gradient-color-themes] .zero-nav.zero-nav-rail {
   background-color: hsl(var(--zero-nav-rail));
 }
-:where([data-theme="dark"]) .zero-nav {
-  --color-sidebar: hsl(var(--gray-0));
-}
-
 /* Morandi outline buttons */
 .zero-app .zero-btn-morandi {
   background-color: hsl(var(--gray-50));
