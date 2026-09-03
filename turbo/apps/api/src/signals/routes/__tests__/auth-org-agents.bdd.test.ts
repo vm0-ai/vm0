@@ -125,13 +125,13 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expect(after.onboardingComplete).toBeTruthy();
     expect(after.defaultAgentId).toBe(defaultAgentId);
     expect(after.defaultAgentMetadata).toMatchObject({
-      displayName: "BDD Default Agent",
+      displayName: "Okou",
       sound: "calm",
       avatarUrl: DEFAULT_AGENT_AVATAR_URL,
     });
 
     const defaultAgent = await api.readAgent(admin, defaultAgentId);
-    expect(defaultAgent.displayName).toBe("BDD Default Agent");
+    expect(defaultAgent.displayName).toBe("Okou");
     expect(defaultAgent.avatarUrl).toBe(DEFAULT_AGENT_AVATAR_URL);
 
     const repeatedBootstrap = await api.bootstrapLimitedFreeOnboarding(admin, {
@@ -506,7 +506,7 @@ describe("ORG-03 onboarding status mapping", () => {
     });
   });
 
-  it("projects the system default assistant identity across public brands", async () => {
+  it("locks the system default assistant name as Okou", async () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
 
@@ -518,13 +518,13 @@ describe("ORG-03 onboarding status mapping", () => {
     }
 
     const vm0Onboarding = await api.readOnboardingStatus(admin, "vm0");
-    expect(vm0Onboarding.defaultAgentMetadata?.displayName).toBe("Zero");
+    expect(vm0Onboarding.defaultAgentMetadata?.displayName).toBe("Okou");
     await expect(
       api.readAgent(admin, defaultAgentId, "okou"),
     ).resolves.toMatchObject({ displayName: "Okou" });
     await expect(
       api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({ displayName: "Zero" });
+    ).resolves.toMatchObject({ displayName: "Okou" });
 
     const okouAgents = await api.listAgents(admin, "okou");
     expect(
@@ -553,7 +553,7 @@ describe("ORG-03 onboarding status mapping", () => {
       admin,
       defaultAgentId,
       {
-        displayName: "Okou",
+        displayName: "Renamed default agent",
         description: "Patched from Okou",
         avatarUrl: "preset:4",
       },
@@ -567,7 +567,7 @@ describe("ORG-03 onboarding status mapping", () => {
     await expect(
       api.readAgent(admin, defaultAgentId, "vm0"),
     ).resolves.toMatchObject({
-      displayName: "Zero",
+      displayName: "Okou",
       description: "Patched from Okou",
     });
 
@@ -575,7 +575,7 @@ describe("ORG-03 onboarding status mapping", () => {
       admin,
       defaultAgentId,
       {
-        displayName: "Okou",
+        displayName: "Another default name",
         description: "Replaced from Okou",
         avatarUrl: "preset:3",
       },
@@ -589,7 +589,7 @@ describe("ORG-03 onboarding status mapping", () => {
     await expect(
       api.readAgent(admin, defaultAgentId, "vm0"),
     ).resolves.toMatchObject({
-      displayName: "Zero",
+      displayName: "Okou",
       description: "Replaced from Okou",
     });
 
@@ -601,10 +601,10 @@ describe("ORG-03 onboarding status mapping", () => {
     );
     await expect(
       api.readAgent(admin, defaultAgentId, "okou"),
-    ).resolves.toMatchObject({ displayName: "Research Lead" });
+    ).resolves.toMatchObject({ displayName: "Okou" });
     await expect(
       api.readAgent(admin, defaultAgentId, "vm0"),
-    ).resolves.toMatchObject({ displayName: "Research Lead" });
+    ).resolves.toMatchObject({ displayName: "Okou" });
   });
 
   it("maps onboarding status across the setup, payment, entitlement, and agent-deletion journey", async () => {
@@ -643,7 +643,7 @@ describe("ORG-03 onboarding status mapping", () => {
       hasOrg: true,
       hasDefaultAgent: true,
       defaultAgentMetadata: {
-        displayName: "Zero",
+        displayName: "Okou",
         sound: "professional",
         avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
@@ -695,7 +695,7 @@ describe("ORG-03 onboarding status mapping", () => {
       hasDefaultAgent: true,
       defaultAgentId: agentId,
       defaultAgentMetadata: {
-        displayName: "Zero",
+        displayName: "Okou",
         sound: "professional",
         avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
@@ -710,7 +710,7 @@ describe("ORG-03 onboarding status mapping", () => {
       hasOrg: true,
       hasDefaultAgent: true,
       defaultAgentMetadata: {
-        displayName: "Zero",
+        displayName: "Okou",
         sound: "professional",
         avatarUrl: DEFAULT_AGENT_AVATAR_URL,
       },
