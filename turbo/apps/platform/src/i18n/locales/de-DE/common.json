@@ -2929,19 +2929,20 @@
       "agentphone": {
         "authorizedSender": "Autorisierter Absender",
         "connectAria": "Telefon anschließen",
-        "connectDescription": "Senden Sie eine Direktnachricht von der Telefonnummer, die Sie verbinden möchten.",
+        "connectDescription": "Senden Sie von dem Telefon, das Sie verbinden möchten, eine Nachricht an diese AgentPhone-Nummer.",
         "connectTitle": "Telefon anschließen",
         "copyAria": "Kopieren Sie {{phone}}",
         "copyError": "Telefonnummer konnte nicht kopiert werden",
         "copySuccess": "Telefonnummer kopiert",
         "description": "SMS-Zugriff auf {{assistantName}}",
         "destination": "iMessage oder SMS an",
-        "messageInstruction": "Senden Sie „hi“ an diese Nummer",
+        "messageInstruction": "Senden Sie „hi“",
         "openMessages": "Nachrichten öffnen",
         "options": "Telefonoptionen",
         "phoneLabel": "Telefon",
-        "replyInstruction": "Wir antworten mit einem Verbindungslink. Öffnen Sie ihn innerhalb von 10 Minuten, um die Verbindung abzuschließen.",
-        "risk": "SMS- und MMS-Antworten werden möglicherweise nicht zuverlässig zugestellt. Für ein möglichst zuverlässiges Erlebnis verwenden Sie iMessage mit dieser AgentPhone-Nummer."
+        "replyInstruction": "Öffnen Sie den Verbindungslink innerhalb von 10 Minuten, um die Verbindung abzuschließen.",
+        "replyTitle": "Öffnen Sie unsere Antwort",
+        "risk": "Verwenden Sie nach Möglichkeit iMessage. SMS- und MMS-Antworten kommen möglicherweise nicht zuverlässig an."
       },
       "catalogDiagnostics": {
         "fields": {

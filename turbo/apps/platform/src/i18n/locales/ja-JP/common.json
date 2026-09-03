@@ -2921,19 +2921,20 @@
       "agentphone": {
         "authorizedSender": "承認された送信者",
         "connectAria": "電話を接続する",
-        "connectDescription": "接続したい電話番号からダイレクトメッセージを送信してください。",
+        "connectDescription": "接続したい電話から、この AgentPhone 番号にメッセージを送信してください。",
         "connectTitle": "電話を接続する",
         "copyAria": "{{phone}} をコピーします",
         "copyError": "電話番号のコピーに失敗しました",
         "copySuccess": "電話番号をコピーしました",
         "description": "{{assistantName}} へのテキスト メッセージ アクセス",
         "destination": "iMessage または SMS で",
-        "messageInstruction": "この番号に「hi」と送信",
+        "messageInstruction": "「hi」と送信",
         "openMessages": "メッセージを開く",
         "options": "電話オプション",
         "phoneLabel": "電話",
-        "replyInstruction": "接続リンクを返信します。10分以内に開いて接続を完了してください。",
-        "risk": "SMS および MMS の返信は確実に配信されない可能性があります。最も信頼性の高いエクスペリエンスを得るには、この AgentPhone 番号で iMessage を使用してください。"
+        "replyInstruction": "10分以内に接続リンクを開いて完了してください。",
+        "replyTitle": "返信を開く",
+        "risk": "可能な場合は iMessage を使用してください。SMS および MMS の返信は確実に届かないことがあります。"
       },
       "catalogDiagnostics": {
         "fields": {

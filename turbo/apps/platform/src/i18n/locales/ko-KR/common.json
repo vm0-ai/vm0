@@ -2921,19 +2921,20 @@
       "agentphone": {
         "authorizedSender": "승인된 발신자",
         "connectAria": "전화 연결",
-        "connectDescription": "연결하려는 전화번호에서 다이렉트 메시지를 보내세요.",
+        "connectDescription": "연결하려는 휴대폰에서 이 AgentPhone 번호로 메시지를 보내세요.",
         "connectTitle": "전화 연결",
         "copyAria": "{{phone}} 복사",
         "copyError": "전화번호 복사 실패",
         "copySuccess": "전화번호가 복사되었습니다",
         "description": "{{assistantName}}에 문자 메시지 접근",
         "destination": "iMessage 또는 SMS 수신처",
-        "messageInstruction": "이 번호로 “hi” 보내기",
+        "messageInstruction": "“hi” 보내기",
         "openMessages": "메시지 열기",
         "options": "전화 옵션",
         "phoneLabel": "전화",
-        "replyInstruction": "연결 링크를 답장으로 보내드릴게요. 10분 안에 링크를 열어 연결을 완료하세요.",
-        "risk": "SMS 및 MMS 답장은 신뢰할 수 없을 수 있습니다. 가장 안정적인 사용을 위해 이 AgentPhone 번호로 iMessage를 사용하세요."
+        "replyInstruction": "10분 안에 연결 링크를 열어 완료하세요.",
+        "replyTitle": "답장 열기",
+        "risk": "가능하면 iMessage를 사용하세요. SMS 및 MMS 답장은 안정적으로 도착하지 않을 수 있습니다."
       },
       "catalogDiagnostics": {
         "fields": {

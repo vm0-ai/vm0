@@ -2929,19 +2929,20 @@
       "agentphone": {
         "authorizedSender": "अधिकृत प्रेषक",
         "connectAria": "फ़ोन कनेक्ट करें",
-        "connectDescription": "जिस फ़ोन नंबर को आप कनेक्ट करना चाहते हैं, उससे एक सीधा संदेश भेजें।",
+        "connectDescription": "जिस फ़ोन को आप कनेक्ट करना चाहते हैं, उससे इस AgentPhone नंबर पर मैसेज भेजें।",
         "connectTitle": "फ़ोन कनेक्ट करें",
         "copyAria": "{{phone}} कॉपी करें",
         "copyError": "फ़ोन नंबर कॉपी करने में विफल",
         "copySuccess": "फ़ोन नंबर कॉपी किया गया",
         "description": "{{assistantName}} तक टेक्स्ट-संदेश पहुंच",
         "destination": "iMessage या SMS को",
-        "messageInstruction": "इस नंबर पर “hi” भेजें",
+        "messageInstruction": "“hi” भेजें",
         "openMessages": "मैसेज खोलें",
         "options": "फ़ोन विकल्प",
         "phoneLabel": "फ़ोन",
-        "replyInstruction": "हम कनेक्शन लिंक के साथ जवाब देंगे। कनेक्शन पूरा करने के लिए इसे 10 मिनट के अंदर खोलें।",
-        "risk": "SMS और MMS उत्तर विश्वसनीय रूप से वितरित नहीं किए जा सकते हैं। सबसे विश्वसनीय अनुभव के लिए, इस AgentPhone नंबर के साथ iMessage का उपयोग करें।"
+        "replyInstruction": "कनेक्शन पूरा करने के लिए 10 मिनट के अंदर कनेक्शन लिंक खोलें।",
+        "replyTitle": "हमारा जवाब खोलें",
+        "risk": "जहाँ संभव हो iMessage का उपयोग करें। SMS और MMS के जवाब भरोसेमंद तरीके से नहीं पहुँच सकते हैं।"
       },
       "catalogDiagnostics": {
         "fields": {

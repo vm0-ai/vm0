@@ -1,6 +1,11 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { CircleCheck, Copy, EllipsisVertical } from "lucide-react";
+import {
+  AlertTriangle,
+  CircleCheck,
+  Copy,
+  EllipsisVertical,
+} from "lucide-react";
 import { Button } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
@@ -37,6 +42,7 @@ import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets
 import { IconTooltipButton } from "../components/icon-tooltip.tsx";
 
 const imessageIconImg = settingsIconAssetUrl("imessage");
+const AGENTPHONE_HANDSHAKE_MESSAGE = "hi";
 
 /** Render a US/Canada E.164 number as `+1 (NXX) NXX-XXXX`; other formats are
  *  returned unchanged. */
@@ -150,6 +156,7 @@ function AgentPhoneConnectDialog({
   if (!phoneNumber) {
     return null;
   }
+  const messageHref = `sms:${phoneNumber}?body=${encodeURIComponent(AGENTPHONE_HANDSHAKE_MESSAGE)}`;
 
   return (
     <Dialog
@@ -160,37 +167,56 @@ function AgentPhoneConnectDialog({
     >
       <DialogContent>
         <AgentPhoneConnectIntro />
-        <div className="grid gap-3">
-          <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
-            <p className="text-sm text-muted-foreground">
+        <div className="grid gap-5">
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <p className="min-w-0 leading-5">
               {t(($) => {
-                return $.connectors.providerSettings.agentphone
-                  .messageInstruction;
-              })}
-            </p>
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
-              <span className="inline-flex min-w-0 items-center gap-2">
-                <img src={imessageIconImg} alt="" className="h-5 w-5" />
-                <PhoneNumberCopyButton phoneNumber={phoneNumber} />
-              </span>
-              <span className="shrink-0 rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground">
-                hi
-              </span>
-            </div>
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              {t(($) => {
-                return $.connectors.providerSettings.agentphone
-                  .replyInstruction;
+                return $.connectors.providerSettings.agentphone.risk;
               })}
             </p>
           </div>
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-            {t(($) => {
-              return $.connectors.providerSettings.agentphone.risk;
-            })}
-          </div>
+          <ol className="divide-y divide-border/60">
+            <li className="flex items-start gap-3 pb-4">
+              <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                1
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  {t(($) => {
+                    return $.connectors.providerSettings.agentphone
+                      .messageInstruction;
+                  })}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-gray-50">
+                    <img src={imessageIconImg} alt="" className="h-5 w-5" />
+                  </span>
+                  <PhoneNumberCopyButton phoneNumber={phoneNumber} />
+                </div>
+              </div>
+            </li>
+            <li className="flex items-start gap-3 pt-4">
+              <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                2
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {t(($) => {
+                    return $.connectors.providerSettings.agentphone.replyTitle;
+                  })}
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                  {t(($) => {
+                    return $.connectors.providerSettings.agentphone
+                      .replyInstruction;
+                  })}
+                </p>
+              </div>
+            </li>
+          </ol>
           <AgentPhoneConnectActions
-            messageHref={`sms:${phoneNumber}`}
+            messageHref={messageHref}
             onClose={() => {
               setOpen(false);
             }}

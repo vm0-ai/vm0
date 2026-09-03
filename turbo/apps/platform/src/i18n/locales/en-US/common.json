@@ -2921,19 +2921,20 @@
       "agentphone": {
         "authorizedSender": "Authorized sender",
         "connectAria": "Connect phone",
-        "connectDescription": "Send a direct message from the phone number you want to connect.",
+        "connectDescription": "Message this AgentPhone number from the phone you want to connect.",
         "connectTitle": "Connect phone",
         "copyAria": "Copy {{phone}}",
         "copyError": "Failed to copy phone number",
         "copySuccess": "Phone number copied",
         "description": "Text-message access to {{assistantName}}",
         "destination": "iMessage or SMS to",
-        "messageInstruction": "Send “hi” to this number",
+        "messageInstruction": "Send “hi”",
         "openMessages": "Open Messages",
         "options": "Phone options",
         "phoneLabel": "Phone",
-        "replyInstruction": "We’ll reply with a connection link. Open it within 10 minutes to finish connecting.",
-        "risk": "SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number."
+        "replyInstruction": "Tap the connection link within 10 minutes to finish.",
+        "replyTitle": "Open our reply",
+        "risk": "Use iMessage when possible. SMS and MMS replies may not arrive reliably."
       },
       "catalogDiagnostics": {
         "fields": {

@@ -329,16 +329,22 @@ describe("works page", () => {
     const dialog = await openAgentPhoneConnectDialog();
 
     expect(within(dialog).queryByRole("textbox")).toBeNull();
-    expect(within(dialog).getByText("Send “hi” to this number")).toBeVisible();
-    expect(within(dialog).getByText("hi")).toBeVisible();
+    const warning = within(dialog).getByText(
+      "Use iMessage when possible. SMS and MMS replies may not arrive reliably.",
+    );
+    const messageInstruction = within(dialog).getByText("Send “hi”");
+    expect(warning).toBeVisible();
+    expect(messageInstruction).toBeVisible();
+    expect(warning.compareDocumentPosition(messageInstruction) & 4).toBe(4);
     expect(getRole("button", "Copy +1 (903) 985-3128", dialog)).toBeVisible();
     expect(getRole("link", "Open Messages", dialog)).toHaveAttribute(
       "href",
-      "sms:+19039853128",
+      "sms:+19039853128?body=hi",
     );
+    expect(within(dialog).getByText("Open our reply")).toBeVisible();
     expect(
       within(dialog).getByText(
-        "We’ll reply with a connection link. Open it within 10 minutes to finish connecting.",
+        "Tap the connection link within 10 minutes to finish.",
       ),
     ).toBeVisible();
   });

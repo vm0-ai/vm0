@@ -2980,19 +2980,20 @@
       "agentphone": {
         "authorizedSender": "Remetente autorizado",
         "connectAria": "Conectar telefone",
-        "connectDescription": "Envie uma mensagem direta do número de telefone que você quer conectar.",
+        "connectDescription": "Envie uma mensagem para este número do AgentPhone usando o telefone que você quer conectar.",
         "connectTitle": "Conectar telefone",
         "copyAria": "Copiar {{phone}}",
         "copyError": "Falha ao copiar o número de telefone",
         "copySuccess": "Número de telefone copiado",
         "description": "Acesso ao {{assistantName}} por mensagens de texto",
         "destination": "iMessage ou SMS para",
-        "messageInstruction": "Envie “hi” para este número",
+        "messageInstruction": "Envie “hi”",
         "openMessages": "Abrir Mensagens",
         "options": "Opções do telefone",
         "phoneLabel": "Telefone",
-        "replyInstruction": "Responderemos com um link de conexão. Abra-o em até 10 minutos para concluir a conexão.",
-        "risk": "As respostas por SMS e MMS podem não ser entregues de forma confiável. Para uma experiência mais confiável, use o iMessage com este número do AgentPhone."
+        "replyInstruction": "Abra o link de conexão em até 10 minutos para concluir.",
+        "replyTitle": "Abra nossa resposta",
+        "risk": "Use o iMessage quando possível. As respostas por SMS e MMS podem não chegar de forma confiável."
       },
       "catalogDiagnostics": {
         "fields": {

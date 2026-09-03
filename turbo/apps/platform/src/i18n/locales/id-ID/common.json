@@ -2921,19 +2921,20 @@
       "agentphone": {
         "authorizedSender": "Pengirim yang diizinkan",
         "connectAria": "Hubungkan telepon",
-        "connectDescription": "Kirim pesan langsung dari nomor telepon yang ingin Anda hubungkan.",
+        "connectDescription": "Kirim pesan ke nomor AgentPhone ini dari telepon yang ingin Anda hubungkan.",
         "connectTitle": "Hubungkan telepon",
         "copyAria": "Salin {{phone}}",
         "copyError": "Gagal menyalin nomor telepon",
         "copySuccess": "Nomor telepon disalin",
         "description": "Akses {{assistantName}} lewat pesan teks",
         "destination": "iMessage atau SMS ke",
-        "messageInstruction": "Kirim “hi” ke nomor ini",
+        "messageInstruction": "Kirim “hi”",
         "openMessages": "Buka Pesan",
         "options": "Opsi telepon",
         "phoneLabel": "Telepon",
-        "replyInstruction": "Kami akan membalas dengan tautan koneksi. Buka dalam 10 menit untuk menyelesaikan koneksi.",
-        "risk": "Balasan SMS dan MMS mungkin tidak terkirim dengan andal. Untuk pengalaman paling andal, gunakan iMessage dengan nomor AgentPhone ini."
+        "replyInstruction": "Buka tautan koneksi dalam 10 menit untuk menyelesaikannya.",
+        "replyTitle": "Buka balasan kami",
+        "risk": "Gunakan iMessage jika memungkinkan. Balasan SMS dan MMS mungkin tidak selalu terkirim."
       },
       "catalogDiagnostics": {
         "fields": {
