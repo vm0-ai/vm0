@@ -188,9 +188,6 @@ Model-provider usage
   boundary.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry sandbox
   info. Read by model-provider reported-model selection.
-- ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
-  ran. Read by ``response()`` to skip legacy fallback JSON extraction.
-
 Connector usage and parser state
 --------------------------------
 - ``X_NDJSON_STATE``: ``dict`` owned by the X connector NDJSON parser. Written
@@ -254,7 +251,6 @@ MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_PROVIDER_USAGE_TIERS: Final = "model_provider_usage_tiers"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
-MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"

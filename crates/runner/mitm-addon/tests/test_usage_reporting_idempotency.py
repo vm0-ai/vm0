@@ -2,7 +2,6 @@
 
 import time
 import uuid
-from pathlib import Path
 
 import pytest
 from mitmproxy.flow import Error
@@ -12,12 +11,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
-from tests.jsonl_log_helpers import (
-    jsonl_exists_after_flush,
-    read_jsonl_entries_after_flush,
-)
 from tests.model_provider_flow_helpers import make_model_provider_flow
-from tests.stream_buffer_helpers import set_response_stream_buffer
 
 
 class TestUsageReportingIdempotency:
@@ -44,8 +38,6 @@ class TestUsageReportingIdempotency:
             "tokens.input": 0,
             "tokens.output": 20,
         }
-        body = b'{"id":"resp_1","usage":{"input_tokens":'
-        set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -63,13 +55,6 @@ class TestUsageReportingIdempotency:
         assert [(event["category"], event["quantity"]) for event in events] == [
             ("tokens.output", 20)
         ]
-        proxy_log = Path(flow.metadata[metadata_keys.SANDBOX_PROXY_LOG_PATH])
-        if jsonl_exists_after_flush(proxy_log):
-            entries = read_jsonl_entries_after_flush(proxy_log)
-            assert not any(
-                entry.get("message") == "Model provider JSON usage extraction failed"
-                for entry in entries
-            )
 
     def test_empty_model_usage_does_not_block_later_error_usage(
         self, tmp_path, real_flow, mitm_ctx, usage_webhook_api

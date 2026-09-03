@@ -12,6 +12,7 @@ import zstandard
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
+import logging_utils
 import mitm_addon
 from body_limits import (
     STREAM_BUFFER_LIMIT,
@@ -20,10 +21,16 @@ from body_limits import (
     STREAM_DECODE_MAX_EXPANSION_RATIO,
 )
 from tests.flow_helpers import header_map, response_stream
-from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
+from tests.jsonl_log_helpers import (
+    jsonl_exists_after_flush,
+    read_jsonl_entries_after_flush,
+    read_jsonl_text_after_flush,
+)
+from tests.model_provider_flow_helpers import model_usage_source_entries
 from tests.model_provider_response_helpers import (
     ANTHROPIC_JSON_CASE,
     MODEL_PROVIDER_JSON_CASES,
+    OPENAI_RESPONSES_CASE,
     expected_event_quantities,
     expected_model_usage,
     model_provider_flow,
@@ -77,6 +84,118 @@ class TestModelProviderJsonStreaming:
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+
+    def test_json_source_diagnostic_records_aggregate_admission_without_secrets(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            OPENAI_RESPONSES_CASE,
+            proxy_log_path=proxy_log_path,
+        )
+        secret_userinfo = "diagnostic-user:diagnostic-password"
+        secret_query = "diagnostic-query-secret"
+        secret_fragment = "diagnostic-fragment-secret"
+        secret_authorization = "Bearer diagnostic-authorization-secret"
+        secret_prompt = b"diagnostic-prompt-secret"
+        raw_url = (
+            f"https://{secret_userinfo}@api.openai.com/"
+            + "p" * (logging_utils.URL_LOG_MAX_CHARACTERS + 1)
+            + f"?token={secret_query}#{secret_fragment}"
+        )
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        flow.request.headers["authorization"] = secret_authorization
+        flow.request.content = secret_prompt
+        body = standard_success_payload(OPENAI_RESPONSES_CASE)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(body)
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        [source_entry] = model_usage_source_entries(flow)
+        assert source_entry["level"] == "info"
+        assert source_entry["message"] == "Model provider usage source reported"
+        assert source_entry["run_id"] == "run-abc-123"
+        assert source_entry["flow_id"] == flow.id
+        assert source_entry["source_id"] == flow.id
+        assert source_entry["method"] == flow.request.method
+        assert source_entry["url"] == "[truncated]"
+        assert source_entry["url_truncated"] is True
+        assert source_entry["url_original_char_count"] == len(raw_url)
+        assert source_entry["transport"] == "http"
+        assert source_entry["buffer_mode"] == "aggregate"
+        assert source_entry["firewall_name"] == "model-provider:openai-api-key"
+        assert source_entry["reported_model"] == OPENAI_RESPONSES_CASE.model
+        assert source_entry["provider_response_id"] == OPENAI_RESPONSES_CASE.message_id
+        assert source_entry["usage"] == expected_event_quantities(OPENAI_RESPONSES_CASE)
+
+        source_events = source_entry["usage_events"]
+        assert {
+            event["category"]: event["quantity"] for event in source_events
+        } == expected_event_quantities(OPENAI_RESPONSES_CASE)
+        assert all(event["buffer_accepted"] is True for event in source_events)
+        source_event_keys = {event["source_idempotency_key"] for event in source_events}
+        aggregate_event_keys = {event["idempotencyKey"] for event in webhook.usage_events()}
+        assert source_event_keys.isdisjoint(aggregate_event_keys)
+
+        serialized = read_jsonl_text_after_flush(proxy_log_path)
+        for secret in (
+            secret_userinfo,
+            secret_query,
+            secret_fragment,
+            secret_authorization,
+            secret_prompt.decode(),
+        ):
+            assert secret not in serialized
+        assert len(serialized.encode()) < 5_000
+
+    def test_capture_enabled_non_success_unsupported_encoding_stays_quiet(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
+        flow.response = tutils.tresp(
+            status_code=429,
+            headers=header_map(
+                {
+                    "content-type": "application/json",
+                    "content-encoding": "private-encoding-value",
+                }
+            ),
+        )
+        body = b"unsupported-encoded-provider-error"
+
+        mitm_addon.responseheaders(flow)
+        assert flow.response.status_code == 429
+        assert response_stream(flow)(body) == body
+        assert flow.metadata[metadata_keys.STREAM_BUFFER] == body
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is False
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        if jsonl_exists_after_flush(proxy_log_path):
+            entries = read_jsonl_entries_after_flush(proxy_log_path)
+            assert not any(
+                entry.get("message") == "Model provider JSON usage extraction failed"
+                for entry in entries
+            )
 
     def test_full_pipeline_large_model_json_uses_incremental_parser_without_buffer(
         self, tmp_path, real_flow
