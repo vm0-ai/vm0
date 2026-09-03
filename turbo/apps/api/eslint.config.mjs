@@ -424,10 +424,10 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
-      // Slices 4a through 5b intentionally have no Phase 2 public mutation API
-      // or activation hook. These focused tests pin the finite job, archive,
-      // usage, worker composition, publication, Storage notification, and
-      // concurrency contracts until a later slice exposes that boundary.
+      // The production cron exposes aggregate Phase 2 outcomes, but no API
+      // constructs or inspects exact job and Storage state matrices. These
+      // focused tests pin the finite job, archive, usage, worker composition,
+      // publication, Storage notification, and concurrency contracts.
       "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
@@ -585,10 +585,10 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
-      // Slices 4a through 5b intentionally have no Phase 2 public mutation API
-      // or activation hook. Keep their exact archive, usage, worker,
-      // PostgreSQL concurrency, publication, Storage notification, and
-      // selection contracts isolated until a later slice exposes a route.
+      // The production cron exposes aggregate Phase 2 outcomes, but cannot
+      // construct or inspect the exact archive, usage, worker, PostgreSQL
+      // concurrency, publication, Storage notification, and selection state
+      // matrices covered by these focused tests.
       "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
