@@ -809,17 +809,23 @@ describe("Pi memory Phase 2 worker composition", () => {
     const finalPaths = verified.files.map((file) => {
       return file.path;
     });
-    for (const file of externalFiles) {
+    for (const file of externalFiles.filter((candidate) => {
+      return !candidate.path.startsWith("rollout_summaries/pi/");
+    })) {
       expect(finalPaths).toContain(file.path);
     }
-    expect(
-      finalPaths.some((path) => {
-        return (
-          path.startsWith("rollout_summaries/pi/") &&
-          path !== "rollout_summaries/pi/older.md"
-        );
-      }),
-    ).toBeTruthy();
+    expect(finalPaths).not.toContain("rollout_summaries/pi/older.md");
+    const nestedPiEvidence = verified.files.filter((file) => {
+      return file.path.startsWith("rollout_summaries/pi/");
+    });
+    expect(nestedPiEvidence).toHaveLength(1);
+    const [replacementPiEvidence] = nestedPiEvidence;
+    if (!replacementPiEvidence) {
+      throw new Error("Replacement Pi evidence is missing");
+    }
+    expect(Buffer.from(replacementPiEvidence.bytes).toString("utf8")).toContain(
+      "replacement Pi rollout fact",
+    );
 
     const [selectedCandidate] = await db()
       .select({
