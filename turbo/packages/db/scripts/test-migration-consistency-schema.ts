@@ -4769,6 +4769,7 @@ async function addCurrentChatEventPayloadStorage(
     ADD COLUMN "payload" jsonb
   `);
   await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+  await addCurrentChatEventFailureReasonStorage(client);
 }
 
 async function addCurrentChatEventOfficialWorkflowQueueStorage(
@@ -4786,6 +4787,24 @@ async function removeCurrentChatEventOfficialWorkflowQueueStorage(
   await client.query(`
     ALTER TABLE "chat_events"
     DROP COLUMN "required_official_workflow_ids"
+  `);
+}
+
+async function addCurrentChatEventFailureReasonStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "failure_reason" text
+  `);
+}
+
+async function removeCurrentChatEventFailureReasonStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    DROP COLUMN "failure_reason"
   `);
 }
 
@@ -8243,6 +8262,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
     await client.connect();
     try {
       await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+      await addCurrentChatEventFailureReasonStorage(client);
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -8362,9 +8382,11 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         threadId: fixture.threadId,
       });
       // Migration 0910 intentionally asserts its historical exact column set.
-      // The private queue column arrived later, so remove the test-only current
-      // ORM shim while 0910 runs and restore it for the post-migration probe.
+      // The private queue and failure-reason columns arrived later, so remove
+      // the test-only current ORM shims while 0910 runs and restore them for
+      // the post-migration probe.
       await removeCurrentChatEventOfficialWorkflowQueueStorage(client);
+      await removeCurrentChatEventFailureReasonStorage(client);
 
       await client.query(
         `
@@ -8393,6 +8415,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
       );
       await addCurrentChatEventOfficialWorkflowQueueStorage(client);
+      await addCurrentChatEventFailureReasonStorage(client);
 
       const retained = await client.query<{ row: Record<string, unknown> }>(
         `
@@ -8410,6 +8433,7 @@ async function validateChatEventPhysicalContraction(): Promise<void> {
         "context_type",
         "created_at",
         "event_type",
+        "failure_reason",
         "id",
         "payload",
         "required_official_workflow_ids",

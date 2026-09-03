@@ -1807,6 +1807,13 @@
       "when": 1788429364361,
       "tag": "1065_lock_default_agent_name",
       "breakpoints": true
+    },
+    {
+      "idx": 1066,
+      "version": "7",
+      "when": 1788432327889,
+      "tag": "1066_curvy_mercury",
+      "breakpoints": true
     }
   ]
 }

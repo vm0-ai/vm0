@@ -247,6 +247,15 @@ readers first while writers omit the field. Activate writers only after every
 old strict reader and rollback target has drained or is excluded by an enforced
 compatibility floor.
 
+Chat Event V7 failure reasons use this pattern. Reader commit
+`c093e0ffdab988d2a8a071809f90d87fa3e79f20` shipped in release
+`89c6a521944e2ac8550da424f164db08f4f80f0c` before writers were enabled. App
+builds below `0.830.0` are excluded by the API client floor, commit-addressed
+CLI contexts must drain through queue, execution, and finalization, and the
+production rollback resolver rejects targets that do not contain the reader
+commit. The reason is stored outside strict payload JSON so old API instances
+remain compatible during the additive database migration and traffic overlap.
+
 Avoid one-shot protocol flips:
 
 - Do not require a new request field from frontend or runner in the same PR that

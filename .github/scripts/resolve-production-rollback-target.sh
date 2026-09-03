@@ -2,6 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly CHAT_EVENT_FAILURE_REASON_READER_COMMIT=c093e0ffdab988d2a8a071809f90d87fa3e79f20
+readonly CHAT_EVENT_FAILURE_REASON_READER_RELEASE=89c6a521944e2ac8550da424f164db08f4f80f0c
 
 fail() {
   echo "::error::$*" >&2
@@ -36,6 +38,10 @@ git fetch --force --tags origin main
 git cat-file -e "${TARGET_COMMIT}^{commit}"
 if ! git merge-base --is-ancestor "$TARGET_COMMIT" origin/main; then
   fail "Target commit is not reachable from main: ${TARGET_COMMIT}"
+fi
+if ! git merge-base --is-ancestor \
+  "$CHAT_EVENT_FAILURE_REASON_READER_COMMIT" "$TARGET_COMMIT"; then
+  fail "Target commit predates the Chat Event failure-reason reader. The first compatible release is ${CHAT_EVENT_FAILURE_REASON_READER_RELEASE}."
 fi
 
 release_tags=$(git tag --points-at "$TARGET_COMMIT" | grep -E -- '-v[0-9]' || true)
