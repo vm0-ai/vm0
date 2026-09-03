@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.84](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.83...nbd-cow-v0.4.84) (2026-09-03)
+
+
+### Documentation
+
+* **nbd-cow:** describe cooldown claim reuse ([#31441](https://github.com/vm0-ai/vm0/issues/31441)) ([982a70e](https://github.com/vm0-ai/vm0/commit/982a70eb10c0b6192a58a34278f876b5af9700ba))
+
 ## [0.4.83](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.82...nbd-cow-v0.4.83) (2026-09-02)
 
 

@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.831.0](https://github.com/vm0-ai/vm0/compare/app-v0.830.0...app-v0.831.0) (2026-09-03)
+
+
+### Features
+
+* **platform:** add elapsed run work folding ([#31321](https://github.com/vm0-ai/vm0/issues/31321)) ([134b069](https://github.com/vm0-ai/vm0/commit/134b0696c6fd26cc3e24234a7d0b433dff9241c9))
+* **platform:** use okou wordmarks across branded surfaces ([#31395](https://github.com/vm0-ai/vm0/issues/31395)) ([ff7b7e4](https://github.com/vm0-ai/vm0/commit/ff7b7e448c8dc0cbe03d04e94ad5985d22bdb6f9))
+* show when the soonest codex reset credit expires ([#31412](https://github.com/vm0-ai/vm0/issues/31412)) ([127bed8](https://github.com/vm0-ai/vm0/commit/127bed8e9ab803338c93fcb3ffaf5fa478cc0c6c))
+
+
+### Bug Fixes
+
+* **platform:** align intro video camera review instructions ([#31413](https://github.com/vm0-ai/vm0/issues/31413)) ([5629612](https://github.com/vm0-ai/vm0/commit/562961205485e5e46e47fa25828e5cc265b7dd87))
+* **platform:** derive ios startup images from skeleton layout ([#31204](https://github.com/vm0-ai/vm0/issues/31204)) ([d65a7b3](https://github.com/vm0-ai/vm0/commit/d65a7b3f4f6274e3ef432be14283ecd6044bcffa))
+* **platform:** keep the lightbox open when a drag ends on the backdrop ([#31374](https://github.com/vm0-ai/vm0/issues/31374)) ([62f5d27](https://github.com/vm0-ai/vm0/commit/62f5d27778894f81d3992f71bd11618493710b1e)), closes [#27173](https://github.com/vm0-ai/vm0/issues/27173)
+* **platform:** limit okou mark change to favicon ([#31428](https://github.com/vm0-ai/vm0/issues/31428)) ([aa6bf81](https://github.com/vm0-ai/vm0/commit/aa6bf812a0e39387de986ddea96a3a51ee809d2a))
+* **platform:** preserve selection menu during automatic scroll ([#31437](https://github.com/vm0-ai/vm0/issues/31437)) ([b94c65b](https://github.com/vm0-ai/vm0/commit/b94c65b4b6f439d1bf66f6c8e017699b5dead17f))
+* **platform:** rate-limit shared database reloads ([#31398](https://github.com/vm0-ai/vm0/issues/31398)) ([ef98200](https://github.com/vm0-ai/vm0/commit/ef982001164a89e08aae07cc3c330bf422b4571c))
+* **platform:** replace favicons with black okou mark ([#31400](https://github.com/vm0-ai/vm0/issues/31400)) ([0e6d79b](https://github.com/vm0-ai/vm0/commit/0e6d79bf8ae7e9101596b55c171b84614aa43b2a))
+* **platform:** stop one tap from blocking auth skeleton ([#31409](https://github.com/vm0-ai/vm0/issues/31409)) ([d240caf](https://github.com/vm0-ai/vm0/commit/d240caf2a3640e1a98256302e37bda895e22b980))
+* **platform:** use inbound agentphone connection flow ([#31308](https://github.com/vm0-ai/vm0/issues/31308)) ([2aacef1](https://github.com/vm0-ai/vm0/commit/2aacef15330f63d6391ac5e05febaceebe586d57))
+
+
+### Refactoring
+
+* **api:** detach custom connectors from oauth setup persistence ([#31417](https://github.com/vm0-ai/vm0/issues/31417)) ([944b829](https://github.com/vm0-ai/vm0/commit/944b829570b4c69685f68d6dae159a75bd3c07f1))
+* **platform:** route instatus status polling through the shared loop helper ([#31415](https://github.com/vm0-ai/vm0/issues/31415)) ([7bdcdf7](https://github.com/vm0-ai/vm0/commit/7bdcdf7fc590b4b0c8d808c509981fc198c33768))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+    * @okouai/connectors bumped to 3.3.2
+    * @okouai/core bumped to 8.614.0
+    * @okouai/ui bumped to 1.2.0
+
 ## [0.830.0](https://github.com/vm0-ai/vm0/compare/app-v0.829.5...app-v0.830.0) (2026-09-03)
 
 
