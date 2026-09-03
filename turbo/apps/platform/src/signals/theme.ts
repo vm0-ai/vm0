@@ -10,6 +10,11 @@ import {
   updateUserPreference$,
   userPreferences$,
 } from "./okou-page/settings/user-preferences.ts";
+import { isOkouHostname } from "../lib/platform-host.ts";
+import {
+  readOkouThemePreferenceFromDocument,
+  writeOkouThemePreferenceToDocument,
+} from "../lib/okou-theme-cookie.ts";
 
 export { COLOR_THEMES };
 export type { ColorTheme, ThemePreference };
@@ -82,7 +87,19 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
   applyTheme(resolved);
-  set(themeStorageSet$, preference);
+  if (isOkouHostname(location.hostname)) {
+    /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
+    // eslint-disable-next-line no-restricted-syntax -- localStorage may be blocked; the cookie and in-memory theme remain valid fallbacks.
+    try {
+      set(themeStorageSet$, preference);
+    } catch {
+      // Storage can be blocked; the in-memory and document themes still apply.
+    }
+    /* eslint-enable ccstate/no-catch-abort */
+    writeOkouThemePreferenceToDocument(preference);
+  } else {
+    set(themeStorageSet$, preference);
+  }
 });
 
 /**
@@ -90,7 +107,18 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
  */
 export const setColorTheme$ = command(({ set }, colorTheme: ColorTheme) => {
   set(internalColorTheme$, colorTheme);
-  set(colorThemeStorageSet$, colorTheme);
+  if (isOkouHostname(location.hostname)) {
+    /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
+    // eslint-disable-next-line no-restricted-syntax -- blocked localStorage must not prevent the authenticated theme preference from synchronizing.
+    try {
+      set(colorThemeStorageSet$, colorTheme);
+    } catch {
+      // Keep Okou usable when browser storage is unavailable.
+    }
+    /* eslint-enable ccstate/no-catch-abort */
+  } else {
+    set(colorThemeStorageSet$, colorTheme);
+  }
 });
 
 /**
@@ -114,14 +142,17 @@ export const updateColorThemePreference$ = command(
 );
 
 /**
- * Reconcile the fast local bootstrap cache with the workspace preference.
- * Null server values migrate the current device choice.
+ * Reconcile the fast local bootstrap cache with the authoritative workspace
+ * preference. Null server values migrate the cookie or current device choice.
  */
 export const syncThemePreferences$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
+      if (isOkouHostname(location.hostname)) {
+        writeOkouThemePreferenceToDocument(get(themePreference$));
+      }
       return;
     }
 
@@ -134,11 +165,12 @@ export const syncThemePreferences$ = command(
     set(setTheme$, theme);
     set(setColorTheme$, colorTheme);
 
-    if (preferences.theme === null || preferences.colorTheme === null) {
+    const shouldUpdateTheme = preferences.theme === null;
+    if (shouldUpdateTheme || preferences.colorTheme === null) {
       await set(
         updateUserPreference$,
         {
-          ...(preferences.theme === null && { theme }),
+          ...(shouldUpdateTheme && { theme }),
           ...(preferences.colorTheme === null && { colorTheme }),
         },
         signal,
@@ -186,9 +218,30 @@ export function applyTypefaceDocumentAttribute(enabled: boolean) {
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ get, set }) => {
-  const rawStored = get(themeStorageGet$);
-  const preference = isThemePreference(rawStored) ? rawStored : "system";
-  const rawStoredColorTheme = get(colorThemeStorageGet$);
+  const isOkou = isOkouHostname(location.hostname);
+  const bootstrapOkouThemePreference = isOkou
+    ? readOkouThemePreferenceFromDocument()
+    : null;
+
+  let rawStored: string | null = null;
+  let rawStoredColorTheme: string | null = null;
+  if (isOkou) {
+    /* eslint-disable ccstate/no-catch-abort -- synchronous storage access cannot carry an application AbortSignal. */
+    // eslint-disable-next-line no-restricted-syntax -- browser privacy policies can block localStorage, in which case Okou safely follows the system.
+    try {
+      rawStored = get(themeStorageGet$);
+      rawStoredColorTheme = get(colorThemeStorageGet$);
+    } catch {
+      // Browser storage can be blocked; fall through to safe defaults.
+    }
+    /* eslint-enable ccstate/no-catch-abort */
+  } else {
+    rawStored = get(themeStorageGet$);
+    rawStoredColorTheme = get(colorThemeStorageGet$);
+  }
+  const preference =
+    bootstrapOkouThemePreference ??
+    (isThemePreference(rawStored) ? rawStored : "system");
   const colorTheme = isColorTheme(rawStoredColorTheme)
     ? rawStoredColorTheme
     : DEFAULT_COLOR_THEME;
@@ -202,8 +255,13 @@ export const initTheme$ = command(({ get, set }) => {
   window
     .matchMedia("(prefers-color-scheme: dark)")
     .addEventListener("change", () => {
-      const currentPref = get(themeStorageGet$);
-      if (!isThemePreference(currentPref) || currentPref === "system") {
+      const currentPreference = isOkouHostname(location.hostname)
+        ? get(internalPreference$)
+        : get(themeStorageGet$);
+      if (
+        !isThemePreference(currentPreference) ||
+        currentPreference === "system"
+      ) {
         const newResolved = window.matchMedia("(prefers-color-scheme: dark)")
           .matches
           ? "dark"
