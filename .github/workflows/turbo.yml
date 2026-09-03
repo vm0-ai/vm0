@@ -1568,7 +1568,6 @@ jobs:
             <<< "$deployments_response" >/dev/null; then
             pnpm --filter @okouai/app-worker exec wrangler deploy \
               --env preview \
-              "${worker_secret_args[@]}" \
               --message "bootstrap app preview Worker (${ARTIFACT_SHA})"
           fi
 

@@ -542,7 +542,9 @@ const edgeDebugEnvironment = {
   CLERK_SECRET_KEY: "sk_test_secret-must-not-render",
   PUBLIC_BRAND: "okou",
 };
+let unexpectedClerkClientFactoryCalls = 0;
 const unexpectedClerkClientFactory = () => {
+  unexpectedClerkClientFactoryCalls += 1;
   throw new Error("Clerk must not run for this request");
 };
 const guardedEdgeWorker = workerModule.createWorker(
@@ -566,7 +568,9 @@ assert.deepEqual(duplicateFlag, edgeDebugBaseline);
 
 for (const ineligibleOrigin of [
   "https://app.okou.ai",
+  "https://app.vm0.ai",
   "https://app-worker.okou.ai",
+  "https://app-worker.vm0.ai",
   "https://pr-25304-app.omby.ai",
   "https://staging-app-okou-app-preview.vm0.workers.dev",
 ]) {
@@ -598,6 +602,7 @@ const missingConfig = await responseSnapshot(
   },
 );
 assert.deepEqual(missingConfig, edgeDebugBaseline);
+assert.equal(unexpectedClerkClientFactoryCalls, 0);
 
 function clerkClientReturning(requestState) {
   return () => ({
@@ -756,6 +761,30 @@ assert.deepEqual(Object.keys(clerkEdgeSessionJson(authenticated.body)).sort(), [
   "userId",
 ]);
 assertNoClerkSecrets(authenticated);
+
+const authenticatedWithoutOrganization = await responseSnapshot(
+  workerModule.createWorker(
+    embeddedShell,
+    clerkClientReturning({
+      headers: new Headers(),
+      isAuthenticated: true,
+      toAuth() {
+        return { userId: "user_without_organization", orgId: null };
+      },
+    }),
+  ),
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+assert.deepEqual(clerkEdgeSessionJson(authenticatedWithoutOrganization.body), {
+  userId: "user_without_organization",
+  orgId: null,
+});
+assert.equal(
+  new Headers(authenticatedWithoutOrganization.headers).get("Cache-Control"),
+  "private, no-store",
+);
+assertNoClerkSecrets(authenticatedWithoutOrganization);
 
 const embeddedServiceWorker = await embeddedWorker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),

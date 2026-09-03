@@ -1,3 +1,5 @@
+import { createClerkClient } from "@clerk/backend";
+
 const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
@@ -224,11 +226,6 @@ function isClerkEdgeDebugRequest(requestUrl, env) {
   );
 }
 
-async function createClerkBackendClient(options) {
-  const { createClerkClient } = await import("@clerk/backend");
-  return createClerkClient(options);
-}
-
 async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
   let timeoutId;
   try {
@@ -248,8 +245,8 @@ async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
         resolve(null);
       }, CLERK_EDGE_DEBUG_TIMEOUT_MS);
     });
-    const authentication = Promise.resolve().then(async () => {
-      const clerk = await clerkClientFactory({
+    const authentication = Promise.resolve().then(() => {
+      const clerk = clerkClientFactory({
         publishableKey,
         secretKey,
         telemetry: { disabled: true },
@@ -737,7 +734,7 @@ async function handleRequest(
 
 export function createWorker(
   embeddedShell,
-  clerkClientFactory = createClerkBackendClient,
+  clerkClientFactory = createClerkClient,
 ) {
   return {
     async fetch(request, env) {

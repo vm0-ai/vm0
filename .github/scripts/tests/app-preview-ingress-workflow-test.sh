@@ -97,9 +97,15 @@ unless deploy_source.include?('worker_secrets="$(mktemp)"') &&
     deploy_source.include?('unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY')
   raise "Worker preview deployment must create an ephemeral exact-origin secrets file"
 end
+bootstrap_source = deploy_source[bootstrap_index...preview_upload_index]
+version_source = deploy_source[preview_upload_index..]
 unless deploy_source.include?('worker_secret_args=(--secrets-file "$worker_secrets")') &&
-    deploy_source.scan('"${worker_secret_args[@]}"').length == 2
-  raise "Worker preview bootstrap and version upload must use encrypted Clerk bindings"
+    version_source.include?('"${worker_secret_args[@]}"') &&
+    deploy_source.scan('"${worker_secret_args[@]}"').length == 1
+  raise "Only the PR version upload may use encrypted Clerk bindings"
+end
+if bootstrap_source.include?("worker_secret_args")
+  raise "The shared preview bootstrap must not receive PR Clerk bindings"
 end
 if deploy_source.include?("--var CLERK_SECRET_KEY")
   raise "Worker preview deployment must not expose the Clerk secret on the command line"
