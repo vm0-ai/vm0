@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.1.0...app-worker-v1.2.0) (2026-09-03)
+
+
+### Features
+
+* **app:** add preview-only clerk edge session probe ([#31510](https://github.com/vm0-ai/vm0/issues/31510)) ([703fffe](https://github.com/vm0-ai/vm0/commit/703fffe7cb3587a825bc9e33579d9963d3ac1820))
+
 ## [1.1.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.0.1...app-worker-v1.1.0) (2026-09-02)
 
 

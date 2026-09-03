@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.833.0](https://github.com/vm0-ai/vm0/compare/app-v0.832.1...app-v0.833.0) (2026-09-03)
+
+
+### Features
+
+* **artifacts:** add short okou artifact urls ([#31483](https://github.com/vm0-ai/vm0/issues/31483)) ([9d20d76](https://github.com/vm0-ai/vm0/commit/9d20d76b88d3097f279084fcfb452d8b86e7ef55))
+* **platform:** add voice draft recording footer ([#31514](https://github.com/vm0-ai/vm0/issues/31514)) ([6c695a1](https://github.com/vm0-ai/vm0/commit/6c695a1b2f32b8acb57972bcd7b54547f8482a96))
+* **platform:** gate chat thinking spinner for staff ([#31485](https://github.com/vm0-ai/vm0/issues/31485)) ([9f30e52](https://github.com/vm0-ai/vm0/commit/9f30e521cbfaa8fd23f9a12e31b13997d15fd0fe))
+* **ui:** put the sand and amber palette behind the new-ui switch ([#31521](https://github.com/vm0-ai/vm0/issues/31521)) ([2d7c27d](https://github.com/vm0-ai/vm0/commit/2d7c27dbc469ee93d6b7d0b10470f3eebdba4f84))
+
+
+### Bug Fixes
+
+* **auth:** redirect satellite auth routes to primary ([#31392](https://github.com/vm0-ai/vm0/issues/31392)) ([7b9d6a6](https://github.com/vm0-ai/vm0/commit/7b9d6a62b31bf7a256eb24d3314ed9a8af0002b1))
+* **platform:** preserve composer line breaks on copy ([#31513](https://github.com/vm0-ai/vm0/issues/31513)) ([b6ee3a5](https://github.com/vm0-ai/vm0/commit/b6ee3a56b858015c433a3d42ca0545e023a2372c))
+* **platform:** remove shortcut hints from sidebar tooltips ([#31503](https://github.com/vm0-ai/vm0/issues/31503)) ([9d5d9f2](https://github.com/vm0-ai/vm0/commit/9d5d9f28e46ed0aec352e1860837c75b9892f628))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.2
+    * @okouai/core bumped to 8.616.0
+    * @okouai/ui bumped to 1.4.0
+
 ## [0.832.1](https://github.com/vm0-ai/vm0/compare/app-v0.832.0...app-v0.832.1) (2026-09-03)
 
 
