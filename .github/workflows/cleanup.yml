@@ -9,41 +9,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cleanup-app-pages-deployments:
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      actions: read
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - name: Wait for active CI owners before app Pages cleanup
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUNNER_OWNER_SCOPE: closed-pr-cleanup
-        run: .github/scripts/cancel-superseded-merge-group-runs.sh
-
-      - name: Delete Cloudflare Pages app preview deployments
-        env:
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: pr-${{ github.event.pull_request.number }}-app
-        run: |
-          bash .github/scripts/delete-okou-pages-preview-deployments.sh \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_BRANCH"
-
   cleanup-runner:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "github.event.action == 'closed' && !startsWith(github.head_ref || '', 'release-please--branches--')"
