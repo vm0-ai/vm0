@@ -24,6 +24,8 @@ import {
   SlashWorkflowMenu,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 function isMacKeyboard(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -411,6 +413,44 @@ function useComposerSuggestionMenu({
   };
 }
 
+function useVoiceDraftActionHandler(
+  composer: ComposerSignals,
+): (event: MouseEvent) => void {
+  const finishVoiceDraft = useSet(composer.voiceDraft.finish$);
+  const removeVoiceDraft = useSet(composer.voiceDraft.remove$);
+  const saveDraft = useSet(composer.draft.save$);
+  const pageSignal = useGet(pageSignal$);
+  return (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const button = event.target.closest<HTMLButtonElement>(
+      "button[data-voice-draft-action]",
+    );
+    const draft = button?.closest<HTMLElement>("[data-voice-draft]");
+    const id = draft?.dataset.voiceDraft;
+    if (!button || !id) {
+      return;
+    }
+    event.preventDefault();
+    if (button.dataset.voiceDraftAction === "finish") {
+      detach(
+        (async () => {
+          await finishVoiceDraft(id, true, pageSignal);
+          pageSignal.throwIfAborted();
+          await saveDraft(pageSignal);
+        })(),
+        Reason.DomCallback,
+      );
+      return;
+    }
+    if (button.dataset.voiceDraftAction === "remove") {
+      removeVoiceDraft(id);
+      detach(saveDraft(pageSignal), Reason.DomCallback);
+    }
+  };
+}
+
 export function TiptapWorkflowComposer({
   signals,
   onDraftChange,
@@ -429,6 +469,7 @@ export function TiptapWorkflowComposer({
     composer.template.hasTemplateAttachment$,
   );
   const setContainerRef = useSet(composer.editor.setContainerRef$);
+  const handleVoiceDraftAction = useVoiceDraftActionHandler(composer);
 
   function handlePaste(
     event: ClipboardEvent,
@@ -487,6 +528,9 @@ export function TiptapWorkflowComposer({
                 : "min-h-[96px]"
           }
           ref={setContainerRef}
+          onClickCapture={(event) => {
+            handleVoiceDraftAction(event.nativeEvent);
+          }}
           onInput={(event) => {
             // The mount command targets the container for semantic document
             // changes; native contenteditable input targets ProseMirror.

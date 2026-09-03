@@ -40,6 +40,47 @@ function linkByAriaLabel(label: string): HTMLElement {
 }
 
 describe("user messages", () => {
+  it("renders a sent voice draft as a non-actionable raw transcript", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000749";
+    const rawTranscript = "um send this Friday no Monday";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Voice draft rendering",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000749",
+          role: "user",
+          content: rawTranscript,
+          runId: "d0000000-0000-4000-a000-000000000749",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "voice",
+                id: "b83d142b-3239-4db7-bd65-f57123b6e5a2",
+                transcript: rawTranscript,
+              },
+            ],
+          },
+          createdAt: "2026-09-02T10:00:00Z",
+        },
+      ],
+    });
+
+    await setupPageAndWaitForContent({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const voiceDraft = document.querySelector("[data-sent-voice-draft]");
+    expect(voiceDraft).toBeInstanceOf(HTMLElement);
+    expect(voiceDraft).toHaveTextContent("Voice draft");
+    expect(voiceDraft).toHaveTextContent(rawTranscript);
+    expect(
+      queryAllByRoleFast("button", voiceDraft as HTMLElement),
+    ).toHaveLength(0);
+  });
+
   it("renders templates inline in message and feedback-note order", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000748";

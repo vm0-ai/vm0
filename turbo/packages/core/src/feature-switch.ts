@@ -353,6 +353,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Translate selected assistant text into a remembered target language.",
     enabled: false,
   },
+  [FeatureSwitchKey.VoiceDraft]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Keep raw voice transcription as a durable composer draft and polish it before sending.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
