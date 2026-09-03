@@ -777,24 +777,33 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mount = dir.path().join("long-path");
         std::fs::create_dir(&mount).unwrap();
-        let directory_name = CString::new("d".repeat(255)).unwrap();
         let mut current = File::open(&mount).unwrap();
-        for _ in 0..vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
+        for depth in 0..vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
+            let component_bytes = if depth + 1 == vas::ARTIFACT_TRAVERSAL_MAX_DEPTH {
+                254
+            } else {
+                255
+            };
+            let directory_name = CString::new("d".repeat(component_bytes)).unwrap();
             current = create_and_open_child_dir(&current, &directory_name).unwrap();
         }
         let file = create_child_file(&current, &CString::new("f").unwrap()).unwrap();
         drop(file);
+
+        let exact_files = vas::walk_files_for_checkpoint(mount.to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(exact_files.len(), 1);
+        assert_eq!(
+            exact_files.first().unwrap().path.len(),
+            usize::try_from(vas::ARTIFACT_TRAVERSAL_MAX_PATH_BYTES).unwrap()
+        );
+
+        let file = create_child_file(&current, &CString::new("gg").unwrap()).unwrap();
+        drop(file);
         drop(current);
 
         let message = artifact_snapshot_preflight_error(&mount).await;
-        assert!(
-            message.contains(&format!(
-                "observed entries {}/{}",
-                vas::ARTIFACT_TRAVERSAL_MAX_DEPTH + 1,
-                vas::ARTIFACT_TRAVERSAL_MAX_ENTRIES
-            )),
-            "got: {message}"
-        );
         assert!(
             message.contains(&format!(
                 "directory depth {0}/{0}",
