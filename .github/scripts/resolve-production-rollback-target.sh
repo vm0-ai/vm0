@@ -21,8 +21,6 @@ for name in \
   GITHUB_OUTPUT \
   GITHUB_REPOSITORY \
   METAL_USER \
-  R2_ACCOUNT_ID \
-  R2_BUCKET_NAME \
   TARGET_COMMIT \
   VERCEL_ORG_ID \
   VERCEL_PROJECT_ID \
@@ -65,18 +63,6 @@ if [ "$match_count" -ne 1 ]; then
   fail "Expected exactly one READY production API deployment for ${TARGET_COMMIT}, found ${match_count}."
 fi
 api_deployment_url="https://$(jq -r '.[0].url' <<<"$matches")"
-
-r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-app_artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}"
-app_artifact_dir=$(mktemp -d)
-trap 'rm -rf "$app_artifact_dir"' EXIT
-bash "${script_dir}/fetch-okou-app-artifact.sh" \
-  "$r2_endpoint" \
-  "$app_artifact_uri" \
-  "$app_artifact_dir"
-bash "${script_dir}/verify-okou-app-artifact.sh" \
-  "$app_artifact_dir" \
-  "$TARGET_COMMIT"
 
 . "${script_dir}/runner-image-target.sh"
 runner_version=$(git show "${TARGET_COMMIT}:crates/runner/Cargo.toml" \
@@ -127,6 +113,5 @@ done <<<"$runner_targets"
 echo "Release target: ${TARGET_COMMIT}"
 printf '%s\n' "$release_tags"
 echo "API target: ${api_deployment_url}"
-echo "App target: ${app_artifact_uri}/"
 echo "Runner target: ${runner_tag}"
 jq . <<<"$runner_matrix"

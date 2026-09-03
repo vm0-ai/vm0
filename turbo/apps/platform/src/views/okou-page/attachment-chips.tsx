@@ -76,10 +76,7 @@ import {
   DEFAULT_ANNOTATION_INK,
   type ImageAnnotationSignals,
 } from "../../signals/okou-page/image-annotation.ts";
-import {
-  composerImageAnnotationEnabled$,
-  officeDocumentPreviewEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
 import { useResolvedAttachmentUrl } from "./attachment-resource.ts";
 import {
   ArtifactActionSeparator,
@@ -1021,7 +1018,6 @@ function ArtifactDialogBody({
   preview: AttachmentLightboxState;
 }) {
   const filename = artifactDialogFilename(preview);
-  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
 
   if (preview.kind === "image") {
     return (
@@ -1042,7 +1038,7 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "file") {
-    if (officeDocumentPreviewEnabled && isOfficeFilePreview(filename)) {
+    if (isOfficeFilePreview(filename)) {
       return (
         <ArtifactDialogOfficeDocumentBody
           filename={filename}
@@ -1557,9 +1553,7 @@ export function FileAttachmentChip({
   const downloadAttachment = useSet(downloadAttachment$);
   const openFileLightbox = useSet(openFileLightbox$);
   const pageSignal = useGet(pageSignal$);
-  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
-  const previewOfficeDocument =
-    officeDocumentPreviewEnabled && isOfficeFilePreview(filename);
+  const previewOfficeDocument = isOfficeFilePreview(filename);
   return (
     <button
       type="button"

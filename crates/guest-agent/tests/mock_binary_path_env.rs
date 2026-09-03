@@ -13,7 +13,6 @@ use guest_agent::env::{
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const CANONICAL_PATH: &str = "/tmp/canonical-mock-path";
-const RETIRED_PATH: &str = "/tmp/retired-mock-path";
 
 #[derive(Clone, Copy)]
 enum EnvInput {
@@ -26,7 +25,6 @@ enum EnvInput {
 struct PathCase {
     name: &'static str,
     canonical: EnvInput,
-    retired: EnvInput,
     expected_raw: Option<&'static str>,
 }
 
@@ -34,59 +32,30 @@ struct PathCase {
 struct MockPathEnv {
     name: &'static str,
     canonical: &'static str,
-    retired: &'static str,
     raw_value: for<'a> fn(&'a GuestConfigRaw) -> Option<&'a str>,
     configured_value: for<'a> fn(&'a GuestConfig) -> &'a str,
     default_path: &'static str,
 }
 
-const PATH_CASES: [PathCase; 8] = [
+const PATH_CASES: [PathCase; 4] = [
     PathCase {
         name: "canonical-absent",
         canonical: EnvInput::Absent,
-        retired: EnvInput::Absent,
         expected_raw: None,
     },
     PathCase {
         name: "canonical-readable",
         canonical: EnvInput::Readable(CANONICAL_PATH),
-        retired: EnvInput::Absent,
         expected_raw: Some(CANONICAL_PATH),
     },
     PathCase {
         name: "canonical-empty",
         canonical: EnvInput::Readable(""),
-        retired: EnvInput::Absent,
         expected_raw: Some(""),
     },
     PathCase {
         name: "canonical-non-unicode",
         canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Absent,
-        expected_raw: None,
-    },
-    PathCase {
-        name: "retired-only-is-ignored",
-        canonical: EnvInput::Absent,
-        retired: EnvInput::Readable(RETIRED_PATH),
-        expected_raw: None,
-    },
-    PathCase {
-        name: "canonical-readable-is-not-overridden-by-retired",
-        canonical: EnvInput::Readable(CANONICAL_PATH),
-        retired: EnvInput::Readable(RETIRED_PATH),
-        expected_raw: Some(CANONICAL_PATH),
-    },
-    PathCase {
-        name: "canonical-empty-is-not-overridden-by-retired",
-        canonical: EnvInput::Readable(""),
-        retired: EnvInput::Readable(RETIRED_PATH),
-        expected_raw: Some(""),
-    },
-    PathCase {
-        name: "canonical-non-unicode-does-not-fall-back-to-retired",
-        canonical: EnvInput::NonUnicode,
-        retired: EnvInput::Readable(RETIRED_PATH),
         expected_raw: None,
     },
 ];
@@ -111,7 +80,6 @@ const MOCK_PATH_ENVS: [MockPathEnv; 2] = [
     MockPathEnv {
         name: "claude",
         canonical: guest_contracts::env::CANONICAL_MOCK_CLAUDE_PATH_ENV,
-        retired: "VM0_MOCK_CLAUDE_PATH",
         raw_value: raw_mock_claude_path,
         configured_value: configured_mock_claude_path,
         default_path: DEFAULT_MOCK_CLAUDE_PATH,
@@ -119,7 +87,6 @@ const MOCK_PATH_ENVS: [MockPathEnv; 2] = [
     MockPathEnv {
         name: "codex",
         canonical: guest_contracts::env::CANONICAL_MOCK_CODEX_PATH_ENV,
-        retired: "VM0_MOCK_CODEX_PATH",
         raw_value: raw_mock_codex_path,
         configured_value: configured_mock_codex_path,
         default_path: DEFAULT_MOCK_CODEX_PATH,
@@ -154,7 +121,6 @@ fn apply_input(key: &str, input: EnvInput) {
 fn clear_mock_path_env() {
     for path_env in MOCK_PATH_ENVS {
         remove_test_env(path_env.canonical);
-        remove_test_env(path_env.retired);
     }
 }
 
@@ -187,7 +153,6 @@ fn assert_path_matrix(tmp: &Path, path_env: MockPathEnv) -> TestResult {
     for case in PATH_CASES {
         clear_mock_path_env();
         apply_input(path_env.canonical, case.canonical);
-        apply_input(path_env.retired, case.retired);
 
         let raw = GuestConfigRaw::from_process_env().map_err(std::io::Error::other)?;
         assert_eq!(
@@ -212,7 +177,7 @@ fn assert_path_matrix(tmp: &Path, path_env: MockPathEnv) -> TestResult {
 }
 
 #[test]
-fn process_env_reads_only_canonical_mock_binary_paths() -> TestResult {
+fn process_env_preserves_canonical_mock_binary_paths() -> TestResult {
     let tmp = tempfile::tempdir()?;
 
     for path_env in MOCK_PATH_ENVS {

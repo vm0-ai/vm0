@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.14](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.13...guest-mock-codex-v0.10.14) (2026-09-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify oversized codex turn inputs ([#31404](https://github.com/vm0-ai/vm0/issues/31404)) ([8cf7f4b](https://github.com/vm0-ai/vm0/commit/8cf7f4b60fde6c4c8239ff27f27a9cc24e90f124))
+
 ## [0.10.13](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.12...guest-mock-codex-v0.10.13) (2026-09-03)
 
 ## [0.10.12](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.10.11...guest-mock-codex-v0.10.12) (2026-09-03)

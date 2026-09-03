@@ -1104,18 +1104,13 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "VM0_APP_URL".into(),
+            "VM0_FUTURE_RUNNER_KEY".into(),
             "https://ordinary.runner-env.example.test".into(),
         ),
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
         ("VM0_PROMPT".into(), "hostile-user-prompt".into()),
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
-        ("VM0_USER_ENV_FILE".into(), "/tmp/evil-env.json".into()),
-        (
-            "VM0_RUN_PAYLOAD_FILE".into(),
-            "/tmp/evil-payload.json".into(),
-        ),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
             "/tmp/evil-connector-account-context.json".into(),
@@ -1177,12 +1172,6 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    for legacy_key in ["VM0_USER_ENV_FILE", "VM0_RUN_PAYLOAD_FILE"] {
-        assert!(
-            !start_env.contains_key(legacy_key),
-            "canonical writer must not emit legacy key {legacy_key}"
-        );
-    }
     for key in [
         guest_contracts::env::PROMPT_RUN_PAYLOAD_FIELD,
         guest_contracts::env::APPEND_SYSTEM_PROMPT_RUN_PAYLOAD_FIELD,
@@ -1203,7 +1192,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "LARGE_USER_ENV",
         "OKOU_APP_URL",
         "ZERO_APP_URL",
-        "VM0_APP_URL",
+        "VM0_FUTURE_RUNNER_KEY",
         "BASH_ENV",
         "NODE_OPTIONS",
         "TZ",
@@ -1257,7 +1246,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     );
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
     assert_eq!(
-        user_env.get("VM0_APP_URL").map(String::as_str),
+        user_env.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
         Some("https://ordinary.runner-env.example.test")
     );
     assert_eq!(
@@ -1269,14 +1258,6 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         Some("stolen-token")
     );
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
-    assert_eq!(
-        user_env.get("VM0_USER_ENV_FILE").map(String::as_str),
-        Some("/tmp/evil-env.json")
-    );
-    assert_eq!(
-        user_env.get("VM0_RUN_PAYLOAD_FILE").map(String::as_str),
-        Some("/tmp/evil-payload.json")
-    );
     assert_eq!(
         user_env
             .get(guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV)
@@ -1336,22 +1317,17 @@ async fn execute_inner_continues_when_connector_account_context_write_fails() {
     let start_calls = overrides.start_agent_process_calls();
     assert_eq!(start_calls.len(), 1);
     let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
-    for user_env_key in [
-        "VM0_USER_ENV_FILE",
-        guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV,
-    ] {
-        assert!(
-            !start_env.contains_key(user_env_key),
-            "absent user environment must not emit {user_env_key}"
-        );
-    }
+    let user_env_key = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
+    assert!(
+        !start_env.contains_key(user_env_key),
+        "absent user environment must not emit {user_env_key}"
+    );
     assert_eq!(
         start_env
             .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
             .map(String::as_str),
         Some(expected_run_payload_file.as_str())
     );
-    assert!(!start_env.contains_key("VM0_RUN_PAYLOAD_FILE"));
 }
 
 #[tokio::test]

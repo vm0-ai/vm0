@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.45.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.5...desktop-v0.45.0) (2026-09-03)
+
+
+### Features
+
+* **desktop:** replace legacy branding with okou assets ([#31429](https://github.com/vm0-ai/vm0/issues/31429)) ([5b4c6e7](https://github.com/vm0-ai/vm0/commit/5b4c6e7cade280daefa1b45744684cbba3e66550))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.398.0
+
 ## [0.44.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.4...desktop-v0.44.5) (2026-09-03)
 
 

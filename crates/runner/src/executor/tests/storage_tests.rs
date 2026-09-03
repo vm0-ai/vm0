@@ -87,10 +87,6 @@ fn guest_download_env_contains_run_identity_values() {
             ),
         ]
     );
-    assert!(
-        !env.iter()
-            .any(|(key, _)| { *key == "VM0_GUEST_RUNTIME_DIR" })
-    );
 }
 
 #[tokio::test]

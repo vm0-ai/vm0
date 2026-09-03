@@ -295,6 +295,19 @@ const cronExtractPiMemoryStage1ResponseSchema = z.object({
   sourceActive: z.number().int().nonnegative(),
   staleDiscarded: z.number().int().nonnegative(),
 });
+
+export const cronConsolidatePiMemoryPhase2ResponseSchema = z
+  .object({
+    success: z.literal(true),
+    claimed: z.number().int().nonnegative(),
+    noWork: z.number().int().nonnegative(),
+    noDiff: z.number().int().nonnegative(),
+    published: z.number().int().nonnegative(),
+    conflicted: z.number().int().nonnegative(),
+    stale: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  })
+  .strict();
 export const cronProcessUsageEventsContract = c.router({
   process: {
     method: "GET",
@@ -636,6 +649,19 @@ export const cronExtractPiMemoryStage1Contract = c.router({
   },
 });
 
+export const cronConsolidatePiMemoryPhase2Contract = c.router({
+  consolidate: {
+    method: "GET",
+    path: "/api/cron/consolidate-pi-memory-phase2",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronConsolidatePiMemoryPhase2ResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Consolidate one bounded Pi Phase 2 memory job",
+  },
+});
+
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronReconcileSocialKitDownloadsContract =
@@ -652,6 +678,11 @@ export type CronMaterializeMemorySummariesContract =
   typeof cronMaterializeMemorySummariesContract;
 export type CronExtractPiMemoryStage1Contract =
   typeof cronExtractPiMemoryStage1Contract;
+export type CronConsolidatePiMemoryPhase2Contract =
+  typeof cronConsolidatePiMemoryPhase2Contract;
+export type CronConsolidatePiMemoryPhase2Response = z.infer<
+  typeof cronConsolidatePiMemoryPhase2ResponseSchema
+>;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronConnectorOauthStateCleanupContract =
   typeof cronConnectorOauthStateCleanupContract;

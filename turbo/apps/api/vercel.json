@@ -101,6 +101,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/consolidate-pi-memory-phase2",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/computer-use-screenshot-cleanup",
       "schedule": "30 2 * * *"
     },

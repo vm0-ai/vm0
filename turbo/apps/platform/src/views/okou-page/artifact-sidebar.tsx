@@ -70,7 +70,6 @@ import {
 } from "./artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { PresentationArtifactViewport } from "./presentation-artifact-viewport.tsx";
-import { officeDocumentPreviewEnabled$ } from "../../signals/external/feature-switch.ts";
 import { OfficeDocumentPreview } from "./office-document-preview.tsx";
 import { isOfficeFilePreview } from "./office-file-preview.ts";
 
@@ -806,7 +805,6 @@ function ArtifactBody({
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
-  const officeDocumentPreviewEnabled = useGet(officeDocumentPreviewEnabled$);
   if (kind === "markdown") {
     return markdownTree$ ? (
       <ArtifactMarkdownBody tree$={markdownTree$} />
@@ -868,7 +866,7 @@ function ArtifactBody({
       />
     );
   }
-  if (officeDocumentPreviewEnabled && isOfficeFilePreview(filename)) {
+  if (isOfficeFilePreview(filename)) {
     return (
       <ArtifactOfficeDocumentBody
         filename={filename}
