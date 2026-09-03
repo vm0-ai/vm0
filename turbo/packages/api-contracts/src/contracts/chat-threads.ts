@@ -12,6 +12,7 @@ import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
+import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
 import {
@@ -894,6 +895,7 @@ const runFailedEventSchema = chatEventBaseSchema
     eventType: z.literal("run.failed"),
     runId: z.string(),
     error: z.string().optional(),
+    failureReason: runFailureReasonTokenSchema.optional(),
     runLifecycleEvent: z.literal("failed"),
   })
   .strict();

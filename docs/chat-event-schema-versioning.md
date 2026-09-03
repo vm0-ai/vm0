@@ -11,15 +11,37 @@ response metadata from the immutable NDJSON body.
 
 ## Version negotiation
 
-- The current and only supported version is V5. The request header is required.
+- The current and only supported version is V7. The request header is required.
 - A malformed version returns `400 CHAT_EVENT_SCHEMA_VERSION_INVALID`.
 - A version below the current version returns
   `426 CHAT_EVENT_SCHEMA_VERSION_RETIRED` so the client can force an upgrade.
 - A version newer than the API returns
   `409 CHAT_EVENT_SCHEMA_VERSION_AHEAD`.
 
-Raw Events are read from the current database schema and returned in V5. The
+Raw Events are read from the current database schema and returned in V7. The
 API does not downgrade rows or Snapshot objects to retired versions.
+
+### Optional V7 failure reasons
+
+V7 `run.failed` readers accept an optional `failureReason` field and continue
+to accept historical rows that omit it. Other event types reject the field.
+The field uses the bounded failure-reason wire token, so prepared readers also
+preserve well-formed values that are newer than their known semantic taxonomy.
+
+Because existing V7 readers are strict, adding the optional field uses a
+reader-first rollout even though the version number does not change:
+
+1. Deploy the tolerant contract to every API, app, CLI, and persisted-history
+   reader while all writers continue to omit the field.
+2. Wait until previous app bundles, commit-addressed CLI artifacts, serving and
+   rollback APIs, and other strict V7 readers have drained or are blocked by an
+   enforced compatibility floor.
+3. Enable writers in a later release.
+
+The reader preparation does not change Snapshot pointers, client cache
+versions, or persisted database rows. A V7 cache can therefore contain both
+historical reasonless failures and later failures with a reason once writer
+activation is safe.
 
 ## Snapshot storage and reads
 
