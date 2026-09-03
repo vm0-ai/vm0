@@ -12,7 +12,8 @@ use crate::types::{
     ResumeSessionHistoryRefKind, WorkspaceReuseResult,
 };
 use crate::workspace_image_cache::{
-    WorkspaceImagePrepareLockTestGate, WorkspaceSessionHistorySidecarRepresentation,
+    WorkspaceImagePrepareLockPolicy, WorkspaceImagePrepareLockTestGate,
+    WorkspaceSessionHistorySidecarRepresentation,
 };
 
 fn enable_api_start_telemetry(context: &mut crate::types::ExecutionContext) {
@@ -1010,6 +1011,58 @@ async fn execute_inner_waits_for_transient_workspace_cache_lock() {
         None,
     );
     assert_telemetry_action(&telemetry, "runner_fresh_sandbox_start", true, None);
+}
+
+#[tokio::test]
+async fn execute_inner_immediate_lock_policy_still_consumes_available_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = WorkspaceImageCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = minimal_context();
+    let session_id = "sess-cache-immediate-lock-policy";
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        workspace_image_prepare_lock_policy: WorkspaceImagePrepareLockPolicy::ImmediateFallback,
+        ..default_params()
+    };
+    let seeded_cache = seed_workspace_image_cache(&cache, &runner_paths, session_id, 16).await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::Reused),
+    );
+    let configs = overrides.create_configs();
+    assert_eq!(configs.len(), 1);
+    assert_eq!(
+        configs[0].workspace_drive,
+        Some(sandbox::WorkspaceDriveConfig {
+            size_mb: 16,
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(seeded_cache)),
+        })
+    );
+    assert_telemetry_action(&telemetry, "workspace_image_cache_hit", true, None);
 }
 
 #[tokio::test]

@@ -50,7 +50,7 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
-    WorkspaceImagePrepareRequest,
+    WorkspaceImagePrepareLockPolicy, WorkspaceImagePrepareRequest,
 };
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
@@ -501,6 +501,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         config,
         &params.profile_name,
         params.workspace_disk_mb,
+        params.workspace_image_prepare_lock_policy,
         telemetry,
     )
     .await;
@@ -822,24 +823,29 @@ pub(super) async fn prepare_workspace_image(
     config: &ExecutorConfig,
     profile_name: &str,
     workspace_disk_mb: u32,
+    lock_policy: WorkspaceImagePrepareLockPolicy,
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
     let cache = config.workspace_cache.as_ref()?;
     let prepare_started = Instant::now();
     let reuse_key = context.reuse_key();
-    let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id: context.run_id,
-                sandbox_id,
-                profile_name,
-                reuse_key,
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
-            },
-            workspace_drive_required: true,
-        })
-        .await;
+    let request = WorkspaceImagePrepareRequest {
+        identity: WorkspaceImageLeaseIdentity {
+            run_id: context.run_id,
+            sandbox_id,
+            profile_name,
+            reuse_key,
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+        },
+        workspace_drive_required: true,
+    };
+    let lease = match lock_policy {
+        WorkspaceImagePrepareLockPolicy::WaitForTransientContention => cache.prepare(request).await,
+        WorkspaceImagePrepareLockPolicy::ImmediateFallback => {
+            cache.prepare_with_lock_policy(request, lock_policy).await
+        }
+    };
     let prepare_error = workspace_image_prepare_error(lease.result());
     telemetry.record(
         RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE,
