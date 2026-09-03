@@ -239,9 +239,9 @@ async function dragOnSurface(
  * including one the browser would have refused, which is how a read that fails
  * for every annotated screenshot still looked green here.
  */
-function mockOriginalImageBytes(url: string = FILE_URL): { reads: number } {
+function mockOriginalImageBytes(): { reads: number } {
   const counter = { reads: 0 };
-  context.mocks.http.get(url, () => {
+  context.mocks.http.get(FILE_URL, () => {
     counter.reads += 1;
     return new Response(new Blob(["original"], { type: "image/png" }), {
       headers: { "Content-Type": "image/png" },
