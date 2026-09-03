@@ -410,13 +410,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.OfficeDocumentPreview]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Preview DOCX and PPTX attachments with the Microsoft Office viewer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@vm0.ai",
     description:

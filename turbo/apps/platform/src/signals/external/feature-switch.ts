@@ -115,10 +115,6 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerImageAnnotation] ?? false;
 });
 
-export const officeDocumentPreviewEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.OfficeDocumentPreview] ?? false;
-});
-
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
