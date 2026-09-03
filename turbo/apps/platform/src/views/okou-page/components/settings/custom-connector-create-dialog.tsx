@@ -600,7 +600,11 @@ function OAuth2AuthenticationFields({
     <div className="rounded-xl border border-border p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-foreground">OAuth 2.0</p>
+          <p className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.connectors.custom.create.customOauthApp;
+            })}
+          </p>
           <p className="text-xs text-muted-foreground">
             {t(($) => {
               return $.connectors.custom.create.oauthDescription;
@@ -720,6 +724,47 @@ function NoAuthenticationFields({
         size="icon"
         aria-label={t(($) => {
           return $.connectors.custom.create.removeNoAuthentication;
+        })}
+        onClick={onRemove}
+      >
+        <Trash size={16} />
+      </Button>
+    </div>
+  );
+}
+
+function AutomaticAuthenticationFields({
+  onRemove,
+}: {
+  readonly onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-xl border border-border p-4 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.connectors.custom.create.automatic;
+          })}
+          <span className="ml-1 text-xs font-normal text-muted-foreground">
+            {t(($) => {
+              return $.connectors.custom.create.recommended;
+            })}
+          </span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t(($) => {
+            return $.connectors.custom.create.automaticDescription;
+          })}
+        </p>
+      </div>
+      <Button
+        showTooltip
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={t(($) => {
+          return $.connectors.custom.create.removeAutomatic;
         })}
         onClick={onRemove}
       >
@@ -866,7 +911,7 @@ function oauthConfigFromForm(
 
 interface CustomConnectorSharedDefinition extends CustomConnectorDefinitionParts {
   readonly displayName: string;
-  readonly authMode: "none" | "manual" | "oauth";
+  readonly authMode: "none" | "manual" | "oauth" | "automatic";
   readonly oauthConfig?: NonNullable<UpdateCustomConnectorBody["oauthConfig"]>;
 }
 
@@ -888,15 +933,19 @@ function sharedDefinitionFromForm(
 ): CustomConnectorSharedDefinition {
   const authMode = form.authMethodTypes.includes("none")
     ? ("none" as const)
-    : form.authMethodTypes.includes("oauth2")
-      ? ("oauth" as const)
-      : ("manual" as const);
+    : form.authMethodTypes.includes("automatic")
+      ? ("automatic" as const)
+      : form.authMethodTypes.includes("oauth2")
+        ? ("oauth" as const)
+        : ("manual" as const);
   const definition =
     authMode === "none"
       ? noAuthDefinitionFromConnector(connector)
-      : authMode === "manual"
-        ? manualDefinitionFromForm(form, connector)
-        : oauthDefinitionFromConnector(connector);
+      : authMode === "automatic"
+        ? { fields: [], headerInjections: [], queryInjections: [] }
+        : authMode === "manual"
+          ? manualDefinitionFromForm(form, connector)
+          : oauthDefinitionFromConnector(connector);
   return {
     displayName: form.displayName.trim(),
     ...definition,
@@ -961,6 +1010,13 @@ function updateChangesCredentialContract(
       JSON.stringify(credentialFieldContract(body.fields))
   ) {
     return true;
+  }
+  if (
+    nextAuthMode === "automatic" &&
+    connector.kind === "mcp" &&
+    body.kind === "mcp"
+  ) {
+    return connector.endpoint !== body.endpoint;
   }
   if (nextAuthMode !== "oauth") {
     return false;
@@ -1065,6 +1121,9 @@ function formCanSubmit(
   if (form.authMethodTypes.includes("none")) {
     return true;
   }
+  if (form.authMethodTypes.includes("automatic")) {
+    return connectorKind === "mcp";
+  }
   const advancedApiDefinition =
     connector !== undefined &&
     connector.authMode === "manual" &&
@@ -1105,11 +1164,13 @@ function AuthenticationFields({
   removeAuthMethod,
 }: AuthenticationFieldsProps) {
   const { t } = useTranslation();
-  const availableAuthMethods = (["none", "api", "oauth2"] as const).filter(
-    (type) => {
-      return !form.authMethodTypes.includes(type);
-    },
-  );
+  const supportedAuthMethods: readonly CustomConnectorAuthMethodType[] =
+    form.kind === "mcp"
+      ? ["none", "api", "automatic", "oauth2"]
+      : ["none", "api", "oauth2"];
+  const availableAuthMethods = supportedAuthMethods.filter((type) => {
+    return !form.authMethodTypes.includes(type);
+  });
   return (
     <>
       {form.authMethodTypes.includes("none") && (
@@ -1127,6 +1188,13 @@ function AuthenticationFields({
           editable={!advancedApiDefinition}
           onRemove={() => {
             removeAuthMethod("api");
+          }}
+        />
+      )}
+      {form.authMethodTypes.includes("automatic") && (
+        <AutomaticAuthenticationFields
+          onRemove={() => {
+            removeAuthMethod("automatic");
           }}
         />
       )}
@@ -1177,13 +1245,26 @@ function AuthenticationFields({
               })}
             </DropdownMenuItem>
           )}
+          {availableAuthMethods.includes("automatic") && (
+            <DropdownMenuItem
+              onClick={() => {
+                addAuthMethod("automatic");
+              }}
+            >
+              {t(($) => {
+                return $.connectors.custom.create.automatic;
+              })}
+            </DropdownMenuItem>
+          )}
           {availableAuthMethods.includes("oauth2") && (
             <DropdownMenuItem
               onClick={() => {
                 addAuthMethod("oauth2");
               }}
             >
-              OAuth 2.0
+              {t(($) => {
+                return $.connectors.custom.create.customOauthApp;
+              })}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
