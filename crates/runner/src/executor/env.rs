@@ -618,7 +618,6 @@ fn build_env_json_with_host_env_inner(
         guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),
     );
-    insert_guest_agent_tuning_env(&mut env, context);
     env.insert(
         guest_contracts::env::CANONICAL_API_START_TIME_ENV.into(),
         context
@@ -834,22 +833,6 @@ fn validate_run_payload_for_guest(
     }
 
     Ok(())
-}
-
-pub(super) fn insert_guest_agent_tuning_env(
-    env: &mut HashMap<String, String>,
-    context: &ExecutionContext,
-) {
-    let Some(user_env) = &context.environment else {
-        return;
-    };
-    for (legacy_input, canonical_bootstrap_output) in
-        guest_contracts::env::GUEST_AGENT_TUNING_ENV_MAPPINGS
-    {
-        if let Some(value) = user_env.get(legacy_input) {
-            env.insert(canonical_bootstrap_output.into(), value.clone());
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
