@@ -41,6 +41,7 @@ import {
 } from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-helpers";
+import { validateClaudeFable51Migration } from "./test-claude-fable-5-1-migration";
 import { validateAgentDraftsCompatibilityRelation } from "./test-agent-drafts-compatibility-relation";
 import {
   CHAT_SEARCH_DELETE_COMPATIBILITY_PERMANENT_FUNCTION,
@@ -11269,6 +11270,7 @@ async function main(): Promise<void> {
     await validateRetiredRunModelStateMigration();
     await validateConnectionScopedVariableUniqueness();
     await validateInactiveRunModelFinalization();
+    await validateClaudeFable51Migration();
     await validateCustomConnectorSecretPlaceholderCanonicalization();
     await validateAgentRunMetadataStage2Preflight();
     await validateAgentRunMetadataStage2Lock();

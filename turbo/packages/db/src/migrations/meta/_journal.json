@@ -1779,6 +1779,13 @@
       "when": 1788399098548,
       "tag": "1061_faithful_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 1062,
+      "version": "7",
+      "when": 1788404880206,
+      "tag": "1062_migrate_claude_fable_5_to_5_1",
+      "breakpoints": true
     }
   ]
 }
