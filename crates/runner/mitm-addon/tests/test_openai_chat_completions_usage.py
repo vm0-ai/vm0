@@ -321,12 +321,13 @@ def test_duplicate_usage_candidates_keep_authoritative_last_member_semantics(
     assert parsed_usage == expected_usage
 
 
-def test_fast_path_preserves_canonical_error_and_done_failure_evidence():
+def test_fast_path_preserves_error_and_done_failure_evidence():
     observer = _RecordingFailureObserver()
     finish_calls, tracked_finish = _track_chat_extractor_finishes()
     canonical_delta = (
         b'{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"x"}}]}'
     )
+    top_level_error = b'{"error":{"metadata":{"error_type":"provider_unavailable"}}}'
     escaped_error = (
         b'{"choices":[{'
         + rb'"\u0065rror":{"metadata":{"error_type":"provider_overloaded"}}'
@@ -345,14 +346,25 @@ def test_fast_path_preserves_canonical_error_and_done_failure_evidence():
             )
         )
         scanner(
-            b"data: " + canonical_delta + b"\n\ndata: " + escaped_error + b"\n\ndata: [DONE]\n\n"
+            b"data: "
+            + canonical_delta
+            + b"\n\ndata: "
+            + top_level_error
+            + b"\n\ndata: "
+            + escaped_error
+            + b"\n\ndata: [DONE]\n\n"
         )
         scanner.finish()
 
-    assert len(finish_calls) == 1
+    assert len(finish_calls) == 2
     assert parsed_usage == {}
     assert observer.observed == [
         ModelHttpFailureEvidence(has_choices=True, is_valid=True),
+        ModelHttpFailureEvidence(
+            failure_codes=("provider_unavailable",),
+            has_error=True,
+            is_valid=True,
+        ),
         ModelHttpFailureEvidence(
             failure_codes=("provider_overloaded",),
             has_error=True,

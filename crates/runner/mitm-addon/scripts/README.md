@@ -54,7 +54,7 @@ before committing the related addon changes.
 
 # Chat Completions SSE fast-path benchmark
 
-The [Chat Completions extractor benchmark](benchmark_openai_chat_completions_usage.py)
+The [Chat Completions SSE fast-path benchmark](benchmark_openai_chat_completions_usage.py)
 compares fresh and reused selective JSON extraction with the bounded canonical-delta classifier
 and the complete SSE fast path. Run it from the repository root with the addon's locked uv
 environment:
