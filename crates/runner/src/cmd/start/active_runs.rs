@@ -44,7 +44,7 @@ pub(super) enum ActiveRunReuseState {
 }
 
 impl ActiveRunReuseState {
-    fn can_publish_exact(self) -> bool {
+    pub(super) fn can_publish_exact(self) -> bool {
         matches!(self, Self::Pending | Self::Finalizing { .. })
     }
 }

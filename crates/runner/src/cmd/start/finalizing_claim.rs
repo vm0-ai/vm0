@@ -597,10 +597,8 @@ async fn wait_for_finalizing_resource(
             return FinalizingWaitOutcome::cancelled(handoff.as_mut());
         }
         let state = admission.predecessor.state();
-        if !matches!(
-            state,
-            ActiveRunReuseState::Pending | ActiveRunReuseState::Finalizing { .. }
-        ) && let Some(request) = handoff.as_mut()
+        if !state.can_publish_exact()
+            && let Some(request) = handoff.as_mut()
         {
             if request.accepted().await {
                 return receive_finalizing_handoff(
