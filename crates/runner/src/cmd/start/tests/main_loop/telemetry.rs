@@ -494,6 +494,8 @@ async fn finalizing_handoff_deadline_reports_fallback_reason() {
         Some(reuse_key.to_owned()),
         "vm0/default".into(),
     );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    assert!(predecessor_reuse.mark_finalizing(std::time::Instant::now()));
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
