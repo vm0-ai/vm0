@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { imageModelIdSchema } from "../image-models";
 import {
@@ -7,12 +8,45 @@ import {
   chatThreadComputerUseHostContract,
   chatThreadDraftSchema,
   chatThreadEventSchema,
+  chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadsContract,
   chatEventSchema,
   generationTemplateRequestSchema,
   userMessageDocumentSchema,
   userMessageInputDocumentSchema,
 } from "../chat-threads";
+
+describe("google drive artifact recovery contract", () => {
+  it("keeps disconnected recovery additive across API and Platform versions", () => {
+    const legacyDisconnected = { status: "disconnected" } as const;
+    const exactReconnect = {
+      status: "disconnected",
+      recovery: {
+        action: "reconnect",
+        connectionId: "11111111-1111-4111-8111-111111111111",
+      },
+    } as const;
+    const previousDisconnectedSchema = z.object({
+      status: z.literal("disconnected"),
+    });
+
+    expect(
+      chatThreadArtifactGoogleDriveSyncSchema.parse(legacyDisconnected),
+    ).toStrictEqual(legacyDisconnected);
+    expect(previousDisconnectedSchema.parse(exactReconnect)).toStrictEqual(
+      legacyDisconnected,
+    );
+    expect(
+      chatThreadArtifactGoogleDriveSyncSchema.parse(exactReconnect),
+    ).toStrictEqual(exactReconnect);
+    expect(
+      chatThreadArtifactGoogleDriveSyncSchema.safeParse({
+        status: "disconnected",
+        recovery: { action: "reconnect", connectionId: "not-a-uuid" },
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";

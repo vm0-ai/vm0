@@ -520,7 +520,6 @@
       "agentLoading": "Agen masih memuat",
       "connect": "Hubungkan Google Drive",
       "connectTooltip": "Hubungkan Google Drive untuk mengunggah artefak",
-      "failedToOpenConnect": "Gagal membuka halaman koneksi Google Drive",
       "noArtifacts": "Tidak ada artefak untuk disinkronkan",
       "partial_one": "Tersinkron {{synced}} dari {{count}} file ke Google Drive",
       "partial_other": "Tersinkron {{synced}} dari {{count}} file ke Google Drive",

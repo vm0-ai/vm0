@@ -521,7 +521,6 @@
       "agentLoading": "Agent is still loading",
       "connect": "Connect Google Drive",
       "connectTooltip": "Connect Google Drive to upload artifacts",
-      "failedToOpenConnect": "Failed to open Google Drive connection page",
       "noArtifacts": "No artifacts to sync",
       "partial_one": "Synced {{synced}} of {{count}} file to Google Drive",
       "partial_other": "Synced {{synced}} of {{count}} files to Google Drive",

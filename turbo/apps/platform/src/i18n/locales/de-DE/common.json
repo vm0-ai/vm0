@@ -521,7 +521,6 @@
       "agentLoading": "Der Agent wird noch geladen",
       "connect": "Verbinden Sie Google Drive",
       "connectTooltip": "Verbinden Sie Google Drive, um Artefakte hochzuladen",
-      "failedToOpenConnect": "Die Google Drive-Verbindungsseite konnte nicht geöffnet werden",
       "noArtifacts": "Keine zu synchronisierenden Artefakte",
       "partial_one": "{{synced}} von {{count}} Datei mit Google Drive synchronisiert",
       "partial_other": "{{synced}} von {{count}} Dateien mit Google Drive synchronisiert",
