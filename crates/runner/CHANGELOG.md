@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.184.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.5...runner-rs-v0.184.6) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
 ## [0.184.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.4...runner-rs-v0.184.5) (2026-09-02)
 
 

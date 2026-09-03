@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.25](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.24...guest-contracts-v0.12.25) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
 ## [0.12.24](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.12.23...guest-contracts-v0.12.24) (2026-09-02)
 
 
