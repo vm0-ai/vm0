@@ -9,7 +9,7 @@ This request came from the product's Create an intro video flow, through its scr
 
 For a screen recording with a synchronized VM0 click or pointer event sidecar:
 1. Download the unchanged recording and its sidecar, then run \`okou video camera --file <video> --events <events> --output <draft.mp4>\` for the first cut and its editable plan.
-2. Open the generated \`*.camera-review.json\`. It indexes paired source/transformed frames 300 ms before each click, at the click, 500 ms and 1.5 s after it, at the start and end of every camera move, at every shot boundary, and at peak camera speed.
+2. Open the generated \`*.camera-review.json\`. It indexes paired source/transformed frames 300 ms before each click, at the click with whether it is in frame, at the plan's reaction checkpoint with changedFraction when available, at every camera move start/end, every shot end, and peak camera speed. Require clicksOutsideFrame to be 0.
 3. Compare those frame pairs, and inspect a 2–4 second clip only around a suspicious shot: a clipped or stale target, lost context, reversed or too fast motion, a late transition, or a move that adds no clarity.
 4. Re-render only the justified plan changes with \`okou video camera --file <video> --plan <edited-plan.json> --output <final.mp4> --force\`, then re-check the shots you changed.
 
