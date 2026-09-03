@@ -2293,19 +2293,60 @@ describe("managed SocialKit route", () => {
     0x00, 0x00,
   ]);
 
-  // A minimal ISO base media header: a box length, `ftyp`, then the brand.
-  function isoBaseMediaPayload(brand: string): Uint8Array {
-    const payload = new Uint8Array([
-      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00,
-    ]);
-    payload.set(
-      [...brand].map((character) => {
-        return character.charCodeAt(0);
-      }),
-      8,
+  function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
+    const result = new Uint8Array(
+      parts.reduce((size, part) => {
+        return size + part.byteLength;
+      }, 0),
     );
-    return payload;
+    let offset = 0;
+    for (const part of parts) {
+      result.set(part, offset);
+      offset += part.byteLength;
+    }
+    return result;
+  }
+
+  function ascii(value: string): Uint8Array {
+    return Uint8Array.from(value, (character) => {
+      return character.charCodeAt(0);
+    });
+  }
+
+  function isoBox(type: string, payload: Uint8Array): Uint8Array {
+    const result = new Uint8Array(8 + payload.byteLength);
+    const view = new DataView(result.buffer);
+    view.setUint32(0, result.byteLength);
+    result.set(ascii(type), 4);
+    result.set(payload, 8);
+    return result;
+  }
+
+  function isoTrack(handler: "soun" | "vide"): Uint8Array {
+    const handlerPayload = new Uint8Array(12);
+    handlerPayload.set(ascii(handler), 8);
+    return isoBox("trak", isoBox("mdia", isoBox("hdlr", handlerPayload)));
+  }
+
+  // A small but structurally valid ISO base media file. Generic brands such as
+  // `isom` and `mp42` need the `hdlr` boxes to distinguish audio from video.
+  function isoBaseMediaPayload(
+    brand: string,
+    tracks: readonly ("soun" | "vide")[] = [],
+  ): Uint8Array {
+    const fileType = isoBox(
+      "ftyp",
+      concatBytes([ascii(brand), new Uint8Array(4), ascii(brand)]),
+    );
+    const movie = isoBox(
+      "moov",
+      concatBytes(
+        tracks.map((handler) => {
+          return isoTrack(handler);
+        }),
+      ),
+    );
+    return concatBytes([fileType, movie]);
   }
 
   async function completeDownloadWithPayload(
@@ -2400,13 +2441,25 @@ describe("managed SocialKit route", () => {
       contentType: "audio/mp4",
     },
     {
-      caseName: "an mp42-branded ISO container",
-      payload: isoBaseMediaPayload("mp42"),
+      caseName: "an isom-branded ISO container with only an audio track",
+      payload: isoBaseMediaPayload("isom", ["soun"]),
+      filename: "Public clip.m4a",
+      contentType: "audio/mp4",
+    },
+    {
+      caseName: "an mp42-branded ISO container with a video track",
+      payload: isoBaseMediaPayload("mp42", ["vide"]),
+      filename: "Public clip.mp4",
+      contentType: "video/mp4",
+    },
+    {
+      caseName: "an ISO container with audio and video tracks",
+      payload: isoBaseMediaPayload("isom", ["soun", "vide"]),
       filename: "Public clip.mp4",
       contentType: "video/mp4",
     },
   ])(
-    "files $caseName by its detected container once the switch is on",
+    "files $caseName by its detected media once the switch is on",
     async ({ payload, filename, contentType }) => {
       const actor = createBddApi(context).user();
       if (!actor.orgId) {

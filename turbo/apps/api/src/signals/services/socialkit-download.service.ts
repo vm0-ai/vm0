@@ -61,9 +61,10 @@ const MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024;
 const MULTIPART_PART_BYTES = 8 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ARTIFACT_FILENAME_STEM_CHARS = 120;
-// Enough for the ISO base media `ftyp` brand, which sits at offset 8 and is the
-// longest signature this service inspects.
-const MEDIA_SNIFF_BYTES = 12;
+// ISO base media files can use a generic `ftyp` brand for either audio or
+// video. Buffer enough of a fast-start file to inspect the `moov` track
+// handlers before allocating the immutable artifact key.
+const MEDIA_SNIFF_BYTES = 64 * 1024;
 const MAX_PROVIDER_FAILURE_CODE_CHARS = 128;
 const MAX_PROVIDER_FAILURE_MESSAGE_CHARS = 500;
 const INVALID_ARTIFACT_FILENAME_CHARS = String.raw`<>:"/\|?*`;
@@ -406,6 +407,15 @@ interface SniffedMedia {
   readonly extension: string;
 }
 
+type IsoTrackKind = "audio" | "video";
+type IsoContainerKind = "root" | "moov" | "trak" | "mdia";
+
+interface IsoBox {
+  readonly type: string;
+  readonly payloadStart: number;
+  readonly end: number;
+}
+
 function leadingBytesAre(
   head: Uint8Array,
   offset: number,
@@ -422,22 +432,140 @@ function leadingBytesAre(
   return true;
 }
 
+function readUint32(bytes: Uint8Array, offset: number): number | null {
+  if (offset + 4 > bytes.byteLength) {
+    return null;
+  }
+  return (
+    (bytes[offset]! * 0x01_00_00_00 +
+      bytes[offset + 1]! * 0x01_00_00 +
+      bytes[offset + 2]! * 0x01_00 +
+      bytes[offset + 3]!) >>>
+    0
+  );
+}
+
+function readIsoBox(
+  bytes: Uint8Array,
+  offset: number,
+  parentEnd: number,
+): IsoBox | null {
+  const size = readUint32(bytes, offset);
+  if (size === null || offset + 8 > parentEnd) {
+    return null;
+  }
+  const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+  let headerSize = 8;
+  let boxSize = size;
+  if (size === 1) {
+    const high = readUint32(bytes, offset + 8);
+    const low = readUint32(bytes, offset + 12);
+    if (high === null || low === null) {
+      return null;
+    }
+    boxSize = high * 0x01_00_00_00_00 + low;
+    headerSize = 16;
+  } else if (size === 0) {
+    boxSize = parentEnd - offset;
+  }
+  if (
+    !Number.isSafeInteger(boxSize) ||
+    boxSize < headerSize ||
+    offset + boxSize > parentEnd
+  ) {
+    return null;
+  }
+  return {
+    type,
+    payloadStart: offset + headerSize,
+    end: offset + boxSize,
+  };
+}
+
+function isoHandlerTrackKind(
+  bytes: Uint8Array,
+  box: IsoBox,
+): IsoTrackKind | null {
+  const handlerOffset = box.payloadStart + 8;
+  if (handlerOffset + 4 > box.end) {
+    return null;
+  }
+  if (leadingBytesAre(bytes, handlerOffset, "vide")) {
+    return "video";
+  }
+  return leadingBytesAre(bytes, handlerOffset, "soun") ? "audio" : null;
+}
+
+function collectIsoTrackKinds(
+  bytes: Uint8Array,
+  start: number,
+  end: number,
+  container: IsoContainerKind,
+  tracks: Set<IsoTrackKind>,
+): void {
+  let offset = start;
+  while (offset + 8 <= end) {
+    const box = readIsoBox(bytes, offset, end);
+    if (!box) {
+      return;
+    }
+    if (container === "mdia" && box.type === "hdlr") {
+      const track = isoHandlerTrackKind(bytes, box);
+      if (track) {
+        tracks.add(track);
+      }
+    } else {
+      const childContainer =
+        container === "root" && box.type === "moov"
+          ? "moov"
+          : container === "moov" && box.type === "trak"
+            ? "trak"
+            : container === "trak" && box.type === "mdia"
+              ? "mdia"
+              : null;
+      if (childContainer) {
+        collectIsoTrackKinds(
+          bytes,
+          box.payloadStart,
+          box.end,
+          childContainer,
+          tracks,
+        );
+      }
+    }
+    offset = box.end;
+  }
+}
+
+function sniffIsoMedia(head: Uint8Array): SniffedMedia | null {
+  const tracks = new Set<IsoTrackKind>();
+  collectIsoTrackKinds(head, 0, head.byteLength, "root", tracks);
+  if (tracks.has("video")) {
+    return { contentType: "video/mp4", extension: "mp4" };
+  }
+  if (tracks.has("audio")) {
+    return { contentType: "audio/mp4", extension: "m4a" };
+  }
+  return leadingBytesAre(head, 8, "M4A") || leadingBytesAre(head, 8, "M4B")
+    ? { contentType: "audio/mp4", extension: "m4a" }
+    : null;
+}
+
 /**
  * SocialKit echoes back only the format that was requested, and the artifact CDN
- * carries no trustworthy media type, so the container is read from the leading
- * bytes instead. A `format=mp4` request can still resolve to an audio-only file
- * upstream, and filing those bytes as `video/mp4` leaves an artifact that no
- * video consumer can decode. Returns null when the container is unrecognized,
- * which keeps the requested format as the recorded media type.
+ * carries no trustworthy media type, so the container and available track
+ * handlers are read from the leading file structure instead. A `format=mp4`
+ * request can still resolve to an audio-only file upstream, and filing those
+ * bytes as `video/mp4` leaves an artifact that no video consumer can decode.
+ * Returns null when the media is unrecognized, which keeps the requested format
+ * as the recorded media type.
  */
 function sniffMedia(head: Uint8Array): SniffedMedia | null {
   if (leadingBytesAre(head, 0, "ID3")) {
     return { contentType: "audio/mpeg", extension: "mp3" };
   }
   if (leadingBytesAre(head, 4, "ftyp")) {
-    return leadingBytesAre(head, 8, "M4A") || leadingBytesAre(head, 8, "M4B")
-      ? { contentType: "audio/mp4", extension: "m4a" }
-      : { contentType: "video/mp4", extension: "mp4" };
+    return sniffIsoMedia(head);
   }
   // MPEG audio frame sync: eleven set bits followed by a non-reserved layer.
   const sync = head[1];
@@ -501,7 +629,7 @@ async function fetchSafeSocialKitArtifact(
 
 interface ArtifactDownload {
   readonly reader: ReadableStreamDefaultReader<Uint8Array>;
-  // The leading bytes already pulled off the stream to identify the container.
+  // The leading bytes already pulled off the stream to identify the media.
   // The upload consumes them before draining the rest of the reader.
   readonly head: Uint8Array;
   readonly media: SniffedMedia | null;
@@ -526,10 +654,10 @@ async function readMediaHead(
 }
 
 /**
- * Start the artifact download and read just enough of it to identify the
- * container. The filename and content type are decided from this before the
- * artifact object is allocated, and the same open stream then carries the whole
- * body into R2, so the artifact is fetched exactly once.
+ * Start the artifact download and read a bounded prefix to identify its media.
+ * The filename and content type are decided from this before the artifact object
+ * is allocated, and the same open stream then carries the whole body into R2,
+ * so the artifact is fetched exactly once.
  *
  * The caller owns the returned reader and must cancel it on every path that
  * does not hand it to `streamDownloadToArtifact$`.
