@@ -311,9 +311,9 @@ describe("Desktop build configuration entry point", () => {
   const lifecycleCases = [
     {
       name: "uses product defaults when inputs are absent",
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
     },
     {
       name: "treats trimmed-empty canonical inputs as absent",
@@ -321,9 +321,9 @@ describe("Desktop build configuration entry point", () => {
         canonicalProduct: " ",
         canonicalPlatformUrl: "\t",
       },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
     },
     {
       name: "trims canonical inputs",
@@ -344,6 +344,20 @@ describe("Desktop build configuration entry point", () => {
       expectedProduct: "okou",
       expectedPlatformUrl: "https://staging-app.omby.ai/",
       expectedDisplayName: "Okou Dev",
+    },
+    {
+      name: "keeps Zero selectable through canonical inputs",
+      environment: { canonicalProduct: "zero" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
+    },
+    {
+      name: "keeps Zero selectable through the runtime file",
+      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
     },
   ] satisfies readonly (SurfaceCase & { readonly name: string })[];
 
@@ -407,9 +421,9 @@ describe("Desktop build configuration entry point", () => {
         retiredProduct: "okou",
         retiredPlatformUrl: "https://staging-app.omby.ai",
       },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
     });
 
     expectSuccessfulEntryPoint(result);
@@ -436,9 +450,9 @@ describe("installed Desktop configuration entry point", () => {
   const lifecycleCases = [
     {
       name: "uses product defaults when inputs are absent",
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
       expectedEnvironment: "production",
     },
     {
@@ -447,9 +461,9 @@ describe("installed Desktop configuration entry point", () => {
         canonicalProduct: " ",
         canonicalPlatformUrl: "\n",
       },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
       expectedEnvironment: "production",
     },
     {
@@ -473,6 +487,22 @@ describe("installed Desktop configuration entry point", () => {
       expectedPlatformUrl: "https://staging-app.omby.ai/",
       expectedDisplayName: "Okou Dev",
       expectedEnvironment: "staging",
+    },
+    {
+      name: "keeps Zero selectable through canonical inputs",
+      environment: { canonicalProduct: "zero" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
+      expectedEnvironment: "production",
+    },
+    {
+      name: "keeps Zero selectable through the runtime file",
+      fileConfig: { product: "zero", platformUrl: "https://app.vm0.ai" },
+      expectedProduct: "zero",
+      expectedPlatformUrl: "https://app.vm0.ai/",
+      expectedDisplayName: "Zero Computer Use",
+      expectedEnvironment: "production",
     },
   ] satisfies readonly (InstalledSurfaceCase & { readonly name: string })[];
 
@@ -556,9 +586,9 @@ describe("installed Desktop configuration entry point", () => {
         retiredProduct: "okou",
         retiredPlatformUrl: "https://staging-app.omby.ai",
       },
-      expectedProduct: "zero",
-      expectedPlatformUrl: "https://app.vm0.ai/",
-      expectedDisplayName: "Zero Computer Use",
+      expectedProduct: "okou",
+      expectedPlatformUrl: "https://app.okou.ai/",
+      expectedDisplayName: "Okou",
       expectedEnvironment: "production",
     });
 
@@ -633,6 +663,17 @@ describe("packaged Desktop wrapper entry points", () => {
         retiredProduct: "okou",
         retiredPlatformUrl: "https://staging-app.omby.ai",
       },
+      "Okou",
+    );
+
+    expectSuccessfulEntryPoint(result);
+    expect(result.trace).toBe("selected\n");
+  });
+
+  it.each(wrappers)("selects the Zero product through %s", (wrapper) => {
+    const result = runWrapper(
+      wrapper,
+      { canonicalProduct: "zero" },
       "Zero Computer Use",
     );
 
