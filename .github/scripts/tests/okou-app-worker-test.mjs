@@ -366,7 +366,7 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(vm0Page.html, "link", "href").includes(
-    "https://static.vm0.io/public/okou-logo-mark-dark-00337dd44485.svg",
+    "https://static.vm0.io/public/okou-favicon-adaptive-b4eda9221bb7.svg",
   ),
 );
 assert.equal(
@@ -391,7 +391,7 @@ assert.equal(
 );
 assert.ok(
   tagAttributeValues(okouPage.html, "link", "href").includes(
-    "https://static.okou.io/public/okou-logo-mark-dark-00337dd44485.svg",
+    "https://static.okou.io/public/okou-favicon-adaptive-b4eda9221bb7.svg",
   ),
 );
 assert.equal(
