@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.184.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.13...runner-rs-v0.184.14) (2026-09-03)
+
+
+### Performance Improvements
+
+* **runner:** expose finalizing reuse miss reasons ([#31490](https://github.com/vm0-ai/vm0/issues/31490)) ([84aed28](https://github.com/vm0-ai/vm0/commit/84aed288b4a36396a53eaaced6bd41e876b8cf96))
+
 ## [0.184.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.12...runner-rs-v0.184.13) (2026-09-03)
 
 

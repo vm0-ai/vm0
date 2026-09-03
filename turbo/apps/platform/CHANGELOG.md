@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.835.0](https://github.com/vm0-ai/vm0/compare/app-v0.834.0...app-v0.835.0) (2026-09-03)
+
+
+### Features
+
+* **platform:** add draggable sidebar scrollbar behind switch ([#31532](https://github.com/vm0-ai/vm0/issues/31532)) ([72e1f7e](https://github.com/vm0-ai/vm0/commit/72e1f7e12c865bffa3679a6374eccbdba4ad324e))
+
+
+### Bug Fixes
+
+* **platform:** scroll voice draft level history ([#31539](https://github.com/vm0-ai/vm0/issues/31539)) ([1fdf333](https://github.com/vm0-ai/vm0/commit/1fdf333f129c0308c4437e99776277027a164055))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31524](https://github.com/vm0-ai/vm0/issues/31524)) ([2020321](https://github.com/vm0-ai/vm0/commit/202032117158dca3c445b5f6f6d5e0e2d5b660aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.1
+    * @okouai/core bumped to 8.618.0
+
 ## [0.834.0](https://github.com/vm0-ai/vm0/compare/app-v0.833.0...app-v0.834.0) (2026-09-03)
 
 

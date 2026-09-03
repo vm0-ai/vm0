@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.618.0](https://github.com/vm0-ai/vm0/compare/core-v8.617.0...core-v8.618.0) (2026-09-03)
+
+
+### Features
+
+* **platform:** add draggable sidebar scrollbar behind switch ([#31532](https://github.com/vm0-ai/vm0/issues/31532)) ([72e1f7e](https://github.com/vm0-ai/vm0/commit/72e1f7e12c865bffa3679a6374eccbdba4ad324e))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#31524](https://github.com/vm0-ai/vm0/issues/31524)) ([2020321](https://github.com/vm0-ai/vm0/commit/202032117158dca3c445b5f6f6d5e0e2d5b660aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.399.1
+
 ## [8.617.0](https://github.com/vm0-ai/vm0/compare/core-v8.616.0...core-v8.617.0) (2026-09-03)
 
 
