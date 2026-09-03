@@ -128,32 +128,17 @@ async function fetchConnectorAccountPage(
   },
   signal: AbortSignal,
 ): Promise<ConnectorAccountPage> {
-  const client = args.createClient(connectorAccountsContract);
   const enriched =
     args.includeBuiltinScopeMismatch && args.target.kind === "builtin";
   const result = await accept(
-    client.connections({
+    args.createClient(connectorAccountsContract).connections({
       query: targetListQuery(args.target, args.search, args.cursor, enriched),
       fetchOptions: { signal },
     }),
-    enriched ? [200, 400, 404] : [200, 404],
+    [200, 404],
     signal,
   );
   signal.throwIfAborted();
-  if (result.status === 400) {
-    const fallback = await accept(
-      client.connections({
-        query: targetListQuery(args.target, args.search, args.cursor),
-        fetchOptions: { signal },
-      }),
-      [200, 404],
-      signal,
-    );
-    signal.throwIfAborted();
-    return fallback.status === 404
-      ? emptyConnectorAccountPage()
-      : { ...fallback.body, available: true };
-  }
   return result.status === 404
     ? emptyConnectorAccountPage()
     : { ...result.body, available: true };

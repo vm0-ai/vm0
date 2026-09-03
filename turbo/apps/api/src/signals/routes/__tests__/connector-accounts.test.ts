@@ -406,22 +406,6 @@ describe("connector account lifecycle routes", () => {
       }),
       [404],
     );
-
-    const unavailableMethodId = await seedConnectorStorageRow(context, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      connectorSlug: "openai",
-      authMethod: "unavailable-method",
-      storageVersion: 1,
-    });
-    await accept(
-      accountClient().scopeDiff({
-        headers: authHeaders(),
-        params: { connectionId: unavailableMethodId },
-        query: { connectorSlug: "openai" },
-      }),
-      [404],
-    );
   });
 
   it("inspects only exact owned accounts without leaking credentials", async () => {

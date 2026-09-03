@@ -2610,9 +2610,10 @@ export function connectorScopeDiff(args: {
         userId: args.userId,
         connectorSlug: args.connectorSlug,
         snapshot,
-        selection: args.connectorId
-          ? { kind: "exact", connectorId: args.connectorId }
-          : { kind: "default" },
+        selection:
+          args.connectorId === undefined
+            ? { kind: "default" }
+            : { kind: "exact", connectorId: args.connectorId },
       }),
     );
     return connector === null

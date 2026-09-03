@@ -2868,43 +2868,6 @@ describe("connectors page", () => {
     expect(queryButtonByText("Reconnect", reviewDialog)).toBeNull();
   });
 
-  it("retries account listing without enrichment against an older API", async () => {
-    const accounts = mockGitHubConnectorAccounts(2).map((account) => {
-      const { scopeMismatch: _scopeMismatch, ...legacyAccount } = account;
-      return legacyAccount;
-    });
-    const enrichmentValues: ("true" | null)[] = [];
-    context.mocks.api(
-      connectorAccountsContract.connections,
-      ({ query, respond }) => {
-        if (query.kind !== "builtin") {
-          throw new Error("Expected a built-in connector account query");
-        }
-        enrichmentValues.push(query.includeScopeMismatch ?? null);
-        return query.includeScopeMismatch === "true"
-          ? respond(400, {
-              error: { message: "Invalid query", code: "BAD_REQUEST" },
-            })
-          : respond(200, { connections: accounts, nextCursor: null });
-      },
-    );
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorAccounts]: true },
-    });
-
-    click(await waitForButtonByAriaLabel("Manage GitHub accounts"));
-    const manager = await screen.findByRole("dialog", {
-      name: "Manage GitHub accounts",
-    });
-    await waitFor(() => {
-      expect(enrichmentValues).toStrictEqual(["true", null]);
-      expect(within(manager).getByText("Work 1")).toBeInTheDocument();
-    });
-    expect(within(manager).queryByText("Update permissions")).toBeNull();
-  });
-
   it("navigates connector categories and opens a connector from the keyboard", async () => {
     mockConnectors([]);
 
