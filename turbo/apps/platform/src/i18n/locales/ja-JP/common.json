@@ -2939,21 +2939,20 @@
       "agentphone": {
         "authorizedSender": "承認された送信者",
         "connectAria": "電話を接続する",
-        "connectDescription": "電話番号を入力してください。このワークスペースに接続する確認リンクをテキストで送信します。",
+        "connectDescription": "接続したい電話から、この AgentPhone 番号にメッセージを送信してください。",
         "connectTitle": "電話を接続する",
         "copyAria": "{{phone}} をコピーします",
         "copyError": "電話番号のコピーに失敗しました",
         "copySuccess": "電話番号をコピーしました",
         "description": "{{assistantName}} へのテキスト メッセージ アクセス",
         "destination": "iMessage または SMS で",
-        "normalized": "{{phone}} にテキスト メッセージを送信します。",
+        "messageInstruction": "「hi」と送信",
+        "openMessages": "メッセージを開く",
         "options": "電話オプション",
         "phoneLabel": "電話",
-        "phoneNumber": "電話番号",
-        "risk": "SMS および MMS の返信は確実に配信されない可能性があります。最も信頼性の高いエクスペリエンスを得るには、この AgentPhone 番号で iMessage を使用してください。",
-        "sending": "送信中...",
-        "sendVerification": "確認の送信",
-        "verificationSent": "検証テキストが {{phone}} に送信されました。接続を完了するには、そのテキスト内のリンクを開いてください。"
+        "replyInstruction": "10分以内に接続リンクを開いて完了してください。",
+        "replyTitle": "返信を開く",
+        "risk": "可能な場合は iMessage を使用してください。SMS および MMS の返信は確実に届かないことがあります。"
       },
       "catalogDiagnostics": {
         "fields": {
@@ -3016,7 +3015,6 @@
         }
       },
       "errors": {
-        "agentphonePhone": "+1 555 555 1212 のように、国コードを含む電話番号を入力します。",
         "githubAuthorizationWindow": "認証ウィンドウを開けませんでした",
         "telegramDomain": "ドメインはまだ Telegram に表示されていません。 BotFather を確認して再試行してください。",
         "telegramPrivacy": "プライバシーモードはまだオンになっているようです。 BotFather でこれをオフにして、もう一度試してください。"
@@ -3222,7 +3220,6 @@
       "toasts": {
         "agentphoneConnected": "エージェントフォンが接続されました",
         "agentphoneDisconnected": "AgentPhone が切断されました",
-        "agentphoneVerificationSent": "確認テキストが送信されました",
         "feishuBotInstalled": "Feishu ボットは正常にインストールされました",
         "feishuBotUninstalled": "Feishu ボットがアンインストールされました",
         "feishuConnected": "Feishu は正常に接続されました",

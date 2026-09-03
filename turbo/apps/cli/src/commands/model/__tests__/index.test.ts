@@ -83,12 +83,7 @@ describe("okou model command", () => {
     expect(logCalls).toContain("okou model-provider set --help");
   });
 
-  it("should ignore the inherited legacy prompt when showing switch guidance", async () => {
-    vi.stubEnv(
-      "VM0_APPEND_SYSTEM_PROMPT",
-      "You are currently running inside: Telegram",
-    );
-
+  it("should show Web switching guidance", async () => {
     await switchCommand.parseAsync(["node", "cli"]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(

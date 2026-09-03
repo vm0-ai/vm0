@@ -2163,6 +2163,29 @@ mod tests {
     }
 
     #[test]
+    fn complete_request_serializes_input_too_large_failure_reason() {
+        let req = CompleteRequest {
+            run_id: "550e8400-e29b-41d4-a716-446655440000"
+                .parse::<RunId>()
+                .unwrap(),
+            exit_code: 1,
+            failure_reason: Some(RequestFailureReason::InputTooLarge),
+            error: Some(
+                "execution: Codex input is too large: 101 characters provided, maximum is 100 characters. Reduce the input and try again."
+                    .into(),
+            ),
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&req).unwrap();
+
+        assert_eq!(json["failureReason"], "input_too_large");
+    }
+
+    #[test]
     fn complete_request_with_reuse_fields() {
         let sid: SandboxId = "11111111-2222-3333-4444-555555555555".parse().unwrap();
         let req = CompleteRequest {

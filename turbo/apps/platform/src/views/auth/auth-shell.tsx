@@ -9,6 +9,7 @@ import {
 } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
 import { setTheme$, theme$ } from "../../signals/theme.ts";
+import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
 interface AuthShellProps {
   readonly authBrand: AuthBrandContext;
@@ -83,9 +84,7 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
         )}
       >
         {authBrand.brandName === "Okou" ? (
-          <span className="text-xl font-semibold tracking-tight">
-            {authBrand.brandName}
-          </span>
+          <ProductBrandMark brandName={authBrand.brandName} size="compact" />
         ) : (
           <img
             src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}

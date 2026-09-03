@@ -597,6 +597,7 @@ export const rustTypeBindings = [
             "The provider requires acceptance of updated terms.",
           ],
           context_window_exceeded: ["The model context window was exceeded."],
+          input_too_large: ["The Codex app-server input limit was exceeded."],
           output_token_limit: ["The provider output-token limit was reached."],
           provider_rate_limited: ["The provider rate limited the request."],
           provider_overloaded: ["The provider reported overload."],

@@ -7,6 +7,8 @@ pub(super) enum Scenario {
     ExitOnTurnStart,
     ExitOnTurnStartWithStderrHolder,
     HangOnTurnStart,
+    ThreadStartInputTooLarge,
+    TurnStartRpcError(TurnStartRpcError),
     InterleavedNotification,
     InvalidResponseId,
     MalformedErrorResponse,
@@ -71,6 +73,40 @@ impl Scenario {
                     Ok(Self::ExitOnTurnStartWithStderrHolder)
                 }
                 "hang-on-turn-start" => Ok(Self::HangOnTurnStart),
+                "thread-start-input-too-large" => Ok(Self::ThreadStartInputTooLarge),
+                "turn-start-input-too-large" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::InputTooLarge))
+                }
+                "turn-start-input-too-large-wrong-code" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::WrongRpcCode))
+                }
+                "turn-start-input-too-large-wrong-discriminator" => Ok(Self::TurnStartRpcError(
+                    TurnStartRpcError::WrongDiscriminator,
+                )),
+                "turn-start-input-too-large-missing-data" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::MissingData))
+                }
+                "turn-start-input-too-large-missing-max-chars" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::MissingMaxChars))
+                }
+                "turn-start-input-too-large-missing-actual-chars" => Ok(Self::TurnStartRpcError(
+                    TurnStartRpcError::MissingActualChars,
+                )),
+                "turn-start-input-too-large-string-actual-chars" => Ok(Self::TurnStartRpcError(
+                    TurnStartRpcError::StringActualChars,
+                )),
+                "turn-start-input-too-large-fractional-actual-chars" => Ok(
+                    Self::TurnStartRpcError(TurnStartRpcError::FractionalActualChars),
+                ),
+                "turn-start-input-too-large-negative-max-chars" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::NegativeMaxChars))
+                }
+                "turn-start-input-too-large-zero-max-chars" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::ZeroMaxChars))
+                }
+                "turn-start-input-too-large-not-exceeded" => {
+                    Ok(Self::TurnStartRpcError(TurnStartRpcError::NotExceeded))
+                }
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
                 "invalid-response-id" => Ok(Self::InvalidResponseId),
                 "malformed-error-response" => Ok(Self::MalformedErrorResponse),
@@ -188,6 +224,13 @@ impl Scenario {
         )
     }
 
+    pub(super) const fn turn_start_rpc_error(self) -> Option<TurnStartRpcError> {
+        match self {
+            Self::TurnStartRpcError(error) => Some(error),
+            _ => None,
+        }
+    }
+
     pub(super) const fn turn_failure(self) -> Option<TurnFailure> {
         match self {
             Self::RuntimeTurnFailed => Some(TurnFailure::Generic),
@@ -209,6 +252,21 @@ impl Scenario {
             _ => None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TurnStartRpcError {
+    InputTooLarge,
+    WrongRpcCode,
+    WrongDiscriminator,
+    MissingData,
+    MissingMaxChars,
+    MissingActualChars,
+    StringActualChars,
+    FractionalActualChars,
+    NegativeMaxChars,
+    ZeroMaxChars,
+    NotExceeded,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

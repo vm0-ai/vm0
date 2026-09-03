@@ -7,6 +7,7 @@
 
 use crate::cli;
 use crate::env;
+use crate::error::AgentError;
 use crate::failure_patterns;
 use crate::paths;
 use crate::session_history;
@@ -53,6 +54,19 @@ pub fn base_failure_diagnostic_for_config(
         framework,
         PromptMetadata::from_prompt(&config.prompt),
     )
+}
+
+/// Build the diagnostic for a CLI execution boundary error.
+pub fn cli_execution_error_for_config(
+    config: &env::GuestConfig,
+    error: &AgentError,
+) -> FailureDiagnostic {
+    let diagnostic = base_failure_diagnostic_for_config(config, FailureClass::CliExecutionError);
+    if matches!(error, AgentError::CodexInputTooLarge { .. }) {
+        diagnostic.with_failure_reason(FailureReason::InputTooLarge)
+    } else {
+        diagnostic
+    }
 }
 
 /// Build the diagnostic for a CLI control-path failure.

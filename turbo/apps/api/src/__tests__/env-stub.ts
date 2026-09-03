@@ -10,12 +10,6 @@ export function stubTestWebUrlEnvironment(webUrl: string | undefined): void {
   vi.stubEnv("OKOU_WEB_URL", webUrl);
 }
 
-export function stubRetiredTestWebUrlEnvironment(
-  webUrl: string | undefined,
-): void {
-  vi.stubEnv("VM0_WEB_URL", webUrl);
-}
-
 function stubTestDatabaseUrl(): void {
   const vitestWorkerId = process.env.VITEST_WORKER_ID;
   if (!vitestWorkerId) {

@@ -16,7 +16,7 @@ function setBrowserUrl(url: string): void {
 
 function okouBrandLink(): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.trim() === "Okou";
+    return candidate.getAttribute("aria-label") === "Go to Okou home";
   });
   if (!link) {
     throw new Error("Okou brand link not found");
