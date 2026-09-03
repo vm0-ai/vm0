@@ -8,6 +8,7 @@ import {
 import {
   connectorReconnectReasonSchema,
   connectorResponseConnectionStatusSchema,
+  scopeDiffResponseSchema,
 } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
 
@@ -45,6 +46,7 @@ export const connectorAccountConnectionSchema = z
     externalUsername: z.string().nullable(),
     externalEmail: z.string().nullable(),
     oauthScopes: z.array(z.string()).nullable(),
+    scopeMismatch: z.boolean().optional(),
     connectionStatus: connectorResponseConnectionStatusSchema,
     reconnectReason: connectorReconnectReasonSchema.nullable(),
     tokenExpiresAt: z.string().nullable(),
@@ -148,6 +150,7 @@ export const connectorAccountListQuerySchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("builtin"),
       connectorSlug: connectorSlugSchema,
+      includeScopeMismatch: z.literal("true").optional(),
       ...connectorAccountListQueryFields,
     })
     .strict(),
@@ -223,6 +226,9 @@ export const connectorAccountsContract = c.router({
       200: z.object({
         connections: z.array(connectorAccountConnectionSchema),
         nextCursor: z.string().nullable(),
+        defaultConnection: connectorAccountConnectionSchema
+          .nullable()
+          .optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -245,6 +251,21 @@ export const connectorAccountsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get one exact connector account",
+  },
+  scopeDiff: {
+    method: "GET",
+    path: "/api/connector-accounts/:connectionId/scope-diff",
+    headers: authHeadersSchema,
+    pathParams: connectorAccountPathParamsSchema,
+    query: z.object({ connectorSlug: connectorSlugSchema }).strict(),
+    responses: {
+      200: scopeDiffResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get requested scope diff for one exact connector account",
   },
   rename: {
     method: "PATCH",
