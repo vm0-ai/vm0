@@ -15,7 +15,6 @@ use crate::ids::RunId;
 use crate::types::ExecutionContext;
 
 const ENTROPY_SIZE: usize = 256;
-const GUEST_RESEED_PATH: &str = "/sbin/guest-reseed";
 const TIMEZONE_SYNC_MODE_ARG: &str = "--sync-timezone";
 const TIMEZONE_SYNC_FAILED_MARKER: &str = "guest timezone sync failed";
 const TIMEZONE_UNAVAILABLE_MARKER: &str = "guest timezone unavailable";
@@ -65,7 +64,10 @@ pub(crate) fn is_shell_safe_guest_timezone_name(tz: &str) -> bool {
 }
 
 fn timezone_sync_command(tz: &str) -> String {
-    format!("{GUEST_RESEED_PATH} {TIMEZONE_SYNC_MODE_ARG} {tz}")
+    format!(
+        "{} {TIMEZONE_SYNC_MODE_ARG} {tz}",
+        guest_contracts::guest_binary::RESEED_PATH
+    )
 }
 
 fn stderr_contains_marker(result: &sandbox::ExecResult, marker: &str) -> bool {

@@ -1032,6 +1032,16 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
     );
     assert!(active_diagnostic_cmd.contains("df -P -k / /home/user/workspace"));
     assert!(active_diagnostic_cmd.contains("df -P -i / /home/user/workspace"));
+    for command in ["ls -l", "stat", "file", "sha256sum"] {
+        let expected = format!(
+            "{command} {} 2>&1",
+            guest_contracts::guest_binary::AGENT_PATH
+        );
+        assert!(
+            active_diagnostic_cmd.lines().any(|line| line == expected),
+            "diagnostic command must inspect the canonical Guest Agent path with {command}"
+        );
+    }
     assert!(active_diagnostic_cmd.contains("section rootfs-usage"));
     assert!(active_diagnostic_cmd.contains("timeout 1s du -sxh -- \"$target_path\""));
     assert!(active_diagnostic_cmd.contains("du -sxh -- \"$target_path\""));

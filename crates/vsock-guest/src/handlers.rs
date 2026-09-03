@@ -26,7 +26,6 @@ use crate::wait::{
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
-const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 #[cfg(any(debug_assertions, feature = "test-support"))]
 static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
@@ -306,12 +305,12 @@ fn guest_write_file_path() -> PathBuf {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
-            .unwrap_or_else(|| PathBuf::from(GUEST_WRITE_FILE_PATH))
+            .unwrap_or_else(|| PathBuf::from(guest_contracts::guest_binary::WRITE_FILE_PATH))
     }
 
     #[cfg(not(any(debug_assertions, feature = "test-support")))]
     {
-        PathBuf::from(GUEST_WRITE_FILE_PATH)
+        PathBuf::from(guest_contracts::guest_binary::WRITE_FILE_PATH)
     }
 }
 
