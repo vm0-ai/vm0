@@ -21,6 +21,7 @@ import {
   CHAT_EVENT_CURSOR_STORE,
   CHAT_EVENT_ROWS_STORE,
   CHAT_IDB_VERSION,
+  CHAT_THREAD_SNAPSHOT_STORE,
   upgradeChatIdb,
 } from "../../signals/external/chat-idb-schema.ts";
 import { openDB } from "idb";
@@ -63,7 +64,10 @@ function row(threadId: string, seqId: number): ChatEventRow {
   };
 }
 
-async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
+async function seedChatEventCache(
+  cachedRow: ChatEventRow,
+  chatThreads: readonly ChatThreadSnapshotProjection[] = [],
+): Promise<void> {
   const db = await openDB(`vm0-chat-${userId()}-${orgId()}`, CHAT_IDB_VERSION, {
     upgrade(database, oldVersion) {
       upgradeChatIdb(database, oldVersion);
@@ -71,7 +75,11 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
   });
   try {
     const tx = db.transaction(
-      [CHAT_EVENT_ROWS_STORE, CHAT_EVENT_CURSOR_STORE],
+      [
+        CHAT_EVENT_ROWS_STORE,
+        CHAT_EVENT_CURSOR_STORE,
+        CHAT_THREAD_SNAPSHOT_STORE,
+      ],
       "readwrite",
     );
     await Promise.all([
@@ -82,11 +90,37 @@ async function seedChatEventCache(cachedRow: ChatEventRow): Promise<void> {
         lastEventId: cachedRow.id,
         lastSeqId: cachedRow.seqId,
       }),
+      tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE).put({
+        id: "current",
+        chatThreads: [...chatThreads],
+        latestEventId: null,
+        latestSeqId: null,
+      }),
       tx.done,
     ]);
   } finally {
     db.close();
   }
+}
+
+function cachedThread(
+  id: string,
+  sortAt: string,
+  pinnedAt: string | null,
+): ChatThreadSnapshotProjection {
+  return {
+    id,
+    agentId: crypto.randomUUID(),
+    title: null,
+    sortAt,
+    createdAt: sortAt,
+    updatedAt: sortAt,
+    pinnedAt,
+    renamedAt: null,
+    selectedModel: null,
+    serviceTier: null,
+    computerUseHostId: null,
+  };
 }
 
 describe("shared database direct Platform bridge", () => {
@@ -98,7 +132,17 @@ describe("shared database direct Platform bridge", () => {
     const caughtUpRow = row(threadId, 2);
     const realtimeRow = row(threadId, 3);
     const backgroundRow = row(threadId, 4);
-    await seedChatEventCache(cachedRow);
+    const cachedThreads = Array.from({ length: 101 }, (_, index) => {
+      const sortAt = new Date(
+        Date.parse(CREATED_AT) + index * 1000,
+      ).toISOString();
+      return cachedThread(
+        `00000000-0000-4000-8000-${(index + 1).toString().padStart(12, "0")}`,
+        sortAt,
+        index === 0 ? sortAt : null,
+      );
+    });
+    await seedChatEventCache(cachedRow, cachedThreads);
 
     const initialPage = context.mocks.deferred<void>();
     let availableRows: readonly ChatEventRow[] = [caughtUpRow];
@@ -107,7 +151,7 @@ describe("shared database direct Platform bridge", () => {
       [activeThreadId]: "active",
     };
     const requestedSeqIds: number[] = [];
-    const prewarmedThreadIds: string[] = [];
+    const catchUpRequests: (readonly (readonly [string, number])[])[] = [];
     context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
         agents: {},
@@ -122,16 +166,28 @@ describe("shared database direct Platform bridge", () => {
         },
       });
     });
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+      catchUpRequests.push(body);
+      return respond(200, {
+        events: Object.fromEntries(
+          body.map(([candidateThreadId, lastSeqId]) => {
+            return [
+              candidateThreadId,
+              candidateThreadId === threadId
+                ? availableRows.filter((candidate) => {
+                    return candidate.seqId > lastSeqId;
+                  })
+                : [],
+            ];
+          }),
+        ),
+        notFoundThreads: [],
+      });
+    });
     context.mocks.api(
       chatThreadEventsContract.rows,
       async ({ params, query, respond }) => {
-        if (
-          params.threadId === unreadThreadId ||
-          params.threadId === activeThreadId
-        ) {
-          prewarmedThreadIds.push(params.threadId);
-          return respond(200, chatEventRowsResponse([], query));
-        }
+        expect(params.threadId).toBe(threadId);
         requestedSeqIds.push(query.sinceSeqId);
         if (query.sinceSeqId === 1) {
           await initialPage.promise;
@@ -161,8 +217,19 @@ describe("shared database direct Platform bridge", () => {
       },
     });
     await vi.waitFor(() => {
-      expect(prewarmedThreadIds).toContain(unreadThreadId);
-      expect(prewarmedThreadIds).toContain(activeThreadId);
+      expect(catchUpRequests).toHaveLength(1);
+      const requestedThreadIds = catchUpRequests[0]?.map(
+        ([candidateThreadId]) => {
+          return candidateThreadId;
+        },
+      );
+      expect(requestedThreadIds?.slice(0, 2)).toStrictEqual([
+        unreadThreadId,
+        activeThreadId,
+      ]);
+      expect(requestedThreadIds).toHaveLength(102);
+      expect(requestedThreadIds).not.toContain(cachedThreads[0]?.id);
+      expect(requestedThreadIds).toContain(cachedThreads.at(-1)?.id);
     });
 
     const owner = createChildAbortController(context.signal);
@@ -213,7 +280,7 @@ describe("shared database direct Platform bridge", () => {
     ).toBeTruthy();
 
     owner.abort(new DOMException("chat closed", "AbortError"));
-    const prewarmedRequestsBeforeReload = prewarmedThreadIds.length;
+    const catchUpRequestsBeforeReload = catchUpRequests.length;
     availableRows = [caughtUpRow, realtimeRow, backgroundRow];
     indicatorThreads = {
       ...indicatorThreads,
@@ -225,10 +292,16 @@ describe("shared database direct Platform bridge", () => {
     );
     context.mocks.ably.triggerOnChannel(realtimeChannel(), "threadListChanged");
     await vi.waitFor(() => {
-      expect(requestedSeqIds).toContain(3);
-      expect(prewarmedThreadIds.length).toBeGreaterThan(
-        prewarmedRequestsBeforeReload,
+      expect(catchUpRequests.length).toBeGreaterThan(
+        catchUpRequestsBeforeReload,
       );
+      expect(
+        catchUpRequests.some((request) => {
+          return request.some(([candidateThreadId, lastSeqId]) => {
+            return candidateThreadId === threadId && lastSeqId === 3;
+          });
+        }),
+      ).toBeTruthy();
     });
 
     const requestsBeforeReopen = requestedSeqIds.length;
