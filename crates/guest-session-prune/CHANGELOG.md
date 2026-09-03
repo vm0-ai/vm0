@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.66](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.65...guest-session-prune-v0.3.66) (2026-09-03)
+
+
+### Performance Improvements
+
+* **guest-session-prune:** validate codex ordinals during scan ([#31294](https://github.com/vm0-ai/vm0/issues/31294)) ([86a529c](https://github.com/vm0-ai/vm0/commit/86a529ce5bb3a33c2859f1e9fb5e1011ce52f1fc))
+
 ## [0.3.65](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.64...guest-session-prune-v0.3.65) (2026-09-03)
 
 ## [0.3.64](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.63...guest-session-prune-v0.3.64) (2026-09-03)
