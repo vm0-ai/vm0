@@ -25,6 +25,7 @@ import {
   agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
   billingStatusContract,
@@ -682,6 +683,92 @@ test("Browse a long sidebar chat history", async () => {
       within(sidebar()).queryByText("Archived context"),
     ).not.toBeInTheDocument();
   });
+});
+
+test("Drag the sidebar scrollbar when enabled", async () => {
+  prepareDefaultAgent();
+  context.mocks.browser.noAnimations();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.BaseUiSidebarScrollArea]: true,
+    },
+  });
+
+  const scrollArea = await waitFor(() => {
+    const current = within(sidebar()).getByTestId("sidebar-scroll-area");
+    expect(current).toBeInTheDocument();
+    return current;
+  });
+  Object.defineProperties(scrollArea, {
+    clientHeight: { configurable: true, value: 200 },
+    clientWidth: { configurable: true, value: 200 },
+    scrollHeight: { configurable: true, value: 1000 },
+    scrollTop: { configurable: true, value: 0, writable: true },
+    scrollWidth: { configurable: true, value: 200 },
+  });
+  scrollArea.style.scrollSnapType = "y mandatory";
+  fireEvent.scroll(scrollArea);
+
+  const scrollbar = await screen.findByTestId("sidebar-scrollbar");
+  const thumb = await screen.findByTestId("sidebar-scrollbar-thumb");
+  Object.defineProperty(scrollbar, "offsetHeight", {
+    configurable: true,
+    value: 200,
+  });
+  Object.defineProperty(thumb, "offsetHeight", {
+    configurable: true,
+    value: 40,
+  });
+
+  let capturedPointerId: number | null = null;
+  Object.defineProperties(thumb, {
+    hasPointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => {
+        return capturedPointerId === pointerId;
+      },
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => {
+        if (capturedPointerId === pointerId) {
+          capturedPointerId = null;
+        }
+      },
+    },
+    setPointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => {
+        capturedPointerId = pointerId;
+      },
+    },
+  });
+
+  fireEvent.pointerDown(thumb, {
+    button: 0,
+    buttons: 1,
+    clientY: 20,
+    pointerId: 1,
+  });
+  expect(scrollArea.style.scrollSnapType).toBe("none");
+
+  fireEvent.pointerMove(thumb, {
+    buttons: 1,
+    clientY: 100,
+    pointerId: 1,
+  });
+  expect(scrollArea.scrollTop).toBe(400);
+
+  fireEvent.pointerUp(thumb, {
+    button: 0,
+    buttons: 0,
+    clientY: 100,
+    pointerId: 1,
+  });
+  expect(scrollArea.style.scrollSnapType).toBe("y mandatory");
 });
 
 test("Collapse and expand Manage navigation", async () => {
