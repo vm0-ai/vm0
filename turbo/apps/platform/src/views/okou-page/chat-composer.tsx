@@ -9073,6 +9073,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
   const appendVoiceDraftTranscript = useSet(
     signals.voiceDraft.appendTranscript$,
   );
+  const markVoiceDraftFailed = useSet(signals.voiceDraft.markFailed$);
   const finishVoiceDraft = useSet(signals.voiceDraft.finish$);
   const saveDraft = useSet(signals.draft.save$);
   const signal = useGet(pageSignal$);
@@ -9117,10 +9118,16 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             detach(saveDraft(signal), Reason.DomCallback);
           },
           quota.limit === null,
-          async () => {
-            await finishVoiceDraft(id, false, signal);
-            signal.throwIfAborted();
-            await saveDraft(signal);
+          {
+            finish: async () => {
+              await finishVoiceDraft(id, false, signal);
+              signal.throwIfAborted();
+              await saveDraft(signal);
+            },
+            fail: async () => {
+              markVoiceDraftFailed(id);
+              await saveDraft(signal);
+            },
           },
           signal,
         ),

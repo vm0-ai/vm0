@@ -239,6 +239,7 @@ export interface WorkflowComposerVoiceDraftSignals {
   readonly hasDraft$: Computed<boolean>;
   readonly start$: Command<string, []>;
   readonly appendTranscript$: Command<void, [string, string]>;
+  readonly markFailed$: Command<void, [string]>;
   readonly finish$: Command<Promise<boolean>, [string, boolean, AbortSignal]>;
   readonly remove$: Command<void, [string]>;
 }
@@ -1578,6 +1579,12 @@ function createVoiceDraftSignals(
       appendVoiceDraftTranscript(editor, id, value);
     },
   );
+  const markFailed$ = command((_context, id: string): void => {
+    setVoiceDraftAttributes(editor, id, {
+      status: "failed",
+      visible: true,
+    });
+  });
   const remove$ = command((_context, id: string): void => {
     removeVoiceDraft(editor, id);
   });
@@ -1626,7 +1633,14 @@ function createVoiceDraftSignals(
       return true;
     },
   );
-  return { hasDraft$, start$, appendTranscript$, finish$, remove$ };
+  return {
+    hasDraft$,
+    start$,
+    appendTranscript$,
+    markFailed$,
+    finish$,
+    remove$,
+  };
 }
 
 interface LocatedTemplateAttachment {

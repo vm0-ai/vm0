@@ -56,8 +56,14 @@ const internalAudioActivityMonitor$ = state<AudioActivityMonitor | null>(null);
 const internalStartingPromise$ =
   state<Promise<VoiceRecordingStartup | null> | null>(null);
 const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
+export interface VoiceRecordingLifecycle {
+  readonly finish: () => Promise<void>;
+  readonly fail: () => Promise<void>;
+}
+
 interface VoiceRecordingCompletion {
   readonly finish: () => Promise<void>;
+  readonly fail: () => Promise<void>;
 }
 const internalRecordingCompletion$ = state<VoiceRecordingCompletion | null>(
   null,
@@ -521,13 +527,31 @@ const prepareRecordingLifecycle$ = command(
   (
     { set },
     parentSignal: AbortSignal,
-    onRecordingFinished: (() => Promise<void>) | undefined,
+    lifecycle: VoiceRecordingLifecycle | undefined,
   ): AbortSignal => {
     const signal = set(resetRecord$, parentSignal);
-    set(
-      internalRecordingCompletion$,
-      onRecordingFinished ? { finish: onRecordingFinished } : null,
-    );
+    if (lifecycle) {
+      let settled = false;
+      const settleOnce = async (
+        callback: () => Promise<void>,
+      ): Promise<void> => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        await callback();
+      };
+      set(internalRecordingCompletion$, {
+        finish: async () => {
+          await settleOnce(lifecycle.finish);
+        },
+        fail: async () => {
+          await settleOnce(lifecycle.fail);
+        },
+      });
+    } else {
+      set(internalRecordingCompletion$, null);
+    }
     signal.addEventListener(
       "abort",
       () => {
@@ -773,7 +797,7 @@ interface VoiceSegmentSessionOptions {
   readonly isVoiceActivityReliable: () => boolean;
   readonly resetSilenceTimerSignal: () => AbortSignal;
   readonly onLongSilence: () => void;
-  readonly onQuotaExceeded: () => void;
+  readonly onQuotaExceeded: () => Promise<void>;
   readonly onRecorderChanged: (recorder: MediaRecorder) => void;
 }
 
@@ -794,7 +818,7 @@ async function uploadCapturedBlob(
   );
   if (!result.ok) {
     if (result.quotaExceeded) {
-      options.onQuotaExceeded();
+      await options.onQuotaExceeded();
     }
     return "";
   }
@@ -1058,7 +1082,7 @@ export const startRecording$ = command(
     { get, set },
     onSegmentTranscribed: VoiceSegmentTranscribedCallback,
     autoSegment: boolean,
-    onRecordingFinished: (() => Promise<void>) | undefined,
+    lifecycle: VoiceRecordingLifecycle | undefined,
     parentSignal: AbortSignal,
   ) => {
     if (
@@ -1069,11 +1093,7 @@ export const startRecording$ = command(
       return;
     }
 
-    const signal = set(
-      prepareRecordingLifecycle$,
-      parentSignal,
-      onRecordingFinished,
-    );
+    const signal = set(prepareRecordingLifecycle$, parentSignal, lifecycle);
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
     let silenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
@@ -1108,8 +1128,10 @@ export const startRecording$ = command(
               silenceStop.resolve(undefined);
             }
           },
-          onQuotaExceeded: () => {
+          onQuotaExceeded: async () => {
+            const recordingCompletion = get(internalRecordingCompletion$);
             set(resetRecord$);
+            await recordingCompletion?.fail();
           },
           onRecorderChanged: (nextRecorder) => {
             set(internalRecorder$, nextRecorder);
@@ -1142,8 +1164,9 @@ export const startRecording$ = command(
     set(internalStartingPromise$, starting);
     const startup = await starting;
     if (!startup) {
+      const recordingCompletion = get(internalRecordingCompletion$);
       set(resetRecord$);
-      await onRecordingFinished?.();
+      await recordingCompletion?.finish();
       return;
     }
     const { stream, session: recordingSession, recordingStartedAt } = startup;

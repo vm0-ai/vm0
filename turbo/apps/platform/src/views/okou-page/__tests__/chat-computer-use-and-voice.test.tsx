@@ -1090,6 +1090,129 @@ describe("chat lifecycle", () => {
     expect(screen.getByLabelText("Send")).toBeEnabled();
   });
 
+  it("reveals a durable voice draft when a later segment reaches quota", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000024";
+    const rawTranscript = "First raw segment";
+    const firstRequestStarted = context.mocks.deferred<void>();
+    const releaseFirstRequest = context.mocks.deferred<void>();
+    const firstSpeechResumed = context.mocks.deferred<void>();
+    const secondRequestStarted = context.mocks.deferred<void>();
+    const releaseSecondRequest = context.mocks.deferred<void>();
+    const secondSpeechResumed = context.mocks.deferred<void>();
+    const draftPatches: unknown[] = [];
+    let currentRms = 0.1;
+    let transcriptionCalls = 0;
+    let polishCalls = 0;
+    context.mocks.browser.voiceInput({
+      rms: () => {
+        if (
+          currentRms > 0 &&
+          transcriptionCalls === 1 &&
+          !firstSpeechResumed.settled()
+        ) {
+          firstSpeechResumed.resolve(undefined);
+        }
+        if (
+          currentRms > 0 &&
+          transcriptionCalls === 2 &&
+          !secondSpeechResumed.settled()
+        ) {
+          secondSpeechResumed.resolve(undefined);
+        }
+        return currentRms;
+      },
+    });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: true, count: 0, limit: null });
+    });
+    context.mocks.http.patch("*/api/chat-threads/:id", async ({ request }) => {
+      draftPatches.push(await request.json());
+      return new Response(null, { status: 200 });
+    });
+    context.mocks.http.post("*/api/voice-io/stt", async () => {
+      const requestIndex = transcriptionCalls;
+      transcriptionCalls += 1;
+      if (requestIndex === 0) {
+        firstRequestStarted.resolve(undefined);
+        await releaseFirstRequest.promise;
+        return new Response(JSON.stringify({ text: rawTranscript }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      secondRequestStarted.resolve(undefined);
+      await releaseSecondRequest.promise;
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "DAILY_RATE_LIMIT_EXCEEDED",
+            message: "Daily request rate limit exceeded",
+          },
+          quota: { count: 500, limit: 500 },
+        }),
+        { status: 429, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
+      polishCalls += 1;
+      return respond(200, { text: "This should not be used." });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    currentRms = 0;
+    await firstRequestStarted.promise;
+    currentRms = 0.1;
+    await firstSpeechResumed.promise;
+    releaseFirstRequest.resolve(undefined);
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            expect.objectContaining({
+              type: "voice",
+              transcript: rawTranscript,
+            }),
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    currentRms = 0;
+    await secondRequestStarted.promise;
+    currentRms = 0.1;
+    await secondSpeechResumed.promise;
+    releaseSecondRequest.resolve(undefined);
+
+    const failedDraft = await screen.findByLabelText("Voice draft");
+    expect(failedDraft).toBeVisible();
+    expect(failedDraft).toHaveTextContent(rawTranscript);
+    expect(screen.getByLabelText("Finish")).toBeEnabled();
+    expect(screen.getByLabelText("Remove voice draft")).toBeEnabled();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
+      expect(draftPatches.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(transcriptionCalls).toBe(2);
+    expect(polishCalls).toBe(0);
+  });
+
   it("restores a persisted voice draft as an actionable blocked item", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000023";
