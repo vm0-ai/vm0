@@ -2065,6 +2065,56 @@ export const dispatchGoogleFormsPubSubPush$ = command(
   },
 );
 
+interface GoogleFormsWatchOwner {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+async function renewGoogleFormsWatchOwners(
+  args: {
+    readonly db: Db;
+    readonly owners: readonly GoogleFormsWatchOwner[];
+    readonly renewBefore: Date;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly renewed: number; readonly failed: number }> {
+  let renewed = 0;
+  let failed = 0;
+  for (const owner of args.owners) {
+    const prepared = await prepareGoogleFormsWatchesForOwner(
+      { db: args.db, ...owner },
+      signal,
+    );
+    signal.throwIfAborted();
+    failed += prepared ? 0 : 1;
+    const states = await args.db
+      .select()
+      .from(googleFormsWatchStates)
+      .where(
+        and(
+          eq(googleFormsWatchStates.orgId, owner.orgId),
+          eq(googleFormsWatchStates.userId, owner.userId),
+          or(
+            eq(googleFormsWatchStates.needsRewatch, true),
+            lte(googleFormsWatchStates.expireTime, args.renewBefore),
+          ),
+        ),
+      )
+      .orderBy(asc(googleFormsWatchStates.expireTime));
+    signal.throwIfAborted();
+    for (const state of states) {
+      const result = await reconcileGoogleFormsWatchState(
+        { db: args.db, state, renewBefore: args.renewBefore },
+        signal,
+      );
+      signal.throwIfAborted();
+      renewed += result.kind === "renewed" || result.kind === "created" ? 1 : 0;
+      failed += result.kind === "failed" ? 1 : 0;
+    }
+  }
+  return { renewed, failed };
+}
+
 export const renewGoogleFormsWatches$ = command(
   async ({ set }, signal: AbortSignal) => {
     const db = set(writeDb$);
@@ -2101,41 +2151,22 @@ export const renewGoogleFormsWatches$ = command(
     for (const owner of [...automationOwners, ...stateOwners]) {
       owners.set(`${owner.orgId}\n${owner.userId}`, owner);
     }
-    let renewed = 0;
-    let failed = 0;
-    for (const owner of owners.values()) {
-      const prepared = await prepareGoogleFormsWatchesForOwner(
-        { db, ...owner },
-        signal,
-      );
-      signal.throwIfAborted();
-      failed += prepared ? 0 : 1;
-      const states = await db
-        .select()
-        .from(googleFormsWatchStates)
-        .where(
-          and(
-            eq(googleFormsWatchStates.orgId, owner.orgId),
-            eq(googleFormsWatchStates.userId, owner.userId),
-            or(
-              eq(googleFormsWatchStates.needsRewatch, true),
-              lte(googleFormsWatchStates.expireTime, renewBefore),
-            ),
-          ),
-        )
-        .orderBy(asc(googleFormsWatchStates.expireTime));
-      signal.throwIfAborted();
-      for (const state of states) {
-        const result = await reconcileGoogleFormsWatchState(
-          { db, state, renewBefore },
-          signal,
-        );
-        signal.throwIfAborted();
-        renewed +=
-          result.kind === "renewed" || result.kind === "created" ? 1 : 0;
-        failed += result.kind === "failed" ? 1 : 0;
-      }
-    }
-    return { renewed, failed };
+    return await renewGoogleFormsWatchOwners(
+      { db, owners: [...owners.values()], renewBefore },
+      signal,
+    );
+  },
+);
+
+export const renewGoogleFormsWatchScope$ = command(
+  async ({ set }, owner: GoogleFormsWatchOwner, signal: AbortSignal) => {
+    return await renewGoogleFormsWatchOwners(
+      {
+        db: set(writeDb$),
+        owners: [owner],
+        renewBefore: new Date(nowDate().getTime() + WATCH_RENEWAL_WINDOW_MS),
+      },
+      signal,
+    );
   },
 );
