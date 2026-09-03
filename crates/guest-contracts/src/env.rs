@@ -8,12 +8,7 @@
 //! The `OKOU_` namespace is runner-owned, including keys defined in sibling
 //! modules such as [`crate::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV`].
 //! User env filtering protects every current and future `OKOU_` key. Bootstrap
-//! keys outside that namespace and the four retained local-only timing inputs
-//! are classified explicitly below.
-//!
-//! [`GUEST_AGENT_TUNING_ENV_KEYS`] is the only intentional exception where
-//! selected runner-owned keys may cross the local user-env boundary as
-//! guest-agent timing overrides.
+//! keys outside that namespace are classified explicitly below.
 
 /// Canonical backend API URL spelling written by the production Runner, read at
 /// Guest root bootstrap, and exposed to managed CLI children.
@@ -361,91 +356,32 @@ impl RunPayload {
     }
 }
 
-/// Retained local input for the Guest Agent stuck-tool timeout in seconds.
+/// Canonical Guest Agent stuck-tool timeout bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV`] for Guest bootstrap. The
-/// guest-agent parses the value as `u64`; unset or unparseable values use the
-/// compiled default.
-pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
-
-/// Canonical stuck-tool timeout bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// The Guest Agent parses the value as `u64`; unset or unparseable values use
+/// the compiled default.
 pub const CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "OKOU_STUCK_TOOL_TIMEOUT_SECS";
 
-/// Retained local input for the Guest Agent SIGTERM grace period in seconds
-/// after the CLI reports a final result.
+/// Canonical Guest Agent post-result SIGTERM grace bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
-/// unparseable, or out-of-range values use the guest-agent's compiled default.
-pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
-
-/// Canonical post-result SIGTERM grace bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// Unset, unparseable, or out-of-range values use the Guest Agent's compiled
+/// default.
 pub const CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGTERM_GRACE_SECS";
 
-/// Retained local input for the Guest Agent absolute cap in seconds before
-/// sending SIGTERM after the CLI reports a final result, regardless of later
-/// post-result stdout events.
+/// Canonical Guest Agent post-result total-cap bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV`] for Guest bootstrap. Unset,
-/// unparseable, or out-of-range values use the guest-agent's compiled default.
-pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
-
-/// Canonical post-result total-cap bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// The value is the absolute cap before SIGTERM after the CLI reports a final
+/// result. Unset, unparseable, or out-of-range values use the Guest Agent's
+/// compiled default.
 pub const CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "OKOU_POST_RESULT_TOTAL_CAP_SECS";
 
-/// Retained local input for the Guest Agent grace period in seconds before
-/// escalating from SIGTERM to SIGKILL after the CLI reports a final result.
+/// Canonical Guest Agent post-result SIGKILL grace bootstrap key.
 ///
-/// Local execution may pass this legacy name through ordinary user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The runner translates it to
-/// [`CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV`] for Guest bootstrap. Unset,
-/// unparseable, or out-of-range values use the guest-agent's compiled default.
-pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
-
-/// Canonical post-result SIGKILL grace bootstrap output written by the runner.
-///
-/// The Guest Agent reads only this spelling at bootstrap. The legacy spelling
-/// remains a supported local Runner input through [`GUEST_AGENT_TUNING_ENV_KEYS`].
+/// Unset, unparseable, or out-of-range values use the Guest Agent's compiled
+/// default.
 pub const CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str =
     "OKOU_POST_RESULT_SIGKILL_GRACE_SECS";
-
-/// Complete mapping from retained legacy local tuning inputs to canonical
-/// Guest bootstrap outputs.
-///
-/// Each tuple is `(legacy_input, canonical_bootstrap_output)`.
-pub const GUEST_AGENT_TUNING_ENV_MAPPINGS: [(&str, &str); 4] = [
-    (
-        STUCK_TOOL_TIMEOUT_SECS_ENV,
-        CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-    ),
-    (
-        POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-    ),
-    (
-        POST_RESULT_TOTAL_CAP_SECS_ENV,
-        CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-    ),
-    (
-        POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-        CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-    ),
-];
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
 /// binary.
@@ -472,19 +408,6 @@ pub const CANONICAL_MOCK_CLAUDE_PATH_ENV: &str = "OKOU_MOCK_CLAUDE_PATH";
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.
 pub const CANONICAL_MOCK_CODEX_PATH_ENV: &str = "OKOU_MOCK_CODEX_PATH";
-
-/// Retained legacy Guest Agent tuning inputs that local user env may provide.
-///
-/// These are the only `VM0_` keys intentionally allowed to cross the local
-/// user-env boundary. The runner translates them to the corresponding canonical
-/// outputs in [`GUEST_AGENT_TUNING_ENV_MAPPINGS`] separately from the general
-/// user environment payload.
-pub const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[0].0,
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[1].0,
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[2].0,
-    GUEST_AGENT_TUNING_ENV_MAPPINGS[3].0,
-];
 
 const EXPLICIT_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     RUN_ID_ENV,
@@ -521,25 +444,14 @@ pub fn is_shell_identifier_env_key(key: &str) -> bool {
     chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
-/// Returns whether `key` is a supported guest-agent tuning override.
-///
-/// Local submission uses this allowlist to permit selected runner-owned timing
-/// controls while continuing to reject general runner bootstrap keys from user
-/// env.
-pub fn is_guest_agent_tuning_env_key(key: &str) -> bool {
-    GUEST_AGENT_TUNING_ENV_KEYS.contains(&key)
-}
-
 /// Returns whether `key` belongs to the runner-owned bootstrap namespace.
 ///
-/// This covers every `OKOU_` key, the four exact retained local-only timing
-/// inputs, and the explicit bootstrap keys required by established runner,
-/// guest-agent, or integration contracts. Runner and local-submit code use this
-/// predicate to scrub or reject those keys before the guest-agent starts.
+/// This covers every `OKOU_` key and the explicit bootstrap keys required by
+/// established runner, guest-agent, or integration contracts. Runner and
+/// local-submit code use this predicate to scrub or reject those keys before
+/// the guest-agent starts.
 pub fn is_runner_owned_env_key(key: &str) -> bool {
-    key.starts_with("OKOU_")
-        || is_guest_agent_tuning_env_key(key)
-        || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
+    key.starts_with("OKOU_") || EXPLICIT_RUNNER_OWNED_ENV_KEYS.contains(&key)
 }
 
 /// Escapes and bounds an environment key for diagnostics.
@@ -878,6 +790,10 @@ mod tests {
             CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV,
             CANONICAL_USER_ENV_FILE_ENV,
             CANONICAL_RUN_PAYLOAD_FILE_ENV,
+            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
+            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,
             USE_MOCK_CODEX_ENV,
@@ -901,59 +817,6 @@ mod tests {
         ] {
             assert!(!is_runner_owned_env_key(key), "{key} should be user-owned");
         }
-    }
-
-    #[test]
-    fn guest_agent_tuning_mapping_and_local_inputs_are_explicit() {
-        assert_eq!(
-            GUEST_AGENT_TUNING_ENV_MAPPINGS,
-            [
-                (
-                    STUCK_TOOL_TIMEOUT_SECS_ENV,
-                    CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-                ),
-                (
-                    POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                    CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                ),
-                (
-                    POST_RESULT_TOTAL_CAP_SECS_ENV,
-                    CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-                ),
-                (
-                    POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-                    CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-                ),
-            ]
-        );
-        assert_eq!(
-            GUEST_AGENT_TUNING_ENV_KEYS,
-            [
-                STUCK_TOOL_TIMEOUT_SECS_ENV,
-                POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-                POST_RESULT_TOTAL_CAP_SECS_ENV,
-                POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            ]
-        );
-        for key in GUEST_AGENT_TUNING_ENV_KEYS {
-            assert!(is_guest_agent_tuning_env_key(key));
-            assert!(is_runner_owned_env_key(key));
-        }
-        for key in [
-            CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
-            CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
-            CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-        ] {
-            assert!(
-                !is_guest_agent_tuning_env_key(key),
-                "canonical bootstrap output {key} must not become a local tuning input"
-            );
-        }
-        assert!(
-            !is_guest_agent_tuning_env_key(CANONICAL_API_URL_ENV),
-            "API URL bootstrap key must not become a local tuning input"
-        );
     }
 
     /// Contract sources scanned for declared environment key constants.
@@ -1032,15 +895,14 @@ mod tests {
         }
 
         assert!(
-            total >= 28,
-            "expected at least 28 declared *_ENV keys across the contract sources, found {total}; \
+            total >= 29,
+            "expected at least 29 declared *_ENV keys across the contract sources, found {total}; \
              lower this bound only when a key is deliberately removed"
         );
         assert!(
             unprotected.is_empty(),
             "these bootstrap env keys are not protected from user env injection. Add each to \
-             EXPLICIT_RUNNER_OWNED_ENV_KEYS, register an exact local timing input, or keep an \
-             OKOU_ prefix:\n  {}",
+             EXPLICIT_RUNNER_OWNED_ENV_KEYS or keep an OKOU_ prefix:\n  {}",
             unprotected.join("\n  ")
         );
     }

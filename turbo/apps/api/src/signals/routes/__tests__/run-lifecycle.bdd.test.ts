@@ -21,7 +21,10 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import type {
+  KnownRunFailureReason,
+  RunFailureReasonToken,
+} from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { SEED_SKILLS } from "@okouai/core/seed-skills";
@@ -3533,6 +3536,161 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({ runId: failed.runId }),
     );
     await api.requestClaimRunnerJob(true, failed.runId, [404]);
+  });
+
+  it("overlaps request and session storage preparation while preserving request errors", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "establish canonical storage for overlap",
+      }),
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId);
+    const initialMemory = expectCanonicalStorageManifest(
+      initialClaim.storageManifest,
+    )?.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!initialMemory) {
+      throw new Error("Expected the canonical memory mount");
+    }
+
+    const memoryFile = storageTextFile(
+      "MEMORY.md",
+      `session overlap ${initialRun.runId}`,
+    );
+    const preparedMemory = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageOwner: "user",
+      files: [memoryFile],
+    });
+    const sessionArchiveKey = preparedMemory.uploads?.archive.key;
+    if (!sessionArchiveKey) {
+      throw new Error("Expected a session memory archive upload");
+    }
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageOwner: "user",
+      versionId: preparedMemory.versionId,
+      files: [memoryFile],
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: initialRun.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-storage-overlap-${initialRun.runId}`,
+          cliAgentSessionHistoryDisposition: "discarded_oversized",
+          artifactSnapshots: [
+            {
+              name: initialMemory.name,
+              version: preparedMemory.versionId,
+              mountPath: initialMemory.mountPath,
+              ...(initialMemory.missingRootPolicy === undefined
+                ? {}
+                : { missingRootPolicy: initialMemory.missingRootPolicy }),
+            },
+          ],
+        },
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    const requestStorageName = `bdd-request-overlap-${randomUUID().slice(0, 8)}`;
+    const requestFile = storageTextFile(
+      "request.txt",
+      `request overlap ${requestStorageName}`,
+    );
+    const preparedRequest = await storages.prepareStorage(actor, {
+      storageName: requestStorageName,
+      storageOwner: "organization",
+      files: [requestFile],
+    });
+    const requestArchiveKey = preparedRequest.uploads?.archive.key;
+    if (!requestArchiveKey) {
+      throw new Error("Expected a request storage archive upload");
+    }
+    await storages.commitStorage(actor, {
+      storageName: requestStorageName,
+      storageOwner: "organization",
+      versionId: preparedRequest.versionId,
+      files: [requestFile],
+    });
+
+    const requestPresignStarted = createDeferredPromise<void>(context.signal);
+    const sessionPresignStarted = createDeferredPromise<void>(context.signal);
+    const releaseRequestPresign = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseRequestPresign.settled()) {
+        releaseRequestPresign.resolve(undefined);
+      }
+    });
+    const requestError = new Error("request storage presign failed");
+    const sessionError = new Error("session storage presign failed");
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      async (_client: unknown, command: unknown) => {
+        const key = s3CommandKey(command);
+        if (key === requestArchiveKey) {
+          if (!requestPresignStarted.settled()) {
+            requestPresignStarted.resolve(undefined);
+          }
+          await releaseRequestPresign.promise;
+          throw requestError;
+        }
+        if (key === sessionArchiveKey) {
+          if (!sessionPresignStarted.settled()) {
+            sessionPresignStarted.resolve(undefined);
+          }
+          throw sessionError;
+        }
+        return "https://r2.example.com/storage/archive.tar.gz?sig=bdd";
+      },
+    );
+
+    const continuationBody = {
+      sessionId: initialRun.sessionId,
+      prompt: "overlap request and canonical session storage",
+      secrets: { OKOU_TOKEN: "bdd-okou-direct-token" },
+      additionalVolumes: [
+        {
+          name: requestStorageName,
+          version: preparedRequest.versionId,
+          mountPath: "/request-overlap",
+        },
+      ],
+    };
+    const continuedRunPromise = api.createDirectRun(actor, continuationBody);
+    await Promise.all([
+      requestPresignStarted.promise,
+      sessionPresignStarted.promise,
+    ]);
+    releaseRequestPresign.resolve(undefined);
+
+    const failed = await continuedRunPromise;
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(requestError.message);
+
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      (_client: unknown, command: unknown) => {
+        if (s3CommandKey(command) === sessionArchiveKey) {
+          return Promise.reject(sessionError);
+        }
+        return Promise.resolve(
+          "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+        );
+      },
+    );
+    const sessionFailed = await api.createDirectRun(actor, continuationBody);
+    expect(sessionFailed.status).toBe("failed");
+    expect(sessionFailed.error).toBe(sessionError.message);
   });
 
   it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
@@ -12398,7 +12556,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-  });
+  }, 15_000);
 
   it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
@@ -18469,7 +18627,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       "safety_policy_refusal",
       "reconnect_required",
       "usage_limit",
-    ] as const satisfies readonly RunFailureReason[];
+    ] as const satisfies readonly KnownRunFailureReason[];
     const axiomLevels = [
       context.mocks.axiomLogging.debug,
       context.mocks.axiomLogging.info,
@@ -18494,7 +18652,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     }
 
     async function completeFailure(args: {
-      readonly failureReason?: RunFailureReason;
+      readonly failureReason?: RunFailureReasonToken;
       readonly modelProvider?: ModelProviderType;
       readonly persistedModelProvider?: string | null;
     }): Promise<{ readonly runId: string; readonly error: string }> {
@@ -18981,35 +19139,76 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     ).resolves.toBeNull();
   });
 
-  it("rejects unknown failure reasons before settling the run", async () => {
+  it("persists a future failure reason without suppressing its log", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "reject an unknown failure reason",
+      prompt: "preserve a future failure reason",
       modelProvider: "anthropic-api-key",
     });
     const claim = await api.claimRunnerJob(run.runId);
 
-    const response = await webhooks.requestAgentCompleteUnchecked(
+    const response = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
         exitCode: 1,
+        error: "future failure details",
         failureReason: "future_reason",
       },
       { authorization: `Bearer ${claim.sandboxToken}` },
-      [400],
+      [200],
     );
 
-    expectApiError(response.body);
+    expect(response.body).toStrictEqual({ success: true, status: "failed" });
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
-      status: "running",
+      status: "failed",
+      error: "future failure details",
     });
-    await expect(
-      readRunFailureReasonFixture(context, run.runId),
-    ).resolves.toBeNull();
-    await api.requestCancelRun(actor, run.runId, [200]);
+    await expect(readRunFailureReasonFixture(context, run.runId)).resolves.toBe(
+      "future_reason",
+    );
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "duplicate known failure",
+        failureReason: "provider_overloaded",
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "failed",
+      error: "future failure details",
+    });
+    await expect(readRunFailureReasonFixture(context, run.runId)).resolves.toBe(
+      "future_reason",
+    );
+
+    const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
+      ([message, fields]) => {
+        return (
+          message === "Run failed" &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === run.runId
+        );
+      },
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.[1]).toStrictEqual(
+      expect.objectContaining({
+        runId: run.runId,
+        exitCode: 1,
+        error: "future failure details",
+        failureReason: "future_reason",
+        context: "webhook:complete",
+      }),
+    );
   });
 
   it("ignores failure reasons outside a reported failure transition", async () => {

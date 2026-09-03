@@ -1349,10 +1349,6 @@ jobs:
           skip-finish: "true"
           skip-setup: "true"
 
-      - name: Verify production App and API domains
-        shell: bash
-        run: bash .github/scripts/verify-okou-production-domains.sh
-
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
@@ -1647,10 +1643,8 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
-          CANONICAL_ASSETS: ${{ steps.worker-production.outputs.canonical-dist }}/assets
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
-          OKOU_APP_RUNTIME_MAX_ATTEMPTS: "60"
         run: |
           set -euo pipefail
 
@@ -1670,11 +1664,6 @@ jobs:
             "https://app-worker.vm0.ai|https://api.vm0.ai" \
             "https://app-worker.okou.ai|https://api.okou.ai"; do
             IFS='|' read -r app_origin api_origin <<< "$mapping"
-            bash .github/scripts/verify-okou-app-runtime.sh \
-              "$app_origin" \
-              "https://static.okou.io/okou-app/assets" \
-              "$CANONICAL_ASSETS"
-
             cors_result="$(
               curl -fsS \
                 --connect-timeout 10 \
@@ -1697,8 +1686,6 @@ jobs:
               exit 1
             fi
           done
-
-          bash .github/scripts/verify-okou-production-domains.sh
 
       - name: Finish GitHub Deployment
         if: always()

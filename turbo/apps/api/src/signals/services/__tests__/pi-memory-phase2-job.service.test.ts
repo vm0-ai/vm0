@@ -13,10 +13,10 @@ import {
   advancePiMemoryPhase2InputRevision,
   claimPiMemoryPhase2Job,
   failPiMemoryPhase2Job,
+  finalizePiMemoryPhase2Job,
   heartbeatPiMemoryPhase2Job,
   PI_MEMORY_PHASE2_RETRY_DELAY_MS,
   PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS,
-  succeedPiMemoryPhase2Job,
 } from "../pi-memory-phase2-job.service";
 import {
   createPhase2TestScope,
@@ -27,6 +27,17 @@ import {
 } from "./pi-memory-phase2-job.test-fixture";
 
 const NOW = Object.freeze(new Date("2026-09-03T04:00:00.000Z"));
+
+async function succeedPiMemoryPhase2Job(
+  database: Parameters<typeof finalizePiMemoryPhase2Job>[0],
+  args: Omit<Parameters<typeof finalizePiMemoryPhase2Job>[1], "result">,
+): Promise<boolean> {
+  const result = await finalizePiMemoryPhase2Job(database, {
+    ...args,
+    result: { kind: "no_diff" },
+  });
+  return result.outcome === "no_diff";
+}
 
 describe("Pi memory Phase 2 job transitions", () => {
   it("transactionally advances exactly once per fresh successful Stage 1 commit", async () => {
@@ -294,6 +305,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: randomUUID(),
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 1000),
       }),
     ).resolves.toBeFalsy();
@@ -302,6 +314,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: claimed.leaseExpiresAt,
       }),
     ).resolves.toBeFalsy();
@@ -310,6 +323,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 1000),
       }),
     ).resolves.toBeTruthy();
@@ -320,6 +334,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: randomUUID(),
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: failedAt,
         errorClass: "provider_timeout",
       }),
@@ -329,6 +344,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: failedAt,
         errorClass: "provider_timeout",
       }),
@@ -363,6 +379,7 @@ describe("Pi memory Phase 2 job transitions", () => {
       ...scope,
       leaseToken: second.leaseToken,
       claimedRevision: second.claimedRevision,
+      claimedBaseVersionId: second.baseVersion.versionId,
       currentTime: new Date(retryAt.getTime() + 1),
       errorClass: "provider_timeout",
     });
@@ -381,6 +398,7 @@ describe("Pi memory Phase 2 job transitions", () => {
       ...scope,
       leaseToken: third.leaseToken,
       claimedRevision: third.claimedRevision,
+      claimedBaseVersionId: third.baseVersion.versionId,
       currentTime: new Date(thirdAt.getTime() + 1),
       errorClass: "provider_timeout",
     });
@@ -433,6 +451,7 @@ describe("Pi memory Phase 2 job transitions", () => {
       { ...scope, memoryStorageId: randomUUID() },
       { ...scope, leaseToken: randomUUID() },
       { ...scope, claimedRevision: claimed.claimedRevision + 1 },
+      { ...scope, claimedBaseVersionId: randomUUID().replaceAll("-", "") },
       { ...scope, currentTime: claimed.leaseExpiresAt },
     ];
     for (const invalid of invalidFences) {
@@ -440,6 +459,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 1),
         ...invalid,
       };
@@ -472,6 +492,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 3),
         errorClass: "old_revision_failed",
       }),
@@ -536,6 +557,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: second.leaseToken,
         claimedRevision: second.claimedRevision,
+        claimedBaseVersionId: second.baseVersion.versionId,
         currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
       }),
     ).resolves.toBeFalsy();
@@ -544,6 +566,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: second.leaseToken,
         claimedRevision: second.claimedRevision,
+        claimedBaseVersionId: second.baseVersion.versionId,
         currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
         errorClass: "stale_owner",
       }),
@@ -553,6 +576,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: second.leaseToken,
         claimedRevision: second.claimedRevision,
+        claimedBaseVersionId: second.baseVersion.versionId,
         currentTime: new Date(second.leaseExpiresAt.getTime() - 1),
         selected: second.selected,
       }),
@@ -627,6 +651,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 1),
         selected: [...claimed.selected].reverse(),
       }),
@@ -647,6 +672,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 3),
         selected: claimed.selected,
       }),
@@ -717,6 +743,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 1),
         selected: [],
       }),
@@ -769,6 +796,7 @@ describe("Pi memory Phase 2 job transitions", () => {
         ...scope,
         leaseToken: claimed.leaseToken,
         claimedRevision: claimed.claimedRevision,
+        claimedBaseVersionId: claimed.baseVersion.versionId,
         currentTime: new Date(NOW.getTime() + 1),
         selected: mutableSelection,
       });

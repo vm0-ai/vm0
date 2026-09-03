@@ -302,6 +302,8 @@ check_required_executable "/usr/bin/rmdir" "rmdir"
 check_required_executable "/usr/bin/date" "date"
 check_required_executable "/usr/bin/ln" "ln"
 check_required_executable "/usr/bin/sed" "sed"
+check_required_file_contains "/usr/share/zoneinfo/Asia/Calcutta" "TZif" \
+  "legacy IANA timezone link"
 
 # Storage manifest cleanup and Codex session cleanup helpers.
 check_required_executable "/usr/bin/rm" "rm"

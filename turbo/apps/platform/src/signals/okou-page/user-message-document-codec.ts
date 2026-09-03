@@ -26,6 +26,7 @@ export const AGENT_MENTION_NODE_NAME = "agentMention";
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
+export const VOICE_DRAFT_NODE_NAME = "voiceDraft";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export type MessageDocumentAttachment = PersistedAttachment & {
@@ -136,6 +137,17 @@ function inlineTemplatePart(
     titleSnapshot: title,
     template: parsedTemplate.data,
   };
+}
+
+function voiceDraftPart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "voice" }> | null {
+  const id: unknown = node.attrs.id;
+  const transcript: unknown = node.attrs.transcript;
+  if (typeof id !== "string" || typeof transcript !== "string") {
+    return null;
+  }
+  return { type: "voice", id, transcript };
 }
 
 function appendParagraphParts(
@@ -312,7 +324,11 @@ function selectedTemplateNodeCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
-    if (nodeName === "paragraph" || nodeName === FEEDBACK_ITEM_NODE_NAME) {
+    if (
+      nodeName === "paragraph" ||
+      nodeName === FEEDBACK_ITEM_NODE_NAME ||
+      nodeName === VOICE_DRAFT_NODE_NAME
+    ) {
       continue;
     }
     if (nodeName !== TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -367,7 +383,7 @@ export function editorDocToMessageDocument(
     return null;
   }
 
-  let previousPromptSection: "paragraph" | "feedback" | null = null;
+  let previousPromptSection: "paragraph" | "feedback" | "voice" | null = null;
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
@@ -391,6 +407,15 @@ export function editorDocToMessageDocument(
       if (feedbackGroup.emitted) {
         previousPromptSection = "feedback";
       }
+      continue;
+    }
+    if (node.type.name === VOICE_DRAFT_NODE_NAME) {
+      const part = voiceDraftPart(node);
+      if (!part) {
+        return null;
+      }
+      parts.push(part);
+      previousPromptSection = "voice";
       continue;
     }
     if (previousPromptSection === "paragraph") {
@@ -629,6 +654,24 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
   }
 }
 
+function appendRestoredVoiceDraft(
+  state: RestoredEditorState,
+  part: Extract<UserMessagePart, { type: "voice" }>,
+): void {
+  if (state.paragraphContent.length > 0 || state.trailingParagraph) {
+    flushRestoredParagraph(state);
+  }
+  state.content.push({
+    type: VOICE_DRAFT_NODE_NAME,
+    attrs: {
+      id: part.id,
+      transcript: part.transcript,
+      status: "failed",
+      visible: true,
+    },
+  });
+}
+
 /**
  * Restores the editor-owned portion of a business document. File parts stay in
  * the existing external attachment state and therefore do not become Tiptap
@@ -669,6 +712,10 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
     if (part.type === "agent") {
       state.paragraphContent.push(agentMentionNode(part));
       state.trailingParagraph = false;
+      continue;
+    }
+    if (part.type === "voice") {
+      appendRestoredVoiceDraft(state, part);
       continue;
     }
     if (part.type === "feedback") {
@@ -712,7 +759,10 @@ export function messageDocumentToEditorDoc(value: unknown): JSONContent | null {
   if (state.paragraphContent.length > 0 || state.trailingParagraph) {
     flushRestoredParagraph(state);
   }
-  if (state.content.length === 0) {
+  if (
+    state.content.length === 0 ||
+    state.content.at(-1)?.type === VOICE_DRAFT_NODE_NAME
+  ) {
     state.content.push({ type: "paragraph" });
   }
   return { type: "doc", content: state.content };
@@ -750,6 +800,11 @@ export function messageDocumentToPrompt(value: unknown): string | null {
     flushFeedback();
     if (part.type === "text") {
       inlineText += part.text;
+    } else if (part.type === "voice") {
+      flushInlineText();
+      if (part.transcript.length > 0) {
+        blocks.push(part.transcript);
+      }
     } else if (part.type === "chat_thread") {
       inlineText += serializeChatThreadMention(
         part.threadId,
@@ -798,6 +853,13 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
     flushFeedback();
     if (part.type === "text") {
       inlineText += part.text;
+      continue;
+    }
+    if (part.type === "voice") {
+      flushInlineText();
+      if (part.transcript.length > 0) {
+        blocks.push(part.transcript);
+      }
       continue;
     }
     if (part.type === "chat_thread") {

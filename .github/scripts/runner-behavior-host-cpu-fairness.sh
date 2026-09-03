@@ -52,8 +52,9 @@ TEST_BIN=$1
 ROOTFS_HASH=$2
 EXECUTION_KEY=$3
 BASE_DIR="/var/lib/vm0-runner/host-cpu-fairness/${EXECUTION_KEY}"
-BASELINE_UNIT="vm0-host-cpu-baseline-${EXECUTION_KEY}"
-MANAGED_UNIT="vm0-host-cpu-managed-${EXECUTION_KEY}"
+UNIT="vm0-host-cpu-managed-${EXECUTION_KEY}"
+LOCK_DIR="/run/lock/vm0-host-cpu-fairness"
+LOCK_FD=""
 
 case "$EXECUTION_KEY" in
   ''|*[!a-zA-Z0-9._-]*)
@@ -63,12 +64,60 @@ case "$EXECUTION_KEY" in
 esac
 
 cleanup() {
-  sudo systemctl stop "${BASELINE_UNIT}.service" 2>/dev/null || true
-  sudo systemctl stop "${MANAGED_UNIT}.service" 2>/dev/null || true
+  sudo systemctl stop "${UNIT}.service" 2>/dev/null || true
   sudo rm -f -- "$TEST_BIN"
   sudo rm -rf -- "$BASE_DIR"
+  if [ -n "$LOCK_FD" ]; then
+    flock --unlock "$LOCK_FD" || true
+    exec {LOCK_FD}>&-
+  fi
 }
 trap cleanup EXIT
+
+mapfile -t CPU_CANDIDATES < <(
+  LC_ALL=C lscpu --parse=CPU,ONLINE | awk -F, '$2 == "Y" { print $1 }'
+)
+if [ "${#CPU_CANDIDATES[@]}" -eq 0 ]; then
+  echo "host has no online CPUs" >&2
+  exit 1
+fi
+for cpu in "${CPU_CANDIDATES[@]}"; do
+  if [[ ! "$cpu" =~ ^[0-9]+$ ]]; then
+    echo "invalid online CPU: $cpu" >&2
+    exit 1
+  fi
+done
+if [ "${#CPU_CANDIDATES[@]}" -gt 1 ]; then
+  NONZERO_CPUS=()
+  for cpu in "${CPU_CANDIDATES[@]}"; do
+    if [ "$cpu" -ne 0 ]; then
+      NONZERO_CPUS+=("$cpu")
+    fi
+  done
+  CPU_CANDIDATES=("${NONZERO_CPUS[@]}")
+fi
+
+read -r SELECTION_HASH _ < <(printf '%s' "$EXECUTION_KEY" | cksum)
+START_INDEX=$((SELECTION_HASH % ${#CPU_CANDIDATES[@]}))
+sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$LOCK_DIR"
+
+SELECTED_CPU=""
+for ((offset = 0; offset < ${#CPU_CANDIDATES[@]}; offset++)); do
+  candidate_index=$(((START_INDEX + offset) % ${#CPU_CANDIDATES[@]}))
+  candidate_cpu=${CPU_CANDIDATES[$candidate_index]}
+  exec {candidate_lock_fd}>"${LOCK_DIR}/cpu-${candidate_cpu}.lock"
+  if flock --nonblock "$candidate_lock_fd"; then
+    SELECTED_CPU=$candidate_cpu
+    LOCK_FD=$candidate_lock_fd
+    break
+  fi
+  exec {candidate_lock_fd}>&-
+done
+if [ -z "$SELECTED_CPU" ]; then
+  echo "no online host CPU is available for the fairness test" >&2
+  exit 1
+fi
+echo "HOST_CPU_SELECTED_CPU=$SELECTED_CPU"
 
 SYSTEMD_VERSION=$(systemd --version | awk 'NR == 1 { print $2 }')
 case "$SYSTEMD_VERSION" in
@@ -95,52 +144,22 @@ for fixture in "$TEST_BIN" "$FIRECRACKER" "$KERNEL" "$ROOTFS"; do
 done
 
 sudo modprobe nbd nbds_max=4096
-sudo mkdir -p "$BASE_DIR/baseline" "$BASE_DIR/managed"
-
-run_test() {
-  local mode=$1
-  local unit=$2
-  local base_dir=$3
-  local max_ratio=${4:-}
-  local args=(
-    --wait
-    --collect
-    --pipe
-    "--unit=${unit}"
-    --property=Type=exec
-    --property=Delegate=cpu
-    --property=DelegateSubgroup=control
-    --property=AllowedCPUs=0-3
-    --property=TimeoutStopSec=60
-    "--setenv=VM0_HOST_CPU_TEST_MODE=${mode}"
-    "--setenv=VM0_HOST_CPU_TEST_FIRECRACKER=${FIRECRACKER}"
-    "--setenv=VM0_HOST_CPU_TEST_KERNEL=${KERNEL}"
-    "--setenv=VM0_HOST_CPU_TEST_ROOTFS=${ROOTFS}"
-    "--setenv=VM0_HOST_CPU_TEST_BASE_DIR=${base_dir}"
-  )
-  if [ -n "$max_ratio" ]; then
-    args+=("--setenv=VM0_HOST_CPU_TEST_MAX_NORMALIZED_RATIO=${max_ratio}")
-  fi
-  sudo systemd-run "${args[@]}" \
-    "$TEST_BIN" --ignored --test-threads=1 --nocapture
-}
-
-echo "=== Unmanaged host CPU baseline ==="
-BASELINE_OUTPUT=$(run_test baseline "$BASELINE_UNIT" "$BASE_DIR/baseline")
-printf '%s\n' "$BASELINE_OUTPUT"
-# libtest writes the first nocapture record after its `test ...` prefix, so
-# extract the marker suffix while retaining strict numeric validation below.
-BASELINE_RATIO=$(printf '%s\n' "$BASELINE_OUTPUT" \
-  | sed -n 's/.*HOST_CPU_NORMALIZED_RATIO=//p' | tail -1)
-if ! awk -v value="$BASELINE_RATIO" \
-  'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value + 0 > 0) }'; then
-  echo "baseline did not publish a valid normalized ratio: $BASELINE_RATIO" >&2
-  exit 1
-fi
-MAX_RATIO=$(awk -v baseline="$BASELINE_RATIO" \
-  'BEGIN { value = baseline * 1.25; if (value < 1.75) value = 1.75; printf "%.6f", value }')
-echo "Baseline normalized ratio: $BASELINE_RATIO; managed tolerance: $MAX_RATIO"
+sudo mkdir -p "$BASE_DIR"
 
 echo "=== Managed weighted host CPU proof ==="
-run_test managed "$MANAGED_UNIT" "$BASE_DIR/managed" "$MAX_RATIO"
+sudo systemd-run \
+  --wait \
+  --collect \
+  --pipe \
+  "--unit=${UNIT}" \
+  --property=Type=exec \
+  --property=Delegate=cpu \
+  --property=DelegateSubgroup=control \
+  "--property=AllowedCPUs=${SELECTED_CPU}" \
+  --property=TimeoutStopSec=60 \
+  "--setenv=VM0_HOST_CPU_TEST_FIRECRACKER=${FIRECRACKER}" \
+  "--setenv=VM0_HOST_CPU_TEST_KERNEL=${KERNEL}" \
+  "--setenv=VM0_HOST_CPU_TEST_ROOTFS=${ROOTFS}" \
+  "--setenv=VM0_HOST_CPU_TEST_BASE_DIR=${BASE_DIR}" \
+  "$TEST_BIN" --ignored --test-threads=1 --nocapture
 REMOTE_SCRIPT

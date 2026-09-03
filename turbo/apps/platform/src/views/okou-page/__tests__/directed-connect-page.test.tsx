@@ -12,6 +12,7 @@ import {
 } from "@okouai/api-contracts/contracts/agent-custom-connectors";
 import {
   customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
   customConnectorOAuth2Contract,
   customConnectorValuesContract,
   customConnectorsContract,
@@ -246,8 +247,10 @@ function customConnector(
   });
 }
 
-function mcpCustomConnector(): CustomConnectorMcpResponse {
-  return {
+function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return customConnectorMcpResponseSchema.parse({
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
     storageVersion: 1,
@@ -278,7 +281,8 @@ function mcpCustomConnector(): CustomConnectorMcpResponse {
     configuredFieldKeys: [],
     createdAt: "2026-08-11T00:00:00Z",
     updatedAt: "2026-08-11T00:00:00Z",
-  };
+    ...overrides,
+  });
 }
 
 function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
@@ -454,6 +458,200 @@ describe("directed connector connect page", () => {
       expect(screen.getByText("DeepWiki connected")).toBeInTheDocument();
     });
   });
+
+  it("authorizes the selected Agent when Automatic MCP resolves to no auth", async () => {
+    let connected = false;
+    const connectionId = crypto.randomUUID();
+    let grants: AgentCustomConnectorGrant[] = [];
+    const connector = mcpCustomConnector({
+      slug: "_automatic-mcp",
+      displayName: "Automatic MCP",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+      missingRequiredFields: ["automatic"],
+      configuredFieldKeys: [],
+    });
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          connected
+            ? {
+                ...connector,
+                connected: true,
+                connectedAccountId: connectionId,
+                connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+                missingRequiredFields: [],
+              }
+            : connector,
+        ],
+      });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        expect(body.account).toStrictEqual({ intent: "add" });
+        connected = true;
+        return respond(200, {
+          result: "connected",
+          connector: {
+            ...connector,
+            connected: true,
+            connectedAccountId: connectionId,
+            connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+            missingRequiredFields: [],
+          },
+          connectedAccountId: connectionId,
+        });
+      },
+    );
+    context.mocks.api(
+      agentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        grants = body.grants;
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    const heading = await screen.findByText(
+      "Zero needs Automatic MCP to proceed",
+    );
+    expect(heading).toBeInTheDocument();
+    click(getButtonByText("Connect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Automatic MCP",
+    });
+    expect(
+      within(dialog).getByText(
+        "Continue while Okou checks how this MCP server authenticates.",
+      ),
+    ).toBeVisible();
+    click(getButtonByText("Continue", dialog));
+
+    await waitFor(() => {
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
+      expect(screen.getByText("Automatic MCP connected")).toBeInTheDocument();
+    });
+    expect(authWindow.location.href).toBe("");
+    expect(authWindow.closed).toBeTruthy();
+  });
+
+  it.each([
+    { transition: "none to OAuth", result: "authorization" },
+    { transition: "OAuth to none", result: "connected" },
+  ] as const)(
+    "reconnects the exact Automatic MCP account from $transition",
+    async ({ result }) => {
+      const connectionId = crypto.randomUUID();
+      let connectedAccountUpdatedAt = "2026-09-03T00:00:00.000Z";
+      let submittedAccount: unknown;
+      let grants: AgentCustomConnectorGrant[] = [];
+      const connector = mcpCustomConnector({
+        slug: "_automatic-reconnect-mcp",
+        displayName: "Automatic Reconnect MCP",
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
+        connected: true,
+        connectedAccountId: connectionId,
+        connectedAccountUpdatedAt,
+        missingRequiredFields: [],
+        configuredFieldKeys: [],
+      });
+      const authWindow = context.mocks.browser.authWindow();
+      Object.defineProperty(authWindow, "location", {
+        value: { href: "" },
+        configurable: true,
+      });
+      context.mocks.browser.open(authWindow);
+      context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+        return respond(200, {
+          connectors: [{ ...connector, connectedAccountUpdatedAt }],
+        });
+      });
+      context.mocks.api(
+        customConnectorOAuth2Contract.start,
+        ({ body, params, respond }) => {
+          expect(params.id).toBe(connector.id);
+          submittedAccount = body.account;
+          connectedAccountUpdatedAt = "2026-09-03T00:00:01.000Z";
+          if (result === "authorization") {
+            authWindow.close();
+            return respond(200, {
+              result,
+              authorizationUrl:
+                "https://oauth.acme.test/authorize?state=automatic-reconnect",
+              connectionId,
+            });
+          }
+          return respond(200, {
+            result,
+            connector: {
+              ...connector,
+              connectedAccountUpdatedAt,
+            },
+            connectedAccountId: connectionId,
+          });
+        },
+      );
+      context.mocks.api(
+        agentCustomConnectorsContract.update,
+        ({ body, params, respond }) => {
+          expect(params.id).toBe(AGENT_ID);
+          grants = body.grants;
+          return respond(200, { grants });
+        },
+      );
+
+      detachedSetupPage({
+        context,
+        path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+        featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+      });
+
+      await screen.findByText("Automatic Reconnect MCP connected");
+      click(getButtonByText("Reconnect"));
+      const dialog = await screen.findByRole("dialog", {
+        name: "Connect Automatic Reconnect MCP",
+      });
+      click(getButtonByText("Continue", dialog));
+
+      await waitFor(() => {
+        expect(dialog).not.toBeInTheDocument();
+      });
+      expect(submittedAccount).toStrictEqual({
+        intent: "reconnect",
+        connectionId,
+      });
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
+      expect(authWindow.location.href).toBe(
+        result === "authorization"
+          ? "https://oauth.acme.test/authorize?state=automatic-reconnect"
+          : "",
+      );
+      expect(authWindow.closed).toBeTruthy();
+    },
+  );
 
   it("reconnects exact manual custom account without changing field status", async () => {
     const connectionId = crypto.randomUUID();

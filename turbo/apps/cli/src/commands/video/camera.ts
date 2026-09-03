@@ -21,10 +21,13 @@ import {
   inputTrackClickTimes,
   inputTrackSchema,
   inputTrackVideoSource,
+  REACTION_DELAY_MS,
+  verifyPlanClicks,
 } from "./camera-plan";
 import type {
   CameraPlan,
   PixelRect,
+  PlanClickVerification,
   SourceAnalysis,
   VideoSource,
 } from "./camera-plan";
@@ -104,7 +107,6 @@ function probeVideo(path: string, declared: VideoSource): VideoSource {
   };
 }
 
-const REACTION_DELAY_MS = 400;
 const REACTION_PROBE_WIDTH = 160;
 const REACTION_PIXEL_DELTA = 40;
 
@@ -356,6 +358,7 @@ function writeCameraReview(args: {
   readonly planPath: string;
   readonly reviewPath: string;
   readonly checkpoints: readonly CameraReviewCheckpoint[];
+  readonly clicks: readonly PlanClickVerification[];
 }): void {
   const framesDirectory = reviewFramesDirectory(args.reviewPath);
   mkdirSync(framesDirectory, { recursive: true });
@@ -380,6 +383,10 @@ function writeCameraReview(args: {
         sourcePath: args.sourcePath,
         outputPath: args.outputPath,
         planPath: args.planPath,
+        clicks: args.clicks,
+        clicksOutsideFrame: args.clicks.filter((click) => {
+          return !click.inFrame;
+        }).length,
         checkpoints,
       },
       null,
@@ -500,7 +507,8 @@ Notes:
         );
       }
       assertWritableOutput(reviewPath, force);
-      const checkpoints = createCameraReviewCheckpoints(plan, clickTimes);
+      const checkpoints = createCameraReviewCheckpoints(plan);
+      const clickChecks = verifyPlanClicks(plan);
       const reviewDirectory = reviewFramesDirectory(reviewPath);
       for (const checkpoint of checkpoints) {
         assertWritableOutput(
@@ -525,6 +533,7 @@ Notes:
         planPath,
         reviewPath,
         checkpoints,
+        clicks: clickChecks,
       });
       const renderMs = Math.round(performance.now() - renderStartedAt);
       process.stdout.write(
@@ -533,6 +542,9 @@ Notes:
           planPath,
           reviewPath,
           reviewFrames: checkpoints.length,
+          clicksOutsideFrame: clickChecks.filter((click) => {
+            return !click.inFrame;
+          }).length,
           durationMs: plan.source.durationMs,
           width: plan.source.width,
           height: plan.source.height,

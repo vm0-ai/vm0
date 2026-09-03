@@ -58,11 +58,11 @@ impl Framework {
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
 /// mock Claude path aliases are absent or non-Unicode.
-pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
+pub const DEFAULT_MOCK_CLAUDE_PATH: &str = guest_contracts::guest_binary::MOCK_CLAUDE_PATH;
 
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
-pub const DEFAULT_MOCK_CODEX_PATH: &str = "/usr/local/bin/guest-mock-codex";
+pub const DEFAULT_MOCK_CODEX_PATH: &str = guest_contracts::guest_binary::MOCK_CODEX_PATH;
 
 fn u64_value_or(name: &str, value: Option<&str>, default: u64) -> u64 {
     match value {
@@ -580,24 +580,24 @@ impl GuestConfig {
             pi_model_config: payload.pi_model_config,
             pi_session_id: payload.pi_session_id,
             stuck_tool_timeout_secs: u64_value_or(
-                guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+                guest_contracts::env::CANONICAL_STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
                 constants::STUCK_TOOL_TIMEOUT_SECS,
             ),
             post_result_sigterm_grace: bounded_duration_secs_value_or(
-                guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 non_empty(&raw.post_result_sigterm_grace_secs),
                 constants::POST_RESULT_SIGTERM_GRACE_SECS,
                 POST_RESULT_CLEANUP_MAX_SECS,
             ),
             post_result_total_cap: bounded_duration_secs_value_or(
-                guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_TOTAL_CAP_SECS_ENV,
                 non_empty(&raw.post_result_total_cap_secs),
                 constants::POST_RESULT_TOTAL_CAP_SECS,
                 POST_RESULT_CLEANUP_MAX_SECS,
             ),
             post_result_sigkill_grace: bounded_duration_secs_value_or(
-                guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+                guest_contracts::env::CANONICAL_POST_RESULT_SIGKILL_GRACE_SECS_ENV,
                 non_empty(&raw.post_result_sigkill_grace_secs),
                 constants::POST_RESULT_SIGKILL_GRACE_SECS,
                 POST_RESULT_CLEANUP_MAX_SECS,

@@ -38,8 +38,8 @@ with:
 pnpm desktop:dev
 ```
 
-This packages and runs `Zero CU Dev.app` with `OKOU_DESKTOP_PLATFORM_URL` set to
-the local proxy. Set `OKOU_DESKTOP_PRODUCT=okou` to package `Okou Dev.app`
+This packages and runs `Okou Dev.app` with `OKOU_DESKTOP_PLATFORM_URL` set to
+the local proxy. Set `OKOU_DESKTOP_PRODUCT=zero` to package `Zero CU Dev.app`
 instead. Use packaged development apps for sign-in callback, URL scheme, and
 permission testing.
 Non-CI packaged desktop builds require the `Developer ID Application: Max &
@@ -59,20 +59,20 @@ Create a macOS artifact with:
 pnpm desktop:make
 ```
 
-This builds the production `Zero Computer Use.app`, signs it with the local
-Developer ID Application identity, submits it to Apple's notary service, staples the
-notarization ticket, and writes the zip artifact under `apps/desktop/out/make`.
-Build the independent Okou identity with:
+This builds the production `Okou.app` with bundle ID and callback scheme
+`ai.okou.desktop`, signs it with the local Developer ID Application identity,
+submits it to Apple's notary service, staples the notarization ticket, and
+writes the zip artifact under `apps/desktop/out/make`. Development Okou builds
+use `ai.okou.desktop.dev`. Build the independent Zero identity with:
 
 ```bash
-OKOU_DESKTOP_PRODUCT=okou \
-OKOU_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+OKOU_DESKTOP_PRODUCT=zero \
+OKOU_DESKTOP_PLATFORM_URL=https://app.vm0.ai \
 pnpm -F @okouai/desktop make
 ```
 
-That build creates `Okou.app` with bundle ID and callback scheme
-`ai.okou.desktop`. Development Okou builds use
-`ai.okou.desktop.dev`.
+That build creates `Zero Computer Use.app` with bundle ID and callback scheme
+`ai.vm0.zero.desktop`.
 Local notarized builds use the `notarytool` Keychain profile
 `vm0-desktop-notary` by default. Set `OKOU_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
 override the profile and `OKOU_DESKTOP_NOTARIZE_KEYCHAIN` to override the
@@ -102,20 +102,21 @@ The `Desktop` GitHub Actions workflow builds macOS artifacts for internal
 testing. Run the workflow manually from GitHub Actions, then download the Apple
 silicon artifact:
 
-- `zero-desktop-macos-arm64-unsigned` for Apple silicon Macs
-- `okou-desktop-macos-arm64-unsigned` for the side-by-side Okou identity
+- `okou-desktop-macos-arm64-unsigned` for the shipping configuration, built the
+  way a release is built: the Okou product selected explicitly, with a packaged
+  runtime config
+- `okou-desktop-macos-arm64-default-unsigned` for the same product built from an
+  unconfigured checkout, with no packaged runtime config
 
-The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
-layers, then open `Zero Computer Use.app`.
-The Okou artifact contains `Okou-darwin-arm64.zip` and
-`Okou.app`.
+Both contain `Okou-darwin-arm64.zip` and `Okou.app`. Unzip both layers, then
+open the app.
 
 These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
 macOS Gatekeeper may require right-clicking the app and choosing Open, or
 removing quarantine locally:
 
 ```bash
-xattr -dr com.apple.quarantine "Zero Computer Use.app"
+xattr -dr com.apple.quarantine "Okou.app"
 ```
 
 ## Release artifacts
@@ -126,17 +127,16 @@ Desktop releases are versioned by release-please. Changes under
 `desktop-vX.Y.Z` GitHub Release.
 
 When a release-please merge group changes the Desktop package version, the
-`deploy-desktop` job builds the unsigned production `Zero Computer Use.app` and
-`Okou.app` for Apple silicon Macs and publishes both to R2 under
-`okou-desktop/<commit-sha>/`. The matching release run resolves the same commit
-as `release_target`, downloads and verifies those immutable app artifacts,
-signs them with the Developer ID Application certificate, notarizes them for
-direct distribution outside the Mac App Store, and publishes separate releases:
+`deploy-desktop` job builds the unsigned production `Okou.app` for Apple silicon
+Macs and publishes it to R2 under `okou-desktop/<commit-sha>/`. The matching
+release run resolves the same commit as `release_target`, downloads and verifies
+that immutable app artifact, signs it with the Developer ID Application
+certificate, notarizes it for direct distribution outside the Mac App Store, and
+publishes `okou-desktop-vX.Y.Z` containing `Okou-darwin-arm64-X.Y.Z.zip` and
+`.dmg`.
 
-- `desktop-vX.Y.Z` contains `Zero-darwin-arm64-X.Y.Z.zip` and `.dmg`.
-- `okou-desktop-vX.Y.Z` contains `Okou-darwin-arm64-X.Y.Z.zip` and `.dmg`.
-
-The release workflow then updates the independent Zero and Okou manifests.
+The release workflow then updates the Okou manifest. The Zero manifest is frozen
+at its final bridge release and is no longer produced by any build.
 
 Use the product's DMG for manual installation. It opens with a product-specific
 Finder background, the app on the left, and an `/Applications` symlink on the
@@ -168,8 +168,11 @@ Okou schemes (`ai.okou.desktop` and `ai.okou.desktop.dev`). Desktop
 builds select exactly one product feed and one callback scheme from their
 packaged identity; they do not discover or switch products at runtime.
 
-`OKOU_DESKTOP_PRODUCT` defaults to `zero`, preserving existing local and CI
-builds. Okou production builds package a runtime configuration containing
+`OKOU_DESKTOP_PRODUCT` defaults to `okou`, so an unconfigured local or CI build
+produces `Okou.app`. Zero remains selectable through an explicit
+`OKOU_DESKTOP_PRODUCT=zero` or a runtime config naming that product; only the
+build-side default retired. Okou production builds package a runtime
+configuration containing
 `product: okou` and `https://app.okou.ai`. That app origin routes API calls to
 `api.okou.ai`, while Clerk and OAuth web flows remain canonical on
 `www.vm0.ai`.

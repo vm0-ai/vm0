@@ -27,6 +27,7 @@ import {
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
@@ -1055,6 +1056,40 @@ interface AgentRunAfterPreCreate {
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
+async function resolvePausedThreadGoalPrompt(
+  db: Db,
+  args: { readonly orgId: string; readonly threadId: string },
+): Promise<string | undefined> {
+  const [goal] = await db
+    .select({ objectiveBrief: threadGoals.objectiveBrief })
+    .from(threadGoals)
+    .where(
+      and(
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.chatThreadId, args.threadId),
+        eq(threadGoals.status, "paused"),
+      ),
+    )
+    .limit(1);
+
+  if (!goal) {
+    return undefined;
+  }
+
+  return `# Thread Goal
+
+Status: paused
+Objective: ${goal.objectiveBrief}
+
+A paused goal does not continue automatically.
+
+Goal CLI:
+- Check: \`okou goal get\`
+- Resume: \`okou goal resume\`
+- Block: \`okou goal block\`
+- Complete: \`okou goal complete\``;
+}
+
 async function resolveThreadSessionForAgentRun(
   db: Db,
   input: AgentRunAfterPreCreate,
@@ -1081,8 +1116,12 @@ async function resolveThreadSessionForAgentRun(
       });
     },
   );
+  const pausedThreadGoalPrompt = await resolvePausedThreadGoalPrompt(db, {
+    orgId: input.command.auth.orgId,
+    threadId,
+  });
   const webChatSessionPromptContext = input.command.webChatSessionPromptContext;
-  const appendSystemPrompt = webChatSessionPromptContext
+  const sessionPrompt = webChatSessionPromptContext
     ? await measureZeroPreCreate(
         input.timing,
         "api_dispatch_pre_create_zero_web_chat_resolve_session_prompt_context",
@@ -1096,6 +1135,16 @@ async function resolveThreadSessionForAgentRun(
         },
       )
     : input.command.appendSystemPrompt;
+  const appendSystemPromptParts = [
+    pausedThreadGoalPrompt,
+    sessionPrompt,
+  ].filter((part): part is string => {
+    return Boolean(part);
+  });
+  const appendSystemPrompt =
+    appendSystemPromptParts.length > 0
+      ? appendSystemPromptParts.join("\n\n")
+      : undefined;
   const body: AgentRunCreateBody = { ...input.command.body };
   if (resolution.sessionId) {
     body.sessionId = resolution.sessionId;

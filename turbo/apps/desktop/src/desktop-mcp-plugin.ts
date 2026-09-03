@@ -38,7 +38,7 @@ import {
 
 const PREFERENCES_KEY = "computerUsePlugins";
 const MCP_KEY = "mcp";
-const MCP_CLIENT_NAME = "zero-desktop-mcp-plugin";
+const MCP_CLIENT_NAME = "okou-desktop-mcp-plugin";
 const MCP_CLIENT_VERSION = "1.0.0";
 
 interface McpStdioServerConfig {

@@ -19,7 +19,7 @@ use api_contracts::generated::types::{
 use serde_json::json;
 
 #[test]
-fn generated_completion_failure_reasons_preserve_the_wire_contract() {
+fn generated_completion_failure_reason_tokens_preserve_the_wire_contract() {
     let failure_reasons = [
         "session_history_limit",
         "insufficient_credits",
@@ -57,14 +57,13 @@ fn generated_completion_failure_reasons_preserve_the_wire_contract() {
     assert_eq!(legacy_request.failure_reason, None);
     assert_eq!(serde_json::to_value(legacy_request).unwrap(), omitted);
 
-    assert!(
-        serde_json::from_value::<complete::Request>(json!({
-            "runId": "run-1",
-            "exitCode": 1,
-            "failureReason": "future_reason",
-        }))
-        .is_err()
-    );
+    let future = json!({
+        "runId": "run-1",
+        "exitCode": 1,
+        "failureReason": "future_reason",
+    });
+    let future_request: complete::Request = serde_json::from_value(future.clone()).unwrap();
+    assert_eq!(serde_json::to_value(future_request).unwrap(), future);
 }
 
 #[test]

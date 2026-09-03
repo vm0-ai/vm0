@@ -23,6 +23,7 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.OkouDebug).toBe("_debug");
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
+    expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
   });
 });
 
@@ -96,32 +97,31 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should keep Morning Brief default-off with an independent staff rollout and user override", () => {
-    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+  it("should release Morning Brief independently from Official Workflows and preserve false overrides", () => {
+    const ordinaryOrgId = "org_nonexistent";
     expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
-    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: staffOrgId,
+        orgId: ordinaryOrgId,
       }),
     ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: staffOrgId,
+        orgId: ordinaryOrgId,
         overrides: { [FeatureSwitchKey.MorningBrief]: false },
       }),
     ).toBe(false);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: "org_nonexistent",
-        overrides: { [FeatureSwitchKey.MorningBrief]: true },
+      isFeatureEnabled(FeatureSwitchKey.OfficialWorkflows, {
+        orgId: ordinaryOrgId,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(getFeatureSwitchMetadata()[FeatureSwitchKey.MorningBrief]).toEqual({
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
-      rolloutStage: "beta",
+      rolloutStage: "released",
     });
   });
 
@@ -167,6 +167,8 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
@@ -180,7 +182,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
@@ -190,6 +194,8 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
@@ -203,24 +209,21 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
   });
 
-  it("should enable intro video for Bingjie only", () => {
-    const bingjieStates = getAllFeatureStates({
-      email: "bingjie@vm0.ai",
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    });
-    expect(bingjieStates[FeatureSwitchKey.IntroVideo]).toBe(true);
-
-    const otherStaffStates = getAllFeatureStates({
+  it("should enable intro video and desktop recording for staff", () => {
+    const staffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(otherStaffStates[FeatureSwitchKey.IntroVideo]).toBe(false);
+    expect(staffStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+    expect(staffStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
   });
 
   it("should enable gradient color themes for Ming only", () => {
@@ -333,7 +336,10 @@ describe("getFeatureSwitchMetadata", () => {
       metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
     ).toBe("released");
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
-    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
+    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("beta");
+    expect(metadata[FeatureSwitchKey.DesktopScreenRecording].rolloutStage).toBe(
+      "beta",
+    );
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",
     );

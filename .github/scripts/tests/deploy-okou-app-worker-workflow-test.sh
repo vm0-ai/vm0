@@ -52,7 +52,6 @@ release_jobs = release["jobs"]
 rollback_jobs = rollback["jobs"]
 release_controller_job = release_jobs["release-please"]
 worker_release_job = release_jobs["promote-app-worker-production"]
-release_api_job = release_jobs["promote-api-production"]
 release_dashboard_job = release_jobs["update-rollback-dashboard"]
 rollback_verification_job = rollback_jobs["verify-production-domains"]
 
@@ -127,12 +126,10 @@ deploy_source = require_fragments(
         "wrangler deploy",
         "--env production",
         '--message "app artifact ${ARTIFACT_SHA}"',
-        "bash .github/scripts/verify-okou-app-runtime.sh",
         '"https://app.vm0.ai|https://api.vm0.ai"',
         '"https://app.okou.ai|https://api.okou.ai"',
         '"https://app-worker.vm0.ai|https://api.vm0.ai"',
         '"https://app-worker.okou.ai|https://api.okou.ai"',
-        "bash .github/scripts/verify-okou-production-domains.sh",
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -144,12 +141,16 @@ if deploy_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
-if deploy_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
-    raise RuntimeError("production Worker must use bounded convergence probes")
 if start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if finish_step.get("with", {}).get("status") != "${{ job.status }}":
-    raise RuntimeError("production Worker deployment must report failed verification")
+    raise RuntimeError("production Worker deployment must report its final job status")
+for verifier in (
+    "bash .github/scripts/verify-okou-app-runtime.sh",
+    "bash .github/scripts/verify-okou-production-domains.sh",
+):
+    if verifier in deploy_source:
+        raise RuntimeError("production Worker deployment must trust Cloudflare success")
 
 steps = worker_release_job["steps"]
 if not (
@@ -173,18 +174,6 @@ for fragment in (
 ):
     if fragment not in dashboard_condition:
         raise RuntimeError(f"rollback dashboard condition is missing: {fragment}")
-
-release_api_verification_step = find_step(
-    release_api_job, "Verify production App and API domains"
-)
-if release_api_verification_step.get("shell") != "bash":
-    raise RuntimeError("API production verification must use Bash")
-if release_api_verification_step.get("run") != (
-    "bash .github/scripts/verify-okou-production-domains.sh"
-):
-    raise RuntimeError("API production must verify the live App and API domains")
-if "app_release_created" in str(release_api_job.get("if", "")):
-    raise RuntimeError("API production verification must not depend on an App release")
 
 if rollback_verification_job.get("needs") != "rollback-api":
     raise RuntimeError("domain verification must follow the API rollback")

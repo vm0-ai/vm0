@@ -360,7 +360,7 @@ async function createStyledDmg({
         console.warn("Failed to detach DMG mount", { mountPath, error });
       }
     }
-    if (process.env.ZERO_DESKTOP_KEEP_DMG_TEMP !== "true") {
+    if (process.env.OKOU_DESKTOP_KEEP_DMG_TEMP !== "true") {
       await rm(tempDir, { force: true, recursive: true });
     } else {
       console.log(`Kept temporary DMG directory: ${tempDir}`);

@@ -1234,6 +1234,9 @@ const registerUserMessageRenderPart$ = command(
       case "template": {
         return { type: "template", part };
       }
+      case "voice": {
+        return { type: "voice", part };
+      }
       case "automation": {
         return { type: "automation", part };
       }
@@ -1652,7 +1655,6 @@ function createEventSemanticSignals(
       ?.events.at(-1)?.event;
     return Promise.resolve(formatDonePhrase(lastEvent));
   });
-
   return {
     hasEvents$,
     thinkingIndicatorMode$,

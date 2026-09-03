@@ -28,6 +28,9 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
 import { flattenAnnotatedImage } from "./flatten-annotated-image.ts";
+import { logger } from "../log.ts";
+import { pageAttachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
+import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
 import { desktopRecordingAgentInstructions } from "./intro-video-agent-instructions.ts";
 
@@ -57,6 +60,8 @@ type AttachmentUploadState =
       readonly status: "uploaded";
       readonly fileInfo: FileInfo;
     };
+
+const log = logger("chat-draft");
 
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
 const MAX_PART_UPLOAD_ATTEMPTS = 5;
@@ -399,8 +404,20 @@ function createAttachmentAnnotationSignals(args: {
           if (!original) {
             throw new Error("Original image is unavailable");
           }
+          // Read the address the editor just proved loadable, not the stored
+          // one. A persisted attachment's canonical URL answers only to an
+          // Authorization header, so it has to be exchanged for a presigned
+          // object URL before anything can fetch it — which is exactly what
+          // the editor's `useResolvedAttachmentUrl` does to display the same
+          // image. Deriving the URL a second way here meant the picture the
+          // user had just drawn on could still be refused at attach time.
+          const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
+          const resolved = await get(
+            resolveResourceUrl(publicAttachmentUrl(original.url)),
+          );
+          signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(
-            original.url,
+            resolved.resourceUrl,
             annotations,
             args.filename,
             signal,
@@ -411,6 +428,14 @@ function createAttachmentAnnotationSignals(args: {
       );
       if (!rendered.ok) {
         set(internalUploadState$, { status: "failed" });
+        // Five different steps land on that one state — the original going
+        // missing, the read, the decode, the encode and the upload. Dropping
+        // `rendered.error` left the retry badge as the only evidence any of
+        // them had happened, so a failure that reproduced every time was
+        // indistinguishable from a flaky one. Warn rather than error: the
+        // attachment keeps its marks and the badge retries in place, so this
+        // is a recoverable condition the user is already being shown.
+        log.warn("annotation flatten failed", args.filename, rendered.error);
         return;
       }
       set(internalUploadState$, {

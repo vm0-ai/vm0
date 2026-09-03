@@ -90,7 +90,7 @@ fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
 
 #[test]
 fn agent_env_diagnostics_classifies_terminal_ownership_contract() {
-    let mut env = HashMap::from([
+    let env = HashMap::from([
         (
             "OKOU_FUTURE_PLATFORM_KEY".to_string(),
             "canonical".to_string(),
@@ -102,13 +102,10 @@ fn agent_env_diagnostics_classifies_terminal_ownership_contract() {
         ("VM0_SECRET_VALUES".to_string(), "ordinary".to_string()),
         ("CUSTOM_ENV".to_string(), "ordinary".to_string()),
     ]);
-    for key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        env.insert((*key).to_string(), "timing".to_string());
-    }
 
     let diagnostics = build_agent_env_diagnostics(&env, &HashMap::new());
 
-    assert_eq!(diagnostics.env_count, 8);
-    assert_eq!(diagnostics.runner_owned_count, 6);
+    assert_eq!(diagnostics.env_count, 4);
+    assert_eq!(diagnostics.runner_owned_count, 2);
     assert_eq!(diagnostics.external_count, 2);
 }

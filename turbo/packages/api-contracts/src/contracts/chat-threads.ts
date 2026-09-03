@@ -12,6 +12,7 @@ import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
+import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
 import {
@@ -24,6 +25,7 @@ import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
 } from "./avatar-video";
+import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "./voice-io-polish";
 
 const c = initContract();
 const chatEventReadHeadersSchema = authHeadersSchema.extend({
@@ -57,6 +59,13 @@ const chatEventSnapshotResponseSchema = z.union([
     lastSeqId: z.number().int().positive(),
   }),
 ]);
+const chatEventCatchUpBodySchema = z.array(
+  z.tuple([z.string().uuid(), z.number().int().nonnegative()]),
+);
+const chatEventCatchUpResponseSchema = z.object({
+  events: z.record(z.string().uuid(), z.array(chatEventRowSchema)),
+  notFoundThreads: z.array(z.string().uuid()),
+});
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
@@ -228,19 +237,33 @@ const chatThreadArtifactGoogleDriveRecoverySchema = z.discriminatedUnion(
   ],
 );
 
+const chatThreadArtifactGoogleDriveAccountReadyShape = {
+  // New App -> old API fallback. Current APIs always emit this marker after
+  // resolving the thread account, credentials, and agent authorization.
+  // Keep it optional while pre-marker APIs remain available for rollback.
+  accountReady: z.literal(true).optional(),
+};
+
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("synced"),
+    ...chatThreadArtifactGoogleDriveAccountReadyShape,
     id: z.string(),
     name: z.string(),
     webViewLink: z.string().nullable(),
   }),
-  z.object({ status: z.literal("not_synced") }),
+  z.object({
+    status: z.literal("not_synced"),
+    ...chatThreadArtifactGoogleDriveAccountReadyShape,
+  }),
   z.object({
     status: z.literal("disconnected"),
     recovery: chatThreadArtifactGoogleDriveRecoverySchema.optional(),
   }),
-  z.object({ status: z.literal("unknown") }),
+  z.object({
+    status: z.literal("unknown"),
+    ...chatThreadArtifactGoogleDriveAccountReadyShape,
+  }),
 ]);
 
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
@@ -502,6 +525,14 @@ const userMessageTemplatePartSchema = z
   })
   .strict();
 
+const userMessageVoicePartSchema = z
+  .object({
+    type: z.literal("voice"),
+    id: z.string().uuid(),
+    transcript: z.string().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
+  })
+  .strict();
+
 const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
@@ -558,6 +589,7 @@ const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
 
 const userMessageInputPartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
+  userMessageVoicePartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
@@ -863,6 +895,7 @@ const runFailedEventSchema = chatEventBaseSchema
     eventType: z.literal("run.failed"),
     runId: z.string(),
     error: z.string().optional(),
+    failureReason: runFailureReasonTokenSchema.optional(),
     runLifecycleEvent: z.literal("failed"),
   })
   .strict();
@@ -1809,6 +1842,27 @@ export const chatSearchContract = c.router({
 
 /** Canonical ChatEvent read contract. */
 export const chatThreadEventsContract = c.router({
+  /**
+   * Batch tail read for the SharedWorker cache. Every requested thread is
+   * returned exactly once: either as a complete raw-row tail (including an
+   * empty tail) or in `notFoundThreads` when the supplied cursor cannot be
+   * continued and the client must rebuild from a Snapshot.
+   */
+  catchUp: {
+    method: "POST",
+    path: "/api/chat/events/catch-up",
+    headers: chatEventReadHeadersSchema,
+    body: chatEventCatchUpBodySchema,
+    responses: {
+      200: chatEventCatchUpResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      426: apiErrorSchema,
+    },
+    summary: "Catch up raw chat events for multiple threads",
+  },
   /**
    * Snapshot-read cold start: a presigned download for the thread's head
    * archive object. The object is gzip NDJSON of chatEventRowSchema lines

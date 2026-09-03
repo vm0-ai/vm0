@@ -2235,7 +2235,8 @@
       "viewLogs": "रन लॉग देखें",
       "waitingIn": "प्रतीक्षा कर रहा है",
       "worked": "काम किया",
-      "workedFor": "{{duration}} के लिए काम किया"
+      "workedFor": "{{duration}} के लिए काम किया",
+      "workingFor": "{{duration}} से काम जारी"
     },
     "sharing": {
       "cancel": "रद्द करें",
@@ -2396,6 +2397,10 @@
     },
     "voice": {
       "checkingLimit": "ध्वनि इनपुट सीमा की जाँच की जा रही है",
+      "draft": "वॉइस ड्राफ़्ट",
+      "draftTooLong": "यह वॉइस ड्राफ़्ट बहुत लंबा है। नई रिकॉर्डिंग शुरू करें।",
+      "finishDraft": "पूरा करें",
+      "finishingDraft": "पूरा किया जा रहा है...",
       "input": "ध्वनि इनपुट",
       "inputLimitReached": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए प्रो या टीम में अपग्रेड करें।",
       "inputLimitReachedMember": "ध्वनि इनपुट सीमा पूरी हो गई. उच्च सीमा के लिए किसी वर्कस्पेस व्यवस्थापक से अपग्रेड करने के लिए कहें।",
@@ -2404,6 +2409,7 @@
       "inputLimitReachedReset": "ध्वनि इनपुट सीमा पूरी हो गई. कृपया अपनी सीमा रीसेट होने तक प्रतीक्षा करें।",
       "microphoneAccessDenied": "माइक्रोफ़ोन पहुंच अस्वीकृत कर दी गई थी. माइक्रोफ़ोन एक्सेस की अनुमति दें और पुनः प्रयास करें।",
       "openingMicrophone": "माइक्रोफ़ोन खुल रहा है...",
+      "removeDraft": "वॉइस ड्राफ़्ट हटाएँ",
       "starting": "ध्वनि इनपुट प्रारंभ करना",
       "stopRecording": "रिकॉर्डिंग बंद करें",
       "transcribing": "प्रतिलेखन",
@@ -2444,12 +2450,18 @@
       "deleteDescriptionWithCount_one": "",
       "deleteDescriptionWithCount_other": "",
       "deleteTitle": "{{account}} को हटाएँ?",
-      "fallbackName": "खाता #{{id}}",
+      "fallbackByMethod": {
+        "api": "API कुंजी",
+        "api-token": "API टोकन",
+        "cli": "CLI"
+      },
+      "fallbackUnnamed": "बिना नाम वाला खाता",
       "find": "खाते खोजें",
       "loading": "खाते लोड हो रहे हैं…",
       "loadingMore": "लोड हो रहा है…",
       "loadMore": "और लोड करें",
       "makeDefault": "डिफ़ॉल्ट बनाएँ",
+      "managerDescription": "नए रन आपके डिफ़ॉल्ट खाते का उपयोग करते हैं।",
       "managerTitle": "{{connector}} खाते प्रबंधित करें",
       "namePromptDescription": "आप इसे छोड़ सकते हैं और खाते को बाद में नाम दे सकते हैं।",
       "namePromptTitle": "अपने {{connector}} खाते को नाम दें",
@@ -2670,6 +2682,7 @@
         "connecting": "कनेक्ट हो रहा है...",
         "continue": "जारी रखना",
         "continueToProvider": "पहुंच को अधिकृत करने के लिए प्रोवाइडर के पास जाना जारी रखें।",
+        "continueWithAutomatic": "जारी रखें, जब तक Okou जाँचता है कि यह MCP सर्वर कैसे प्रमाणित करता है।",
         "description": "आपका रहस्य आराम से एन्क्रिप्ट किया गया है और फ़ायरवॉल द्वारा आउटबाउंड अनुरोधों में इंजेक्ट किया गया है। यह कभी भी पर्यावरण चर के रूप में एजेंट के सामने उजागर नहीं होता है।",
         "save": "सहेजें",
         "saving": "सहेजा जा रहा है...",
@@ -2684,9 +2697,12 @@
         "authorizationParameters": "प्राधिकरण पैरामीटर",
         "authorizationParametersDescription": "केवल वे पैरामीटर जोड़ें जिनकी आपके प्रोवाइडर को आवश्यकता है।",
         "authorizationUrl": "प्राधिकरण URL",
+        "automatic": "स्वचालित",
+        "automaticDescription": "Okou को यह पता लगाने दें कि यह MCP सर्वर बिना प्रमाणीकरण के चलता है या OAuth का उपयोग करता है।",
         "clientId": "ग्राहक ID",
         "clientSecret": "ग्राहक रहस्य",
         "connectorType": "कनेक्टर प्रकार",
+        "customOauthApp": "कस्टम OAuth ऐप",
         "displayName": "प्रदर्शित होने वाला नाम",
         "headerName": "शीर्षलेख नाम",
         "headerTemplate": "हेडर टेम्पलेट",
@@ -2713,10 +2729,12 @@
         },
         "prefixes": "उपसर्गों",
         "prefixesHint": "(प्रति पंक्ति एक, केवल https)",
+        "recommended": "(अनुशंसित)",
         "redirectCopy": "रीडायरेक्ट URL कॉपी करें",
         "redirectHint": "(इस URL को प्रोवाइडर के OAuth ऐप्लिकेशन में रजिस्टर करें। पहले से रजिस्टर किया गया VM0 या Okou रीडायरेक्ट URL भी बनाए रखें।)",
         "redirectUrl": "URL को पुनर्निर्देशित करें",
         "removeApiAuthentication": "API प्रमाणीकरण हटाएँ",
+        "removeAutomatic": "स्वचालित प्रमाणीकरण हटाएँ",
         "removeNoAuthentication": "“कोई प्रमाणीकरण नहीं” हटाएँ",
         "removeOauth": "OAuth 2.0 हटाएँ",
         "scopes": "स्कोप्स",
@@ -4805,12 +4823,16 @@
       },
       "description": "रोलआउट चरण के अनुसार फ़ीचर स्विच देखें।",
       "documentTitle": "प्रयोगशाला",
+      "filters": {
+        "all": "सभी"
+      },
       "groups": {
         "alpha": "अल्फ़ा",
         "beta": "बीटा",
         "internal": "आंतरिक",
         "released": "रिलीज़ किया गया"
       },
+      "maintainer": "अनुरक्षक: {{maintainer}}",
       "title": "प्रयोगशाला"
     },
     "models": {

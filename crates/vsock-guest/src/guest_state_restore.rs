@@ -25,7 +25,6 @@ use crate::worker_ownership::{
 };
 use crate::writer::GuestWriter;
 
-const PRODUCTION_PROGRAM: &str = "/sbin/guest-reseed";
 const THREAD_WORKER: &str = "vsock-guest-state-restore";
 const THREAD_STDIN: &str = "vsock-guest-state-stdin";
 const THREAD_STDERR: &str = "vsock-guest-state-stderr";
@@ -48,7 +47,7 @@ impl GuestStateRestoreProgram {
 
     fn path(&self) -> &Path {
         match self {
-            Self::Production => Path::new(PRODUCTION_PROGRAM),
+            Self::Production => Path::new(guest_contracts::guest_binary::RESEED_PATH),
             Self::Test(path) => path,
         }
     }
