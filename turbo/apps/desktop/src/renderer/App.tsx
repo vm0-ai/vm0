@@ -15,7 +15,7 @@ import {
   hasDesktopDeveloperToolsBridge,
   setupComputerUseBridge$,
 } from "./computer-use-state";
-import { Panel, ZeroFace } from "./components";
+import { Panel, OkouFace } from "./components";
 import { ReadyExperience } from "./hero";
 import { currentDesktopIdentity } from "./desktop-identity";
 import {
@@ -52,7 +52,7 @@ function UnsupportedPanel({ platform }: { readonly platform: string }) {
 function StartupLoadingScreen() {
   return (
     <section className="startup-loading" aria-live="polite">
-      <ZeroFace className="zero-face-init" size={92} />
+      <OkouFace className="okou-face-init" size={92} />
       <div className="loading-dots" aria-hidden="true">
         <span />
         <span />

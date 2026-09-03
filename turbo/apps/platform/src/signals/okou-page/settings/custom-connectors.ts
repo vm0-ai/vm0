@@ -41,7 +41,11 @@ import { resetConnectorAccountDialogs$ } from "./connector-account-dialogs.ts";
 const internalReload$ = state(0);
 const internalAuthorizedAgentsReload$ = state(0);
 
-export type CustomConnectorAuthMethodType = "none" | "api" | "oauth2";
+export type CustomConnectorAuthMethodType =
+  | "none"
+  | "api"
+  | "automatic"
+  | "oauth2";
 
 export const customConnectorAuthorizationReloadVersion$ = computed((get) => {
   return get(internalAuthorizedAgentsReload$);
@@ -561,7 +565,7 @@ async function customConnectorAccountMutationCompleted(
   );
 }
 
-interface CustomConnectorOAuthTargetArgs {
+interface CustomConnectorAuthorizationTargetArgs {
   readonly id: string;
   readonly authorizationTarget: CustomConnectorAuthorizationTarget;
   readonly account?: ConnectorAccountMutationIntent;
@@ -607,7 +611,7 @@ async function customConnectorOAuthCompletion(
   args: {
     readonly createClient: ApiClientFactory;
     readonly connector: CustomConnectorResponse | undefined;
-    readonly target: CustomConnectorOAuthTargetArgs;
+    readonly target: CustomConnectorAuthorizationTargetArgs;
     readonly expectedConnectionId: string | null;
     readonly initialAccountVersion: ConnectorAccountMutationVersion | undefined;
     readonly initialDefaultUpdatedAt: string | null | undefined;
@@ -683,10 +687,10 @@ const authorizeCompletedCustomConnectorTarget$ = command(
   },
 );
 
-const connectCustomConnectorOAuth2ForTarget$ = command(
+const connectCustomConnectorAuthorizationForTarget$ = command(
   async (
     { get, set },
-    args: CustomConnectorOAuthTargetArgs,
+    args: CustomConnectorAuthorizationTargetArgs,
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
     const authWindow = window.open(
@@ -702,7 +706,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     let initialAccountVersion: ConnectorAccountMutationVersion | undefined;
     let initialDefaultUpdatedAt: string | null | undefined;
     let expectedConnectionId: string | null = null;
-    await withCleanup(
+    const startResult = await withCleanup(
       (async () => {
         const createClient = get(apiClient$);
         if (args.useDefaultConnectorProjection) {
@@ -733,14 +737,13 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
           [200],
         );
         signal.throwIfAborted();
-        if (result.body.result !== "authorization") {
-          throw new Error(
-            "The current connector flow expected OAuth authorization",
-          );
+        if (result.body.result === "connected") {
+          return result.body;
         }
         expectedConnectionId = result.body.connectionId ?? null;
         authWindow.location.href = result.body.authorizationUrl;
         navigated = true;
+        return result.body;
       })(),
       () => {
         if (!navigated) {
@@ -749,6 +752,23 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       },
     );
     signal.throwIfAborted();
+    if (startResult.result === "connected") {
+      set(bumpReload$);
+      const targetAuthorized = await set(
+        authorizeCompletedCustomConnectorTarget$,
+        {
+          connector: startResult.connector,
+          target: args.authorizationTarget,
+          authorizeTarget: args.authorizeTarget !== false,
+        },
+        signal,
+      );
+      return {
+        connected: startResult.connector.connected,
+        targetAuthorized,
+        connectionId: startResult.connectedAccountId,
+      };
+    }
     await setLoop(
       () => {
         return authWindow.closed;
@@ -798,7 +818,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
   },
 );
 
-export const connectCustomConnectorOAuth2$ = command(
+export const connectCustomConnectorAuthorization$ = command(
   async (
     { set },
     args: {
@@ -809,7 +829,7 @@ export const connectCustomConnectorOAuth2$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
     return await set(
-      connectCustomConnectorOAuth2ForTarget$,
+      connectCustomConnectorAuthorizationForTarget$,
       {
         ...args,
         authorizationTarget: { kind: "visible-agents" },
@@ -819,7 +839,7 @@ export const connectCustomConnectorOAuth2$ = command(
   },
 );
 
-export const connectCustomConnectorOAuth2ForAgent$ = command(
+export const connectCustomConnectorAuthorizationForAgent$ = command(
   async (
     { set },
     args: {
@@ -831,7 +851,7 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
     return await set(
-      connectCustomConnectorOAuth2ForTarget$,
+      connectCustomConnectorAuthorizationForTarget$,
       {
         id: args.id,
         ...(args.account ? { account: args.account } : {}),
@@ -845,7 +865,7 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
   },
 );
 
-export const connectCustomConnectorAccountOAuth2$ = command(
+export const connectCustomConnectorAccountAuthorization$ = command(
   async (
     { set },
     args: {
@@ -855,7 +875,7 @@ export const connectCustomConnectorAccountOAuth2$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorConnectionResult> => {
     return await set(
-      connectCustomConnectorOAuth2ForTarget$,
+      connectCustomConnectorAuthorizationForTarget$,
       {
         ...args,
         authorizationTarget: { kind: "visible-agents" },
@@ -1046,9 +1066,11 @@ function createFormFromConnector(
     authMethodTypes: [
       connector.authMode === "none"
         ? "none"
-        : connector.authMode === "oauth"
-          ? "oauth2"
-          : "api",
+        : connector.authMode === "automatic"
+          ? "automatic"
+          : connector.authMode === "oauth"
+            ? "oauth2"
+            : "api",
     ],
     ...oauthCreateFormFromConnector(connector),
   };
@@ -1072,7 +1094,13 @@ export const setCustomConnectorCreateField$ = command(
 export const setCustomConnectorCreateKind$ = command(
   ({ get, set }, kind: CustomConnectorResponse["kind"]) => {
     const form = get(internalCreateForm$);
-    set(internalCreateForm$, { ...form, kind });
+    const authMethodTypes =
+      kind === "mcp" && form.authMethodTypes.length === 0
+        ? (["automatic"] as const)
+        : kind === "http" && form.authMethodTypes.includes("automatic")
+          ? []
+          : form.authMethodTypes;
+    set(internalCreateForm$, { ...form, kind, authMethodTypes });
   },
 );
 export const addCustomConnectorAuthMethod$ = command(

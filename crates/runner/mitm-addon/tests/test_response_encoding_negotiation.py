@@ -20,6 +20,8 @@ _X_FIREWALL_NAME = "x"
 _X_HOST = "api.x.com"
 _X_PATH = "/2/users/by"
 _ACCEPT_ENCODING = "Accept-Encoding"
+_WEBSOCKET_HEADER_WORK_LIMIT = 8 * 1024
+_WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
@@ -768,6 +770,27 @@ async def test_header_phase_websocket_auth_fallback_restores_upgrade_marker(
             ),
             id="repeated-upgrade-header",
         ),
+        pytest.param(
+            (
+                ("Connection", "Upgrade," + "x" * 10_000),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", _WEBSOCKET_KEY),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="connection-token-before-oversized-suffix",
+        ),
+        pytest.param(
+            (
+                ("Connection", "Upgrade"),
+                ("Upgrade", "websocket"),
+                (
+                    "Sec-WebSocket-Key",
+                    " " * (_WEBSOCKET_HEADER_WORK_LIMIT - len(_WEBSOCKET_KEY)) + _WEBSOCKET_KEY,
+                ),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="websocket-key-at-raw-work-boundary",
+        ),
     ],
 )
 async def test_model_provider_websocket_upgrade_injects_auth_and_keeps_accept_encoding(
@@ -966,6 +989,27 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
             ),
             id="unsupported-websocket-version",
         ),
+        pytest.param(
+            (
+                ("Connection", "Upgrade"),
+                ("Upgrade", "x" * (_WEBSOCKET_HEADER_WORK_LIMIT + 1)),
+                ("Sec-WebSocket-Key", _WEBSOCKET_KEY),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="upgrade-token-work-limit",
+        ),
+        pytest.param(
+            (
+                ("Connection", "Upgrade"),
+                ("Upgrade", "websocket"),
+                (
+                    "Sec-WebSocket-Key",
+                    " " * (_WEBSOCKET_HEADER_WORK_LIMIT + 1) + _WEBSOCKET_KEY,
+                ),
+                ("Sec-WebSocket-Version", "13"),
+            ),
+            id="websocket-key-raw-work-limit",
+        ),
     ],
 )
 async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
@@ -1061,6 +1105,15 @@ async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding
         await mitm_addon.request(flow)
 
     assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, br"
+
+
+def test_oversized_websocket_key_is_rejected_before_base64_decode(monkeypatch) -> None:
+    def fail_decode(_value: str, *, validate: bool) -> bytes:
+        raise AssertionError(f"oversized key reached Base64 decoder with validate={validate}")
+
+    monkeypatch.setattr(mitm_addon.base64, "b64decode", fail_decode)
+
+    assert not mitm_addon._is_valid_websocket_key("A" * 25)
 
 
 async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(

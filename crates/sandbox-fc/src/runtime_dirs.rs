@@ -1,3 +1,32 @@
+//! Runtime socket namespace helpers for Firecracker sandboxes.
+//!
+//! Runtime sockets are arranged below [`RuntimePaths::sock_base`] by socket
+//! ID:
+//!
+//! ```text
+//! <sock-base>/                 0711
+//! └── <sock-id>/               0711
+//!     ├── api.sock             0600 when normalized
+//!     ├── control.sock         0600 when normalized
+//!     └── vsock/               0700
+//!         └── vsock.sock       (guest vsock bind target)
+//! ```
+//!
+//! The runtime socket base and per-ID directory are traversable (`0711`) so
+//! host tools can reach known socket paths without being able to list their
+//! contents. The `vsock` directory is owner-only (`0700`) because it contains
+//! guest vsock bind targets. Socket nodes created under a traversable directory
+//! are explicitly normalized to owner-only (`0600`) with
+//! [`set_private_runtime_socket_mode`]; sockets under the private `vsock`
+//! directory are protected by that directory boundary.
+//!
+//! Directory helpers accept only an existing directory owned by root or the
+//! effective UID, reject symlinks, and require effective write and traverse
+//! access. They may create a missing directory or change the mode of an
+//! existing trusted directory. Root ownership passes the owner check but does
+//! not guarantee that the current process can perform a required mode change;
+//! such a failure is returned to the caller.
+
 use std::fs::DirBuilder;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
@@ -16,6 +45,22 @@ pub(crate) const TRAVERSABLE_RUNTIME_DIR_MODE: u32 = 0o711;
 pub(crate) const PRIVATE_RUNTIME_SOCKET_MODE: u32 = 0o600;
 const MAX_UNIX_SOCKET_PATH_BYTES: usize = 107;
 
+/// Validate a socket ID and return its per-ID runtime socket directory.
+///
+/// `sock_id` must be one non-empty ASCII path segment containing only ASCII
+/// letters, digits, `.`, `-`, or `_`. The returned path is
+/// `runtime_paths.sock_base()/<sock_id>`, where [`RuntimePaths::sock_base`]
+/// supplies the base. This helper only derives and validates the path; it does
+/// not create, inspect, or modify filesystem entries. It also checks that the
+/// corresponding [`SockPaths::vsock`] path is no longer than 107 bytes, the
+/// maximum usable length of a Unix socket path. Because it does not inspect
+/// filesystem entries, it does not apply the directory ownership or access
+/// checks used by the preparation helpers.
+///
+/// # Errors
+///
+/// Returns [`io::ErrorKind::InvalidInput`] for an empty, nested, or otherwise
+/// invalid ID, or when the derived vsock path is too long.
 pub(crate) fn checked_runtime_sock_dir(
     runtime_paths: &RuntimePaths,
     sock_id: &str,
@@ -27,23 +72,109 @@ pub(crate) fn checked_runtime_sock_dir(
     Ok(sock_dir)
 }
 
+/// Ensure that `path` is a trusted private runtime directory with mode `0700`.
+///
+/// A missing directory is created with this mode; the parent directory is not
+/// created by this helper. An existing path must be a non-symlink directory
+/// owned by root or the effective UID. If its mode differs, the helper changes
+/// it to exactly `0700`, then verifies effective write and traverse access.
+/// Therefore, this is a mutating operation even when `path` already exists.
+/// Root ownership satisfies the owner check but does not guarantee that the
+/// current process can perform the mode change.
+///
+/// # Errors
+///
+/// Returns the underlying filesystem error, with operation context, when the
+/// directory cannot be created, inspected, normalized, or accessed. It also
+/// returns an error for symlinks, non-directories, or owners other than root
+/// and the effective UID.
 pub(crate) fn ensure_private_runtime_dir(path: &Path) -> io::Result<()> {
     ensure_runtime_dir_with_mode(path, PRIVATE_RUNTIME_DIR_MODE)
 }
 
+/// Ensure that `path` is a trusted traversable runtime directory with mode `0711`.
+///
+/// A missing directory is created with this mode; the parent directory is not
+/// created by this helper. An existing path must be a non-symlink directory
+/// owned by root or the effective UID. If its mode differs, the helper changes
+/// it to exactly `0711`, then verifies effective write and traverse access.
+/// Therefore, this is a mutating operation even when `path` already exists.
+/// Root ownership satisfies the owner check but does not guarantee that the
+/// current process can perform the mode change.
+///
+/// # Errors
+///
+/// Returns the underlying filesystem error, with operation context, when the
+/// directory cannot be created, inspected, normalized, or accessed. It also
+/// returns an error for symlinks, non-directories, or owners other than root
+/// and the effective UID.
 pub(crate) fn ensure_traversable_runtime_dir(path: &Path) -> io::Result<()> {
     ensure_runtime_dir_with_mode(path, TRAVERSABLE_RUNTIME_DIR_MODE)
 }
 
+/// Prepare a per-sandbox socket directory and its private vsock subdirectory.
+///
+/// `sock_paths.dir()` is created or normalized as a trusted `0711` directory,
+/// and `sock_paths.vsock_dir()` is created or normalized as a trusted `0700`
+/// directory. Both directories must be owned by root or the effective UID and
+/// must be writable and traversable by the effective user. Existing trusted
+/// directories may therefore be chmodded. This helper prepares directories
+/// only; it does not create socket nodes or set their modes. Callers must
+/// normalize an existing socket node separately with
+/// [`set_private_runtime_socket_mode`].
+///
+/// # Errors
+///
+/// Returns an error from either directory operation, including for a missing
+/// parent, symlink, non-directory, untrusted owner, failed mode change, or
+/// missing effective write/traverse access.
 pub(crate) fn prepare_runtime_socket_dir(sock_paths: &SockPaths) -> io::Result<()> {
     ensure_traversable_runtime_dir(sock_paths.dir())?;
     ensure_private_runtime_dir(&sock_paths.vsock_dir())
 }
 
+/// Validate and prepare a private snapshot vsock directory under the default
+/// runtime socket base.
+///
+/// `vsock_bind_dir` must have the lexical shape
+/// `<sock-base>/<sock-id>/vsock`, where `<sock-base>` is supplied by
+/// [`RuntimePaths::sock_base`] and `sock-id` follows the same single-segment
+/// ASCII rule as [`checked_runtime_sock_dir`]. The
+/// corresponding `vsock/vsock.sock` path must fit within the 107-byte Unix
+/// socket path limit. The socket base and per-ID directory are created or
+/// normalized to `0711`; the `vsock` directory is created or normalized to
+/// `0700`. Each checked directory must be a non-symlink directory owned by
+/// root or the effective UID and must be writable and traversable by the
+/// effective user.
+///
+/// This helper uses [`RuntimePaths::new`] and therefore validates against the
+/// default runtime socket base rather than an arbitrary base supplied by the
+/// caller. Existing trusted directories may be chmodded, and root ownership
+/// does not guarantee that a required chmod will succeed.
+///
+/// # Errors
+///
+/// Returns [`io::ErrorKind::InvalidInput`] when the path is outside the socket
+/// base, does not have the required shape, contains an invalid ID, or produces
+/// an overlong vsock path. Filesystem, ownership, mode, or access failures are
+/// returned for the directory preparation steps.
 pub(crate) fn prepare_private_runtime_vsock_dir(vsock_bind_dir: &Path) -> io::Result<()> {
     prepare_private_vsock_dir_under(&RuntimePaths::new().sock_base(), vsock_bind_dir)
 }
 
+/// Set an existing runtime socket node to the owner-only mode `0600`.
+///
+/// This helper performs only a permission update. It does not create the path,
+/// check that it is a socket, validate its parent directory, validate its
+/// socket ID, or apply the trusted-owner rule used by the directory helpers.
+/// Callers are responsible for supplying a path that has already been created
+/// in the appropriate runtime socket directory.
+///
+/// # Errors
+///
+/// Returns the underlying permission-update error, with path and target mode
+/// context, when the path is missing or the current process cannot change its
+/// permissions.
 pub(crate) fn set_private_runtime_socket_mode(path: &Path) -> io::Result<()> {
     std::fs::set_permissions(
         path,

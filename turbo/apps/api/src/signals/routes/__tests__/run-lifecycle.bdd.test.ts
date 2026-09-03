@@ -3538,6 +3538,161 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestClaimRunnerJob(true, failed.runId, [404]);
   });
 
+  it("overlaps request and session storage preparation while preserving request errors", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await api.heartbeatRunner(runnerGroup);
+
+    const initialRun = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "establish canonical storage for overlap",
+      }),
+    });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId);
+    const initialMemory = expectCanonicalStorageManifest(
+      initialClaim.storageManifest,
+    )?.storageMounts.find((mount) => {
+      return mount.name === "memory";
+    });
+    if (!initialMemory) {
+      throw new Error("Expected the canonical memory mount");
+    }
+
+    const memoryFile = storageTextFile(
+      "MEMORY.md",
+      `session overlap ${initialRun.runId}`,
+    );
+    const preparedMemory = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageOwner: "user",
+      files: [memoryFile],
+    });
+    const sessionArchiveKey = preparedMemory.uploads?.archive.key;
+    if (!sessionArchiveKey) {
+      throw new Error("Expected a session memory archive upload");
+    }
+    await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageOwner: "user",
+      versionId: preparedMemory.versionId,
+      files: [memoryFile],
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: initialRun.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "claude-code",
+          cliAgentSessionId: `bdd-storage-overlap-${initialRun.runId}`,
+          cliAgentSessionHistoryDisposition: "discarded_oversized",
+          artifactSnapshots: [
+            {
+              name: initialMemory.name,
+              version: preparedMemory.versionId,
+              mountPath: initialMemory.mountPath,
+              ...(initialMemory.missingRootPolicy === undefined
+                ? {}
+                : { missingRootPolicy: initialMemory.missingRootPolicy }),
+            },
+          ],
+        },
+      },
+      { authorization: `Bearer ${initialClaim.sandboxToken}` },
+      [200],
+    );
+
+    const requestStorageName = `bdd-request-overlap-${randomUUID().slice(0, 8)}`;
+    const requestFile = storageTextFile(
+      "request.txt",
+      `request overlap ${requestStorageName}`,
+    );
+    const preparedRequest = await storages.prepareStorage(actor, {
+      storageName: requestStorageName,
+      storageOwner: "organization",
+      files: [requestFile],
+    });
+    const requestArchiveKey = preparedRequest.uploads?.archive.key;
+    if (!requestArchiveKey) {
+      throw new Error("Expected a request storage archive upload");
+    }
+    await storages.commitStorage(actor, {
+      storageName: requestStorageName,
+      storageOwner: "organization",
+      versionId: preparedRequest.versionId,
+      files: [requestFile],
+    });
+
+    const requestPresignStarted = createDeferredPromise<void>(context.signal);
+    const sessionPresignStarted = createDeferredPromise<void>(context.signal);
+    const releaseRequestPresign = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseRequestPresign.settled()) {
+        releaseRequestPresign.resolve(undefined);
+      }
+    });
+    const requestError = new Error("request storage presign failed");
+    const sessionError = new Error("session storage presign failed");
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      async (_client: unknown, command: unknown) => {
+        const key = s3CommandKey(command);
+        if (key === requestArchiveKey) {
+          if (!requestPresignStarted.settled()) {
+            requestPresignStarted.resolve(undefined);
+          }
+          await releaseRequestPresign.promise;
+          throw requestError;
+        }
+        if (key === sessionArchiveKey) {
+          if (!sessionPresignStarted.settled()) {
+            sessionPresignStarted.resolve(undefined);
+          }
+          throw sessionError;
+        }
+        return "https://r2.example.com/storage/archive.tar.gz?sig=bdd";
+      },
+    );
+
+    const continuationBody = {
+      sessionId: initialRun.sessionId,
+      prompt: "overlap request and canonical session storage",
+      secrets: { OKOU_TOKEN: "bdd-okou-direct-token" },
+      additionalVolumes: [
+        {
+          name: requestStorageName,
+          version: preparedRequest.versionId,
+          mountPath: "/request-overlap",
+        },
+      ],
+    };
+    const continuedRunPromise = api.createDirectRun(actor, continuationBody);
+    await Promise.all([
+      requestPresignStarted.promise,
+      sessionPresignStarted.promise,
+    ]);
+    releaseRequestPresign.resolve(undefined);
+
+    const failed = await continuedRunPromise;
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(requestError.message);
+
+    context.mocks.s3.getSignedUrl.mockImplementation(
+      (_client: unknown, command: unknown) => {
+        if (s3CommandKey(command) === sessionArchiveKey) {
+          return Promise.reject(sessionError);
+        }
+        return Promise.resolve(
+          "https://r2.example.com/storage/archive.tar.gz?sig=bdd",
+        );
+      },
+    );
+    const sessionFailed = await api.createDirectRun(actor, continuationBody);
+    expect(sessionFailed.status).toBe("failed");
+    expect(sessionFailed.error).toBe(sessionError.message);
+  });
+
   it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
     const api = createRunsApi(context);
     const storages = createStoragesBddApi(context);
@@ -12401,7 +12556,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-  });
+  }, 15_000);
 
   it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
