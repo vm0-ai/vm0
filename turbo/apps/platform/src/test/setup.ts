@@ -66,6 +66,15 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+if (typeof Element.prototype.getAnimations !== "function") {
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => {
+      return [];
+    },
+  });
+}
+
 type HappyDomAttributeCallback = (
   this: HTMLIFrameElement,
   attribute: Attr,
