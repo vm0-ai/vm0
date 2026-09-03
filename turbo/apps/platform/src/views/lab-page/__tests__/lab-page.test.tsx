@@ -86,10 +86,10 @@ describe("lab page", () => {
       expect(beta.queryByText(key)).not.toBeInTheDocument();
       expect(alpha.queryByText(key)).not.toBeInTheDocument();
     }
+    expect(beta.getByText(FeatureSwitchKey.IntroVideo)).toBeInTheDocument();
     expect(
-      beta.queryByText(FeatureSwitchKey.IntroVideo),
-    ).not.toBeInTheDocument();
-    expect(alpha.getByText(FeatureSwitchKey.IntroVideo)).toBeInTheDocument();
+      beta.getByText(FeatureSwitchKey.DesktopScreenRecording),
+    ).toBeInTheDocument();
     expect(
       alpha.getByText(FeatureSwitchKey.AhrefsConnector),
     ).toBeInTheDocument();
