@@ -325,6 +325,18 @@ describe("chat event snapshot read endpoints", () => {
       notFoundThreads: [strangerThreadId, missingThreadId],
     });
 
+    const aheadCursor = await accept(
+      eventsClient().catchUp({
+        headers: authenticate(owner),
+        body: [[secondThreadId, secondCursor.seqId + 1]],
+      }),
+      [200],
+    );
+    expect(aheadCursor.body).toStrictEqual({
+      events: {},
+      notFoundThreads: [secondThreadId],
+    });
+
     await projectChatEventSearch(firstThreadId);
     await runSnapshotCron([firstThreadId]);
     const head = await readChatEventSnapshotHead(context, firstThreadId);

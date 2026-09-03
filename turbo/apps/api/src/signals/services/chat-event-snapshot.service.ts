@@ -257,48 +257,60 @@ function validatedBatchSnapshotCursor(snapshot: ChatEventBatchSnapshotCursor): {
 
 function resolveBatchContinuations(
   requested: ReadonlyMap<string, number>,
-  ownedThreadIds: ReadonlySet<string>,
+  ownedThreadLastSeqIds: ReadonlyMap<string, number>,
   snapshotsByThreadId: ReadonlyMap<
     string,
     { readonly lastSeqId: number; readonly physicalLastSeqId: number }
   >,
-  physicalCursorThreadIds: ReadonlySet<string>,
 ): {
+  readonly eventThreadIds: readonly string[];
   readonly continuations: readonly ChatEventBatchContinuation[];
   readonly notFoundThreads: readonly string[];
 } {
+  const eventThreadIds: string[] = [];
   const continuations: ChatEventBatchContinuation[] = [];
   const notFoundThreads: string[] = [];
   for (const [threadId, lastSeqId] of requested) {
-    if (!ownedThreadIds.has(threadId)) {
+    const threadLastSeqId = ownedThreadLastSeqIds.get(threadId);
+    if (threadLastSeqId === undefined || lastSeqId > threadLastSeqId) {
       notFoundThreads.push(threadId);
+      continue;
+    }
+    if (lastSeqId === threadLastSeqId) {
+      eventThreadIds.push(threadId);
       continue;
     }
     const snapshot = snapshotsByThreadId.get(threadId);
     if (snapshot?.lastSeqId === lastSeqId) {
-      continuations.push({
-        threadId,
-        lastSeqId: snapshot.physicalLastSeqId,
-      });
+      eventThreadIds.push(threadId);
+      if (snapshot.physicalLastSeqId !== threadLastSeqId) {
+        continuations.push({
+          threadId,
+          lastSeqId: snapshot.physicalLastSeqId,
+        });
+      }
       continue;
     }
     if (
       (lastSeqId === THREAD_START_SEQ_ID && snapshot === undefined) ||
-      (physicalCursorThreadIds.has(threadId) &&
+      (lastSeqId > THREAD_START_SEQ_ID &&
         (snapshot === undefined || lastSeqId > snapshot.physicalLastSeqId))
     ) {
+      eventThreadIds.push(threadId);
       continuations.push({ threadId, lastSeqId });
       continue;
     }
     notFoundThreads.push(threadId);
   }
-  return { continuations, notFoundThreads };
+  return { eventThreadIds, continuations, notFoundThreads };
 }
 
 /**
  * Resolve complete raw-row tails for a batch of per-thread seq cursors.
- * Missing threads and cursors that can no longer be continued are deliberately
+ * Missing threads and cursors covered by the current Snapshot are deliberately
  * indistinguishable so the client follows the same Snapshot rebuild path.
+ * Cursors above that boundary are sequence watermarks, so reserved gaps remain
+ * valid continuation points without a separate physical-row lookup.
  */
 export function catchUpChatThreadEvents(args: {
   readonly cursors: readonly (readonly [string, number])[];
@@ -314,7 +326,10 @@ export function catchUpChatThreadEvents(args: {
     const db = get(db$);
     const threadIds = [...requested.keys()];
     const ownedRows = await db
-      .select({ threadId: chatThreads.id })
+      .select({
+        threadId: chatThreads.id,
+        lastChatEventSeqId: chatThreads.lastChatEventSeqId,
+      })
       .from(chatThreads)
       .innerJoin(agents, eq(agents.id, chatThreads.agentId))
       .where(
@@ -324,14 +339,25 @@ export function catchUpChatThreadEvents(args: {
           eq(agents.orgId, args.orgId),
         ),
       );
-    const ownedThreadIds = new Set(
-      ownedRows.map((row) => {
-        return row.threadId;
+    const ownedThreadLastSeqIds = new Map(
+      ownedRows.map((row): readonly [string, number] => {
+        return [row.threadId, row.lastChatEventSeqId];
       }),
     );
 
+    // Event writes reserve this watermark in the same transaction as their
+    // rows. Unused reservations can only send a thread through the slow path.
+    const laggingThreadIds = [...requested]
+      .filter(([threadId, lastSeqId]) => {
+        const threadLastSeqId = ownedThreadLastSeqIds.get(threadId);
+        return threadLastSeqId !== undefined && lastSeqId < threadLastSeqId;
+      })
+      .map(([threadId]) => {
+        return threadId;
+      });
+
     const snapshots =
-      ownedThreadIds.size === 0
+      laggingThreadIds.length === 0
         ? []
         : await db
             .select({
@@ -343,7 +369,7 @@ export function catchUpChatThreadEvents(args: {
             .from(chatEventSnapshots)
             .where(
               and(
-                inArray(chatEventSnapshots.chatThreadId, [...ownedThreadIds]),
+                inArray(chatEventSnapshots.chatThreadId, laggingThreadIds),
                 eq(
                   chatEventSnapshots.archiveSchemaVersion,
                   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
@@ -356,37 +382,12 @@ export function catchUpChatThreadEvents(args: {
       }),
     );
 
-    const positiveCursors = [...requested].filter(([threadId, lastSeqId]) => {
-      return ownedThreadIds.has(threadId) && lastSeqId > THREAD_START_SEQ_ID;
-    });
-    const physicalCursorRows =
-      positiveCursors.length === 0
-        ? []
-        : await db
-            .select({ threadId: chatEvents.chatThreadId })
-            .from(chatEvents)
-            .where(
-              or(
-                ...positiveCursors.map(([threadId, lastSeqId]) => {
-                  return and(
-                    eq(chatEvents.chatThreadId, threadId),
-                    eq(chatEvents.seqId, lastSeqId),
-                  );
-                }),
-              ),
-            );
-    const physicalCursorThreadIds = new Set(
-      physicalCursorRows.map((row) => {
-        return row.threadId;
-      }),
-    );
-
-    const { continuations, notFoundThreads } = resolveBatchContinuations(
-      requested,
-      ownedThreadIds,
-      snapshotsByThreadId,
-      physicalCursorThreadIds,
-    );
+    const { eventThreadIds, continuations, notFoundThreads } =
+      resolveBatchContinuations(
+        requested,
+        ownedThreadLastSeqIds,
+        snapshotsByThreadId,
+      );
 
     const physicalRows =
       continuations.length === 0
@@ -406,7 +407,7 @@ export function catchUpChatThreadEvents(args: {
             )
             .orderBy(asc(chatEvents.chatThreadId), asc(chatEvents.seqId));
     const events: Record<string, ChatEventRow[]> = Object.fromEntries(
-      continuations.map(({ threadId }) => {
+      eventThreadIds.map((threadId) => {
         return [threadId, []];
       }),
     );
