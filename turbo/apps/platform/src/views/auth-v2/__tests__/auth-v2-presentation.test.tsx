@@ -226,6 +226,8 @@ describe("auth v2 presentation", () => {
     expect(cardLogo).not.toBeNull();
     expect(homeLogo).toHaveAttribute("src", platformOkouWordmarkDarkImg);
     expect(cardLogo).toHaveAttribute("src", platformOkouWordmarkDarkImg);
+    expect(homeLogo).not.toHaveAttribute("crossorigin");
+    expect(cardLogo).not.toHaveAttribute("crossorigin");
 
     await user.click(themeToggle);
 

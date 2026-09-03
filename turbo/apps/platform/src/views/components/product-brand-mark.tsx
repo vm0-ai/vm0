@@ -104,7 +104,6 @@ export function ProductBrandMark({
       alt={decorative ? "" : brandName}
       aria-hidden={decorative || undefined}
       className="block h-auto"
-      crossOrigin="anonymous"
       height={dimensions.height}
       src={
         theme === "dark"
