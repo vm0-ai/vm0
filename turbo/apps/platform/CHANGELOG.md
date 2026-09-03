@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.829.2](https://github.com/vm0-ai/vm0/compare/app-v0.829.1...app-v0.829.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **platform:** restore lab feature switch controls ([#31195](https://github.com/vm0-ai/vm0/issues/31195)) ([28d0924](https://github.com/vm0-ai/vm0/commit/28d092431268d2f2e9369ed14ceb147ab2a6174d))
+
 ## [0.829.1](https://github.com/vm0-ai/vm0/compare/app-v0.829.0...app-v0.829.1) (2026-09-03)
 
 
