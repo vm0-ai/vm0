@@ -9326,21 +9326,16 @@ async function prepareRunRuntimeContext(
 ): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const [connectorCatalogSelectionResult, modelProviderResult] =
-    await Promise.allSettled([
-      connectorCatalogSelectionForRun({
-        ...args,
-        orgId: args.createArgs.orgId,
-      }),
-      resolvePreparedRunModelProvider(args, signal),
-    ]);
-  if (connectorCatalogSelectionResult.status === "rejected") {
-    throw connectorCatalogSelectionResult.reason;
-  }
-  const connectorCatalogSelection = connectorCatalogSelectionResult.value;
-  signal.throwIfAborted();
-  const threadConnectorSelectionIds =
-    await resolvePreparedThreadConnectorSelections(
+  const [
+    connectorCatalogSelectionResult,
+    threadConnectorSelectionIdsResult,
+    modelProviderResult,
+  ] = await Promise.allSettled([
+    connectorCatalogSelectionForRun({
+      ...args,
+      orgId: args.createArgs.orgId,
+    }),
+    resolvePreparedThreadConnectorSelections(
       {
         db: args.db,
         createArgs: args.createArgs,
@@ -9348,7 +9343,18 @@ async function prepareRunRuntimeContext(
         featureSwitchContext,
       },
       signal,
-    );
+    ),
+    resolvePreparedRunModelProvider(args, signal),
+  ]);
+  if (connectorCatalogSelectionResult.status === "rejected") {
+    throw connectorCatalogSelectionResult.reason;
+  }
+  const connectorCatalogSelection = connectorCatalogSelectionResult.value;
+  signal.throwIfAborted();
+  if (threadConnectorSelectionIdsResult.status === "rejected") {
+    throw threadConnectorSelectionIdsResult.reason;
+  }
+  const threadConnectorSelectionIds = threadConnectorSelectionIdsResult.value;
   if (isRouteError(threadConnectorSelectionIds)) {
     return threadConnectorSelectionIds;
   }
