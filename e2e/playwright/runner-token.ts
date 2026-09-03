@@ -8,6 +8,7 @@ import { refreshClerkSessionToken, signInWithClerkEmailCode } from "./lib/auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import { formatErrorReport } from "./lib/error-report";
+import { captureClerkReadiness } from "./lib/clerk-readiness";
 import {
   ensureRunnerOrganizationReady,
   startVideoOnboardingCheckout,
@@ -194,14 +195,15 @@ async function completePaidOnboarding(
   appUrl: string,
   outputDirectory: string,
 ): Promise<void> {
-  await startVideoOnboardingCheckout(page, { appUrl });
   try {
+    await startVideoOnboardingCheckout(page, { appUrl });
     await fillStripeCheckout(page);
+    await waitForPaidOnboardingCompletion(page, { appUrl });
   } catch (error: unknown) {
     try {
-      await captureStripeCheckoutFailure(page, target, outputDirectory);
+      await capturePaidOnboardingFailure(page, target, outputDirectory);
     } catch (diagnosticError: unknown) {
-      console.error("Unable to capture Stripe Checkout diagnostics", {
+      console.error("Unable to capture paid onboarding diagnostics", {
         diagnosticErrorType:
           diagnosticError instanceof Error
             ? diagnosticError.name
@@ -211,10 +213,9 @@ async function completePaidOnboarding(
     }
     throw error;
   }
-  await waitForPaidOnboardingCompletion(page, { appUrl });
 }
 
-async function captureStripeCheckoutFailure(
+async function capturePaidOnboardingFailure(
   page: Page,
   target: RunnerCredentialTarget,
   outputDirectory: string,
@@ -227,7 +228,7 @@ async function captureStripeCheckoutFailure(
   await mkdir(diagnosticDirectory, { recursive: true });
 
   const results = await Promise.allSettled([
-    writeStripeCheckoutState(
+    writePaidOnboardingState(
       page,
       join(diagnosticDirectory, `${fileStem}.json`),
     ),
@@ -237,15 +238,25 @@ async function captureStripeCheckoutFailure(
     }),
   ]);
   if (!results.some((result) => result.status === "fulfilled")) {
-    throw new Error("Unable to capture any Stripe Checkout diagnostic");
+    throw new Error("Unable to capture any paid onboarding diagnostic");
   }
 }
 
-async function writeStripeCheckoutState(
+async function writePaidOnboardingState(
   page: Page,
   path: string,
 ): Promise<void> {
-  const state = await collectStripeCheckoutState(page);
+  const [stripeResult, clerk] = await Promise.all([
+    collectStripeCheckoutState(page).then(
+      (state) => ({ available: true as const, state }),
+      () => ({ available: false as const }),
+    ),
+    captureClerkReadiness(page),
+  ]);
+  const state = {
+    clerk,
+    stripe: stripeResult.available ? stripeResult.state : null,
+  };
   await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
