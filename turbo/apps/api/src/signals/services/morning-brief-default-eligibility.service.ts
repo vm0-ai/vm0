@@ -2,10 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { singleton } from "../../lib/singleton";
 
-// Monday 2026-09-07 09:00 Asia/Shanghai.
-const MORNING_BRIEF_DEFAULT_ACTIVATION_AT: Readonly<Date> = new Date(
-  "2026-09-07T01:00:00.000Z",
-);
+// Default enrollment remains inert until a separately reviewed rollout.
+const MORNING_BRIEF_DEFAULT_ACTIVATION_AT: Date | null = null;
 
 interface ScopedActivationInstant {
   readonly value: Date | null;
