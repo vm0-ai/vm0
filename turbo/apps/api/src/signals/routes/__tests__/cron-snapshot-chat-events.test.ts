@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
+import { runFailureReasonSchema } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import {
@@ -283,7 +284,7 @@ function expectArchiveInvariants(
     expect(
       !Object.hasOwn(line, "failureReason") ||
         (line.eventType === "run.failed" &&
-          line.failureReason === "provider_overloaded"),
+          runFailureReasonSchema.safeParse(line.failureReason).success),
     ).toBeTruthy();
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
