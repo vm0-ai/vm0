@@ -5541,7 +5541,7 @@ describe("connectors page", () => {
       name: "New custom connector",
     });
     click(buttonByText("Add authentication", firstDialog));
-    click(menuItemByText("OAuth 2.0"));
+    click(menuItemByText("Custom OAuth app"));
     await fill(
       within(firstDialog).getByLabelText("Client secret"),
       "stale-client-secret",
@@ -5563,7 +5563,7 @@ describe("connectors page", () => {
       context.store.get(customConnectorCreateForm$).authMethodTypes,
     ).toStrictEqual([]);
     click(buttonByText("Add authentication", reopenedDialog));
-    click(menuItemByText("OAuth 2.0"));
+    click(menuItemByText("Custom OAuth app"));
     expect(within(reopenedDialog).getByLabelText("Client secret")).toHaveValue(
       "",
     );
@@ -5802,6 +5802,358 @@ describe("connectors page", () => {
           storageVersion: connector.storageVersion,
         },
       ]);
+    });
+  });
+
+  it("defaults MCP definitions to Automatic and preserves them on edit", async () => {
+    const createBodies: CreateCustomConnectorBody[] = [];
+    const updateBodies: UpdateCustomConnectorBody[] = [];
+    let connector: CustomConnectorMcpResponse | null = null;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: connector ? [connector] : [] });
+    });
+    context.mocks.api(customConnectorsContract.create, ({ body, respond }) => {
+      if (body.kind !== "mcp" || body.authMode !== "automatic") {
+        throw new Error("Expected an Automatic MCP custom connector create");
+      }
+      createBodies.push(body);
+      connector = mcpCustomConnector({
+        displayName: body.displayName,
+        endpoint: body.endpoint,
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
+        storageVersion: body.storageVersion ?? 1,
+        connected: false,
+        missingRequiredFields: ["automatic"],
+        configuredFieldKeys: [],
+      });
+      return respond(201, connector);
+    });
+    context.mocks.api(
+      customConnectorByIdContract.update,
+      ({ body, respond }) => {
+        if (
+          body.kind !== "mcp" ||
+          body.authMode !== "automatic" ||
+          !connector
+        ) {
+          throw new Error("Expected an Automatic MCP custom connector update");
+        }
+        updateBodies.push(body);
+        connector = customConnectorMcpResponseSchema.parse({
+          ...connector,
+          displayName: body.displayName,
+          endpoint: body.endpoint,
+          authMode: "automatic",
+          oauthSetup: undefined,
+          oauthConfig: undefined,
+          storageVersion: body.storageVersion ?? connector.storageVersion,
+        });
+        return respond(200, connector);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    click(await screen.findByText("New connector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    const connectorType = within(createDialog).getByLabelText("Connector type");
+    click(connectorType);
+    click(await screen.findByRole("option", { name: "MCP · Streamable HTTP" }));
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual(["automatic"]);
+    expect(within(createDialog).getByText("(Recommended)")).toBeVisible();
+    expect(
+      within(createDialog).getByText(
+        "Let Okou discover whether this MCP server uses no authentication or OAuth.",
+      ),
+    ).toBeVisible();
+    expect(
+      within(createDialog).queryByLabelText("Authorization URL"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(createDialog).queryByLabelText("Header name"),
+    ).not.toBeInTheDocument();
+
+    click(connectorType);
+    click(await screen.findByRole("option", { name: "HTTP API" }));
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual([]);
+    click(buttonByText("Add authentication", createDialog));
+    expect(queryMenuItemByText("Automatic")).toBeNull();
+    click(buttonByText("Add authentication", createDialog));
+
+    click(connectorType);
+    click(await screen.findByRole("option", { name: "MCP · Streamable HTTP" }));
+    fireEvent.change(within(createDialog).getByLabelText("Display name"), {
+      target: { value: "Automatic MCP" },
+    });
+    fireEvent.change(within(createDialog).getByLabelText(/MCP endpoint/u), {
+      target: { value: "https://mcp.acme.test/automatic" },
+    });
+    click(buttonByText("Create", createDialog));
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("Automatic MCP")).toBeInTheDocument();
+    });
+    expect(createBodies).toStrictEqual([
+      {
+        kind: "mcp",
+        displayName: "Automatic MCP",
+        endpoint: "https://mcp.acme.test/automatic",
+        transport: "streamable-http",
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
+        storageVersion: 1,
+      },
+    ]);
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual(["automatic"]);
+    expect(within(editDialog).getByText("(Recommended)")).toBeVisible();
+    await fill(
+      within(editDialog).getByLabelText("Display name"),
+      "Automatic MCP v2",
+    );
+    await fill(
+      within(editDialog).getByLabelText(/MCP endpoint/u),
+      "https://mcp.acme.test/automatic-v2",
+    );
+    click(buttonByText("Save", editDialog));
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("Automatic MCP v2")).toBeInTheDocument();
+    });
+    expect(updateBodies).toStrictEqual([
+      {
+        kind: "mcp",
+        displayName: "Automatic MCP v2",
+        endpoint: "https://mcp.acme.test/automatic-v2",
+        transport: "streamable-http",
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
+        storageVersion: 2,
+      },
+    ]);
+  });
+
+  it("connects an Automatic MCP without navigating the provisional popup", async () => {
+    const connectionId = crypto.randomUUID();
+    let connector = mcpCustomConnector({
+      displayName: "Public Automatic MCP",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+      connected: false,
+      missingRequiredFields: ["automatic"],
+      configuredFieldKeys: [],
+    });
+    let account: ConnectorAccountConnection | null = null;
+    let submittedAccount: unknown;
+    const authWindow = createMockAuthWindow();
+    const browserOpen = context.mocks.browser.open(authWindow);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: account
+          ? [
+              {
+                target: account.target,
+                accountCount: 1,
+                attentionCount: 0,
+                defaultConnection: account,
+              },
+            ]
+          : [],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        return params.connectionId === account?.id && account
+          ? respond(200, account)
+          : respond(404, {
+              error: { code: "NOT_FOUND", message: "Account not found" },
+            });
+      },
+    );
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, respond }) => {
+        submittedAccount = body.account;
+        connector = mcpCustomConnector({
+          ...connector,
+          connected: true,
+          connectedAccountId: connectionId,
+          connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+          missingRequiredFields: [],
+        });
+        account = {
+          id: connectionId,
+          target: { kind: "custom", customConnectorId: connector.id },
+          authMethod: "none",
+          displayName: null,
+          isDefault: true,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-09-03T00:00:01.000Z",
+          updatedAt: "2026-09-03T00:00:01.000Z",
+        };
+        return respond(200, {
+          result: "connected",
+          connector,
+          connectedAccountId: connectionId,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Connect Public Automatic MCP"));
+
+    const nameDialog = await screen.findByRole("dialog", {
+      name: "Name your Public Automatic MCP account",
+    });
+    expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
+      "placeholder",
+      `Account #${connectionId.slice(0, 8)}`,
+    );
+    click(buttonByText("Skip", nameDialog));
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Public Automatic MCP")).getByText(
+          `Account #${connectionId.slice(0, 8)}`,
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(submittedAccount).toStrictEqual({ intent: "add" });
+    expect(browserOpen.calls).toStrictEqual([
+      {
+        url: "about:blank",
+        target: "_blank",
+        features: "width=600,height=700",
+      },
+    ]);
+    expect(authWindow.opener).toBeNull();
+    expect(authWindow.location.href).toBe("");
+    expect(authWindow.closed).toBeTruthy();
+  });
+
+  it("continues Automatic MCP OAuth in the existing popup flow", async () => {
+    const connectionId = crypto.randomUUID();
+    let connected = false;
+    const connector = mcpCustomConnector({
+      displayName: "OAuth Automatic MCP",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+      connected: false,
+      missingRequiredFields: ["automatic"],
+      configuredFieldKeys: [],
+    });
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          connected
+            ? {
+                ...connector,
+                connected: true,
+                connectedAccountId: connectionId,
+                connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+                missingRequiredFields: [],
+              }
+            : connector,
+        ],
+      });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, respond }) => {
+        expect(body.account).toStrictEqual({ intent: "single-account" });
+        connected = true;
+        authWindow.close();
+        return respond(200, {
+          result: "authorization",
+          authorizationUrl:
+            "https://oauth.acme.test/authorize?state=automatic-ui",
+          connectionId,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    click(await screen.findByLabelText("Connect OAuth Automatic MCP"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.acme.test/authorize?state=automatic-ui",
+      );
+      expect(
+        within(connectorCardByLabel("OAuth Automatic MCP")).getByText(
+          "Connected",
+        ),
+      ).toBeInTheDocument();
     });
   });
 
@@ -6228,7 +6580,7 @@ describe("connectors page", () => {
       target: { value: "https://mcp.acme.test/oauth" },
     });
     click(buttonByText("Add authentication", createDialog));
-    click(menuItemByText("OAuth 2.0"));
+    click(menuItemByText("Custom OAuth app"));
     fireEvent.change(within(createDialog).getByLabelText("Authorization URL"), {
       target: { value: "https://oauth.acme.test/authorize" },
     });
@@ -6542,7 +6894,7 @@ describe("connectors page", () => {
     expect(within(createDialog).getByLabelText("Fechar")).toBeInTheDocument();
 
     click(buttonByText("Adicionar autenticação", createDialog));
-    click(menuItemByText("OAuth 2.0"));
+    click(menuItemByText("Aplicativo OAuth personalizado"));
 
     expect(
       within(createDialog).getByText(
@@ -6749,7 +7101,7 @@ describe("connectors page", () => {
     expect(buttonByText("Create", createDialog)).toBeDisabled();
 
     click(buttonByText("Add authentication", createDialog));
-    click(menuItemByText("OAuth 2.0"));
+    click(menuItemByText("Custom OAuth app"));
     await waitFor(() => {
       expect(
         context.store.get(customConnectorCreateForm$).authMethodTypes,

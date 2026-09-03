@@ -164,10 +164,6 @@ function getConnectorAllowedLiterals() {
       "locale-neutral persisted field metadata",
     ],
     [
-      "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000OAuth 2.0",
-      "OAuth protocol name",
-    ],
-    [
       "src/views/okou-page/components/settings/custom-connector-create-dialog.tsx\u0000PKCE",
       "OAuth protocol extension name",
     ],

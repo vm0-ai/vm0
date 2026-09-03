@@ -25,8 +25,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,
-  connectCustomConnectorAccountOAuth2$,
-  connectCustomConnectorOAuth2$,
+  connectCustomConnectorAccountAuthorization$,
+  connectCustomConnectorAuthorization$,
   customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
   customConnectors$,
@@ -71,10 +71,10 @@ import {
   openCustomAccountManager$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 
-function connectsDirectlyWithOAuth(
+function connectsDirectlyWithAuthorization(
   connector: CustomConnectorResponse,
 ): boolean {
-  return connector.authMode === "oauth";
+  return connector.authMode === "oauth" || connector.authMode === "automatic";
 }
 
 interface CustomConnectorRowProps {
@@ -319,7 +319,7 @@ function CustomConnectorActions({
   if (!hasActions) {
     return null;
   }
-  const directOAuth = connectsDirectlyWithOAuth(connector);
+  const directAuthorization = connectsDirectlyWithAuthorization(connector);
   return (
     <div className="absolute bottom-2 right-2 z-20">
       <DropdownMenu>
@@ -337,14 +337,14 @@ function CustomConnectorActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
-          {canActivate && !accountManagement && directOAuth ? (
+          {canActivate && !accountManagement && directAuthorization ? (
             <DropdownMenuItem onClick={onConnect}>
               {t(($) => {
                 return $.connectors.actions.connect;
               })}
             </DropdownMenuItem>
           ) : null}
-          {canActivate && !accountManagement && !directOAuth ? (
+          {canActivate && !accountManagement && !directAuthorization ? (
             <DropdownMenuModalItem onModalSelect={onConnect}>
               {t(($) => {
                 return $.connectors.actions.connect;
@@ -541,8 +541,10 @@ function CustomConnectorGrid({
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
-  const connectOAuth2 = useSet(connectCustomConnectorOAuth2$);
-  const connectAccountOAuth2 = useSet(connectCustomConnectorAccountOAuth2$);
+  const connectAuthorization = useSet(connectCustomConnectorAuthorization$);
+  const connectAccountAuthorization = useSet(
+    connectCustomConnectorAccountAuthorization$,
+  );
   const disconnect = useSet(disconnectCustomConnector$);
   const signal = useGet(pageSignal$);
   const openAccountManager = useSet(openCustomAccountManager$);
@@ -568,10 +570,10 @@ function CustomConnectorGrid({
   };
   const handleConnect = (connector: CustomConnectorResponse) => {
     if (connectorAccountsEnabled) {
-      if (connectsDirectlyWithOAuth(connector)) {
+      if (connectsDirectlyWithAuthorization(connector)) {
         detach(
           (async () => {
-            const result = await connectAccountOAuth2(
+            const result = await connectAccountAuthorization(
               { id: connector.id, account: { intent: "add" } },
               signal,
             );
@@ -586,8 +588,11 @@ function CustomConnectorGrid({
       openAccountConnect(connector, { kind: "add" });
       return;
     }
-    if (connectsDirectlyWithOAuth(connector)) {
-      detach(connectOAuth2({ id: connector.id }, signal), Reason.DomCallback);
+    if (connectsDirectlyWithAuthorization(connector)) {
+      detach(
+        connectAuthorization({ id: connector.id }, signal),
+        Reason.DomCallback,
+      );
       return;
     }
     openConnect(connector);
@@ -644,7 +649,9 @@ function CustomAccountDialogs({
   const closeAccountConnect = useSet(closeCustomAccountConnectDialog$);
   const openAccountConnect = useSet(openCustomAccountConnectDialog$);
   const finishAccountConnection = useSet(finishConnectorAccountConnection$);
-  const connectAccountOAuth2 = useSet(connectCustomConnectorAccountOAuth2$);
+  const connectAccountAuthorization = useSet(
+    connectCustomConnectorAccountAuthorization$,
+  );
   const signal = useGet(pageSignal$);
   return (
     <>
@@ -686,10 +693,10 @@ function CustomAccountDialogs({
           onClose={closeAccountManager}
           onAdd={() => {
             closeAccountManager();
-            if (connectsDirectlyWithOAuth(managedAccounts)) {
+            if (connectsDirectlyWithAuthorization(managedAccounts)) {
               detach(
                 (async () => {
-                  const result = await connectAccountOAuth2(
+                  const result = await connectAccountAuthorization(
                     { id: managedAccounts.id, account: { intent: "add" } },
                     signal,
                   );
