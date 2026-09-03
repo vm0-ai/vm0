@@ -56,6 +56,21 @@ fn assert_unique<'a>(label: &str, values: impl IntoIterator<Item = &'a str>) {
     }
 }
 
+fn expected_runtime_destinations() -> BTreeMap<&'static str, &'static str> {
+    use guest_contracts::guest_binary;
+
+    BTreeMap::from([
+        ("guest-agent", guest_binary::AGENT_PATH),
+        ("guest-download", guest_binary::DOWNLOAD_PATH),
+        ("guest-init", guest_binary::INIT_PATH),
+        ("guest-reseed", guest_binary::RESEED_PATH),
+        ("guest-write-file", guest_binary::WRITE_FILE_PATH),
+        ("guest-tool-exec", guest_binary::TOOL_EXEC_PATH),
+        ("guest-mock-claude", guest_binary::MOCK_CLAUDE_PATH),
+        ("guest-mock-codex", guest_binary::MOCK_CODEX_PATH),
+    ])
+}
+
 #[test]
 fn delivered_guests_match_cargo_and_release_contracts() {
     let root = repo_root();
@@ -99,6 +114,12 @@ fn delivered_guests_match_cargo_and_release_contracts() {
             guest.destination
         );
     }
+
+    let inventory_destinations: BTreeMap<_, _> = inventory
+        .iter()
+        .map(|guest| (guest.binary.as_str(), guest.destination.as_str()))
+        .collect();
+    assert_eq!(inventory_destinations, expected_runtime_destinations());
 
     let output = Command::new(env!("CARGO"))
         .args([

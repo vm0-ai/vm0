@@ -18,8 +18,6 @@ use guest_contracts::session_history_identity::SessionHistoryIdentityVerifyReque
 use crate::process_containment::{ExecProcessContainment, ProcessContainmentCleanupMode};
 use crate::shell_command::{SpawnedCommand, spawn_command_in_containment};
 
-pub(crate) const GUEST_AGENT_EXECUTABLE: &str = "/usr/local/bin/guest-agent";
-
 #[derive(Clone)]
 pub(crate) enum GuestAgentProgram {
     Production,
@@ -37,7 +35,7 @@ impl GuestAgentProgram {
 
     fn executable(&self) -> &Path {
         match self {
-            Self::Production => Path::new(GUEST_AGENT_EXECUTABLE),
+            Self::Production => Path::new(guest_contracts::guest_binary::AGENT_PATH),
             Self::Test(path) => path,
         }
     }

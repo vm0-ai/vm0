@@ -4797,12 +4797,16 @@
       },
       "description": "Lihat pengalih fitur berdasarkan tahap peluncuran.",
       "documentTitle": "Lab",
+      "filters": {
+        "all": "Semua"
+      },
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
         "internal": "Internal",
         "released": "Dirilis"
       },
+      "maintainer": "Pemelihara: {{maintainer}}",
       "title": "Lab"
     },
     "models": {

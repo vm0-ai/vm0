@@ -34,9 +34,6 @@ pub const TOOLS_CGROUP_NAME: &str = "tools";
 /// Prefix for one shell invocation cgroup below [`TOOLS_CGROUP_NAME`].
 pub const TOOL_CGROUP_NAME_PREFIX: &str = "tool-";
 
-/// Guest shell executor selected by supported agent runtimes at tool dispatch.
-pub const TOOL_EXEC_PATH: &str = "/usr/local/bin/guest-tool-exec";
-
 /// Cgroup v2 controllers required for workload resource isolation.
 pub const REQUIRED_CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
 
@@ -52,7 +49,7 @@ pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 /// CLI-child `pre_exec` hooks.
 pub const CANONICAL_WORKLOAD_CGROUP_PROCS_ENV: &str = "OKOU_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
-/// Runner-owned endpoint used by [`TOOL_EXEC_PATH`] to request a unique tool
+/// Runner-owned endpoint used by [`crate::guest_binary::TOOL_EXEC_PATH`] to request a unique tool
 /// cgroup before it executes user code.
 ///
 /// `vsock-guest` writes this key to Guest Agent, whose root bootstrap reader

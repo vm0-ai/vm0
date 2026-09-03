@@ -4860,12 +4860,16 @@
       },
       "description": "Visualizza le funzionalità per fase di rilascio.",
       "documentTitle": "Laboratorio",
+      "filters": {
+        "all": "Tutto"
+      },
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
         "internal": "Interne",
         "released": "Rilasciate"
       },
+      "maintainer": "Manutentore: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {

@@ -4797,12 +4797,16 @@
       },
       "description": "ロールアウト段階別に機能スイッチを確認できます。",
       "documentTitle": "研究室",
+      "filters": {
+        "all": "すべて"
+      },
       "groups": {
         "alpha": "アルファ",
         "beta": "ベータ",
         "internal": "内部",
         "released": "リリース済み"
       },
+      "maintainer": "メンテナ: {{maintainer}}",
       "title": "研究室"
     },
     "models": {
