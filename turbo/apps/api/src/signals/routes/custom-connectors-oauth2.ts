@@ -193,7 +193,6 @@ function isCurrentOAuthCustomConnector(
     connector &&
     isCustomConnectorCustomOAuthStateContext(context) &&
     connector.authMode === "oauth" &&
-    connector.oauthSetup === "custom" &&
     connector.oauthConfig &&
     customConnectorOAuthStateMatchesDefinition(context, connector),
   );
@@ -205,7 +204,6 @@ function isCurrentAutomaticOAuthCustomConnector(
 ): connector is CustomConnectorRow & {
   readonly kind: "mcp";
   readonly authMode: "automatic";
-  readonly oauthSetup: null;
   readonly oauthConfig: null;
 } {
   return Boolean(
@@ -213,7 +211,6 @@ function isCurrentAutomaticOAuthCustomConnector(
     isCustomConnectorAutomaticOAuthStateContext(context) &&
     connector.kind === "mcp" &&
     connector.authMode === "automatic" &&
-    connector.oauthSetup === null &&
     connector.oauthConfig === null &&
     customConnectorAutomaticOAuthResourceMatchesEndpoint(
       context.resource,
@@ -353,7 +350,6 @@ async function completeAutomaticOAuthCallback(
     readonly connector: CustomConnectorRow & {
       readonly kind: "mcp";
       readonly authMode: "automatic";
-      readonly oauthSetup: null;
       readonly oauthConfig: null;
     };
     readonly context: NonNullable<
