@@ -656,11 +656,14 @@ describe("zero sidebar", () => {
       expect(
         within(sidebar()).getByText("Existing conversation"),
       ).toBeInTheDocument();
-      return within(sidebar()).getByLabelText("Open chat list menu");
+      const chatThreadsTitle = within(sidebar()).getByText("Chats with Zero");
+      if (!chatThreadsTitle.parentElement) {
+        throw new Error("Chat threads header not found");
+      }
+      return within(chatThreadsTitle.parentElement).getByLabelText("New chat");
     });
 
     click(newChatButton);
-    click(menuItemByText("New chat"));
 
     await waitFor(() => {
       const sidebar = screen.getByTestId("chat-list-column");
@@ -825,7 +828,7 @@ describe("zero sidebar", () => {
       ).toBeInTheDocument();
     });
     openChatListMenu();
-    expect(menuItemByText("New chat")).toBeInTheDocument();
+    expect(menuItemByText("All chats")).toBeInTheDocument();
   });
 
   it("preserves server thread order while creating an optimistic new chat", async () => {
@@ -887,11 +890,14 @@ describe("zero sidebar", () => {
           "C server third",
         ]),
       ).toStrictEqual(["A server first", "B server second", "C server third"]);
-      return within(sidebar()).getByLabelText("Open chat list menu");
+      const chatThreadsTitle = within(sidebar()).getByText("Chats with Zero");
+      if (!chatThreadsTitle.parentElement) {
+        throw new Error("Chat threads header not found");
+      }
+      return within(chatThreadsTitle.parentElement).getByLabelText("New chat");
     });
 
     click(newChatButton);
-    click(menuItemByText("New chat"));
 
     await waitFor(() => {
       expect(
@@ -4160,12 +4166,7 @@ describe("zero sidebar", () => {
         queryAllByRoleFast("menuitem").map((item) => {
           return item.textContent?.replace(/\s+/g, " ").trim();
         }),
-      ).toStrictEqual([
-        "New chat",
-        "Mark all read",
-        "All chats",
-        "Unread only",
-      ]);
+      ).toStrictEqual(["Mark all read", "All chats", "Unread only"]);
     });
     click(menuItemByText("Mark all read"));
 
