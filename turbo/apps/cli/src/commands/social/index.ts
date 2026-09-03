@@ -474,7 +474,7 @@ interface CollectionAccumulator {
   request: SocialKitRequest;
   context: Readonly<Record<string, unknown>>;
   readonly seenRequests: Set<string>;
-  readonly items: unknown[] | undefined;
+  readonly aggregateItems: unknown[] | undefined;
   itemsReturned: number;
   pages: number;
   itemsObserved: number;
@@ -549,7 +549,7 @@ function appendCollectionPage(
   }
   const remaining = requestedItems - accumulator.itemsReturned;
   const returnedItems = page.items.slice(0, remaining);
-  accumulator.items?.push(...returnedItems);
+  accumulator.aggregateItems?.push(...returnedItems);
   accumulator.itemsReturned += returnedItems.length;
   accumulator.pages += 1;
   accumulator.itemsObserved += metadata.itemsReturned;
@@ -580,6 +580,34 @@ function printCollectionPage(
     },
     true,
   );
+}
+
+function collectionOutput(
+  intent: SocialIntent,
+  accumulator: CollectionAccumulator,
+  status: SocialStatus,
+  collection: SocialCollectionOutput,
+  billing: SocialBilling,
+): SocialOutput {
+  const output: SocialOutputBase = {
+    status,
+    operation: intent.operation,
+    platform: intent.platform,
+    target: intent.target,
+    collection,
+    billing,
+    warnings: collectionWarnings(collection),
+  };
+  return accumulator.aggregateItems === undefined
+    ? { kind: "summary", ...output }
+    : {
+        kind: "result",
+        ...output,
+        data: {
+          items: accumulator.aggregateItems,
+          context: accumulator.context,
+        },
+      };
 }
 
 function terminalCollectionOutput(
@@ -620,26 +648,17 @@ function terminalCollectionOutput(
       ? { uncertainty: metadata.uncertainty.reason }
       : {}),
   };
-  const output = {
-    status: requestSatisfied || sourceComplete ? "complete" : "partial",
-    operation: intent.operation,
-    platform: intent.platform,
-    target: intent.target,
+  return collectionOutput(
+    intent,
+    accumulator,
+    requestSatisfied || sourceComplete ? "complete" : "partial",
     collection,
-    billing: {
+    {
       category: response.billingCategory,
       quantity: accumulator.billingQuantity,
       creditsCharged: accumulator.creditsCharged,
     },
-    warnings: collectionWarnings(collection),
-  } as const;
-  return accumulator.items
-    ? {
-        kind: "result",
-        ...output,
-        data: { items: accumulator.items, context: accumulator.context },
-      }
-    : { kind: "summary", ...output };
+  );
 }
 
 function safetyLimitOutput(
@@ -658,27 +677,17 @@ function safetyLimitOutput(
       : { reportedTotal: accumulator.reportedTotal }),
     reason: "safety_page_ceiling",
   };
-  const output = {
-    status:
-      accumulator.itemsReturned >= requestedItems ? "complete" : "partial",
-    operation: intent.operation,
-    platform: intent.platform,
-    target: intent.target,
+  return collectionOutput(
+    intent,
+    accumulator,
+    accumulator.itemsReturned >= requestedItems ? "complete" : "partial",
     collection,
-    billing: {
+    {
       category: "request",
       quantity: accumulator.billingQuantity,
       creditsCharged: accumulator.creditsCharged,
     },
-    warnings: collectionWarnings(collection),
-  } as const;
-  return accumulator.items
-    ? {
-        kind: "result",
-        ...output,
-        data: { items: accumulator.items, context: accumulator.context },
-      }
-    : { kind: "summary", ...output };
+  );
 }
 
 async function retrieveCollection(
@@ -696,7 +705,7 @@ async function retrieveCollection(
     request: intent.request,
     context: {},
     seenRequests: new Set<string>(),
-    items: stream ? undefined : [],
+    aggregateItems: stream ? undefined : [],
     itemsReturned: 0,
     pages: 0,
     itemsObserved: 0,
