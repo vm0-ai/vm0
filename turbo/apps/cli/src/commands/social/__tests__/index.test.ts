@@ -1175,6 +1175,39 @@ describe("okou social command", () => {
     },
   );
 
+  it("fails visibly when a terminal download omits error details", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/social/downloads", () => {
+        return HttpResponse.json(
+          { ...failedDownload("provider_failed"), error: null },
+          { status: 202 },
+        );
+      }),
+    );
+
+    await expect(
+      socialCommand.parseAsync([
+        "node",
+        "okou",
+        "download",
+        "https://youtu.be/example",
+        "--max-duration",
+        "600",
+        "--json",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(errorOutput()) as unknown).toStrictEqual({
+      status: "error",
+      error: {
+        kind: "internal",
+        code: "INTERNAL",
+        message: expect.stringContaining("without error details"),
+        retryable: false,
+      },
+    });
+  });
+
   it("rejects mixed resume and new-download arguments", async () => {
     await expect(
       socialCommand.parseAsync([

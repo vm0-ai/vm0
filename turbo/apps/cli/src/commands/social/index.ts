@@ -153,14 +153,24 @@ class SocialCollectionError extends Error {
 }
 
 class SocialDownloadError extends Error {
-  constructor(readonly response: SocialKitDownloadResponse) {
-    const details = response.error;
-    super(
-      details?.message ??
-        `Okou Social download ${response.downloadId} returned ${response.status}`,
-    );
+  constructor(
+    readonly response: SocialKitDownloadResponse,
+    readonly details: NonNullable<SocialKitDownloadResponse["error"]>,
+  ) {
+    super(details.message);
     this.name = "SocialDownloadError";
   }
+}
+
+function socialDownloadError(
+  response: SocialKitDownloadResponse,
+): SocialDownloadError {
+  if (!response.error) {
+    throw new Error(
+      `Okou Social download ${response.downloadId} returned ${response.status} without error details`,
+    );
+  }
+  return new SocialDownloadError(response, response.error);
 }
 
 function positiveInteger(value: string): number {
@@ -247,10 +257,10 @@ function structuredError(error: unknown): Readonly<Record<string, unknown>> {
       status: "error",
       error: {
         kind: "download_failed",
-        code: root.response.error?.code ?? "DOWNLOAD_FAILED",
+        code: root.details.code,
         message: root.message,
-        retryable: root.response.error?.retryable ?? false,
-        billed: root.response.error?.billed ?? false,
+        retryable: root.details.retryable,
+        billed: root.details.billed,
       },
       download: root.response,
     };
@@ -322,8 +332,8 @@ function humanError(error: unknown): string {
       `Download ID: ${response.downloadId}`,
       `Status: ${response.status}`,
       `Platform: ${response.platform}`,
-      `Retryable: ${response.error?.retryable ? "yes" : "no"}`,
-      `Billed: ${response.error?.billed ? "yes" : "no"}`,
+      `Retryable: ${root.details.retryable ? "yes" : "no"}`,
+      `Billed: ${root.details.billed ? "yes" : "no"}`,
     ];
     if (response.status === "artifact_failed") {
       details.push(`Resume: ${resumeDownloadCommand(response.downloadId)}`);
@@ -869,10 +879,10 @@ async function waitForDownload(
       return current;
     }
     if (current.status === "provider_failed") {
-      throw new SocialDownloadError(current);
+      throw socialDownloadError(current);
     }
     if (current.status === "artifact_failed" && !retryArtifactFailures) {
-      throw new SocialDownloadError(current);
+      throw socialDownloadError(current);
     }
     if (pollImmediately) {
       pollImmediately = false;
