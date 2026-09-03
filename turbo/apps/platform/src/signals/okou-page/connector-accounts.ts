@@ -60,6 +60,7 @@ interface ConnectorAccountPage {
   readonly connections: readonly ConnectorAccountConnection[];
   readonly nextCursor: string | null;
   readonly available: boolean;
+  readonly defaultConnection?: ConnectorAccountConnection | null;
 }
 
 function emptyConnectorAccountPage(): ConnectorAccountPage {
@@ -70,6 +71,7 @@ export interface ConnectorAccountList {
   readonly connections: readonly ConnectorAccountConnection[];
   readonly nextCursor: string | null;
   readonly available: boolean;
+  readonly defaultConnection?: ConnectorAccountConnection | null;
 }
 
 function mergeConnectorAccountPages(
@@ -88,6 +90,9 @@ function mergeConnectorAccountPages(
     // keep "Load more" alive and re-request the page after the first one.
     nextCursor: (pages.at(-1) ?? firstPage).nextCursor,
     available: firstPage.available,
+    ...(firstPage.defaultConnection !== undefined
+      ? { defaultConnection: firstPage.defaultConnection }
+      : {}),
   };
 }
 

@@ -298,6 +298,7 @@ describe("connector account lifecycle routes", () => {
         return !("scopeMismatch" in account);
       }),
     ).toBeTruthy();
+    expect("defaultConnection" in legacyList.body).toBeFalsy();
 
     const enrichedList = await accept(
       accountClient().connections({
@@ -322,6 +323,30 @@ describe("connector account lifecycle routes", () => {
         [currentId, false],
       ]),
     );
+    expect(enrichedList.body.defaultConnection).toMatchObject({
+      id: currentId,
+      scopeMismatch: false,
+    });
+
+    const filteredList = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: {
+          kind: "builtin",
+          connectorSlug: "github",
+          includeScopeMismatch: "true",
+          limit: 100,
+          search: staleId,
+        },
+      }),
+      [200],
+    );
+    expect(filteredList.body.connections).toHaveLength(1);
+    expect(filteredList.body.connections[0]?.id).toBe(staleId);
+    expect(filteredList.body.defaultConnection).toMatchObject({
+      id: currentId,
+      scopeMismatch: false,
+    });
 
     const staleDiff = await accept(
       accountClient().scopeDiff({

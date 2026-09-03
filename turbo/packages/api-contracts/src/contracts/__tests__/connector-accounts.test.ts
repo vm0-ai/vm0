@@ -276,10 +276,12 @@ describe("connector account contracts", () => {
       response.parse({
         connections: [{ ...connection, scopeMismatch: true }],
         nextCursor: null,
+        defaultConnection: { ...connection, scopeMismatch: true },
       }),
     ).toStrictEqual({
       connections: [{ ...connection, scopeMismatch: true }],
       nextCursor: null,
+      defaultConnection: { ...connection, scopeMismatch: true },
     });
   });
 

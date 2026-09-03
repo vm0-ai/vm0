@@ -727,6 +727,7 @@ export async function listConnectorAccountsForTarget(
       readonly kind: "ok";
       readonly connections: readonly ConnectorAccountConnection[];
       readonly nextCursor: string | null;
+      readonly defaultConnection?: ConnectorAccountConnection | null;
     }
   | { readonly kind: "invalid-cursor" }
   | { readonly kind: "missing" }
@@ -766,6 +767,23 @@ export async function listConnectorAccountsForTarget(
     );
     return connection ? [connection] : [];
   });
+  const defaultRow = args.includeScopeMismatch
+    ? (rows.find((row) => {
+        return row.isDefault;
+      }) ??
+      (
+        await loadConnectorAccountRows(db, {
+          ...args,
+          cursor: undefined,
+          limit: 1,
+          search: undefined,
+          defaultOnly: true,
+        })
+      )[0])
+    : undefined;
+  const defaultConnection = defaultRow
+    ? projectConnection(defaultRow, snapshot, now, true)
+    : null;
   if (
     args.target.kind === "custom" &&
     rows.length > 0 &&
@@ -778,6 +796,7 @@ export async function listConnectorAccountsForTarget(
     kind: "ok",
     connections: projected.slice(0, args.limit),
     nextCursor: hasMore ? encodeCursor(rows[args.limit - 1]!) : null,
+    ...(args.includeScopeMismatch ? { defaultConnection } : {}),
   };
 }
 

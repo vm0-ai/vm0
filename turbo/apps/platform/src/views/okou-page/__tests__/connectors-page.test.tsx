@@ -2698,7 +2698,7 @@ describe("connectors page", () => {
   });
 
   it("reviews and reconnects one exact non-default account", async () => {
-    const accounts = mockGitHubConnectorAccounts(2).map((account) => {
+    const accounts = mockGitHubConnectorAccounts(7).map((account) => {
       return {
         ...account,
         connectionStatus: "connected" as const,
@@ -2710,7 +2710,7 @@ describe("connectors page", () => {
       return account.isDefault;
     });
     const personalAccount = accounts.find((account) => {
-      return !account.isDefault;
+      return account.displayName === "Work 1";
     });
     if (!defaultAccount || !personalAccount) {
       throw new Error("Expected default and non-default GitHub accounts");
@@ -2728,7 +2728,7 @@ describe("connectors page", () => {
         summaries: [
           {
             target: defaultAccount.target,
-            accountCount: 2,
+            accountCount: accounts.length,
             attentionCount: 0,
             defaultConnection,
           },
@@ -2753,9 +2753,15 @@ describe("connectors page", () => {
           throw new Error("Expected a built-in connector account query");
         }
         listEnrichmentValues.push(query.includeScopeMismatch ?? null);
+        const search = query.search?.toLowerCase();
         return respond(200, {
-          connections: [defaultAccount, personalAccount],
+          connections: search
+            ? accounts.filter((account) => {
+                return account.displayName?.toLowerCase().includes(search);
+              })
+            : accounts,
           nextCursor: null,
+          defaultConnection: defaultAccount,
         });
       },
     );
@@ -2813,7 +2819,21 @@ describe("connectors page", () => {
       expect(listEnrichmentValues).toContain("true");
       expect(within(personalRow).getByText("Update permissions")).toBeVisible();
     });
-    click(within(personalRow).getByLabelText("Account actions"));
+    fireEvent.input(within(manager).getByPlaceholderText("Find accounts"), {
+      target: { value: personalAccount.displayName },
+    });
+    await waitFor(() => {
+      expect(
+        within(accountRow(manager, "Unnamed account")).getByText(
+          "Update permissions",
+        ),
+      ).toBeVisible();
+    });
+    const filteredPersonalRow = accountRow(
+      manager,
+      personalAccount.displayName ?? "",
+    );
+    click(within(filteredPersonalRow).getByLabelText("Account actions"));
     click(menuItemByText("Review permissions"));
 
     const reviewDialog = await screen.findByRole("dialog", {

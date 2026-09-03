@@ -226,6 +226,9 @@ export const connectorAccountsContract = c.router({
       200: z.object({
         connections: z.array(connectorAccountConnectionSchema),
         nextCursor: z.string().nullable(),
+        defaultConnection: connectorAccountConnectionSchema
+          .nullable()
+          .optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

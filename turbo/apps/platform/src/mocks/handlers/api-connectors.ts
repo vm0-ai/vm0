@@ -549,24 +549,24 @@ export const apiConnectorsHandlers = [
   }),
 
   mockApi(connectorAccountsContract.connections, ({ query, respond }) => {
-    const accounts = mockConnectors
-      .map((connector) => {
-        const account = mockAccountForConnector(connector);
-        const definition = testConnectorCatalogDefinitions.find((candidate) => {
-          return candidate.connectorSlug === connector.slug;
-        });
-        return query.kind === "builtin" &&
-          query.includeScopeMismatch === "true" &&
-          definition
-          ? {
-              ...account,
-              scopeMismatch: !mockConnectorHasRequestedScopes(
-                definition,
-                connector,
-              ),
-            }
-          : account;
-      })
+    const allAccounts = mockConnectors.map((connector) => {
+      const account = mockAccountForConnector(connector);
+      const definition = testConnectorCatalogDefinitions.find((candidate) => {
+        return candidate.connectorSlug === connector.slug;
+      });
+      return query.kind === "builtin" &&
+        query.includeScopeMismatch === "true" &&
+        definition
+        ? {
+            ...account,
+            scopeMismatch: !mockConnectorHasRequestedScopes(
+              definition,
+              connector,
+            ),
+          }
+        : account;
+    });
+    const accounts = allAccounts
       .filter((account) => {
         return mockAccountMatchesTarget(account, query);
       })
@@ -586,9 +586,15 @@ export const apiConnectorsHandlers = [
     const start = query.cursor ? Number(query.cursor) : 0;
     const page = accounts.slice(start, start + query.limit);
     const next = start + page.length;
+    const defaultConnection = allAccounts.find((account) => {
+      return account.isDefault && mockAccountMatchesTarget(account, query);
+    });
     return respond(200, {
       connections: page,
       nextCursor: next < accounts.length ? String(next) : null,
+      ...(query.kind === "builtin" && query.includeScopeMismatch === "true"
+        ? { defaultConnection: defaultConnection ?? null }
+        : {}),
     });
   }),
 

@@ -581,6 +581,9 @@ function enrichedDefaultConnection(
   accounts: ConnectorAccountList,
   summarizedDefault: ConnectorAccountConnection | null,
 ): ConnectorAccountConnection | null {
+  if (accounts.defaultConnection !== undefined) {
+    return accounts.defaultConnection;
+  }
   if (!summarizedDefault) {
     return null;
   }
