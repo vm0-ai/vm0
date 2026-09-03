@@ -1,5 +1,6 @@
 const R2_IMAGE_TRANSFORM_HOSTS = new Set([
   "cdn.vm0.io",
+  "a.okou.io",
   "cdn.okou.io",
   "cdn.vm7.io",
   "static.vm0.io",

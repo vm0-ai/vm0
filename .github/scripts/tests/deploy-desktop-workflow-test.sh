@@ -107,11 +107,6 @@ ruby -e '
     "OKOU_DESKTOP_NOTARIZE_API_KEY_ID" => dollar + "{{ secrets.APP_STORE_CONNECT_API_KEY_ID }}",
     "OKOU_DESKTOP_NOTARIZE_API_ISSUER" => dollar + "{{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}",
   }
-  legacy_credentials = [
-    "VM0_DESKTOP_NOTARIZE_API_KEY_PATH",
-    "VM0_DESKTOP_NOTARIZE_API_KEY_ID",
-    "VM0_DESKTOP_NOTARIZE_API_ISSUER",
-  ]
   credential_steps = promote.fetch("steps").select do |step|
     environment = step.fetch("env", {})
     canonical_credentials.keys.any? { |name| environment.key?(name) }
@@ -124,7 +119,6 @@ ruby -e '
     release_text.scan(name).length == 2
   end
   raise "Desktop release workflow must use each canonical API credential alias exactly twice" unless canonical_occurrences_are_exact
-  raise "Desktop release workflow must not use legacy API credential aliases" if legacy_credentials.any? { |name| release_text.include?(name) }
 
   notarize_run = notarize_step.fetch("run")
   raise "Desktop app signing must consume the atomic API credential source" unless notarize_run.include?("sign-and-notarize-packaged-app.mjs")

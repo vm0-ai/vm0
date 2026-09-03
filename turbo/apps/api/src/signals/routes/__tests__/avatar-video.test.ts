@@ -516,9 +516,7 @@ describe("JoggAI built-in avatar video routes", () => {
     const statusBody = asRecord(await status.json());
     expect(statusBody.status).toBe("completed");
     expect(statusBody.result).toMatchObject({
-      url: expect.stringMatching(
-        /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.mp4$/u,
-      ),
+      url: expect.stringMatching(/^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.mp4$/u),
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
       durationSeconds: 121,

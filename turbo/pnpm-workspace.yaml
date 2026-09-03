@@ -105,6 +105,9 @@ overrides:
   yaml: ">=2.8.3"
   zod: 4.3.6
 
+patchedDependencies:
+  "@earendil-works/pi-ai@0.84.1": patches/@earendil-works__pi-ai@0.84.1.patch
+
 ignoredBuiltDependencies:
   - esbuild
   - sharp

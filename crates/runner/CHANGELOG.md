@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.184.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.12...runner-rs-v0.184.13) (2026-09-03)
+
+
+### Refactoring
+
+* **pi:** add dialect-aware credential runtime contract ([#31493](https://github.com/vm0-ai/vm0/issues/31493)) ([9464fb3](https://github.com/vm0-ai/vm0/commit/9464fb3e99138707f242b1fe789cf0e375602973))
+
 ## [0.184.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.11...runner-rs-v0.184.12) (2026-09-03)
 
 

@@ -6,6 +6,8 @@ import { publicBrandPresentation } from "@okouai/core/public-brand";
 import { safeSync, safeUrlParse } from "../utils";
 
 const OFFICIAL_AUTOMATION_RESULT_EMAIL_HTML_MAX_BYTES = 96 * 1024;
+const OKOU_AUTOMATION_EMAIL_AVATAR_URL =
+  "https://static.okou.io/public/okou-agent-email-avatar-5c997967b68e.png";
 
 const SAFE_LINK_INFO = "official-email-safe-link";
 const UNSAFE_LINK_INFO = "official-email-unsafe-link";
@@ -218,7 +220,10 @@ function officialAutomationResultEmailHtml(
   unsubscribeUrl: string,
 ): string {
   const presentation = publicBrandPresentation(publicBrand);
-  const assistantMark = publicBrand === "okou" ? "O" : "0";
+  const assistantIdentity =
+    publicBrand === "okou"
+      ? `<td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;line-height:0;mso-line-height-rule:exactly"><img src="${OKOU_AUTOMATION_EMAIL_AVATAR_URL}" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none"></td>`
+      : '<td width="32" height="32" align="center" valign="middle" bgcolor="#ed4e01" style="width:32px;height:32px;border-radius:9px;color:#ffffff;font-size:14px;font-weight:700;line-height:32px;mso-line-height-rule:exactly">0</td>';
   const automationArticle = publicBrand === "okou" ? "an" : "a";
   // During the API rollout and rollback window, persisted outbox rows from
   // the previous callback still carry the account-level confirmation URL in
@@ -244,7 +249,7 @@ function officialAutomationResultEmailHtml(
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(
     props.title,
-  )}</title></head><body style="margin:0;padding:0;background-color:#f7f7f5;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.58;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f7f5" style="width:100%;border-collapse:collapse;background-color:#f7f7f5"><tr><td align="center" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:650px;border:1px solid #e5e6e4;border-radius:16px;border-collapse:separate;background-color:#ffffff;text-align:left"><tr><td style="padding:30px 38px 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 18px"><tr><td width="32" height="32" align="center" valign="middle" bgcolor="#ffa500" style="width:32px;height:32px;border-radius:9px;color:#242321;font-size:14px;font-weight:700;line-height:32px;mso-line-height-rule:exactly">${assistantMark}</td><td valign="middle" style="padding-left:10px;color:#303235;font-size:13px;font-weight:600;line-height:1.4">${escapeHtml(
+  )}</title></head><body style="margin:0;padding:0;background-color:#f7f7f5;color:#202124;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.58;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f7f5" style="width:100%;border-collapse:collapse;background-color:#f7f7f5"><tr><td align="center" style="padding:24px 20px 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:650px;border:1px solid #e5e6e4;border-radius:16px;border-collapse:separate;background-color:#ffffff;text-align:left"><tr><td style="padding:30px 38px 24px"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 18px"><tr>${assistantIdentity}<td valign="middle" style="padding-left:10px;color:#303235;font-size:13px;font-weight:600;line-height:1.4">${escapeHtml(
     presentation.assistantName,
   )}</td></tr></table><div style="${BODY_WRAP_STYLE}">${resultBodyHtml}</div><p style="margin:24px 0 22px;font-size:13px;line-height:1.5"><a href="${escapeHtml(
     props.runUrl,

@@ -1,14 +1,14 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reportForceUpgradeRequired } from "../../../signals/force-upgrade.ts";
 import { setLocale$ } from "../../../signals/locale.ts";
@@ -173,19 +173,66 @@ describe("link navigation", () => {
     });
   });
 
-  it("completes a sign-in token route and returns home", async () => {
-    mockAPIs();
+  it("moves a sign-in token route to primary auth before consuming it", async () => {
+    const path = "/sign-in-token?token=clerk-ticket#ticket-state";
+    context.mocks.browser.url(`https://app.okou.ai${path}`);
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {});
 
-    detachedSetupPage({
+    await setupPage({
       context,
-      path: "/sign-in-token?token=clerk-ticket",
+      path,
+      session: null,
+      user: null,
+    });
+
+    expect(replace).toHaveBeenCalledOnce();
+    const replacement = replace.mock.calls[0]?.[0];
+    if (!replacement) {
+      throw new Error("Expected the satellite token route to be replaced");
+    }
+    const redirectUrl = new URL(String(replacement));
+    expect(redirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(redirectUrl.pathname).toBe("/sign-in-token");
+    expect(redirectUrl.searchParams.get("token")).toBe("clerk-ticket");
+    expect(redirectUrl.searchParams.get("redirect_url")).toBe(
+      "https://app.okou.ai",
+    );
+    expect(redirectUrl.hash).toBe("#ticket-state");
+    expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
+  });
+
+  it("completes a sign-in token route at its validated return URL", async () => {
+    mockAPIs();
+    const completionRedirectUrl =
+      "https://app.okou.ai/agents?source=sign-in-token";
+    const path = `/sign-in-token?token=clerk-ticket&redirect_url=${encodeURIComponent(completionRedirectUrl)}`;
+    context.mocks.browser.url(`https://app.vm0.ai${path}`);
+    let decoratedDestination: string | null = null;
+    mockedClerk.setActive.mockImplementationOnce(async (params) => {
+      await params.navigate?.({
+        decorateUrl: (url) => {
+          decoratedDestination = url;
+          return url;
+        },
+        session: {
+          id: "test-created-session-id",
+          status: "active",
+          user: { organizationMemberships: [] },
+        },
+      });
+    });
+
+    await setupPage({
+      context,
+      path,
       user: null,
       session: null,
     });
 
-    await waitFor(() => {
-      expect(pathname()).toBe("/");
-    });
+    expect(decoratedDestination).toBe(completionRedirectUrl);
+    expect(window.location.href).toBe(completionRedirectUrl);
     expect(mockedClerk.clientSignInCreate).toHaveBeenCalledWith({
       strategy: "ticket",
       ticket: "clerk-ticket",

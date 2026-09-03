@@ -236,6 +236,140 @@ pub mod runners {
             pub credential_header: Option<PiModelConfigCredentialHeader>,
         }
 
+        /// Native Pi request dialects supported by this generation.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV2Dialect {
+            /// Public OpenAI Responses dialect.
+            #[serde(rename = "openai-responses")]
+            OpenaiResponses,
+            /// ChatGPT Codex Responses dialect.
+            #[serde(rename = "openai-codex-responses")]
+            OpenaiCodexResponses,
+        }
+
+        /// Native Pi catalog providers supported by this generation.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV2Provider {
+            /// DeepSeek provider.
+            #[serde(rename = "deepseek")]
+            Deepseek,
+            /// OpenAI public API provider.
+            #[serde(rename = "openai")]
+            Openai,
+            /// OpenRouter provider.
+            #[serde(rename = "openrouter")]
+            Openrouter,
+            /// OpenAI Codex subscription provider.
+            #[serde(rename = "openai-codex")]
+            OpenaiCodex,
+        }
+
+        /// Thinking levels supported by Pi sessions.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV2ThinkingLevel {
+            /// Disable model thinking.
+            #[serde(rename = "off")]
+            Off,
+            /// Minimal thinking.
+            #[serde(rename = "minimal")]
+            Minimal,
+            /// Low thinking.
+            #[serde(rename = "low")]
+            Low,
+            /// Medium thinking.
+            #[serde(rename = "medium")]
+            Medium,
+            /// High thinking.
+            #[serde(rename = "high")]
+            High,
+            /// Extra-high thinking.
+            #[serde(rename = "xhigh")]
+            Xhigh,
+            /// Maximum thinking.
+            #[serde(rename = "max")]
+            Max,
+        }
+
+        /// Public Responses request service tiers.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum PiModelConfigV2ServiceTier {
+            /// OpenAI priority service tier.
+            #[serde(rename = "priority")]
+            Priority,
+        }
+
+        /// Non-secret custom gateway credential header policy.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigV2CredentialBindingApiKeyCredentialHeader {
+            /// Request header name.
+            pub name: String,
+            /// Header value template containing the credential placeholder exactly once.
+            pub value_template: String,
+        }
+
+        /// One non-secret execution-edge credential binding.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "kind", rename_all_fields = "camelCase")]
+        pub enum PiModelConfigV2CredentialBinding {
+            /// Public Responses API-key binding.
+            #[serde(rename = "api-key")]
+            ApiKey {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+                /// Optional non-secret custom gateway header policy.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                credential_header: Option<PiModelConfigV2CredentialBindingApiKeyCredentialHeader>,
+            },
+            /// ChatGPT access-token binding.
+            #[serde(rename = "access-token")]
+            AccessToken {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+            /// ChatGPT account-ID binding.
+            #[serde(rename = "account-id")]
+            AccountId {
+                /// Sandbox environment entry containing the value.
+                environment: String,
+                /// API-owned encrypted secret containing the value.
+                secret_name: String,
+            },
+        }
+
+        /// API-owned dialect-aware non-secret Pi model configuration.
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct PiModelConfigV2 {
+            /// Pi model configuration generation.
+            pub schema_version: i64,
+            /// Native Pi request dialect selected by the route.
+            pub dialect: PiModelConfigV2Dialect,
+            /// Transport policy selected by the route.
+            pub transport: String,
+            /// Native Pi catalog provider selected by the route.
+            pub provider: PiModelConfigV2Provider,
+            /// Exact base URL used for model requests.
+            pub base_url: String,
+            /// Exact provider model identifier sent with requests.
+            pub model: String,
+            /// Optional native Pi catalog model used for trusted public Responses metadata.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub catalog_model: Option<String>,
+            /// Explicit Pi thinking level.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub thinking_level: Option<PiModelConfigV2ThinkingLevel>,
+            /// Optional public Responses service tier.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub service_tier: Option<PiModelConfigV2ServiceTier>,
+            /// Bounded non-secret credential bindings materialized only at an execution edge.
+            pub credential_bindings: Vec<PiModelConfigV2CredentialBinding>,
+        }
+
         /// DTOs for durable active-input delivery.
         pub mod active_inputs {
             /// DTOs for recording active-input acceptance receipts.

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
 
-import { resolvePiAgentCredential } from "./credential";
+import {
+  materializePiAgentModelConfig,
+  resolvePiAgentCredential,
+} from "./credential";
 
 describe("Pi agent credential resolution", () => {
   it("keeps native provider credentials in the SDK API-key slot", () => {
@@ -75,4 +79,84 @@ describe("Pi agent credential resolution", () => {
       }).toThrow("Pi credential header policy is invalid");
     },
   );
+
+  it("materializes legacy routes as public Responses", async () => {
+    const config = piModelConfigSchema.parse({
+      provider: "openai",
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-5.6-terra",
+      api: "openai-codex-responses",
+      apiKeyEnv: "OPENAI_API_KEY",
+      credentialSecretName: "OPENAI_API_KEY",
+    });
+
+    await expect(
+      materializePiAgentModelConfig({
+        config,
+        target: "direct",
+        resolveCredential(binding) {
+          expect(binding).toMatchObject({
+            kind: "api-key",
+            environment: "OPENAI_API_KEY",
+            secretName: "OPENAI_API_KEY",
+          });
+          return "legacy-key";
+        },
+      }),
+    ).resolves.toMatchObject({
+      api: "openai-responses",
+      dialect: "openai-responses",
+      apiKey: "legacy-key",
+    });
+  });
+
+  it("materializes both exact subscription values from the same binding set", async () => {
+    const config = piModelConfigSchema.parse({
+      schemaVersion: 2,
+      dialect: "openai-codex-responses",
+      transport: "sse",
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: "gpt-5.6-terra",
+      thinkingLevel: "low",
+      credentialBindings: [
+        {
+          kind: "account-id",
+          environment: "CHATGPT_ACCOUNT_ID",
+          secretName: "CHATGPT_ACCOUNT_ID",
+        },
+        {
+          kind: "access-token",
+          environment: "CHATGPT_ACCESS_TOKEN",
+          secretName: "CHATGPT_ACCESS_TOKEN",
+        },
+      ],
+    });
+    await expect(
+      materializePiAgentModelConfig({
+        config,
+        target: "direct",
+        resolveCredential(binding) {
+          switch (binding.environment) {
+            case "CHATGPT_ACCESS_TOKEN":
+              return "opaque-access-token";
+            case "CHATGPT_ACCOUNT_ID":
+              return "account-id";
+            default:
+              throw new Error("Unexpected subscription binding");
+          }
+        },
+      }),
+    ).resolves.toStrictEqual({
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: "gpt-5.6-terra",
+      thinkingLevel: "low",
+      api: "openai-codex-responses",
+      dialect: "openai-codex-responses",
+      transport: "sse",
+      apiKey: "opaque-access-token",
+      accountId: "account-id",
+    });
+  });
 });
