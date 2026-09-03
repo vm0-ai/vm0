@@ -521,7 +521,6 @@
       "agentLoading": "एजेंट अभी भी लोड हो रहा है",
       "connect": "Google Drive कनेक्ट करें",
       "connectTooltip": "आर्टिफ़ैक्ट अपलोड करने के लिए Google Drive कनेक्ट करें",
-      "failedToOpenConnect": "Google Drive कनेक्शन पृष्ठ खोलने में विफल",
       "noArtifacts": "सिंक करने के लिए कोई आर्टिफ़ैक्ट नहीं",
       "partial_one": "{{count}} फ़ाइल में से {{synced}} को Google Drive में समन्वयित किया गया",
       "partial_other": "{{count}} फ़ाइलों में से {{synced}} को Google Drive में समन्वयित किया गया",
@@ -4805,6 +4804,10 @@
       "title": "डेटा निर्यात करें"
     },
     "lab": {
+      "actions": {
+        "resetAll": "सभी को पुनः तैयार करना",
+        "resetting": "रीसेट किया जा रहा है..."
+      },
       "description": "रोलआउट चरण के अनुसार फ़ीचर स्विच देखें।",
       "documentTitle": "प्रयोगशाला",
       "groups": {
@@ -5109,8 +5112,13 @@
           "offline": "ऑफ़लाइन",
           "online": "ऑनलाइन",
           "recovery": "पुनर्प्राप्ति",
+          "refresh": "रीफ़्रेश करें",
           "title": "रीयल-टाइम कनेक्शन निदान",
-          "unavailable": "अनुपलब्ध"
+          "unavailable": "अनुपलब्ध",
+          "workerDescription": "रीयलटाइम कनेक्शन रखने वाले शेयर्ड वर्कर द्वारा दर्ज किया गया रिकॉर्ड देखें।",
+          "workerLoading": "लोड हो रहा है",
+          "workerTitle": "शेयर्ड वर्कर कनेक्शन डायग्नोस्टिक्स",
+          "workerUnavailable": "अनुपलब्ध"
         }
       },
       "language": {

@@ -44,7 +44,7 @@ import {
 import {
   introVideoSourceStep,
   introVideoWizardSignals,
-  isIntroVideoDocument,
+  isIntroVideoPresentation,
   type IntroVideoPlacement,
   type IntroVideoSource,
   type IntroVideoVoiceSelection,
@@ -59,9 +59,10 @@ import {
   VoiceLibraryToolbar,
 } from "./avatar-template-picker.tsx";
 
-const DOCUMENT_ACCEPT =
+const PRESENTATION_ACCEPT =
   ".html,.pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/html";
-const DOCUMENT_INPUT_SELECTOR = '[data-intro-video-document-input=""]';
+const PRESENTATION_INPUT_SELECTOR = '[data-intro-video-presentation-input=""]';
+const FILE_INPUT_SELECTOR = '[data-intro-video-file-input=""]';
 
 function wizardStage(step: IntroVideoWizardStep): number {
   switch (step) {
@@ -151,14 +152,19 @@ function sourceKindLabel(
   source: IntroVideoSource,
 ): string {
   switch (source.kind) {
-    case "document": {
+    case "presentation": {
       return t(($) => {
         return $.chat.introVideo.source.documentTitle;
       });
     }
-    case "recording": {
+    case "video": {
       return t(($) => {
         return $.chat.introVideo.source.recordTitle;
+      });
+    }
+    case "file": {
+      return t(($) => {
+        return $.chat.introVideo.source.uploadTitle;
       });
     }
   }
@@ -281,9 +287,13 @@ function clickFileInput(selector: string): void {
 function SourceOptions({
   desktopProductName,
   onRecord,
+  onUpload,
+  onUploadPresentation,
 }: {
   readonly desktopProductName: string;
   readonly onRecord: () => void;
+  readonly onUpload: () => void;
+  readonly onUploadPresentation: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -299,9 +309,7 @@ function SourceOptions({
           return $.chat.introVideo.source.documentFormats;
         })}
         icon={<FileText size={21} />}
-        onClick={() => {
-          clickFileInput(DOCUMENT_INPUT_SELECTOR);
-        }}
+        onClick={onUploadPresentation}
       />
       <SourceChoice
         title={t(($) => {
@@ -327,9 +335,7 @@ function SourceOptions({
           return $.chat.introVideo.source.uploadDescription;
         })}
         icon={<Upload size={21} />}
-        onClick={() => {
-          clickFileInput(DOCUMENT_INPUT_SELECTOR);
-        }}
+        onClick={onUpload}
       />
     </div>
   );
@@ -342,14 +348,33 @@ function SourcePage() {
   const setSourceFile = useSet(introVideoWizardSignals.setSourceFile$);
   const setStep = useSet(introVideoWizardSignals.setStep$);
 
-  const handleFileChange = (event: ReactChangeEvent<HTMLInputElement>) => {
+  // Which card opened the dialog is what the source is known by, so each entry
+  // keeps its own input: the deck card admits only deck formats, and the
+  // generic card takes whatever the user has and leaves identifying it to the
+  // agent.
+  const handlePresentationChange = (
+    event: ReactChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
-    if (!file || !isIntroVideoDocument(file)) {
+    if (!file || !isIntroVideoPresentation(file)) {
       return;
     }
     detach(
-      setSourceFile(file, pageSignal),
+      setSourceFile(file, "presentation", pageSignal),
+      Reason.DomCallback,
+      "select intro video presentation",
+    );
+  };
+
+  const handleFileChange = (event: ReactChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) {
+      return;
+    }
+    detach(
+      setSourceFile(file, "file", pageSignal),
       Reason.DomCallback,
       "select intro video source",
     );
@@ -375,12 +400,24 @@ function SourcePage() {
         onRecord={() => {
           setStep("desktop-record");
         }}
+        onUpload={() => {
+          clickFileInput(FILE_INPUT_SELECTOR);
+        }}
+        onUploadPresentation={() => {
+          clickFileInput(PRESENTATION_INPUT_SELECTOR);
+        }}
       />
       <input
         hidden
-        data-intro-video-document-input=""
+        data-intro-video-presentation-input=""
         type="file"
-        accept={DOCUMENT_ACCEPT}
+        accept={PRESENTATION_ACCEPT}
+        onChange={handlePresentationChange}
+      />
+      <input
+        hidden
+        data-intro-video-file-input=""
+        type="file"
         onChange={handleFileChange}
       />
     </div>
@@ -574,10 +611,10 @@ function SourceReviewPage({ source }: { readonly source: IntroVideoSource }) {
         </p>
         <div className="mt-5 flex items-center gap-3 rounded-xl border border-border bg-card p-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-            {source.kind === "document" ? (
-              <FileText size={18} />
-            ) : (
+            {source.kind === "video" ? (
               <Play size={18} fill="currentColor" />
+            ) : (
+              <FileText size={18} />
             )}
           </span>
           <span className="min-w-0">
@@ -825,7 +862,7 @@ function AvatarPage({ composer }: { readonly composer: ComposerSignals }) {
           })}
         </p>
       </div>
-      {avatar && source?.kind === "document" ? (
+      {avatar && source?.kind === "presentation" ? (
         <PlacementSelector cutoutUrl={avatar.coverUrl} />
       ) : null}
       <AvatarLibraryContent
@@ -896,7 +933,7 @@ function VoicePage({
   const { t } = useTranslation();
   const voice = useGet(introVideoWizardSignals.voice$);
   const setVoice = useSet(introVideoWizardSignals.setVoice$);
-  const originalAudioAvailable = source.kind === "recording";
+  const originalAudioAvailable = source.kind === "video";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -1005,10 +1042,10 @@ function ReviewPage({ source }: { readonly source: IntroVideoSource }) {
           })}
           value={`${source.name} · ${INTRO_VIDEO_ASPECT_RATIO_LABEL}`}
           icon={
-            source.kind === "document" ? (
-              <FileText size={18} />
-            ) : (
+            source.kind === "video" ? (
               <Video size={18} />
+            ) : (
+              <FileText size={18} />
             )
           }
         />

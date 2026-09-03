@@ -31,6 +31,7 @@ export const ROUTES = {
   connectorCallbackResult: "/connectors/:connectorSlug/callback/:status",
   connectorRedirecting: "/connectors/:connectorSlug/redirecting",
   directedConnect: "/connectors/:connectorSlug/connect",
+  directedReconnect: "/connectors/:connectorSlug/reconnect/:connectionId",
   directedAuthorize: "/connectors/:connectorSlug/authorize",
   settings: "/settings",
   settingsSlack: "/settings/slack",

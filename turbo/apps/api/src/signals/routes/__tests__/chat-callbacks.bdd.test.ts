@@ -1998,6 +1998,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(goalContext.body.prompt).not.toContain(goalObjective);
     const appendSystemPrompt = goalContext.body.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain("# Active thread goal");
+    expect(appendSystemPrompt).not.toContain("# Thread Goal\n\nStatus: paused");
     expect(appendSystemPrompt).toContain(goalObjective);
     expect(appendSystemPrompt).toContain("# User-visible objective brief");
     expect(appendSystemPrompt).toContain(goalBrief);
@@ -2029,6 +2030,60 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       eventType: "goal.close",
       content: null,
     });
+  }, 90_000);
+
+  it("adds paused goal context to a later thread run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "pause this goal before finishing",
+    });
+    const goalBrief = "Keep improving the paused goal context";
+    await createGoalForRun(actor, first.runId, goalBrief);
+    const paused = await accept(
+      goalsClient().pause({
+        headers: goalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(paused.body.status).toBe("paused");
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "finished after pausing the goal"),
+    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "handle a new user request",
+    });
+    const runContext = await waitForRunContext(actor, second.runId);
+    const appendSystemPrompt = runContext.body.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(`# Thread Goal
+
+Status: paused
+Objective: ${goalBrief}
+
+A paused goal does not continue automatically.
+
+Goal CLI:
+- Check: \`okou goal get\`
+- Resume: \`okou goal resume\`
+- Block: \`okou goal block\`
+- Complete: \`okou goal complete\``);
+    expect(appendSystemPrompt).not.toContain("okou goal pause");
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await waitForRunStatus(actor, second.runId, "cancelled");
+    await flushWaitUntilForTest();
   }, 90_000);
 
   it("falls back to the terminal scheduler when the chat callback fails", async () => {

@@ -4329,6 +4329,7 @@ describe("zero sidebar", () => {
         return respond(200, {
           timezone: null,
           locale: null,
+          translationLanguage: null,
           supportedLocales: [
             "en-US",
             "pt-BR",
@@ -4683,6 +4684,7 @@ describe("zero sidebar", () => {
       return respond(200, {
         timezone: null,
         locale: null,
+        translationLanguage: null,
         supportedLocales: [
           "en-US",
           "pt-BR",

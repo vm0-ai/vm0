@@ -61,6 +61,7 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   PiMemoryRecall = "piMemoryRecall",
   PiMemoryGeneration = "piMemoryGeneration",
+  PresentationScreenshot = "presentationScreenshot",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",

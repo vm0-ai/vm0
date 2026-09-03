@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.184.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.5...runner-rs-v0.184.6) (2026-09-03)
+
+
+### Refactoring
+
+* **runtime:** retire vm0 environment ownership wildcard ([#31251](https://github.com/vm0-ai/vm0/issues/31251)) ([0a13b76](https://github.com/vm0-ai/vm0/commit/0a13b762139fbaccae9a3324aab1baed71ca7b22))
+
+## [0.184.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.4...runner-rs-v0.184.5) (2026-09-02)
+
+
+### Refactoring
+
+* **runtime:** reclassify run payload field identifiers ([#31244](https://github.com/vm0-ai/vm0/issues/31244)) ([3b475f2](https://github.com/vm0-ai/vm0/commit/3b475f25121716295b2edcfefe3d4c9143c6d671))
+* **runtime:** remove retired working-directory environment tombstone ([#31239](https://github.com/vm0-ai/vm0/issues/31239)) ([9fbce0e](https://github.com/vm0-ai/vm0/commit/9fbce0e91a45dda92802f927d8a31539876d3f97))
+
+## [0.184.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.3...runner-rs-v0.184.4) (2026-09-02)
+
+
+### Refactoring
+
+* **pi:** remove ownership transfer capability marker ([#31216](https://github.com/vm0-ai/vm0/issues/31216)) ([fb22db1](https://github.com/vm0-ai/vm0/commit/fb22db17eca15ebfcd5479388ff9a163be0ef500))
+
+## [0.184.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.2...runner-rs-v0.184.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **runner:** report authoritative provider failure reasons ([#31163](https://github.com/vm0-ai/vm0/issues/31163)) ([b84e233](https://github.com/vm0-ai/vm0/commit/b84e2334f9e370b59a299b00250fc037d90538dd))
+
+
+### Refactoring
+
+* **runtime:** remove retired API URL alias tombstones ([#31209](https://github.com/vm0-ai/vm0/issues/31209)) ([e57170e](https://github.com/vm0-ai/vm0/commit/e57170e30c73c68188ce035caba4176874e716c2))
+
+## [0.184.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.1...runner-rs-v0.184.2) (2026-09-02)
+
+
+### Documentation
+
+* **mitm-addon:** clarify Anthropic SSE callback gating ([#31146](https://github.com/vm0-ai/vm0/issues/31146)) ([7918adb](https://github.com/vm0-ai/vm0/commit/7918adba36c3ae21d85ad412ee61f0ea3924c293))
+
+
+### Refactoring
+
+* **rust:** share run artifact payload contract ([#31153](https://github.com/vm0-ai/vm0/issues/31153)) ([16c79bb](https://github.com/vm0-ai/vm0/commit/16c79bb75648f4b2def7b28ae0b1aadff326941c))
+
+
+### Performance Improvements
+
+* **runner:** batch idle pressure eviction ([#31165](https://github.com/vm0-ai/vm0/issues/31165)) ([aefdda8](https://github.com/vm0-ai/vm0/commit/aefdda825cc0b70e97386a2d17eb8d99f0bbc882))
+
 ## [0.184.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.0...runner-rs-v0.184.1) (2026-09-02)
 
 

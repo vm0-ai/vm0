@@ -283,15 +283,18 @@ const cronMaterializeMemorySummariesResponseSchema = z.object({
   stale: z.number().int().nonnegative(),
 });
 
-const cronAggregateModelStatsResponseSchema = z.object({
+const cronExtractPiMemoryStage1ResponseSchema = z.object({
   success: z.literal(true),
-  cutoff: z.iso.datetime(),
-  processedHours: z.number().int().nonnegative(),
-  processedObservations: z.number().int().nonnegative(),
-  updatedStats: z.number().int().nonnegative(),
-  deletedObservations: z.number().int().nonnegative(),
+  scanned: z.number().int().nonnegative(),
+  claimed: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  succeededNoOutput: z.number().int().nonnegative(),
+  retryableFailure: z.number().int().nonnegative(),
+  terminalFailure: z.number().int().nonnegative(),
+  sourceExpired: z.number().int().nonnegative(),
+  sourceActive: z.number().int().nonnegative(),
+  staleDiscarded: z.number().int().nonnegative(),
 });
-
 export const cronProcessUsageEventsContract = c.router({
   process: {
     method: "GET",
@@ -594,20 +597,6 @@ export const cronExecuteWorkflowAutomationsContract = c.router({
   },
 });
 
-export const cronAggregateModelStatsContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-model-stats",
-    headers: authHeadersSchema,
-    query: z.object({}).strict(),
-    responses: {
-      200: cronAggregateModelStatsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate hourly model usage statistics",
-  },
-});
-
 export const cronRefreshStoragePresignedUrlsContract = c.router({
   refresh: {
     method: "GET",
@@ -634,6 +623,19 @@ export const cronMaterializeMemorySummariesContract = c.router({
   },
 });
 
+export const cronExtractPiMemoryStage1Contract = c.router({
+  extract: {
+    method: "GET",
+    path: "/api/cron/extract-pi-memory-stage1",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronExtractPiMemoryStage1ResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Extract bounded Pi Stage 1 memory candidates",
+  },
+});
+
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronReconcileSocialKitDownloadsContract =
@@ -644,12 +646,12 @@ export type CronMonitorChatEventQueueContract =
   typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
-export type CronAggregateModelStatsContract =
-  typeof cronAggregateModelStatsContract;
 export type CronRefreshStoragePresignedUrlsContract =
   typeof cronRefreshStoragePresignedUrlsContract;
 export type CronMaterializeMemorySummariesContract =
   typeof cronMaterializeMemorySummariesContract;
+export type CronExtractPiMemoryStage1Contract =
+  typeof cronExtractPiMemoryStage1Contract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronConnectorOauthStateCleanupContract =
   typeof cronConnectorOauthStateCleanupContract;
@@ -692,7 +694,7 @@ export {
   cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
-  cronAggregateModelStatsResponseSchema,
   cronRefreshStoragePresignedUrlsResponseSchema,
   cronMaterializeMemorySummariesResponseSchema,
+  cronExtractPiMemoryStage1ResponseSchema,
 };

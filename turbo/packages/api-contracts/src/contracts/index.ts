@@ -375,8 +375,6 @@ export {
   type TestTelegramStateResponse,
 } from "./test-telegram-state";
 export {
-  cronAggregateModelStatsContract,
-  cronAggregateModelStatsResponseSchema,
   cronCompactChatThreadSnapshotsContract,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronCleanupSandboxesContract,
@@ -403,7 +401,6 @@ export {
   cronTelegramCleanupResponseSchema,
   cleanupResultSchema,
   cleanupResponseSchema,
-  type CronAggregateModelStatsContract,
   type CronCompactChatThreadSnapshotsContract,
   type CronCleanupSandboxesContract,
   type CronConnectorOauthStateCleanupContract,

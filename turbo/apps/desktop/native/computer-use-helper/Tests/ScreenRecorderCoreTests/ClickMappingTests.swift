@@ -363,3 +363,138 @@ struct PointerSampleProjectionTests {
         #expect(trail.first?.point.normalizedY == 0.5)
     }
 }
+
+struct TypingBurstTests {
+    @Test
+    func groupsKeyDownsCloserThanTheGapIntoOneBurst() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_000, 1_150, 1_400, 1_900])
+
+        #expect(bursts == [TypingBurst(startMs: 1_000, endMs: 1_900)])
+    }
+
+    @Test
+    func splitsAtAGapLongerThanTheLimit() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_000, 1_200, 2_100, 2_300])
+
+        #expect(bursts == [
+            TypingBurst(startMs: 1_000, endMs: 1_200),
+            TypingBurst(startMs: 2_100, endMs: 2_300),
+        ])
+    }
+
+    /// A shortcut is one key-down: a burst of length zero, which a camera can
+    /// tell apart from typing without knowing which key it was.
+    @Test
+    func reportsALoneKeyDownAsAZeroLengthBurst() {
+        #expect(typingBursts(fromKeyDownOffsetsMs: [5_000]) == [TypingBurst(startMs: 5_000, endMs: 5_000)])
+    }
+
+    @Test
+    func ordersKeyDownsBeforeGrouping() {
+        let bursts = typingBursts(fromKeyDownOffsetsMs: [1_400, 1_000, 1_150])
+
+        #expect(bursts == [TypingBurst(startMs: 1_000, endMs: 1_400)])
+    }
+
+    @Test
+    func reportsNothingWithoutKeyDowns() {
+        #expect(typingBursts(fromKeyDownOffsetsMs: []).isEmpty)
+    }
+}
+
+struct ContentMappingTests {
+    /// A 1512-point window narrowed to 1435 points mid-recording: the frame
+    /// stayed 1920 wide, the content shrank to 1822 pixels with a black band
+    /// on the right. Mapping through the frame size put clicks in the band.
+    private let letterboxed = ContentMapping(
+        screenOriginX: 572,
+        screenOriginY: 1520,
+        screenWidth: 1435,
+        screenHeight: 902,
+        pixelOriginX: 0,
+        pixelOriginY: 0,
+        pixelWidth: 1822,
+        pixelHeight: 1144
+    )
+    private let outputSize = OutputSize(width: 1920, height: 1144)
+
+    @Test
+    func mapsThroughTheContentRectangleNotTheFrame() {
+        // the content's right edge is pixel 1822, not the frame's 1920
+        #expect(letterboxed.mapPoint(screenX: 572 + 1435, screenY: 1520 + 451, outputSize: outputSize) == nil)
+        let inside = letterboxed.mapPoint(screenX: 572 + 1434, screenY: 1520 + 451, outputSize: outputSize)
+        #expect(inside?.frameX == 1820)
+        #expect(inside?.frameY == 572)
+    }
+
+    @Test
+    func normalizesAgainstTheWholeFrame() {
+        let point = letterboxed.mapPoint(screenX: 572 + 717.5, screenY: 1520 + 451, outputSize: outputSize)
+
+        #expect(point?.frameX == 911)
+        #expect(abs((point?.normalizedX ?? 0) - 911 / 1920) < 0.001)
+        #expect(abs((point?.normalizedY ?? 0) - 0.5) < 0.001)
+    }
+
+    @Test
+    func rejectsPointsOutsideTheContent() {
+        #expect(letterboxed.mapPoint(screenX: 571, screenY: 1600, outputSize: outputSize) == nil)
+        #expect(letterboxed.mapPoint(screenX: 700, screenY: 1519, outputSize: outputSize) == nil)
+    }
+
+    @Test
+    func aClickPrefersItsMappingOverTheGeometry() {
+        let geometry = CaptureGeometry(originX: 572, originY: 1520, widthPoints: 1512, heightPoints: 902, scale: 2)
+        let projection = projectClicks(
+            [
+                CapturedClick(
+                    nanoseconds: 2_024_000,
+                    screenX: 572 + 717.5,
+                    screenY: 1520 + 451,
+                    button: "left",
+                    clickCount: 1,
+                    modifiers: [],
+                    mapping: letterboxed
+                )
+            ],
+            timeline: ClickTimeline(startNanoseconds: 24_000),
+            geometry: geometry,
+            outputSize: outputSize
+        )
+
+        // through the prepare-time geometry this click would have landed at pixel 911 * 1920 / 1822
+        #expect(projection.clicks.first?.point.frameX == 911)
+    }
+
+    @Test
+    func projectsAnElementFrameAndClipsItToTheFrame() {
+        let field = CapturedElement(
+            role: "AXTextArea",
+            subrole: nil,
+            screenX: 572 + 100,
+            screenY: 1520 + 300,
+            screenWidth: 1400,
+            screenHeight: 150
+        )
+        let projected = projectElement(
+            field,
+            mapping: letterboxed,
+            geometry: CaptureGeometry(originX: 0, originY: 0, widthPoints: 1, heightPoints: 1, scale: 1),
+            outputSize: outputSize
+        )
+
+        #expect(projected?.role == "AXTextArea")
+        #expect(projected?.frameX == 126)
+        #expect(projected?.frameY == 380)
+        // 100 + 1400 points reach pixel 1904: past the content's 1822 but inside the frame
+        #expect(projected?.frameWidth == 1778)
+        #expect(projected?.frameHeight == 190)
+    }
+
+    @Test
+    func dropsAnElementEntirelyOutsideTheFrame() {
+        let offscreen = CapturedElement(role: "AXButton", subrole: nil, screenX: 0, screenY: 0, screenWidth: 100, screenHeight: 40)
+
+        #expect(projectElement(offscreen, mapping: letterboxed, geometry: CaptureGeometry(originX: 572, originY: 1520, widthPoints: 1435, heightPoints: 902, scale: 2), outputSize: outputSize) == nil)
+    }
+}

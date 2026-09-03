@@ -216,6 +216,19 @@ const resolvedAttachFileSchema = attachFileSchema.extend({
   assetRef: assetRefSchema.optional(),
 });
 
+const chatThreadArtifactGoogleDriveRecoverySchema = z.discriminatedUnion(
+  "action",
+  [
+    z.object({ action: z.literal("authorize") }),
+    z.object({ action: z.literal("connect") }),
+    z.object({
+      action: z.literal("reconnect"),
+      connectionId: z.uuid(),
+    }),
+    z.object({ action: z.literal("unavailable") }),
+  ],
+);
+
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("synced"),
@@ -224,7 +237,10 @@ const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
     webViewLink: z.string().nullable(),
   }),
   z.object({ status: z.literal("not_synced") }),
-  z.object({ status: z.literal("disconnected") }),
+  z.object({
+    status: z.literal("disconnected"),
+    recovery: chatThreadArtifactGoogleDriveRecoverySchema.optional(),
+  }),
   z.object({ status: z.literal("unknown") }),
 ]);
 
@@ -1958,6 +1974,7 @@ export {
   imageAnnotationSchema,
   imageAnnotationMarkSchema,
   chatThreadArtifactFileSchema,
+  chatThreadArtifactGoogleDriveRecoverySchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
 };
@@ -2074,5 +2091,8 @@ export type ChatThreadArtifactFile = z.infer<
 >;
 export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
+>;
+export type ChatThreadArtifactGoogleDriveRecovery = z.infer<
+  typeof chatThreadArtifactGoogleDriveRecoverySchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;

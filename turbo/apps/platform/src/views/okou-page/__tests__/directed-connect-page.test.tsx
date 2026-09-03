@@ -24,6 +24,7 @@ import {
   connectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@okouai/api-contracts/contracts/connector-catalog";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -1152,6 +1153,127 @@ describe("directed connector connect page", () => {
     expect(startedAgentId).toBe(AGENT_ID);
     expect(startedAuthorizeAgent).toBeTruthy();
     expect(startedConnectionId).toBe(connectionId);
+  });
+
+  it("reconnects the route-selected account instead of the default account", async () => {
+    const defaultConnectionId = crypto.randomUUID();
+    const selectedConnectionId = crypto.randomUUID();
+    const connector = publicOAuthConnectorStatus({
+      slug: "github",
+      label: "Public GitHub",
+      singleAuthCodeAuthMethodId: null,
+    });
+    mockPublicConnectorStatus({
+      ...connector,
+      connected: true,
+      connectionStatus: "connected",
+      connection: {
+        id: defaultConnectionId,
+        authMethod: "oauth",
+        externalUsername: "default-account",
+        externalEmail: null,
+        reconnectReason: null,
+      },
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(selectedConnectionId);
+        expect(query).toStrictEqual({
+          kind: "builtin",
+          connectorSlug: "github",
+        });
+        return respond(200, {
+          id: selectedConnectionId,
+          target: { kind: "builtin", connectorSlug: "github" },
+          authMethod: "oauth",
+          displayName: "Selected account",
+          isDefault: false,
+          externalId: "selected-account",
+          externalUsername: "selected-account",
+          externalEmail: null,
+          oauthScopes: [],
+          connectionStatus: "reconnect-required",
+          reconnectReason: "authorization_expired_or_revoked",
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        });
+      },
+    );
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    let startedConnectionId: string | null = null;
+    context.mocks.api(
+      connectorOauthStartContract.start,
+      ({ body, respond }) => {
+        if (body.account.intent === "reconnect") {
+          startedConnectionId = body.account.connectionId;
+        }
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/github/reconnect",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/reconnect/${selectedConnectionId}?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Public GitHub connected");
+    click(getButtonByText("Reconnect"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Public GitHub",
+    });
+    click(getButtonByText("Reconnect", dialog));
+
+    await waitFor(() => {
+      expect(startedConnectionId).toBe(selectedConnectionId);
+    });
+    expect(startedConnectionId).not.toBe(defaultConnectionId);
+  });
+
+  it("does not fall back when an exact reconnect account is unavailable", async () => {
+    const selectedConnectionId = crypto.randomUUID();
+    mockPublicConnectorStatus(
+      publicOAuthConnectorStatus({
+        slug: "github",
+        label: "Public GitHub",
+        singleAuthCodeAuthMethodId: "oauth",
+      }),
+    );
+    let accountReads = 0;
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        accountReads += 1;
+        expect(params.connectionId).toBe(selectedConnectionId);
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "Account not found" },
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/reconnect/${selectedConnectionId}?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(accountReads).toBe(1);
+    });
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return ["Connect", "Reconnect"].includes(
+          button.textContent?.trim() ?? "",
+        );
+      }),
+    ).toStrictEqual([]);
   });
 
   it("asks the server to connect and authorize a manual grant", async () => {

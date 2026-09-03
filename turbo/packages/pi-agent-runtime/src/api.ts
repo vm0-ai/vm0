@@ -9,6 +9,10 @@ import type {
   PiApiFirstTurnArgs,
   PiApiFirstTurnResult,
   PiObservedServiceTier,
+  PiMemoryRecallOutcome,
+  PiMemoryRecallOutcomeStatus,
+  PiMemoryRecallParity,
+  PiMemoryRecallSelection,
   PiPreheatedAgentsFile,
   PiPreheatedResourceSnapshot,
   PiPreheatedSkill,
@@ -25,7 +29,27 @@ import type {
   PiApiFirstTurnOwnership,
   PiApiFirstTurnOwnershipStage,
 } from "./provider-ownership";
+import {
+  PI_MEMORY_STAGE1_RESPONSE_SCHEMA,
+  PiMemoryStage1ProviderError,
+  projectPiMemoryStage1History,
+  redactPiMemoryStage1Secrets,
+  resolvePiMemoryStage1ContextWindow,
+  runPiMemoryStage1Extraction,
+  truncatePiMemoryStage1History,
+} from "./stage1-memory";
+import type {
+  PiMemoryStage1ProviderResult,
+  PiMemoryStage1ProviderUsage,
+} from "./stage1-memory";
 export {
+  PI_MEMORY_STAGE1_RESPONSE_SCHEMA,
+  PiMemoryStage1ProviderError,
+  projectPiMemoryStage1History,
+  redactPiMemoryStage1Secrets,
+  resolvePiMemoryStage1ContextWindow,
+  runPiMemoryStage1Extraction,
+  truncatePiMemoryStage1History,
   PiApiFirstTurnCompactionRequiredError,
   UnsupportedPiResourceSnapshotError,
   UnsupportedPiSessionVersionError,
@@ -40,12 +64,18 @@ export type {
   PiApiFirstTurnArgs,
   PiApiFirstTurnResult,
   PiObservedServiceTier,
+  PiMemoryRecallOutcome,
+  PiMemoryRecallOutcomeStatus,
+  PiMemoryRecallParity,
+  PiMemoryRecallSelection,
   PiPreheatedAgentsFile,
   PiPreheatedResourceSnapshot,
   PiPreheatedSkill,
   PiSessionInspection,
   PiApiFirstTurnOwnership,
   PiApiFirstTurnOwnershipStage,
+  PiMemoryStage1ProviderResult,
+  PiMemoryStage1ProviderUsage,
 };
 
 /** Run one provider turn without exposing Pi's native declaration surface. */

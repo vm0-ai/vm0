@@ -7,6 +7,7 @@
 import { Buffer } from "node:buffer";
 
 import { HttpResponse, http } from "msw";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -489,6 +490,83 @@ describe("CONN-02: external-code session lifecycle", () => {
         return secret.type === "connector";
       }),
     ).toStrictEqual([]);
+  });
+
+  it("replays the exact non-default account added by an external-code session", async () => {
+    const provider = mockAwsExternalCodeProvider();
+    const actor = awsActor();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+
+    const defaultSession = await connectorsApi.startExternalCode(
+      actor,
+      "aws",
+      "cli",
+      { intent: "add" },
+    );
+    const defaultAccount = await connectorsApi.completeExternalCode(
+      actor,
+      "aws",
+      {
+        sessionId: defaultSession.sessionId,
+        sessionToken: defaultSession.sessionToken,
+        code: awsVerificationCode(defaultSession.authorizationUrl),
+      },
+    );
+    const siblingSession = await connectorsApi.startExternalCode(
+      actor,
+      "aws",
+      "cli",
+      { intent: "add" },
+    );
+    const siblingAccount = await connectorsApi.completeExternalCode(
+      actor,
+      "aws",
+      {
+        sessionId: siblingSession.sessionId,
+        sessionToken: siblingSession.sessionToken,
+        code: awsVerificationCode(siblingSession.authorizationUrl),
+      },
+    );
+
+    expect(siblingAccount.connector.id).not.toBe(defaultAccount.connector.id);
+    const accounts = await connectorsApi.listBuiltinConnectorAccounts(
+      actor,
+      "aws",
+    );
+    expect(accounts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: defaultAccount.connector.id,
+          isDefault: true,
+        }),
+        expect.objectContaining({
+          id: siblingAccount.connector.id,
+          isDefault: false,
+        }),
+      ]),
+    );
+
+    const replay = await connectorsApi.completeExternalCode(actor, "aws", {
+      sessionId: siblingSession.sessionId,
+      sessionToken: siblingSession.sessionToken,
+      code: awsVerificationCode(siblingSession.authorizationUrl),
+    });
+    expect(replay.connector.id).toBe(siblingAccount.connector.id);
+    expect(provider.tokenRequests).toHaveLength(2);
+
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "aws",
+      siblingAccount.connector.id,
+    );
+    await connectorsApi.deleteBuiltinConnectorAccount(
+      actor,
+      "aws",
+      defaultAccount.connector.id,
+    );
+    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("supersedes pending sessions and restores provider-rejected sessions to pending", async () => {

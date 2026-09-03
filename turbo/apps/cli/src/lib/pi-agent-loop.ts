@@ -8,8 +8,11 @@ import {
   type PiLaunchPayload,
 } from "@okouai/api-contracts/contracts/runners";
 import {
+  resolvePiAgentCredential,
   runPiOfficialRpcMode,
   type PiAgentModelConfig,
+  type PiMemoryRecallOutcome,
+  type PiMemoryToolSourceUse,
 } from "@okouai/pi-agent-runtime/node";
 
 import {
@@ -23,6 +26,30 @@ const PI_LAUNCH_PAYLOAD_FILE_ENV = "OKOU_PI_LAUNCH_PAYLOAD_FILE";
 const PI_MODEL_CONFIG_ENV = "OKOU_PI_MODEL_CONFIG";
 const PI_API_FIRST_TURN_BOUNDARY_CONTROL_TYPE =
   "vm0_pi_api_first_turn_boundary";
+
+function recordPiMemoryRecallOutcome(
+  runId: string,
+  outcome: PiMemoryRecallOutcome,
+): void {
+  process.stderr.write(
+    `${JSON.stringify({ type: "pi_memory_recall_outcome", runId, ...outcome })}\n`,
+  );
+}
+
+export function recordPiMemoryToolSourceUse(
+  runId: string,
+  sessionId: string,
+  sourceUse: PiMemoryToolSourceUse,
+): void {
+  process.stderr.write(
+    `${JSON.stringify({
+      type: "pi_memory_tool_source_use",
+      runId,
+      sessionId,
+      ...sourceUse,
+    })}\n`,
+  );
+}
 
 export interface PiSandboxAgentConfig {
   readonly runId: string;
@@ -97,15 +124,24 @@ export async function piSandboxAgentConfigFromEnv(
   const {
     api: _legacyApi,
     apiKeyEnv,
+    credentialHeader,
     credentialSecretName: _credentialSecretName,
     ...model
   } = parsedModel;
-  const apiKey = requiredEnv(env, apiKeyEnv);
+  const credential = requiredEnv(env, apiKeyEnv);
   return {
     runId,
     sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     launchPayload: await readLaunchPayload(env),
-    model: { ...model, api: "openai-responses", apiKey },
+    model: {
+      ...model,
+      api: "openai-responses",
+      ...resolvePiAgentCredential({
+        credential,
+        header: credentialHeader,
+        target: "sandbox-firewall",
+      }),
+    },
   };
 }
 
@@ -145,6 +181,17 @@ export async function runPiSandboxAgentLoop(args: {
     agentDir: args.agentDir ?? PI_AGENT_DIR,
     model: args.config.model,
     appendSystemPrompt: args.config.launchPayload.appendSystemPrompt,
+    memoryRecall: args.config.launchPayload.launchConfig.memoryRecall,
+    onMemoryRecallOutcome(outcome) {
+      recordPiMemoryRecallOutcome(args.config.runId, outcome);
+    },
+    onMemoryToolSourceUse(sourceUse) {
+      recordPiMemoryToolSourceUse(
+        args.config.runId,
+        args.config.sessionId,
+        sourceUse,
+      );
+    },
     sessionFile: handoff.sessionFile,
     ownershipTransferMode: handoff.ownershipTransferMode,
   });

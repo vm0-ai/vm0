@@ -521,7 +521,6 @@
       "agentLoading": "Agent is still loading",
       "connect": "Connect Google Drive",
       "connectTooltip": "Connect Google Drive to upload artifacts",
-      "failedToOpenConnect": "Failed to open Google Drive connection page",
       "noArtifacts": "No artifacts to sync",
       "partial_one": "Synced {{synced}} of {{count}} file to Google Drive",
       "partial_other": "Synced {{synced}} of {{count}} files to Google Drive",
@@ -4797,6 +4796,10 @@
       "title": "Export data"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Reset all",
+        "resetting": "Resetting…"
+      },
       "description": "See feature switches by rollout stage.",
       "documentTitle": "Lab",
       "groups": {
@@ -5101,8 +5104,13 @@
           "offline": "offline",
           "online": "online",
           "recovery": "recovery",
+          "refresh": "Refresh",
           "title": "Realtime connection diagnostics",
-          "unavailable": "unavailable"
+          "unavailable": "unavailable",
+          "workerDescription": "Inspect the capture recorded by the shared worker that owns the realtime connection.",
+          "workerLoading": "Loading",
+          "workerTitle": "Shared worker connection diagnostics",
+          "workerUnavailable": "Unavailable"
         }
       },
       "language": {

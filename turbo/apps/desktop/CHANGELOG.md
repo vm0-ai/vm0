@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.44.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.2...desktop-v0.44.3) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.2
+
+## [0.44.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.1...desktop-v0.44.2) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.1
+
+## [0.44.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.0...desktop-v0.44.1) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.396.0
+
+## [0.44.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.43.0...desktop-v0.44.0) (2026-09-02)
+
+
+### Features
+
+* **desktop:** map clicks through each frame's content rect and record the element they hit ([#31199](https://github.com/vm0-ai/vm0/issues/31199)) ([914c1da](https://github.com/vm0-ai/vm0/commit/914c1dad0f02d86e1a13f70b0ce59daab5276c1e))
+* **desktop:** record when the user types, as bursts, in the recording sidecar ([#31186](https://github.com/vm0-ai/vm0/issues/31186)) ([4aa851e](https://github.com/vm0-ai/vm0/commit/4aa851e6707e65fad72c919cb0fc887dc5ef8a0d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.395.0
+
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.11...desktop-v0.43.0) (2026-09-02)
+
+
+### Features
+
+* **desktop:** record the pointer trail alongside clicks in the recording sidecar ([#31179](https://github.com/vm0-ai/vm0/issues/31179)) ([81dedea](https://github.com/vm0-ai/vm0/commit/81dedea86941e4c7e85c842095169f3e0e1f1f98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.394.0
+
 ## [0.42.11](https://github.com/vm0-ai/vm0/compare/desktop-v0.42.10...desktop-v0.42.11) (2026-09-02)
 
 

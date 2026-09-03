@@ -1,5 +1,95 @@
 # Changelog
 
+## [9.307.4](https://github.com/vm0-ai/vm0/compare/cli-v9.307.3...cli-v9.307.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* **mail:** preserve exact reconnect account ([#31224](https://github.com/vm0-ai/vm0/issues/31224)) ([87a73d3](https://github.com/vm0-ai/vm0/commit/87a73d3f81fc8c7aa229a18d0c70c99a054bf121))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.396.2
+    * @okouai/core bumped to 8.611.5
+    * @okouai/pi-agent-runtime bumped to 1.14.2
+
+## [9.307.3](https://github.com/vm0-ai/vm0/compare/cli-v9.307.2...cli-v9.307.3) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.14.1
+
+## [9.307.2](https://github.com/vm0-ai/vm0/compare/cli-v9.307.1...cli-v9.307.2) (2026-09-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/pi-agent-runtime bumped to 1.14.0
+
+## [9.307.1](https://github.com/vm0-ai/vm0/compare/cli-v9.307.0...cli-v9.307.1) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.396.1
+    * @okouai/connectors bumped to 3.3.1
+    * @okouai/core bumped to 8.611.4
+
+## [9.307.0](https://github.com/vm0-ai/vm0/compare/cli-v9.306.0...cli-v9.307.0) (2026-09-02)
+
+
+### Features
+
+* **pi-memory:** add bounded first-party read tools ([#31234](https://github.com/vm0-ai/vm0/issues/31234)) ([b2d01e7](https://github.com/vm0-ai/vm0/commit/b2d01e7bd61753a6499d644d4e328b40ea9def0e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.396.0
+    * @okouai/core bumped to 8.611.3
+    * @okouai/pi-agent-runtime bumped to 1.13.0
+
+## [9.306.0](https://github.com/vm0-ai/vm0/compare/cli-v9.305.5...cli-v9.306.0) (2026-09-02)
+
+
+### Features
+
+* **cli:** replace the camera algorithm with a click-focused, trail-timed camera ([#31202](https://github.com/vm0-ai/vm0/issues/31202)) ([e1245be](https://github.com/vm0-ai/vm0/commit/e1245be1fea162731df26c109cac5cd5e3f36d66))
+* **pi:** inject bounded memory summary recall ([#31203](https://github.com/vm0-ai/vm0/issues/31203)) ([e44155e](https://github.com/vm0-ai/vm0/commit/e44155e6786b92ca0ae13852cdab1d5817656ecd))
+* **pi:** support custom responses gateways ([#31157](https://github.com/vm0-ai/vm0/issues/31157)) ([e8cd4db](https://github.com/vm0-ai/vm0/commit/e8cd4dba2e57c0258491859f2aedd66a7f5855e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.395.0
+    * @okouai/core bumped to 8.611.2
+    * @okouai/pi-agent-runtime bumped to 1.12.0
+
+## [9.305.5](https://github.com/vm0-ai/vm0/compare/cli-v9.305.4...cli-v9.305.5) (2026-09-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.394.0
+    * @okouai/core bumped to 8.611.1
+    * @okouai/pi-agent-runtime bumped to 1.11.1
+
 ## [9.305.4](https://github.com/vm0-ai/vm0/compare/cli-v9.305.3...cli-v9.305.4) (2026-09-02)
 
 

@@ -524,12 +524,16 @@ impl GuestConfig {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
         let claude_config_dir = resolve_claude_config_dir(&raw);
         let codex_home_dir = resolve_codex_home_dir(&raw);
-        let artifacts = parse_artifacts_value(&payload.artifacts)
-            .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
+        let artifacts = parse_artifacts_value(&payload.artifacts).map_err(|e| {
+            format!(
+                "parse {} JSON: {e}",
+                guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD
+            )
+        })?;
         let feature_flags = parse_feature_flags_value(&payload.feature_flags).map_err(|e| {
             format!(
                 "parse {} JSON: {e}",
-                guest_contracts::env::FEATURE_FLAGS_ENV
+                guest_contracts::env::FEATURE_FLAGS_RUN_PAYLOAD_FIELD
             )
         })?;
 
@@ -1262,7 +1266,7 @@ mod tests {
 
         let err = load_run_payload_from_path(&path).unwrap_err();
 
-        assert!(err.contains(guest_contracts::env::PROMPT_ENV));
+        assert!(err.contains(guest_contracts::env::PROMPT_RUN_PAYLOAD_FIELD));
         assert!(!err.contains("secret"));
         assert!(!err.contains("prompt"));
         assert!(!path.exists());
@@ -1368,7 +1372,7 @@ mod tests {
 
         let err = GuestConfig::from_raw(raw).err().unwrap();
 
-        assert!(err.contains(guest_contracts::env::ARTIFACTS_ENV));
+        assert!(err.contains(guest_contracts::env::ARTIFACTS_RUN_PAYLOAD_FIELD));
     }
 
     #[test]

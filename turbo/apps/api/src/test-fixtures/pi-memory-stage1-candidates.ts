@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { conversations } from "@okouai/db/schema/conversation";
+import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
+import { piMemoryPublicationProvenance } from "@okouai/db/schema/pi-memory-publication-provenance";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages } from "@okouai/db/schema/storage";
 
@@ -40,6 +42,79 @@ export function piMemoryStage1AdmissionPrerequisiteSkipReasonFixture(
     idleDelayMs: 30 * 60 * 1000,
     ...overrides,
   });
+}
+
+export async function seedPiMemoryPhase2ExportJobFixture(args: {
+  readonly memoryStorageId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly currentTime: Date;
+}): Promise<{ readonly leaseToken: string; readonly selectionDigest: string }> {
+  const leaseToken = "00000000-0000-4000-8000-000000031237";
+  const selectionDigest = "a".repeat(64);
+  const [storage] = await db()
+    .select({ headVersionId: storages.headVersionId })
+    .from(storages)
+    .where(
+      and(
+        eq(storages.id, args.memoryStorageId),
+        eq(storages.orgId, args.orgId),
+        eq(storages.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  if (!storage?.headVersionId) {
+    throw new Error("Phase 2 export fixture requires a memory HEAD");
+  }
+  await db()
+    .insert(piMemoryPhase2Jobs)
+    .values({
+      memoryStorageId: args.memoryStorageId,
+      orgId: args.orgId,
+      userId: args.userId,
+      status: "leased",
+      inputRevision: 2,
+      completedRevision: 0,
+      reconciliationRevision: 0,
+      claimedRevision: 1,
+      claimedBaseVersionId: storage.headVersionId,
+      leaseToken,
+      leaseExpiresAt: new Date(args.currentTime.getTime() + 60 * 60 * 1000),
+      retryCount: 1,
+      lastSucceededAt: new Date(
+        args.currentTime.getTime() - 24 * 60 * 60 * 1000,
+      ),
+      claimedSelectionDigest: selectionDigest,
+      claimedSelectedCount: 1,
+      claimedSelectedUtf8Bytes: 42,
+      lastObservedHeadVersionId: storage.headVersionId,
+      createdAt: new Date(args.currentTime.getTime() - 2 * 60 * 60 * 1000),
+      updatedAt: args.currentTime,
+    });
+  await db()
+    .insert(piMemoryPublicationProvenance)
+    .values({
+      id: "00000000-0000-4000-8000-000000031258",
+      memoryStorageId: args.memoryStorageId,
+      orgId: args.orgId,
+      userId: args.userId,
+      claimedRevision: 1,
+      inputRevision: 1,
+      reconciliationRevision: 0,
+      selectionDigest,
+      selectedCount: 1,
+      selectedUtf8Bytes: 42,
+      baseVersionId: storage.headVersionId,
+      preparedVersionId: "b".repeat(64),
+      observedHeadVersionId: "c".repeat(64),
+      writer: "pi",
+      outcome: "conflicted",
+      size: 17,
+      archiveSize: 23,
+      fileCount: 2,
+      createdAt: new Date(args.currentTime.getTime() - 30 * 60 * 1000),
+    });
+  return { leaseToken, selectionDigest };
 }
 
 export async function readPiMemoryStage1CandidateFixture(args: {
@@ -131,6 +206,8 @@ export async function leasePiMemoryStage1CandidateFixture(args: {
 
 export async function commitPiMemoryStage1CandidateFixture(args: {
   readonly memoryStorageId: string;
+  readonly orgId: string;
+  readonly userId: string;
   readonly piSessionId: string;
   readonly sourceHistoryHash: string;
   readonly leaseToken: string;
@@ -140,6 +217,29 @@ export async function commitPiMemoryStage1CandidateFixture(args: {
   return await db().transaction(async (tx) => {
     return await commitPiMemoryStage1Candidate(tx, args);
   });
+}
+
+export async function setSyntheticPiMemoryStage1SelectionFixture(args: {
+  readonly memoryStorageId: string;
+  readonly piSessionId: string;
+  readonly sourceHistoryHash: string;
+}): Promise<void> {
+  const [selected] = await db()
+    .update(piMemoryStage1Candidates)
+    .set({
+      lastSelectedSourceHistoryHash: args.sourceHistoryHash,
+    })
+    .where(
+      and(
+        eq(piMemoryStage1Candidates.memoryStorageId, args.memoryStorageId),
+        eq(piMemoryStage1Candidates.piSessionId, args.piSessionId),
+        eq(piMemoryStage1Candidates.sourceHistoryHash, args.sourceHistoryHash),
+      ),
+    )
+    .returning({ memoryStorageId: piMemoryStage1Candidates.memoryStorageId });
+  if (!selected) {
+    throw new Error("Expected a synthetic Pi memory selection to be recorded");
+  }
 }
 
 export async function readmitPiMemoryStage1CandidateFixture(runId: string) {

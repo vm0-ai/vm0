@@ -21,9 +21,8 @@ use std::sync::Arc;
 use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
     CANONICAL_TOOL_CGROUP_PROCS_ENV, CANONICAL_WORKLOAD_CGROUP_PROCS_ENV, CGROUP_V2_MOUNT_PATH,
-    CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, RUNTIME_CGROUP_NAME,
-    TOOL_CGROUP_PROCS_ENDPOINT_ENV, TOOLS_CGROUP_NAME, WORKLOAD_CGROUP_NAME,
-    WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, WorkloadResourceEvents,
+    CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX, RUNTIME_CGROUP_NAME, TOOLS_CGROUP_NAME,
+    WORKLOAD_CGROUP_NAME, WorkloadResourceEvents,
 };
 
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
@@ -82,8 +81,8 @@ impl WorkloadContainment {
     /// the canonical workload and tool capabilities in production. Direct
     /// local execution is unmanaged when the canonical process-control value
     /// and both canonical capabilities are absent.
-    /// Retired root-bootstrap aliases are ignored during selection and scrubbed
-    /// after the canonical pair is captured successfully.
+    /// The canonical placement endpoints are removed from process-global
+    /// environment after the pair is captured successfully.
     pub fn from_process_env(process_control_present: bool) -> Result<Option<Self>, String> {
         let (placement_endpoint, tool_endpoint) =
             resolve_cgroup_placement_endpoints_from_process_env()?;
@@ -100,7 +99,7 @@ impl WorkloadContainment {
                 // SAFETY: production calls this before constructing the Tokio
                 // runtime, so no other thread can access the environment.
                 unsafe {
-                    remove_cgroup_placement_endpoint_aliases();
+                    remove_cgroup_placement_endpoints();
                 }
                 Self::receive(&placement, tool).map(Some).map_err(|error| {
                     format!("invalid {CANONICAL_WORKLOAD_CGROUP_PROCS_ENV}: {error}")
@@ -257,12 +256,10 @@ fn reject_empty_cgroup_placement_endpoint(endpoint: &str, key: &'static str) -> 
     Ok(())
 }
 
-unsafe fn remove_cgroup_placement_endpoint_aliases() {
+unsafe fn remove_cgroup_placement_endpoints() {
     for key in [
         CANONICAL_WORKLOAD_CGROUP_PROCS_ENV,
-        WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
         CANONICAL_TOOL_CGROUP_PROCS_ENV,
-        TOOL_CGROUP_PROCS_ENDPOINT_ENV,
     ] {
         // SAFETY: the caller runs before constructing the Tokio runtime, so no
         // other thread can access the process environment.
@@ -477,10 +474,6 @@ done"#,
                 CANONICAL_TOOL_CGROUP_PROCS_ENV,
                 "runner-tool-endpoint".to_string()
             )
-        );
-        assert_ne!(
-            containment.tool_placement_env().0,
-            TOOL_CGROUP_PROCS_ENDPOINT_ENV
         );
         assert_eq!(
             containment.env_source_evidence(),

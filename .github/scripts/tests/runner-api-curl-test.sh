@@ -126,7 +126,7 @@ curl() {
             attempt="$(record_curl_attempt)"
             if [[ "$MOCK_CURL_MODE" == "no-response-then-success" ]] &&
                 ((attempt > 1)); then
-                printf '{"ok":true}\n'
+                printf '%s\n' "$MOCK_CURL_RETRY_SUCCESS_BODY"
                 return 0
             fi
             echo "curl: (28) Operation timed out after 30002 milliseconds with 0 bytes received" >&2
@@ -176,9 +176,18 @@ run_agent_teardown() {
     fi
 }
 
+run_wait_for_run() {
+    if runner_wait_for_run "$1" 2 >"$stdout_file" 2>"$stderr_file"; then
+        request_status=0
+    else
+        request_status=$?
+    fi
+}
+
 export E2E_API_URL="https://pr-27981-api.vm6.ai/"
 export E2E_API_TOKEN="sensitive-api-token"
 export VERCEL_AUTOMATION_BYPASS_SECRET="sensitive-bypass-secret"
+MOCK_CURL_RETRY_SUCCESS_BODY='{"ok":true}'
 payload='{"secret":"sensitive-request-payload"}'
 MOCK_CURL_EXPECTED_VERCEL_URL='https://vercel.com/okou/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fchat%2Fevents+status%3A429&timeline=past12Hours'
 MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fchat%%2Fevents+status%%3A%{http_code}&timeline=past12Hours\n'
@@ -238,9 +247,29 @@ run_request "/api/runs/run-1/context"
 assert_status 0
 assert_curl_attempts 2
 assert_file_equals $'{"ok":true}\n' "$stdout_file"
-assert_file_equals "${stall_stderr}${retry_stderr}" "$stderr_file"
+assert_file_equals '' "$stderr_file"
+
+# Polling helpers merge transport streams before parsing. A recovered timeout
+# must therefore be quiet so the successful response remains one JSON value.
+run_vercel_logs_search='https://vercel.com/okou/vm0-api/logs?search=requestHost%3Apr-27981-api.vm6.ai+requestPath%3A%2Fapi%2Fruns%2Frun-1'
+MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/runs/run-1"
+MOCK_CURL_EXPECTED_VERCEL_URL="${run_vercel_logs_search}+status%3A000&timeline=past12Hours"
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fruns%%2Frun-1+status%%3A%{http_code}&timeline=past12Hours\n'
+MOCK_CURL_MODE=no-response-then-success
+MOCK_CURL_RETRY_SUCCESS_BODY='{"id":"run-1","status":"completed"}'
+reset_curl_attempts
+RUNNER_RUN_POLL_INTERVAL_SECONDS=0 run_wait_for_run "run-1"
+assert_status 0
+assert_curl_attempts 2
+assert_file_equals $'{"id":"run-1","status":"completed"}\n' "$stdout_file"
+assert_file_equals '' "$stderr_file"
+jq -e '.id == "run-1" and .status == "completed"' "$stdout_file" \
+    >/dev/null || fail "poll response was not one completed-run JSON document"
 
 MOCK_CURL_MODE=no-response
+MOCK_CURL_EXPECTED_URL="https://pr-27981-api.vm6.ai/api/runs/run-1/context"
+MOCK_CURL_EXPECTED_VERCEL_URL="${context_vercel_logs_search}+status%3A000&timeline=past12Hours"
+MOCK_CURL_EXPECTED_VERCEL_WRITE_OUT='%{onerror}%{stderr}Vercel logs: https://vercel.com/okou/vm0-api/logs?search=requestHost%%3Apr-27981-api.vm6.ai+requestPath%%3A%%2Fapi%%2Fruns%%2Frun-1%%2Fcontext+status%%3A%{http_code}&timeline=past12Hours\n'
 reset_curl_attempts
 run_request "/api/runs/run-1/context"
 assert_status 28

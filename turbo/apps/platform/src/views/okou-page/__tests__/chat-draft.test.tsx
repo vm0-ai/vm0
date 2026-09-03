@@ -25,7 +25,11 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  fillComposer,
+  mockChatLifecycle,
+  sendMessageInUI,
+} from "./chat-test-helpers.ts";
 import { createMockAgentResponse } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
@@ -236,6 +240,87 @@ describe("chat drafts", () => {
         screen.getByLabelText("Remove agent-brief.md"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("sends a restored desktop recording with the hidden camera workflow", async () => {
+    const user = userEvent.setup({ delay: null });
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+      onSendRequest: ({ prompt }) => {
+        sentPrompt = prompt;
+      },
+    });
+    // What the desktop recorder left behind, after the draft has been saved and
+    // read back: the server returns the two files, never the instructions the
+    // handoff put on the draft in the browser it landed in.
+    context.mocks.api(agentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "desktop-take",
+              filenameSnapshot: "demo.mp4",
+              contentType: "video/mp4",
+            },
+            {
+              type: "file",
+              fileId: "desktop-take-clicks",
+              filenameSnapshot: "demo.clicks.json",
+              contentType: "application/json",
+            },
+            {
+              type: "text",
+              text: "Create a polished intro video from this desktop screen recording.",
+            },
+          ],
+        },
+        draftAttachments: [
+          {
+            id: "desktop-take",
+            filename: "demo.mp4",
+            contentType: "video/mp4",
+            size: 1024,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/demo.mp4",
+          },
+          {
+            id: "desktop-take-clicks",
+            filename: "demo.clicks.json",
+            contentType: "application/json",
+            size: 512,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/demo.clicks.json",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove demo.mp4")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Remove demo.clicks.json"),
+      ).toBeInTheDocument();
+    });
+    await sendMessageInUI(user, textarea(), "Keep it under a minute");
+
+    await waitFor(() => {
+      expect(sentPrompt).toContain("okou video camera");
+    });
+    // The workflow rides along unseen, and the visible request stays the user's.
+    expect(sentPrompt).toContain("<intro_video_workflow>");
+    expect(sentPrompt).toContain(
+      "<user_request>\nKeep it under a minute\n</user_request>",
+    );
+    expect(textarea()).not.toHaveTextContent("okou video camera");
   });
 
   it("keeps local edits made while an agent draft is loading", async () => {

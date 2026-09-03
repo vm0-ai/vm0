@@ -24,29 +24,12 @@ const GUESTS_WEIGHT: u32 = 9_800;
 const SAMPLE_WARMUP: Duration = Duration::from_secs(1);
 const SAMPLE_WINDOW: Duration = Duration::from_secs(5);
 const SATURATED_SAMPLES: u64 = 3;
-const TEST_VCPUS: [u32; 4] = [1, 1, 4, 4];
+// Equal Guest leaf weights would produce a ratio of 2.0 for the topology below.
+const MAX_NORMALIZED_RATIO: f64 = 1.75;
+const MIN_BORROWING_RATIO: f64 = 1.4;
+const TEST_VCPUS: [u32; 2] = [1, 2];
 const CPU_LOAD_COMMAND: &str = "sh -c 'for i in $(seq 1 $(nproc)); do timeout 8 sh -c \
     \"while :; do :; done\" & done; wait || true'";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TestMode {
-    Baseline,
-    Managed,
-}
-
-impl TestMode {
-    fn from_env() -> TestResult<Self> {
-        match required_env("VM0_HOST_CPU_TEST_MODE")?.as_str() {
-            "baseline" => Ok(Self::Baseline),
-            "managed" => Ok(Self::Managed),
-            value => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("VM0_HOST_CPU_TEST_MODE must be baseline or managed, got {value:?}"),
-            )
-            .into()),
-        }
-    }
-}
 
 struct RunningSandbox {
     vcpu: u32,
@@ -59,30 +42,26 @@ struct Measurement {
     control_max_gap_micros: u64,
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires root, Firecracker fixtures, NBD, and delegated cgroup v2"]
 async fn real_firecracker_guests_receive_weighted_host_cpu_service() -> TestResult<()> {
     if !nix::unistd::getuid().is_root() {
         return Err(io::Error::new(io::ErrorKind::PermissionDenied, "test requires root").into());
     }
-    let mode = TestMode::from_env()?;
     let firecracker = required_path("VM0_HOST_CPU_TEST_FIRECRACKER")?;
     let kernel = required_path("VM0_HOST_CPU_TEST_KERNEL")?;
     let rootfs = required_path("VM0_HOST_CPU_TEST_ROOTFS")?;
     let base_dir = PathBuf::from(required_env("VM0_HOST_CPU_TEST_BASE_DIR")?);
     fs::create_dir_all(&base_dir)?;
 
-    let host_cpu_placement = match mode {
-        TestMode::Baseline => None,
-        TestMode::Managed => Some(
-            HostCpuPlacementConfig::new(
-                CONTROL_WEIGHT,
-                GUESTS_WEIGHT,
-                HostCpuPlacementMode::Required,
-            )
-            .map_err(io::Error::other)?,
-        ),
-    };
+    let host_cpu_placement = Some(
+        HostCpuPlacementConfig::new(
+            CONTROL_WEIGHT,
+            GUESTS_WEIGHT,
+            HostCpuPlacementMode::Required,
+        )
+        .map_err(io::Error::other)?,
+    );
     let mut runtime = FirecrackerRuntime::new(RuntimeConfig {
         proxy_port: None,
         dns_port: None,
@@ -118,16 +97,13 @@ async fn real_firecracker_guests_receive_weighted_host_cpu_service() -> TestResu
     }
 
     let cgroup_root = delegated_root()?;
-    if mode == TestMode::Managed {
-        verify_managed_hierarchy(&cgroup_root, &sandboxes)?;
-    }
+    verify_managed_hierarchy(&cgroup_root, &sandboxes)?;
 
     let mut saturated_usage = vec![0_u64; sandboxes.len()];
     let mut saturated_control_ticks = 0_u64;
     let mut saturated_control_max_gap_micros = 0_u64;
     for sample in 0..SATURATED_SAMPLES {
-        let measurement =
-            run_load_and_measure(mode, &cgroup_root, &sandboxes, &[0, 1, 2, 3]).await?;
+        let measurement = run_load_and_measure(&cgroup_root, &sandboxes, &[0, 1]).await?;
         assert_eq!(measurement.usage.len(), saturated_usage.len());
         for (index, (total, usage)) in saturated_usage
             .iter_mut()
@@ -165,51 +141,42 @@ async fn real_firecracker_guests_receive_weighted_host_cpu_service() -> TestResu
     println!("HOST_CPU_CONTROL_TICKS={saturated_control_ticks}");
     println!("HOST_CPU_CONTROL_MAX_GAP_MICROS={saturated_control_max_gap_micros}");
 
-    if mode == TestMode::Managed {
-        let max_ratio = required_env("VM0_HOST_CPU_TEST_MAX_NORMALIZED_RATIO")?
-            .parse::<f64>()
-            .map_err(|error| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("parse VM0_HOST_CPU_TEST_MAX_NORMALIZED_RATIO: {error}"),
-                )
-            })?;
-        assert!(
-            normalized_ratio <= max_ratio,
-            "normalized Guest CPU progress ratio {normalized_ratio:.3} exceeds baseline-derived {max_ratio:.3}: {normalized:?}"
-        );
+    assert!(
+        normalized_ratio <= MAX_NORMALIZED_RATIO,
+        "normalized Guest CPU progress ratio {normalized_ratio:.3} exceeds {MAX_NORMALIZED_RATIO:.3}: {normalized:?}"
+    );
 
-        let selected = 2;
-        let borrowing = run_load_and_measure(mode, &cgroup_root, &sandboxes, &[selected]).await?;
-        let saturated_selected = saturated_usage
-            .get(selected)
-            .copied()
-            .ok_or_else(|| io::Error::other("selected saturated sandbox is missing"))?
-            / SATURATED_SAMPLES;
-        let borrowing_selected = borrowing
-            .usage
-            .get(selected)
-            .copied()
-            .ok_or_else(|| io::Error::other("selected borrowing sandbox is missing"))?;
-        assert!(
-            borrowing_selected as f64 >= saturated_selected as f64 * 1.4,
-            "remaining Guest did not borrow idle CPU: saturated={saturated_selected}, borrowing={borrowing_selected}"
-        );
-    }
+    let selected = 0;
+    let borrowing = run_load_and_measure(&cgroup_root, &sandboxes, &[selected]).await?;
+    let saturated_selected = saturated_usage
+        .get(selected)
+        .copied()
+        .ok_or_else(|| io::Error::other("selected saturated sandbox is missing"))?
+        / SATURATED_SAMPLES;
+    let borrowing_selected = borrowing
+        .usage
+        .get(selected)
+        .copied()
+        .ok_or_else(|| io::Error::other("selected borrowing sandbox is missing"))?;
+    let borrowing_ratio = borrowing_selected as f64 / saturated_selected as f64;
+    println!("HOST_CPU_SATURATED_USAGE_USEC={saturated_selected}");
+    println!("HOST_CPU_BORROWING_USAGE_USEC={borrowing_selected}");
+    println!("HOST_CPU_BORROWING_RATIO={borrowing_ratio:.6}");
+    assert!(
+        borrowing_ratio >= MIN_BORROWING_RATIO,
+        "remaining Guest did not borrow idle CPU: saturated={saturated_selected}, borrowing={borrowing_selected}, ratio={borrowing_ratio:.3}"
+    );
 
     while let Some(running) = sandboxes.pop() {
         factory.destroy(running.sandbox).await;
     }
-    if mode == TestMode::Managed {
-        verify_no_guest_leaves(&cgroup_root)?;
-    }
+    verify_no_guest_leaves(&cgroup_root)?;
     factory.shutdown().await;
     runtime.shutdown().await;
     Ok(())
 }
 
 async fn run_load_and_measure(
-    mode: TestMode,
     cgroup_root: &Path,
     sandboxes: &[RunningSandbox],
     active: &[usize],
@@ -238,7 +205,7 @@ async fn run_load_and_measure(
     };
     let sample = async {
         tokio::time::sleep(SAMPLE_WARMUP).await;
-        let before = read_usage(mode, cgroup_root, sandboxes)?;
+        let before = read_usage(cgroup_root, sandboxes)?;
         let stop = Arc::new(AtomicBool::new(false));
         let ticks = Arc::new(AtomicU64::new(0));
         let max_gap_micros = Arc::new(AtomicU64::new(0));
@@ -258,7 +225,7 @@ async fn run_load_and_measure(
             }
         });
         tokio::time::sleep(SAMPLE_WINDOW).await;
-        let after = read_usage(mode, cgroup_root, sandboxes)?;
+        let after = read_usage(cgroup_root, sandboxes)?;
         stop.store(true, Ordering::Relaxed);
         ticker.await?;
         let usage = after
@@ -294,51 +261,11 @@ async fn burn_cpu(sandbox: &dyn Sandbox) -> sandbox::Result<sandbox::ExecResult>
         .await
 }
 
-fn read_usage(
-    mode: TestMode,
-    cgroup_root: &Path,
-    sandboxes: &[RunningSandbox],
-) -> TestResult<Vec<u64>> {
+fn read_usage(cgroup_root: &Path, sandboxes: &[RunningSandbox]) -> TestResult<Vec<u64>> {
     sandboxes
         .iter()
-        .map(|sandbox| match mode {
-            TestMode::Baseline => process_cpu_ticks(sandbox_pid(sandbox)?),
-            TestMode::Managed => {
-                cgroup_usage_usec(&cgroup_root.join("guests").join(sandbox.sandbox.id()))
-            }
-        })
+        .map(|sandbox| cgroup_usage_usec(&cgroup_root.join("guests").join(sandbox.sandbox.id())))
         .collect()
-}
-
-fn process_cpu_ticks(pid: u32) -> TestResult<u64> {
-    let task_dir = PathBuf::from(format!("/proc/{pid}/task"));
-    let mut total = 0_u64;
-    for task in fs::read_dir(task_dir)? {
-        let stat = fs::read_to_string(task?.path().join("stat"))?;
-        let close = stat.rfind(')').ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "process stat lacks command terminator",
-            )
-        })?;
-        let fields = stat
-            .get(close + 2..)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "process stat is truncated"))?
-            .split_ascii_whitespace()
-            .collect::<Vec<_>>();
-        let user = parse_stat_field(&fields, 11)?;
-        let system = parse_stat_field(&fields, 12)?;
-        total = total.saturating_add(user).saturating_add(system);
-    }
-    Ok(total)
-}
-
-fn parse_stat_field(fields: &[&str], index: usize) -> TestResult<u64> {
-    fields
-        .get(index)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "process stat field missing"))?
-        .parse::<u64>()
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error).into())
 }
 
 fn cgroup_usage_usec(path: &Path) -> TestResult<u64> {

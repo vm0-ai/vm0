@@ -520,7 +520,6 @@
       "agentLoading": "에이전트가 아직 로딩 중입니다",
       "connect": "Google Drive 연결",
       "connectTooltip": "아티팩트 업로드를 위해 Google Drive를 연결하세요",
-      "failedToOpenConnect": "Google Drive 연결 페이지를 열지 못했습니다",
       "noArtifacts": "동기화할 아티팩트가 없습니다",
       "partial_one": "{{count}}개 중 {{synced}}개 파일을 Google Drive에 동기화했습니다",
       "partial_other": "{{count}}개 중 {{synced}}개 파일을 Google Drive에 동기화했습니다",
@@ -4797,6 +4796,10 @@
       "title": "데이터 내보내기"
     },
     "lab": {
+      "actions": {
+        "resetAll": "모두 재설정",
+        "resetting": "재설정 중…"
+      },
       "description": "출시 단계별 기능 스위치를 확인하세요.",
       "documentTitle": "랩",
       "groups": {
@@ -5101,8 +5104,13 @@
           "offline": "오프라인",
           "online": "온라인",
           "recovery": "복구",
+          "refresh": "새로 고침",
           "title": "실시간 연결 진단",
-          "unavailable": "사용 불가"
+          "unavailable": "사용 불가",
+          "workerDescription": "실시간 연결을 담당하는 공유 워커가 기록한 진단을 확인합니다.",
+          "workerLoading": "로딩 중",
+          "workerTitle": "공유 워커 연결 진단",
+          "workerUnavailable": "사용 불가"
         }
       },
       "language": {

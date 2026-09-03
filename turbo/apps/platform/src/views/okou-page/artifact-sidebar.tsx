@@ -465,6 +465,10 @@ function artifactSidebarSyncTarget(params: {
   return {
     agentId: params.agentId,
     disconnected: params.item.file.googleDriveSync?.status === "disconnected",
+    recovery:
+      params.item.file.googleDriveSync?.status === "disconnected"
+        ? params.item.file.googleDriveSync.recovery
+        : undefined,
     fileId: params.item.file.id,
     filename: params.item.file.filename,
     onSyncSuccess: params.onSyncSuccess,

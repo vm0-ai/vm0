@@ -107,7 +107,178 @@ function responsesTextSse(
   });
 }
 
+function responsesToolSse(
+  response: ServerResponse,
+  args: {
+    readonly callId: string;
+    readonly name: string;
+    readonly arguments: Record<string, unknown>;
+  },
+): void {
+  const responseId = "resp_pi_memory_tool";
+  const itemId = "fc_pi_memory_tool";
+  const functionArguments = JSON.stringify(args.arguments);
+  const item = {
+    type: "function_call",
+    id: itemId,
+    call_id: args.callId,
+    name: args.name,
+    arguments: functionArguments,
+    status: "completed",
+  };
+  const events = [
+    {
+      type: "response.created",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { ...item, arguments: "", status: "in_progress" },
+    },
+    {
+      type: "response.function_call_arguments.delta",
+      output_index: 0,
+      item_id: itemId,
+      delta: functionArguments,
+    },
+    {
+      type: "response.function_call_arguments.done",
+      output_index: 0,
+      item_id: itemId,
+      arguments: functionArguments,
+    },
+    { type: "response.output_item.done", output_index: 0, item },
+    {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        object: "response",
+        status: "completed",
+        output: [item],
+        usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+      },
+    },
+  ];
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(
+    events
+      .map((event) => {
+        return `data: ${JSON.stringify(event)}\n\n`;
+      })
+      .join(""),
+  );
+}
+
 describe("Pi API facade", () => {
+  it("sends stable memory schemas and hands a call off without API execution", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const server = createServer((request, response) => {
+      void (async () => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        requestBodies.push(
+          JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
+            string,
+            unknown
+          >,
+        );
+        responsesToolSse(response, {
+          callId: "memory-call-1",
+          name: "memories_read",
+          arguments: { path: "MEMORY.md" },
+        });
+      })().catch((error: unknown) => {
+        response.destroy(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Memory tool test server has no TCP address");
+    }
+
+    try {
+      const result = await runPiApiFirstTurn({
+        cwd: "/home/user/workspace",
+        agentDir: "/home/user/.pi/agent",
+        sessionId: SESSION_ID,
+        prompt: "read the frozen memory index",
+        appendSystemPrompt: null,
+        model: {
+          provider: "openai",
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          apiKey: "test-key",
+          model: "gpt-5.6-terra",
+          api: "openai-responses",
+          thinkingLevel: "low",
+        },
+        resourceSnapshot: {
+          schemaVersion: 2,
+          agentsFiles: [],
+          skills: [],
+          memoryRecall: {
+            status: "no-content",
+            memoryStorageId: "memory-storage-a",
+            storageVersionId: "memory-version-a",
+          },
+        },
+        ownership: createPiApiFirstTurnOwnership(),
+      });
+
+      const requestTools = requestBodies[0]?.tools;
+      expect(Array.isArray(requestTools)).toBe(true);
+      expect(
+        (requestTools as Array<{ name?: string }>)
+          .map((tool) => {
+            return tool.name;
+          })
+          .filter((name) => {
+            return name?.startsWith("memories_");
+          }),
+      ).toStrictEqual(["memories_list", "memories_search", "memories_read"]);
+      expect(result.handoffRequired).toBe(true);
+      expect(result.assistantMessage.content).toStrictEqual([
+        {
+          type: "toolCall",
+          id: "memory-call-1|fc_pi_memory_tool",
+          name: "memories_read",
+          arguments: { path: "MEMORY.md" },
+        },
+      ]);
+      expect(inspectPiSessionJsonl(result.sessionJsonl)).toMatchObject({
+        hasPendingToolCalls: true,
+        isSettledCheckpoint: false,
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+  });
+
   it("keeps provider request ownership monotonic", () => {
     const ownership = createPiApiFirstTurnOwnership();
 

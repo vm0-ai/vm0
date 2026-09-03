@@ -10,6 +10,7 @@ import { testCronCleanupSandboxesStateContract } from "@okouai/api-contracts/con
 import {
   chatThreadConnectorSelectionContract,
   chatThreadsContract,
+  type ChatThreadArtifactGoogleDriveSync,
   type ChatEvent,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -402,14 +403,14 @@ type ThreadArtifacts = Awaited<ReturnType<typeof chat.listThreadArtifacts>>;
 
 function expectDriveStatuses(
   artifacts: ThreadArtifacts,
-  status: "disconnected" | "not_synced" | "unknown",
+  expected: ChatThreadArtifactGoogleDriveSync,
 ): void {
   const files = artifacts.runs.flatMap((run) => {
     return run.files;
   });
   expect(files.length).toBeGreaterThan(0);
   for (const file of files) {
-    expect(file.googleDriveSync).toStrictEqual({ status });
+    expect(file.googleDriveSync).toStrictEqual(expected);
   }
 }
 
@@ -3303,6 +3304,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       contentType: "application/pdf",
       googleDriveSync: { status: "disconnected" },
     });
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "connect" },
+    });
 
     // Sync requires a connected Drive.
     const noConnector = await chat.requestSyncThreadArtifact(
@@ -3335,7 +3340,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
     // A connected Drive still needs to be enabled for the thread's agent.
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "disconnected");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "authorize" },
+    });
     const disabledForAgent = await chat.requestSyncThreadArtifact(
       actor,
       run.threadId,
@@ -3486,7 +3494,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-      expectDriveStatuses(artifacts, "unknown");
+      expectDriveStatuses(artifacts, { status: "unknown" });
     }
     expect(transientRefresh.refreshBodies).toHaveLength(2);
     await expect(
@@ -3500,7 +3508,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       return { status: 401 };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "disconnected");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "reconnect", connectionId: connected.id },
+    });
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
     ).resolves.toMatchObject({
@@ -3508,7 +3519,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       reconnectReason: "authorization_expired_or_revoked",
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "disconnected");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "reconnect", connectionId: connected.id },
+    });
     expect(terminalRefresh.refreshBodies).toHaveLength(1);
     expect(terminalList.authorizationHeaders).toHaveLength(1);
 
@@ -3570,7 +3584,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       return { status: 401 };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "disconnected");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "reconnect", connectionId: connected.id },
+    });
     expect(sessionExpiredRefresh.refreshBodies).toHaveLength(1);
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
@@ -3596,7 +3613,10 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       state: stateFromAuthorizationUrl(secondReconnectStart.authorizationUrl),
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "disconnected");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "reconnect", connectionId: connected.id },
+    });
     expect(unknownSubtypeRefresh.refreshBodies).toHaveLength(1);
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
@@ -3702,14 +3722,22 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
 
+    const defaultRefresh = mockGoogleDriveConnectorOAuth();
     const defaultStatusRecorder = mockGoogleDriveFilesList(() => {
-      return { status: 200, files: [] };
+      return { status: 401 };
     });
     let artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "not_synced");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: {
+        action: "reconnect",
+        connectionId: defaultAccount.id,
+      },
+    });
     expect(defaultStatusRecorder.authorizationHeaders).toStrictEqual([
       "Bearer drive-access-drive-default",
     ]);
+    expect(defaultRefresh.refreshBodies).toHaveLength(1);
 
     const selected = await accept(
       chatThreadConnectorSelectionsClient().update({
@@ -3724,11 +3752,20 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     );
     expect(selected.body.connectionId).toBe(selectedAccount.id);
 
+    await api.enableAgentConnectors(actor, agentId, []);
+    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: { action: "authorize" },
+    });
+    expect(defaultStatusRecorder.authorizationHeaders).toHaveLength(1);
+
+    await api.enableAgentConnectors(actor, agentId, ["google-drive"]);
     const selectedStatusRecorder = mockGoogleDriveFilesList(() => {
       return { status: 200, files: [] };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "not_synced");
+    expectDriveStatuses(artifacts, { status: "not_synced" });
     expect(selectedStatusRecorder.authorizationHeaders).toStrictEqual([
       "Bearer drive-access-drive-selected",
     ]);
@@ -3756,12 +3793,37 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       "Bearer drive-access-drive-selected",
     ]);
 
+    mockGoogleDriveConnectorOAuth({
+      userInfo: {
+        id: "bdd-drive-default-user-id",
+        email: "bdd-drive-default@example.test",
+        name: "BDD Drive Default",
+      },
+    });
+    const defaultReconnectStart = await connectorsApi.startOauth(
+      actor,
+      "google-drive",
+      "oauth",
+      undefined,
+      { intent: "reconnect", connectionId: defaultAccount.id },
+    );
+    await connectorsApi.completeOauthCallback("google-drive", {
+      code: "drive-default-reconnected",
+      state: stateFromAuthorizationUrl(defaultReconnectStart.authorizationUrl),
+    });
+
     const terminalRefresh = mockGoogleDriveConnectorOAuth();
     const terminalStatusRecorder = mockGoogleDriveFilesList(() => {
       return { status: 401 };
     });
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
-    expectDriveStatuses(artifacts, "disconnected");
+    expectDriveStatuses(artifacts, {
+      status: "disconnected",
+      recovery: {
+        action: "reconnect",
+        connectionId: selectedAccount.id,
+      },
+    });
     expect(terminalStatusRecorder.authorizationHeaders).toStrictEqual([
       "Bearer drive-access-drive-selected",
     ]);

@@ -21,6 +21,7 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testCustomConnectorSkillVersionAssociationContract } from "@okouai/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { SEED_SKILLS } from "@okouai/core/seed-skills";
@@ -150,6 +151,7 @@ import {
   seedVm0BuiltInDefaultModelKey as seedVm0BuiltInDefaultModelKeyState,
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
   setCustomConnectorAuthTemplateFixture,
+  setRunModelProviderStateFixture,
   setRunnerJobConnectorRuntimeTargets,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
@@ -1673,6 +1675,36 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(appendSystemPrompt).toContain(
       "./generated/resources/reverse-template/SKILL.md",
     );
+  });
+
+  it("advertises presentation screenshots only while their rollout switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const toolHint =
+      "okou presentation screenshot --input <deck.ppt|deck.pptx|deck.pdf|page.html|layouts-dir|url> --out <dir>";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "render this deck to page images",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PresentationScreenshot]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "render this deck to page images",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
+    expect(gatedOnClaim.appendSystemPrompt ?? "").toContain(toolHint);
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
@@ -18417,6 +18449,221 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
+  it("suppresses only reviewed non-built-in failures from generic completion logs", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    await seedVm0BuiltInDefaultModelKey();
+    const { actor, agentId } = await entitledRunActor();
+    const suppressedReasons = [
+      "insufficient_credits",
+      "invalid_api_key",
+      "invalid_credentials",
+      "terms_acceptance_required",
+      "context_window_exceeded",
+      "output_token_limit",
+      "provider_rate_limited",
+      "provider_overloaded",
+      "provider_stream_timeout",
+      "provider_server_error",
+      "response_connection_lost",
+      "safety_policy_refusal",
+      "reconnect_required",
+      "usage_limit",
+    ] as const satisfies readonly RunFailureReason[];
+    const axiomLevels = [
+      context.mocks.axiomLogging.debug,
+      context.mocks.axiomLogging.info,
+      context.mocks.axiomLogging.warn,
+      context.mocks.axiomLogging.error,
+    ];
+
+    function matchingLogCalls(
+      log: (typeof axiomLevels)[number],
+      message: string,
+      runId: string,
+    ) {
+      return log.mock.calls.filter(([candidateMessage, fields]) => {
+        return (
+          candidateMessage === message &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === runId
+        );
+      });
+    }
+
+    async function completeFailure(args: {
+      readonly failureReason?: RunFailureReason;
+      readonly modelProvider?: ModelProviderType;
+      readonly persistedModelProvider?: string | null;
+    }): Promise<{ readonly runId: string; readonly error: string }> {
+      const modelProvider = args.modelProvider ?? "anthropic-api-key";
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: `fail ${modelProvider} with ${args.failureReason ?? "no reason"}`,
+        modelProvider,
+      });
+      if (args.persistedModelProvider !== undefined) {
+        await setRunModelProviderStateFixture(
+          context,
+          run.runId,
+          args.persistedModelProvider,
+        );
+      }
+      const error = `provider failure for ${run.runId}`;
+      await webhooks.requestAgentComplete(
+        {
+          runId: run.runId,
+          exitCode: 1,
+          error,
+          ...(args.failureReason === undefined
+            ? {}
+            : { failureReason: args.failureReason }),
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+        },
+        [200],
+      );
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "failed",
+        error,
+      });
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBe(args.failureReason ?? null);
+      return { runId: run.runId, error };
+    }
+
+    for (const failureReason of suppressedReasons) {
+      const { runId } = await completeFailure({ failureReason });
+      for (const level of axiomLevels) {
+        expect(matchingLogCalls(level, "Run failed", runId)).toHaveLength(0);
+      }
+    }
+
+    const visibleControls = [
+      await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "provider_rate_limited",
+      }),
+      await completeFailure({
+        failureReason: "provider_rate_limited",
+        persistedModelProvider: null,
+      }),
+      await completeFailure({
+        failureReason: "provider_rate_limited",
+        persistedModelProvider: "legacy-unknown-provider",
+      }),
+      await completeFailure({}),
+      await completeFailure({ failureReason: "session_history_limit" }),
+      await completeFailure({ failureReason: "unsupported_model" }),
+    ];
+    for (const control of visibleControls) {
+      const warnings = matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        control.runId,
+      );
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.[1]).toStrictEqual(
+        expect.objectContaining({
+          runId: control.runId,
+          exitCode: 1,
+          error: control.error,
+          context: "webhook:complete",
+        }),
+      );
+    }
+
+    const missingCheckpoint = await api.createRun(actor, {
+      agentId,
+      prompt: "keep the missing-checkpoint warning visible",
+      modelProvider: "anthropic-api-key",
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: missingCheckpoint.runId,
+        exitCode: 0,
+        failureReason: "provider_overloaded",
+      },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(
+          actor,
+          missingCheckpoint.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed because checkpoint was not found",
+        missingCheckpoint.runId,
+      ),
+    ).toHaveLength(1);
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        missingCheckpoint.runId,
+      ),
+    ).toHaveLength(0);
+
+    const suppressibleFirst = await completeFailure({
+      failureReason: "provider_overloaded",
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: suppressibleFirst.runId,
+        exitCode: 1,
+        error: "late unsupported-model report",
+        failureReason: "unsupported_model",
+      },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(
+          actor,
+          suppressibleFirst.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        suppressibleFirst.runId,
+      ),
+    ).toHaveLength(0);
+
+    const visibleFirst = await completeFailure({
+      failureReason: "unsupported_model",
+    });
+    await webhooks.requestAgentComplete(
+      {
+        runId: visibleFirst.runId,
+        exitCode: 1,
+        error: "late overload report",
+        failureReason: "provider_overloaded",
+      },
+      {
+        authorization: `Bearer ${api.sandboxTokenForRun(
+          actor,
+          visibleFirst.runId,
+        )}`,
+      },
+      [200],
+    );
+    expect(
+      matchingLogCalls(
+        context.mocks.axiomLogging.warn,
+        "Run failed",
+        visibleFirst.runId,
+      ),
+    ).toHaveLength(1);
+  });
+
   it.each(["claude-code", "codex"] as const)(
     "atomically completes a run with a %s checkpoint",
     async (cliAgentType) => {

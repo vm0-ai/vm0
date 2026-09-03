@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  cronRenewGoogleCalendarWatchesContract,
-  cronRenewGoogleFormsWatchesContract,
-} from "@okouai/api-contracts/contracts/cron";
 import { testGmailWatchRenewalContract } from "@okouai/api-contracts/contracts/test-gmail-watch-renewal";
+import { testGoogleCalendarWatchRenewalContract } from "@okouai/api-contracts/contracts/test-google-calendar-watch-renewal";
+import { testGoogleFormsWatchRenewalContract } from "@okouai/api-contracts/contracts/test-google-forms-watch-renewal";
 import {
   workflowAutomationsContract,
   workflowsDetailContract,
@@ -50,6 +48,8 @@ import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "../cron-renew-google-calendar-watches";
 import { cronRenewGoogleFormsWatchesRoutes } from "../cron-renew-google-forms-watches";
 import { testGmailWatchRenewalRoutes } from "../test-gmail-watch-renewal";
+import { testGoogleCalendarWatchRenewalRoutes } from "../test-google-calendar-watch-renewal";
+import { testGoogleFormsWatchRenewalRoutes } from "../test-google-forms-watch-renewal";
 import { workflowAutomationsRoutes } from "../workflow-automations";
 import { workflowsRoutes } from "../workflows";
 import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
@@ -94,15 +94,15 @@ function renewGmailWatchScopeClient() {
   );
 }
 
-function renewGoogleCalendarWatchesClient() {
-  return setupApp({ context, routes: cronRenewGoogleCalendarWatchesRoutes })(
-    cronRenewGoogleCalendarWatchesContract,
+function renewGoogleCalendarWatchScopeClient() {
+  return setupApp({ context, routes: testGoogleCalendarWatchRenewalRoutes })(
+    testGoogleCalendarWatchRenewalContract,
   );
 }
 
-function renewGoogleFormsWatchesClient() {
-  return setupApp({ context, routes: cronRenewGoogleFormsWatchesRoutes })(
-    cronRenewGoogleFormsWatchesContract,
+function renewGoogleFormsWatchScopeClient() {
+  return setupApp({ context, routes: testGoogleFormsWatchRenewalRoutes })(
+    testGoogleFormsWatchRenewalContract,
   );
 }
 
@@ -148,8 +148,6 @@ const NOTION_DATABASE_URL =
   "https://www.notion.so/22222222222242228222222222222222?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa&source=copy_link";
 const NOTION_DATA_SOURCE_URL =
   "https://www.notion.so/Bug-Bash-33333333333343338333333333333333";
-const CRON_SECRET = "workflow-watch-lifecycle-cron-secret";
-
 interface WorkflowsFixture {
   readonly orgId: string;
   readonly userId: string;
@@ -1816,7 +1814,6 @@ describe("okou workflow automations", () => {
   });
 
   it("renews a Google Forms watch in place", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const startedAt = Date.parse("2026-08-05T10:00:00.000Z");
     mockNow(startedAt);
     const scenario = await setupFixture();
@@ -1873,14 +1870,20 @@ describe("okou workflow automations", () => {
     mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
 
     const renewed = await accept(
-      renewGoogleFormsWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleFormsWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
     const unchanged = await accept(
-      renewGoogleFormsWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleFormsWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
@@ -1900,7 +1903,6 @@ describe("okou workflow automations", () => {
   });
 
   it("does not count a stopped Google Forms watch as renewed", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
     await enableGoogleFormsWorkflowAutomations(scenario.fixture);
     await connectGoogleForms(scenario);
@@ -1952,8 +1954,11 @@ describe("okou workflow automations", () => {
     );
 
     const reconciled = await accept(
-      renewGoogleFormsWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleFormsWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
@@ -3367,7 +3372,6 @@ describe("okou workflow automations", () => {
   });
 
   it("retries an inactive Calendar stop without renewing the channel", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
     await connectGoogleCalendar(scenario);
     const watch = configureGoogleCalendarWatchMock();
@@ -3393,8 +3397,11 @@ describe("okou workflow automations", () => {
     expect(stop.calls).toBe(1);
 
     const reconciled = await accept(
-      renewGoogleCalendarWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
@@ -3412,7 +3419,6 @@ describe("okou workflow automations", () => {
   });
 
   it("repairs a missing exact Calendar watch in the renewal pass", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
     await connectGoogleCalendar(scenario);
     const initialWatch = configureGoogleCalendarWatchMock();
@@ -3449,8 +3455,11 @@ describe("okou workflow automations", () => {
 
     const repairedWatch = configureGoogleCalendarWatchMock();
     const reconciled = await accept(
-      renewGoogleCalendarWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
@@ -3465,7 +3474,6 @@ describe("okou workflow automations", () => {
   });
 
   it("retains a replaced Calendar channel until its stop succeeds", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     const startedAt = Date.parse("2026-08-05T08:00:00.000Z");
     mockNow(startedAt);
     const scenario = await setupFixture();
@@ -3495,8 +3503,11 @@ describe("okou workflow automations", () => {
     );
     mockNow(startedAt + 6 * 24 * 60 * 60 * 1000);
     const renewed = await accept(
-      renewGoogleCalendarWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
@@ -3512,8 +3523,11 @@ describe("okou workflow automations", () => {
     ]);
 
     const reconciled = await accept(
-      renewGoogleCalendarWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );
@@ -3539,7 +3553,6 @@ describe("okou workflow automations", () => {
   });
 
   it("self-heals a renamed primary Calendar target without crossing accounts", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     const legacyCalendarId = "legacy-primary@example.com";
     const firstAccessToken = "renamed-primary-first-token";
@@ -3674,15 +3687,32 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    const renewed = await accept(
-      renewGoogleCalendarWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+    const firstRenewed = await accept(
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: first.fixture.orgId,
+          user_id: first.fixture.userId,
+        },
       }),
       [200],
     );
-    expect(renewed.body).toStrictEqual({
+    const secondRenewed = await accept(
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: second.fixture.orgId,
+          user_id: second.fixture.userId,
+        },
+      }),
+      [200],
+    );
+    expect(firstRenewed.body).toStrictEqual({
       success: true,
-      renewed: 2,
+      renewed: 1,
+      failed: 0,
+    });
+    expect(secondRenewed.body).toStrictEqual({
+      success: true,
+      renewed: 1,
       failed: 0,
     });
 
@@ -3739,7 +3769,6 @@ describe("okou workflow automations", () => {
   });
 
   it("does not remap a shared Calendar when provider resources differ", async () => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     const sharedCalendarId = "shared-calendar@example.com";
     const accessToken = "shared-calendar-token";
@@ -3816,8 +3845,11 @@ describe("okou workflow automations", () => {
     );
 
     const renewed = await accept(
-      renewGoogleCalendarWatchesClient().renew({
-        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      renewGoogleCalendarWatchScopeClient().renew({
+        body: {
+          org_id: scenario.fixture.orgId,
+          user_id: scenario.fixture.userId,
+        },
       }),
       [200],
     );

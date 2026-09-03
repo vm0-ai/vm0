@@ -113,6 +113,18 @@ describe("connector authorization session schemas", () => {
       "account_mutation",
     );
     expect(connectorExternalCodeSessions.accountMutation.notNull).toBe(true);
+    expect(connectorExternalCodeSessions.completedConnectorId.name).toBe(
+      "completed_connector_id",
+    );
+    expect(connectorExternalCodeSessions.completedConnectorId.notNull).toBe(
+      false,
+    );
+    expect(
+      connectorOauthDeviceAuthorizationSessions.completedConnectorId.name,
+    ).toBe("completed_connector_id");
+    expect(
+      connectorOauthDeviceAuthorizationSessions.completedConnectorId.notNull,
+    ).toBe(false);
     expect(connectorOauthDeviceAuthorizationSessions.userCode.name).toBe(
       "user_code",
     );
