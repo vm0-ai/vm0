@@ -762,9 +762,11 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("opens and removes a template attachment restored from a legacy editor draft", async () => {
+  it("opens, replaces, and removes a template attachment restored from a legacy editor draft", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const replacement = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
+    const draftText = "Keep the legacy draft text";
     const generationTemplate = {
       type: "presentation",
       selection: { templateId: template.templateId },
@@ -781,7 +783,7 @@ describe("chat composer templates", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await findComposerEditor();
+    const editor = await findComposerEditor();
     const thread = await waitFor(() => {
       const current = context.store.get(currentLeftThread$);
       if (!current) {
@@ -791,28 +793,31 @@ describe("chat composer templates", () => {
     });
     // Current page actions create inline template nodes, so this historical
     // editor shape can only be reached by restoring an earlier draft snapshot.
-    context.store.set(
-      thread.composer.template.setGenerationTemplate$,
-      generationTemplate,
-    );
-    thread.composer.editor.editor.commands.setContent({
-      type: "doc",
-      content: [
-        {
-          type: "templateAttachment",
-          attrs: {
-            templateType: "presentation",
-            title: template.title,
-            category: "slides",
-            previewImageUrl: null,
+    const restoreLegacyDraft = () => {
+      context.store.set(
+        thread.composer.template.setGenerationTemplate$,
+        generationTemplate,
+      );
+      thread.composer.editor.editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "templateAttachment",
+            attrs: {
+              templateType: "presentation",
+              title: template.title,
+              category: "slides",
+              previewImageUrl: null,
+            },
           },
-        },
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: "Keep the legacy draft text" }],
-        },
-      ],
-    });
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: draftText }],
+          },
+        ],
+      });
+    };
+    restoreLegacyDraft();
 
     await user.click(
       await screen.findByLabelText(`Preview template ${template.title}`),
@@ -845,7 +850,55 @@ describe("chat composer templates", () => {
       expect(draftPatches).toContainEqual({
         draftUserMessage: {
           version: 1,
-          parts: [{ type: "text", text: "Keep the legacy draft text" }],
+          parts: [{ type: "text", text: draftText }],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    restoreLegacyDraft();
+    await user.click(
+      await screen.findByLabelText(`Preview template ${template.title}`),
+    );
+    await user.click(
+      await screen.findByLabelText(`Select template ${replacement.title}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-composer-template-attachment]"),
+      ).toBeNull();
+      expect(
+        document.querySelectorAll("[data-composer-inline-template]"),
+      ).toHaveLength(1);
+      expect(
+        screen.queryByLabelText(`Preview template ${template.title}`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Preview template ${replacement.title}`),
+      ).toBeInTheDocument();
+      expect(editor).toHaveTextContent(draftText);
+      expect(
+        context.store.get(thread.composer.template.generationTemplate$),
+      ).toBeUndefined();
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "template",
+              titleSnapshot: replacement.title,
+              template: expect.objectContaining({
+                type: "presentation",
+                selection: expect.objectContaining({
+                  templateId: replacement.templateId,
+                }),
+              }),
+            },
+            { type: "text", text: draftText },
+          ],
         },
         draftAttachments: null,
       });

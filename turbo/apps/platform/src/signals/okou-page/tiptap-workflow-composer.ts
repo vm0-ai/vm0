@@ -2750,14 +2750,54 @@ function inlineTemplateNode(
   });
 }
 
-function createInsertTemplateCommand(editor: Editor) {
+function replaceLegacyTemplateAttachmentNode(
+  editor: Editor,
+  inlineTemplate: ProseMirrorNode,
+): boolean {
+  const located = locateTemplateAttachment(editor.state.doc);
+  if (!located) {
+    return false;
+  }
+  const transaction = editor.state.tr.delete(
+    located.position,
+    located.position + located.node.nodeSize,
+  );
+  const nextNode = transaction.doc.nodeAt(located.position);
+  if (nextNode?.type.name === "paragraph") {
+    transaction.insert(located.position + 1, inlineTemplate);
+  } else {
+    transaction.insert(
+      located.position,
+      editor.schema.nodeFromJSON({
+        type: "paragraph",
+        content: [inlineTemplate.toJSON()],
+      }),
+    );
+  }
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+
+function createInsertTemplateCommand(
+  editor: Editor,
+  draft: DraftSignals,
+  legacyReplacementPending$: State<boolean>,
+) {
   return command(
     (
-      _context,
+      { get, set },
       request: GenerationTemplateRequest,
       attachment: ComposerTemplateAttachment,
     ) => {
       const node = inlineTemplateNode(editor, request, attachment);
+      const replaceLegacy = get(legacyReplacementPending$);
+      set(legacyReplacementPending$, false);
+      if (replaceLegacy) {
+        set(draft.setGenerationTemplate$, undefined);
+        if (replaceLegacyTemplateAttachmentNode(editor, node)) {
+          return;
+        }
+      }
       const { selection } = editor.state;
       if (
         selection instanceof NodeSelection &&
@@ -2819,11 +2859,13 @@ function createTemplateCommands(
   draft: DraftSignals,
   openTemplatePickerDialog$: OpenTemplatePickerDialogCommand,
 ) {
+  const legacyReplacementPending$ = state(false);
   const readSelectedTemplate$ = createReadSelectedTemplateCommand(editor);
   const prepareTemplateInsertion$ =
     createPrepareTemplateInsertionCommand(editor);
   const openTemplatePicker$ = command(
     ({ get, set }, intent: OpenComposerTemplatePickerIntent): void => {
+      set(legacyReplacementPending$, intent.kind === "edit-legacy");
       let referenceValue: GenerationTemplateRequest | null = null;
       if (intent.kind === "edit-selected") {
         referenceValue = set(readSelectedTemplate$) ?? null;
@@ -2840,7 +2882,11 @@ function createTemplateCommands(
     },
   );
   return {
-    insertTemplate$: createInsertTemplateCommand(editor),
+    insertTemplate$: createInsertTemplateCommand(
+      editor,
+      draft,
+      legacyReplacementPending$,
+    ),
     openTemplatePicker$,
   };
 }
