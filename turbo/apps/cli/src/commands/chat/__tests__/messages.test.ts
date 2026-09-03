@@ -11,9 +11,8 @@ import { join } from "node:path";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventSchemaVersion,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { HttpResponse, http } from "msw";
 import {
   afterEach,
@@ -37,19 +36,16 @@ const CHAT_EVENT_SCHEMA_HEADERS = {
   [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
     CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
 };
-const PREVIOUS_CHAT_EVENT_SCHEMA_HEADERS = {
-  [CHAT_EVENT_SCHEMA_VERSION_HEADER]:
-    PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-};
 const CACHE_SCHEMA_VERSION_FILE = ".okou-chat-event-schema-version";
+const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 
-function rawEventRow(seqId: number) {
+function rawEventRow(seqId: number): ChatEventRow {
   return {
     id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
     chatThreadId: THREAD_ID,
     runId: null,
     revokesEventId: null,
-    eventType: "output.message" as const,
+    eventType: "output.message",
     payload: { content: `message ${seqId}` },
     contextType: null,
     contextId: null,
@@ -60,7 +56,25 @@ function rawEventRow(seqId: number) {
   };
 }
 
-function snapshotNdjson(rows: readonly ReturnType<typeof rawEventRow>[]) {
+function failedEventRow(seqId: number): ChatEventRow {
+  return {
+    id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
+    chatThreadId: THREAD_ID,
+    runId: "00000000-0000-4000-8000-000000000099",
+    revokesEventId: null,
+    eventType: "run.failed",
+    payload: { error: `provider unavailable ${seqId}` },
+    failureReason: "provider_overloaded",
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId,
+    createdAt: "2026-08-12T10:00:00.000Z",
+  };
+}
+
+function snapshotNdjson(rows: readonly ChatEventRow[]) {
   return `${rows
     .map((row) => {
       return JSON.stringify(row);
@@ -76,13 +90,10 @@ async function createOutputDirectory(): Promise<string> {
   return directory;
 }
 
-async function markCache(
-  threadDirectory: string,
-  schemaVersion: ChatEventSchemaVersion = CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-): Promise<void> {
+async function markCurrentCache(threadDirectory: string): Promise<void> {
   await writeFile(
     join(threadDirectory, CACHE_SCHEMA_VERSION_FILE),
-    `${schemaVersion.toString()}\n`,
+    CACHE_SCHEMA_VERSION_BODY,
     "utf8",
   );
 }
@@ -111,9 +122,9 @@ describe("okou chat messages command", () => {
 
   it("synchronizes a snapshot and hot event files", async () => {
     const outputDirectory = await createOutputDirectory();
-    const snapshotLastRow = rawEventRow(2);
+    const snapshotLastRow = failedEventRow(2);
     const snapshotRows = [rawEventRow(1), snapshotLastRow];
-    const hotRow = rawEventRow(3);
+    const hotRow = failedEventRow(3);
     server.use(
       http.get(SNAPSHOT_URL, ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
@@ -251,7 +262,7 @@ describe("okou chat messages command", () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
-    await markCache(threadDirectory);
+    await markCurrentCache(threadDirectory);
     await writeFile(
       join(threadDirectory, "snapshot-to-2.ndjson"),
       snapshotNdjson([rawEventRow(1), rawEventRow(2)]),
@@ -265,15 +276,7 @@ describe("okou chat messages command", () => {
     const cursors: { eventId: string | null; seqId: string | null }[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-              message: "Chat event snapshot not found",
-            },
-          },
-          { status: 404, headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
+        throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, ({ request }) => {
         const url = new URL(request.url);
@@ -328,152 +331,11 @@ describe("okou chat messages command", () => {
     );
   });
 
-  it("falls back to V7 and rebuilds the cache when V8 becomes available", async () => {
-    const outputDirectory = await createOutputDirectory();
-    const threadDirectory = join(outputDirectory, THREAD_ID);
-    await mkdir(threadDirectory, { recursive: true });
-    await markCache(threadDirectory);
-    await writeFile(
-      join(threadDirectory, "event-SEQ_ID_3.json"),
-      `${JSON.stringify(rawEventRow(3))}\n`,
-      "utf8",
-    );
-    await writeFile(join(threadDirectory, "notes.txt"), "keep me", "utf8");
-
-    const v7Row = rawEventRow(1);
-    const v8SnapshotRow = rawEventRow(10);
-    const v8TailRow = rawEventRow(11);
-    const snapshotVersions: (string | null)[] = [];
-    const rowVersions: (string | null)[] = [];
-    let supportsV8 = false;
-    server.use(
-      http.get(SNAPSHOT_URL, ({ request }) => {
-        const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-        snapshotVersions.push(version);
-        if (
-          !supportsV8 &&
-          version === CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()
-        ) {
-          return HttpResponse.json(
-            {
-              error: {
-                code: "CHAT_EVENT_SCHEMA_VERSION_AHEAD",
-                message:
-                  "The requested Chat Event schema version is newer than this API",
-              },
-            },
-            { status: 409 },
-          );
-        }
-        if (
-          !supportsV8 &&
-          version === PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString()
-        ) {
-          return HttpResponse.json(
-            {
-              error: {
-                code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-                message: "Chat event snapshot not found",
-              },
-            },
-            { status: 404, headers: PREVIOUS_CHAT_EVENT_SCHEMA_HEADERS },
-          );
-        }
-        return HttpResponse.json(
-          {
-            url: SNAPSHOT_DOWNLOAD_URL,
-            expiresInSeconds: 900,
-            lastEventId: v8SnapshotRow.id,
-            lastSeqId: v8SnapshotRow.seqId,
-          },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-      http.get(SNAPSHOT_DOWNLOAD_URL, () => {
-        return new HttpResponse(snapshotNdjson([v8SnapshotRow]));
-      }),
-      http.get(ROWS_URL, ({ request }) => {
-        const version = request.headers.get(CHAT_EVENT_SCHEMA_VERSION_HEADER);
-        const url = new URL(request.url);
-        const sinceSeqId = Number(url.searchParams.get("sinceSeqId"));
-        rowVersions.push(version);
-        if (!supportsV8) {
-          expect(version).toBe(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString());
-          const rows = sinceSeqId === 0 ? [v7Row] : [];
-          return HttpResponse.json(
-            {
-              rows,
-              cursor: { lastEventId: v7Row.id, lastSeqId: v7Row.seqId },
-              hasMore: false,
-            },
-            { headers: PREVIOUS_CHAT_EVENT_SCHEMA_HEADERS },
-          );
-        }
-        expect(version).toBe(CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString());
-        const rows = sinceSeqId === v8SnapshotRow.seqId ? [v8TailRow] : [];
-        return HttpResponse.json(
-          {
-            rows,
-            cursor: {
-              lastEventId: v8TailRow.id,
-              lastSeqId: v8TailRow.seqId,
-            },
-            hasMore: false,
-          },
-          { headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
-    );
-
-    await chatCommand.parseAsync([
-      "node",
-      "cli",
-      "messages",
-      "--output-dir",
-      outputDirectory,
-    ]);
-    await expect(
-      readFile(join(threadDirectory, CACHE_SCHEMA_VERSION_FILE), "utf8"),
-    ).resolves.toBe(`${PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`);
-    expect((await readdir(threadDirectory)).sort()).toStrictEqual([
-      CACHE_SCHEMA_VERSION_FILE,
-      "event-SEQ_ID_1.json",
-      "notes.txt",
-    ]);
-
-    supportsV8 = true;
-    await chatCommand.parseAsync([
-      "node",
-      "cli",
-      "messages",
-      "--output-dir",
-      outputDirectory,
-    ]);
-    await expect(
-      readFile(join(threadDirectory, CACHE_SCHEMA_VERSION_FILE), "utf8"),
-    ).resolves.toBe(`${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`);
-    expect((await readdir(threadDirectory)).sort()).toStrictEqual([
-      CACHE_SCHEMA_VERSION_FILE,
-      "event-SEQ_ID_11.json",
-      "notes.txt",
-      "snapshot-to-10.ndjson",
-    ]);
-    expect(snapshotVersions).toStrictEqual([
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    ]);
-    expect(rowVersions).toStrictEqual([
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION.toString(),
-      CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString(),
-    ]);
-  });
-
   it("continues a monotonic local history across sequence gaps", async () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
-    await markCache(threadDirectory);
+    await markCurrentCache(threadDirectory);
     await writeFile(
       join(threadDirectory, "snapshot-to-2.ndjson"),
       snapshotNdjson([rawEventRow(1), rawEventRow(2)]),
@@ -488,15 +350,7 @@ describe("okou chat messages command", () => {
     const cursors: string[] = [];
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-              message: "Chat event snapshot not found",
-            },
-          },
-          { status: 404, headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
+        throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, ({ request }) => {
         const cursor = new URL(request.url).searchParams.get("sinceSeqId");
@@ -542,7 +396,7 @@ describe("okou chat messages command", () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
-    await markCache(threadDirectory);
+    await markCurrentCache(threadDirectory);
     await writeFile(
       join(threadDirectory, "event-SEQ_ID_4.json"),
       `${JSON.stringify(rawEventRow(4))}\n`,
@@ -550,15 +404,7 @@ describe("okou chat messages command", () => {
     );
     server.use(
       http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-              message: "Chat event snapshot not found",
-            },
-          },
-          { status: 404, headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
+        throw new Error("Snapshot endpoint must not be called");
       }),
       http.get(ROWS_URL, () => {
         return HttpResponse.json(
@@ -600,24 +446,13 @@ describe("okou chat messages command", () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
-    await markCache(threadDirectory);
+    await markCurrentCache(threadDirectory);
     await writeFile(
       join(threadDirectory, "event-SEQ_ID_4.json"),
       `${JSON.stringify(rawEventRow(4))}\n`,
       "utf8",
     );
     server.use(
-      http.get(SNAPSHOT_URL, () => {
-        return HttpResponse.json(
-          {
-            error: {
-              code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
-              message: "Chat event snapshot not found",
-            },
-          },
-          { status: 404, headers: CHAT_EVENT_SCHEMA_HEADERS },
-        );
-      }),
       http.get(ROWS_URL, () => {
         return HttpResponse.json({
           rows: [],
@@ -650,7 +485,7 @@ describe("okou chat messages command", () => {
     const outputDirectory = await createOutputDirectory();
     const threadDirectory = join(outputDirectory, THREAD_ID);
     await mkdir(threadDirectory, { recursive: true });
-    await markCache(threadDirectory);
+    await markCurrentCache(threadDirectory);
     await writeFile(
       join(threadDirectory, "snapshot-to-2.ndjson"),
       snapshotNdjson([rawEventRow(1), rawEventRow(2)]),

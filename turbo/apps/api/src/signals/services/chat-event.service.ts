@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import { isValidChatEventRevocation } from "@okouai/api-contracts/contracts/chat-events";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import type { ChatFeishuMessageFiles } from "@okouai/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -307,7 +306,6 @@ type RunFailedEvent = ChatEventIdentity & {
   readonly runId: string;
   readonly content?: string | null;
   readonly error?: string;
-  readonly failureReason?: RunFailureReason;
 };
 
 type RunCancelledEvent = ChatEventIdentity & {
@@ -973,8 +971,6 @@ function canonicalChatEventValues(
           : undefined,
     eventType: values.eventType,
     payload: canonicalChatEventPayload(values),
-    failureReason:
-      values.eventType === "run.failed" ? values.failureReason : undefined,
     requiredOfficialWorkflowIds:
       "requiredOfficialWorkflowIds" in values
         ? values.requiredOfficialWorkflowIds

@@ -12,8 +12,8 @@ import { apiErrorSchema } from "./errors";
 import { imageModelIdSchema } from "./image-models";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./host";
-import { runStatusSchema } from "./runs";
 import { runFailureReasonSchema } from "./run-failure-reasons";
+import { runStatusSchema } from "./runs";
 import { supportedRunModelSchema } from "./model-providers";
 import {
   VIDEO_ASPECT_RATIOS,

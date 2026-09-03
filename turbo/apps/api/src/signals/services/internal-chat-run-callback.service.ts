@@ -15,7 +15,6 @@ import {
   publicBrandSchema,
   type PublicBrand,
 } from "@okouai/api-contracts/contracts/public-brand";
-import type { RunFailureReason } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import {
   isFeatureEnabled,
   type FeatureSwitchContext,
@@ -656,7 +655,6 @@ interface ChatThreadForRunRow {
 interface ChatRunInfo {
   readonly prompt: string;
   readonly error: string | null;
-  readonly failureReason: RunFailureReason | null;
   readonly lastEventSequence: number | null;
   readonly cancellationRecoveryCompleted: boolean | null;
 }
@@ -1457,7 +1455,6 @@ async function insertAssistantErrorEvent(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
-  readonly failureReason: RunFailureReason | null;
   readonly hasCancellationRecoveryState: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
@@ -1482,9 +1479,6 @@ async function insertAssistantErrorEvent(args: {
         runId: args.runId,
         runGroupId: goalId,
         error: displayErrorMessage,
-        ...(args.lifecycleEvent === "failed" && args.failureReason !== null
-          ? { failureReason: args.failureReason }
-          : {}),
       },
       "run-lifecycle",
     );
@@ -2216,7 +2210,6 @@ async function handleFailedChatCallback(args: {
   readonly runId: string;
   readonly chatThread: ChatThreadForRunRow;
   readonly errorMessage: string;
-  readonly failureReason: RunFailureReason | null;
   readonly hasCancellationRecoveryState: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
@@ -2239,7 +2232,6 @@ async function handleFailedChatCallback(args: {
     userId: args.chatThread.userId,
     orgId: args.chatThread.orgId,
     lifecycleEvent,
-    failureReason: args.failureReason,
     hasCancellationRecoveryState: args.hasCancellationRecoveryState,
     getFormattedError: args.getFormattedError,
     slackDelivery: args.slackDelivery,
@@ -4265,7 +4257,6 @@ async function loadTerminalChatCallback(
     .select({
       prompt: agentRuns.prompt,
       error: agentRuns.error,
-      failureReason: agentRuns.failureReason,
       lastEventSequence: agentRuns.lastEventSequence,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
     })
@@ -4430,7 +4421,6 @@ async function prepareFailedTerminalChatCallbackWork(
         runId: args.runId,
         chatThread: args.chatThread,
         errorMessage: args.errorMessage,
-        failureReason: args.run.failureReason,
         hasCancellationRecoveryState:
           args.run.cancellationRecoveryCompleted !== null,
         getFormattedError: () => {

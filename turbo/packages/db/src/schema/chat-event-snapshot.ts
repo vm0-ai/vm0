@@ -35,13 +35,13 @@ export const chatEventSnapshots = pgTable(
     lastSeqId: bigint("last_seq_id", { mode: "number" }).notNull(),
     /** Last physical event observed through the coverage watermark. */
     lastEventId: uuid("last_event_id").notNull(),
-    /** Last retained event exposed as the selected version's logical cursor. */
+    /** Last retained event exposed as the V7 logical cursor. */
     terminalEventId: uuid("terminal_event_id"),
-    /** Sequence position paired with terminal_event_id, or zero for an empty body. */
+    /** Sequence position paired with terminal_event_id, or zero for an empty V7 body. */
     terminalSeqId: bigint("terminal_seq_id", { mode: "number" }),
-    /** Selected NDJSON line-shape version, retained as a publication invariant. */
+    /** Current NDJSON line-shape version, retained as a publication invariant. */
     archiveSchemaVersion: integer("archive_schema_version")
-      .default(8)
+      .default(7)
       .notNull(),
     /** Immutable content-addressed object referenced by this pointer. */
     objectKey: text("object_key").notNull(),
@@ -57,7 +57,7 @@ export const chatEventSnapshots = pgTable(
       ),
       check(
         "chat_event_snapshots_archive_schema_version_check",
-        sql`${table.archiveSchemaVersion} IN (7, 8)`,
+        sql`${table.archiveSchemaVersion} = 7`,
       ),
       check(
         "chat_event_snapshots_terminal_cursor_check",

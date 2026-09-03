@@ -241,6 +241,12 @@ Prefer additive changes at cross-version boundaries:
 - Write data in a format that the previous deployed reader can ignore or safely
   process during the rollout window.
 
+An optional response or persisted field is not automatically compatible with
+strict readers. When retaining the same protocol version, deploy tolerant
+readers first while writers omit the field. Activate writers only after every
+old strict reader and rollback target has drained or is excluded by an enforced
+compatibility floor.
+
 Avoid one-shot protocol flips:
 
 - Do not require a new request field from frontend or runner in the same PR that
@@ -268,36 +274,6 @@ recovery must restore compatibility first or roll forward.
 Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
-
-### Chat Event schema bridges
-
-Chat Event Raw rows, immutable Snapshot objects, browser IndexedDB state, and
-CLI disk history form one cross-version protocol. A schema bump must support
-the previous adjacent version while backend traffic, already-open app bundles,
-commit-addressed CLI artifacts, and rollback targets can overlap.
-
-For the V8 rollout, V7 is the bounded previous version:
-
-1. Apply the additive database migration before promoting V8 API code. The new
-   nullable `chat_events.failure_reason` column is outside the strict V7 JSON
-   payload, so the previous API's explicit reads and writes remain valid.
-2. Promote an API that serves both V7 and V8 and publishes both Snapshot
-   generations through one exact-source transaction. Old V7 readers continue
-   to receive V7 rows; V8 readers may identity-upgrade a validated V7 Snapshot
-   prefix and append a V8 tail.
-3. Promote V8 clients. They request V8 first and retry V7 only for the explicit
-   `CHAT_EVENT_SCHEMA_VERSION_AHEAD` response from a previous API.
-4. Persist the negotiated version with each client cache cursor. A version
-   change replaces the managed cache generation before any tail continuation.
-5. Retain Raw Events only after both supported Snapshot generations cover them,
-   and keep R2 collection reference-aware across all pointer versions.
-
-Rolling the API back during this bridge is safe because V7 pointers continue to
-advance and V8-only event data is stored in an additive nullable column that V7
-does not select. Removing V7 support, its Snapshot writer, or its retention
-gate is a later cleanup release. Before that cleanup, verify that previous app
-and CLI readers, queued commit-addressed CLI artifacts, serving and rollback
-APIs, and stored V7 object references have all drained.
 
 ### Workflow automation connector-account projections
 

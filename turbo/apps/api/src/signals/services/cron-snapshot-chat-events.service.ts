@@ -4,15 +4,9 @@ import { gunzip, gzip } from "node:zlib";
 
 import {
   chatEventRowSchema,
-  chatEventRowV7Schema,
-  downgradeChatEventRowToV7,
   type ChatEventRow,
 } from "@okouai/api-contracts/contracts/chat-event-rows";
-import {
-  CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-  type ChatEventSchemaVersion,
-} from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { command, computed, type Computed } from "ccstate";
 import {
   and,
@@ -108,13 +102,6 @@ interface SnapshotCandidate {
   readonly headTerminalEventId: string | null;
   readonly headObjectKey: string | null;
   readonly headArchiveSchemaVersion: number | null;
-  readonly previousHeadId: string | null;
-  readonly previousHeadLastSeqId: number | null;
-  readonly previousHeadLastEventId: string | null;
-  readonly previousHeadTerminalSeqId: number | null;
-  readonly previousHeadTerminalEventId: string | null;
-  readonly previousHeadObjectKey: string | null;
-  readonly previousHeadArchiveSchemaVersion: number | null;
 }
 
 /**
@@ -124,13 +111,11 @@ interface SnapshotCandidate {
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /** V7 wire shape is unchanged; this marks objects validated after Phase B. */
-const PREVIOUS_ARCHIVE_ROW_CONTRACT_REVISION = 1;
-const CURRENT_ARCHIVE_ROW_CONTRACT_REVISION = 2;
+const ARCHIVE_ROW_CONTRACT_REVISION = 1;
 const ARCHIVE_OBJECT_KEY_PREFIX_PATTERN = "^chat-events/[0-9a-f-]{36}/[0-9]+";
 const ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN = "-[0-9a-f]{64}[.]ndjson[.]gz$";
 const LEGACY_ARCHIVE_OBJECT_KEY_PATTERN = `${ARCHIVE_OBJECT_KEY_PREFIX_PATTERN}${ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN}`;
-const PREVIOUS_ARCHIVE_OBJECT_KEY_PATTERN = `${ARCHIVE_OBJECT_KEY_PREFIX_PATTERN}-r${PREVIOUS_ARCHIVE_ROW_CONTRACT_REVISION.toString()}${ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN}`;
-const CURRENT_ARCHIVE_OBJECT_KEY_PATTERN = `${ARCHIVE_OBJECT_KEY_PREFIX_PATTERN}-r${CURRENT_ARCHIVE_ROW_CONTRACT_REVISION.toString()}${ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN}`;
+const CURRENT_ARCHIVE_OBJECT_KEY_PATTERN = `${ARCHIVE_OBJECT_KEY_PREFIX_PATTERN}-r${ARCHIVE_ROW_CONTRACT_REVISION.toString()}${ARCHIVE_OBJECT_KEY_SUFFIX_PATTERN}`;
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 /**
@@ -165,10 +150,6 @@ const currentSnapshot = alias(
   chatEventSnapshots,
   "current_chat_event_snapshot",
 );
-const previousSnapshot = alias(
-  chatEventSnapshots,
-  "previous_chat_event_snapshot",
-);
 
 type ArchiveEventRow = Pick<
   typeof chatEvents.$inferSelect,
@@ -178,7 +159,6 @@ type ArchiveEventRow = Pick<
   | "revokesEventId"
   | "eventType"
   | "payload"
-  | "failureReason"
   | "contextType"
   | "contextId"
   | "runEventSequenceNumber"
@@ -222,9 +202,6 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
     revokesEventId: row.revokesEventId,
     eventType: row.eventType,
     payload: row.payload,
-    ...(row.eventType === "run.failed" && row.failureReason !== null
-      ? { failureReason: row.failureReason }
-      : {}),
     contextType: row.contextType,
     contextId: row.contextId,
     runEventSequenceNumber: row.runEventSequenceNumber,
@@ -234,22 +211,8 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
   });
 }
 
-export function chatEventRowForSchemaVersion(
-  row: ChatEventRow,
-  schemaVersion: ChatEventSchemaVersion,
-): ChatEventRow {
-  return schemaVersion === PREVIOUS_CHAT_EVENT_SCHEMA_VERSION
-    ? downgradeChatEventRowToV7(row)
-    : row;
-}
-
-function archiveLine(
-  row: ArchiveEventRow,
-  schemaVersion: ChatEventSchemaVersion,
-): Buffer {
-  return encodeArchiveLine(
-    chatEventRowForSchemaVersion(chatEventRowFromDbRow(row), schemaVersion),
-  );
+function archiveLine(row: ArchiveEventRow): Buffer {
+  return encodeArchiveLine(chatEventRowFromDbRow(row));
 }
 
 function sha256Hex(buffer: Buffer): string {
@@ -259,14 +222,9 @@ function sha256Hex(buffer: Buffer): string {
 function chatEventSnapshotObjectKey(
   chatThreadId: string,
   lastSeqId: number,
-  schemaVersion: ChatEventSchemaVersion,
   contentSha256: string,
 ): string {
-  const revision =
-    schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
-      ? CURRENT_ARCHIVE_ROW_CONTRACT_REVISION
-      : PREVIOUS_ARCHIVE_ROW_CONTRACT_REVISION;
-  return `chat-events/${chatThreadId}/${lastSeqId}-r${revision.toString()}-${contentSha256}.ndjson.gz`;
+  return `chat-events/${chatThreadId}/${lastSeqId}-r${ARCHIVE_ROW_CONTRACT_REVISION.toString()}-${contentSha256}.ndjson.gz`;
 }
 
 export function isCurrentChatEventSnapshotObjectKey(
@@ -277,12 +235,6 @@ export function isCurrentChatEventSnapshotObjectKey(
 
 export function isLegacyChatEventSnapshotObjectKey(objectKey: string): boolean {
   return new RegExp(LEGACY_ARCHIVE_OBJECT_KEY_PATTERN, "u").test(objectKey);
-}
-
-export function isPreviousChatEventSnapshotObjectKey(
-  objectKey: string,
-): boolean {
-  return new RegExp(PREVIOUS_ARCHIVE_OBJECT_KEY_PATTERN, "u").test(objectKey);
 }
 
 interface CanonicalEventArchive {
@@ -314,7 +266,6 @@ async function readCanonicalEvents(
         revokesEventId: chatEvents.revokesEventId,
         eventType: chatEvents.eventType,
         payload: chatEvents.payload,
-        failureReason: chatEvents.failureReason,
         contextType: chatEvents.contextType,
         contextId: chatEvents.contextId,
         runEventSequenceNumber: chatEvents.runEventSequenceNumber,
@@ -334,7 +285,7 @@ async function readCanonicalEvents(
       .limit(EVENT_PAGE_SIZE);
     for (const row of rows) {
       lastPhysicalEventId = row.id;
-      lines.push(archiveLine(row, CURRENT_CHAT_EVENT_SCHEMA_VERSION));
+      lines.push(archiveLine(row));
       lastRetainedEventId = row.id;
       lastRetainedSeqId = row.seqId;
     }
@@ -371,7 +322,6 @@ type SnapshotDecodeFailureClass =
   | "checksum"
   | "gzip"
   | "raw_row"
-  | "revision"
   | "projection"
   | "prefix"
   | "terminal";
@@ -448,20 +398,6 @@ function resolveSnapshotSource(
   ) {
     return { kind: "skipped", reason: "incomplete" };
   }
-  const supportedObjectKey =
-    source.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION
-      ? isCurrentChatEventSnapshotObjectKey(source.objectKey) ||
-        isLegacyChatEventSnapshotObjectKey(source.objectKey)
-      : source.schemaVersion === PREVIOUS_CHAT_EVENT_SCHEMA_VERSION &&
-        (isPreviousChatEventSnapshotObjectKey(source.objectKey) ||
-          isLegacyChatEventSnapshotObjectKey(source.objectKey));
-  if (!supportedObjectKey) {
-    return {
-      kind: "skipped",
-      reason: "undecodable",
-      failureClass: "revision",
-    };
-  }
   return {
     kind: "reusable",
     source: {
@@ -476,43 +412,28 @@ function resolveSnapshotSource(
   };
 }
 
-function candidateVersionSourceResolution(
+function candidateSourceResolution(
   candidate: SnapshotCandidate,
-  schemaVersion: ChatEventSchemaVersion,
 ): SnapshotSourceResolution {
-  const current = schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION;
-  const id = current ? candidate.headId : candidate.previousHeadId;
-  if (id === null) {
-    return resolveSnapshotSource(undefined);
-  }
-  return resolveSnapshotSource({
-    id,
-    lastSeqId: current
-      ? candidate.headLastSeqId
-      : candidate.previousHeadLastSeqId,
-    lastEventId: current
-      ? candidate.headLastEventId
-      : candidate.previousHeadLastEventId,
-    terminalSeqId: current
-      ? candidate.headTerminalSeqId
-      : candidate.previousHeadTerminalSeqId,
-    terminalEventId: current
-      ? candidate.headTerminalEventId
-      : candidate.previousHeadTerminalEventId,
-    objectKey: current
-      ? candidate.headObjectKey
-      : candidate.previousHeadObjectKey,
-    schemaVersion: current
-      ? candidate.headArchiveSchemaVersion
-      : candidate.previousHeadArchiveSchemaVersion,
-  });
+  return resolveSnapshotSource(
+    candidate.headId === null
+      ? undefined
+      : {
+          id: candidate.headId,
+          lastSeqId: candidate.headLastSeqId,
+          lastEventId: candidate.headLastEventId,
+          terminalSeqId: candidate.headTerminalSeqId,
+          terminalEventId: candidate.headTerminalEventId,
+          objectKey: candidate.headObjectKey,
+          schemaVersion: candidate.headArchiveSchemaVersion,
+        },
+  );
 }
 
-function candidateVersionSource(
+function candidateCurrentSource(
   candidate: SnapshotCandidate,
-  schemaVersion: ChatEventSchemaVersion,
 ): SnapshotSource | null {
-  const resolved = candidateVersionSourceResolution(candidate, schemaVersion);
+  const resolved = candidateSourceResolution(candidate);
   if (resolved.kind === "initial") {
     return null;
   }
@@ -520,35 +441,6 @@ function candidateVersionSource(
     throw new Error("Chat Event Snapshot pointer is not reusable");
   }
   return resolved.source;
-}
-
-function candidateSourceResolution(
-  candidate: SnapshotCandidate,
-): SnapshotSourceResolution {
-  const current = candidateVersionSourceResolution(
-    candidate,
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  );
-  const previous = candidateVersionSourceResolution(
-    candidate,
-    PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-  );
-  if (current.kind === "skipped") {
-    return current;
-  }
-  if (previous.kind === "skipped") {
-    return previous;
-  }
-  if (current.kind === "initial") {
-    return previous;
-  }
-  if (previous.kind === "initial") {
-    return current;
-  }
-  if (current.source.lastSeqId >= previous.source.lastSeqId) {
-    return current;
-  }
-  return previous;
 }
 
 type SnapshotPrefixResolution =
@@ -634,13 +526,7 @@ async function decodeSnapshotPrefix(
     return await gunzipAsync(compressed);
   });
   const decodedRows = await decodeSnapshotStage("raw_row", () => {
-    const rows = decodeChatEventSnapshotBody(decompressed);
-    if (args.source.schemaVersion === PREVIOUS_CHAT_EVENT_SCHEMA_VERSION) {
-      for (const row of rows) {
-        chatEventRowV7Schema.parse(row);
-      }
-    }
-    return rows;
+    return decodeChatEventSnapshotBody(decompressed);
   });
   await decodeSnapshotStage("projection", () => {
     validateChatEventSnapshotRows(decodedRows);
@@ -714,107 +600,67 @@ function exactSnapshotPointer(source: SnapshotSource) {
   );
 }
 
-interface SnapshotPublication {
-  readonly schemaVersion: ChatEventSchemaVersion;
-  readonly lastSeqId: number;
-  readonly lastEventId: string;
-  readonly terminalSeqId: number;
-  readonly terminalEventId: string | null;
-  readonly objectKey: string;
-}
-
-async function lockExpectedSnapshotPointer(
-  tx: Db,
-  chatThreadId: string,
-  schemaVersion: ChatEventSchemaVersion,
-  source: SnapshotSource | null,
-): Promise<boolean> {
-  const [locked] = await tx
-    .select({ id: chatEventSnapshots.id })
-    .from(chatEventSnapshots)
-    .where(
-      source === null
-        ? and(
-            eq(chatEventSnapshots.chatThreadId, chatThreadId),
-            eq(chatEventSnapshots.archiveSchemaVersion, schemaVersion),
-          )
-        : exactSnapshotPointer(source),
-    )
-    .for("update")
-    .limit(1);
-  return source === null ? locked === undefined : locked !== undefined;
-}
-
-async function writeSnapshotPointer(
-  tx: Db,
-  chatThreadId: string,
-  source: SnapshotSource | null,
-  pointer: SnapshotPublication,
-): Promise<void> {
-  if (source === null) {
-    await tx.insert(chatEventSnapshots).values({
-      chatThreadId,
-      lastSeqId: pointer.lastSeqId,
-      lastEventId: pointer.lastEventId,
-      terminalSeqId: pointer.terminalSeqId,
-      terminalEventId: pointer.terminalEventId,
-      archiveSchemaVersion: pointer.schemaVersion,
-      objectKey: pointer.objectKey,
-    });
-    return;
-  }
-  await tx
-    .update(chatEventSnapshots)
-    .set({
-      lastSeqId: pointer.lastSeqId,
-      lastEventId: pointer.lastEventId,
-      terminalSeqId: pointer.terminalSeqId,
-      terminalEventId: pointer.terminalEventId,
-      objectKey: pointer.objectKey,
-      createdAt: nowDate(),
-    })
-    .where(exactSnapshotPointer(source));
-}
-
-/** Publish V7 and V8 only while both exact observed sources remain current. */
-async function publishSnapshotVersions(
+/** Publish the current pointer only if its exact source is still current. */
+async function publishSnapshotVersion(
   db: Db,
   candidate: SnapshotCandidate,
-  pointers: readonly [SnapshotPublication, SnapshotPublication],
+  source: SnapshotSource | null,
+  pointer: {
+    readonly lastSeqId: number;
+    readonly lastEventId: string;
+    readonly terminalSeqId: number;
+    readonly terminalEventId: string | null;
+    readonly objectKey: string;
+  },
 ): Promise<boolean> {
+  const { lastSeqId, lastEventId, terminalSeqId, terminalEventId, objectKey } =
+    pointer;
   return await db.transaction(async (tx) => {
-    const sources = new Map<ChatEventSchemaVersion, SnapshotSource | null>([
-      [
-        PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-        candidateVersionSource(candidate, PREVIOUS_CHAT_EVENT_SCHEMA_VERSION),
-      ],
-      [
-        CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-        candidateVersionSource(candidate, CURRENT_CHAT_EVENT_SCHEMA_VERSION),
-      ],
-    ]);
-    for (const pointer of pointers) {
-      const source = sources.get(pointer.schemaVersion);
-      if (source === undefined) {
-        throw new Error("Chat Event Snapshot publication source is missing");
-      }
-      if (
-        !(await lockExpectedSnapshotPointer(
-          tx,
-          candidate.chatThreadId,
-          pointer.schemaVersion,
-          source,
-        ))
-      ) {
+    const current = candidateCurrentSource(candidate);
+    if (source !== null && source.id !== current?.id) {
+      const [lockedSource] = await tx
+        .select({ id: chatEventSnapshots.id })
+        .from(chatEventSnapshots)
+        .where(exactSnapshotPointer(source))
+        .for("update")
+        .limit(1);
+      if (lockedSource === undefined) {
         return false;
       }
     }
-    for (const pointer of pointers) {
-      const source = sources.get(pointer.schemaVersion);
-      if (source === undefined) {
-        throw new Error("Chat Event Snapshot publication source is missing");
+    if (current !== null) {
+      const updated = await tx
+        .update(chatEventSnapshots)
+        .set({
+          lastSeqId,
+          lastEventId,
+          terminalSeqId,
+          terminalEventId,
+          objectKey,
+          createdAt: nowDate(),
+        })
+        .where(exactSnapshotPointer(current))
+        .returning({ id: chatEventSnapshots.id });
+      if (updated.length === 0) {
+        return false;
       }
-      await writeSnapshotPointer(tx, candidate.chatThreadId, source, pointer);
+      return true;
+    }
+
+    const [inserted] = await tx
+      .insert(chatEventSnapshots)
+      .values({
+        chatThreadId: candidate.chatThreadId,
+        lastSeqId,
+        lastEventId,
+        terminalSeqId,
+        terminalEventId,
+        archiveSchemaVersion: CURRENT_CHAT_EVENT_SCHEMA_VERSION,
+        objectKey,
+      })
+      .returning({ id: chatEventSnapshots.id });
+    if (inserted === undefined) {
+      return false;
     }
     return true;
   });
@@ -945,6 +791,17 @@ function terminalSnapshotCursor(
   };
 }
 
+function isCurrentSnapshotWithoutTail(
+  archiveEventCount: number,
+  source: SnapshotSource | null,
+): boolean {
+  return (
+    archiveEventCount === 0 &&
+    source?.schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION &&
+    isCurrentChatEventSnapshotObjectKey(source.objectKey)
+  );
+}
+
 interface PreparedSnapshotArchive {
   readonly body: Buffer;
   readonly terminalSeqId: number;
@@ -1007,22 +864,6 @@ function prepareSnapshotArchive(
   };
 }
 
-function snapshotBodyForSchemaVersion(
-  currentBody: Buffer,
-  schemaVersion: ChatEventSchemaVersion,
-): Buffer {
-  if (schemaVersion === CURRENT_CHAT_EVENT_SCHEMA_VERSION) {
-    return currentBody;
-  }
-  return Buffer.concat(
-    decodeChatEventSnapshotBody(currentBody).map((row) => {
-      return encodeArchiveLine(
-        chatEventRowForSchemaVersion(row, schemaVersion),
-      );
-    }),
-  );
-}
-
 function archivedThreadFromPublication(
   published:
     | { readonly ok: true; readonly value: boolean }
@@ -1075,6 +916,13 @@ const archiveThread$ = command(async function archiveThread(
     source?.lastSeqId ?? 0,
   );
   signal.throwIfAborted();
+  if (isCurrentSnapshotWithoutTail(archive.count, source)) {
+    return {
+      archivedEvents: null,
+      skippedHead: null,
+      normalization: NO_DUPLICATE_EVENT_ID_NORMALIZATION,
+    };
+  }
   if (archive.count === 0 && source === null) {
     throw new Error(
       `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
@@ -1093,51 +941,28 @@ const archiveThread$ = command(async function archiveThread(
     },
     archive,
   );
-  const versions = [
-    PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-    CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  ] as const;
-  const compressedBodies = await Promise.all(
-    versions.map(async (schemaVersion) => {
-      const compressed = await gzipAsync(
-        snapshotBodyForSchemaVersion(prepared.body, schemaVersion),
-      );
-      const objectKey = chatEventSnapshotObjectKey(
-        candidate.chatThreadId,
-        targetSeqId,
-        schemaVersion,
-        sha256Hex(compressed),
-      );
-      return { schemaVersion, compressed, objectKey };
-    }),
-  );
+  const compressed = await gzipAsync(prepared.body);
   signal.throwIfAborted();
-  const existingObjectReferences = await db
-    .select({ objectKey: chatEventSnapshots.objectKey })
+  const objectKey = chatEventSnapshotObjectKey(
+    candidate.chatThreadId,
+    targetSeqId,
+    sha256Hex(compressed),
+  );
+  const [existingObjectReference] = await db
+    .select({ id: chatEventSnapshots.id })
     .from(chatEventSnapshots)
-    .where(
-      inArray(
-        chatEventSnapshots.objectKey,
-        compressedBodies.map((body) => {
-          return body.objectKey;
-        }),
-      ),
-    );
+    .where(eq(chatEventSnapshots.objectKey, objectKey))
+    .limit(1);
   signal.throwIfAborted();
-  const referencedObjectKeys = new Set(
-    existingObjectReferences.map((reference) => {
-      return reference.objectKey;
-    }),
-  );
-  for (const body of compressedBodies) {
-    if (referencedObjectKeys.has(body.objectKey)) {
-      continue;
-    }
+  if (
+    source?.objectKey !== objectKey &&
+    existingObjectReference === undefined
+  ) {
     await get(
       putImmutableS3Object(
         bucket,
-        body.objectKey,
-        body.compressed,
+        objectKey,
+        compressed,
         ARCHIVE_CONTENT_TYPE,
         {
           signal,
@@ -1148,26 +973,14 @@ const archiveThread$ = command(async function archiveThread(
   }
   signal.throwIfAborted();
 
-  const publications = compressedBodies.map((body): SnapshotPublication => {
-    return {
-      schemaVersion: body.schemaVersion,
+  const published = await settle(
+    publishSnapshotVersion(db, candidate, source, {
       lastSeqId: targetSeqId,
       lastEventId,
       terminalSeqId: prepared.terminalSeqId,
       terminalEventId: prepared.terminalEventId,
-      objectKey: body.objectKey,
-    };
-  });
-  const previousPublication = publications[0];
-  const currentPublication = publications[1];
-  if (previousPublication === undefined || currentPublication === undefined) {
-    throw new Error("Chat Event Snapshot publication generation is incomplete");
-  }
-  const published = await settle(
-    publishSnapshotVersions(db, candidate, [
-      previousPublication,
-      currentPublication,
-    ]),
+      objectKey,
+    }),
   );
   signal.throwIfAborted();
   return archivedThreadFromPublication(
@@ -1472,13 +1285,6 @@ async function loadSnapshotCandidates(
       headTerminalEventId: currentSnapshot.terminalEventId,
       headObjectKey: currentSnapshot.objectKey,
       headArchiveSchemaVersion: currentSnapshot.archiveSchemaVersion,
-      previousHeadId: previousSnapshot.id,
-      previousHeadLastSeqId: previousSnapshot.lastSeqId,
-      previousHeadLastEventId: previousSnapshot.lastEventId,
-      previousHeadTerminalSeqId: previousSnapshot.terminalSeqId,
-      previousHeadTerminalEventId: previousSnapshot.terminalEventId,
-      previousHeadObjectKey: previousSnapshot.objectKey,
-      previousHeadArchiveSchemaVersion: previousSnapshot.archiveSchemaVersion,
     })
     .from(chatThreads)
     .innerJoin(
@@ -1492,16 +1298,6 @@ async function loadSnapshotCandidates(
         eq(
           currentSnapshot.archiveSchemaVersion,
           CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-        ),
-      ),
-    )
-    .leftJoin(
-      previousSnapshot,
-      and(
-        eq(previousSnapshot.chatThreadId, chatThreads.id),
-        eq(
-          previousSnapshot.archiveSchemaVersion,
-          PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
         ),
       ),
     )
@@ -1526,22 +1322,8 @@ async function loadSnapshotCandidates(
           sql`btrim(${currentSnapshot.objectKey}) = ''`,
           sql`NOT (${currentSnapshot.objectKey}
             ~ '-[0-9a-f]{64}[.]ndjson[.]gz$')`,
-          sql`NOT (${currentSnapshot.objectKey}
-            ~ ${CURRENT_ARCHIVE_OBJECT_KEY_PATTERN})`,
           sql`${currentSnapshot.objectKey}
             ~ ${LEGACY_ARCHIVE_OBJECT_KEY_PATTERN}`,
-          isNull(previousSnapshot.id),
-          lt(
-            previousSnapshot.lastSeqId,
-            chatEventSearchMessageWatermarks.indexedSeqId,
-          ),
-          lte(previousSnapshot.lastSeqId, 0),
-          isNull(previousSnapshot.terminalSeqId),
-          sql`btrim(${previousSnapshot.objectKey}) = ''`,
-          sql`NOT (${previousSnapshot.objectKey}
-            ~ '-[0-9a-f]{64}[.]ndjson[.]gz$')`,
-          sql`NOT (${previousSnapshot.objectKey}
-            ~ ${PREVIOUS_ARCHIVE_OBJECT_KEY_PATTERN})`,
         ),
       ),
     )
@@ -1563,13 +1345,6 @@ async function loadSnapshotCandidates(
       headTerminalEventId: row.headTerminalEventId,
       headObjectKey: row.headObjectKey,
       headArchiveSchemaVersion: row.headArchiveSchemaVersion,
-      previousHeadId: row.previousHeadId,
-      previousHeadLastSeqId: row.previousHeadLastSeqId,
-      previousHeadLastEventId: row.previousHeadLastEventId,
-      previousHeadTerminalSeqId: row.previousHeadTerminalSeqId,
-      previousHeadTerminalEventId: row.previousHeadTerminalEventId,
-      previousHeadObjectKey: row.previousHeadObjectKey,
-      previousHeadArchiveSchemaVersion: row.previousHeadArchiveSchemaVersion,
     };
   });
 }

@@ -206,7 +206,6 @@ const getChatEventSnapshotInner$ = command(
       chatThreadEventSnapshot({
         threadId: params.threadId,
         userId: auth.userId,
-        schemaVersion: version.version,
       }),
       signal,
     );
@@ -258,7 +257,6 @@ const listChatEventRowsInner$ = command(
         threadId: params.threadId,
         userId: auth.userId,
         limit: query.limit,
-        schemaVersion: version.version,
         ...(query.sinceEventId === undefined
           ? { sinceSeqId: 0 as const }
           : {

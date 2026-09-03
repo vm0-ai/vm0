@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { PREVIOUS_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import { testContext } from "../../../__tests__/test-context";
 import {
@@ -102,7 +101,6 @@ describe("canonical chat event storage", () => {
     });
     expect(row(fixture.batch.runFailedId)).toMatchObject({
       payload: { content: "run failed", error: "runner error" },
-      failureReason: "provider_server_error",
     });
     expect(row(fixture.batch.browserCloseId).payload).toBeNull();
     expect(row(fixture.batch.goalCloseId).payload).toBeNull();
@@ -158,24 +156,5 @@ describe("canonical chat event storage", () => {
       payload: { content: "goal output" },
     });
     expect(storedGoalOutput).not.toHaveProperty("runGroupId");
-
-    const storedFailure = storedRows.find((candidate) => {
-      return candidate.id === fixture.batch.runFailedId;
-    });
-    expect(storedFailure).toMatchObject({
-      eventType: "run.failed",
-      failureReason: "provider_server_error",
-    });
-    const previousRows = await chat.listThreadEventRows(
-      actor,
-      thread.id,
-      { lastEventId: null, lastSeqId: 0 },
-      PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
-    );
-    expect(
-      previousRows.find((candidate) => {
-        return candidate.id === fixture.batch.runFailedId;
-      }),
-    ).not.toHaveProperty("failureReason");
   });
 });

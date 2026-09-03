@@ -31,43 +31,34 @@ const chatEventRowBaseShape = {
   createdAt: z.iso.datetime(),
 };
 
-/**
- * One canonical chat_events row and the strict output.tool-free outer wire
- * shape emitted by the Snapshot and Raw Event endpoints.
- */
-export const chatEventRowV7Schema = z
+const chatEventRowBaseSchema = z
   .object({
     ...chatEventRowBaseShape,
-    eventType: chatEventTypeSchema,
     payload: chatEventRowPayloadSchema.nullable(),
   })
   .strict();
 
-const chatEventRowV8FailedSchema = chatEventRowV7Schema
+const failedChatEventRowSchema = chatEventRowBaseSchema
   .extend({
     eventType: z.literal("run.failed"),
     failureReason: runFailureReasonSchema.optional(),
   })
   .strict();
 
-const chatEventRowV8OtherSchema = chatEventRowV7Schema
+const nonFailedChatEventRowSchema = chatEventRowBaseSchema
   .extend({
     eventType: chatEventTypeSchema.exclude(["run.failed"]),
     failureReason: z.never().optional(),
   })
   .strict();
 
+/**
+ * One canonical chat_events row and the strict output.tool-free outer wire
+ * shape emitted by the Snapshot and Raw Event endpoints.
+ */
 export const chatEventRowSchema = z.union([
-  chatEventRowV8FailedSchema,
-  chatEventRowV8OtherSchema,
+  failedChatEventRowSchema,
+  nonFailedChatEventRowSchema,
 ]);
 
 export type ChatEventRow = z.infer<typeof chatEventRowSchema>;
-export type ChatEventRowV7 = z.infer<typeof chatEventRowV7Schema>;
-
-/** Exact adjacent-version downgrade used by V7 Raw Event and Snapshot reads. */
-export function downgradeChatEventRowToV7(row: ChatEventRow): ChatEventRowV7 {
-  const candidate: Record<string, unknown> = { ...row };
-  delete candidate.failureReason;
-  return chatEventRowV7Schema.parse(candidate);
-}

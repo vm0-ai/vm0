@@ -2,10 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
-import {
-  chatEventRowSchema,
-  chatEventRowV7Schema,
-} from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
@@ -19,7 +15,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockNow } from "../../../lib/time";
-import { insertCanonicalChatEventWritesFixture } from "../../../test-fixtures/chat-events";
 import { createDeferredPromise } from "../../utils";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
@@ -49,7 +44,7 @@ const DUPLICATE_EVENT_ID_WARNING =
 const SNAPSHOT_COMPLETED_MESSAGE = "Completed chat event snapshot";
 const SNAPSHOT_COMPLETED_TYPE = "chat_event_snapshot_completed";
 const OBJECT_KEY_PATTERN =
-  /^chat-events\/([0-9a-f-]{36})\/(\d+)-r2-([0-9a-f]{64})\.ndjson\.gz$/;
+  /^chat-events\/([0-9a-f-]{36})\/(\d+)-r1-([0-9a-f]{64})\.ndjson\.gz$/;
 
 type RecordedPut = RecordedChatEventPut;
 
@@ -280,7 +275,16 @@ function expectArchiveInvariants(
   const lastLine = lines[lines.length - 1];
   expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
-    expect(Object.keys(line).sort()).toStrictEqual(CANONICAL_ARCHIVE_KEYS);
+    const expectedKeys = [
+      ...CANONICAL_ARCHIVE_KEYS,
+      ...(Object.hasOwn(line, "failureReason") ? ["failureReason"] : []),
+    ].sort();
+    expect(Object.keys(line).sort()).toStrictEqual(expectedKeys);
+    expect(
+      !Object.hasOwn(line, "failureReason") ||
+        (line.eventType === "run.failed" &&
+          line.failureReason === "provider_overloaded"),
+    ).toBeTruthy();
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
@@ -297,19 +301,7 @@ describe("cron snapshot chat events", () => {
 
   function putsForThread(threadId: string): readonly RecordedPut[] {
     return recordedPuts.filter((put) => {
-      return (
-        put.key.startsWith(`chat-events/${threadId}/`) &&
-        put.key.includes("-r2-")
-      );
-    });
-  }
-
-  function previousPutsForThread(threadId: string): readonly RecordedPut[] {
-    return recordedPuts.filter((put) => {
-      return (
-        put.key.startsWith(`chat-events/${threadId}/`) &&
-        put.key.includes("-r1-")
-      );
+      return put.key.startsWith(`chat-events/${threadId}/`);
     });
   }
 
@@ -353,7 +345,6 @@ describe("cron snapshot chat events", () => {
 
     const firstPuts = putsForThread(threadId);
     expect(firstPuts).toHaveLength(1);
-    expect(previousPutsForThread(threadId)).toHaveLength(1);
     const firstPut = firstPuts[0];
     if (firstPut === undefined) {
       throw new Error("Expected a first-generation snapshot object");
@@ -372,7 +363,6 @@ describe("cron snapshot chat events", () => {
     // Nothing new to archive: the same pass again must not touch the thread.
     await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(1);
-    expect(previousPutsForThread(threadId)).toHaveLength(1);
 
     // A new Postgres tail beyond the projected watermark triggers another
     // generation seeded by the head object, preserving ordering and prior
@@ -388,7 +378,6 @@ describe("cron snapshot chat events", () => {
 
     const secondPuts = putsForThread(threadId);
     expect(secondPuts).toHaveLength(2);
-    expect(previousPutsForThread(threadId)).toHaveLength(2);
     const secondPut = secondPuts[1];
     if (secondPut === undefined) {
       throw new Error("Expected a second-generation snapshot object");
@@ -408,61 +397,9 @@ describe("cron snapshot chat events", () => {
 
     await runSnapshotCron([threadId]);
     expect(putsForThread(threadId)).toHaveLength(2);
-    expect(previousPutsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("keeps failed-run reasons in V8 Snapshots and strips them from V7", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    bdd.acceptAgentStorageWrites();
-    await api.ensureOrgModelProvider(owner);
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Failure reason Snapshot agent",
-    });
-    const thread = await chat.createThread(owner, {
-      agentId: agent.agentId,
-      title: "Failure reason Snapshot thread",
-    });
-    if (!owner.orgId) {
-      throw new Error("Expected an organization-scoped Snapshot owner");
-    }
-    const fixture = await insertCanonicalChatEventWritesFixture({
-      threadId: thread.id,
-      orgId: owner.orgId,
-      userId: owner.userId,
-      agentId: agent.agentId,
-    });
-    installFakeChatEventR2(context, recordedPuts);
-
-    await projectChatEventSearch(thread.id);
-    const snapshot = await runSnapshotCron([thread.id]);
-    expect(snapshot).toMatchObject({ snapshots: 1 });
-    const currentPut = putsForThread(thread.id)[0];
-    const previousPut = previousPutsForThread(thread.id)[0];
-    if (currentPut === undefined || previousPut === undefined) {
-      throw new Error("Expected both Snapshot generations");
-    }
-    const currentRows = archivedLines(currentPut.body).map((row) => {
-      return chatEventRowSchema.parse(row);
-    });
-    const previousRows = archivedLines(previousPut.body).map((row) => {
-      return chatEventRowV7Schema.parse(row);
-    });
-    expect(
-      currentRows.find((row) => {
-        return row.id === fixture.batch.runFailedId;
-      }),
-    ).toMatchObject({
-      eventType: "run.failed",
-      failureReason: "provider_server_error",
-    });
-    expect(
-      previousRows.find((row) => {
-        return row.id === fixture.batch.runFailedId;
-      }),
-    ).not.toHaveProperty("failureReason");
-  }, 60_000);
-
-  it("keeps no-conflict prefix and tail bytes and observability unchanged", async () => {
+  it("preserves an optional V7 failure reason while appending a tail", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "No-conflict snapshot agent",
@@ -479,6 +416,32 @@ describe("cron snapshot chat events", () => {
       throw new Error("Expected a no-conflict parent snapshot");
     }
     const parentHead = await readChatEventSnapshotHead(context, threadId);
+    const parentRows = archivedLines(parentPut.body);
+    const firstParentRow = parentRows[0];
+    if (firstParentRow === undefined) {
+      throw new Error("Expected a non-empty parent snapshot");
+    }
+    const prefixBody = Buffer.from(
+      parentRows
+        .map((row) => {
+          return `${JSON.stringify(
+            row.id === firstParentRow.id
+              ? {
+                  ...row,
+                  eventType: "run.failed",
+                  runId: randomUUID(),
+                  payload: { error: "provider unavailable" },
+                  failureReason: "provider_overloaded",
+                }
+              : row,
+          )}\n`;
+        })
+        .join(""),
+    );
+    const compressedPrefix = gzipSync(prefixBody);
+    const prefixObjectKey = `chat-events/${threadId}/${parentHead.last_seq_id.toString()}-r1-${createHash("sha256").update(compressedPrefix).digest("hex")}.ndjson.gz`;
+    writeFakeChatEventObject(prefixObjectKey, compressedPrefix);
+    await updateChatEventSnapshotHead(context, threadId, prefixObjectKey);
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId,
@@ -492,7 +455,7 @@ describe("cron snapshot chat events", () => {
 
     const expectedBody = gzipSync(
       Buffer.concat([
-        gunzipSync(parentPut.body),
+        prefixBody,
         Buffer.from(
           tailRows
             .map((row) => {
@@ -523,6 +486,13 @@ describe("cron snapshot chat events", () => {
       throw new Error("Expected a no-conflict child snapshot");
     }
     expect(nextPut.body).toStrictEqual(expectedBody);
+    expect(archivedLines(nextPut.body)).toContainEqual(
+      expect.objectContaining({
+        id: firstParentRow.id,
+        eventType: "run.failed",
+        failureReason: "provider_overloaded",
+      }),
+    );
     expect(
       context.mocks.axiomLogging.warn.mock.calls.some((call) => {
         return call[0] === DUPLICATE_EVENT_ID_WARNING;
@@ -632,24 +602,10 @@ describe("cron snapshot chat events", () => {
       deferredCandidates: 0,
       snapshots: 1,
     });
-    const currentPuts = threadIds.flatMap((threadId) => {
-      return putsForThread(threadId);
-    });
-    const previousPuts = threadIds.flatMap((threadId) => {
-      return previousPutsForThread(threadId);
-    });
-    expect(currentPuts).toHaveLength(9);
-    expect(previousPuts).toHaveLength(9);
+    expect(recordedPuts).toHaveLength(9);
     expect(
       new Set(
-        currentPuts.map((put) => {
-          return put.key;
-        }),
-      ).size,
-    ).toBe(9);
-    expect(
-      new Set(
-        previousPuts.map((put) => {
+        recordedPuts.map((put) => {
           return put.key;
         }),
       ).size,
@@ -699,24 +655,10 @@ describe("cron snapshot chat events", () => {
       snapshots: 1,
       skippedTimedOutHeads: 0,
     });
-    const currentPuts = threadIds.flatMap((threadId) => {
-      return putsForThread(threadId);
-    });
-    const previousPuts = threadIds.flatMap((threadId) => {
-      return previousPutsForThread(threadId);
-    });
-    expect(currentPuts).toHaveLength(2);
-    expect(previousPuts).toHaveLength(2);
+    expect(recordedPuts).toHaveLength(2);
     expect(
       new Set(
-        currentPuts.map((put) => {
-          return put.key;
-        }),
-      ).size,
-    ).toBe(2);
-    expect(
-      new Set(
-        previousPuts.map((put) => {
+        recordedPuts.map((put) => {
           return put.key;
         }),
       ).size,
@@ -847,10 +789,7 @@ describe("cron snapshot chat events", () => {
     const publicationGate = createDeferredPromise<void>(context.signal);
     let firstThreadArrivals = 0;
     installFakeChatEventR2(context, recordedPuts, async (put) => {
-      if (
-        !put.key.startsWith(`chat-events/${firstThreadId}/`) ||
-        !put.key.includes("-r2-")
-      ) {
+      if (!put.key.startsWith(`chat-events/${firstThreadId}/`)) {
         return;
       }
       firstThreadArrivals += 1;
@@ -1165,10 +1104,7 @@ describe("cron snapshot chat events", () => {
         throw new Error("Expected an initial snapshot object");
       }
       if (fixture.kind === "unreadable") {
-        const missingObjectKey = initialPut.key.replace(
-          /[0-9a-f]{64}[.]ndjson[.]gz$/u,
-          `${"0".repeat(64)}.ndjson.gz`,
-        );
+        const missingObjectKey = `chat-events/${fixture.threadId}/missing-${randomUUID()}.ndjson.gz`;
         await updateChatEventSnapshotHead(
           context,
           fixture.threadId,
@@ -1249,10 +1185,7 @@ describe("cron snapshot chat events", () => {
     const publicationGate = createDeferredPromise<void>(context.signal);
     let arrivals = 0;
     installFakeChatEventR2(context, recordedPuts, async (put) => {
-      if (
-        !put.key.startsWith(`chat-events/${threadId}/`) ||
-        !put.key.includes("-r2-")
-      ) {
+      if (!put.key.startsWith(`chat-events/${threadId}/`)) {
         return;
       }
       arrivals += 1;

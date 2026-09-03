@@ -8,7 +8,7 @@ import {
   testRuntimeStateContract,
   type TestRuntimeStateActionBody,
 } from "@okouai/api-contracts/contracts/test-runtime-state";
-import { chatEventRowV7Schema } from "@okouai/api-contracts/contracts/chat-event-rows";
+import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { compatibleStoredExecutionContextSchema } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/schema/agent-run";
@@ -1956,7 +1956,7 @@ async function readChatEventRowsAsPreviousApiFixture(
   // This is the exact strict raw/snapshot reader shape from the API version
   // immediately before the private Official queue column was introduced.
   const previousApiRows = rows.map((row) => {
-    return chatEventRowV7Schema.parse({
+    return chatEventRowSchema.parse({
       ...row,
       createdAt: row.createdAt.toISOString(),
     });

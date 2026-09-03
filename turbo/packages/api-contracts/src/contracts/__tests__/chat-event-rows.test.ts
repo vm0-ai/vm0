@@ -1,18 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
-import {
-  chatEventRowSchema,
-  chatEventRowV7Schema,
-  downgradeChatEventRowToV7,
-  type ChatEventRow,
-} from "../chat-event-rows";
+import { chatEventRowSchema, type ChatEventRow } from "../chat-event-rows";
 import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "../chat-event-schema-version";
-import { chatThreadEventsContract } from "../chat-threads";
-import { runFailureReasonSchema } from "../run-failure-reasons";
+import { chatEventSchema, chatThreadEventsContract } from "../chat-threads";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
 
@@ -132,45 +126,6 @@ describe("canonical chat event row schema", () => {
     expect(parsed).not.toHaveProperty("interruptsRunId");
     expect(parsed).not.toHaveProperty("runGroupId");
   });
-
-  it("preserves every failed-run reason in V8 and strips only that key in V7", () => {
-    for (const failureReason of runFailureReasonSchema.options) {
-      const row = canonicalRow({
-        eventType: "run.failed",
-        runId: "00000000-0000-4000-8000-000000000013",
-        failureReason,
-      });
-      expect(chatEventFromRow(row)).toMatchObject({
-        eventType: "run.failed",
-        failureReason,
-      });
-
-      const downgraded = downgradeChatEventRowToV7(row);
-      expect(downgraded).not.toHaveProperty("failureReason");
-      expect(chatEventRowV7Schema.parse(downgraded)).toStrictEqual(
-        Object.fromEntries(
-          Object.entries(row).filter(([key]) => {
-            return key !== "failureReason";
-          }),
-        ),
-      );
-    }
-  });
-
-  it("keeps historical reasonless failures valid and rejects reasons on other rows", () => {
-    expect(
-      canonicalRow({
-        eventType: "run.failed",
-        runId: "00000000-0000-4000-8000-000000000013",
-      }),
-    ).not.toHaveProperty("failureReason");
-    expect(
-      chatEventRowSchema.safeParse({
-        ...canonicalRow({}),
-        failureReason: "provider_server_error",
-      }).success,
-    ).toBe(false);
-  });
 });
 
 describe("Chat Event Raw Event cursor contract", () => {
@@ -195,6 +150,7 @@ describe("Chat Event Raw Event cursor contract", () => {
 
 describe("Chat Event versioned read contract", () => {
   it("requires the request version header and Snapshot terminal event ID", () => {
+    expect(CURRENT_CHAT_EVENT_SCHEMA_VERSION).toBe(7);
     const headersSchema = chatThreadEventsContract.snapshot.headers;
     expect(
       headersSchema.safeParse({ authorization: "Bearer test" }).success,
@@ -292,7 +248,6 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
         eventType: "run.failed",
         runId,
         payload: { content: "run failed", error: "runner error" },
-        failureReason: "provider_server_error",
       }),
     );
     expect(failed).toMatchObject({
@@ -300,8 +255,42 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
       runId,
       content: "run failed",
       error: "runner error",
-      failureReason: "provider_server_error",
       runLifecycleEvent: "failed",
     });
+  });
+
+  it("accepts an optional V7 failure reason only on failed runs", () => {
+    const runId = "00000000-0000-4000-8000-000000000013";
+    const historical = chatEventFromRow(
+      canonicalRow({
+        eventType: "run.failed",
+        runId,
+        payload: { error: "historical runner error" },
+      }),
+    );
+    expect(JSON.parse(JSON.stringify(historical))).not.toHaveProperty(
+      "failureReason",
+    );
+
+    const withReason = chatEventFromRow(
+      canonicalRow({
+        eventType: "run.failed",
+        runId,
+        payload: { error: "provider unavailable" },
+        failureReason: "provider_overloaded",
+      }),
+    );
+    expect(chatEventSchema.parse(withReason)).toMatchObject({
+      eventType: "run.failed",
+      runId,
+      failureReason: "provider_overloaded",
+    });
+
+    expect(
+      chatEventRowSchema.safeParse({
+        ...canonicalRow({}),
+        failureReason: "provider_overloaded",
+      }).success,
+    ).toBe(false);
   });
 });

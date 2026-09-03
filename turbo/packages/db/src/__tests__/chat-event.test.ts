@@ -44,7 +44,6 @@ describe("chatEvents schema", () => {
       "revokes_event_id",
       "event_type",
       "payload",
-      "failure_reason",
       "required_official_workflow_ids",
       "context_type",
       "context_id",
@@ -55,8 +54,6 @@ describe("chatEvents schema", () => {
     ]);
     expect(chatEvents.payload.notNull).toBeFalsy();
     expect(chatEvents.payload.hasDefault).toBeFalsy();
-    expect(chatEvents.failureReason.notNull).toBeFalsy();
-    expect(chatEvents.failureReason.hasDefault).toBeFalsy();
     expect(chatEvents.requiredOfficialWorkflowIds.notNull).toBeFalsy();
     expect(chatEvents.requiredOfficialWorkflowIds.hasDefault).toBeFalsy();
     expect(
@@ -85,7 +82,6 @@ describe("chatEvents schema", () => {
       expect.arrayContaining([
         "chat_events_input_user_message_payload_check",
         "chat_events_input_payload_content_check",
-        "chat_events_failure_reason_check",
         "chat_events_official_workflow_queue_claim_check",
         "chat_events_goal_open_payload_check",
         "chat_events_goal_close_payload_check",
@@ -144,12 +140,12 @@ describe("chatEvents schema", () => {
 });
 
 describe("chatEventSnapshots schema", () => {
-  it("constrains pointers to the adjacent canonical snapshot shapes", () => {
+  it("constrains pointers to the current canonical snapshot shape", () => {
     const config = getTableConfig(chatEventSnapshots);
 
     expect(chatEventSnapshots.terminalEventId.notNull).toBe(false);
     expect(chatEventSnapshots.terminalSeqId.notNull).toBe(false);
-    expect(chatEventSnapshots.archiveSchemaVersion.default).toBe(8);
+    expect(chatEventSnapshots.archiveSchemaVersion.default).toBe(7);
     expect(
       config.indexes.map((index) => {
         return { name: index.config.name, unique: index.config.unique };

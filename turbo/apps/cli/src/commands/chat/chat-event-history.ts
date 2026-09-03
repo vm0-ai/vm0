@@ -12,9 +12,7 @@ import { join } from "node:path";
 import { chatEventRowSchema } from "@okouai/api-contracts/contracts/chat-event-rows";
 import {
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
-  PREVIOUS_CHAT_EVENT_SCHEMA_VERSION,
   type ChatEventCursor,
-  type ChatEventSchemaVersion,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 
 import {
@@ -28,8 +26,8 @@ const SNAPSHOT_FILE_PATTERN = /^snapshot-to-(\d+)\.ndjson$/;
 const EVENT_FILE_PATTERN = /^event-SEQ_ID_(\d+)\.json$/;
 const CACHE_FORMAT_FILE = ".okou-chat-event-schema-version";
 
-function cacheFormatBody(schemaVersion: ChatEventSchemaVersion): string {
-  return `${schemaVersion.toString()}\n`;
+function cacheFormatBody(): string {
+  return `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 }
 
 type ManagedHistoryFile =
@@ -104,36 +102,25 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-async function readCacheFormat(
-  directory: string,
-): Promise<ChatEventSchemaVersion | null> {
+async function hasCurrentCacheFormat(directory: string): Promise<boolean> {
   try {
     const body = await readFile(join(directory, CACHE_FORMAT_FILE), "utf8");
-    if (body === cacheFormatBody(CURRENT_CHAT_EVENT_SCHEMA_VERSION)) {
-      return CURRENT_CHAT_EVENT_SCHEMA_VERSION;
-    }
-    if (body === cacheFormatBody(PREVIOUS_CHAT_EVENT_SCHEMA_VERSION)) {
-      return PREVIOUS_CHAT_EVENT_SCHEMA_VERSION;
-    }
-    return null;
+    return body === cacheFormatBody();
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
-      return null;
+      return false;
     }
     throw error;
   }
 }
 
-async function publishCacheFormat(
-  directory: string,
-  schemaVersion: ChatEventSchemaVersion,
-): Promise<void> {
+async function publishCacheFormat(directory: string): Promise<void> {
   const stagedDirectory = await mkdtemp(
     join(directory, ".okou-chat-event-schema-version-"),
   );
   try {
     const staged = join(stagedDirectory, CACHE_FORMAT_FILE);
-    await writeFile(staged, cacheFormatBody(schemaVersion), "utf8");
+    await writeFile(staged, cacheFormatBody(), "utf8");
     await rename(staged, join(directory, CACHE_FORMAT_FILE));
   } finally {
     await rm(stagedDirectory, { recursive: true, force: true });
@@ -316,7 +303,6 @@ async function syncRows(args: {
   readonly threadId: string;
   readonly directory: string;
   readonly cursor: ChatEventCursor;
-  readonly schemaVersion: ChatEventSchemaVersion;
 }): Promise<{
   readonly kind: "complete" | "expired";
 }> {
@@ -329,14 +315,12 @@ async function syncRows(args: {
             sinceEventId: null,
             sinceSeqId: 0,
             limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-            schemaVersion: args.schemaVersion,
           }
         : {
             threadId: args.threadId,
             sinceEventId: cursor.lastEventId,
             sinceSeqId: cursor.lastSeqId,
             limit: CHAT_EVENT_ROWS_PAGE_LIMIT,
-            schemaVersion: args.schemaVersion,
           },
     );
     if (page.kind === "expired") {
@@ -403,13 +387,14 @@ async function rebuildRawChatHistory(args: {
   readonly threadId: string;
   readonly outputDirectory: string;
   readonly threadDirectory: string;
-  readonly snapshot: Awaited<ReturnType<typeof getChatEventSnapshot>>;
-}): Promise<ChatEventSchemaVersion> {
+}): Promise<void> {
   const temporaryDirectory = await mkdtemp(
     join(args.outputDirectory, ".okou-chat-history-"),
   );
   try {
-    const snapshot = args.snapshot;
+    const snapshot = await getChatEventSnapshot({
+      threadId: args.threadId,
+    });
     let cursor: ChatEventCursor = {
       lastEventId: null,
       lastSeqId: THREAD_START_SEQ_ID,
@@ -440,7 +425,6 @@ async function rebuildRawChatHistory(args: {
       threadId: args.threadId,
       directory: temporaryDirectory,
       cursor,
-      schemaVersion: snapshot.schemaVersion,
     });
     if (result.kind === "expired") {
       throw new Error(
@@ -452,7 +436,6 @@ async function rebuildRawChatHistory(args: {
       targetDirectory: args.threadDirectory,
       stagedDirectory: temporaryDirectory,
     });
-    return snapshot.schemaVersion;
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -466,47 +449,36 @@ export async function syncRawChatHistory(args: {
   const threadDirectory = join(args.outputDirectory, args.threadId);
   await mkdir(threadDirectory, { recursive: true });
   const existing = await listManagedHistoryFiles(threadDirectory);
-  const cacheFormat = await readCacheFormat(threadDirectory);
-  const snapshot = await getChatEventSnapshot({ threadId: args.threadId });
-  const state =
-    cacheFormat === snapshot.schemaVersion
-      ? await localHistoryState({
-          directory: threadDirectory,
-          threadId: args.threadId,
-          files: existing,
-        })
-      : ({ kind: "invalid" } as const);
-
-  let schemaVersion = snapshot.schemaVersion;
+  const state = (await hasCurrentCacheFormat(threadDirectory))
+    ? await localHistoryState({
+        directory: threadDirectory,
+        threadId: args.threadId,
+        files: existing,
+      })
+    : ({ kind: "invalid" } as const);
 
   if (state.kind !== "valid") {
-    schemaVersion = await rebuildRawChatHistory({
+    await rebuildRawChatHistory({
       threadId: args.threadId,
       outputDirectory: args.outputDirectory,
       threadDirectory,
-      snapshot,
     });
   } else {
     const result = await syncRows({
       threadId: args.threadId,
       directory: threadDirectory,
       cursor: state.cursor,
-      schemaVersion,
     });
     if (result.kind === "expired") {
-      const freshSnapshot = await getChatEventSnapshot({
-        threadId: args.threadId,
-      });
-      schemaVersion = await rebuildRawChatHistory({
+      await rebuildRawChatHistory({
         threadId: args.threadId,
         outputDirectory: args.outputDirectory,
         threadDirectory,
-        snapshot: freshSnapshot,
       });
     }
   }
 
-  await publishCacheFormat(threadDirectory, schemaVersion);
+  await publishCacheFormat(threadDirectory);
 
   const files = (await listManagedHistoryFiles(threadDirectory)).map((file) => {
     return join(threadDirectory, file.name);
