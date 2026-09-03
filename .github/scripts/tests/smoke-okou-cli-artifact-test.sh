@@ -28,7 +28,7 @@ done
 entrypoint="$1"
 shift
 
-echo "npm notice This endpoint is being retired. Use the bulk advisory endpoint instead." >&2
+echo "npm notice This endpoint is being retired. Use the bulk advisory endpoint instead. See the following docs for more info: https://api-docs.npmjs.com/#tag/Audit" >&2
 if [[ "${EMIT_UNEXPECTED_STDERR:-false}" == "true" &&
   "$entrypoint" == "okou" && "${1:-}" == "--version" ]]; then
   echo "unexpected CLI stderr" >&2

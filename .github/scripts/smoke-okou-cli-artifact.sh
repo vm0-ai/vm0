@@ -16,7 +16,7 @@ package_path="$(cd "$(dirname "$package_path")" && pwd -P)/$(basename "$package_
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-readonly npm_advisory_retirement_notice="npm notice This endpoint is being retired. Use the bulk advisory endpoint instead."
+readonly npm_advisory_retirement_notice="npm notice This endpoint is being retired. Use the bulk advisory endpoint instead. See the following docs for more info: https://api-docs.npmjs.com/#tag/Audit"
 
 node_path="$(command -v node)"
 npx_path="$(command -v npx)"
