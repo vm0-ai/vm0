@@ -110,19 +110,28 @@ interface SocialCollectionOutput {
   readonly uncertainty?: string;
 }
 
-interface SocialOutput {
-  readonly kind: "result";
+interface SocialOutputBase {
   readonly status: SocialStatus;
   readonly operation: SocialOperation;
   readonly platform: SocialPlatform;
   readonly target:
     | SocialTarget
     | { readonly kind: "download"; readonly downloadId: string };
-  readonly data: unknown;
   readonly collection: SocialCollectionOutput | null;
   readonly billing: SocialBilling | null;
   readonly warnings: readonly SocialWarning[];
 }
+
+interface SocialResultOutput extends SocialOutputBase {
+  readonly kind: "result";
+  readonly data: unknown;
+}
+
+interface SocialSummaryOutput extends SocialOutputBase {
+  readonly kind: "summary";
+}
+
+type SocialOutput = SocialResultOutput | SocialSummaryOutput;
 
 interface CollectionProgress {
   readonly pages: number;
@@ -465,7 +474,8 @@ interface CollectionAccumulator {
   request: SocialKitRequest;
   context: Readonly<Record<string, unknown>>;
   readonly seenRequests: Set<string>;
-  readonly items: unknown[];
+  readonly items: unknown[] | undefined;
+  itemsReturned: number;
   pages: number;
   itemsObserved: number;
   billingQuantity: number;
@@ -478,7 +488,7 @@ function accumulatorProgress(
 ): CollectionProgress {
   return progress(
     accumulator.pages,
-    accumulator.items.length,
+    accumulator.itemsReturned,
     accumulator.itemsObserved,
     accumulator.billingQuantity,
     accumulator.creditsCharged,
@@ -537,9 +547,10 @@ function appendCollectionPage(
   if (accumulator.pages === 0) {
     accumulator.context = page.context;
   }
-  const remaining = requestedItems - accumulator.items.length;
+  const remaining = requestedItems - accumulator.itemsReturned;
   const returnedItems = page.items.slice(0, remaining);
-  accumulator.items.push(...returnedItems);
+  accumulator.items?.push(...returnedItems);
+  accumulator.itemsReturned += returnedItems.length;
   accumulator.pages += 1;
   accumulator.itemsObserved += metadata.itemsReturned;
   accumulator.billingQuantity += response.billingQuantity;
@@ -578,16 +589,16 @@ function terminalCollectionOutput(
   response: SocialKitResponse,
   metadata: SocialKitCollection,
 ): SocialOutput | undefined {
-  const requestSatisfied = accumulator.items.length >= requestedItems;
+  const requestSatisfied = accumulator.itemsReturned >= requestedItems;
   const sourceComplete = metadata.state === "complete";
   const providerLimited = metadata.state === "provider_limited";
   if (!requestSatisfied && !sourceComplete && !providerLimited) {
     return undefined;
   }
   const callerTruncated =
-    accumulator.itemsObserved > accumulator.items.length ||
+    accumulator.itemsObserved > accumulator.itemsReturned ||
     (accumulator.reportedTotal !== undefined &&
-      accumulator.reportedTotal > accumulator.items.length);
+      accumulator.reportedTotal > accumulator.itemsReturned);
   const state = providerLimited
     ? "provider_limited"
     : requestSatisfied && (!sourceComplete || callerTruncated)
@@ -596,7 +607,7 @@ function terminalCollectionOutput(
   const collection: SocialCollectionOutput = {
     state,
     pages: accumulator.pages,
-    itemsReturned: accumulator.items.length,
+    itemsReturned: accumulator.itemsReturned,
     itemsObserved: accumulator.itemsObserved,
     requestedItems,
     ...(accumulator.reportedTotal === undefined
@@ -609,13 +620,11 @@ function terminalCollectionOutput(
       ? { uncertainty: metadata.uncertainty.reason }
       : {}),
   };
-  return {
-    kind: "result",
+  const output = {
     status: requestSatisfied || sourceComplete ? "complete" : "partial",
     operation: intent.operation,
     platform: intent.platform,
     target: intent.target,
-    data: { items: accumulator.items, context: accumulator.context },
     collection,
     billing: {
       category: response.billingCategory,
@@ -623,7 +632,14 @@ function terminalCollectionOutput(
       creditsCharged: accumulator.creditsCharged,
     },
     warnings: collectionWarnings(collection),
-  };
+  } as const;
+  return accumulator.items
+    ? {
+        kind: "result",
+        ...output,
+        data: { items: accumulator.items, context: accumulator.context },
+      }
+    : { kind: "summary", ...output };
 }
 
 function safetyLimitOutput(
@@ -634,7 +650,7 @@ function safetyLimitOutput(
   const collection: SocialCollectionOutput = {
     state: "provider_limited",
     pages: accumulator.pages,
-    itemsReturned: accumulator.items.length,
+    itemsReturned: accumulator.itemsReturned,
     itemsObserved: accumulator.itemsObserved,
     requestedItems,
     ...(accumulator.reportedTotal === undefined
@@ -642,13 +658,12 @@ function safetyLimitOutput(
       : { reportedTotal: accumulator.reportedTotal }),
     reason: "safety_page_ceiling",
   };
-  return {
-    kind: "result",
-    status: accumulator.items.length >= requestedItems ? "complete" : "partial",
+  const output = {
+    status:
+      accumulator.itemsReturned >= requestedItems ? "complete" : "partial",
     operation: intent.operation,
     platform: intent.platform,
     target: intent.target,
-    data: { items: accumulator.items, context: accumulator.context },
     collection,
     billing: {
       category: "request",
@@ -656,7 +671,14 @@ function safetyLimitOutput(
       creditsCharged: accumulator.creditsCharged,
     },
     warnings: collectionWarnings(collection),
-  };
+  } as const;
+  return accumulator.items
+    ? {
+        kind: "result",
+        ...output,
+        data: { items: accumulator.items, context: accumulator.context },
+      }
+    : { kind: "summary", ...output };
 }
 
 async function retrieveCollection(
@@ -674,7 +696,8 @@ async function retrieveCollection(
     request: intent.request,
     context: {},
     seenRequests: new Set<string>(),
-    items: [],
+    items: stream ? undefined : [],
+    itemsReturned: 0,
     pages: 0,
     itemsObserved: 0,
     billingQuantity: 0,
@@ -711,7 +734,7 @@ async function retrieveCollection(
     accumulator.request = requestWithNextPage(
       accumulator.request,
       metadata.nextInput,
-      requestedItems - accumulator.items.length,
+      requestedItems - accumulator.itemsReturned,
       tool.maxLimit !== undefined,
     );
   }

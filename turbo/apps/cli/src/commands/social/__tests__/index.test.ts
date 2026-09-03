@@ -791,10 +791,11 @@ describe("okou social command", () => {
     expect(records[0]).toMatchObject({ kind: "page", page: 1 });
     expect(records[1]).toMatchObject({ kind: "page", page: 2 });
     expect(records[2]).toMatchObject({
-      kind: "result",
+      kind: "summary",
       status: "complete",
       collection: { pages: 2 },
     });
+    expect(records[2]).not.toHaveProperty("data");
   });
 
   it("emits structured API failures and exits non-zero", async () => {
