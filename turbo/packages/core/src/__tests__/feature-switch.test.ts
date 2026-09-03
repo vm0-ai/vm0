@@ -97,18 +97,30 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should release Morning Brief independently from Official Workflows and preserve false overrides", () => {
+  it("should keep Morning Brief default-off with an independent staff rollout and overrides", () => {
+    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     const ordinaryOrgId = "org_nonexistent";
     expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
-    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
         orgId: ordinaryOrgId,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
         orgId: ordinaryOrgId,
+        overrides: { [FeatureSwitchKey.MorningBrief]: true },
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: staffOrgId,
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
+        orgId: staffOrgId,
         overrides: { [FeatureSwitchKey.MorningBrief]: false },
       }),
     ).toBe(false);
@@ -121,7 +133,7 @@ describe("isFeatureEnabled", () => {
       maintainer: "lancy@vm0.ai",
       description:
         "Enable the first-class Morning Brief experience in Preferences.",
-      rolloutStage: "released",
+      rolloutStage: "beta",
     });
   });
 
@@ -171,7 +183,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
@@ -182,6 +194,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(true);
@@ -209,12 +222,13 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.VoiceDraft]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.DesktopScreenRecording]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
 
   it("should enable intro video and desktop recording for staff", () => {

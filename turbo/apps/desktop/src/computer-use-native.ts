@@ -68,7 +68,7 @@ export interface ComputerUseNativeAppRecord {
 }
 
 export interface ComputerUseNativeBackend {
-  readonly dispose: () => void;
+  readonly dispose: (reason?: ComputerUseNativeShutdownReason) => Promise<void>;
   readonly getPermissions: () => Promise<ComputerUsePermissionState>;
   readonly requestAccessibilityPermission: () => Promise<ComputerUsePermissionState>;
   readonly requestScreenRecordingPermission: () => Promise<ComputerUsePermissionState>;
@@ -155,8 +155,19 @@ interface RunComputerUseHelperOptions {
   readonly helperPath?: string;
   readonly mode?: "serve" | "oneshot";
   readonly requestTimeoutMs?: number;
+  readonly shutdownGraceMs?: number;
   readonly onRuntimeError?: ComputerUseNativeRuntimeErrorReporter;
 }
+
+export type ComputerUseNativeShutdownReason =
+  | "dispose"
+  | "app_quit"
+  | "update_relaunch";
+
+export type ComputerUseNativeTerminationReason =
+  | ComputerUseNativeShutdownReason
+  | "timeout_replace"
+  | "unexpected_exit";
 
 export class ComputerUseNativeHelperError extends Error {
   constructor(
@@ -172,10 +183,19 @@ export interface ComputerUseNativeRuntimeErrorContext {
   readonly helperPath: string;
   readonly mode: "serve" | "oneshot";
   readonly requestKind: string;
-  readonly stage: "spawn" | "exit" | "timeout" | "write" | "protocol";
+  readonly stage:
+    | "spawn"
+    | "exit"
+    | "timeout"
+    | "write"
+    | "protocol"
+    | "shutdown";
   readonly exitCode?: number | null;
   readonly signal?: NodeJS.Signals | null;
   readonly stderr?: string;
+  readonly terminationReason?: ComputerUseNativeTerminationReason;
+  readonly pendingRequestCount?: number;
+  readonly queuedRequestCount?: number;
 }
 
 type ComputerUseNativeRuntimeErrorReporter = (
@@ -522,8 +542,23 @@ async function runComputerUseHelper(
   });
 }
 
+type ComputerUseNativeRuntimeClientState = "open" | "closing" | "closed";
+
+interface ComputerUseNativeRuntimeProcess {
+  readonly child: ChildProcessWithoutNullStreams;
+  readonly closePromise: Promise<void>;
+  readonly resolveClose: () => void;
+  stdoutBuffer: string;
+  stderr: string;
+  closed: boolean;
+  terminalErrorReported: boolean;
+  stopReason: ComputerUseNativeTerminationReason | null;
+  sentSignal: NodeJS.Signals | null;
+}
+
 interface PendingRuntimeRequest {
   readonly kind: string;
+  readonly runtime: ComputerUseNativeRuntimeProcess;
   readonly resolve: (result: Record<string, unknown>) => void;
   readonly reject: (error: Error) => void;
 }
@@ -545,37 +580,44 @@ function runtimePayload(
 // a time. This is the backstop that keeps a wedged helper from blocking the
 // whole serialized queue forever; on timeout the helper is killed and respawned.
 const DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_RUNTIME_SHUTDOWN_GRACE_MS = 1_000;
 
 class ComputerUseNativeRuntimeClient {
-  private child: ChildProcessWithoutNullStreams | null = null;
-  private stdoutBuffer = "";
+  private runtime: ComputerUseNativeRuntimeProcess | null = null;
   private requestCounter = 0;
-  private closed = false;
-  private stderr = "";
+  private state: ComputerUseNativeRuntimeClientState = "open";
   private readonly pending = new Map<string, PendingRuntimeRequest>();
   private queueTail: Promise<void> = Promise.resolve();
+  private queuedRequestCount = 0;
+  private disposePromise: Promise<void> | null = null;
 
   constructor(
     private readonly helperPath: string,
     private readonly requestTimeoutMs: number,
+    private readonly shutdownGraceMs: number,
     private readonly onRuntimeError:
       | ComputerUseNativeRuntimeErrorReporter
       | undefined,
   ) {}
 
   request(request: ComputerUseNativeRequest): Promise<Record<string, unknown>> {
-    if (this.closed) {
-      return Promise.reject(
-        new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          "Native Computer Use runtime is closed",
-        ),
-      );
+    if (this.state !== "open") {
+      return Promise.reject(this.closedError());
     }
     // Serialize every request so at most one capture is in flight. The tail
     // tracks completion only and swallows the outcome so a single rejected
     // request never poisons the chain for the requests queued behind it.
-    const run = this.queueTail.then(() => this.dispatch(request));
+    this.queuedRequestCount += 1;
+    const run = this.queueTail.then(() => {
+      this.queuedRequestCount -= 1;
+      // Disposal may start while this request is waiting behind another one.
+      // Re-check at dispatch time so a queued request cannot respawn a helper
+      // after shutdown has begun.
+      if (this.state !== "open") {
+        throw this.closedError();
+      }
+      return this.dispatch(request);
+    });
     this.queueTail = run.then(
       () => undefined,
       () => undefined,
@@ -586,20 +628,22 @@ class ComputerUseNativeRuntimeClient {
   private dispatch(
     request: ComputerUseNativeRequest,
   ): Promise<Record<string, unknown>> {
-    const child = this.ensureChild();
+    const runtime = this.ensureRuntime();
     const id = `desktop_${(this.requestCounter += 1).toString()}`;
     return new Promise<Record<string, unknown>>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (!this.pending.delete(id)) {
           return;
         }
-        // A wedged helper would block every queued request behind it. Detach
-        // and kill it so the next request starts on a fresh process; the
-        // detach makes the stale child's later "close" a no-op (see ensureChild).
-        if (this.child === child) {
-          this.child = null;
+        // A wedged helper would block every queued request behind it. Replace
+        // it so the next request starts on a fresh process. Mark ownership
+        // before signaling so the later close event cannot be misclassified.
+        if (this.runtime === runtime) {
+          this.runtime = null;
         }
-        child.kill("SIGKILL");
+        runtime.stopReason = "timeout_replace";
+        runtime.terminalErrorReported = true;
+        this.signalRuntime(runtime, "SIGKILL");
         const helperError = new ComputerUseNativeHelperError(
           "accessibility_unavailable",
           `Native Computer Use runtime timed out running ${request.kind}`,
@@ -608,11 +652,14 @@ class ComputerUseNativeRuntimeClient {
           mode: "serve",
           requestKind: request.kind,
           stage: "timeout",
+          terminationReason: "timeout_replace",
+          pendingRequestCount: this.pending.size + 1,
         });
         reject(helperError);
       }, this.requestTimeoutMs);
       this.pending.set(id, {
         kind: request.kind,
+        runtime,
         resolve: (value) => {
           clearTimeout(timer);
           resolve(value);
@@ -622,10 +669,12 @@ class ComputerUseNativeRuntimeClient {
           reject(error);
         },
       });
-      child.stdin.write(
+      runtime.child.stdin.write(
         `${JSON.stringify({ id, kind: request.kind, payload: runtimePayload(request) })}\n`,
         (error) => {
-          if (error && this.pending.delete(id)) {
+          const pending = this.pending.get(id);
+          if (error && pending?.runtime === runtime) {
+            this.pending.delete(id);
             clearTimeout(timer);
             const helperError = new ComputerUseNativeHelperError(
               "accessibility_unavailable",
@@ -643,99 +692,143 @@ class ComputerUseNativeRuntimeClient {
     });
   }
 
-  dispose(): void {
-    this.closed = true;
-    for (const pending of this.pending.values()) {
-      pending.reject(
-        new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          "Native Computer Use runtime was closed",
-        ),
-      );
+  dispose(reason: ComputerUseNativeShutdownReason = "dispose"): Promise<void> {
+    if (this.disposePromise) {
+      return this.disposePromise;
     }
-    this.pending.clear();
-    this.child?.kill();
-    this.child = null;
+    this.state = "closing";
+    this.rejectAll(this.closedError());
+    const runtime = this.runtime;
+    this.disposePromise = (
+      runtime ? this.stopRuntime(runtime, reason) : Promise.resolve()
+    ).finally(() => {
+      if (this.runtime === runtime) {
+        this.runtime = null;
+      }
+      this.state = "closed";
+    });
+    return this.disposePromise;
   }
 
-  private ensureChild(): ChildProcessWithoutNullStreams {
-    if (this.child) {
-      return this.child;
+  private ensureRuntime(): ComputerUseNativeRuntimeProcess {
+    if (this.runtime) {
+      return this.runtime;
+    }
+    if (this.state !== "open") {
+      throw this.closedError();
     }
     const child = spawn(this.helperPath, ["serve"], {
+      // Electron handles SIGTERM asynchronously. Give the long-lived helper
+      // its own process group so a terminal/updater signal cannot kill it
+      // before the JS before-quit handler records shutdown ownership.
+      detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    this.child = child;
-    this.stderr = "";
-    this.stdoutBuffer = "";
+    let resolveClose!: () => void;
+    const closePromise = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    const runtime: ComputerUseNativeRuntimeProcess = {
+      child,
+      closePromise,
+      resolveClose,
+      stdoutBuffer: "",
+      stderr: "",
+      closed: false,
+      terminalErrorReported: false,
+      stopReason: null,
+      sentSignal: null,
+    };
+    this.runtime = runtime;
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
-      this.handleStdout(chunk);
+      this.handleStdout(runtime, chunk);
     });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
-      this.stderr += chunk;
+      runtime.stderr += chunk;
     });
+    // Shutdown can close the pipe while a write callback is still pending.
+    // The callback below owns request errors; this listener prevents the
+    // stream's expected error event from becoming an uncaught exception.
+    child.stdin.on("error", () => {});
     child.on("error", (error) => {
-      if (this.child === child && !this.closed) {
-        this.child = null;
-        const helperError = new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          `Unable to start native Computer Use runtime: ${error.message}`,
-        );
-        this.reportRuntimeError(helperError, {
-          mode: "serve",
-          requestKind: "runtime",
-          stage: "spawn",
-        });
-        this.rejectAll(helperError);
+      this.markRuntimeClosed(runtime);
+      if (this.runtime === runtime) {
+        this.runtime = null;
       }
-    });
-    child.on("close", (code, signal) => {
-      // A helper we already replaced (e.g. after a timeout kill) closes with its
-      // pending request already settled; ignore it so we neither clear the new
-      // child reference nor reject the request now running on the new child.
-      if (this.child !== child) {
+      if (runtime.stopReason || runtime.terminalErrorReported) {
         return;
       }
-      this.child = null;
-      if (!this.closed) {
-        const helperError = new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          this.stderr.trim() ||
-            `Native Computer Use runtime exited with status ${code ?? "null"}`,
-        );
-        this.reportRuntimeError(helperError, {
-          mode: "serve",
-          requestKind: "runtime",
-          stage: "exit",
-          exitCode: code,
-          signal,
-          stderr: this.stderr.trim(),
-        });
-        this.rejectAll(helperError);
-      }
+      runtime.terminalErrorReported = true;
+      const helperError = new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        `Unable to start native Computer Use runtime: ${error.message}`,
+      );
+      this.reportRuntimeError(helperError, {
+        mode: "serve",
+        requestKind: "runtime",
+        stage: "spawn",
+      });
+      this.rejectRuntime(runtime, helperError);
     });
-    return child;
+    child.on("close", (code, signal) => {
+      this.markRuntimeClosed(runtime);
+      if (this.runtime === runtime) {
+        this.runtime = null;
+      }
+      if (
+        runtime.terminalErrorReported ||
+        this.isExpectedExit(runtime, code, signal)
+      ) {
+        return;
+      }
+      runtime.terminalErrorReported = true;
+      const stderr = runtime.stderr.trim();
+      const helperError = new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        stderr ||
+          (signal
+            ? `Native Computer Use runtime terminated by ${signal}`
+            : `Native Computer Use runtime exited with status ${code ?? "null"}`),
+      );
+      this.reportRuntimeError(helperError, {
+        mode: "serve",
+        requestKind: "runtime",
+        stage: "exit",
+        exitCode: code,
+        signal,
+        stderr,
+        terminationReason: "unexpected_exit",
+      });
+      this.rejectRuntime(runtime, helperError);
+    });
+    return runtime;
   }
 
-  private handleStdout(chunk: string): void {
-    this.stdoutBuffer += chunk;
+  private handleStdout(
+    runtime: ComputerUseNativeRuntimeProcess,
+    chunk: string,
+  ): void {
+    runtime.stdoutBuffer += chunk;
     while (true) {
-      const newlineIndex = this.stdoutBuffer.indexOf("\n");
+      const newlineIndex = runtime.stdoutBuffer.indexOf("\n");
       if (newlineIndex === -1) {
         return;
       }
-      const line = this.stdoutBuffer.slice(0, newlineIndex).trim();
-      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
+      const line = runtime.stdoutBuffer.slice(0, newlineIndex).trim();
+      runtime.stdoutBuffer = runtime.stdoutBuffer.slice(newlineIndex + 1);
       if (line.length > 0) {
-        this.handleResponseLine(line);
+        this.handleResponseLine(runtime, line);
       }
     }
   }
 
-  private handleResponseLine(line: string): void {
+  private handleResponseLine(
+    runtime: ComputerUseNativeRuntimeProcess,
+    line: string,
+  ): void {
     let requestKind = "runtime";
     try {
       const parsed = JSON.parse(line) as unknown;
@@ -746,7 +839,7 @@ class ComputerUseNativeRuntimeClient {
         );
       }
       const pending = this.pending.get(parsed.id);
-      if (!pending) {
+      if (!pending || pending.runtime !== runtime) {
         return;
       }
       requestKind = pending.kind;
@@ -768,10 +861,127 @@ class ComputerUseNativeRuntimeClient {
         mode: "serve",
         requestKind,
         stage: "protocol",
-        stderr: this.stderr.trim(),
+        stderr: runtime.stderr.trim(),
       });
-      this.rejectAll(helperError);
+      this.rejectRuntime(runtime, helperError);
     }
+  }
+
+  private async stopRuntime(
+    runtime: ComputerUseNativeRuntimeProcess,
+    reason: ComputerUseNativeShutdownReason,
+  ): Promise<void> {
+    runtime.stopReason = reason;
+    if (runtime.closed) {
+      return;
+    }
+
+    // The serve protocol treats stdin EOF as a graceful shutdown request.
+    // Escalate only when the helper does not honor that contract in time.
+    try {
+      runtime.child.stdin.end();
+    } catch {
+      // A concurrently closing pipe is equivalent to EOF for shutdown.
+    }
+    if (await this.waitForRuntimeClose(runtime)) {
+      return;
+    }
+    this.signalRuntime(runtime, "SIGTERM");
+    if (await this.waitForRuntimeClose(runtime)) {
+      return;
+    }
+    this.signalRuntime(runtime, "SIGKILL");
+    if (await this.waitForRuntimeClose(runtime)) {
+      return;
+    }
+
+    runtime.terminalErrorReported = true;
+    this.reportRuntimeError(
+      new ComputerUseNativeHelperError(
+        "accessibility_unavailable",
+        "Native Computer Use runtime did not exit after SIGKILL",
+      ),
+      {
+        mode: "serve",
+        requestKind: "runtime",
+        stage: "shutdown",
+        terminationReason: reason,
+        stderr: runtime.stderr.trim(),
+      },
+    );
+  }
+
+  private signalRuntime(
+    runtime: ComputerUseNativeRuntimeProcess,
+    signal: NodeJS.Signals,
+  ): boolean {
+    if (runtime.closed) {
+      return false;
+    }
+    // Record causality before signaling. On POSIX, target the detached process
+    // group so helper-owned subprocesses cannot outlive the runtime.
+    runtime.sentSignal = signal;
+    try {
+      if (process.platform !== "win32" && runtime.child.pid) {
+        process.kill(-runtime.child.pid, signal);
+        return true;
+      }
+      return runtime.child.kill(signal);
+    } catch {
+      return false;
+    }
+  }
+
+  private async waitForRuntimeClose(
+    runtime: ComputerUseNativeRuntimeProcess,
+  ): Promise<boolean> {
+    if (runtime.closed) {
+      return true;
+    }
+    if (this.shutdownGraceMs <= 0) {
+      return false;
+    }
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const closed = await Promise.race([
+      runtime.closePromise.then(() => true),
+      new Promise<false>((resolve) => {
+        timeout = setTimeout(() => resolve(false), this.shutdownGraceMs);
+      }),
+    ]);
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    return closed;
+  }
+
+  private isExpectedExit(
+    runtime: ComputerUseNativeRuntimeProcess,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): boolean {
+    if (!runtime.stopReason) {
+      return false;
+    }
+    if (code === 0) {
+      return true;
+    }
+    if (runtime.sentSignal && signal === runtime.sentSignal) {
+      return true;
+    }
+    return (
+      (runtime.stopReason === "dispose" ||
+        runtime.stopReason === "app_quit" ||
+        runtime.stopReason === "update_relaunch") &&
+      (signal === "SIGTERM" || signal === "SIGINT")
+    );
+  }
+
+  private markRuntimeClosed(runtime: ComputerUseNativeRuntimeProcess): void {
+    if (runtime.closed) {
+      return;
+    }
+    runtime.closed = true;
+    runtime.resolveClose();
   }
 
   private reportRuntimeError(
@@ -781,14 +991,35 @@ class ComputerUseNativeRuntimeClient {
     this.onRuntimeError?.(error, {
       ...context,
       helperPath: this.helperPath,
+      pendingRequestCount: context.pendingRequestCount ?? this.pending.size,
+      queuedRequestCount: context.queuedRequestCount ?? this.queuedRequestCount,
     });
   }
 
+  private rejectRuntime(
+    runtime: ComputerUseNativeRuntimeProcess,
+    error: Error,
+  ): void {
+    for (const [id, pending] of this.pending.entries()) {
+      if (pending.runtime === runtime) {
+        this.pending.delete(id);
+        pending.reject(error);
+      }
+    }
+  }
+
   private rejectAll(error: Error): void {
-    for (const pending of this.pending.values()) {
+    for (const [id, pending] of this.pending.entries()) {
+      this.pending.delete(id);
       pending.reject(error);
     }
-    this.pending.clear();
+  }
+
+  private closedError(): ComputerUseNativeHelperError {
+    return new ComputerUseNativeHelperError(
+      "accessibility_unavailable",
+      "Native Computer Use runtime is closed",
+    );
   }
 }
 
@@ -802,6 +1033,7 @@ export function createComputerUseNativeBackend(
       : new ComputerUseNativeRuntimeClient(
           helperPath,
           options.requestTimeoutMs ?? DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS,
+          options.shutdownGraceMs ?? DEFAULT_RUNTIME_SHUTDOWN_GRACE_MS,
           options.onRuntimeError,
         );
   const run = async (
@@ -813,8 +1045,8 @@ export function createComputerUseNativeBackend(
   };
 
   return {
-    dispose: () => {
-      runtime?.dispose();
+    dispose: async (reason) => {
+      await runtime?.dispose(reason);
     },
     getPermissions: async () => {
       const result = await run({ kind: "permissions.state" });

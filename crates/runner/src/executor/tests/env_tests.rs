@@ -448,7 +448,6 @@ fn build_env_json_required_keys() {
         env.get(guest_contracts::env::RUN_ID_ENV).unwrap(),
         &RunId::nil().to_string()
     );
-    assert!(!env.contains_key("VM0_RUN_ID"));
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
             .unwrap(),
@@ -460,13 +459,11 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "7200"
     );
-    assert!(!env.contains_key("VM0_AGENT_EXECUTION_TIMEOUT_SECS"));
     assert_eq!(
         env.get(guest_contracts::runtime_paths::CANONICAL_GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert!(!env.contains_key("VM0_GUEST_RUNTIME_DIR"));
     assert!(!env.contains_key("VM0_PROMPT"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
@@ -490,17 +487,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         ""
     );
-    assert!(!env.contains_key("VM0_API_START_TIME"));
-    for legacy_key in [
-        "VM0_SANDBOX_ID",
-        "VM0_SANDBOX_REUSE_RESULT",
-        "VM0_WORKSPACE_REUSE_RESULT",
-    ] {
-        assert!(
-            !env.contains_key(legacy_key),
-            "canonical writer emitted legacy key {legacy_key}"
-        );
-    }
 }
 
 #[test]
@@ -540,16 +526,6 @@ fn build_env_json_sandbox_reuse_result_wire_format() {
             !env.contains_key(guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV),
             "no-workspace builder emitted canonical workspace reuse metadata"
         );
-        for legacy_key in [
-            "VM0_SANDBOX_ID",
-            "VM0_SANDBOX_REUSE_RESULT",
-            "VM0_WORKSPACE_REUSE_RESULT",
-        ] {
-            assert!(
-                !env.contains_key(legacy_key),
-                "canonical writer emitted legacy key {legacy_key}"
-            );
-        }
     }
 }
 
@@ -670,7 +646,6 @@ fn platform_environment_claim_filters_reserved_keys_and_applies_trusted_last() {
         ("DUPLICATE".into(), "trusted".into()),
         ("OKOU_TOKEN".into(), "trusted-token".into()),
         ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
-        ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
         (
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
             "trusted-bypass".into(),
@@ -685,7 +660,6 @@ fn platform_environment_claim_filters_reserved_keys_and_applies_trusted_last() {
             ("VM0_FUTURE_RUNNER_KEY".into(), "untrusted".into()),
             ("OKOU_TOKEN".into(), "trusted-token".into()),
             ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
-            ("VM0_CODEX_SERVICE_TIER".into(), "fast".into()),
             (
                 guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
                 "trusted-bypass".into(),
@@ -794,7 +768,6 @@ fn build_env_json_codex_keeps_shared_runner_env() {
             .unwrap(),
         "019e9154-c304-70f0-adde-36efb1be1701"
     );
-    assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
 }
 
 #[test]
@@ -845,11 +818,6 @@ fn build_env_json_with_single_artifact() {
     assert_eq!(parsed[0].storage_id, "sid-1");
     assert_eq!(parsed[0].version_id, "v1");
     assert_eq!(parsed[0].missing_root_policy, None);
-    // Legacy singleton env vars must no longer be emitted.
-    assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
-    assert!(!env.contains_key("VM0_ARTIFACT_MOUNT_PATH"));
-    assert!(!env.contains_key("VM0_ARTIFACT_VOLUME_NAME"));
-    assert!(!env.contains_key("VM0_ARTIFACT_VERSION_ID"));
 }
 
 #[test]
@@ -977,7 +945,6 @@ fn build_env_json_with_resume_session() {
             .unwrap(),
         "sess-123"
     );
-    assert!(!env.contains_key("VM0_RESUME_SESSION_ID"));
 }
 
 #[test]
@@ -992,8 +959,8 @@ fn build_env_json_user_vars_cannot_override_system() {
     let env = build_env_for_test(&ctx, "http://localhost");
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let user_env = build_user_env_json(&ctx);
-    // The private run payload remains authoritative even though its retired
-    // diagnostic label is now an ordinary user environment key.
+    // The private run payload remains authoritative while the same diagnostic
+    // label remains visible as an ordinary user environment key.
     assert!(!env.contains_key("VM0_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
     assert!(!env.contains_key("CUSTOM"));
@@ -1105,7 +1072,6 @@ fn build_env_json_with_api_start_time() {
             .unwrap(),
         "1700000000500"
     );
-    assert!(!env.contains_key("VM0_API_START_TIME"));
 }
 
 #[test]
@@ -1475,7 +1441,7 @@ fn build_env_json_user_timezone_not_override_environment() {
 }
 
 #[test]
-fn retired_env_names_cannot_override_canonical_or_private_payload() {
+fn arbitrary_vm0_user_env_cannot_override_canonical_or_private_payload() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("VM0_PROMPT".into(), "hacked".into()),
@@ -1486,7 +1452,7 @@ fn retired_env_names_cannot_override_canonical_or_private_payload() {
     let env = build_env_for_test(&ctx, "http://localhost");
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let user_env = build_user_env_json(&ctx);
-    // Legacy-looking user keys stay isolated from canonical bootstrap and the
+    // Arbitrary user keys stay isolated from canonical bootstrap and the
     // private run payload while remaining visible as ordinary user env.
     assert!(!env.contains_key("VM0_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
@@ -1837,7 +1803,7 @@ fn build_env_json_no_feature_flags() {
 
 #[tokio::test]
 async fn build_env_json_with_memory_as_artifact() {
-    // Post-#10602: memory rides in VM0_ARTIFACTS, not VM0_MEMORY_*.
+    // Memory is carried as an artifact in the private run payload.
     let mut ctx = minimal_context();
     ctx.storage_manifest = Some(StorageManifest {
         storages: vec![],
@@ -1850,10 +1816,6 @@ async fn build_env_json_with_memory_as_artifact() {
         )],
     });
     let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_MEMORY_DRIVER"));
-    assert!(!env.contains_key("VM0_MEMORY_MOUNT_PATH"));
-    assert!(!env.contains_key("VM0_MEMORY_NAME"));
-    assert!(!env.contains_key("VM0_MEMORY_VERSION_ID"));
     assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let artifacts = &payload.artifacts;

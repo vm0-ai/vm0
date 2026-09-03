@@ -3539,7 +3539,7 @@ describe("zero attachment chips", () => {
     expect(clipboard.writes).toStrictEqual([BODY_LINK_PREVIEWS.markdown]);
   });
 
-  it("opens canonical text previews and downloads a private presentation from its presigned url", async () => {
+  it("opens canonical text previews and downloads a private generic file from its presigned url", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
     const browser = context.mocks.browser.blobDownload();
     const clipboard = context.mocks.browser.clipboardWriteText();
@@ -3555,12 +3555,9 @@ describe("zero attachment chips", () => {
           headers: { "Content-Type": "text/plain" },
         });
       }
-      if (fileId === "attachment-presentation") {
-        return new Response("presentation bytes", {
-          headers: {
-            "Content-Type":
-              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          },
+      if (fileId === "attachment-download") {
+        return new Response("archive bytes", {
+          headers: { "Content-Type": "application/zip" },
         });
       }
       return new Response(null, { status: 500 });
@@ -3592,10 +3589,9 @@ describe("zero attachment chips", () => {
             },
             {
               type: "file",
-              fileId: "attachment-presentation",
-              filenameSnapshot: "quarterly-plan.pptx",
-              contentType:
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              fileId: "attachment-download",
+              filenameSnapshot: "source-assets.zip",
+              contentType: "application/zip",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -3616,7 +3612,7 @@ describe("zero attachment chips", () => {
         screen.getByLabelText("Open text preview for transcript.txt"),
       ).toBeInTheDocument();
       expect(
-        screen.getByLabelText("Download quarterly-plan.pptx"),
+        screen.getByLabelText("Download source-assets.zip"),
       ).toBeInTheDocument();
     });
 
@@ -3669,14 +3665,14 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download quarterly-plan.pptx"));
+    click(screen.getByLabelText("Download source-assets.zip"));
 
     await waitFor(() => {
       expect(browser.downloads).toHaveLength(1);
     });
     expect(browser.downloads[0]).toMatchObject({
-      url: presignedFileUrl("attachment-presentation"),
-      filename: "quarterly-plan.pptx",
+      url: presignedFileUrl("attachment-download"),
+      filename: "source-assets.zip",
       blob: null,
     });
     expect(screen.queryByText("Download failed")).not.toBeInTheDocument();

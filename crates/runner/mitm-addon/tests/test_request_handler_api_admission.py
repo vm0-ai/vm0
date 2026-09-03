@@ -1,7 +1,6 @@
 """Platform API admission request hook integration tests."""
 
 import json
-import urllib.parse
 
 import pytest
 from mitmproxy import connection
@@ -9,9 +8,9 @@ from mitmproxy import connection
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import platform_api
+import platform_api_url
 import registry
 import request_classification
-import upstream_admission
 import upstream_destination_binding
 from tests.request_handler_helpers import _single_firewall_sandbox, _write_registry
 from tests.upstream_connection_helpers import (
@@ -373,21 +372,15 @@ async def test_malformed_vm0_api_url_is_cached_as_non_match(
     malformed_platform_api_url,
 ):
     parsed_api_urls: list[str] = []
-    parse_api_url = urllib.parse.urlparse
+    parse_api_url = platform_api_url.parse_platform_api_url
 
     def track_api_url_parse(
         api_url: str,
-        scheme: str = "",
-        allow_fragments: bool = True,
-    ) -> urllib.parse.ParseResult:
+    ) -> platform_api_url.PlatformApiUrl:
         parsed_api_urls.append(api_url)
-        return parse_api_url(
-            api_url,
-            scheme=scheme,
-            allow_fragments=allow_fragments,
-        )
+        return parse_api_url(api_url)
 
-    monkeypatch.setattr(upstream_admission.urllib.parse, "urlparse", track_api_url_parse)
+    monkeypatch.setattr(platform_api_url, "parse_platform_api_url", track_api_url_parse)
     flows = [
         real_flow(with_response=False, host="api.vm0.ai"),
         real_flow(with_response=False, host="api.vm0.ai"),

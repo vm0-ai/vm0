@@ -31,13 +31,11 @@ interface PlatformRuntimeConfig {
 const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
-const OKOU_PAGES_DOMAIN = "okou-app.pages.dev";
 const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
   /^((?:staging|pr-[0-9]+))-app-okou-app-preview\.vm0\.workers\.dev$/u;
 const OKOU_ROOT_DOMAINS = [
   OKOU_PRODUCTION_DOMAIN,
   OKOU_PREVIEW_DOMAIN,
-  OKOU_PAGES_DOMAIN,
 ] as const;
 const PREVIEW_API_DOMAIN = "vm6.ai";
 const OFFICE_DOCUMENT_VIEWER_BASE_URL =

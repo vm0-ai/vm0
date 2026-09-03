@@ -14,6 +14,7 @@ import {
   cronMonitorChatEventQueueContract,
   cronMaterializeMemorySummariesContract,
   cronExtractPiMemoryStage1Contract,
+  cronConsolidatePiMemoryPhase2Contract,
   cronOfficialWorkflowCatalogContract,
   cronProcessUsageEventsContract,
   cronProjectChatEventSearchContract,
@@ -33,6 +34,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { ROUTES } from "../signals/route";
+import { cronConsolidatePiMemoryPhase2Routes } from "../signals/routes/cron-consolidate-pi-memory-phase2";
 
 interface VercelCron {
   readonly path: string;
@@ -148,6 +150,10 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
+    path: cronConsolidatePiMemoryPhase2Contract.consolidate.path,
+    schedule: "* * * * *",
+  },
+  {
     path: cronComputerUseScreenshotCleanupContract.cleanup.path,
     schedule: "30 2 * * *",
   },
@@ -186,5 +192,31 @@ describe("vercel cron config", () => {
         `${path} must be registered in API routes`,
       ).toBeTruthy();
     }
+
+    expect(
+      crons.filter(({ path }) => {
+        return path === cronExtractPiMemoryStage1Contract.extract.path;
+      }),
+    ).toStrictEqual([
+      {
+        path: cronExtractPiMemoryStage1Contract.extract.path,
+        schedule: "* * * * *",
+      },
+    ]);
+    expect(
+      crons.filter(({ path }) => {
+        return path === cronConsolidatePiMemoryPhase2Contract.consolidate.path;
+      }),
+    ).toStrictEqual([
+      {
+        path: cronConsolidatePiMemoryPhase2Contract.consolidate.path,
+        schedule: "* * * * *",
+      },
+    ]);
+    expect(
+      cronConsolidatePiMemoryPhase2Routes.map(({ route }) => {
+        return route.path;
+      }),
+    ).toStrictEqual([cronConsolidatePiMemoryPhase2Contract.consolidate.path]);
   });
 });

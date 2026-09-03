@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.84.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.9...guest-agent-v0.84.10) (2026-09-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** classify oversized codex turn inputs ([#31404](https://github.com/vm0-ai/vm0/issues/31404)) ([8cf7f4b](https://github.com/vm0-ai/vm0/commit/8cf7f4b60fde6c4c8239ff27f27a9cc24e90f124))
+
 ## [0.84.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.8...guest-agent-v0.84.9) (2026-09-03)
 
 ## [0.84.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.84.7...guest-agent-v0.84.8) (2026-09-03)

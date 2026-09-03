@@ -1474,17 +1474,15 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Deploy the production Worker only after the synchronized Pages fallback is
-  # ready. The Worker owns the live App routes while retaining the direct canary
-  # domains for diagnosis. Keep Pages for at least 24 hours after cutover and
-  # until one post-cutover App production release succeeds and browser QA passes
-  # on both live domains. Remove it under vm0-ai/vm0#31133 after all gates pass.
+  # The Worker owns the live App routes and direct canary domains. App releases
+  # must wait for the canonical build artifact and API production lifecycle.
   promote-app-worker-production:
-    needs: [release-please, promote-app-production]
+    needs: [release-please, builds-complete, promote-api-production]
     if: >-
       always() &&
       needs.release-please.outputs.app_deploy_required == 'true' &&
-      needs.promote-app-production.result == 'success'
+      needs.builds-complete.result == 'success' &&
+      needs.promote-api-production.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     container:
@@ -1632,6 +1630,16 @@ jobs:
             "https://static.okou.io/okou-app/assets" \
             "$CANONICAL_ASSETS"
 
+      - name: Upload App source maps to Sentry
+        env:
+          CANONICAL_DIST: ${{ steps.worker-production.outputs.canonical-dist }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
+        working-directory: turbo
+        run: |
+          pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
+
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
@@ -1748,218 +1756,6 @@ jobs:
                   type: mrkdwn
                   text: "*App* ❌ Cloudflare Workers deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Keep Cloudflare Pages synchronized as the phase-one fallback. This job must
-  # complete before the Worker deployment can move the live routes forward.
-  promote-app-production:
-    needs: [release-please, builds-complete, promote-api-production]
-    if: >-
-      always() &&
-      needs.release-please.outputs.app_deploy_required == 'true' &&
-      needs.builds-complete.result == 'success' &&
-      needs.promote-api-production.result == 'success'
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
-    defaults:
-      run:
-        shell: bash
-    outputs:
-      deployment_url: ${{ steps.deploy-pages.outputs.url }}
-      cloudflare_dashboard_url: ${{ steps.pages-dashboard.outputs.url }}
-    permissions:
-      contents: read
-      deployments: write
-    environment: production
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.release-please.outputs.release_target }}
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Start GitHub Deployment
-        id: deployment
-        uses: bobheadxi/deployments@v1
-        with:
-          step: start
-          token: ${{ github.token }}
-          env: app-pages/production-shadow
-          ref: ${{ github.ref }}
-          desc: Synchronizing the App Cloudflare Pages production fallback
-
-      - name: Resolve App Build Commit SHA
-        id: build-commit
-        run: |
-          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Install AWS CLI
-        run: |
-          architecture="$(dpkg --print-architecture)"
-          case "$architecture" in
-            amd64) aws_architecture="x86_64" ;;
-            arm64) aws_architecture="aarch64" ;;
-            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
-          esac
-
-          curl -fsSL --retry 3 \
-            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
-            --output /tmp/awscliv2.zip
-          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
-          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
-          /tmp/awscli/aws/install
-          aws --version
-
-      - name: Prepare Cloudflare Pages production deployment
-        id: pages-production
-        env:
-          ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          CLERK_PRODUCTION_PRIMARY_APP_DOMAIN: ${{ vars.CLERK_PRODUCTION_PRIMARY_APP_DOMAIN || 'app.vm0.ai' }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
-        run: |
-          set -euo pipefail
-
-          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
-          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
-          : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
-          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
-          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
-          if [[ ! "$ARTIFACT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Artifact commit must be a full lowercase SHA-1: $ARTIFACT_SHA" >&2
-            exit 1
-          fi
-
-          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${ARTIFACT_SHA}"
-          ready_key="okou-app/${ARTIFACT_SHA}/ready.json"
-          canonical_dist="$(mktemp -d)"
-          pages_dist="$(mktemp -d)"
-          error_log="$(mktemp)"
-
-          for attempt in $(seq 1 60); do
-            set +e
-            aws s3api head-object \
-              --endpoint-url "$r2_endpoint" \
-              --bucket "$R2_BUCKET_NAME" \
-              --key "$ready_key" \
-              >/dev/null 2>"$error_log"
-            status=$?
-            set -e
-
-            if (( status == 0 )); then
-              break
-            fi
-            if ! grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
-              cat "$error_log" >&2
-              exit "$status"
-            fi
-            if (( attempt == 60 )); then
-              echo "Artifact was not ready after 10 minutes: $artifact_uri" >&2
-              exit 1
-            fi
-            echo "Waiting for artifact: $artifact_uri (attempt $attempt/60)"
-            sleep 10
-          done
-
-          bash .github/scripts/fetch-okou-app-artifact.sh \
-            "$r2_endpoint" \
-            "$artifact_uri" \
-            "$canonical_dist"
-          bash .github/scripts/verify-okou-app-artifact.sh \
-            "$canonical_dist" \
-            "$ARTIFACT_SHA"
-          bash .github/scripts/prepare-okou-pages-dist.sh \
-            "$canonical_dist" \
-            "$pages_dist"
-
-          echo "canonical-dist=$canonical_dist" >> "$GITHUB_OUTPUT"
-          echo "pages-dist=$pages_dist" >> "$GITHUB_OUTPUT"
-
-      - name: Verify immutable app assets on CDN
-        env:
-          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
-        run: |
-          bash .github/scripts/verify-okou-app-assets.sh \
-            "https://static.okou.io/okou-app/assets" \
-            "$CANONICAL_ASSETS"
-
-      - name: Upload App source maps to Sentry
-        env:
-          CANONICAL_DIST: ${{ steps.pages-production.outputs.canonical-dist }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APP }}
-        working-directory: turbo
-        run: |
-          pnpm --filter @okouai/app exec sentry-cli sourcemaps upload "$CANONICAL_DIST"
-
-      - name: Deploy Cloudflare Pages production fallback
-        id: deploy-pages
-        env:
-          ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_DIST: ${{ steps.pages-production.outputs.pages-dist }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/deploy-okou-pages.sh \
-            "$PAGES_DIST" \
-            "$CF_PAGES_PROJECT_NAME" \
-            production \
-            "$ARTIFACT_SHA"
-
-          pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          echo "url=$pages_url" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve Cloudflare Pages dashboard URL
-        id: pages-dashboard
-        env:
-          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
-        run: |
-          : "${CF_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
-          echo "url=https://dash.cloudflare.com/${CF_ACCOUNT_ID}/pages/view/${CF_PAGES_PROJECT_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Finish GitHub Deployment
-        if: always()
-        uses: bobheadxi/deployments@v1
-        with:
-          step: finish
-          token: ${{ github.token }}
-          status: ${{ job.status }}
-          env: ${{ steps.deployment.outputs.env }}
-          env_url: ${{ steps.deploy-pages.outputs.url }}
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-
-      - name: Report Pages fallback URL
-        if: success()
-        run: |
-          {
-            echo "## Cloudflare Pages production fallback"
-            echo
-            echo "- ${{ steps.deploy-pages.outputs.url }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Notify Slack - Pages fallback failure
-        if: ${{ failure() && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*App* ❌ Cloudflare Pages fallback deploy failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*App* ❌ Cloudflare Pages fallback deploy failed; Worker production was not advanced.\n📦 Version: `${{ needs.release-please.outputs.app_deploy_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
   # Record a complete production release target after all applicable
   # production promotions succeed.
   update-rollback-dashboard:
@@ -1967,7 +1763,6 @@ jobs:
       [
         release-please,
         promote-api-production,
-        promote-app-production,
         promote-app-worker-production,
         promote-desktop-release,
         promote-runner-production,
@@ -1977,8 +1772,7 @@ jobs:
       needs.release-please.outputs.releases_created == 'true' &&
       needs.promote-api-production.result == 'success' &&
       (needs.release-please.outputs.app_deploy_required != 'true' ||
-       (needs.promote-app-production.result == 'success' &&
-        needs.promote-app-worker-production.result == 'success')) &&
+       needs.promote-app-worker-production.result == 'success') &&
       (needs.release-please.outputs.desktop_release_created != 'true' ||
        needs.promote-desktop-release.result == 'success') &&
       (needs.release-please.outputs.runner_rs_release_created != 'true' ||

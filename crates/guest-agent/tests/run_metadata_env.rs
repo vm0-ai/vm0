@@ -10,34 +10,28 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 #[derive(Clone, Copy)]
 struct RunMetadataEnvSpec {
     canonical: &'static str,
-    retired: &'static str,
     value: fn(&GuestConfigRaw) -> &str,
 }
 
 const RUN_METADATA_ENV_SPECS: [RunMetadataEnvSpec; 5] = [
     RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_SANDBOX_ID_ENV,
-        retired: "VM0_SANDBOX_ID",
         value: |raw| &raw.sandbox_id,
     },
     RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_SANDBOX_REUSE_RESULT_ENV,
-        retired: "VM0_SANDBOX_REUSE_RESULT",
         value: |raw| &raw.sandbox_reuse_result,
     },
     RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_WORKSPACE_REUSE_RESULT_ENV,
-        retired: "VM0_WORKSPACE_REUSE_RESULT",
         value: |raw| &raw.workspace_reuse_result,
     },
     RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
-        retired: "VM0_RESUME_SESSION_ID",
         value: |raw| &raw.resume_session_id,
     },
     RunMetadataEnvSpec {
         canonical: guest_contracts::env::CANONICAL_API_START_TIME_ENV,
-        retired: "VM0_API_START_TIME",
         value: |raw| &raw.api_start_time,
     },
 ];
@@ -61,7 +55,6 @@ fn remove_test_env(key: impl AsRef<OsStr>) {
 fn clear_run_metadata_env() {
     for spec in RUN_METADATA_ENV_SPECS {
         remove_test_env(spec.canonical);
-        remove_test_env(spec.retired);
     }
 }
 
@@ -84,27 +77,14 @@ fn assert_canonical_capture_behaviors(
     let raw = capture_raw(&tmp.join(format!("{index}-absent.log")))?;
     assert_eq!((spec.value)(&raw), "");
 
-    set_test_env(spec.retired, format!("retired-only-{index}"));
-    let raw = capture_raw(&tmp.join(format!("{index}-retired-only.log")))?;
-    assert_eq!((spec.value)(&raw), "");
-
-    clear_run_metadata_env();
     set_test_env(spec.canonical, "");
     let raw = capture_raw(&tmp.join(format!("{index}-canonical-empty.log")))?;
-    assert_eq!((spec.value)(&raw), "");
-
-    set_test_env(spec.retired, format!("retired-beside-empty-{index}"));
-    let raw = capture_raw(&tmp.join(format!("{index}-canonical-empty-retired.log")))?;
     assert_eq!((spec.value)(&raw), "");
 
     let canonical_value = format!("canonical-value-值-{index}");
     clear_run_metadata_env();
     set_test_env(spec.canonical, &canonical_value);
     let raw = capture_raw(&tmp.join(format!("{index}-canonical.log")))?;
-    assert_eq!((spec.value)(&raw), canonical_value);
-
-    set_test_env(spec.retired, format!("different-retired-value-{index}"));
-    let raw = capture_raw(&tmp.join(format!("{index}-canonical-retired.log")))?;
     assert_eq!((spec.value)(&raw), canonical_value);
     Ok(())
 }
@@ -115,17 +95,9 @@ fn assert_non_unicode_behaviors(tmp: &Path, index: usize, spec: RunMetadataEnvSp
     use std::os::unix::ffi::OsStringExt;
 
     clear_run_metadata_env();
-    set_test_env(spec.retired, format!("retired-value-{index}"));
     set_test_env(spec.canonical, OsString::from_vec(vec![0xff]));
     let raw = capture_raw(&tmp.join(format!("{index}-canonical-non-unicode.log")))?;
     assert_eq!((spec.value)(&raw), "");
-
-    let canonical_value = format!("canonical-beside-retired-non-unicode-{index}");
-    clear_run_metadata_env();
-    set_test_env(spec.canonical, &canonical_value);
-    set_test_env(spec.retired, OsString::from_vec(vec![0xff]));
-    let raw = capture_raw(&tmp.join(format!("{index}-retired-non-unicode.log")))?;
-    assert_eq!((spec.value)(&raw), canonical_value);
     Ok(())
 }
 
@@ -157,11 +129,9 @@ fn assert_guest_config_uses_canonical_values(tmp: &Path) -> TestResult {
         guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV,
         &payload_path,
     );
-    remove_test_env("VM0_USER_ENV_FILE");
     remove_test_env(guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV);
-    for (index, (spec, value)) in RUN_METADATA_ENV_SPECS.into_iter().zip(values).enumerate() {
+    for (spec, value) in RUN_METADATA_ENV_SPECS.into_iter().zip(values) {
         set_test_env(spec.canonical, value);
-        set_test_env(spec.retired, format!("retired-config-value-{index}"));
     }
 
     let raw = capture_raw(&tmp.join("canonical-config.log"))?;
@@ -178,7 +148,7 @@ fn assert_guest_config_uses_canonical_values(tmp: &Path) -> TestResult {
 }
 
 #[test]
-fn process_env_reads_only_canonical_run_metadata() -> TestResult {
+fn process_env_preserves_canonical_run_metadata() -> TestResult {
     let tmp = tempfile::tempdir()?;
 
     for (index, spec) in RUN_METADATA_ENV_SPECS.into_iter().enumerate() {

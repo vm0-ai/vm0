@@ -123,14 +123,6 @@ fn parse_host_env_file(content: &str) -> RunnerResult<RunnerHostEnv> {
 mod tests {
     use super::*;
 
-    const RETIRED_HOST_ENV_KEYS: [&str; 5] = [
-        "VM0_RUNNER_CONCURRENCY_FACTOR",
-        "VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC",
-        "VM0_RUNNER_DISK_IOPS",
-        "VM0_RUNNER_NET_RX_MIB_PER_SEC",
-        "VM0_RUNNER_NET_TX_MIB_PER_SEC",
-    ];
-
     #[test]
     fn parse_host_env_file_accepts_allowed_keys_with_comments() {
         let host_env = parse_host_env_file(
@@ -253,27 +245,6 @@ OKOU_RUNNER_NET_RX_MIB_PER_SEC=250
             assert!(err.contains(key));
             assert!(!err.contains(first_value));
             assert!(!err.contains(second_value));
-        }
-    }
-
-    #[test]
-    fn parse_host_env_file_rejects_retired_host_tuning_keys() {
-        for (retired_key, canonical_key) in RETIRED_HOST_ENV_KEYS.into_iter().zip(HOST_ENV_KEYS) {
-            for content in [
-                format!("{retired_key}=retired-value-should-not-leak\n"),
-                format!(
-                    "{canonical_key}=canonical-value-should-not-leak\n{retired_key}=retired-value-should-not-leak\n"
-                ),
-            ] {
-                let err = parse_host_env_file(&content).unwrap_err().to_string();
-
-                assert!(err.contains("unsupported host env key"));
-                assert!(err.contains(retired_key));
-                assert!(err.contains(canonical_key));
-                assert!(!err.contains("conflicting host env aliases"));
-                assert!(!err.contains("retired-value-should-not-leak"));
-                assert!(!err.contains("canonical-value-should-not-leak"));
-            }
         }
     }
 

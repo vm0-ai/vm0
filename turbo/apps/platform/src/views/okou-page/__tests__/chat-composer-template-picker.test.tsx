@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { compile } from "tailwindcss";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -9,9 +10,10 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
 } from "@okouai/core";
-import type {
-  GenerationTemplateRequest,
-  UserMessageDocument,
+import {
+  chatThreadByIdContract,
+  type GenerationTemplateRequest,
+  type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
   presentationTemplatesContract,
@@ -39,6 +41,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { now } from "../../../lib/time.ts";
+import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import {
   mockChatLifecycle,
   PLACEHOLDER,
@@ -82,7 +85,7 @@ function sentInlineTemplate(
 
 function activeImportedTemplateImage(media: HTMLElement): HTMLImageElement {
   const image = media.querySelector(
-    "[data-imported-presentation-template-image]",
+    '[data-imported-presentation-template-image][data-active="true"]',
   );
   if (!(image instanceof HTMLImageElement)) {
     throw new Error("Active imported template image not found");
@@ -90,11 +93,11 @@ function activeImportedTemplateImage(media: HTMLElement): HTMLImageElement {
   return image;
 }
 
-async function loadImportedTemplateImage(
+async function requestedImportedTemplateImage(
   media: HTMLElement,
   url: string,
 ): Promise<HTMLImageElement> {
-  const image = await waitFor(() => {
+  return await waitFor(() => {
     const found = Array.from(
       media.querySelectorAll<HTMLImageElement>(
         "[data-imported-presentation-template-image]",
@@ -107,65 +110,18 @@ async function loadImportedTemplateImage(
     }
     return found;
   });
+}
+
+async function loadImportedTemplateImage(
+  media: HTMLElement,
+  url: string,
+): Promise<HTMLImageElement> {
+  const image = await requestedImportedTemplateImage(media, url);
   fireEvent.load(image);
   await waitFor(() => {
     expect(image).toHaveAttribute("data-loaded-image-url", url);
   });
   return image;
-}
-
-function controlImportedTemplateImageDecodes(
-  heldImageUrls: readonly string[],
-): {
-  complete: (imageUrl: string) => Promise<void>;
-  hold: (imageUrl: string) => void;
-} {
-  const held = new Set(heldImageUrls);
-  const pending = new Map<string, TestDeferred[]>();
-
-  class ControlledImage {
-    decoding = "auto";
-    loading = "eager";
-    fetchPriority = "auto";
-    #src = "";
-
-    get src(): string {
-      return this.#src;
-    }
-
-    set src(value: string) {
-      this.#src = value;
-    }
-
-    decode(): Promise<void> {
-      if (!held.has(this.#src)) {
-        return Promise.resolve();
-      }
-      const deferred = context.mocks.deferred<void>();
-      const requests = pending.get(this.#src) ?? [];
-      requests.push(deferred);
-      pending.set(this.#src, requests);
-      return deferred.promise;
-    }
-  }
-
-  vi.stubGlobal("Image", ControlledImage as unknown as typeof Image);
-
-  return {
-    complete: async (imageUrl) => {
-      const request = await waitFor(() => {
-        const found = pending.get(imageUrl)?.shift();
-        if (found === undefined) {
-          throw new Error(`Decoded image request not found: ${imageUrl}`);
-        }
-        return found;
-      });
-      request.resolve();
-    },
-    hold: (imageUrl) => {
-      held.add(imageUrl);
-    },
-  };
 }
 
 type TestPresentationTemplateDetail = Omit<
@@ -757,6 +713,149 @@ describe("chat composer templates", () => {
       expect(
         screen.getByLabelText(`Preview template ${replacement.title}`),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("opens, replaces, and removes a template attachment restored from a legacy editor draft", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    const replacement = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
+    const draftText = "Keep the legacy draft text";
+    const generationTemplate = {
+      type: "presentation",
+      selection: { templateId: template.templateId },
+    } satisfies GenerationTemplateRequest;
+    const draftPatches: Record<string, unknown>[] = [];
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const editor = await findComposerEditor();
+    const thread = await waitFor(() => {
+      const current = context.store.get(currentLeftThread$);
+      if (!current) {
+        throw new Error("Current chat thread is not ready");
+      }
+      return current;
+    });
+    // Current page actions create inline template nodes, so this historical
+    // editor shape can only be reached by restoring an earlier draft snapshot.
+    const restoreLegacyDraft = () => {
+      context.store.set(
+        thread.composer.template.setGenerationTemplate$,
+        generationTemplate,
+      );
+      thread.composer.editor.editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "templateAttachment",
+            attrs: {
+              templateType: "presentation",
+              title: template.title,
+              category: "slides",
+              previewImageUrl: null,
+            },
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: draftText }],
+          },
+        ],
+      });
+    };
+    restoreLegacyDraft();
+
+    await user.click(
+      await screen.findByLabelText(`Preview template ${template.title}`),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(`Select template ${template.title}`),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+
+    await user.click(screen.getByLabelText("Close"));
+    await user.click(
+      await screen.findByLabelText(`Remove template ${template.title}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText(`Preview template ${template.title}`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: draftText }],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    restoreLegacyDraft();
+    await user.click(
+      await screen.findByLabelText(`Preview template ${template.title}`),
+    );
+    await user.click(
+      await screen.findByLabelText(`Select template ${replacement.title}`),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-composer-template-attachment]"),
+      ).toBeNull();
+      expect(
+        document.querySelectorAll("[data-composer-inline-template]"),
+      ).toHaveLength(1);
+      expect(
+        screen.queryByLabelText(`Preview template ${template.title}`),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(`Preview template ${replacement.title}`),
+      ).toBeInTheDocument();
+      expect(editor).toHaveTextContent(draftText);
+      expect(
+        context.store.get(thread.composer.template.generationTemplate$),
+      ).toBeUndefined();
+    });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "template",
+              titleSnapshot: replacement.title,
+              template: expect.objectContaining({
+                type: "presentation",
+                selection: expect.objectContaining({
+                  templateId: replacement.templateId,
+                }),
+              }),
+            },
+            { type: "text", text: draftText },
+          ],
+        },
+        draftAttachments: null,
+      });
     });
   });
 
@@ -3839,12 +3938,14 @@ describe("chat composer templates", () => {
       "https://example.com/prefetch-primary-page-2.png",
     );
     fireEvent.mouseLeave(preview);
-    await waitFor(() => {
-      expect(within(preview).getByRole("img")).toHaveAttribute(
-        "src",
-        "https://example.com/prefetch-primary-page-1.png",
-      );
-    });
+    await loadImportedTemplateImage(
+      preview,
+      "https://example.com/prefetch-primary-page-1.png",
+    );
+    expect(within(preview).getByRole("img")).toHaveAttribute(
+      "src",
+      "https://example.com/prefetch-primary-page-1.png",
+    );
     expect(catalogRequestCount).toBe(1);
     expect(primaryDetailRequestCount).toBe(0);
     expect(secondaryDetailRequestCount).toBe(0);
@@ -3957,7 +4058,81 @@ describe("chat composer templates", () => {
     expect(previewUrlRequestCount).toBe(1);
   });
 
-  it("loads resized uploaded deck previews with bounded thumbnail priority", async () => {
+  it("stops retrying uploaded detail variants after both initial image loads fail", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    const templateId = "0ce143a7-3920-4828-af4f-1fceae95df28";
+    const coverUrl =
+      "https://cdn.vm0.io/artifacts/user/template/unavailable-cover.png";
+    const lowResolutionUrl = r2ImageTransformUrl(coverUrl, {
+      width: 480,
+      height: 270,
+    });
+    const highResolutionUrl = r2ImageTransformUrl(coverUrl, {
+      width: 708,
+      height: 398,
+    });
+    setMockPresentationTemplates([
+      {
+        id: templateId,
+        title: "Unavailable deck",
+        sourceFilename: "unavailable-deck.pptx",
+        coverUrl,
+        pageCount: 1,
+        visibility: "private",
+        canManage: true,
+        pageUrls: [coverUrl],
+        createdAt: "2026-08-25T03:00:00.000Z",
+        updatedAt: "2026-08-25T03:00:00.000Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.PresentationTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Template"));
+    await user.click(
+      await screen.findByLabelText("Preview Unavailable deck at current slide"),
+    );
+    const detailPreview = await screen.findByTestId(
+      "Unavailable deck imported detail image preview",
+    );
+    const lowResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      lowResolutionUrl,
+    );
+    fireEvent.error(lowResolutionImage);
+    const highResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      highResolutionUrl,
+    );
+    fireEvent.error(highResolutionImage);
+
+    await waitFor(() => {
+      const requestedSources = Array.from(
+        detailPreview.querySelectorAll<HTMLImageElement>(
+          "[data-imported-presentation-template-image]",
+        ),
+      )
+        .map((image) => {
+          return image.getAttribute("src");
+        })
+        .filter((source) => {
+          return source !== null;
+        });
+      expect(requestedSources).toStrictEqual([]);
+    });
+    expect(
+      detailPreview.querySelector(
+        '[data-imported-presentation-template-image][data-active="true"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("loads resized uploaded deck previews without a blank transition and with bounded thumbnail priority", async () => {
     const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const templateId = "6fbcce0d-cb09-42de-8d8a-d525f813f312";
@@ -3977,9 +4152,6 @@ describe("chat composer templates", () => {
       width: 708,
       height: 398,
     });
-    const imageDecodes = controlImportedTemplateImageDecodes([
-      highResolutionUrl,
-    ]);
     const template = {
       id: templateId,
       title: "Edge resized deck",
@@ -4041,17 +4213,62 @@ describe("chat composer templates", () => {
     const detailPreview = await screen.findByTestId(
       "Edge resized deck imported detail image preview",
     );
-    const detailImage = activeImportedTemplateImage(detailPreview);
-    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
-    expect(detailImage).not.toHaveAttribute("src", highResolutionUrl);
+    const lowResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      cardCoverUrl,
+    );
+    expect(lowResolutionImage).not.toHaveAttribute("src", highResolutionUrl);
     await loadImportedTemplateImage(detailPreview, cardCoverUrl);
-    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
-    expect(detailImage).toHaveAttribute("src", cardCoverUrl);
-    await imageDecodes.complete(highResolutionUrl);
+    expect(activeImportedTemplateImage(detailPreview)).toBe(lowResolutionImage);
+    const highResolutionImage = await requestedImportedTemplateImage(
+      detailPreview,
+      highResolutionUrl,
+    );
+    expect(activeImportedTemplateImage(detailPreview)).toBe(lowResolutionImage);
+    fireEvent.load(highResolutionImage);
     await waitFor(() => {
-      expect(detailImage).toHaveAttribute("src", highResolutionUrl);
+      expect(activeImportedTemplateImage(detailPreview)).toBe(
+        highResolutionImage,
+      );
     });
-    expect(activeImportedTemplateImage(detailPreview)).toBe(detailImage);
+    expect(highResolutionImage).toHaveAttribute("src", highResolutionUrl);
+
+    const styleElement = document.createElement("style");
+    const tailwindCompiler = await compile("@tailwind utilities;");
+    styleElement.textContent = tailwindCompiler.build([
+      ...lowResolutionImage.classList,
+      ...highResolutionImage.classList,
+    ]);
+    const testMotionOverride = Array.from(
+      document.head.querySelectorAll("style"),
+    ).find((candidate) => {
+      return candidate.textContent?.includes(
+        "transition-duration: 0s !important",
+      );
+    });
+    if (testMotionOverride === undefined) {
+      throw new Error("Test motion override not found");
+    }
+    // The shared test harness suppresses transitions globally. Isolate this
+    // assertion from that override so the rendered Tailwind utilities retain
+    // the transition duration a real browser would use.
+    testMotionOverride.remove();
+    document.head.append(styleElement);
+    try {
+      expect(
+        detailPreview.querySelectorAll(
+          '[data-imported-presentation-template-image][data-active="true"]',
+        ),
+      ).toHaveLength(1);
+      const activeImageStyle = getComputedStyle(highResolutionImage);
+      expect(["1", "100%"] as const).toContain(activeImageStyle.opacity);
+      expect(["", "0s"] as const).toContain(
+        activeImageStyle.transitionDuration,
+      );
+    } finally {
+      styleElement.remove();
+      document.head.prepend(testMotionOverride);
+    }
 
     const thumbnailCases = [
       { slideNumber: 1, loading: "eager", priority: "high" },
@@ -4070,7 +4287,10 @@ describe("chat composer templates", () => {
         width: 224,
         height: 126,
       });
-      const thumbnailImage = activeImportedTemplateImage(thumbnailButton);
+      const thumbnailImage = await requestedImportedTemplateImage(
+        thumbnailButton,
+        thumbnailUrl,
+      );
       expect(thumbnailImage).toHaveAttribute("src", thumbnailUrl);
       expect(thumbnailImage).toHaveAttribute("loading", loading);
       expect(thumbnailImage).toHaveAttribute("fetchpriority", priority);
@@ -4243,9 +4463,6 @@ describe("chat composer templates", () => {
 
   it("scrubs every uploaded slide and manages an owned template from its detail view", async () => {
     const user = userEvent.setup({ delay: null });
-    const imageDecodes = controlImportedTemplateImageDecodes([
-      "https://example.com/imported-page-3.png",
-    ]);
     mockChatLifecycle(context, { threadId: THREAD_ID });
     const templateId = "8f5c9a1e-6f7d-4a2b-9c3e-0d1a2b3c4d5e";
     setMockPresentationTemplates([
@@ -4316,40 +4533,52 @@ describe("chat composer templates", () => {
       "src",
       "https://example.com/imported-page-2.png",
     );
+    const stalePageThreeImage = await requestedImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-3.png",
+    );
     await user.click(screen.getByLabelText("Preview slide 2"));
-    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    fireEvent.load(stalePageThreeImage);
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-2.png",
     );
     await user.click(screen.getByLabelText("Preview slide 3"));
-    await imageDecodes.complete("https://example.com/imported-page-3.png");
+    await loadImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-3.png",
+    );
     await waitFor(() => {
       expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
         "src",
         "https://example.com/imported-page-3.png",
       );
     });
-    imageDecodes.hold("https://example.com/imported-page-2.png");
-    imageDecodes.hold("https://example.com/imported-cover.png");
     await user.click(screen.getByLabelText("Preview slide 2"));
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-3.png",
+    );
+    const stalePageTwoImage = await requestedImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-page-2.png",
     );
     await user.click(screen.getByLabelText("Preview slide 1"));
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-page-3.png",
     );
-    await imageDecodes.complete("https://example.com/imported-cover.png");
+    await loadImportedTemplateImage(
+      detailPreview,
+      "https://example.com/imported-cover.png",
+    );
     await waitFor(() => {
       expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
         "src",
         "https://example.com/imported-cover.png",
       );
     });
-    await imageDecodes.complete("https://example.com/imported-page-2.png");
+    fireEvent.load(stalePageTwoImage);
     expect(activeImportedTemplateImage(detailPreview)).toHaveAttribute(
       "src",
       "https://example.com/imported-cover.png",

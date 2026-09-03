@@ -7,6 +7,7 @@ import uuid
 
 from mitmproxy import ctx, http
 
+import platform_api_url
 from authority_utils import authority_has_empty_port, format_url_host
 from host_normalization import normalize_hostname
 
@@ -54,23 +55,6 @@ def _split_url_without_value_diagnostics(
         return urllib.parse.urlsplit(value)
     except ValueError:
         raise ValueError(f"{subject} is invalid") from None
-
-
-def _canonical_platform_url(url: str) -> str:
-    parsed_url = _split_url_without_value_diagnostics(url, subject="Platform API URL")
-    scheme = parsed_url.scheme.lower()
-    if scheme not in {"http", "https"} or not parsed_url.netloc or parsed_url.hostname is None:
-        raise ValueError("Platform API URL must be an absolute http(s) URL")
-    if parsed_url.username is not None or parsed_url.password is not None:
-        raise ValueError("Platform API URL must not contain user information")
-
-    port = _parsed_port(parsed_url, subject="Platform API URL")
-    authority = format_url_host(normalize_hostname(parsed_url.hostname))
-    if port is not None:
-        authority = f"{authority}:{port}"
-    return urllib.parse.urlunsplit(
-        (scheme, authority, parsed_url.path, parsed_url.query, parsed_url.fragment)
-    )
 
 
 def normalize_proxy_url(proxy_url: str) -> str:
@@ -143,14 +127,14 @@ def make_api_request(url: str, data: bytes, bearer_credential: str) -> urllib.re
     redirects, using :func:`build_api_opener` or an equivalent transport policy,
     before contacting another URL.
     """
-    canonical_url = _canonical_platform_url(url)
+    parsed_url = platform_api_url.parse_platform_api_url(url)
     client_session_id, client_version = _CLIENT_HEADERS
 
     # S310 (suspicious-url-open-usage): callers build `url` from the
     # operator-configured platform API URL, and the scheme is validated above
     # before urllib can consume the request.
     req = urllib.request.Request(  # noqa: S310
-        canonical_url,
+        parsed_url.canonical_url,
         data=data,
         headers={
             "Content-Type": "application/json",

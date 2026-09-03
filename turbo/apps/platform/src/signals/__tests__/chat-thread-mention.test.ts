@@ -1,3 +1,4 @@
+import { command } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { testContext } from "./test-helpers.ts";
 import {
@@ -6,8 +7,12 @@ import {
 } from "../okou-page/chat-thread-suggestion-domain.ts";
 import { createDraftSignals } from "../okou-page/chat-draft.ts";
 import { createWorkflowComposerSignals } from "../okou-page/tiptap-workflow-composer.ts";
+import type { OpenTemplatePickerDialogOptions } from "../okou-page/chat-composer.ts";
 
 const context = testContext();
+const openTemplatePickerDialog$ = command(
+  (_context, _options: OpenTemplatePickerDialogOptions): void => {},
+);
 
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";
 
@@ -73,7 +78,10 @@ describe("splitChatThreadMentionSegments", () => {
 describe("chat thread mention in the workflow composer", () => {
   function mountComposer() {
     const draft = createDraftSignals();
-    const composer = createWorkflowComposerSignals(draft);
+    const composer = createWorkflowComposerSignals(
+      draft,
+      openTemplatePickerDialog$,
+    );
     const element = document.createElement("div");
     document.body.append(element);
     const cleanup = context.store.set(composer.setContainerRef$, element);

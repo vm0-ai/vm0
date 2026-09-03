@@ -1,10 +1,15 @@
 //! Device pool for cooperatively claimed NBD devices.
 //!
-//! Allocation is demand-only: each acquire scans for a free `/dev/nbdN`,
+//! A successful acquire can come from either a demand scan or a cooled claim
+//! retained from a clean release. A demand scan looks for a free `/dev/nbdN`,
 //! acquires the per-index lock-file `flock`, and re-checks sysfs before returning a
-//! lease. Released devices keep their lock through a short cooldown period so
-//! kernel teardown cannot race another cooperating runner using the same lock
-//! directory.
+//! lease. A clean release keeps the existing claim and lock through a short
+//! cooldown period so kernel teardown cannot race another cooperating runner
+//! using the same lock directory. When the cooldown expires, a queued waiter
+//! can receive that still-locked claim after a sysfs free check, without a new
+//! scan or lock acquisition. If no waiter is queued or the free check fails,
+//! the expired claim is dropped and its lock is released; remaining waiters
+//! continue through the pool's normal progress path.
 
 mod actor;
 mod lease;

@@ -870,6 +870,38 @@ describe("okou connector check command", () => {
       },
     );
 
+    it("prints a finalized callback action URL for the current web chat", async () => {
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-abc-123");
+      stubDiagnostic(resolvedEnvironment());
+      stubResolvedDependencies("github", {
+        connector: null,
+        enabledConnectorSlugs: [],
+      });
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const callbackUrlText = getOutput()
+        .split("\n")
+        .find((line) => {
+          return line.includes("callbackPrompt=");
+        });
+      if (!callbackUrlText) {
+        throw new Error("Expected callback action URL");
+      }
+      const callbackUrl = new URL(callbackUrlText);
+      expect(callbackUrl.pathname).toBe("/connectors/github/authorize");
+      expect(Array.from(callbackUrl.searchParams.entries())).toStrictEqual([
+        ["agentId", AGENT_ID],
+        ["threadId", "thread-abc-123"],
+        ["callbackPrompt", "SOMETHING_AGENT_WANT_TO_BE_CALLBACK"],
+      ]);
+    });
+
     it.each([
       {
         name: "unavailable environment metadata",

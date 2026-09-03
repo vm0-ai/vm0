@@ -8,8 +8,8 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-const previousMigration = "1063_simple_norman_osborn";
-const replacementMigration = "1064_migrate_claude_fable_5_to_5_1";
+const previousMigration = "1064_funny_hex";
+const replacementMigration = "1065_migrate_claude_fable_5_to_5_1";
 const testDatabase = "migration_claude_fable_5_to_5_1";
 
 interface MigrationState {

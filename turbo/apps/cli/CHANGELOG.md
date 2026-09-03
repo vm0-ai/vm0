@@ -1,5 +1,36 @@
 # Changelog
 
+## [9.308.3](https://github.com/vm0-ai/vm0/compare/cli-v9.308.2...cli-v9.308.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* **cli:** show exact run accounts in whoami ([#31452](https://github.com/vm0-ai/vm0/issues/31452)) ([92cf4bb](https://github.com/vm0-ai/vm0/commit/92cf4bbc17db9ad147cc1b31f00d4e9852c8281a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.614.1
+
+## [9.308.2](https://github.com/vm0-ai/vm0/compare/cli-v9.308.1...cli-v9.308.2) (2026-09-03)
+
+
+### Refactoring
+
+* remove obsolete vm0 migration tombstones ([#31401](https://github.com/vm0-ai/vm0/issues/31401)) ([7c530c6](https://github.com/vm0-ai/vm0/commit/7c530c63a3afc86db32a90757e155ed97dcf2dc0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.398.0
+    * @okouai/connectors bumped to 3.3.2
+    * @okouai/core bumped to 8.614.0
+    * @okouai/pi-agent-runtime bumped to 1.15.1
+
 ## [9.308.1](https://github.com/vm0-ai/vm0/compare/cli-v9.308.0...cli-v9.308.1) (2026-09-03)
 
 
