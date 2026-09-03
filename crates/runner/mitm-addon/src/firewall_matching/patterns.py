@@ -1,5 +1,6 @@
 """Low-level firewall segment, host, and path pattern matching."""
 
+from collections.abc import Iterator
 from typing import NamedTuple
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
@@ -205,6 +206,21 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
     return _match_compiled_path_prefix(path_segs, compiled_pattern)
 
 
+def _iter_path_segments(path: str) -> Iterator[str]:
+    """Yield path segments without normalizing repeated slashes."""
+    if path in ("", "/"):
+        return
+
+    segment_start = 1 if path.startswith("/") else 0
+    while True:
+        segment_end = path.find("/", segment_start)
+        if segment_end == -1:
+            yield path[segment_start:]
+            return
+        yield path[segment_start:segment_end]
+        segment_start = segment_end + 1
+
+
 def _split_path_segments(path: str) -> list[str]:
     """Split path patterns and request paths without normalizing repeated slashes."""
     if path in ("", "/"):
@@ -213,6 +229,54 @@ def _split_path_segments(path: str) -> list[str]:
     if path_without_leading_slash == "":
         return []
     return path_without_leading_slash.split("/")
+
+
+def _split_path_prefix(path: str, segment_count: int) -> tuple[list[str], str]:
+    """Split at most segment_count leading segments and return the remaining path."""
+    if segment_count == 0:
+        return [], path or "/"
+    if path in ("", "/"):
+        return [], "/"
+
+    path_segs: list[str] = []
+    segment_start = 1 if path.startswith("/") else 0
+    while len(path_segs) < segment_count:
+        segment_end = path.find("/", segment_start)
+        if segment_end == -1:
+            path_segs.append(path[segment_start:])
+            return path_segs, "/"
+        path_segs.append(path[segment_start:segment_end])
+        segment_start = segment_end + 1
+
+    return path_segs, path[segment_start - 1 :]
+
+
+def _match_compiled_path_prefix_text(
+    path: str,
+    pattern_segs: tuple[ParsedSegment, ...],
+) -> tuple[dict[str, str], str] | None:
+    """Match a compiled prefix while splitting only its configured segment depth."""
+    if pattern_segs and isinstance(pattern_segs[-1], SegmentParam) and pattern_segs[-1].greedy:
+        leading_pattern_segs = pattern_segs[:-1]
+        path_segs, remaining_path = _split_path_prefix(path, len(leading_pattern_segs))
+        leading_result = _match_compiled_path_prefix(path_segs, leading_pattern_segs)
+        if leading_result is None:
+            return None
+
+        params, _consumed = leading_result
+        greedy_segment = pattern_segs[-1]
+        greedy_value = remaining_path[1:] if remaining_path.startswith("/") else remaining_path
+        if greedy_segment.greedy == "+" and not any(char != "/" for char in greedy_value):
+            return None
+        params[greedy_segment.name] = greedy_value
+        return params, "/"
+
+    path_segs, remaining_path = _split_path_prefix(path, len(pattern_segs))
+    result = _match_compiled_path_prefix(path_segs, pattern_segs)
+    if result is None:
+        return None
+    params, _consumed = result
+    return params, remaining_path
 
 
 def _has_non_empty_segment(path_segs: list[str], start: int) -> bool:

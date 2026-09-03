@@ -281,7 +281,7 @@ async function resolveGmailAccess(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
-    readonly connectorId?: string;
+    readonly connectorId: string;
     readonly refreshExpiredToken?: boolean;
   },
   signal: AbortSignal,
@@ -295,9 +295,7 @@ async function resolveGmailAccess(
     orgId: args.orgId,
     userId: args.userId,
     connectorSlug: "gmail",
-    ...(args.connectorId === undefined
-      ? {}
-      : { connectorId: args.connectorId }),
+    connectorId: args.connectorId,
   });
   signal.throwIfAborted();
   if (loaded.kind === "missing") {
