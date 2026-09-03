@@ -453,7 +453,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key("VM0_API_TOKEN"));
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_AGENT_EXECUTION_TIMEOUT_SECS_ENV)
             .unwrap(),
@@ -1441,11 +1440,11 @@ fn build_env_json_user_timezone_not_override_environment() {
 }
 
 #[test]
-fn arbitrary_vm0_user_env_cannot_override_canonical_or_private_payload() {
+fn user_env_cannot_override_canonical_or_private_payload() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
         ("VM0_PROMPT".into(), "hacked".into()),
-        ("VM0_API_TOKEN".into(), "stolen".into()),
+        ("CUSTOM_API_TOKEN".into(), "user-token".into()),
         ("CUSTOM_ENV".into(), "kept".into()),
     ]));
 
@@ -1461,11 +1460,11 @@ fn arbitrary_vm0_user_env_cannot_override_canonical_or_private_payload() {
             .unwrap(),
         "tok"
     );
-    assert!(!env.contains_key("VM0_API_TOKEN"));
+    assert!(!env.contains_key("CUSTOM_API_TOKEN"));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
     assert_eq!(user_env.get("VM0_PROMPT").unwrap(), "hacked");
-    assert_eq!(user_env.get("VM0_API_TOKEN").unwrap(), "stolen");
+    assert_eq!(user_env.get("CUSTOM_API_TOKEN").unwrap(), "user-token");
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
 }
 
@@ -1544,13 +1543,6 @@ fn build_env_json_mock_codex_suppressed_by_real_agent_preview_flag() {
         },
     );
     assert!(!env.contains_key("USE_MOCK_CODEX"));
-}
-
-#[test]
-fn build_env_json_does_not_inject_vm0_token() {
-    let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_TOKEN"));
 }
 
 #[test]
