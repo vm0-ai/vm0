@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.615.0](https://github.com/vm0-ai/vm0/compare/core-v8.614.2...core-v8.615.0) (2026-09-03)
+
+
+### Features
+
+* **ui:** refresh the app palette onto the sand and amber scales ([#31081](https://github.com/vm0-ai/vm0/issues/31081)) ([eff8671](https://github.com/vm0-ai/vm0/commit/eff8671a6068d00502fad87e629409417e3ddd56))
+
 ## [8.614.2](https://github.com/vm0-ai/vm0/compare/core-v8.614.1...core-v8.614.2) (2026-09-03)
 
 
