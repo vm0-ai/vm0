@@ -1811,8 +1811,15 @@
     {
       "idx": 1066,
       "version": "7",
-      "when": 1788432327889,
-      "tag": "1066_curvy_mercury",
+      "when": 1788432814711,
+      "tag": "1066_piloop_launch_snapshot_v3",
+      "breakpoints": true
+    },
+    {
+      "idx": 1067,
+      "version": "7",
+      "when": 1788432814711,
+      "tag": "1067_piloop_launch_snapshot_v3",
       "breakpoints": true
     }
   ]

@@ -62,8 +62,6 @@ export enum FeatureSwitchKey {
   CustomConnectorMcp = "customConnectorMcp",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
-  PiMemoryRecall = "piMemoryRecall",
-  PiMemoryGeneration = "piMemoryGeneration",
   PresentationScreenshot = "presentationScreenshot",
   PresentationTemplates = "presentationTemplates",
   IntroVideo = "introVideo",

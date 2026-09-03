@@ -5908,7 +5908,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryRecall]: true,
       },
     );
     mockPiResourceArchiveDownloads();
@@ -6004,16 +6003,8 @@ describe("CHAT-02: model-first provider policies", () => {
       outcome: "ownership-transfer",
       mode: "pending-tool-continuation",
     });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      { [FeatureSwitchKey.PiMemoryRecall]: false },
-    );
     const claimed = await claimChatRun(runnerGroup, second.runId);
     expect(claimed.claim.cliAgentType).toBe("pi");
-    expect(claimed.claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.PiMemoryRecall]: true,
-    });
     expect(claimed.claim.piLaunchConfig).toMatchObject({
       memoryRecall: {
         status: "ready",
@@ -6062,7 +6053,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryRecall]: true,
       },
     );
     mockPiResourceArchiveDownloads(true);
@@ -6121,7 +6111,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryRecall]: true,
       },
     );
     mockPiResourceArchiveDownloads();
@@ -6347,8 +6336,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryRecall]: false,
-        [FeatureSwitchKey.PiMemoryGeneration]: true,
       },
     );
     mockPiResourceArchiveDownloads();
@@ -6412,9 +6399,8 @@ describe("CHAT-02: model-first provider policies", () => {
       readRunLaunchSnapshotFixture(context, first.runId),
     ).resolves.toMatchObject({
       launch_snapshot: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         framework: "pi",
-        piMemoryGenerationEnabled: true,
       },
     });
     await updateFeatureSwitchesForUser(
@@ -6422,7 +6408,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryGeneration]: false,
       },
     );
     releaseFirstProvider.resolve(undefined);
@@ -6432,9 +6417,8 @@ describe("CHAT-02: model-first provider policies", () => {
       readRunLaunchSnapshotFixture(context, first.runId),
     ).resolves.toMatchObject({
       launch_snapshot: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         framework: "pi",
-        piMemoryGenerationEnabled: true,
       },
     });
 
@@ -6490,7 +6474,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryGeneration]: true,
       },
     );
     const second = await sendChatRun(
@@ -6718,34 +6701,6 @@ describe("CHAT-02: model-first provider policies", () => {
       lastSelectedSourceHistoryHash: null,
     });
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      {
-        [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryGeneration]: false,
-      },
-    );
-    const disabled = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "do not admit when generation was disabled at launch",
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
-    await waitForRunStatus(actor, disabled.runId, "completed", 10_000);
-    await flushWaitUntilForTest();
-    expect(sandboxOperationEventsForRun(disabled.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "pi_memory_stage1_candidate_admission",
-        candidate_outcome: "skipped",
-        candidate_skip_reason: "generation_disabled",
-      }),
-    );
-
     await deletePiMemoryStorageFixture(thirdCandidate.memoryStorageId);
     await expect(
       readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
@@ -6836,10 +6791,9 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toStrictEqual({
         exists: true,
         launch_snapshot: {
-          schemaVersion: 2,
+          schemaVersion: 3,
           framework: "pi",
           runnerProfile: DEFAULT_PROFILE,
-          piMemoryGenerationEnabled: false,
         },
       });
       expect(modelRequests).toHaveLength(1);
@@ -9784,8 +9738,6 @@ describe("CHAT-02: model-first provider policies", () => {
       { ...actor, orgId },
       {
         [FeatureSwitchKey.PiLoop]: true,
-        [FeatureSwitchKey.PiMemoryRecall]: false,
-        [FeatureSwitchKey.PiMemoryGeneration]: true,
         [FeatureSwitchKey.CodexFastMode]: true,
       },
     );
@@ -12815,10 +12767,9 @@ describe("CHAT-02: run-level model overrides", () => {
     ).resolves.toStrictEqual({
       exists: true,
       launch_snapshot: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         framework: secondClaim.claim.cliAgentType,
         runnerProfile: DEFAULT_PROFILE,
-        piMemoryGenerationEnabled: false,
       },
     });
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
