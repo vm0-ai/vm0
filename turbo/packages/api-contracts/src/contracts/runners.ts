@@ -1151,7 +1151,7 @@ const executionContextObjectSchema = z.object({
   platformEnvironment: z.record(z.string(), z.string()),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not
-  // names, and are base64-encoded only when exported through VM0_SECRET_VALUES.
+  // names, and are base64-encoded only when exported through OKOU_SECRET_VALUES.
   secretValues: z.array(z.string()).nullable(),
   // AES-256-GCM encrypted Record<string, string>, passed through to mitm-addon
   // for auth resolution. Keys are runtime secret names used by
