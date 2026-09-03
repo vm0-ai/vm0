@@ -119,6 +119,11 @@ describe("okou social command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockStderrWrite = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((() => {
+      return true;
+    }) as never);
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -148,6 +153,7 @@ describe("okou social command", () => {
   afterEach(() => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    mockStderrWrite.mockClear();
     mockExit.mockClear();
     process.exitCode = originalExitCode;
     vi.unstubAllEnvs();
@@ -156,6 +162,7 @@ describe("okou social command", () => {
   afterAll(() => {
     mockConsoleLog.mockRestore();
     mockConsoleError.mockRestore();
+    mockStderrWrite.mockRestore();
     mockExit.mockRestore();
   });
 
@@ -165,6 +172,10 @@ describe("okou social command", () => {
 
   function errorOutput(): string {
     return mockConsoleError.mock.calls.flat().map(String).join("\n");
+  }
+
+  function parserErrorOutput(): string {
+    return mockStderrWrite.mock.calls.flat().map(String).join("");
   }
 
   it("discovers concise capabilities locally", async () => {
@@ -735,6 +746,38 @@ describe("okou social command", () => {
         message: "The social data service is temporarily unavailable",
         httpStatus: 502,
         retryable: true,
+      },
+    });
+  });
+
+  it.each([
+    [
+      "invalid option value",
+      ["posts", "https://x.com/example", "--limit", "invalid", "--json"],
+    ],
+    ["missing required option", ["search", "launch", "--json"]],
+    ["invalid argument value", ["capabilities", "unsupported", "--json"]],
+    [
+      "streaming option value",
+      [
+        "comments",
+        "https://youtu.be/example",
+        "--limit",
+        "invalid",
+        "--stream",
+      ],
+    ],
+  ])("emits structured parser failures for %s", async (_case, args) => {
+    await expect(
+      socialCommand.parseAsync(["node", "okou", ...args]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(JSON.parse(parserErrorOutput()) as unknown).toMatchObject({
+      status: "error",
+      error: {
+        kind: "invalid_input",
+        code: "INVALID_INPUT",
+        retryable: false,
       },
     });
   });
