@@ -1865,7 +1865,7 @@ describe("chat scroll position", () => {
     });
   });
 
-  it("keeps a completed-work scroll target expanded when its run finishes", async () => {
+  it("keeps a run-work scroll target expanded when its run finishes", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000804";
     const runId = "scroll-completed-work-run";
     const initialEvents: MockChatEventInput[] = [
@@ -1945,7 +1945,7 @@ describe("chat scroll position", () => {
       expect(viewportOffsetTop("completed-work-intermediate")).toBe(-20);
       expect(
         document.querySelector(
-          "[data-chat-completed-work-fold] button[aria-expanded='true']",
+          "[data-chat-run-work] button[aria-expanded='true']",
         ),
       ).not.toBeNull();
     });

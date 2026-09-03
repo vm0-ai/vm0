@@ -2176,17 +2176,6 @@
       "collapseGroupedHistory": "Ciutkan riwayat eksekusi yang dikelompokkan",
       "collapseWorkHistory": "Ciutkan riwayat kerja",
       "creditUsage": "Penggunaan kredit",
-      "done": {
-        "allDone": "Selesai — {{time}}",
-        "default": "Selesai",
-        "delivered": "Dikirim pada {{time}}",
-        "doneAndDusted": "Selesai tuntas — {{time}}",
-        "finished": "Selesai pada {{time}}, siap melayani",
-        "missionComplete": "Misi selesai, {{time}}",
-        "signedOff": "Ditutup pada {{time}}",
-        "wrap": "Tuntas — {{time}}",
-        "wrappedUp": "Diselesaikan pada {{time}}"
-      },
       "duration": {
         "hour_one": "{{count}} jam",
         "hour_other": "{{count}} jam",
@@ -2210,7 +2199,6 @@
       "goalFor": "Tujuan untuk {{label}}",
       "groupedRunsFor_one": "{{count}} eksekusi untuk {{source}}",
       "groupedRunsFor_other": "{{count}} eksekusi untuk {{source}}",
-      "justNow": "baru saja",
       "keepGoing": "Lanjutkan",
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
       "modelChangedTo": "Model diganti menjadi {{model}}",
@@ -2231,8 +2219,8 @@
       "viewActivityLogs": "Lihat log aktivitas",
       "viewLogs": "Lihat log eksekusi",
       "waitingIn": "Menunggu di",
-      "worked": "Dikerjakan",
-      "workedFor": "Dikerjakan selama {{duration}}"
+      "workedFor": "Dikerjakan selama {{duration}}",
+      "workingFor": "Bekerja selama {{duration}}"
     },
     "sharing": {
       "cancel": "Batal",

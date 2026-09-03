@@ -87,6 +87,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   BrandSlack,
+  ElapsedTime,
 } from "@okouai/ui";
 import { RUN_ERROR_GUIDANCE } from "@okouai/api-contracts/contracts/errors";
 import type {
@@ -146,16 +147,16 @@ import {
   closeChatConnectorActionConnectDialog$,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
-  buildCompletedWorkFolding,
+  buildRunWorkFolding,
   chatEventDisplayError,
-  completedWorkExpandedKeys$,
-  completedWorkExpandedKeysForScrollTarget,
-  completedWorkFoldForGroup,
   isRenderableAssistantEvent,
-  toggleCompletedWorkExpanded$,
-  type CompletedWorkFold,
-  type CompletedWorkFolding,
-} from "../../signals/chat-page/completed-work-folding.ts";
+  runWorkExpandedKeys$,
+  runWorkExpandedKeysForScrollTarget,
+  runWorkSectionForGroup,
+  toggleRunWorkExpanded$,
+  type RunWorkFolding,
+  type RunWorkSection,
+} from "../../signals/chat-page/run-work-folding.ts";
 import {
   buildRunGroupFolding,
   runGroupExpansionOverrides$,
@@ -3068,17 +3069,15 @@ function ChatThreadRenderedEventGroups({
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
-  const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
-  const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
-  const effectiveCompletedWorkExpandedKeys =
-    completedWorkExpandedKeysForScrollTarget(
-      completedWorkFolding,
-      completedWorkExpandedKeys,
-      scrollTargetEventId,
-    );
-  const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
-  const visibleGroups =
-    completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
+  const runWorkFolding = buildRunWorkFolding(runGroupVisibleGroups);
+  const runWorkExpandedKeys = useGet(runWorkExpandedKeys$);
+  const effectiveRunWorkExpandedKeys = runWorkExpandedKeysForScrollTarget(
+    runWorkFolding,
+    runWorkExpandedKeys,
+    scrollTargetEventId,
+  );
+  const toggleRunWorkExpanded = useSet(toggleRunWorkExpanded$);
+  const visibleGroups = runWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
 
   return (
     <>
@@ -3088,9 +3087,9 @@ function ChatThreadRenderedEventGroups({
         modelChanges={modelChanges}
         runGroupFolding={runGroupFolding}
         onToggleRunGroup={toggleRunGroupExpanded}
-        completedWorkFolding={completedWorkFolding}
-        completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
-        onToggleCompletedWork={toggleCompletedWorkExpanded}
+        runWorkFolding={runWorkFolding}
+        runWorkExpandedKeys={effectiveRunWorkExpandedKeys}
+        onToggleRunWork={toggleRunWorkExpanded}
       />
       <ChatThreadScrollCommitMarker
         thread={thread}
@@ -3231,9 +3230,9 @@ function ChatThreadNextRunModelNotice({
 function groupRendersContent(
   group: ChatEventGroup,
   embeddedFolds: readonly RunGroupFoldControl[],
-  completedWorkFold: CompletedWorkFold | null,
+  runWorkSection: RunWorkSection | null,
 ): boolean {
-  if (embeddedFolds.length > 0 || completedWorkFold !== null) {
+  if (embeddedFolds.length > 0 || runWorkSection !== null) {
     return true;
   }
   if (group.role === "user") {
@@ -3254,18 +3253,18 @@ function ChatThreadEventGroups({
   modelChanges,
   runGroupFolding,
   onToggleRunGroup,
-  completedWorkFolding,
-  completedWorkExpandedKeys,
-  onToggleCompletedWork,
+  runWorkFolding,
+  runWorkExpandedKeys,
+  onToggleRunWork,
 }: {
   thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
   modelChanges: ReadonlyMap<string, RunModelChange>;
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
-  completedWorkFolding: CompletedWorkFolding | null;
-  completedWorkExpandedKeys: ReadonlySet<string>;
-  onToggleCompletedWork: (key: string) => void;
+  runWorkFolding: RunWorkFolding | null;
+  runWorkExpandedKeys: ReadonlySet<string>;
+  onToggleRunWork: (key: string) => void;
 }) {
   const { embeddedRunGroupFolds, externalRunGroupFolds } =
     resolveRunGroupFoldPlacements({
@@ -3286,21 +3285,18 @@ function ChatThreadEventGroups({
           externalRunGroupFolds.get(group.beginEventId) ?? [];
         const embeddedFolds =
           embeddedRunGroupFolds.get(group.beginEventId) ?? [];
-        const completedWorkFold = completedWorkFoldForGroup(
-          completedWorkFolding,
-          group,
-        );
+        const runWorkSection = runWorkSectionForGroup(runWorkFolding, group);
         const stackFirstOnPrevious =
           runGroupFolds.length === 0 &&
           previousVisibleGroup !== undefined &&
           previousVisibleGroup.role === "user" &&
           groupHasUserBubble(previousVisibleGroup);
-        if (groupRendersContent(group, embeddedFolds, completedWorkFold)) {
+        if (groupRendersContent(group, embeddedFolds, runWorkSection)) {
           previousVisibleGroup = group;
         }
-        const completedWorkExpanded =
-          completedWorkFold !== null &&
-          completedWorkExpandedKeys.has(completedWorkFold.key);
+        const runWorkExpanded =
+          runWorkSection !== null &&
+          runWorkExpandedKeys.has(runWorkSection.key);
         return (
           <div key={group.beginEventId} className="contents">
             {runGroupFolds.map((runGroupFold) => {
@@ -3317,14 +3313,15 @@ function ChatThreadEventGroups({
               modelChanges={modelChanges}
               stackFirstOnPrevious={stackFirstOnPrevious}
               runGroupFolds={embeddedFolds}
-              completedWorkFold={
-                completedWorkFold !== null
+              runWorkSection={
+                runWorkSection !== null
                   ? {
-                      groups: completedWorkFold.labelGroups,
-                      hiddenGroups: completedWorkFold.hiddenGroups,
-                      expanded: completedWorkExpanded,
+                      startTime: runWorkSection.startTime,
+                      endTime: runWorkSection.endTime,
+                      hiddenGroups: runWorkSection.hiddenGroups,
+                      expanded: runWorkExpanded,
                       onToggle: () => {
-                        onToggleCompletedWork(completedWorkFold.key);
+                        onToggleRunWork(runWorkSection.key);
                       },
                     }
                   : undefined
@@ -3483,39 +3480,6 @@ function formatCompactDuration(totalSeconds: number): string {
   );
 }
 
-function durationLabelForGroups(
-  groups: readonly ChatEventGroup[],
-): string | null {
-  const timestamps = groups.flatMap((group) => {
-    return group.events.flatMap((event) => {
-      const timestamp = parseEventTime(event.createdAt);
-      return timestamp === null ? [] : [timestamp];
-    });
-  });
-  if (timestamps.length < 2) {
-    return null;
-  }
-  const elapsedSeconds = Math.max(
-    1,
-    Math.round((Math.max(...timestamps) - Math.min(...timestamps)) / 1000),
-  );
-  return formatCompactDuration(elapsedSeconds);
-}
-
-function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
-  const duration = durationLabelForGroups(groups);
-  return duration
-    ? i18n.t(
-        ($) => {
-          return $.chat.run.workedFor;
-        },
-        { duration },
-      )
-    : i18n.t(($) => {
-        return $.chat.run.worked;
-      });
-}
-
 const RUN_SECTION_LABEL_CLASS =
   "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
 const RUN_SECTION_ROW_CLASS =
@@ -3589,36 +3553,48 @@ function ModelChangeDividerRow({ change }: { change: RunModelChange }) {
   return <RunSectionDividerRow label={label} />;
 }
 
-function CompletedWorkFoldRow({
-  groups,
+function RunWorkSectionRow({
+  startTime,
+  endTime,
+  collapsible,
   expanded,
   onToggle,
 }: {
-  groups: readonly ChatEventGroup[];
+  startTime: number;
+  endTime?: number;
+  collapsible: boolean;
   expanded: boolean;
   onToggle: () => void;
 }) {
   const { t } = useTranslation();
-  const label = completedWorkLabel(groups);
-  return (
-    <div data-chat-completed-work-fold className="-mx-2 @[900px]:-mb-[15px]">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={
-          expanded
-            ? t(($) => {
-                return $.chat.run.collapseWorkHistory;
-              })
-            : t(($) => {
-                return $.chat.run.expandWorkHistory;
-              })
-        }
-        onClick={onToggle}
-        className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
+  const content = (
+    <>
+      <Hourglass aria-hidden size={14} className="shrink-0" />
+      <ElapsedTime
+        startTime={startTime}
+        endTime={endTime}
+        className="text-[13px]"
       >
-        <Hourglass aria-hidden size={14} className="shrink-0" />
-        <span className="text-[13px]">{label}</span>
+        {(elapsedTime) => {
+          const duration = formatCompactDuration(
+            Math.max(1, Math.round(elapsedTime / 1000)),
+          );
+          return endTime === undefined
+            ? t(
+                ($) => {
+                  return $.chat.run.workingFor;
+                },
+                { duration },
+              )
+            : t(
+                ($) => {
+                  return $.chat.run.workedFor;
+                },
+                { duration },
+              );
+        }}
+      </ElapsedTime>
+      {collapsible ? (
         <ChevronRight
           aria-hidden
           size={14}
@@ -3627,7 +3603,34 @@ function CompletedWorkFoldRow({
             expanded && "rotate-90",
           )}
         />
-      </button>
+      ) : null}
+    </>
+  );
+  const className =
+    "mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground";
+  return (
+    <div data-chat-run-work className="-mx-2 @[900px]:-mb-[15px]">
+      {collapsible ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={
+            expanded
+              ? t(($) => {
+                  return $.chat.run.collapseWorkHistory;
+                })
+              : t(($) => {
+                  return $.chat.run.expandWorkHistory;
+                })
+          }
+          onClick={onToggle}
+          className={cn(className, "transition-colors hover:bg-state-hover")}
+        >
+          {content}
+        </button>
+      ) : (
+        <div className={className}>{content}</div>
+      )}
     </div>
   );
 }
@@ -4614,34 +4617,27 @@ function FinishedRunRow({
   source: RecommendedFollowupSource | null;
 }) {
   const { t } = useTranslation();
-  const donePhrase =
-    useLastResolved(thread.donePhrase$) ??
-    t(($) => {
-      return $.chat.run.done.default;
-    });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
-  const label =
-    source && runFinishedAt
-      ? t(
-          ($) => {
-            return $.chat.run.keepGoingAt;
-          },
-          {
-            timestamp: formatChatTimestamp(runFinishedAt),
-          },
-        )
-      : source
-        ? t(($) => {
-            return $.chat.run.keepGoing;
-          })
-        : donePhrase;
+  if (source === null) {
+    return null;
+  }
+  const label = runFinishedAt
+    ? t(
+        ($) => {
+          return $.chat.run.keepGoingAt;
+        },
+        {
+          timestamp: formatChatTimestamp(runFinishedAt),
+        },
+      )
+    : t(($) => {
+        return $.chat.run.keepGoing;
+      });
 
   return (
     <div className="flex flex-col gap-2">
       <RunSectionDivider label={label} />
-      {source ? (
-        <RecommendedFollowupList thread={thread} source={source} />
-      ) : null}
+      <RecommendedFollowupList thread={thread} source={source} />
     </div>
   );
 }
@@ -4800,7 +4796,10 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
         }
       : undefined;
 
-  if (mode === null) {
+  if (
+    mode === null ||
+    (mode === "finished" && recommendedFollowupSource === null)
+  ) {
     return null;
   }
 
@@ -5593,15 +5592,16 @@ function PagedGroupRow({
   modelChanges,
   stackFirstOnPrevious = false,
   runGroupFolds,
-  completedWorkFold,
+  runWorkSection,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
   stackFirstOnPrevious?: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
-  completedWorkFold?: {
-    groups: readonly ChatEventGroup[];
+  runWorkSection?: {
+    startTime: number;
+    endTime: number | undefined;
     hiddenGroups: readonly ChatEventGroup[];
     expanded: boolean;
     onToggle: () => void;
@@ -5623,7 +5623,7 @@ function PagedGroupRow({
       group={group}
       thread={thread}
       runGroupFolds={runGroupFolds}
-      completedWorkFold={completedWorkFold}
+      runWorkSection={runWorkSection}
     />
   );
 }
@@ -5675,7 +5675,7 @@ function SelectablePagedGroupRow({
   modelChanges,
   stackFirstOnPrevious,
   runGroupFolds,
-  completedWorkFold,
+  runWorkSection,
 }: Parameters<typeof PagedGroupRow>[0]) {
   const { t } = useTranslation();
   const phase = useGet(thread.sharing.phase$);
@@ -5693,7 +5693,7 @@ function SelectablePagedGroupRow({
         modelChanges={modelChanges}
         stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
-        completedWorkFold={completedWorkFold}
+        runWorkSection={runWorkSection}
       />
     );
   }
@@ -5737,7 +5737,7 @@ function SelectablePagedGroupRow({
         modelChanges={modelChanges}
         stackFirstOnPrevious={stackFirstOnPrevious}
         runGroupFolds={runGroupFolds}
-        completedWorkFold={completedWorkFold}
+        runWorkSection={runWorkSection}
       />
       <Checkbox
         checked={checked}
@@ -7081,13 +7081,14 @@ function PagedAssistantGroup({
   group,
   thread,
   runGroupFolds,
-  completedWorkFold,
+  runWorkSection,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   runGroupFolds?: readonly RunGroupFoldControl[];
-  completedWorkFold?: {
-    groups: readonly ChatEventGroup[];
+  runWorkSection?: {
+    startTime: number;
+    endTime: number | undefined;
     hiddenGroups: readonly ChatEventGroup[];
     expanded: boolean;
     onToggle: () => void;
@@ -7097,8 +7098,8 @@ function PagedAssistantGroup({
     return isRenderableAssistantEvent(event);
   });
   const hasRunGroupFolds = (runGroupFolds?.length ?? 0) > 0;
-  const showCompletedWorkFold = completedWorkFold && !hasRunGroupFolds;
-  if (!hasRenderableEvent && !completedWorkFold && !hasRunGroupFolds) {
+  const showRunWorkSection = runWorkSection && !hasRunGroupFolds;
+  if (!hasRenderableEvent && !runWorkSection && !hasRunGroupFolds) {
     return null;
   }
 
@@ -7142,15 +7143,17 @@ function PagedAssistantGroup({
               <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
             );
           })}
-          {showCompletedWorkFold && (
-            <CompletedWorkFoldRow
-              groups={completedWorkFold.groups}
-              expanded={completedWorkFold.expanded}
-              onToggle={completedWorkFold.onToggle}
+          {showRunWorkSection && (
+            <RunWorkSectionRow
+              startTime={runWorkSection.startTime}
+              endTime={runWorkSection.endTime}
+              collapsible={runWorkSection.hiddenGroups.length > 0}
+              expanded={runWorkSection.expanded}
+              onToggle={runWorkSection.onToggle}
             />
           )}
-          {showCompletedWorkFold && completedWorkFold.expanded
-            ? completedWorkFold.hiddenGroups.map((hiddenGroup) => {
+          {showRunWorkSection && runWorkSection.expanded
+            ? runWorkSection.hiddenGroups.map((hiddenGroup) => {
                 return (
                   <div key={hiddenGroup.beginEventId} className="contents">
                     {renderAssistantTimeline(hiddenGroup.events)}

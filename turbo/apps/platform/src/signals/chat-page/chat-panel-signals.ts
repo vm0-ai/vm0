@@ -89,7 +89,6 @@ export interface MessageListSignals {
   readonly recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
-  readonly donePhrase$: Computed<Promise<string>>;
   readonly loadMoreRenderedChatGroups$: Command<
     Promise<boolean>,
     [AbortSignal]
@@ -225,7 +224,6 @@ export interface ChatPanelSignals {
   // -- Thinking indicator ---------------------------------------------------
   readonly blockColors$: Computed<[string, string, string]>;
   readonly thinkingPhrase$: Computed<string>;
-  readonly donePhrase$: Computed<Promise<string>>;
   readonly displayedThinkingText$: Computed<Promise<string>>;
   readonly thinkingTextFadingOut$: Computed<Promise<boolean>>;
   readonly setThinkingIndicatorTextRef$: Command<

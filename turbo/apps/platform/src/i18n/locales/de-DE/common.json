@@ -2179,17 +2179,6 @@
       "collapseGroupedHistory": "Gruppierten Ausführungsverlauf einklappen",
       "collapseWorkHistory": "Arbeitsverlauf einklappen",
       "creditUsage": "Credit-Nutzung",
-      "done": {
-        "allDone": "Alles erledigt – {{time}}",
-        "default": "Erledigt",
-        "delivered": "Geliefert am {{time}}",
-        "doneAndDusted": "Vollständig erledigt – {{time}}",
-        "finished": "Fertiggestellt um {{time}}",
-        "missionComplete": "Mission abgeschlossen, {{time}}",
-        "signedOff": "Abgemeldet um {{time}}",
-        "wrap": "Abgeschlossen – {{time}}",
-        "wrappedUp": "Abgeschlossen um {{time}}"
-      },
       "duration": {
         "hour_one": "{{count}} Stunde",
         "hour_other": "{{count}} Stunden",
@@ -2213,7 +2202,6 @@
       "goalFor": "Ziel für {{label}}",
       "groupedRunsFor_one": "{{count}} Ausführung für {{source}}",
       "groupedRunsFor_other": "{{count}} Ausführungen für {{source}}",
-      "justNow": "soeben",
       "keepGoing": "Fortsetzen",
       "keepGoingAt": "Fortsetzen · {{timestamp}}",
       "modelChangedTo": "Modell wurde auf {{model}} geändert",
@@ -2234,8 +2222,8 @@
       "viewActivityLogs": "Aktivitätsprotokolle anzeigen",
       "viewLogs": "Ausführungsprotokolle anzeigen",
       "waitingIn": "Warten",
-      "worked": "Ausgeführt",
-      "workedFor": "Ausgeführt in {{duration}}"
+      "workedFor": "Ausgeführt in {{duration}}",
+      "workingFor": "Seit {{duration}} in Arbeit"
     },
     "sharing": {
       "cancel": "Abbrechen",

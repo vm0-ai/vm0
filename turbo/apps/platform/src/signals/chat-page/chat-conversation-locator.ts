@@ -20,13 +20,13 @@ import {
 } from "ccstate";
 import { animationFrame, timeout } from "signal-timers";
 import {
-  applyCompletedWorkExpansion,
-  buildCompletedWorkFolding,
+  applyRunWorkExpansion,
+  buildRunWorkFolding,
   chatEventDisplayError,
-  completedWorkExpandedKeys$,
-  completedWorkExpandedKeysForScrollTarget,
   isRenderableAssistantEvent,
-} from "./completed-work-folding.ts";
+  runWorkExpandedKeys$,
+  runWorkExpandedKeysForScrollTarget,
+} from "./run-work-folding.ts";
 import { logger } from "../log.ts";
 import { messageDocumentToDisplayText } from "../okou-page/user-message-document-codec.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
@@ -353,19 +353,17 @@ function createVisibleTurns(
     );
     const runGroupVisibleGroups =
       runGroupFolding?.visibleGroups ?? activeGroups;
-    const completedWorkFolding = buildCompletedWorkFolding(
-      runGroupVisibleGroups,
-    );
-    const completedWorkExpandedKeys = completedWorkExpandedKeysForScrollTarget(
-      completedWorkFolding,
-      get(completedWorkExpandedKeys$),
+    const runWorkFolding = buildRunWorkFolding(runGroupVisibleGroups);
+    const runWorkExpandedKeys = runWorkExpandedKeysForScrollTarget(
+      runWorkFolding,
+      get(runWorkExpandedKeys$),
       targetEventId,
     );
     return turnsFromGroups(
-      applyCompletedWorkExpansion(
+      applyRunWorkExpansion(
         runGroupVisibleGroups,
-        completedWorkFolding,
-        completedWorkExpandedKeys,
+        runWorkFolding,
+        runWorkExpandedKeys,
       ),
     );
   });

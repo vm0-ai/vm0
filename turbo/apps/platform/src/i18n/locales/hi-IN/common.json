@@ -2179,17 +2179,6 @@
       "collapseGroupedHistory": "समूहीकृत रन इतिहास को संक्षिप्त करें",
       "collapseWorkHistory": "कार्य इतिहास संक्षिप्त करें",
       "creditUsage": "क्रेडिट उपयोग",
-      "done": {
-        "allDone": "सब हो गया - {{time}}",
-        "default": "हो गया",
-        "delivered": "{{time}} पर वितरित किया गया",
-        "doneAndDusted": "हो गया और झाड़ दिया गया - {{time}}",
-        "finished": "आपकी सेवा में, {{time}} पर समाप्त",
-        "missionComplete": "मिशन पूरा, {{time}}",
-        "signedOff": "{{time}} पर हस्ताक्षर किया गया",
-        "wrap": "वह एक आवरण था - {{time}}",
-        "wrappedUp": "{{time}} पर समाप्त हुआ"
-      },
       "duration": {
         "hour_one": "{{count}} घंटा",
         "hour_other": "{{count}} घंटे",
@@ -2213,7 +2202,6 @@
       "goalFor": "{{label}} के लिए लक्ष्य",
       "groupedRunsFor_one": "{{count}} रन {{source}} के लिए",
       "groupedRunsFor_other": "{{count}} रन {{source}} के लिए",
-      "justNow": "बस अब",
       "keepGoing": "जारी रखें",
       "keepGoingAt": "चलते रहें · {{timestamp}}",
       "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
@@ -2234,8 +2222,8 @@
       "viewActivityLogs": "गतिविधि लॉग देखें",
       "viewLogs": "रन लॉग देखें",
       "waitingIn": "प्रतीक्षा कर रहा है",
-      "worked": "काम किया",
-      "workedFor": "{{duration}} के लिए काम किया"
+      "workedFor": "{{duration}} के लिए काम किया",
+      "workingFor": "{{duration}} से काम जारी"
     },
     "sharing": {
       "cancel": "रद्द करें",

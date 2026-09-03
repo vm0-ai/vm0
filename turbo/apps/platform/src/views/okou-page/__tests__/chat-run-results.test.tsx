@@ -638,6 +638,7 @@ describe("chat lifecycle", () => {
       ).toBeTruthy();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+      expect(document.querySelector("[data-chat-run-work]")).toBeNull();
     });
 
     click(
@@ -660,22 +661,16 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps chat work visible while the run is active", async () => {
+  it("shows only Thinking before an active run has assistant output", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000008",
-      activeRunIds: ["run-work-folding-running"],
+      activeRunIds: ["run-work-folding-running-empty"],
       chatEvents: [
         {
           role: "user",
           content: "Draft the launch checklist",
-          runId: "run-work-folding-running",
+          runId: "run-work-folding-running-empty",
           createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Checking the remaining launch steps.",
-          runId: "run-work-folding-running",
-          createdAt: "2026-06-09T10:00:20Z",
         },
       ],
     });
@@ -687,13 +682,97 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Draft the launch checklist"),
-      ).toBeInTheDocument();
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+    });
+    expect(document.querySelector("[data-chat-run-work]")).toBeNull();
+  });
+
+  it("shows Working above one assistant message while the run is active", async () => {
+    mockChatLifecycle(context, {
+      threadId: "e7000000-0000-4000-a000-000000000028",
+      activeRunIds: ["run-work-folding-running-one"],
+      chatEvents: [
+        {
+          role: "user",
+          content: "Draft the launch checklist",
+          runId: "run-work-folding-running-one",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the remaining launch steps.",
+          runId: "run-work-folding-running-one",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e7000000-0000-4000-a000-000000000028",
+    });
+
+    const assistantMessage = await screen.findByText(
+      "Checking the remaining launch steps.",
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/^Working for /)).toBeInTheDocument();
       expect(
-        screen.getByText("Checking the remaining launch steps."),
-      ).toBeInTheDocument();
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
       expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
+    const workLabel = screen.getByText(/^Working for /);
+    expect(
+      workLabel.compareDocumentPosition(assistantMessage) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("folds earlier assistant messages while an active run keeps Thinking", async () => {
+    mockChatLifecycle(context, {
+      threadId: "e7000000-0000-4000-a000-000000000029",
+      activeRunIds: ["run-work-folding-running-many"],
+      chatEvents: [
+        {
+          role: "user",
+          content: "Draft the launch checklist",
+          runId: "run-work-folding-running-many",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the launch brief.",
+          runId: "run-work-folding-running-many",
+          createdAt: "2026-06-09T10:00:10Z",
+        },
+        {
+          role: "assistant",
+          content: "Checking the remaining launch steps.",
+          runId: "run-work-folding-running-many",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e7000000-0000-4000-a000-000000000029",
+    });
+
+    const expandButton = await screen.findByLabelText("Expand work history");
+    expect(expandButton).toHaveTextContent(/^Working for /);
+    expect(screen.queryByText("Checking the launch brief.")).toBeNull();
+    expect(
+      screen.getByText("Checking the remaining launch steps."),
+    ).toBeInTheDocument();
+    expect(document.querySelector("[data-thinking-indicator]")).not.toBeNull();
+
+    click(expandButton);
+    await expect(
+      screen.findByText("Checking the launch brief."),
+    ).resolves.toBeInTheDocument();
   });
 
   it("keeps completed chat work folded while a later run is active", async () => {
@@ -809,6 +888,7 @@ describe("chat lifecycle", () => {
     expect(
       screen.getByText("Launch status is summarized."),
     ).toBeInTheDocument();
+    expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
 
     click(expandButton);
 
@@ -863,7 +943,7 @@ describe("chat lifecycle", () => {
         "Worked for 40s",
         "A8",
       ],
-      usageAssistant: "A8",
+      usageContent: "A8",
       folds: [
         {
           label: "Worked for 30s",
@@ -883,7 +963,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000024",
       sequence: ["U1", "A2", "U2"],
       visibleOrder: ["U1", "A2", "U2"],
-      usageAssistant: "A2",
+      usageContent: "Worked for 10s",
       folds: [],
     },
     {
@@ -892,7 +972,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000025",
       sequence: ["U1", "A2", "A3", "U2"],
       visibleOrder: ["U1", "Worked for 20s", "A3", "U2"],
-      usageAssistant: "A3",
+      usageContent: "Worked for 10s",
       folds: [
         {
           label: "Worked for 20s",
@@ -907,7 +987,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000026",
       sequence: ["U1", "A2", "U2", "A3"],
       visibleOrder: ["U1", "A2", "U2", "A3"],
-      usageAssistant: "A3",
+      usageContent: "A3",
       folds: [],
     },
   ])(
@@ -917,7 +997,7 @@ describe("chat lifecycle", () => {
       threadId,
       sequence,
       visibleOrder,
-      usageAssistant,
+      usageContent,
       folds,
     }) => {
       const runId = `run-work-folding-${caseId}`;
@@ -1020,7 +1100,7 @@ describe("chat lifecycle", () => {
       ) as HTMLElement | null;
       expect(usageAssistantGroup).not.toBeNull();
       expect(
-        within(usageAssistantGroup!).getByText(usageAssistant),
+        within(usageAssistantGroup!).getByText(usageContent),
       ).toBeInTheDocument();
     },
   );
@@ -1109,11 +1189,11 @@ describe("chat lifecycle", () => {
     expect(responseColumn).not.toHaveClass("contents");
     expect(responseColumn).toContainElement(finalReplyElement);
 
-    const completedWorkFold = expandButton.parentElement;
-    expect(completedWorkFold).toHaveAttribute("data-chat-completed-work-fold");
-    expect(completedWorkFold).toHaveClass("-mx-2", "@[900px]:-mb-[15px]");
-    expect(completedWorkFold).not.toHaveClass("border-b", "pb-2");
-    expect(responseColumn).toContainElement(completedWorkFold);
+    const runWorkSection = expandButton.parentElement;
+    expect(runWorkSection).toHaveAttribute("data-chat-run-work");
+    expect(runWorkSection).toHaveClass("-mx-2", "@[900px]:-mb-[15px]");
+    expect(runWorkSection).not.toHaveClass("border-b", "pb-2");
+    expect(responseColumn).toContainElement(runWorkSection);
     expect(expandButton).toHaveClass(
       "mt-1.5",
       "min-h-9",
@@ -1502,7 +1582,39 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Expand work history")).toBeNull();
   });
 
-  it("does not fold a completed run with only a user message and final reply", async () => {
+  it("shows only Worked when a completed run has no assistant message", async () => {
+    mockChatLifecycle(context, {
+      threadId: "e7000000-0000-4000-a000-000000000030",
+      chatEvents: [
+        {
+          role: "user",
+          content: "Check the launch status",
+          runId: "run-work-folding-completed-empty",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-work-folding-completed-empty",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:05Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e7000000-0000-4000-a000-000000000030",
+    });
+
+    await expect(
+      screen.findByText("Worked for 5s"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Expand work history")).toBeNull();
+    expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+  });
+
+  it("shows Worked above a completed run with one final reply", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000017",
       chatEvents: [
@@ -1530,11 +1642,13 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Answer directly")).toBeInTheDocument();
       expect(screen.getByText("Direct answer.")).toBeInTheDocument();
+      expect(screen.getByText("Worked for 5s")).toBeInTheDocument();
       expect(screen.queryByLabelText("Expand work history")).toBeNull();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
     });
   });
 
-  it("does not fold a completed run when the only prior assistant message is thinking", async () => {
+  it("does not count Thinking as hidden work history", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000018",
       chatEvents: [
@@ -1571,12 +1685,12 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize the launch status"),
       ).toBeInTheDocument();
       expect(screen.getByText("Launch status is ready.")).toBeInTheDocument();
-      expect(screen.queryByText("Worked for 5s")).not.toBeInTheDocument();
+      expect(screen.getByText("Worked for 5s")).toBeInTheDocument();
       expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
   });
 
-  it("does not fold a completed run with a single message", async () => {
+  it("shows Worked without a chevron for a standalone completed message", async () => {
     mockChatLifecycle(context, {
       threadId: "e7000000-0000-4000-a000-000000000019",
       chatEvents: [
@@ -1597,6 +1711,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Standalone run result.")).toBeInTheDocument();
+      expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
       expect(screen.queryByLabelText("Expand work history")).toBeNull();
     });
   });

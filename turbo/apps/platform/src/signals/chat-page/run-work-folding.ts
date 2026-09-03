@@ -4,21 +4,21 @@ import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
   isChatEventContentTextType,
-  terminatedChatRunIds,
+  isChatRunTerminalEventType,
 } from "@okouai/api-contracts/contracts/chat-events";
 import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
 import type { ChatEventGroup, EnrichedChatEvent } from "./chat-event.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 
-const internalCompletedWorkExpandedKeys$ = state<Set<string>>(new Set());
+const internalRunWorkExpandedKeys$ = state<Set<string>>(new Set());
 
-export const completedWorkExpandedKeys$ = computed((get): Set<string> => {
-  return get(internalCompletedWorkExpandedKeys$);
+export const runWorkExpandedKeys$ = computed((get): Set<string> => {
+  return get(internalRunWorkExpandedKeys$);
 });
 
-export const toggleCompletedWorkExpanded$ = command(({ set }, key: string) => {
-  set(internalCompletedWorkExpandedKeys$, (prev) => {
+export const toggleRunWorkExpanded$ = command(({ set }, key: string) => {
+  set(internalRunWorkExpandedKeys$, (prev) => {
     const next = new Set(prev);
     if (next.has(key)) {
       next.delete(key);
@@ -29,16 +29,17 @@ export const toggleCompletedWorkExpanded$ = command(({ set }, key: string) => {
   });
 });
 
-export interface CompletedWorkFold {
+export interface RunWorkSection {
   readonly key: string;
-  readonly finalEventId: string;
+  readonly anchorEventId: string;
   readonly hiddenGroups: ChatEventGroup[];
-  readonly labelGroups: ChatEventGroup[];
+  readonly startTime: number;
+  readonly endTime?: number;
 }
 
-export interface CompletedWorkFolding {
+export interface RunWorkFolding {
   readonly visibleGroups: ChatEventGroup[];
-  readonly foldsByFinalEventId: Map<string, CompletedWorkFold>;
+  readonly sectionsByAnchorEventId: Map<string, RunWorkSection>;
 }
 
 export function chatEventDisplayError(event: ChatEvent): string | undefined {
@@ -73,46 +74,50 @@ export function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   );
 }
 
-export function completedWorkFoldForGroup(
-  completedWorkFolding: CompletedWorkFolding | null,
+function isRunWorkAssistantEvent(event: EnrichedChatEvent): boolean {
+  return event.eventType !== "run.queued" && isRenderableAssistantEvent(event);
+}
+
+export function runWorkSectionForGroup(
+  runWorkFolding: RunWorkFolding | null,
   group: ChatEventGroup,
-): CompletedWorkFold | null {
-  if (completedWorkFolding === null) {
+): RunWorkSection | null {
+  if (runWorkFolding === null) {
     return null;
   }
   return (
     group.events
       .map((event) => {
-        return completedWorkFolding.foldsByFinalEventId.get(event.id);
+        return runWorkFolding.sectionsByAnchorEventId.get(event.id);
       })
-      .find((fold) => {
-        return fold !== undefined;
+      .find((section) => {
+        return section !== undefined;
       }) ?? null
   );
 }
 
-export function completedWorkExpandedKeysForScrollTarget(
-  folding: CompletedWorkFolding | null,
+export function runWorkExpandedKeysForScrollTarget(
+  folding: RunWorkFolding | null,
   expandedKeys: ReadonlySet<string>,
   targetEventId: string | null,
 ): ReadonlySet<string> {
   if (folding === null || targetEventId === null) {
     return expandedKeys;
   }
-  const targetFold = Array.from(folding.foldsByFinalEventId.values()).find(
-    (fold) => {
-      return fold.hiddenGroups.some((group) => {
-        return group.events.some((event) => {
-          return event.id === targetEventId;
-        });
+  const targetSection = Array.from(
+    folding.sectionsByAnchorEventId.values(),
+  ).find((section) => {
+    return section.hiddenGroups.some((group) => {
+      return group.events.some((event) => {
+        return event.id === targetEventId;
       });
-    },
-  );
-  if (!targetFold || expandedKeys.has(targetFold.key)) {
+    });
+  });
+  if (!targetSection || expandedKeys.has(targetSection.key)) {
     return expandedKeys;
   }
   const next = new Set(expandedKeys);
-  next.add(targetFold.key);
+  next.add(targetSection.key);
   return next;
 }
 
@@ -136,31 +141,21 @@ function groupEventsByRole(
   return groups;
 }
 
-function groupEventsForCompletedWorkDisplay(
+function groupEventsForRunWorkDisplay(
   events: readonly EnrichedChatEvent[],
-  foldFinalEventIds: ReadonlySet<string>,
+  workAnchorEventIds: ReadonlySet<string>,
 ): ChatEventGroup[] {
   const groups: ChatEventGroup[] = [];
   for (const event of events) {
     const role = chatEventCompatibilityRole(event.eventType);
-    const forceStandalone = foldFinalEventIds.has(event.id);
+    const forceStandalone = workAnchorEventIds.has(event.id);
     const last = groups[groups.length - 1];
-    const lastHasFoldFinal =
+    const lastHasWorkAnchor =
       last?.events.some((candidate) => {
-        return foldFinalEventIds.has(candidate.id);
+        return workAnchorEventIds.has(candidate.id);
       }) ?? false;
-    const lastFoldFinal = last?.events.find((candidate) => {
-      return foldFinalEventIds.has(candidate.id);
-    });
-    const continuesFoldFinalRun =
-      lastFoldFinal?.runId !== undefined && lastFoldFinal.runId === event.runId;
 
-    if (
-      !forceStandalone &&
-      last &&
-      last.role === role &&
-      (!lastHasFoldFinal || continuesFoldFinalRun)
-    ) {
+    if (!forceStandalone && last && last.role === role && !lastHasWorkAnchor) {
       last.events.push(event);
       continue;
     }
@@ -203,15 +198,19 @@ function usageByRunIdFromGroups(
   );
 }
 
-function attachUsageToCompletedWorkGroups(
+function attachUsageToRunWorkGroups(
   groups: readonly ChatEventGroup[],
   usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
+  workAnchorEventIds: ReadonlySet<string>,
 ): ChatEventGroup[] {
   const lastAssistantGroupIndexByRunId = new Map<string, number>();
   for (const [index, group] of groups.entries()) {
     if (
       group.role !== "assistant" ||
-      !group.events.some(isRenderableAssistantEvent)
+      (!group.events.some(isRenderableAssistantEvent) &&
+        !group.events.some((event) => {
+          return workAnchorEventIds.has(event.id);
+        }))
     ) {
       continue;
     }
@@ -236,13 +235,7 @@ function attachUsageToCompletedWorkGroups(
   });
 }
 
-function isThinkingOnlyAssistantEvent(event: EnrichedChatEvent): boolean {
-  return (
-    event.eventType === "output.thinking" && event.thinking.trim().length > 0
-  );
-}
-
-function splitCompletedWorkEventsAtUsers(
+function splitRunWorkEventsAtUsers(
   events: readonly EnrichedChatEvent[],
 ): EnrichedChatEvent[][] {
   const phases: EnrichedChatEvent[][] = [];
@@ -263,93 +256,121 @@ function splitCompletedWorkEventsAtUsers(
   return phases;
 }
 
-function lastCompletedWorkEventIndex(
-  events: readonly EnrichedChatEvent[],
-  predicate: (event: EnrichedChatEvent) => boolean,
-): number {
-  for (let index = events.length - 1; index >= 0; index--) {
-    if (predicate(events[index]!)) {
-      return index;
+function eventTime(event: EnrichedChatEvent | undefined): number | null {
+  if (event === undefined) {
+    return null;
+  }
+  const timestamp = Date.parse(event.createdAt);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function firstEventTime(events: readonly EnrichedChatEvent[]): number | null {
+  for (const event of events) {
+    const timestamp = eventTime(event);
+    if (timestamp !== null) {
+      return timestamp;
     }
   }
-  return -1;
+  return null;
 }
 
-function completedWorkFinalEventIndex(
+function lastEventTime(events: readonly EnrichedChatEvent[]): number | null {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const timestamp = eventTime(events[index]);
+    if (timestamp !== null) {
+      return timestamp;
+    }
+  }
+  return null;
+}
+
+function lastEventMatching(
   events: readonly EnrichedChatEvent[],
-): number {
-  return lastCompletedWorkEventIndex(events, isRenderableAssistantEvent);
+  predicate: (event: EnrichedChatEvent) => boolean,
+): EnrichedChatEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!;
+    if (predicate(event)) {
+      return event;
+    }
+  }
+  return undefined;
 }
 
-function canFoldCompletedWorkTrailingEvent(event: EnrichedChatEvent): boolean {
-  const role = chatEventCompatibilityRole(event.eventType);
-  return (
-    role === "user" ||
-    (role === "assistant" && !isRenderableAssistantEvent(event))
-  );
-}
-
-interface CompletedWorkPhaseFolding {
+interface RunWorkPhaseFolding {
   readonly visibleEvents: readonly EnrichedChatEvent[];
-  readonly fold: CompletedWorkFold | null;
+  readonly section: RunWorkSection | null;
 }
 
-function foldCompletedWorkPhase(
+function foldRunWorkPhase(
   runId: string,
   events: readonly EnrichedChatEvent[],
-): CompletedWorkPhaseFolding {
-  const finalEventIndex = completedWorkFinalEventIndex(events);
-  const finalEvent =
-    finalEventIndex >= 0 ? events[finalEventIndex]! : undefined;
-  const precedingEvents =
-    finalEventIndex > 0 ? events.slice(0, finalEventIndex) : [];
-  const hiddenEvents = precedingEvents.filter((event) => {
-    return (
-      chatEventCompatibilityRole(event.eventType) !== "user" &&
-      !isThinkingOnlyAssistantEvent(event)
-    );
+  endTime: number | undefined,
+): RunWorkPhaseFolding {
+  const latestAssistantEvent = lastEventMatching(
+    events,
+    isRunWorkAssistantEvent,
+  );
+  const terminalEvent = lastEventMatching(events, (event) => {
+    return isChatRunTerminalEventType(event.eventType);
+  });
+  const anchorEvent = latestAssistantEvent ?? terminalEvent;
+  const startTime = firstEventTime(events);
+  if (anchorEvent === undefined || startTime === null) {
+    return { visibleEvents: events, section: null };
+  }
+
+  const anchorIndex = events.indexOf(anchorEvent);
+  const hiddenEvents = events.slice(0, anchorIndex).filter((event) => {
+    return isRunWorkAssistantEvent(event);
   });
   const userEvents = events.filter((event) => {
     return chatEventCompatibilityRole(event.eventType) === "user";
   });
-  const trailingEvents =
-    finalEventIndex >= 0 ? events.slice(finalEventIndex + 1) : [];
-  const trailingEventsCanFold = trailingEvents.every((event) => {
-    return canFoldCompletedWorkTrailingEvent(event);
-  });
-  if (
-    finalEvent === undefined ||
-    hiddenEvents.length === 0 ||
-    !trailingEventsCanFold
-  ) {
-    return { visibleEvents: events, fold: null };
-  }
+
   return {
-    visibleEvents: [
-      ...userEvents,
-      finalEvent,
-      ...trailingEvents.filter(isRenderableAssistantEvent),
-    ],
-    fold: {
-      key: `${runId}:${finalEvent.id}`,
-      finalEventId: finalEvent.id,
+    visibleEvents: [...userEvents, anchorEvent],
+    section: {
+      key: `${runId}:${events[0]!.id}`,
+      anchorEventId: anchorEvent.id,
       hiddenGroups: groupEventsByRole(hiddenEvents),
-      labelGroups: groupEventsByRole(events),
+      startTime,
+      ...(endTime === undefined ? {} : { endTime }),
     },
   };
 }
 
-export function buildCompletedWorkFolding(
+function terminalEventForRun(
+  events: readonly EnrichedChatEvent[],
+): EnrichedChatEvent | undefined {
+  return lastEventMatching(events, (event) => {
+    return isChatRunTerminalEventType(event.eventType);
+  });
+}
+
+function phaseEndTime(
+  phase: readonly EnrichedChatEvent[],
+  isFinalPhase: boolean,
+  terminalEvent: EnrichedChatEvent | undefined,
+): number | undefined {
+  if (!isFinalPhase) {
+    return lastEventTime(phase) ?? undefined;
+  }
+  if (terminalEvent === undefined) {
+    return undefined;
+  }
+  return eventTime(terminalEvent) ?? lastEventTime(phase) ?? undefined;
+}
+
+export function buildRunWorkFolding(
   groups: readonly ChatEventGroup[],
-): CompletedWorkFolding | null {
+): RunWorkFolding | null {
   const usageByRunId = usageByRunIdFromGroups(groups);
   const events = groups.flatMap((group) => {
     return group.events;
   });
-  const terminatedRunIds = terminatedChatRunIds(events);
   const visibleEvents: EnrichedChatEvent[] = [];
-  const folds: CompletedWorkFold[] = [];
-  let hasCompletedWorkPhaseBoundary = false;
+  const sections: RunWorkSection[] = [];
 
   for (let index = 0; index < events.length; ) {
     const runId = events[index]!.runId;
@@ -365,65 +386,68 @@ export function buildCompletedWorkFolding(
     }
 
     const runEvents = events.slice(index, endIndex);
-    if (!terminatedRunIds.has(runId) || runEvents.some(isCancelledRunEvent)) {
+    if (runEvents.some(isCancelledRunEvent)) {
       visibleEvents.push(...runEvents);
       index = endIndex;
       continue;
     }
 
-    const completedWorkEventGroups = splitCompletedWorkEventsAtUsers(runEvents);
-    if (completedWorkEventGroups.length > 1) {
-      hasCompletedWorkPhaseBoundary = true;
-    }
-    for (const completedWorkEvents of completedWorkEventGroups) {
-      const phaseFolding = foldCompletedWorkPhase(runId, completedWorkEvents);
+    const terminalEvent = terminalEventForRun(runEvents);
+    const phases = splitRunWorkEventsAtUsers(runEvents);
+    for (const [phaseIndex, phase] of phases.entries()) {
+      const phaseFolding = foldRunWorkPhase(
+        runId,
+        phase,
+        phaseEndTime(phase, phaseIndex === phases.length - 1, terminalEvent),
+      );
       visibleEvents.push(...phaseFolding.visibleEvents);
-      if (phaseFolding.fold !== null) {
-        folds.push(phaseFolding.fold);
+      if (phaseFolding.section !== null) {
+        sections.push(phaseFolding.section);
       }
     }
 
     index = endIndex;
   }
 
-  if (folds.length === 0 && !hasCompletedWorkPhaseBoundary) {
+  if (sections.length === 0) {
     return null;
   }
 
-  const foldFinalEventIds = new Set(
-    folds.map((fold) => {
-      return fold.finalEventId;
+  const workAnchorEventIds = new Set(
+    sections.map((section) => {
+      return section.anchorEventId;
     }),
   );
   return {
-    visibleGroups: attachUsageToCompletedWorkGroups(
-      groupEventsForCompletedWorkDisplay(visibleEvents, foldFinalEventIds),
+    visibleGroups: attachUsageToRunWorkGroups(
+      groupEventsForRunWorkDisplay(visibleEvents, workAnchorEventIds),
       usageByRunId,
+      workAnchorEventIds,
     ),
-    foldsByFinalEventId: new Map(
-      folds.map((fold) => {
-        return [fold.finalEventId, fold];
+    sectionsByAnchorEventId: new Map(
+      sections.map((section) => {
+        return [section.anchorEventId, section];
       }),
     ),
   };
 }
 
 /** Match the event ordering inside each outer page row after fold expansion. */
-export function applyCompletedWorkExpansion(
+export function applyRunWorkExpansion(
   groups: readonly ChatEventGroup[],
-  folding: CompletedWorkFolding | null,
+  folding: RunWorkFolding | null,
   expandedKeys: ReadonlySet<string>,
 ): ChatEventGroup[] {
   const visibleGroups = folding?.visibleGroups ?? groups;
   return visibleGroups.map((group) => {
-    const fold = completedWorkFoldForGroup(folding, group);
-    if (fold === null || !expandedKeys.has(fold.key)) {
+    const section = runWorkSectionForGroup(folding, group);
+    if (section === null || !expandedKeys.has(section.key)) {
       return group;
     }
     return {
       ...group,
       events: [
-        ...fold.hiddenGroups.flatMap((hiddenGroup) => {
+        ...section.hiddenGroups.flatMap((hiddenGroup) => {
           return hiddenGroup.events;
         }),
         ...group.events,

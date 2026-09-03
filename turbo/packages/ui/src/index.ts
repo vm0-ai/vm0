@@ -96,6 +96,10 @@ export {
   RunningIndicator,
   type RunningIndicatorProps,
 } from "./components/ui/running-indicator";
+export {
+  ElapsedTime,
+  type ElapsedTimeProps,
+} from "./components/ui/elapsed-time";
 export { Skeleton } from "./components/ui/skeleton";
 export { Slider } from "./components/ui/slider";
 export { Switch } from "./components/ui/switch";
