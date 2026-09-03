@@ -1306,6 +1306,7 @@ describe("Pi memory Phase 2 worker composition", () => {
     expect(Object.keys(terminalEvents[0] ?? {}).sort()).toStrictEqual([
       "claimedBaseVersionId",
       "claimedRevision",
+      "context",
       "durationMs",
       "errorClass",
       "leaseOwner",

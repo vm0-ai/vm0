@@ -573,6 +573,7 @@ describe("Pi memory Stage 1 worker", () => {
     expect(events).toHaveLength(1);
     expect(Object.keys(events[0] ?? {}).sort()).toStrictEqual([
       "attemptCount",
+      "context",
       "durationMs",
       "inputTokens",
       "memoryStorageId",
