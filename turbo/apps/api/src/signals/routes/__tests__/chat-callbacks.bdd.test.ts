@@ -17,6 +17,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
 } from "@okouai/core";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -1502,9 +1503,21 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses userMessage semantics for title and recommended follow-up context", async () => {
+  it("uses the optimized prompt and userMessage semantics for recommended follow-ups", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped chat actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: actor.userId,
+        orgId: actor.orgId,
+        orgRole: actor.orgRole,
+      },
+      { [FeatureSwitchKey.FollowUpOptimize]: true },
+    );
 
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
     if (!style) {
@@ -1542,6 +1555,7 @@ describe("CHAT-02: completed chat callback", () => {
     await flushWaitUntilForTest();
 
     const titlePrompts: string[] = [];
+    const followupSystemPrompts: string[] = [];
     const followupPrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
@@ -1550,7 +1564,12 @@ describe("CHAT-02: completed chat callback", () => {
         titlePrompts.push(body.messages[1]?.content ?? "");
         return "Structured Context";
       }
-      if (systemContent.includes("concise follow-up prompts")) {
+      if (
+        systemContent.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
+        followupSystemPrompts.push(systemContent);
         followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
           { prompt: "Continue the structured work", kind: "talk" },
@@ -1599,6 +1618,20 @@ describe("CHAT-02: completed chat callback", () => {
     });
     await flushWaitUntilForTest();
 
+    expect(followupSystemPrompts).toHaveLength(1);
+    expect(followupSystemPrompts[0]).toContain(
+      "These are quick replies, not task briefs.",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Match the user's language and conversational tone.",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Express exactly one intent in one simple clause or question.",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Return fewer than 3 suggestions, including an empty array",
+    );
+    expect(followupSystemPrompts[0]).not.toContain("Chinese");
     expect(followupPrompts).toHaveLength(1);
     for (const value of expectedContext) {
       expect(followupPrompts[0]).toContain(value);
