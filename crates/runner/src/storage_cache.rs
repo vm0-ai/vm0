@@ -12,13 +12,12 @@
 //! so `guest-download` reads the guest-local staged archive instead of
 //! re-fetching.
 //!
-//! Eligible fresh sandbox attempts can assign bounded cold identities
-//! to a runner owner before sandbox creation. That owner performs one full
-//! request, keeps the cache writer through atomic publication and the
-//! runner-wide permit through guest application, and stages only complete
-//! content. A terminal owner is drained before the unchanged remote URL is
-//! allowed to fall back to guest download.
-//! Reused live sandboxes continue through the ordinary guest-owned path.
+//! Eligible fresh and reused sandbox attempts can assign bounded cold
+//! identities to a runner owner before independent pre-spawn preparation.
+//! That owner performs one full request, keeps the cache writer through atomic
+//! publication and the runner-wide permit through guest application, and
+//! stages only complete content. A terminal owner is drained before the
+//! unchanged remote URL is allowed to fall back to guest download.
 //! Keying on both name and version gives same-version entries with different
 //! storage names separate collision-resistant staged filenames in normal
 //! operation, so they do not clobber each other on the guest tmpfs.
@@ -263,7 +262,7 @@ impl FreshDeliveryScanSummary {
     }
 }
 
-/// Runner-wide admission control for fresh archive delivery.
+/// Runner-wide admission control for bounded archive delivery.
 ///
 /// Clones share one semaphore, so concurrent executor attempts draw from the
 /// same `FRESH_DELIVERY_RUNNER_LIMIT`. For an admitted archive, the owned

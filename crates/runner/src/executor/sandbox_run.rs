@@ -1408,7 +1408,8 @@ pub(super) async fn destroy_sandbox_panic_safe(
 
 /// Run a job inside a reused (kept-alive) sandbox.
 ///
-/// Skips create + start. Re-registers proxy, fixes clock/entropy, then runs.
+/// Skips create + start. Starts bounded archive delivery, re-registers the
+/// proxy, fixes clock/entropy, then runs.
 pub(super) async fn execute_reused_sandbox(
     sandbox: Box<dyn Sandbox>,
     source_ip: &str,
