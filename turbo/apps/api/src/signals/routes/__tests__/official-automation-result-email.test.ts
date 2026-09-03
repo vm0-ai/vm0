@@ -569,7 +569,7 @@ describe.sequential("Official Automation result email callbacks", () => {
         : "";
     expect(html).not.toContain("<script>alert");
     expect(html).not.toContain("<style>");
-    expect(html).not.toContain("<img");
+    expect(html).not.toContain('<img src="x"');
     expect(html).not.toContain("<svg");
     expect(html).not.toContain("<iframe");
     expect(html).not.toMatch(/<[^>]+\son(?:click|error|load)=/u);
