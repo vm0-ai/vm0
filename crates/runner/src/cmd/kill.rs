@@ -484,7 +484,7 @@ async fn confirm() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
     use std::path::Path;
 
     use sandbox::SandboxControlTarget;
@@ -581,6 +581,72 @@ mod tests {
             control.recorded_kill_targets(),
             vec![SandboxControlTarget::sandbox("sbox-123")]
         );
+    }
+
+    #[tokio::test]
+    async fn managed_target_refuses_orphan_fallback_after_owner_control_failure() {
+        let workspace_base = tempfile::tempdir().unwrap();
+        let socket_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(socket_base.path());
+        control.push_kill_remote_result(Err(SandboxControlError::Connection(
+            "owner unavailable".into(),
+        )));
+        let target = make_target_at_base(
+            u32::MAX - 2_000,
+            "sandbox-managed-full-id",
+            workspace_base.path(),
+        );
+        let workspace = workspace_base
+            .path()
+            .join("workspaces/sandbox-managed-full-id");
+        let socket_dir = control.runtime_dir("sandbox-managed-full-id");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&socket_dir).await.unwrap();
+        let runner_pids = vec![101, 202];
+        let refreshed = ResolvedKillTarget {
+            target: target.clone(),
+            runner_pids: runner_pids.clone(),
+        };
+        let classifier_input = RefCell::new(None);
+        let discovery_called = Cell::new(false);
+
+        let outcome = kill_current_target_with_orphan_fallback(
+            target.clone(),
+            false,
+            &control,
+            || std::future::ready(Ok(refreshed)),
+            |pid, runner_pids| {
+                classifier_input.replace(Some((pid, runner_pids)));
+                std::future::ready(false)
+            },
+            || {
+                discovery_called.set(true);
+                std::future::ready(empty_process_discovery(true))
+            },
+        )
+        .await;
+
+        match &outcome {
+            KillOutcome::RefusedManagedControlFailed(error) => {
+                assert_eq!(error, "connection failed: owner unavailable")
+            }
+            other => panic!("expected managed control refusal, got {other:?}"),
+        }
+        assert_eq!(
+            classifier_input.into_inner(),
+            Some((target.pid, runner_pids))
+        );
+        assert!(!discovery_called.get());
+        assert_eq!(
+            control.recorded_kill_targets(),
+            vec![SandboxControlTarget::sandbox("sandbox-managed-full-id")]
+        );
+
+        let exit_code = finish_kill_outcome(&target, &target, &outcome, &control).await;
+
+        assert_eq!(exit_code, ExitCode::FAILURE);
+        assert!(workspace.exists());
+        assert!(socket_dir.exists());
     }
 
     #[tokio::test]
