@@ -198,6 +198,10 @@ describe("okou social command", () => {
     return mockConsoleError.mock.calls.flat().map(String).join("\n");
   }
 
+  function outputRequest(): unknown {
+    return (JSON.parse(output()) as { readonly request: unknown }).request;
+  }
+
   function parserErrorOutput(): string {
     return mockStderrWrite.mock.calls.flat().map(String).join("");
   }
@@ -287,6 +291,7 @@ describe("okou social command", () => {
       status: "complete",
       operation: "inspect",
     });
+    expect(outputRequest()).toStrictEqual({ thread: false });
   });
 
   it("canonicalizes supported URLs and routes X threads", async () => {
@@ -322,6 +327,7 @@ describe("okou social command", () => {
         canonicalUrl: "https://x.com/example/status/1",
       },
     });
+    expect(outputRequest()).toStrictEqual({ thread: true });
   });
 
   it.each([
@@ -369,6 +375,9 @@ describe("okou social command", () => {
           ? 30
           : 100,
     );
+    expect(outputRequest()).toStrictEqual(
+      kind === undefined ? { limit: 250 } : { limit: 250, kind },
+    );
   });
 
   it.each([
@@ -412,6 +421,62 @@ describe("okou social command", () => {
     if (hashtag) {
       expect(requestBody).toHaveProperty("input.hashtag", "launch");
     }
+    expect(outputRequest()).toStrictEqual({ limit: 10, hashtag });
+  });
+
+  it("reports provider-neutral search filters in the result envelope", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/social/request",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(
+            socialResponse(
+              "youtube_search",
+              { state: "complete", itemsReturned: 0 },
+              collectionResult("youtube_search"),
+            ),
+          );
+        },
+      ),
+    );
+
+    await socialCommand.parseAsync([
+      "node",
+      "okou",
+      "search",
+      "launch",
+      "--platform",
+      "youtube",
+      "--sort",
+      "views",
+      "--date",
+      "month",
+      "--type",
+      "shorts",
+      "--limit",
+      "25",
+      "--json",
+    ]);
+
+    expect(requestBody).toStrictEqual({
+      tool: "youtube_search",
+      input: {
+        query: "launch",
+        limit: 25,
+        sortBy: "views",
+        uploadDate: "month",
+        type: "shorts",
+      },
+    });
+    expect(outputRequest()).toStrictEqual({
+      limit: 25,
+      hashtag: false,
+      sort: "views",
+      date: "month",
+      type: "shorts",
+    });
   });
 
   it.each([
@@ -440,6 +505,7 @@ describe("okou social command", () => {
     await socialCommand.parseAsync(["node", "okou", "comments", url, "--json"]);
 
     expect(requestBody).toMatchObject({ tool: expectedTool });
+    expect(outputRequest()).toStrictEqual({ limit: 10 });
   });
 
   it.each([
@@ -472,6 +538,7 @@ describe("okou social command", () => {
     ]);
 
     expect(requestBody).toMatchObject({ tool: expectedTool });
+    expect(outputRequest()).toStrictEqual({});
   });
 
   it.each([
@@ -507,6 +574,7 @@ describe("okou social command", () => {
       tool: expectedTool,
       input: { custom_prompt: "Focus on outcomes" },
     });
+    expect(outputRequest()).toStrictEqual({ customPrompt: true });
   });
 
   it("aggregates pages, trims provider overshoot, and totals billing", async () => {
@@ -552,11 +620,13 @@ describe("okou social command", () => {
     expect(requests[1]).toHaveProperty("input.limit", 3);
     const result = JSON.parse(output()) as {
       readonly status: string;
+      readonly request: Readonly<Record<string, unknown>>;
       readonly data: { readonly items: readonly unknown[] };
       readonly collection: Readonly<Record<string, unknown>>;
       readonly billing: Readonly<Record<string, unknown>>;
     };
     expect(result.status).toBe("complete");
+    expect(result.request).toStrictEqual({ limit: 10 });
     expect(result.data.items).toHaveLength(10);
     expect(result.collection).toMatchObject({
       state: "caller_limited",
@@ -800,11 +870,20 @@ describe("okou social command", () => {
       return JSON.parse(String(value)) as Readonly<Record<string, unknown>>;
     });
     expect(records).toHaveLength(3);
-    expect(records[0]).toMatchObject({ kind: "page", page: 1 });
-    expect(records[1]).toMatchObject({ kind: "page", page: 2 });
+    expect(records[0]).toMatchObject({
+      kind: "page",
+      page: 1,
+      request: { limit: 10 },
+    });
+    expect(records[1]).toMatchObject({
+      kind: "page",
+      page: 2,
+      request: { limit: 10 },
+    });
     expect(records[2]).toMatchObject({
       kind: "summary",
       status: "complete",
+      request: { limit: 10 },
       collection: { pages: 2 },
     });
     expect(records[2]).not.toHaveProperty("data");
@@ -924,6 +1003,10 @@ describe("okou social command", () => {
       "https://facebook.com/permalink.php/extra?story_fbid=example",
     ],
     ["transcript", "https://facebook.com/story.php/extra?story_fbid=example"],
+    ["transcript", "https://fb.watch/example/extra"],
+    ["transcript", "https://vm.tiktok.com/example/extra"],
+    ["transcript", "https://vt.tiktok.com/example/extra"],
+    ["transcript", "https://tiktok.com/t/example/extra"],
     ["transcript", "https://youtube.com/results?v=example"],
     ["transcript", "https://youtu.be/example/extra"],
     ["transcript", "https://youtube.com/playlist/extra?list=example"],
@@ -1049,6 +1132,12 @@ describe("okou social command", () => {
       billing: { quantity: 2, creditsCharged: 6 },
       data: { status: "completed", artifact: { filename: "example.mp4" } },
     });
+    expect(outputRequest()).toStrictEqual({
+      resume: false,
+      maxDuration: 600,
+      quality: "720p",
+      format: "mp4",
+    });
   });
 
   it.each([
@@ -1143,6 +1232,12 @@ describe("okou social command", () => {
         kind: "download",
         downloadId: "6bdc3449-41ef-4624-a525-45bce09c67f0",
       },
+    });
+    expect(outputRequest()).toStrictEqual({
+      resume: true,
+      maxDuration: 600,
+      quality: "720p",
+      format: "mp4",
     });
   });
 

@@ -50,10 +50,26 @@ export interface SocialQueryTarget {
 
 export type SocialTarget = SocialQueryTarget | SocialUrlTarget;
 
+export interface SocialRequestMetadata {
+  readonly customPrompt?: boolean;
+  readonly date?: string;
+  readonly format?: string;
+  readonly hashtag?: boolean;
+  readonly kind?: string;
+  readonly limit?: number;
+  readonly maxDuration?: number;
+  readonly quality?: string;
+  readonly resume?: boolean;
+  readonly sort?: string;
+  readonly thread?: boolean;
+  readonly type?: string;
+}
+
 export interface SocialIntent {
   readonly operation: SocialOperation;
   readonly platform: SocialPlatform;
   readonly target: SocialTarget;
+  readonly requestMetadata: SocialRequestMetadata;
   readonly request: SocialKitRequest;
 }
 
@@ -298,11 +314,15 @@ function hasLegacyFacebookPostQuery(
   );
 }
 
+function shortVideoTargetKind(segments: readonly string[]): SocialTargetKind {
+  return segments.length === 1 && segments[0] ? "video" : "unknown";
+}
+
 function facebookTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
   if (hostname === "fb.watch") {
-    return segments[0] ? "video" : "unknown";
+    return shortVideoTargetKind(segments);
   }
   const videoIndex = segments.findIndex((segment) => {
     return segment === "reel" || segment === "reels" || segment === "videos";
@@ -374,12 +394,12 @@ function tiktokTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
   if (hostname === "vm.tiktok.com" || hostname === "vt.tiktok.com") {
-    return segments[0] ? "video" : "unknown";
+    return shortVideoTargetKind(segments);
   }
   if (segments[0]?.startsWith("@") && segments[1] === "video" && segments[2]) {
     return "video";
   }
-  if (segments[0] === "t" && segments[1]) {
+  if (segments.length === 2 && segments[0] === "t" && segments[1]) {
     return "video";
   }
   return segments.length === 1 &&
@@ -547,11 +567,13 @@ function urlIntent(
   target: SocialUrlTarget,
   tool: ManagedSocialKitToolName,
   input: Readonly<Record<string, unknown>>,
+  requestMetadata: SocialRequestMetadata,
 ): SocialIntent {
   return {
     operation,
     platform: target.platform,
     target,
+    requestMetadata,
     request: socialRequest(tool, input),
   };
 }
@@ -678,6 +700,7 @@ export function inspectIntent(
     target,
     inspectionTool(target, options.thread === true),
     { url: target.canonicalUrl },
+    { thread: options.thread === true },
   );
 }
 
@@ -688,24 +711,40 @@ export function postsIntent(
   if (options.kind !== undefined && target.platform !== "instagram") {
     return unsupported("--kind is supported only for Instagram profiles");
   }
+  const requestMetadata: SocialRequestMetadata = {
+    limit: options.limit,
+    ...(options.kind === undefined ? {} : { kind: options.kind }),
+  };
   switch (target.platform) {
     case "linkedin": {
       if (target.targetKind !== "company") {
         return unsupported("LinkedIn posts requires a company URL");
       }
-      return urlIntent("posts", target, "linkedin_company_posts", {
-        url: target.canonicalUrl,
-        limit: Math.min(options.limit, 50),
-      });
+      return urlIntent(
+        "posts",
+        target,
+        "linkedin_company_posts",
+        {
+          url: target.canonicalUrl,
+          limit: Math.min(options.limit, 50),
+        },
+        requestMetadata,
+      );
     }
     case "twitter": {
       if (target.targetKind !== "profile") {
         return unsupported("X posts requires a profile URL");
       }
-      return urlIntent("posts", target, "twitter_tweets", {
-        url: target.canonicalUrl,
-        limit: Math.min(options.limit, 100),
-      });
+      return urlIntent(
+        "posts",
+        target,
+        "twitter_tweets",
+        {
+          url: target.canonicalUrl,
+          limit: Math.min(options.limit, 100),
+        },
+        requestMetadata,
+      );
     }
     case "facebook": {
       return unsupported("Facebook profile posts are not currently supported");
@@ -728,25 +767,38 @@ export function postsIntent(
           ? "instagram_channel_reels"
           : "instagram_channel_posts",
         { url: target.canonicalUrl, limit: Math.min(options.limit, 100) },
+        requestMetadata,
       );
     }
     case "tiktok": {
       if (target.targetKind !== "profile") {
         return unsupported("TikTok posts requires a profile URL");
       }
-      return urlIntent("posts", target, "tiktok_channel_videos", {
-        url: target.canonicalUrl,
-        limit: Math.min(options.limit, 100),
-      });
+      return urlIntent(
+        "posts",
+        target,
+        "tiktok_channel_videos",
+        {
+          url: target.canonicalUrl,
+          limit: Math.min(options.limit, 100),
+        },
+        requestMetadata,
+      );
     }
     case "youtube": {
       if (target.targetKind !== "channel" && target.targetKind !== "playlist") {
         return unsupported("YouTube posts requires a channel or playlist URL");
       }
-      return urlIntent("posts", target, "youtube_videos", {
-        url: target.canonicalUrl,
-        limit: Math.min(options.limit, 100),
-      });
+      return urlIntent(
+        "posts",
+        target,
+        "youtube_videos",
+        {
+          url: target.canonicalUrl,
+          limit: Math.min(options.limit, 100),
+        },
+        requestMetadata,
+      );
     }
   }
 }
@@ -867,6 +919,13 @@ export function searchIntent(
     operation: "search",
     platform: options.platform,
     target,
+    requestMetadata: {
+      limit: options.limit,
+      hashtag: options.hashtag === true,
+      ...(options.sort === undefined ? {} : { sort: options.sort }),
+      ...(options.date === undefined ? {} : { date: options.date }),
+      ...(options.type === undefined ? {} : { type: options.type }),
+    },
     request: socialRequest(request.tool, request.input),
   };
 }
@@ -876,6 +935,10 @@ export function commentsIntent(
   options: CommentsOptions,
 ): SocialIntent {
   contentTarget(target, "comments");
+  const requestMetadata: SocialRequestMetadata = {
+    limit: options.limit,
+    ...(options.sort === undefined ? {} : { sort: options.sort }),
+  };
   const base = {
     url: target.canonicalUrl,
     limit: Math.min(options.limit, 100),
@@ -885,25 +948,49 @@ export function commentsIntent(
       if (options.sort !== undefined) {
         return unsupported("Facebook comments does not support --sort");
       }
-      return urlIntent("comments", target, "facebook_comments", base);
+      return urlIntent(
+        "comments",
+        target,
+        "facebook_comments",
+        base,
+        requestMetadata,
+      );
     }
     case "instagram": {
-      return urlIntent("comments", target, "instagram_comments", {
-        ...base,
-        ...(options.sort === undefined ? {} : { sortBy: options.sort }),
-      });
+      return urlIntent(
+        "comments",
+        target,
+        "instagram_comments",
+        {
+          ...base,
+          ...(options.sort === undefined ? {} : { sortBy: options.sort }),
+        },
+        requestMetadata,
+      );
     }
     case "tiktok": {
       if (options.sort !== undefined) {
         return unsupported("TikTok comments does not support --sort");
       }
-      return urlIntent("comments", target, "tiktok_comments", base);
+      return urlIntent(
+        "comments",
+        target,
+        "tiktok_comments",
+        base,
+        requestMetadata,
+      );
     }
     case "youtube": {
-      return urlIntent("comments", target, "youtube_comments", {
-        ...base,
-        ...(options.sort === undefined ? {} : { sortBy: options.sort }),
-      });
+      return urlIntent(
+        "comments",
+        target,
+        "youtube_comments",
+        {
+          ...base,
+          ...(options.sort === undefined ? {} : { sortBy: options.sort }),
+        },
+        requestMetadata,
+      );
     }
     case "linkedin":
     case "twitter": {
@@ -943,7 +1030,13 @@ export function transcriptIntent(target: SocialUrlTarget): SocialIntent {
       break;
     }
   }
-  return urlIntent("transcript", target, tool, { url: target.canonicalUrl });
+  return urlIntent(
+    "transcript",
+    target,
+    tool,
+    { url: target.canonicalUrl },
+    {},
+  );
 }
 
 export function summarizeIntent(
@@ -975,10 +1068,16 @@ export function summarizeIntent(
       break;
     }
   }
-  return urlIntent("summarize", target, tool, {
-    url: target.canonicalUrl,
-    ...(prompt === undefined ? {} : { custom_prompt: prompt }),
-  });
+  return urlIntent(
+    "summarize",
+    target,
+    tool,
+    {
+      url: target.canonicalUrl,
+      ...(prompt === undefined ? {} : { custom_prompt: prompt }),
+    },
+    { customPrompt: prompt !== undefined },
+  );
 }
 
 export function downloadPlatform(

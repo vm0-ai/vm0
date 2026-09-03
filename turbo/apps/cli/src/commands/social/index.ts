@@ -34,6 +34,7 @@ import {
   type SocialIntent,
   type SocialOperation,
   type SocialPlatform,
+  type SocialRequestMetadata,
   type SocialTarget,
 } from "./intents";
 
@@ -118,6 +119,7 @@ interface SocialOutputBase {
   readonly target:
     | SocialTarget
     | { readonly kind: "download"; readonly downloadId: string };
+  readonly request: SocialRequestMetadata;
   readonly collection: SocialCollectionOutput | null;
   readonly billing: SocialBilling | null;
   readonly warnings: readonly SocialWarning[];
@@ -213,6 +215,7 @@ function successfulOutput(
     operation: intent.operation,
     platform: intent.platform,
     target: intent.target,
+    request: intent.requestMetadata,
     data: response.result,
     collection: null,
     billing: billingForResponse(response),
@@ -593,6 +596,7 @@ function printCollectionPage(
       operation: intent.operation,
       platform: intent.platform,
       target: intent.target,
+      request: intent.requestMetadata,
       page: accumulator.pages,
       data: { items: page.returnedItems, context: page.context },
       collection: metadata,
@@ -614,6 +618,7 @@ function collectionOutput(
     operation: intent.operation,
     platform: intent.platform,
     target: intent.target,
+    request: intent.requestMetadata,
     collection,
     billing,
     warnings: collectionWarnings(collection),
@@ -912,6 +917,7 @@ function downloadOutput(
   target:
     | SocialTarget
     | { readonly kind: "download"; readonly downloadId: string },
+  request: SocialRequestMetadata,
 ): SocialOutput {
   return {
     kind: "result",
@@ -919,6 +925,7 @@ function downloadOutput(
     operation: "download",
     platform: response.platform,
     target,
+    request,
     data: response,
     collection: null,
     billing: response.billing
@@ -1132,7 +1139,16 @@ const downloadCommand = new Command()
               signal,
             );
             printJson(
-              downloadOutput(response, { kind: "download", downloadId }),
+              downloadOutput(
+                response,
+                { kind: "download", downloadId },
+                {
+                  resume: true,
+                  maxDuration: response.maxDuration,
+                  quality: response.quality,
+                  format: response.format,
+                },
+              ),
               options.json === true,
             );
           },
@@ -1167,7 +1183,15 @@ const downloadCommand = new Command()
             options.json === true,
             signal,
           );
-          printJson(downloadOutput(response, target), options.json === true);
+          printJson(
+            downloadOutput(response, target, {
+              resume: false,
+              maxDuration: parsed.data.maxDuration,
+              quality: parsed.data.quality,
+              format: parsed.data.format,
+            }),
+            options.json === true,
+          );
         },
       );
     });
