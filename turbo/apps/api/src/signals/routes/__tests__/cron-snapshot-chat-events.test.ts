@@ -285,10 +285,13 @@ function expectArchiveInvariants(
       ...(line.failureReason === undefined ? [] : ["failureReason"]),
     ].sort();
     expect(Object.keys(line).sort()).toStrictEqual(expectedKeys);
-    if (line.failureReason !== undefined) {
-      expect(line.eventType).toBe("run.failed");
-      expect(typeof line.failureReason).toBe("string");
-    }
+    expect(
+      line.failureReason === undefined || line.eventType === "run.failed",
+    ).toBeTruthy();
+    expect(
+      line.failureReason === undefined ||
+        typeof line.failureReason === "string",
+    ).toBeTruthy();
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
