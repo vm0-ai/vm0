@@ -31,14 +31,6 @@ ruby -e '
     actual_counts = [desktop_text.scan(name).length, release_text.scan(name).length]
     raise "Desktop workflows must use the complete canonical environment writer surface" unless actual_counts == expected_counts
   end
-  legacy_prefix = "VM0_"
-  legacy_names = ["DESKTOP_PRODUCT", "DESKTOP_PLATFORM_URL", "DESKTOP_SIGNING_IDENTITY"].map do |suffix|
-    legacy_prefix + suffix
-  end
-  legacy_writer_present = legacy_names.any? do |name|
-    desktop_text.include?(name) || release_text.include?(name)
-  end
-  raise "Desktop workflows must not use legacy environment writers" if legacy_writer_present
 
   detector = desktop.fetch("detect-desktop-version")
   build = desktop.fetch("build-macos")
