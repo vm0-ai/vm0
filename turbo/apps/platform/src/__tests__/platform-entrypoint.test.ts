@@ -10,6 +10,9 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const BOOTSTRAP_CONTENT_SELECTOR = ".app-bootstrap-skeleton__content";
+const BOOTSTRAP_AVATAR_SELECTOR = ".app-bootstrap-skeleton__avatar";
+const BOOTSTRAP_AVATAR_LAYERS_SELECTOR =
+  ".app-bootstrap-skeleton__avatar-layers";
 const INSTATUS_WIDGET_HOSTNAME = "api.dashboard.instatus.com";
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
@@ -112,6 +115,40 @@ describe.each(["app.vm0.ai", "app.okou.ai"])(
 
 describe("iOS PWA startup image entrypoint", () => {
   let portraitOrientation = true;
+  let setPortraitOrientation: (portrait: boolean) => void;
+
+  const matchesMediaQuery = (query: string): boolean => {
+    return (
+      query === "(prefers-color-scheme: dark)" ||
+      (query === "(orientation: portrait)" && portraitOrientation)
+    );
+  };
+
+  const mockBootstrapLayout = (): void => {
+    context.mocks.browser.boundingClientRect((element) => {
+      const content = element.closest(BOOTSTRAP_CONTENT_SELECTOR);
+      if (
+        !(content instanceof HTMLElement) ||
+        content.style.visibility !== "hidden" ||
+        content.style.pointerEvents !== "none" ||
+        !content.inert
+      ) {
+        return undefined;
+      }
+
+      if (element.matches(BOOTSTRAP_AVATAR_SELECTOR)) {
+        return portraitOrientation
+          ? { height: 64, width: 64, x: 169, y: 392 }
+          : { height: 64, width: 64, x: 405, y: 163 };
+      }
+      if (element.matches(BOOTSTRAP_AVATAR_LAYERS_SELECTOR)) {
+        return portraitOrientation
+          ? { height: 80, width: 80, x: 161, y: 384 }
+          : { height: 80, width: 80, x: 397, y: 155 };
+      }
+      return undefined;
+    });
+  };
 
   beforeEach(() => {
     portraitOrientation = true;
@@ -122,12 +159,11 @@ describe("iOS PWA startup image entrypoint", () => {
     context.mocks.browser.platform("iPhone");
     context.mocks.browser.maxTouchPoints(5);
     context.mocks.browser.screen({ height: 874, pixelRatio: 3, width: 402 });
-    context.mocks.browser.matchMedia((query) => {
-      return (
-        query === "(prefers-color-scheme: dark)" ||
-        (query === "(orientation: portrait)" && portraitOrientation)
-      );
-    });
+    const mediaQueries = context.mocks.browser.matchMedia(matchesMediaQuery);
+    setPortraitOrientation = (portrait) => {
+      portraitOrientation = portrait;
+      mediaQueries.setMatches(matchesMediaQuery);
+    };
   });
 
   afterEach(() => {
@@ -148,12 +184,13 @@ describe("iOS PWA startup image entrypoint", () => {
     ).toHaveLength(0);
   });
 
-  it("generates startup images through the production entrypoint when enabled", async () => {
+  it("measures an invisible skeleton probe for each generated orientation", async () => {
     const avatar = setupPlatformDocument();
     const content = document.querySelector(BOOTSTRAP_CONTENT_SELECTOR);
     if (!(content instanceof HTMLElement)) {
       throw new Error("Missing bootstrap content in the Platform index");
     }
+    mockBootstrapLayout();
     const image = context.mocks.browser.imageDimensions({
       height: 480,
       width: 480,
@@ -164,51 +201,68 @@ describe("iOS PWA startup image entrypoint", () => {
     startPlatformEntrypoint();
 
     expect(getComputedStyle(avatar).animationPlayState).toBe("paused");
-    expect(content.style.top).toBe("437px");
+    expect(content.style.top).toBe("");
     await waitFor(() => {
       expect(
         document.querySelectorAll('link[rel="apple-touch-startup-image"]'),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     });
 
-    const links = [
-      ...document.querySelectorAll<HTMLLinkElement>(
-        'link[rel="apple-touch-startup-image"]',
-      ),
-    ];
     expect(getComputedStyle(avatar).animationPlayState).toBe("running");
     expect(canvas.renders).toStrictEqual([
       {
         avatar: {
           centerX: 603,
-          centerY: 1311,
+          centerY: 1272,
           clipRadius: 96,
           height: 240,
           width: 240,
           x: 483,
-          y: 1191,
+          y: 1152,
         },
         background: "#19191b",
         height: 2622,
         width: 1206,
       },
-      {
-        avatar: {
-          centerX: 1311,
-          centerY: 603,
-          clipRadius: 96,
-          height: 240,
-          width: 240,
-          x: 1191,
-          y: 483,
-        },
-        background: "#19191b",
-        height: 1206,
-        width: 2622,
-      },
     ]);
+    const portraitLink = document.querySelector<HTMLLinkElement>(
+      'link[rel="apple-touch-startup-image"]',
+    );
+    expect(portraitLink).toMatchObject({
+      media: "screen and (orientation: portrait)",
+    });
+    expect(portraitLink?.getAttribute("href")).toBe(
+      "data:image/png;base64,AAAA",
+    );
+    expect(document.querySelectorAll(BOOTSTRAP_CONTENT_SELECTOR)).toHaveLength(
+      1,
+    );
+    expect(image.revokedUrls).toStrictEqual(["blob:mock-image-1"]);
+
+    setPortraitOrientation(false);
+    await waitFor(() => {
+      expect(canvas.renders).toHaveLength(2);
+    });
+    expect(canvas.renders[1]).toStrictEqual({
+      avatar: {
+        centerX: 1311,
+        centerY: 585,
+        clipRadius: 96,
+        height: 240,
+        width: 240,
+        x: 1191,
+        y: 465,
+      },
+      background: "#19191b",
+      height: 1206,
+      width: 2622,
+    });
     expect(
-      links.map((link) => {
+      [
+        ...document.querySelectorAll<HTMLLinkElement>(
+          'link[rel="apple-touch-startup-image"]',
+        ),
+      ].map((link) => {
         return { href: link.getAttribute("href"), media: link.media };
       }),
     ).toStrictEqual([
@@ -221,27 +275,30 @@ describe("iOS PWA startup image entrypoint", () => {
         media: "screen and (orientation: landscape)",
       },
     ]);
-    expect(image.revokedUrls).toStrictEqual(["blob:mock-image-1"]);
-  });
 
-  it("pins the bootstrap skeleton to the landscape startup image center", async () => {
-    portraitOrientation = false;
-    setupPlatformDocument();
-    const content = document.querySelector(BOOTSTRAP_CONTENT_SELECTOR);
-    if (!(content instanceof HTMLElement)) {
-      throw new Error("Missing bootstrap content in the Platform index");
-    }
-    context.mocks.browser.imageDimensions({ height: 480, width: 480 });
-    context.mocks.browser.canvasRendering();
-    setStartupImageFeatureSwitch(true);
-
-    startPlatformEntrypoint();
-
-    expect(content.style.top).toBe("201px");
+    setPortraitOrientation(true);
     await waitFor(() => {
-      expect(
-        document.querySelectorAll('link[rel="apple-touch-startup-image"]'),
-      ).toHaveLength(2);
+      expect(canvas.renders).toHaveLength(3);
     });
+    expect(
+      document.querySelectorAll(
+        'link[rel="apple-touch-startup-image"][media="screen and (orientation: portrait)"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('link[rel="apple-touch-startup-image"]'),
+    ).toHaveLength(2);
+    expect(
+      document.querySelector<HTMLLinkElement>(
+        'link[rel="apple-touch-startup-image"][media="screen and (orientation: portrait)"]',
+      ),
+    ).toBe(portraitLink);
+    expect(portraitLink?.getAttribute("href")).toBe(
+      "data:image/png;base64,AAAB",
+    );
+    expect(content.style.top).toBe("");
+    expect(document.querySelectorAll(BOOTSTRAP_CONTENT_SELECTOR)).toHaveLength(
+      1,
+    );
   });
 });
