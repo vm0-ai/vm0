@@ -367,16 +367,10 @@ function tiktokTargetKind(url: URL): SocialTargetKind {
 function youtubeTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
-  if (
-    (hostname === "youtu.be" && segments[0]) ||
-    hasQueryValue(url, "v")
-  ) {
+  if ((hostname === "youtu.be" && segments[0]) || hasQueryValue(url, "v")) {
     return "video";
   }
-  if (
-    (segments[0] === "shorts" || segments[0] === "live") &&
-    segments[1]
-  ) {
+  if ((segments[0] === "shorts" || segments[0] === "live") && segments[1]) {
     return "video";
   }
   if (segments[0] === "playlist" && hasQueryValue(url, "list")) {
