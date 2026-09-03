@@ -922,8 +922,6 @@ async function resolveAutomaticOAuthClient(
 }
 
 export type CustomConnectorAutomaticOAuthStateContext = {
-  readonly version: 1;
-  readonly oauthSetup: "automatic";
   readonly connectorId: string;
   readonly storageVersion: number;
   readonly issuer: string;
@@ -948,12 +946,18 @@ export type CustomConnectorAutomaticOAuthStateContext = {
     }
 );
 
+export type LegacyCustomConnectorAutomaticOAuthStateContext =
+  CustomConnectorAutomaticOAuthStateContext & {
+    readonly version: 1;
+    readonly oauthSetup: "automatic";
+  };
+
 interface CustomConnectorAutomaticOAuthAuthorization {
   readonly kind: "oauth";
   readonly authorizationUrl: string;
   readonly codeVerifier: string;
   readonly requestedScope: string | null;
-  readonly context: CustomConnectorAutomaticOAuthStateContext;
+  readonly context: LegacyCustomConnectorAutomaticOAuthStateContext;
 }
 
 async function discoverBoundAutomaticOAuthAuthority(
@@ -1066,7 +1070,7 @@ export async function prepareCustomConnectorAutomaticOAuthReauthorization(
     clientId: args.binding.clientId,
     tokenEndpointAuthMethod: args.binding.tokenEndpointAuthMethod,
   } as const;
-  const context: CustomConnectorAutomaticOAuthStateContext =
+  const context: LegacyCustomConnectorAutomaticOAuthStateContext =
     args.binding.registrationMethod === "dcr"
       ? {
           ...contextBase,
@@ -1183,7 +1187,7 @@ export async function prepareCustomConnectorAutomaticOAuthAuthorization(
     clientId: client.clientId,
     tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
   } as const;
-  const context: CustomConnectorAutomaticOAuthStateContext =
+  const context: LegacyCustomConnectorAutomaticOAuthStateContext =
     client.registrationMethod === "dcr"
       ? {
           ...contextBase,

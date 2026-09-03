@@ -23,7 +23,7 @@ export function NotFoundPage() {
         </div>
 
         <div className="flex flex-col items-center px-6 pb-10 sm:px-10">
-          <p className="relative -mt-4 inline-flex h-8 items-center rounded-full border border-primary/20 bg-background px-3 text-xs font-semibold text-primary">
+          <p className="relative -mt-4 inline-flex h-8 items-center rounded-full border border-primary/20 bg-background px-3 text-xs font-semibold text-brand-text">
             404
           </p>
           <h1 className="mt-7 text-2xl font-semibold tracking-tight text-foreground">

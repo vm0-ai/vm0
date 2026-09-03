@@ -1,11 +1,27 @@
 use std::time::Duration;
 
 use super::*;
+use httpmock::Method::GET;
+use httpmock::MockServer;
 use tokio_util::sync::CancellationToken;
+
+use crate::executor::tests::support::RUN_IN_SANDBOX_TEST_TIMEOUT;
+use crate::types::ExecutionContext;
 
 // -----------------------------------------------------------------------
 // Keep-alive sandbox reuse integration tests
 // -----------------------------------------------------------------------
+
+fn context_with_remote_storage(archive_url: &str, archive_size: usize) -> ExecutionContext {
+    let mut context = minimal_context();
+    let mut storage = api_storage("reused-archive", "/data", "v1", archive_url);
+    storage.archive_size = Some(archive_size as u64);
+    context.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: Vec::new(),
+    });
+    context
+}
 
 #[tokio::test]
 async fn execute_job_reuse_succeeds() {
@@ -99,6 +115,304 @@ async fn execute_job_reuse_bypasses_fresh_pre_spawn_admission() {
     assert_eq!(outcome.exit_code(), 0);
     assert_no_telemetry_action(&telemetry, "runner_fresh_pre_spawn_admission_wait");
     drop(holder);
+}
+
+#[tokio::test]
+async fn execute_job_reuse_stages_runner_owned_archive_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let registry_guard = crate::lock::acquire(dir.path().join("proxy-registry.json.lock"))
+        .await
+        .unwrap();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _budget_lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+    let server = MockServer::start_async().await;
+    let body = b"reused archive".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/reused-archive.tar.gz")
+                .header_missing("range");
+            then.status(200).body(body.clone());
+        })
+        .await;
+    let archive_url = server.url("/reused-archive.tar.gz");
+    let context = context_with_remote_storage(&archive_url, body.len());
+
+    let task = tokio::spawn(async move {
+        execute_job_reuse(
+            idle_sandbox,
+            context,
+            &config,
+            &default_params(),
+            CancellationToken::new(),
+        )
+        .await
+    });
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        while full_get.calls_async().await == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("archive request should start while reused proxy registration is blocked");
+    assert!(
+        !task.is_finished(),
+        "proxy lock should keep the reused run from reaching guest storage"
+    );
+    drop(registry_guard);
+
+    let (outcome, telemetry) = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, task)
+        .await
+        .expect("reused run should finish after proxy registration is released")
+        .expect("reused execution task should not panic");
+
+    assert_eq!(outcome.exit_code(), 0, "error={:?}", outcome.error());
+    full_get.assert_calls_async(1).await;
+    let writes = overrides.write_files_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].files.len(), 1);
+    assert_eq!(writes[0].files[0].content, body);
+    let manifests = overrides.storage_manifest_calls();
+    assert_eq!(manifests.len(), 1);
+    let manifest: guest_contracts::storage_manifest::Manifest =
+        serde_json::from_slice(&manifests[0].manifest_json).unwrap();
+    let staged_url = manifest.storages[0].archive_url.as_deref().unwrap();
+    assert!(staged_url.starts_with("file://"), "got: {staged_url}");
+    assert_ne!(staged_url, archive_url);
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_single_request",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_staged",
+        true,
+        None,
+    );
+}
+
+#[tokio::test]
+async fn execute_job_reuse_preserves_guest_fallback_after_runner_http_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _budget_lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+    let server = MockServer::start_async().await;
+    let body = b"reused fallback".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/reused-fallback.tar.gz")
+                .header_missing("range");
+            then.status(503);
+        })
+        .await;
+    let archive_url = server.url("/reused-fallback.tar.gz");
+    let context = context_with_remote_storage(&archive_url, body.len());
+
+    let (outcome, telemetry) = execute_job_reuse(
+        idle_sandbox,
+        context,
+        &config,
+        &default_params(),
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(outcome.exit_code(), 0, "error={:?}", outcome.error());
+    full_get.assert_calls_async(1).await;
+    assert!(overrides.write_files_calls().is_empty());
+    let manifests = overrides.storage_manifest_calls();
+    assert_eq!(manifests.len(), 1);
+    let manifest: guest_contracts::storage_manifest::Manifest =
+        serde_json::from_slice(&manifests[0].manifest_json).unwrap();
+    assert_eq!(
+        manifest.storages[0].archive_url.as_deref(),
+        Some(archive_url.as_str())
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_failed",
+        false,
+        Some("http-status"),
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_guest_fallback",
+        true,
+        Some("http-status"),
+    );
+    let operations = telemetry.pending_ops_snapshot();
+    let failed_index = operations
+        .iter()
+        .position(|(action, _, _)| action == "storage_cache_fresh_delivery_failed")
+        .unwrap();
+    let fallback_index = operations
+        .iter()
+        .position(|(action, _, _)| action == "storage_cache_fresh_delivery_guest_fallback")
+        .unwrap();
+    assert!(failed_index < fallback_index);
+}
+
+#[tokio::test]
+async fn execute_reused_sandbox_drains_archive_when_guest_state_restore_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let registry_guard = crate::lock::acquire(dir.path().join("proxy-registry.json.lock"))
+        .await
+        .unwrap();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_guest_state_restore_result(Err(sandbox_exec_error("restore failed")));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let server = MockServer::start_async().await;
+    let body = b"reused restore failure".to_vec();
+    let full_get = server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/reused-restore-failure.tar.gz")
+                .header_missing("range");
+            then.status(200).body(body.clone());
+        })
+        .await;
+    let archive_url = server.url("/reused-restore-failure.tar.gz");
+    let context = context_with_remote_storage(&archive_url, body.len());
+    let storage_lock_path = config.home.storage_lock("reused-archive", "v1");
+    let previous_storage = crate::storage_fingerprints::StorageFingerprints::default();
+
+    let task = tokio::spawn(async move {
+        let mut telemetry = test_telemetry(&config, &context);
+        let outcome = execute_reused_sandbox(
+            sandbox,
+            &source_ip,
+            &context,
+            &config,
+            &previous_storage,
+            &mut telemetry,
+            PreparedRunInputs::new(
+                RunControls::new(CancellationToken::new(), None),
+                prepare_run_payload_for_run(&context).unwrap(),
+            ),
+        )
+        .await;
+        (outcome, telemetry)
+    });
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        while full_get.calls_async().await == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("archive request should start before proxy registration completes");
+    assert!(
+        !task.is_finished(),
+        "proxy lock should keep reused preparation from reaching guest state restore"
+    );
+    drop(registry_guard);
+
+    let (outcome, telemetry) = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, task)
+        .await
+        .expect("guest state failure should drain prepared storage")
+        .expect("reused execution task should not panic");
+
+    assert_eq!(outcome.exit_code(), 1);
+    assert!(outcome.error().unwrap().contains("restore failed"));
+    full_get.assert_calls_async(1).await;
+    assert!(overrides.start_agent_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_cancelled",
+        true,
+        None,
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "storage_cache_fresh_delivery_drained",
+        true,
+        None,
+    );
+    assert!(matches!(
+        crate::lock::try_acquire_or_busy(storage_lock_path)
+            .await
+            .unwrap(),
+        crate::lock::TryLock::Acquired(_)
+    ));
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_job_reuse_rejects_invalid_storage_plan_before_proxy_registration() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let source_ip = sandbox.source_ip().to_string();
+    let (idle_sandbox, _budget_lease) =
+        make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
+    let mut context = minimal_context();
+    let mut artifact = api_artifact(
+        "memory",
+        "/home/user/.claude/projects/project",
+        "storage-id-1",
+        "version-2",
+        "https://storage.example/artifact.tar.gz",
+    );
+    artifact.archive_url = None;
+    context.storage_manifest = Some(StorageManifest {
+        storages: Vec::new(),
+        artifacts: vec![artifact],
+    });
+
+    let (outcome, telemetry) = execute_job_reuse(
+        idle_sandbox,
+        context,
+        &config,
+        &default_params(),
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(outcome.exit_code(), 1);
+    let error = outcome.error().unwrap();
+    assert!(error.contains("missing archiveUrl"), "got: {error}");
+    assert!(outcome.network_log_session.is_none());
+    assert!(overrides.start_agent_process_calls().is_empty());
+    let registry: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(registry["updatedAt"], 0);
+    assert_eq!(
+        registry["sandboxes"]
+            .as_object()
+            .map(|entries| entries.len()),
+        Some(0)
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_storage_manifest_apply",
+        false,
+        Some(error),
+    );
+    assert_telemetry_action(
+        &telemetry,
+        "runner_reused_sandbox_prepare",
+        false,
+        Some(error),
+    );
 }
 
 #[tokio::test]

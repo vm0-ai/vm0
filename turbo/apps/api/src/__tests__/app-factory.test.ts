@@ -1096,7 +1096,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the user-org realtime floor before route matching", async () => {
+    it("force-upgrades app clients below the failure-reason reader floor before route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
