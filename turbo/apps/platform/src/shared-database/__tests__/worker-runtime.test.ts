@@ -132,7 +132,7 @@ function failedChatEventRow(threadId: string, seqId: number): ChatEventRow {
     revokesEventId: null,
     eventType: "run.failed",
     payload: { error: `provider unavailable ${seqId}` },
-    failureReason: "provider_overloaded",
+    failureReason: "future_reason",
     contextType: null,
     contextId: null,
     runEventSequenceNumber: null,

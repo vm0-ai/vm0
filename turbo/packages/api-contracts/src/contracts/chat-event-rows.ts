@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { chatEventTypeSchema } from "./chat-events";
-import { runFailureReasonSchema } from "./run-failure-reasons";
+import { runFailureReasonTokenSchema } from "./run-failure-reasons";
 
 const requiredJsonValueSchema = z.unknown().refine((value) => {
   return value !== undefined;
@@ -41,7 +41,7 @@ const chatEventRowBaseSchema = z
 const failedChatEventRowSchema = chatEventRowBaseSchema
   .extend({
     eventType: z.literal("run.failed"),
-    failureReason: runFailureReasonSchema.optional(),
+    failureReason: runFailureReasonTokenSchema.optional(),
   })
   .strict();
 

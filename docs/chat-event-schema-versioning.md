@@ -25,6 +25,8 @@ API does not downgrade rows or Snapshot objects to retired versions.
 
 V7 `run.failed` readers accept an optional `failureReason` field and continue
 to accept historical rows that omit it. Other event types reject the field.
+The field uses the bounded failure-reason wire token, so prepared readers also
+preserve well-formed values that are newer than their known semantic taxonomy.
 
 Because existing V7 readers are strict, adding the optional field uses a
 reader-first rollout even though the version number does not change:

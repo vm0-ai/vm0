@@ -275,19 +275,19 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
         eventType: "run.failed",
         runId,
         payload: { error: "provider unavailable" },
-        failureReason: "provider_overloaded",
+        failureReason: "future_reason",
       }),
     );
     expect(chatEventSchema.parse(withReason)).toMatchObject({
       eventType: "run.failed",
       runId,
-      failureReason: "provider_overloaded",
+      failureReason: "future_reason",
     });
 
     expect(
       chatEventRowSchema.safeParse({
         ...canonicalRow({}),
-        failureReason: "provider_overloaded",
+        failureReason: "future_reason",
       }).success,
     ).toBe(false);
   });

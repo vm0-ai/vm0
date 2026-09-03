@@ -3,7 +3,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
 import { cronSnapshotChatEventsContract } from "@okouai/api-contracts/contracts/cron";
-import { runFailureReasonSchema } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import { runFailureReasonTokenSchema } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import { testChatEventSearchProjectionContract } from "@okouai/api-contracts/contracts/test-chat-event-search-projection";
 import { testChatEventSnapshotContract } from "@okouai/api-contracts/contracts/test-chat-event-snapshot";
 import {
@@ -284,7 +284,7 @@ function expectArchiveInvariants(
     expect(
       !Object.hasOwn(line, "failureReason") ||
         (line.eventType === "run.failed" &&
-          runFailureReasonSchema.safeParse(line.failureReason).success),
+          runFailureReasonTokenSchema.safeParse(line.failureReason).success),
     ).toBeTruthy();
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
@@ -432,7 +432,7 @@ describe("cron snapshot chat events", () => {
                   eventType: "run.failed",
                   runId: randomUUID(),
                   payload: { error: "provider unavailable" },
-                  failureReason: "provider_overloaded",
+                  failureReason: "future_reason",
                 }
               : row,
           )}\n`;
@@ -491,7 +491,7 @@ describe("cron snapshot chat events", () => {
       expect.objectContaining({
         id: firstParentRow.id,
         eventType: "run.failed",
-        failureReason: "provider_overloaded",
+        failureReason: "future_reason",
       }),
     );
     expect(
