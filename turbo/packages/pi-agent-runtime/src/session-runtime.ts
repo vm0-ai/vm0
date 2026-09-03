@@ -42,7 +42,10 @@ function initializePiSessionResourceRegistry(): void {
 function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
-  config: Pick<PiAgentModelConfig, "requestHeaders" | "serviceTier">,
+  config: Pick<
+    PiAgentModelConfig,
+    "accountId" | "dialect" | "requestHeaders" | "serviceTier" | "transport"
+  >,
 ) {
   return {
     name: model.provider,

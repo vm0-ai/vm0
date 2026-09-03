@@ -575,7 +575,7 @@ describe("hosted Artifact previews", () => {
     });
     const previewedArtifact = await findCatalogArtifact(owner.actor, site);
     expect(previewedArtifact?.thumbnail?.url).toMatch(
-      /^https:\/\/cdn\.okou\.io\/artifacts\/[0-9a-z]{10}\.webp$/u,
+      /^https:\/\/a\.okou\.io\/[0-9a-z]{10}\.webp$/u,
     );
     expect(owner.objectStore.puts).toStrictEqual(
       expect.arrayContaining([

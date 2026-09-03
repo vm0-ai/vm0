@@ -1717,23 +1717,34 @@ function valueToWorkflowComposerDoc(value: string): JSONContent {
   return { type: "doc", content };
 }
 
+function composerLeafText(node: ProseMirrorNode): string {
+  if (node.type.name === AGENT_MENTION_NODE_NAME) {
+    return agentMentionText(node);
+  }
+  if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
+    return chatThreadMentionText(node);
+  }
+  if (node.type.name === INLINE_TEMPLATE_NODE_NAME) {
+    const attachment = templateAttachmentNodeAttributes(node);
+    return `Select ${attachment.title} ${attachment.type} template`;
+  }
+  return node.type.name === "hardBreak" ? "\n" : "";
+}
+
 function nodeText(
   node: ProseMirrorNode,
   to: number = node.content.size,
 ): string {
-  return node.textBetween(0, to, "\n", (leafNode) => {
-    if (leafNode.type.name === AGENT_MENTION_NODE_NAME) {
-      return agentMentionText(leafNode);
-    }
-    if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
-      return chatThreadMentionText(leafNode);
-    }
-    if (leafNode.type.name === INLINE_TEMPLATE_NODE_NAME) {
-      const attachment = templateAttachmentNodeAttributes(leafNode);
-      return `Select ${attachment.title} ${attachment.type} template`;
-    }
-    return leafNode.type.name === "hardBreak" ? "\n" : "";
-  });
+  return node.textBetween(0, to, "\n", composerLeafText);
+}
+
+function workflowComposerClipboardText(slice: Slice): string {
+  return slice.content.textBetween(
+    0,
+    slice.content.size,
+    "\n",
+    composerLeafText,
+  );
 }
 
 function workflowComposerDocToString(editor: Editor): string {
@@ -2186,6 +2197,7 @@ function configureMountedWorkflowEditor(
 ): void {
   editor.setOptions({
     editorProps: {
+      clipboardTextSerializer: workflowComposerClipboardText,
       attributes: {
         "aria-label": i18n.t(($) => {
           return $.chat.composer.message;

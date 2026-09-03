@@ -19,6 +19,7 @@ const TERRA_MODEL = {
   apiKey: "test-key",
   model: "gpt-5.6-terra",
   api: "openai-responses" as const,
+  dialect: "openai-responses" as const,
   thinkingLevel: "low" as const,
 };
 
@@ -521,6 +522,7 @@ describe("official Pi AgentSession runtime", () => {
           model: "company-deepseek-production",
           catalogModel: "deepseek-v4-flash",
           api: "openai-responses",
+          dialect: "openai-responses",
           requestHeaders,
         },
         appendSystemPrompt: null,

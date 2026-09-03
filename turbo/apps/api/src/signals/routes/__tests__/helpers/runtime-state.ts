@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
-import type { ConnectorRuntimeTargetRegistration } from "@okouai/api-contracts/contracts/runners";
+import type {
+  ConnectorRuntimeTargetRegistration,
+  PiModelConfigV2,
+} from "@okouai/api-contracts/contracts/runners";
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
@@ -637,6 +640,18 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
     action: "mutate-runner-job-secret-value-environment-keys",
     run_id: runId,
     mode,
+  });
+}
+
+export async function setRunnerJobPiContextAsV2Writer(
+  context: TestContext,
+  runId: string,
+  piModelConfig: PiModelConfigV2,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-runner-job-pi-context-as-v2-writer",
+    run_id: runId,
+    pi_model_config: piModelConfig,
   });
 }
 

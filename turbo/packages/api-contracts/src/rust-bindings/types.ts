@@ -7,7 +7,8 @@ import {
   artifactMissingRootPolicySchema,
   builtInModelProviderConnectionSourceSchema,
   piLaunchConfigSchema,
-  piModelConfigSchema,
+  piModelConfigLegacySchema,
+  piModelConfigV2Schema,
   runnersModelProviderFailuresContract,
   sessionHistoryEncodingSchema,
   storageMountEntrySchema,
@@ -217,7 +218,7 @@ export const rustTypeBindings = [
     ],
   },
   {
-    schema: piModelConfigSchema,
+    schema: piModelConfigLegacySchema,
     rustModulePath: ["runners", "runs"],
     rustTypeName: "PiModelConfig",
     direction: "response",
@@ -312,6 +313,102 @@ export const rustTypeBindings = [
           ANTHROPIC_AUTH_TOKEN: ["Anthropic authentication token."],
           OPENAI_API_KEY: ["OpenAI-compatible API key."],
           CHATGPT_ACCESS_TOKEN: ["ChatGPT access token."],
+        },
+      },
+    ],
+  },
+  {
+    schema: piModelConfigV2Schema,
+    rustModulePath: ["runners", "runs"],
+    rustTypeName: "PiModelConfigV2",
+    direction: "response",
+    fieldTypeOverrides: {
+      environment: "String",
+      secretName: "String",
+    },
+    declarations: [
+      {
+        rustTypeName: "PiModelConfigV2",
+        rustDoc: ["API-owned dialect-aware non-secret Pi model configuration."],
+        fields: {
+          schemaVersion: ["Pi model configuration generation."],
+          dialect: ["Native Pi request dialect selected by the route."],
+          transport: ["Transport policy selected by the route."],
+          provider: ["Native Pi catalog provider selected by the route."],
+          baseUrl: ["Exact base URL used for model requests."],
+          model: ["Exact provider model identifier sent with requests."],
+          catalogModel: [
+            "Optional native Pi catalog model used for trusted public Responses metadata.",
+          ],
+          thinkingLevel: ["Explicit Pi thinking level."],
+          serviceTier: ["Optional public Responses service tier."],
+          credentialBindings: [
+            "Bounded non-secret credential bindings materialized only at an execution edge.",
+          ],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigV2Dialect",
+        rustDoc: ["Native Pi request dialects supported by this generation."],
+        variants: {
+          "openai-responses": ["Public OpenAI Responses dialect."],
+          "openai-codex-responses": ["ChatGPT Codex Responses dialect."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigV2Provider",
+        rustDoc: ["Native Pi catalog providers supported by this generation."],
+        variants: {
+          deepseek: ["DeepSeek provider."],
+          openai: ["OpenAI public API provider."],
+          openrouter: ["OpenRouter provider."],
+          "openai-codex": ["OpenAI Codex subscription provider."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigV2ThinkingLevel",
+        rustDoc: ["Thinking levels supported by Pi sessions."],
+        variants: {
+          off: ["Disable model thinking."],
+          minimal: ["Minimal thinking."],
+          low: ["Low thinking."],
+          medium: ["Medium thinking."],
+          high: ["High thinking."],
+          xhigh: ["Extra-high thinking."],
+          max: ["Maximum thinking."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigV2ServiceTier",
+        rustDoc: ["Public Responses request service tiers."],
+        variants: {
+          priority: ["OpenAI priority service tier."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigV2CredentialBinding",
+        rustDoc: ["One non-secret execution-edge credential binding."],
+        fields: {
+          environment: ["Sandbox environment entry containing the value."],
+          secretName: ["API-owned encrypted secret containing the value."],
+          credentialHeader: [
+            "Optional non-secret custom gateway header policy.",
+          ],
+        },
+        variants: {
+          "api-key": ["Public Responses API-key binding."],
+          "access-token": ["ChatGPT access-token binding."],
+          "account-id": ["ChatGPT account-ID binding."],
+        },
+      },
+      {
+        rustTypeName: "PiModelConfigV2CredentialBindingApiKeyCredentialHeader",
+        rustDoc: ["Non-secret custom gateway credential header policy."],
+        fields: {
+          name: ["Request header name."],
+          valueTemplate: [
+            "Header value template containing the credential placeholder exactly once.",
+          ],
         },
       },
     ],

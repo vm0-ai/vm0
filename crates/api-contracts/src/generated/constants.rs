@@ -127,6 +127,12 @@ pub mod runners {
     /// Rust runners use this shared contract value to split target batches before calling the API.
     pub const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX: u64 = 256;
 
+    /// Current dialect-aware Pi model configuration generation.
+    pub const PI_MODEL_CONFIG_CURRENT_GENERATION: u32 = 2;
+
+    /// Legacy unversioned Pi model configuration generation.
+    pub const PI_MODEL_CONFIG_LEGACY_GENERATION: u32 = 1;
+
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
@@ -134,6 +140,9 @@ pub mod runners {
     /// Maximum cooperative user-cancellation recovery window enforced by runners.
     /// The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.
     pub const RUNNER_CANCELLATION_RECOVERY_GRACE_MS: u64 = 90000;
+
+    /// Maximum Pi model configuration generations advertised by one Runner claim.
+    pub const RUNNER_CLAIM_PI_MODEL_CONFIG_GENERATIONS_MAX: u64 = 8;
 
     /// Maximum configured runner hostname length accepted by the runner-facing API.
     /// Rust runners use JavaScript UTF-16 string length semantics when enforcing this shared boundary.

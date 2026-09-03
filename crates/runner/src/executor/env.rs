@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::runners::PI_MODEL_CONFIG_CURRENT_GENERATION;
 use api_contracts::generated::types::runners::{
-    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig},
+    runs::{CodexRuntimeConfig, PiLaunchConfig, PiModelConfig, PiModelConfigV2},
     storage::ArtifactEntryMissingRootPolicy,
 };
 use guest_contracts::cli_agent_session_id::is_valid_cli_agent_session_id;
@@ -206,9 +207,9 @@ fn is_pi_credential_secret_name(value: &str) -> bool {
         && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
-fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
+fn validate_legacy_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
     let model: PiModelConfig = serde_json::from_value(value.clone())
-        .map_err(|error| format!("Pi model config is invalid: {error}"))?;
+        .map_err(|error| format!("Pi legacy model config is invalid: {error}"))?;
     url::Url::parse(&model.base_url)
         .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
     if model.model.is_empty() {
@@ -218,6 +219,252 @@ fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
         return Err("Pi model config credentialSecretName is invalid".to_string());
     }
     Ok(())
+}
+
+fn has_exact_object_fields(
+    object: &serde_json::Map<String, serde_json::Value>,
+    required: &[&str],
+    allowed: &[&str],
+) -> bool {
+    required.iter().all(|field| object.contains_key(*field))
+        && object
+            .keys()
+            .all(|field| allowed.iter().any(|allowed_field| field == allowed_field))
+}
+
+fn is_valid_pi_credential_header(value: &serde_json::Value) -> bool {
+    let Some(header) = value.as_object() else {
+        return false;
+    };
+    if !has_exact_object_fields(
+        header,
+        &["name", "valueTemplate"],
+        &["name", "valueTemplate"],
+    ) {
+        return false;
+    }
+    let Some(name) = header.get("name").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let mut name_bytes = name.bytes();
+    if name.is_empty()
+        || name.len() > 128
+        || !name_bytes
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphabetic())
+        || !name_bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
+        return false;
+    }
+    let Some(template) = header
+        .get("valueTemplate")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+    if template.is_empty()
+        || template.encode_utf16().count() > 1024
+        || template.contains('\r')
+        || template.contains('\n')
+        || template.match_indices("{{secret}}").count() != 1
+    {
+        return false;
+    }
+    let static_template = template.replacen("{{secret}}", "", 1);
+    !static_template.contains("{{") && !static_template.contains("}}")
+}
+
+fn validate_pi_v2_credential_bindings(
+    value: &serde_json::Value,
+    dialect: &str,
+) -> Result<(), String> {
+    let Some(bindings) = value.as_array() else {
+        return Err("Pi model config credentialBindings is invalid".to_string());
+    };
+    if !(1..=2).contains(&bindings.len()) {
+        return Err("Pi model config credentialBindings count is invalid".to_string());
+    }
+    let mut kinds: Vec<&str> = Vec::with_capacity(bindings.len());
+    for binding in bindings {
+        let Some(object) = binding.as_object() else {
+            return Err("Pi model config credential binding is invalid".to_string());
+        };
+        let Some(kind) = object.get("kind").and_then(serde_json::Value::as_str) else {
+            return Err("Pi model config credential binding kind is invalid".to_string());
+        };
+        if kinds.contains(&kind) {
+            return Err("Pi model config credential binding kind is duplicated".to_string());
+        }
+        kinds.push(kind);
+        match kind {
+            "api-key" => {
+                if !has_exact_object_fields(
+                    object,
+                    &["kind", "environment", "secretName"],
+                    &["kind", "environment", "secretName", "credentialHeader"],
+                ) || object
+                    .get("environment")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("OPENAI_API_KEY")
+                {
+                    return Err("Pi API-key binding is invalid".to_string());
+                }
+                let known_secret = matches!(
+                    object.get("secretName").and_then(serde_json::Value::as_str),
+                    Some(
+                        "DEEPSEEK_API_KEY"
+                            | "OPENAI_API_KEY"
+                            | "OPENROUTER_API_KEY"
+                            | "VERCEL_AI_GATEWAY_API_KEY"
+                            | "OKOU_MODEL_PROVIDER_API_KEY"
+                    )
+                );
+                if !known_secret
+                    || object
+                        .get("credentialHeader")
+                        .is_some_and(|header| !is_valid_pi_credential_header(header))
+                {
+                    return Err("Pi API-key binding is invalid".to_string());
+                }
+            }
+            "access-token" => {
+                if !has_exact_object_fields(
+                    object,
+                    &["kind", "environment", "secretName"],
+                    &["kind", "environment", "secretName"],
+                ) || object
+                    .get("environment")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("CHATGPT_ACCESS_TOKEN")
+                    || object.get("secretName").and_then(serde_json::Value::as_str)
+                        != Some("CHATGPT_ACCESS_TOKEN")
+                {
+                    return Err("Pi access-token binding is invalid".to_string());
+                }
+            }
+            "account-id" => {
+                if !has_exact_object_fields(
+                    object,
+                    &["kind", "environment", "secretName"],
+                    &["kind", "environment", "secretName"],
+                ) || object
+                    .get("environment")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("CHATGPT_ACCOUNT_ID")
+                    || object.get("secretName").and_then(serde_json::Value::as_str)
+                        != Some("CHATGPT_ACCOUNT_ID")
+                {
+                    return Err("Pi account-ID binding is invalid".to_string());
+                }
+            }
+            _ => return Err("Pi credential binding kind is unsupported".to_string()),
+        }
+    }
+    let valid_dialect_bindings = match dialect {
+        "openai-responses" => kinds.as_slice() == ["api-key"],
+        "openai-codex-responses" => {
+            kinds.len() == 2 && kinds.contains(&"access-token") && kinds.contains(&"account-id")
+        }
+        _ => false,
+    };
+    if !valid_dialect_bindings {
+        return Err("Pi credential bindings do not match the route dialect".to_string());
+    }
+    Ok(())
+}
+
+fn validate_pi_model_config_v2(value: &serde_json::Value) -> Result<(), String> {
+    let model: PiModelConfigV2 = serde_json::from_value(value.clone())
+        .map_err(|error| format!("Pi model config v2 is invalid: {error}"))?;
+    if model.schema_version != i64::from(PI_MODEL_CONFIG_CURRENT_GENERATION) {
+        return Err("Pi model config schemaVersion is unsupported".to_string());
+    }
+    url::Url::parse(&model.base_url)
+        .map_err(|_| "Pi model config baseUrl is invalid".to_string())?;
+    if model.model.is_empty() || model.model.encode_utf16().count() > 512 {
+        return Err("Pi model config model is invalid".to_string());
+    }
+    let Some(object) = value.as_object() else {
+        return Err("Pi model config v2 is invalid".to_string());
+    };
+    if !has_exact_object_fields(
+        object,
+        &[
+            "schemaVersion",
+            "dialect",
+            "transport",
+            "provider",
+            "baseUrl",
+            "model",
+            "credentialBindings",
+        ],
+        &[
+            "schemaVersion",
+            "dialect",
+            "transport",
+            "provider",
+            "baseUrl",
+            "model",
+            "catalogModel",
+            "thinkingLevel",
+            "serviceTier",
+            "credentialBindings",
+        ],
+    ) {
+        return Err("Pi model config v2 fields are invalid".to_string());
+    }
+    if object.get("transport").and_then(serde_json::Value::as_str) != Some("sse") {
+        return Err("Pi model config transport must be sse".to_string());
+    }
+    if object
+        .get("catalogModel")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|catalog_model| {
+            catalog_model.is_empty() || catalog_model.encode_utf16().count() > 512
+        })
+    {
+        return Err("Pi model config catalogModel is invalid".to_string());
+    }
+    let dialect = object
+        .get("dialect")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Pi model config dialect is invalid".to_string())?;
+    let provider = object
+        .get("provider")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Pi model config provider is invalid".to_string())?;
+    match dialect {
+        "openai-responses" if provider == "openai-codex" => {
+            return Err("Pi public Responses provider is invalid".to_string());
+        }
+        "openai-codex-responses"
+            if provider != "openai-codex"
+                || object.contains_key("catalogModel")
+                || object.contains_key("serviceTier") =>
+        {
+            return Err("Pi Codex Responses route is invalid".to_string());
+        }
+        "openai-responses" | "openai-codex-responses" => {}
+        _ => return Err("Pi model config dialect is unsupported".to_string()),
+    }
+    validate_pi_v2_credential_bindings(
+        object
+            .get("credentialBindings")
+            .ok_or_else(|| "Pi model config credentialBindings is missing".to_string())?,
+        dialect,
+    )
+}
+
+fn validate_pi_model_config(value: &serde_json::Value) -> Result<(), String> {
+    match value.get("schemaVersion") {
+        None => validate_legacy_pi_model_config(value),
+        Some(serde_json::Value::Number(generation))
+            if generation.as_u64() == Some(u64::from(PI_MODEL_CONFIG_CURRENT_GENERATION)) =>
+        {
+            validate_pi_model_config_v2(value)
+        }
+        Some(_) => Err("Pi model config generation is unsupported".to_string()),
+    }
 }
 
 fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), String> {
