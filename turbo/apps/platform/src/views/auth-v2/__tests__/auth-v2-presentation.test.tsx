@@ -8,6 +8,8 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
+  platformOkouWordmarkDarkImg,
+  platformOkouWordmarkLightImg,
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../../lib/static-assets.ts";
@@ -206,6 +208,31 @@ describe("auth v2 presentation", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Light theme enabled");
   });
 
+  it("switches both Okou wordmarks with the resolved theme", async () => {
+    const user = userEvent.setup();
+    context.mocks.browser.matchMedia(false);
+    setBrowserUrl("https://app.okou.ai/sign-in");
+
+    detachedSetupPage({ context, path: "/sign-in" });
+
+    await screen.findByRole("heading", {
+      name: "Sign in to Okou",
+    });
+    const themeToggle = buttonByLabel("Toggle theme");
+    const homeLogo = screen.getByAltText("Okou");
+    const cardLogo = screen
+      .getByTestId("auth-v2-brand-logo")
+      .querySelector("img");
+    expect(cardLogo).not.toBeNull();
+    expect(homeLogo).toHaveAttribute("src", platformOkouWordmarkDarkImg);
+    expect(cardLogo).toHaveAttribute("src", platformOkouWordmarkDarkImg);
+
+    await user.click(themeToggle);
+
+    expect(homeLogo).toHaveAttribute("src", platformOkouWordmarkLightImg);
+    expect(cardLogo).toHaveAttribute("src", platformOkouWordmarkLightImg);
+  });
+
   it("localizes Okou app copy while keeping document metadata English", async () => {
     useJapaneseLocale();
     setBrowserUrl("https://app.okou.ai/sign-up");
@@ -221,7 +248,9 @@ describe("auth v2 presentation", () => {
       screen.getByRole("region", { name: "アカウントを作成" }),
     ).toHaveAccessibleDescription("ようこそ！始めるには詳細を入力してください");
     expect(linkByLabel("Okou のホームに移動")).toHaveAttribute("href", "/");
-    expect(screen.queryByTestId("auth-v2-brand-logo")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("auth-v2-brand-logo").querySelector("img"),
+    ).toHaveAttribute("src", platformOkouWordmarkDarkImg);
     expect(heading).toBeVisible();
     expect(document.title).toBe("Sign up | Okou");
   });

@@ -1,15 +1,22 @@
 import { useGet } from "ccstate-react";
 
+import {
+  platformOkouWordmarkDarkImg,
+  platformOkouWordmarkLightImg,
+} from "../../lib/static-assets.ts";
 import { brandName$, type BrandName } from "../../signals/branding.ts";
+import { theme$ } from "../../signals/theme.ts";
 
 type ProductBrandMarkSize = "default" | "compact" | "small";
 
 function Vm0BrandMark({
   size,
   label,
+  decorative,
 }: {
   size: ProductBrandMarkSize;
   label: string;
+  decorative: boolean;
 }) {
   const dimensions =
     size === "default"
@@ -26,8 +33,9 @@ function Vm0BrandMark({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className="text-foreground"
-      role="img"
-      aria-label={label}
+      role={decorative ? undefined : "img"}
+      aria-hidden={decorative || undefined}
+      aria-label={decorative ? undefined : label}
     >
       <path
         d="M13.3915 0.0627979C13.2455 -0.0209506 13.0657 -0.020839 12.9198 0.0630906L1.0053 6.91543C0.692394 7.09539 0.690093 7.54442 1.00114 7.72755L12.9156 14.7423C13.0636 14.8295 13.2475 14.8296 13.3957 14.7426L25.3445 7.72785C25.6562 7.54485 25.6539 7.09497 25.3404 6.91514L13.3915 0.0627979Z"
@@ -67,30 +75,43 @@ function Vm0BrandMark({
 
 export function ProductBrandMark({
   brandName: explicitBrandName,
+  decorative = false,
   size = "default",
 }: {
   brandName?: BrandName;
+  decorative?: boolean;
   size?: ProductBrandMarkSize;
 }) {
   const hostnameBrandName = useGet(brandName$);
+  const theme = useGet(theme$);
   const brandName = explicitBrandName ?? hostnameBrandName;
 
   if (brandName === "VM0") {
-    return <Vm0BrandMark size={size} label={brandName} />;
+    return (
+      <Vm0BrandMark decorative={decorative} size={size} label={brandName} />
+    );
   }
 
-  const sizeClassName =
+  const dimensions =
     size === "default"
-      ? "text-xl leading-6"
+      ? { width: 91, height: 24 }
       : size === "compact"
-        ? "text-xl leading-5"
-        : "text-base leading-4";
+        ? { width: 76, height: 20 }
+        : { width: 60, height: 16 };
 
   return (
-    <span
-      className={`${sizeClassName} font-semibold tracking-tight text-foreground`}
-    >
-      {brandName}
-    </span>
+    <img
+      alt={decorative ? "" : brandName}
+      aria-hidden={decorative || undefined}
+      className="block h-auto"
+      crossOrigin="anonymous"
+      height={dimensions.height}
+      src={
+        theme === "dark"
+          ? platformOkouWordmarkLightImg
+          : platformOkouWordmarkDarkImg
+      }
+      width={dimensions.width}
+    />
   );
 }
