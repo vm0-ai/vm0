@@ -268,9 +268,7 @@ describe("canonical row projection preserves the public ChatEvent contract", () 
         payload: { error: "historical runner error" },
       }),
     );
-    expect(JSON.parse(JSON.stringify(historical))).not.toHaveProperty(
-      "failureReason",
-    );
+    expect(historical).not.toHaveProperty("failureReason");
 
     const withReason = chatEventFromRow(
       canonicalRow({

@@ -184,7 +184,9 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         eventType: "run.failed",
         runId: requiredRowField(row.runId, row.eventType, "runId"),
         error: payload?.error ?? undefined,
-        failureReason: row.failureReason,
+        ...(row.failureReason === undefined
+          ? {}
+          : { failureReason: row.failureReason }),
         runLifecycleEvent: "failed",
       };
     },
