@@ -108,8 +108,13 @@ describe("okou video camera command", () => {
       reviewFrames: number;
       cameraShots: number;
       cameraMoves: number;
+      clicksOutsideFrame: number;
     };
-    expect(result).toMatchObject({ outputPath, cameraShots: 1 });
+    expect(result).toMatchObject({
+      outputPath,
+      cameraShots: 1,
+      clicksOutsideFrame: 0,
+    });
     expect(result.cameraMoves).toBeGreaterThanOrEqual(2);
     const plan = JSON.parse(readFileSync(result.planPath, "utf8")) as {
       algorithm: string;
@@ -138,6 +143,8 @@ describe("okou video camera command", () => {
       }),
     ).toBe(true);
     const review = JSON.parse(readFileSync(result.reviewPath, "utf8")) as {
+      clicks: { tMs: number; inFrame: boolean }[];
+      clicksOutsideFrame: number;
       checkpoints: {
         timeMs: number;
         reasons: { kind: string; offsetMs?: number }[];
@@ -146,6 +153,11 @@ describe("okou video camera command", () => {
       }[];
     };
     expect(review.checkpoints).toHaveLength(result.reviewFrames);
+    expect(review.clicksOutsideFrame).toBe(0);
+    expect(review.clicks).toEqual([
+      { tMs: 2_000, inFrame: true },
+      { tMs: 4_500, inFrame: true },
+    ]);
     expect(
       review.checkpoints.flatMap((checkpoint) => {
         return checkpoint.reasons;
@@ -153,9 +165,8 @@ describe("okou video camera command", () => {
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "click-before" }),
-        expect.objectContaining({ kind: "click" }),
-        expect.objectContaining({ kind: "click-after", offsetMs: 500 }),
-        expect.objectContaining({ kind: "click-after", offsetMs: 1_500 }),
+        expect.objectContaining({ kind: "click", inFrame: true }),
+        expect.objectContaining({ kind: "click-after", offsetMs: 400 }),
         expect.objectContaining({ kind: "move-start" }),
         expect.objectContaining({ kind: "move-end" }),
         expect.objectContaining({ kind: "shot-end" }),
