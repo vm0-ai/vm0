@@ -187,6 +187,29 @@ describe("resolveDesktopConfig", () => {
   it("defaults to production", () => {
     const config = resolveDesktopConfig("");
 
+    expect(config.platformUrl.toString()).toBe("https://app.okou.ai/");
+    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
+    expect(config.environment).toBe("production");
+    expect(config.identity).toMatchObject({
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou",
+      userDataDirectoryName: "Okou",
+      updateLine: "ai-okou-desktop",
+      bundleId: "ai.okou.desktop",
+      authScheme: "ai.okou.desktop",
+    });
+    expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
+    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
+      "https://api.vm0.ai",
+      "https://app.okou.ai",
+      "https://www.vm0.ai",
+    ]);
+  });
+
+  it("keeps the Zero product selectable", () => {
+    const config = resolveDesktopConfig("", "zero");
+
     expect(config.platformUrl.toString()).toBe("https://app.vm0.ai/");
     expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
     expect(config.environment).toBe("production");
@@ -213,13 +236,13 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("staging");
     expect(config.webUrl.toString()).toBe("https://staging-www.omby.ai/");
     expect(config.identity).toMatchObject({
-      product: "zero",
-      brandName: "Zero",
-      displayName: "Zero CU Dev",
-      userDataDirectoryName: "Zero CU Dev",
-      updateLine: "zero",
-      bundleId: "ai.vm0.zero.desktop.dev",
-      authScheme: "ai.vm0.zero.desktop.dev",
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou Dev",
+      userDataDirectoryName: "Okou Dev",
+      updateLine: "ai-okou-desktop",
+      bundleId: "ai.okou.desktop.dev",
+      authScheme: "ai.okou.desktop.dev",
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-staging");
     expect(config.allowedAppOrigins.has("https://staging-app.omby.ai")).toBe(
@@ -239,13 +262,13 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://www.vm7.ai:8443/");
     expect(config.identity).toMatchObject({
-      product: "zero",
-      brandName: "Zero",
-      displayName: "Zero CU Dev",
-      userDataDirectoryName: "Zero CU Dev",
-      updateLine: "zero",
-      bundleId: "ai.vm0.zero.desktop.dev",
-      authScheme: "ai.vm0.zero.desktop.dev",
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou Dev",
+      userDataDirectoryName: "Okou Dev",
+      updateLine: "ai-okou-desktop",
+      bundleId: "ai.okou.desktop.dev",
+      authScheme: "ai.okou.desktop.dev",
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-development");
     expect(config.allowedAppOrigins.has("https://app.vm7.ai:8443")).toBe(true);
@@ -259,13 +282,13 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://pr-123-www.omby.ai/");
     expect(config.identity).toMatchObject({
-      product: "zero",
-      brandName: "Zero",
-      displayName: "Zero CU Dev",
-      userDataDirectoryName: "Zero CU Dev",
-      updateLine: "zero",
-      bundleId: "ai.vm0.zero.desktop.dev",
-      authScheme: "ai.vm0.zero.desktop.dev",
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou Dev",
+      userDataDirectoryName: "Okou Dev",
+      updateLine: "ai-okou-desktop",
+      bundleId: "ai.okou.desktop.dev",
+      authScheme: "ai.okou.desktop.dev",
     });
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
       "https://pr-123-api.vm6.ai",

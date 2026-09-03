@@ -336,7 +336,8 @@ function runForge(
 ): EntryPointResult {
   const harness = createTestHarness();
   const outputPath = join(harness.directory, "forge-output");
-  const appPath = join(outputPath, "Zero Computer Use.app");
+  // forge.config.js names the bundle from the default build product.
+  const appPath = join(outputPath, "Okou.app");
   mkdirSync(appPath, { recursive: true });
   const environment = baseEnvironment(harness);
   if (options.ci === false) {
