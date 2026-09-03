@@ -37,6 +37,13 @@ impl VsockHost {
     /// The request contains no caller input. The guest selects the program,
     /// command, root identity, paths, timeout, output bounds, containment, and
     /// cleanup. `request_timeout` bounds request write and terminal-result wait.
+    ///
+    /// This is a tracked normal operation. Timing out or dropping the request
+    /// after its possible guest-write boundary abandons terminal proof, and any
+    /// late terminal result is ignored. The connection is then not safe to park
+    /// or reuse for future normal operations; callers must close or discard it
+    /// instead of retrying parking or normal operations. Closing the connection
+    /// cancels and reaps the guest-owned mount helper process group.
     pub async fn mount_workspace_drive(
         &self,
         request_timeout: Duration,
