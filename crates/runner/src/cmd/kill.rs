@@ -599,6 +599,8 @@ mod tests {
         );
     }
 
+    // A CLI test cannot safely construct this post-control race without a real
+    // Firecracker process and owning runner, so inject only those OS boundaries.
     #[tokio::test]
     async fn managed_target_refuses_orphan_fallback_after_owner_control_failure() {
         let workspace_base = tempfile::tempdir().unwrap();
