@@ -4812,6 +4812,7 @@ function ThinkingLoader({
     return (
       <span
         aria-hidden
+        data-thinking-loader="spinner"
         className="zero-thinking-spinner-frame inline-flex size-[11.5px] shrink-0 items-center justify-center"
       >
         <img
@@ -4824,7 +4825,11 @@ function ThinkingLoader({
   }
 
   return (
-    <span className="zero-blocks shrink-0" style={blockStyle}>
+    <span
+      data-thinking-loader="blocks"
+      className="zero-blocks shrink-0"
+      style={blockStyle}
+    >
       <span />
       <span />
       <span />

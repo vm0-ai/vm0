@@ -168,37 +168,34 @@ describe("chat thinking indicator", () => {
     await setupThinkingRun();
 
     expect(
-      document.querySelector("[data-thinking-indicator] .zero-blocks"),
+      document.querySelector(
+        '[data-thinking-indicator] [data-thinking-loader="blocks"]',
+      ),
     ).toBeInTheDocument();
     expect(
       document.querySelector(
-        "[data-thinking-indicator] .zero-thinking-spinner",
+        '[data-thinking-indicator] [data-thinking-loader="spinner"]',
       ),
     ).not.toBeInTheDocument();
   });
 
-  it("uses the rotating Okou mark for the active-run loader", async () => {
+  it("uses the Okou mark for the active-run loader", async () => {
     await setupThinkingRun({
       [FeatureSwitchKey.ChatThinkingSpinner]: true,
     });
 
-    const spinnerFrame = document.querySelector<HTMLElement>(
-      "[data-thinking-indicator] .zero-thinking-spinner-frame",
+    const spinner = document.querySelector<HTMLImageElement>(
+      '[data-thinking-indicator] [data-thinking-loader="spinner"] img',
     );
-    const spinner = spinnerFrame?.querySelector<HTMLImageElement>(
-      "img.zero-thinking-spinner",
-    );
-    expect(spinnerFrame).toHaveClass("size-[11.5px]");
     expect(spinner).toHaveAttribute(
       "src",
       "https://static.vm0.io/public/okou-transparent.svg",
     );
-    expect(spinner).toHaveClass(
-      "size-3.5",
-      "max-w-none",
-      "animate-spin",
-      "motion-reduce:animate-none",
-    );
+    expect(
+      document.querySelector(
+        '[data-thinking-indicator] [data-thinking-loader="blocks"]',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("discards an overflowing line remainder before showing the next explicit line", async () => {
