@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { cronConsolidatePiMemoryPhase2Contract } from "@okouai/api-contracts/contracts/cron";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
 import { piMemoryPublicationProvenance } from "@okouai/db/schema/pi-memory-publication-provenance";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
@@ -16,12 +17,14 @@ import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { onTestFinished, describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { db } from "../../../lib/db";
 import { mockEnv } from "../../../lib/env";
 import { withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { seedVm0BuiltInModelKey } from "../../routes/__tests__/helpers/runtime-state";
+import { cronConsolidatePiMemoryPhase2RoutesForTest } from "../../routes/cron-consolidate-pi-memory-phase2";
 import { createDeferredPromise } from "../../utils";
 import {
   buildPiMemoryPhase2Archive,
@@ -55,6 +58,9 @@ const DIGEST_ENCODING = "vm0.pi-memory.phase2.manifest.v1";
 const MEMORY_SECRET = "PHASE2_MEMORY_CONTENT_SECRET_31291";
 const PATH_SECRET = "unknown/path-secret-31291.txt";
 const PROVIDER_ID_SECRET = "PHASE2_PROVIDER_ID_SECRET_31291";
+const PROMPT_SECRET = "PHASE2_PROMPT_SECRET_31399";
+const LAUNCH_SNAPSHOT_SECRET = "PHASE2_LAUNCH_SNAPSHOT_SECRET_31399";
+const CRON_SECRET = "test-pi-memory-phase2-secret";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -441,7 +447,155 @@ async function executeAt(args: {
   });
 }
 
+function phase2Routes(scope: Phase2TestScope) {
+  return cronConsolidatePiMemoryPhase2RoutesForTest(scope);
+}
+
+function phase2Headers(secret = CRON_SECRET) {
+  return { authorization: `Bearer ${secret}` };
+}
+
+async function executeRouteAt(args: {
+  readonly scope: Phase2TestScope;
+  readonly currentTime: Date;
+  readonly signal?: AbortSignal;
+}) {
+  mockEnv("CRON_SECRET", CRON_SECRET);
+  return await withMockNowForTest(args.currentTime, async () => {
+    return await accept(
+      setupApp({
+        context: testContext(),
+        routes: phase2Routes(args.scope),
+        ...(args.signal ? { signal: args.signal } : {}),
+      })(cronConsolidatePiMemoryPhase2Contract).consolidate({
+        headers: phase2Headers(),
+      }),
+      [200],
+    );
+  });
+}
+
 describe("Pi memory Phase 2 worker composition", () => {
+  it("authenticates the Phase 2 route before the disabled breaker", async () => {
+    const context = testContext();
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("PI_MEMORY_BACKGROUND_WORKERS_ENABLED", "false");
+    const provider = installProvider();
+    const scope = await createPhase2TestScope("route-auth-first", {
+      emptyBase: true,
+    });
+    await insertPhase2Candidates(scope, [
+      {
+        piSessionId: randomUUID(),
+        rawMemory: "must remain pending",
+        rolloutSummary: "must remain pending",
+      },
+    ]);
+    await insertPendingPhase2Job(scope, {
+      inputRevision: 1,
+      updatedAt: new Date(NOW_MS),
+    });
+    context.mocks.s3.send.mockClear();
+
+    const response = await accept(
+      setupApp({ context, routes: phase2Routes(scope) })(
+        cronConsolidatePiMemoryPhase2Contract,
+      ).consolidate({ headers: phase2Headers("invalid-secret") }),
+      [401],
+    );
+
+    expect(response.status).toBe(401);
+    expect(provider.calls.value).toBe(0);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+      "Pi memory background worker invocation disabled",
+      expect.objectContaining({ route: "phase2", outcome: "disabled" }),
+    );
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "pending",
+      retryCount: 0,
+    });
+  });
+
+  it("returns all-zero counters without touching durable state when disabled", async () => {
+    const context = testContext();
+    mockEnv("PI_MEMORY_BACKGROUND_WORKERS_ENABLED", "false");
+    const provider = installProvider();
+    const objects = new Map<string, Buffer>();
+    installS3(objects);
+    const scope = await createPhase2TestScope("route-disabled", {
+      emptyBase: true,
+    });
+    cleanupUsage(scope);
+    await insertPhase2Candidates(scope, [
+      {
+        piSessionId: randomUUID(),
+        rawMemory: `${MEMORY_SECRET} ${PROMPT_SECRET}`,
+        rolloutSummary: LAUNCH_SNAPSHOT_SECRET,
+      },
+    ]);
+    await insertPendingPhase2Job(scope, {
+      inputRevision: 1,
+      updatedAt: new Date(NOW_MS),
+    });
+    context.mocks.s3.send.mockClear();
+
+    const response = await executeRouteAt({
+      scope,
+      currentTime: new Date(NOW_MS),
+    });
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      claimed: 0,
+      noWork: 0,
+      noDiff: 0,
+      published: 0,
+      conflicted: 0,
+      stale: 0,
+      failed: 0,
+    });
+    expect(provider.calls.value).toBe(0);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      "Pi memory background worker invocation disabled",
+      expect.objectContaining({ route: "phase2", outcome: "disabled" }),
+    );
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "pending",
+      retryCount: 0,
+      completedRevision: 0,
+      leaseToken: null,
+      leaseExpiresAt: null,
+    });
+    const [storage] = await db()
+      .select({ headVersionId: storages.headVersionId })
+      .from(storages)
+      .where(eq(storages.id, scope.memoryStorageId));
+    expect(storage?.headVersionId).toBe(scope.baseVersion.versionId);
+    await expect(
+      db()
+        .select()
+        .from(usageEvent)
+        .where(
+          and(
+            eq(usageEvent.orgId, scope.orgId),
+            eq(usageEvent.userId, scope.userId),
+          ),
+        ),
+    ).resolves.toStrictEqual([]);
+
+    const captured = JSON.stringify({
+      body: response.body,
+      logs: context.mocks.axiomLogging.debug.mock.calls,
+    });
+    expect(captured).not.toContain(MEMORY_SECRET);
+    expect(captured).not.toContain(PROMPT_SECRET);
+    expect(captured).not.toContain(LAUNCH_SNAPSHOT_SECRET);
+    expect(captured).not.toContain(scope.baseVersion.s3Key);
+    expect(captured).not.toContain(CRON_SECRET);
+  });
+
   it("converges when Pi publishes before an external writer", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
@@ -685,13 +839,43 @@ describe("Pi memory Phase 2 worker composition", () => {
     );
 
     const store = createStore();
-    const firstPromise = executeAt({
-      store,
+    const firstPromise = executeRouteAt({
       scope,
       currentTime: new Date(NOW_MS),
-      signal: context.signal,
     });
     await uploadStarted.promise;
+
+    const concurrent = await executeRouteAt({
+      scope,
+      currentTime: new Date(NOW_MS),
+    });
+    expect(concurrent.body).toStrictEqual({
+      success: true,
+      claimed: 0,
+      noWork: 1,
+      noDiff: 0,
+      published: 0,
+      conflicted: 0,
+      stale: 0,
+      failed: 0,
+    });
+
+    mockEnv("PI_MEMORY_BACKGROUND_WORKERS_ENABLED", "false");
+    const disabledWhileClaimed = await executeRouteAt({
+      scope,
+      currentTime: new Date(NOW_MS),
+    });
+    expect(disabledWhileClaimed.body).toStrictEqual({
+      success: true,
+      claimed: 0,
+      noWork: 0,
+      noDiff: 0,
+      published: 0,
+      conflicted: 0,
+      stale: 0,
+      failed: 0,
+    });
+
     await setPhase2StorageHead(scope, externalVersion, new Date(NOW_MS + 1));
     await db().transaction(async (tx) => {
       await notifyPiMemoryPhase2ExternalHeadChange(tx, {
@@ -729,9 +913,16 @@ describe("Pi memory Phase 2 worker composition", () => {
     });
     uploadRelease.resolve();
 
-    await expect(firstPromise).resolves.toStrictEqual({
-      outcome: "conflicted",
-      currentHeadVersionId: externalVersion.versionId,
+    const firstResponse = await firstPromise;
+    expect(firstResponse.body).toStrictEqual({
+      success: true,
+      claimed: 1,
+      noWork: 0,
+      noDiff: 0,
+      published: 0,
+      conflicted: 1,
+      stale: 0,
+      failed: 0,
     });
     await expect(readPhase2Job(scope)).resolves.toMatchObject({
       status: "pending",
@@ -760,6 +951,7 @@ describe("Pi memory Phase 2 worker composition", () => {
     const secondTime = new Date(
       NOW_MS + PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS + 2,
     );
+    mockEnv("PI_MEMORY_BACKGROUND_WORKERS_ENABLED", "true");
     const second = await executeAt({
       store,
       scope,
@@ -883,6 +1075,8 @@ describe("Pi memory Phase 2 worker composition", () => {
     expect(capturedLogs).not.toContain(MEMORY_SECRET);
     expect(capturedLogs).not.toContain(PATH_SECRET);
     expect(capturedLogs).not.toContain(PROVIDER_ID_SECRET);
+    expect(capturedLogs).not.toContain(PROMPT_SECRET);
+    expect(capturedLogs).not.toContain(LAUNCH_SNAPSHOT_SECRET);
   });
 
   it("reuses a detached registered archive and provider usage after a stale replay", async () => {
@@ -915,12 +1109,9 @@ describe("Pi memory Phase 2 worker composition", () => {
       updatedAt: new Date(NOW_MS),
     });
 
-    const store = createStore();
-    const firstPromise = executeAt({
-      store,
+    const firstPromise = executeRouteAt({
       scope,
       currentTime: new Date(NOW_MS),
-      signal: context.signal,
     });
     await uploadStarted.promise;
     await db()
@@ -928,7 +1119,17 @@ describe("Pi memory Phase 2 worker composition", () => {
       .set({ leaseToken: randomUUID() })
       .where(eq(piMemoryPhase2Jobs.memoryStorageId, scope.memoryStorageId));
     uploadRelease.resolve();
-    await expect(firstPromise).resolves.toStrictEqual({ outcome: "stale" });
+    const firstResponse = await firstPromise;
+    expect(firstResponse.body).toStrictEqual({
+      success: true,
+      claimed: 1,
+      noWork: 0,
+      noDiff: 0,
+      published: 0,
+      conflicted: 0,
+      stale: 1,
+      failed: 0,
+    });
     const putCountAfterFirst = context.mocks.s3.send.mock.calls.filter(
       ([command]) => {
         return command instanceof PutObjectCommand;
@@ -961,15 +1162,19 @@ describe("Pi memory Phase 2 worker composition", () => {
     const retryTime = new Date(
       NOW_MS + PI_MEMORY_PHASE2_LEASE_DURATION_MS * 24,
     );
-    const replay = await executeAt({
-      store,
+    const replay = await executeRouteAt({
       scope,
       currentTime: retryTime,
-      signal: context.signal,
     });
-    expect(replay).toStrictEqual({
-      outcome: "published",
-      publishedVersionId: detachedVersionId,
+    expect(replay.body).toStrictEqual({
+      success: true,
+      claimed: 1,
+      noWork: 0,
+      noDiff: 0,
+      published: 1,
+      conflicted: 0,
+      stale: 0,
+      failed: 0,
     });
     expect(provider.calls.value).toBe(6);
     expect(
@@ -984,17 +1189,21 @@ describe("Pi memory Phase 2 worker composition", () => {
         enqueuedAt: new Date(retryTime.getTime() + 1),
       });
     });
-    const noDiff = await executeAt({
-      store,
+    const noDiff = await executeRouteAt({
       scope,
       currentTime: new Date(
         retryTime.getTime() + PI_MEMORY_PHASE2_SUCCESS_COOLDOWN_MS + 2,
       ),
-      signal: context.signal,
     });
-    expect(noDiff).toStrictEqual({
-      outcome: "no_diff",
-      headVersionId: detachedVersionId,
+    expect(noDiff.body).toStrictEqual({
+      success: true,
+      claimed: 1,
+      noWork: 0,
+      noDiff: 1,
+      published: 0,
+      conflicted: 0,
+      stale: 0,
+      failed: 0,
     });
     expect(provider.calls.value).toBe(6);
 
@@ -1070,15 +1279,20 @@ describe("Pi memory Phase 2 worker composition", () => {
       updatedAt: new Date(NOW_MS),
     });
 
-    const response = executeAt({
-      store: createStore(),
+    const response = executeRouteAt({
       scope,
       currentTime: new Date(NOW_MS),
-      signal: context.signal,
     });
-    await expect(response).resolves.toStrictEqual({
-      outcome: "failed",
-      errorClass: "agent_output_invalid",
+    const routeResponse = await response;
+    expect(routeResponse.body).toStrictEqual({
+      success: true,
+      claimed: 1,
+      noWork: 0,
+      noDiff: 0,
+      published: 0,
+      conflicted: 0,
+      stale: 0,
+      failed: 1,
     });
     expect(provider.calls.value).toBe(1);
     const [storage] = await db()
@@ -1133,6 +1347,95 @@ describe("Pi memory Phase 2 worker composition", () => {
     ).resolves.toHaveLength(0);
   });
 
+  it("propagates abort and drains the claimed route before it settles", async () => {
+    const context = testContext();
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    await seedVm0BuiltInModelKey(context, "gpt-5.6-terra");
+    installS3(new Map<string, Buffer>());
+    const providerStarted = createDeferredPromise<void>(context.signal);
+    const providerAborted = createDeferredPromise<void>(context.signal);
+    const providerRelease = createDeferredPromise<void>(context.signal);
+    const providerFinished = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.post(
+        /https:\/\/(?:api\.openai\.com|openrouter\.ai)\/.*\/responses/u,
+        async ({ request }) => {
+          request.signal.addEventListener(
+            "abort",
+            () => {
+              providerAborted.resolve(undefined);
+            },
+            { once: true },
+          );
+          providerStarted.resolve(undefined);
+          await providerRelease.promise;
+          providerFinished.resolve(undefined);
+          return new HttpResponse(textSse(0), {
+            headers: { "content-type": "text/event-stream" },
+          });
+        },
+      ),
+    );
+
+    const scope = await createPhase2TestScope("route-abort", {
+      emptyBase: true,
+    });
+    cleanupUsage(scope);
+    await insertPhase2Candidates(scope, [
+      {
+        piSessionId: randomUUID(),
+        rawMemory: "abort private memory",
+        rolloutSummary: "abort private prompt",
+      },
+    ]);
+    await insertPendingPhase2Job(scope, {
+      inputRevision: 1,
+      updatedAt: new Date(NOW_MS),
+    });
+    const controller = new AbortController();
+    const abortError = new Error("caller disconnected");
+    abortError.name = "AbortError";
+    const responsePromise = withMockNowForTest(new Date(NOW_MS), async () => {
+      return await setupRawAppRequest({
+        context,
+        routes: phase2Routes(scope),
+        signal: controller.signal,
+      })(cronConsolidatePiMemoryPhase2Contract.consolidate.path, {
+        method: "GET",
+        headers: phase2Headers(),
+      });
+    });
+
+    await providerStarted.promise;
+    controller.abort(abortError);
+    await providerAborted.promise;
+    providerRelease.resolve(undefined);
+    await providerFinished.promise;
+    const response = await responsePromise;
+
+    expect(response.status).toBe(500);
+    await expect(readPhase2Job(scope)).resolves.toMatchObject({
+      status: "retryable_failure",
+      retryCount: 1,
+      completedRevision: 0,
+      lastErrorClass: "aborted",
+      leaseToken: null,
+      leaseExpiresAt: null,
+    });
+    await expect(
+      db()
+        .select()
+        .from(usageEvent)
+        .where(
+          and(
+            eq(usageEvent.orgId, scope.orgId),
+            eq(usageEvent.userId, scope.userId),
+          ),
+        ),
+    ).resolves.toStrictEqual([]);
+  });
+
   it("fails closed when an exact registered non-empty base object is missing", async () => {
     const context = testContext();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
@@ -1172,16 +1475,23 @@ describe("Pi memory Phase 2 worker composition", () => {
   });
 
   it("returns a successful no-op when no exact claim exists", async () => {
-    const context = testContext();
     const scope = await createPhase2TestScope("worker-no-work", {
       emptyBase: true,
     });
-    const result = executeAt({
-      store: createStore(),
+    const result = executeRouteAt({
       scope,
       currentTime: new Date(NOW_MS),
-      signal: context.signal,
     });
-    await expect(result).resolves.toStrictEqual({ outcome: "no_work" });
+    const response = await result;
+    expect(response.body).toStrictEqual({
+      success: true,
+      claimed: 0,
+      noWork: 1,
+      noDiff: 0,
+      published: 0,
+      conflicted: 0,
+      stale: 0,
+      failed: 0,
+    });
   });
 });

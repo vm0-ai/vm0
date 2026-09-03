@@ -301,6 +301,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Admit exact hash-backed Pi web histories into the Stage 1 memory generation queue.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PresentationScreenshot]: {
     maintainer: "bingjie@vm0.ai",

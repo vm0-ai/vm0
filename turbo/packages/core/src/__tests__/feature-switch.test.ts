@@ -171,7 +171,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiMemoryRecall]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.PiMemoryGeneration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
