@@ -1026,6 +1026,13 @@ describe("chat lifecycle", () => {
     expect(hiddenDraft).not.toBeVisible();
     expect(screen.getByLabelText("Send")).toBeDisabled();
 
+    composer.focus();
+    await user.keyboard("{Control>}z{/Control}");
+    const draftAfterUndo = document.querySelector("[data-voice-draft]");
+    expect(draftAfterUndo).not.toBeNull();
+    expect(draftAfterUndo).not.toBeVisible();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+
     await user.click(screen.getByLabelText("Stop recording"));
 
     const failedDraft = await screen.findByLabelText("Voice draft");
@@ -1064,6 +1071,23 @@ describe("chat lifecycle", () => {
       });
     });
     expect(polishCalls).toBe(2);
+
+    composer.focus();
+    await user.keyboard("{Control>}z{/Control}");
+
+    const restoredDraft = await screen.findByLabelText("Voice draft");
+    expect(restoredDraft).toBeVisible();
+    expect(restoredDraft).toHaveTextContent(rawTranscript);
+    expect(buttonByText("Finish")).toBeEnabled();
+    expect(screen.getByLabelText("Remove voice draft")).toBeEnabled();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+
+    await user.click(screen.getByLabelText("Remove voice draft"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
+    });
+    await fill(composer, "Ready to send");
+    expect(screen.getByLabelText("Send")).toBeEnabled();
   });
 
   it("restores a persisted voice draft as an actionable blocked item", async () => {

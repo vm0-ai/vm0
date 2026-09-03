@@ -1445,7 +1445,9 @@ function startVoiceDraft(editor: Editor): string {
   const position = isEmptyComposerDocument(editor.state.doc)
     ? 0
     : editor.state.doc.content.size;
-  editor.view.dispatch(editor.state.tr.insert(position, node));
+  editor.view.dispatch(
+    editor.state.tr.insert(position, node).setMeta("addToHistory", false),
+  );
   return id;
 }
 
@@ -1460,10 +1462,12 @@ function setVoiceDraftAttributes(
   }
   const current = voiceDraftNodeAttributes(located.node);
   editor.view.dispatch(
-    editor.state.tr.setNodeMarkup(located.position, undefined, {
-      ...current,
-      ...patch,
-    }),
+    editor.state.tr
+      .setNodeMarkup(located.position, undefined, {
+        ...current,
+        ...patch,
+      })
+      .setMeta("addToHistory", false),
   );
   return true;
 }
@@ -1500,7 +1504,11 @@ function appendVoiceDraftTranscript(
   setVoiceDraftAttributes(editor, id, { transcript });
 }
 
-function removeVoiceDraft(editor: Editor, id: string): void {
+function removeVoiceDraft(
+  editor: Editor,
+  id: string,
+  addToHistory = true,
+): void {
   const located = locateVoiceDraft(editor.state.doc, id);
   if (!located) {
     return;
@@ -1512,6 +1520,9 @@ function removeVoiceDraft(editor: Editor, id: string): void {
   if (transaction.doc.childCount === 0) {
     transaction.insert(0, editor.schema.node("paragraph"));
   }
+  if (!addToHistory) {
+    transaction.setMeta("addToHistory", false);
+  }
   editor.view.dispatch(transaction.scrollIntoView());
 }
 
@@ -1520,6 +1531,12 @@ function replaceVoiceDraftWithText(
   id: string,
   text: string,
 ): void {
+  // Keep the successful replacement undoable, but make its inverse safe: an
+  // undo restores an actionable raw draft instead of a hidden processing node.
+  setVoiceDraftAttributes(editor, id, {
+    status: "failed",
+    visible: true,
+  });
   const located = locateVoiceDraft(editor.state.doc, id);
   if (!located) {
     return;
@@ -1581,7 +1598,7 @@ function createVoiceDraftSignals(
       }
       const text = attributes.transcript.trim();
       if (!text) {
-        removeVoiceDraft(editor, id);
+        removeVoiceDraft(editor, id, false);
         return true;
       }
       setVoiceDraftAttributes(editor, id, {
