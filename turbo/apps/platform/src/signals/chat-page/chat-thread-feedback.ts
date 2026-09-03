@@ -666,11 +666,13 @@ function createListenersRef({
   close$,
   capture$,
   dismissOnScroll$,
+  isProgrammaticScrollEvent$,
 }: {
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
   capture$: Command<void, []>;
   dismissOnScroll$: Command<void, []>;
+  isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
 }) {
   const deferredCaptureSignal$ = resetSignal();
   return onRef(
@@ -756,7 +758,10 @@ function createListenersRef({
       doc.addEventListener(
         "scroll",
         (event) => {
-          if (isSelectionInteractionTarget(event.target)) {
+          if (
+            isSelectionInteractionTarget(event.target) ||
+            set(isProgrammaticScrollEvent$, event.target)
+          ) {
             return;
           }
           set(dismissOnScroll$);
@@ -770,6 +775,7 @@ function createListenersRef({
 export function createChatThreadFeedbackSignals(
   threadId: string,
   feedback: ComposerFeedbackSignals,
+  isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>,
 ): ChatThreadFeedbackSignals {
   const selection = createSelectionState(threadId);
   const translation = createTranslationState({
@@ -801,6 +807,7 @@ export function createChatThreadFeedbackSignals(
     close$: selection.close$,
     capture$: selection.capture$,
     dismissOnScroll$: selection.dismissOnScroll$,
+    isProgrammaticScrollEvent$,
   });
   return {
     selection$: selection.selection$,
