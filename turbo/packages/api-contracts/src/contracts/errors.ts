@@ -5,6 +5,12 @@ import {
   type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "./model-providers";
+import type { ModelProviderFramework } from "./model-provider-types";
+import {
+  knownRunFailureReasonSchema,
+  type KnownRunFailureReason,
+  type RunFailureReasonToken,
+} from "./run-failure-reasons";
 
 /**
  * API error definitions with associated HTTP status codes
@@ -219,6 +225,8 @@ const CLAUDE_CODE_TERMS_ACCEPTANCE_REQUIRED_MESSAGE =
 const CLAUDE_PROVIDER_OVERLOADED_FALLBACK_MODEL = "Claude Model";
 const CLAUDE_PROVIDER_OVERLOADED_GUIDANCE =
   "is overloaded. Please wait a few minutes and try again, or switch to another model.";
+const CODEX_PROVIDER_OVERLOADED_MESSAGE =
+  "Selected model is at capacity. Please try a different model.";
 
 const CLAUDE_CODE_LIMIT_SNIPPETS = [
   "usage limit",
@@ -270,7 +278,7 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Cannot continue session",
   "Invalid signature in thinking block",
   "Run cancelled",
-  "Selected model is at capacity. Please try a different model.",
+  CODEX_PROVIDER_OVERLOADED_MESSAGE,
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).
   // Codex: "You've hit your usage limit …"
@@ -637,6 +645,109 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
   return !isActionableRunError(normalizedErrorMessage);
 }
 
+type StructuredRunErrorBehavior =
+  | "credential"
+  | "generic"
+  | "insufficient-credits"
+  | "overloaded"
+  | "passthrough"
+  | "reconnect"
+  | "terms";
+
+const STRUCTURED_RUN_ERROR_BEHAVIOR: Record<
+  KnownRunFailureReason,
+  StructuredRunErrorBehavior
+> = {
+  session_history_limit: "generic",
+  insufficient_credits: "insufficient-credits",
+  invalid_api_key: "generic",
+  invalid_credentials: "credential",
+  terms_acceptance_required: "terms",
+  context_window_exceeded: "generic",
+  input_too_large: "generic",
+  output_token_limit: "generic",
+  provider_rate_limited: "generic",
+  provider_overloaded: "overloaded",
+  provider_stream_timeout: "generic",
+  provider_server_error: "generic",
+  response_connection_lost: "generic",
+  safety_policy_refusal: "generic",
+  reconnect_required: "reconnect",
+  unsupported_model: "passthrough",
+  usage_limit: "passthrough",
+};
+
+function formatStructuredRunError(params: {
+  readonly failureReason: RunFailureReasonToken;
+  readonly errorMessage: string;
+  readonly framework?: ModelProviderFramework | null;
+  readonly selectedModel?: string | null;
+  readonly claudeCodeCredentialRecovery?: ClaudeCodeCredentialRecovery;
+}): string {
+  const knownReason = knownRunFailureReasonSchema.safeParse(
+    params.failureReason,
+  );
+  if (!knownReason.success) {
+    return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+  }
+
+  switch (STRUCTURED_RUN_ERROR_BEHAVIOR[knownReason.data]) {
+    case "insufficient-credits": {
+      return "insufficient_credits";
+    }
+    case "credential": {
+      const recoveryMessage =
+        params.claudeCodeCredentialRecovery === undefined
+          ? undefined
+          : formatClaudeCodeCredentialRecoveryMessage(
+              params.claudeCodeCredentialRecovery,
+            );
+      return recoveryMessage ?? CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+    }
+    case "reconnect": {
+      if (
+        params.claudeCodeCredentialRecovery?.modelProviderType ===
+        "codex-oauth-token"
+      ) {
+        return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
+      }
+      if (
+        params.claudeCodeCredentialRecovery?.modelProviderType ===
+        "claude-code-oauth-token"
+      ) {
+        return (
+          formatClaudeCodeCredentialRecoveryMessage(
+            params.claudeCodeCredentialRecovery,
+          ) ?? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
+        );
+      }
+      return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+    }
+    case "terms": {
+      return withOptionalActionUrl(
+        CLAUDE_CODE_TERMS_ACCEPTANCE_REQUIRED_MESSAGE,
+        "Open Model Providers",
+        params.claudeCodeCredentialRecovery?.modelProvidersUrl,
+      );
+    }
+    case "overloaded": {
+      if (params.framework === "claude-code") {
+        return formatClaudeProviderOverloadedMessage(params.selectedModel);
+      }
+      if (params.framework === "codex") {
+        return CODEX_PROVIDER_OVERLOADED_MESSAGE;
+      }
+      return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+    }
+    case "passthrough": {
+      return params.errorMessage;
+    }
+    case "generic": {
+      return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+    }
+  }
+}
+
 /**
  * Plain-text run error copy shared by Web chat and external integrations.
  * Web may wrap generic failures with its report-link affordance after this
@@ -645,6 +756,8 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 export function formatRunErrorForExternalSurface(params: {
   readonly code: string;
   readonly message: string;
+  readonly failureReason?: RunFailureReasonToken;
+  readonly framework?: ModelProviderFramework | null;
   readonly selectedModel?: string | null;
   readonly claudeCodeCredentialRecovery?: ClaudeCodeCredentialRecovery;
   readonly insufficientCredits?:
@@ -660,6 +773,16 @@ export function formatRunErrorForExternalSurface(params: {
       };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
+
+  if (params.failureReason !== undefined) {
+    return formatStructuredRunError({
+      failureReason: params.failureReason,
+      errorMessage,
+      framework: params.framework,
+      selectedModel: params.selectedModel,
+      claudeCodeCredentialRecovery: params.claudeCodeCredentialRecovery,
+    });
+  }
 
   if (isAgentExecutionTimeoutRunError(errorMessage)) {
     return CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE;

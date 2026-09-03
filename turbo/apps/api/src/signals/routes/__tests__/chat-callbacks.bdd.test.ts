@@ -4699,7 +4699,25 @@ describe("CHAT-02: drain-time admission failure", () => {
 
 describe("CHAT-02: failed chat callbacks", () => {
   it("formats failed-run errors and notifies, without auto-sending", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    await seedVm0BuiltInModelKey(context, "gpt-5.6-sol");
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "gpt-5.6-sol",
+        isDefault: false,
+        defaultProviderType: "built-in",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.registerPushSubscription(actor);
     chatCallbacks.enableVapid();
@@ -4713,17 +4731,63 @@ describe("CHAT-02: failed chat callbacks", () => {
     const rounds: readonly {
       readonly prompt: string;
       readonly error: string;
+      readonly expectedError?: string;
       readonly failureReason?: RunFailureReasonToken;
+      readonly selectedModel?: SupportedRunModel;
     }[] = [
       { prompt: "round one", error: actionableError },
       {
         prompt: "round two",
-        error: "First runner failure",
+        error: executionTimeoutError,
+        expectedError: "Oops, something went wrong. Please try again later.",
         failureReason: "future_reason",
       },
-      { prompt: "round three", error: "Second runner failure" },
+      {
+        prompt: "round three",
+        error: "Second runner failure",
+        expectedError: "Oops, something went wrong. Please try again later.",
+      },
       { prompt: "round four", error: usageLimitError },
-      { prompt: "round five", error: executionTimeoutError },
+      {
+        prompt: "round five",
+        error: executionTimeoutError,
+        expectedError: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+      },
+      {
+        prompt: "round six",
+        error: usageLimitError,
+        expectedError: "Oops, something went wrong. Please try again later.",
+        failureReason: "provider_rate_limited",
+      },
+      {
+        prompt: "round seven",
+        error: usageLimitError,
+        expectedError:
+          "Selected model is at capacity. Please try a different model.",
+        failureReason: "provider_overloaded",
+        selectedModel: "gpt-5.6-sol",
+      },
+      {
+        prompt: "round eight",
+        error:
+          "Claude Sonnet 5 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+        failureReason: "usage_limit",
+        selectedModel: "claude-sonnet-5",
+      },
+      {
+        prompt: "round nine",
+        error: "Unrelated runner failure",
+        expectedError: "insufficient_credits",
+        failureReason: "insufficient_credits",
+      },
+      {
+        prompt: "round ten",
+        error: "Contradictory runner failure",
+        expectedError:
+          "Claude Sonnet 5 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+        failureReason: "provider_overloaded",
+        selectedModel: "claude-sonnet-5",
+      },
     ];
 
     let threadId: string | undefined;
@@ -4733,6 +4797,9 @@ describe("CHAT-02: failed chat callbacks", () => {
         agentId,
         prompt: round.prompt,
         ...(threadId === undefined ? {} : { threadId }),
+        ...(round.selectedModel === undefined
+          ? {}
+          : { selectedModel: round.selectedModel }),
       });
       threadId = run.threadId;
       runIds.push(run.runId);
@@ -4769,7 +4836,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       }
     }
     if (!threadId) {
-      throw new Error("Expected five failed chat rounds");
+      throw new Error("Expected failed chat rounds");
     }
 
     const messages = await waitForThreadMessages(actor, threadId, (items) => {
@@ -4789,8 +4856,8 @@ describe("CHAT-02: failed chat callbacks", () => {
     const replacements = users.filter((message) => {
       return message.runId !== undefined;
     });
-    expect(originals).toHaveLength(5);
-    expect(replacements).toHaveLength(5);
+    expect(originals).toHaveLength(rounds.length);
+    expect(replacements).toHaveLength(rounds.length);
     expect(
       replacements.every((replacement) => {
         return originals.some((original) => {
@@ -4807,13 +4874,11 @@ describe("CHAT-02: failed chat callbacks", () => {
           return message.runId === runId;
         })?.error;
       }),
-    ).toStrictEqual([
-      actionableError,
-      "Oops, something went wrong. Please try again later.",
-      "Oops, something went wrong. Please try again later.",
-      usageLimitError,
-      CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
-    ]);
+    ).toStrictEqual(
+      rounds.map((round) => {
+        return round.expectedError ?? round.error;
+      }),
+    );
     expect(
       failed.find((message) => {
         return message.runId === runIds[0];
@@ -4835,13 +4900,11 @@ describe("CHAT-02: failed chat callbacks", () => {
           return message.runId === runId;
         })?.failureReason;
       }),
-    ).toStrictEqual([
-      undefined,
-      "future_reason",
-      undefined,
-      undefined,
-      undefined,
-    ]);
+    ).toStrictEqual(
+      rounds.map((round) => {
+        return round.failureReason;
+      }),
+    );
 
     const rawRows = await chat.listThreadEventRows(actor, threadId);
     const rawFailures = rawRows.filter((row) => {
@@ -4853,13 +4916,11 @@ describe("CHAT-02: failed chat callbacks", () => {
           return row.runId === runId;
         })?.failureReason;
       }),
-    ).toStrictEqual([
-      undefined,
-      "future_reason",
-      undefined,
-      undefined,
-      undefined,
-    ]);
+    ).toStrictEqual(
+      rounds.map((round) => {
+        return round.failureReason;
+      }),
+    );
     expect(
       rawFailures.find((row) => {
         return row.runId === runIds[1];
@@ -4869,7 +4930,9 @@ describe("CHAT-02: failed chat callbacks", () => {
       error: "Oops, something went wrong. Please try again later.",
     });
 
-    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(5);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(
+      rounds.length,
+    );
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[1]),
     ).toMatchObject({
@@ -4964,6 +5027,7 @@ describe("CHAT-02: failed chat callbacks", () => {
     async function failAndReadError(params: {
       readonly prompt: string;
       readonly errorMessage?: string;
+      readonly failureReason?: RunFailureReasonToken;
       readonly selectedModel?: SupportedRunModel;
       readonly orgRole?: TestOrgRole;
       readonly publicBrand?: PublicBrand;
@@ -5003,6 +5067,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         run.runId,
         sandboxHeaders,
         params.errorMessage ?? upstreamAuthError,
+        params.failureReason,
       );
 
       const page = await waitForThreadMessages(
@@ -5034,6 +5099,17 @@ describe("CHAT-02: failed chat callbacks", () => {
       }),
     ).resolves.toBe(
       "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "structured subscription credential failed",
+        errorMessage: "Provider authentication copy changed",
+        failureReason: "invalid_credentials",
+        selectedModel: "claude-opus-4-8",
+        configureProvider: configureClaudeCodeSubscriptionProvider,
+      }),
+    ).resolves.toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.vm0.ai/?settings=model",
     );
     await expect(
       failAndReadError({
