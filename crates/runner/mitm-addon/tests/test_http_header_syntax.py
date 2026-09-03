@@ -30,14 +30,14 @@ class _FullValueOperationGuard(str):
 class _EarlyMatchSuffixGuard(_FullValueOperationGuard):
     def __getitem__(self, key: int | slice) -> str:
         if isinstance(key, int) and key >= len("websocket,"):
-            raise AssertionError("token matcher inspected the irrelevant suffix")
+            raise IndexError("token matcher inspected the irrelevant suffix")
         return super().__getitem__(key)
 
 
 class _WorkLimitGuard(_FullValueOperationGuard):
     def __getitem__(self, key: int | slice) -> str:
         if isinstance(key, int) and key >= 8:
-            raise AssertionError("token matcher read beyond its work budget")
+            raise IndexError("token matcher read beyond its work budget")
         return super().__getitem__(key)
 
 
