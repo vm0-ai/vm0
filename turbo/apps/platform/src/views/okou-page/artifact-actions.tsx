@@ -85,6 +85,7 @@ function artifactDownloadFilename(
 }
 
 export type ArtifactDownloadSyncTarget = {
+  readonly accountReady: boolean;
   readonly agentId: string | null | undefined;
   readonly disconnected: boolean;
   readonly fileId: string;
@@ -231,15 +232,19 @@ function useGoogleDriveAvailability(
     googleDriveConnector === null
       ? null
       : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
+  const accountReady = syncTarget?.accountReady === true;
 
   return {
     connectorListLoaded:
-      connectorList !== undefined &&
-      (googleDriveConnected || catalogBySlug !== undefined),
+      accountReady ||
+      (connectorList !== undefined &&
+        (googleDriveConnected || catalogBySlug !== undefined)),
     googleDriveAuthMethod,
     googleDriveConnected,
     googleDriveConnector,
-    googleDriveReady: googleDriveConnected && syncTarget?.disconnected !== true,
+    googleDriveReady:
+      accountReady ||
+      (googleDriveConnected && syncTarget?.disconnected !== true),
   };
 }
 

@@ -1242,6 +1242,98 @@ describe("thread-owned utility sidebar", () => {
     },
   );
 
+  it("uploads with the selected ready Drive account when the default needs reconnect", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-sidebar/drive-ready-selected-notes.md";
+    const summary = catalogArtifact({ title: "drive-ready-selected-notes.md" });
+    const artifactFiles = [
+      threadArtifactFile(markdownUrl, {
+        id: "artifact-drive-ready-selected-notes",
+        filename: "drive-ready-selected-notes.md",
+        googleDriveSync: {
+          status: "not_synced",
+          accountReady: true,
+        },
+      }),
+    ];
+
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/markdown",
+            filename: "drive-ready-selected-notes.md",
+            fileId: "f0000000-0000-4000-a000-000000000007",
+            summary,
+            url: markdownUrl,
+          }),
+        ],
+      ]),
+    );
+    context.mocks.data.connectors([
+      googleDriveConnector({
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      }),
+    ]);
+    context.mocks.api(connectorCatalogContract.status, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(userConnectorsContract.update, ({ never }) => {
+      return never();
+    });
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
+      return never();
+    });
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Selected notes\n\nReady for Drive.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+
+    let artifactSynced = false;
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          runId: "run-sidebar",
+          fileId: "artifact-drive-ready-selected-notes",
+        });
+        artifactFiles[0] = {
+          ...artifactFiles[0]!,
+          googleDriveSync: {
+            status: "synced",
+            accountReady: true,
+            id: "drive-file-ready-selected-notes",
+            name: "drive-ready-selected-notes.md",
+            webViewLink: "https://drive.test/drive-file-ready-selected-notes",
+          },
+        };
+        artifactSynced = true;
+        return respond(200, {
+          id: "drive-file-ready-selected-notes",
+          name: "drive-ready-selected-notes.md",
+          webViewLink: "https://drive.test/drive-file-ready-selected-notes",
+        });
+      },
+    );
+
+    setupChatThread({ artifactFiles });
+    await openCatalogArtifact("drive-ready-selected-notes.md");
+    await screen.findByText("Ready for Drive.");
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await user.click(await screen.findByText("Upload to Google Drive"));
+
+    await waitFor(() => {
+      expect(artifactSynced).toBeTruthy();
+      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+  });
+
   it("reconnects the selected Drive account before syncing the artifact", async () => {
     const user = userEvent.setup({ delay: null });
     const markdownUrl =

@@ -228,19 +228,33 @@ const chatThreadArtifactGoogleDriveRecoverySchema = z.discriminatedUnion(
   ],
 );
 
+const chatThreadArtifactGoogleDriveAccountReadyShape = {
+  // New App -> old API fallback. Current APIs always emit this marker after
+  // resolving the thread account, credentials, and agent authorization.
+  // Keep it optional while pre-marker APIs remain available for rollback.
+  accountReady: z.literal(true).optional(),
+};
+
 const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("synced"),
+    ...chatThreadArtifactGoogleDriveAccountReadyShape,
     id: z.string(),
     name: z.string(),
     webViewLink: z.string().nullable(),
   }),
-  z.object({ status: z.literal("not_synced") }),
+  z.object({
+    status: z.literal("not_synced"),
+    ...chatThreadArtifactGoogleDriveAccountReadyShape,
+  }),
   z.object({
     status: z.literal("disconnected"),
     recovery: chatThreadArtifactGoogleDriveRecoverySchema.optional(),
   }),
-  z.object({ status: z.literal("unknown") }),
+  z.object({
+    status: z.literal("unknown"),
+    ...chatThreadArtifactGoogleDriveAccountReadyShape,
+  }),
 ]);
 
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
