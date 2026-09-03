@@ -748,6 +748,9 @@ pub mod webhooks {
                 /// The model context window was exceeded.
                 #[serde(rename = "context_window_exceeded")]
                 ContextWindowExceeded,
+                /// The Codex app-server input limit was exceeded.
+                #[serde(rename = "input_too_large")]
+                InputTooLarge,
                 /// The provider output-token limit was reached.
                 #[serde(rename = "output_token_limit")]
                 OutputTokenLimit,

@@ -167,10 +167,14 @@ type CompletionTransactionResult =
 
 const L = logger("webhook:complete");
 
-function isSuppressibleNonBuiltInFailureReason(
-  failureReason: KnownRunFailureReason | undefined,
+function shouldSuppressKnownFailureLog(
+  run: RunRecord,
+  failureReason: KnownRunFailureReason,
 ): boolean {
   switch (failureReason) {
+    case "input_too_large": {
+      return true;
+    }
     case "insufficient_credits":
     case "invalid_api_key":
     case "invalid_credentials":
@@ -185,30 +189,28 @@ function isSuppressibleNonBuiltInFailureReason(
     case "safety_policy_refusal":
     case "reconnect_required":
     case "usage_limit": {
-      return true;
+      const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);
+      return (
+        providerType.success && !isBuiltInModelProviderType(providerType.data)
+      );
     }
     case "session_history_limit":
-    case "unsupported_model":
-    case undefined: {
+    case "unsupported_model": {
       return false;
     }
   }
 }
 
-function shouldSuppressNonBuiltInProviderFailureLog(
+function shouldSuppressFailureLog(
   run: RunRecord,
   failureReason: RunFailureReasonToken | undefined,
 ): boolean {
   const knownFailureReason =
     knownRunFailureReasonSchema.safeParse(failureReason);
-  if (
-    !knownFailureReason.success ||
-    !isSuppressibleNonBuiltInFailureReason(knownFailureReason.data)
-  ) {
+  if (!knownFailureReason.success) {
     return false;
   }
-  const providerType = modelProviderTypeSchema.safeParse(run.modelProvider);
-  return providerType.success && !isBuiltInModelProviderType(providerType.data);
+  return shouldSuppressKnownFailureLog(run, knownFailureReason.data);
 }
 
 function checkpointInputForCompletion(
@@ -951,10 +953,7 @@ export const completeAgentRun$ = command(
           error: commit.transitionError,
         });
       } else if (
-        !shouldSuppressNonBuiltInProviderFailureLog(
-          commit.run,
-          commit.transitionFailureReason,
-        )
+        !shouldSuppressFailureLog(commit.run, commit.transitionFailureReason)
       ) {
         L.warn("Run failed", {
           runId: input.body.runId,
