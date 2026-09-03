@@ -774,6 +774,11 @@ describe("okou social command", () => {
   it.each([
     ["transcript", "https://instagram.com/example"],
     ["transcript", "https://youtube.com/"],
+    ["transcript", "https://youtu.be/"],
+    ["transcript", "https://vm.tiktok.com/"],
+    ["transcript", "https://instagram.com/explore/"],
+    ["transcript", "https://linkedin.com/posts"],
+    ["transcript", "https://facebook.com/watch"],
   ])(
     "rejects mismatched %s target %s before managed work",
     async (operation, url) => {

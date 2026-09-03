@@ -202,18 +202,20 @@ function pathSegments(url: URL): readonly string[] {
 }
 
 function linkedInTargetKind(url: URL): SocialTargetKind {
-  const [first] = pathSegments(url);
+  const [first, second, third] = pathSegments(url);
   switch (first) {
     case "in": {
-      return "profile";
+      return second ? "profile" : "unknown";
     }
     case "company": {
-      return "company";
+      return second ? "company" : "unknown";
     }
-    case "feed":
     case "posts":
     case "pulse": {
-      return "post";
+      return second ? "post" : "unknown";
+    }
+    case "feed": {
+      return second === "update" && third ? "post" : "unknown";
     }
     default: {
       return "unknown";
@@ -234,78 +236,160 @@ const TWITTER_NON_PROFILE_PATHS = new Set([
 
 function twitterTargetKind(url: URL): SocialTargetKind {
   const segments = pathSegments(url);
-  if (segments[1] === "status" && segments[2]) {
+  if (
+    (segments[1] === "status" && segments[2]) ||
+    (segments[0] === "i" &&
+      segments[1] === "web" &&
+      segments[2] === "status" &&
+      segments[3])
+  ) {
     return "post";
   }
-  return segments[0] && !TWITTER_NON_PROFILE_PATHS.has(segments[0])
+  return segments.length === 1 &&
+    segments[0] &&
+    !TWITTER_NON_PROFILE_PATHS.has(segments[0])
     ? "profile"
     : "unknown";
+}
+
+const FACEBOOK_NON_CHANNEL_PATHS = new Set([
+  "events",
+  "gaming",
+  "groups",
+  "help",
+  "login",
+  "marketplace",
+  "permalink.php",
+  "photo.php",
+  "photos",
+  "posts",
+  "reel",
+  "reels",
+  "share",
+  "sharer",
+  "videos",
+  "watch",
+]);
+
+function hasQueryValue(url: URL, key: string): boolean {
+  const value = url.searchParams.get(key);
+  return value !== null && value.trim().length > 0;
 }
 
 function facebookTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
   if (hostname === "fb.watch") {
-    return "video";
+    return segments[0] ? "video" : "unknown";
   }
+  const videoIndex = segments.findIndex((segment) => {
+    return segment === "reel" || segment === "reels" || segment === "videos";
+  });
+  const watchIndex = segments.indexOf("watch");
   if (
-    segments.includes("reel") ||
-    segments.includes("videos") ||
-    segments.includes("watch") ||
-    url.searchParams.has("v")
+    (videoIndex >= 0 && segments[videoIndex + 1]) ||
+    (watchIndex >= 0 && segments[watchIndex + 1]) ||
+    hasQueryValue(url, "v")
   ) {
     return "video";
   }
+  const postIndex = segments.findIndex((segment) => {
+    return segment === "posts" || segment === "photos";
+  });
   if (
-    segments.includes("posts") ||
-    segments.includes("photos") ||
-    url.searchParams.has("story_fbid")
+    (postIndex >= 0 && segments[postIndex + 1]) ||
+    hasQueryValue(url, "story_fbid") ||
+    hasQueryValue(url, "fbid")
   ) {
     return "post";
   }
-  return segments.length === 1 ? "channel" : "unknown";
+  if (segments[0] === "profile.php") {
+    return segments.length === 1 && hasQueryValue(url, "id")
+      ? "channel"
+      : "unknown";
+  }
+  return segments.length === 1 &&
+    segments[0] &&
+    !FACEBOOK_NON_CHANNEL_PATHS.has(segments[0])
+    ? "channel"
+    : "unknown";
 }
 
+const INSTAGRAM_NON_PROFILE_PATHS = new Set([
+  "about",
+  "accounts",
+  "api",
+  "challenge",
+  "developer",
+  "direct",
+  "directory",
+  "explore",
+  "legal",
+  "privacy",
+  "stories",
+]);
+
 function instagramTargetKind(url: URL): SocialTargetKind {
-  const [first] = pathSegments(url);
+  const segments = pathSegments(url);
+  const [first, second] = segments;
   if (first === "p") {
-    return "post";
+    return second ? "post" : "unknown";
   }
   if (first === "reel" || first === "reels" || first === "tv") {
-    return "video";
+    return second ? "video" : "unknown";
   }
-  return first ? "profile" : "unknown";
+  return segments.length === 1 &&
+    first &&
+    !INSTAGRAM_NON_PROFILE_PATHS.has(first)
+    ? "profile"
+    : "unknown";
 }
 
 function tiktokTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
   if (hostname === "vm.tiktok.com" || hostname === "vt.tiktok.com") {
-    return "video";
+    return segments[0] ? "video" : "unknown";
   }
   if (segments[0]?.startsWith("@") && segments[1] === "video" && segments[2]) {
     return "video";
   }
-  return segments[0]?.startsWith("@") ? "profile" : "unknown";
+  if (segments[0] === "t" && segments[1]) {
+    return "video";
+  }
+  return segments.length === 1 &&
+    segments[0]?.startsWith("@") &&
+    segments[0].length > 1
+    ? "profile"
+    : "unknown";
 }
 
 function youtubeTargetKind(url: URL): SocialTargetKind {
   const hostname = normalizedHostname(url.hostname);
   const segments = pathSegments(url);
-  if (hostname === "youtu.be" || url.searchParams.has("v")) {
+  if (
+    (hostname === "youtu.be" && segments[0]) ||
+    hasQueryValue(url, "v")
+  ) {
     return "video";
-  }
-  if (segments[0] === "shorts" || segments[0] === "live") {
-    return "video";
-  }
-  if (segments[0] === "playlist" || url.searchParams.has("list")) {
-    return "playlist";
   }
   if (
-    segments[0]?.startsWith("@") ||
-    segments[0] === "c" ||
-    segments[0] === "channel" ||
-    segments[0] === "user"
+    (segments[0] === "shorts" || segments[0] === "live") &&
+    segments[1]
+  ) {
+    return "video";
+  }
+  if (segments[0] === "playlist" && hasQueryValue(url, "list")) {
+    return "playlist";
+  }
+  if (segments[0]?.startsWith("@") && segments[0].length > 1) {
+    return "channel";
+  }
+  if (
+    (segments[0] === "c" ||
+      segments[0] === "channel" ||
+      segments[0] === "user") &&
+    segments[1]
   ) {
     return "channel";
   }
