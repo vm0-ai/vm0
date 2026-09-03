@@ -153,6 +153,8 @@ _STALE_FIREWALL_AUTHORIZATION_METADATA_KEYS = (
 _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _WEBSOCKET_KEY_BYTES = 16
+_WEBSOCKET_KEY_BASE64_CHARS = 24
+_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT = 8 * 1024
 _BufferedRequestBodyCheckKind = Literal["ok", "too_large", "length_required"]
 
 
@@ -1500,9 +1502,15 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     allow: matching.FirewallAllow,
     sandbox_info: dict,
 ) -> None:
-    if _is_websocket_upgrade_request(flow):
+    is_websocket_upgrade = _is_websocket_upgrade_request(flow)
+    if is_websocket_upgrade:
         flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
-    if _expects_http_response_body_usage_inspection(flow, allow, sandbox_info):
+    if _expects_http_response_body_usage_inspection(
+        flow,
+        allow,
+        sandbox_info,
+        is_websocket_upgrade=is_websocket_upgrade,
+    ):
         flow.metadata[metadata_keys.RESPONSE_ENCODING_NEGOTIATION] = (
             response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
                 flow.request.headers
@@ -1514,10 +1522,12 @@ def _expects_http_response_body_usage_inspection(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     sandbox_info: dict,
+    *,
+    is_websocket_upgrade: bool,
 ) -> bool:
     if flow.request.method.upper() in _HTTP_RESPONSE_BODYLESS_METHODS:
         return False
-    if _is_websocket_upgrade_request(flow):
+    if is_websocket_upgrade:
         return False
     if allow.name.startswith("model-provider:") and is_billable_firewall(allow.name, sandbox_info):
         return True
@@ -1532,26 +1542,34 @@ def _is_websocket_upgrade_request(flow: http.HTTPFlow) -> bool:
     if flow.request.http_version != "HTTP/1.1":
         return False
     if not http_header_syntax.header_values_contain_token(
-        flow.request.headers.get_all("Upgrade"), "websocket"
+        flow.request.headers.get_all("Upgrade"),
+        "websocket",
+        max_work_units=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     ):
         return False
     websocket_key = http_header_syntax.single_header_value(
-        flow.request.headers.get_all("Sec-WebSocket-Key")
+        flow.request.headers.get_all("Sec-WebSocket-Key"),
+        max_value_chars=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     )
     if websocket_key is None or not _is_valid_websocket_key(websocket_key):
         return False
     websocket_version = http_header_syntax.single_header_value(
-        flow.request.headers.get_all("Sec-WebSocket-Version")
+        flow.request.headers.get_all("Sec-WebSocket-Version"),
+        max_value_chars=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     )
     if websocket_version != "13":
         return False
 
     return http_header_syntax.header_values_contain_token(
-        flow.request.headers.get_all("Connection"), "upgrade"
+        flow.request.headers.get_all("Connection"),
+        "upgrade",
+        max_work_units=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
     )
 
 
 def _is_valid_websocket_key(value: str) -> bool:
+    if len(value) != _WEBSOCKET_KEY_BASE64_CHARS:
+        return False
     try:
         decoded = base64.b64decode(value, validate=True)
     except (binascii.Error, ValueError):
@@ -1571,7 +1589,10 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         return
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
-    response_streaming.configure_response_stream(flow)
+    response_streaming.configure_response_stream(
+        flow,
+        websocket_header_work_limit=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+    )
     codex_model_catalog_cache.wrap_response_stream(flow)
 
 
@@ -1696,7 +1717,10 @@ def websocket_end(flow: http.HTTPFlow) -> None:
 
 
 def _should_retain_model_websocket_tracking(flow: http.HTTPFlow) -> bool:
-    return response_streaming.is_confirmed_websocket_upgrade_response(flow) and (
+    return response_streaming.is_confirmed_websocket_upgrade_response(
+        flow,
+        websocket_header_work_limit=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+    ) and (
         model_websocket_usage.is_enabled(flow)
         or model_provider_failure.should_observe_websocket_server_event(flow)
     )
@@ -1847,7 +1871,10 @@ def _finish_response_handling(
         not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
         and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
-        and response_streaming.uses_model_json_fallback(flow)
+        and response_streaming.uses_model_json_fallback(
+            flow,
+            websocket_header_work_limit=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
+        )
     ):
         model_protocol = response_streaming.model_usage_protocol(flow)
         json_usage, json_error = usage.extract_model_usage_with_error_from_json(

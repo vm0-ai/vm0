@@ -84,18 +84,59 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <script>
+    <script id="theme-bootstrap">
       // Inline theme detection — mirrors signals/theme.ts resolveTheme() + applyTheme()
       (function () {
-        var p = localStorage.getItem("theme");
+        var root = document.documentElement;
+        var isOkou = root.dataset.appBrandName === "Okou";
+        if (!isOkou) {
+          var vm0Preference = localStorage.getItem("theme");
+          var vm0Theme =
+            vm0Preference === "dark" || vm0Preference === "light"
+              ? vm0Preference
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          root.dataset.theme = vm0Theme;
+          if (vm0Theme === "dark") root.classList.add("dark");
+          return;
+        }
+        var p = null;
+        try {
+          var prefix = "__Secure-okou-theme=";
+          var cookies = document.cookie.split(";");
+          for (var i = 0; i < cookies.length; i += 1) {
+            var cookie = cookies[i].trim();
+            if (cookie.indexOf(prefix) === 0) {
+              var value = cookie.slice(prefix.length);
+              if (
+                value === "v1.light" ||
+                value === "v1.dark" ||
+                value === "v1.system"
+              ) {
+                p = value.slice(3);
+              }
+              if (p) break;
+            }
+          }
+        } catch (_) {}
+        if (!p) {
+          try {
+            var saved = localStorage.getItem("theme");
+            if (saved === "light" || saved === "dark" || saved === "system") {
+              p = saved;
+            }
+          } catch (_) {}
+        }
+        if (!p) p = "system";
         var t =
           p === "dark" || p === "light"
             ? p
             : window.matchMedia("(prefers-color-scheme: dark)").matches
               ? "dark"
               : "light";
-        document.documentElement.dataset.theme = t;
-        if (t === "dark") document.documentElement.classList.add("dark");
+        root.dataset.theme = t;
+        root.classList.toggle("dark", t === "dark");
       })();
     </script>
     <style id="app-bootstrap-critical-styles">

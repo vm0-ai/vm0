@@ -49,6 +49,7 @@ import {
   Loader2,
   Play,
   MessageCircle,
+  Mic,
   SmilePlus,
   Package,
   Route,
@@ -6871,6 +6872,9 @@ function UserMessagePartView({
       />
     );
   }
+  if (renderPart.type === "voice") {
+    return <UserMessageVoiceDraft part={renderPart.part} />;
+  }
   if (renderPart.type === "template") {
     return <UserMessageTemplateReference part={renderPart.part} />;
   }
@@ -6884,6 +6888,32 @@ function UserMessagePartView({
   }
   void (renderPart satisfies never);
   return null;
+}
+
+function UserMessageVoiceDraft({
+  part,
+}: {
+  part: Extract<UserMessagePart, { type: "voice" }>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-sent-voice-draft=""
+      className="my-1.5 rounded-lg border border-border/70 bg-muted/65 px-3 py-2.5 text-left text-muted-foreground"
+    >
+      <div className="flex items-center gap-2 text-xs font-semibold">
+        <Mic size={15} aria-hidden="true" />
+        {t(($) => {
+          return $.chat.voice.draft;
+        })}
+      </div>
+      {part.transcript ? (
+        <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-5 text-foreground/70">
+          {part.transcript}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function UserMessageView({

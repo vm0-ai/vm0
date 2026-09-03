@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.829.5](https://github.com/vm0-ai/vm0/compare/app-v0.829.4...app-v0.829.5) (2026-09-03)
+
+
+### Bug Fixes
+
+* **connectors:** rework account manager dialog and drop opaque account names ([#31181](https://github.com/vm0-ai/vm0/issues/31181)) ([5706ac3](https://github.com/vm0-ai/vm0/commit/5706ac352dcad40e52c3a18827bf0f5a3ea253b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.612.0
+    * @okouai/ui bumped to 1.1.1
+
 ## [0.829.4](https://github.com/vm0-ai/vm0/compare/app-v0.829.3...app-v0.829.4) (2026-09-03)
 
 

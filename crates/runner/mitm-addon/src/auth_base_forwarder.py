@@ -43,6 +43,8 @@ header_pairs = auth_base_transport.header_pairs
 resolved_auth_header_pairs = auth_base_transport.resolved_auth_header_pairs
 trusted_request_header_pairs = auth_base_transport.trusted_request_header_pairs
 
+type ForwardRequestPreSubmitGuard = Callable[[], bool]
+
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
@@ -189,6 +191,10 @@ def shutdown_forward_request_workers(*, wait: bool) -> None:
 
 class AuthBaseForwardingSaturatedError(Exception):
     """Raised when auth.base forwarding admission is saturated."""
+
+
+class ForwardRequestPreSubmitRejectedError(Exception):
+    """Raised when a caller rejects forwarding after asynchronous preparation."""
 
 
 class _ForwardRequestTerminalState(Enum):
@@ -610,6 +616,7 @@ async def forward_request(
     body: bytes | None,
     *,
     admission: request_body_admission.RequestBodyAdmissionLease | None = None,
+    pre_submit_guard: ForwardRequestPreSubmitGuard | None = None,
 ) -> tuple[int, bytes, http.Headers]:
     """Forward an auth.base request within one absolute worker lifetime.
 
@@ -623,9 +630,11 @@ async def forward_request(
     worker submission, only the worker future's completion callback releases admission and
     concurrency capacity.
 
-    Cancellation before submission creates no worker, while cancelling a pending worker future
-    prevents it from running. Once synchronous work has started, caller cancellation does not stop
-    it; the independent deadline remains armed and the worker retains resources until completion.
+    After asynchronous preparation, an optional synchronous guard runs on the event-loop thread
+    immediately before worker submission. Guard rejection creates no worker. Cancellation before
+    submission also creates no worker, while cancelling a pending worker future prevents it from
+    running. Once synchronous work has started, caller cancellation does not stop it; the
+    independent deadline remains armed and the worker retains resources until completion.
 
     Request body size, admission saturation, shutdown, URL/header/destination validation, upstream
     forwarding, and response processing failures propagate to the caller.
@@ -689,6 +698,11 @@ async def forward_request(
             if abort_handle.terminal_state is _ForwardRequestTerminalState.SHUTDOWN_ABORTED:
                 raise RuntimeError("auth.base forwarding workers are shut down") from None
             raise
+
+        if pre_submit_guard is not None and not pre_submit_guard():
+            raise ForwardRequestPreSubmitRejectedError(
+                "auth.base forwarding rejected before worker submission"
+            )
 
         deadline_timer = loop.call_later(
             auth_base_transport.remaining_deadline_seconds(deadline),

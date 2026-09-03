@@ -1,8 +1,14 @@
 import chalk from "chalk";
-import type { ConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
+import type {
+  ConnectorCatalogItem,
+  ConnectorCatalogStatus,
+} from "../../../lib/api/domains/connectors";
 import { getBillingStatus } from "../../../lib/api/domains/billing";
 import { getAgentUserConnectors } from "../../../lib/api/domains/agents";
-import { listConnectorCatalogStatus } from "../../../lib/api/domains/connectors";
+import {
+  listConnectorCatalog,
+  listConnectorCatalogStatus,
+} from "../../../lib/api/domains/connectors";
 import { getPlatformOrigin } from "../../doctor/platform-url";
 import {
   currentPlanAllowsVideo,
@@ -10,6 +16,12 @@ import {
 } from "../../shared/billing-capabilities";
 import { planUpgradeUrl } from "../../shared/billing-links";
 import { getOkouAgentId } from "../../../lib/okou-env";
+import { connectorActionUrl } from "../../connector/action-url";
+import {
+  isRunBoundConnectorContext,
+  resolveRunConnectorAccountLookups,
+  type RunConnectorAccountLookup,
+} from "../../connector/run-account-context";
 import {
   DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
@@ -321,7 +333,8 @@ type CandidateStatus =
   | "ready"
   | "needs-reconnect"
   | "not-authorized"
-  | "not-connected";
+  | "not-connected"
+  | "unavailable-for-run";
 
 interface ListerOptions {
   all?: boolean;
@@ -384,10 +397,10 @@ function getGenerationContext(
   return GENERATION_CONTEXT[generationType] ?? null;
 }
 
-function getGenerationConnectors(
+function getGenerationConnectors<T extends ConnectorCatalogItem>(
   generationType: ConnectorGenerationType,
-  connectors: readonly ConnectorCatalogStatus[],
-): ConnectorCatalogStatus[] {
+  connectors: readonly T[],
+): T[] {
   return connectors
     .filter((connector) => {
       return connector.generation.includes(generationType);
@@ -407,7 +420,7 @@ function formatAccount(connector: ConnectorCatalogStatus): string | undefined {
   return undefined;
 }
 
-function getAction(
+function getCurrentAction(
   status: CandidateStatus,
   connectorSlug: string,
   label: string,
@@ -445,7 +458,7 @@ function getAction(
   return {};
 }
 
-function toCandidate(params: {
+function toCurrentCandidate(params: {
   connector: ConnectorCatalogStatus;
   authorizedConnectorSlugs: Set<string> | null;
   agentId: string | undefined;
@@ -486,13 +499,98 @@ function toCandidate(params: {
     reason,
     account: connector.connected ? formatAccount(connector) : undefined,
     authMethod: connector.connection?.authMethod,
-    ...getAction(
+    ...getCurrentAction(
       status,
       connectorSlug,
       connector.label,
       agentId,
       platformOrigin,
     ),
+  };
+}
+
+type RunUnavailableAccountLookup = Exclude<
+  RunConnectorAccountLookup,
+  { readonly state: "available" }
+>;
+
+function runUnavailableReason(lookup: RunUnavailableAccountLookup): string {
+  switch (lookup.state) {
+    case "context-unavailable":
+      return "run account context unavailable; start a new run";
+    case "not-admitted":
+      return "not admitted for this run; change the thread selection and start a new run";
+    case "metadata-unavailable":
+      return `selected account ${lookup.connectionId} metadata unavailable or deleted; select an account and start a new run`;
+  }
+}
+
+function toRunCandidate(params: {
+  connector: ConnectorCatalogItem;
+  lookup: RunConnectorAccountLookup;
+  authorizedConnectorSlugs: Set<string> | null;
+  agentId: string | undefined;
+  platformOrigin: string;
+}): GenerationCandidate {
+  const {
+    connector,
+    lookup,
+    authorizedConnectorSlugs,
+    agentId,
+    platformOrigin,
+  } = params;
+  if (lookup.state !== "available") {
+    return {
+      connectorSlug: connector.slug,
+      label: connector.label,
+      status: "unavailable-for-run",
+      reason: runUnavailableReason(lookup),
+    };
+  }
+
+  const needsReconnect =
+    lookup.metadata.connectionStatus === "reconnect-required";
+  const authorized =
+    authorizedConnectorSlugs === null ||
+    authorizedConnectorSlugs.has(connector.slug);
+  const status: CandidateStatus = needsReconnect
+    ? "needs-reconnect"
+    : authorized
+      ? "ready"
+      : "not-authorized";
+  const reason = needsReconnect
+    ? "connected, reconnect required"
+    : authorized
+      ? "connected and authorized for current agent"
+      : "connected, not authorized for current agent";
+  const action = needsReconnect
+    ? {
+        actionLabel: `Reconnect ${connector.label}`,
+        actionUrl: connectorActionUrl({
+          origin: platformOrigin,
+          path: `/connectors/${connector.slug}/reconnect/${lookup.connectionId}`,
+          agentId,
+        }),
+      }
+    : status === "not-authorized" && agentId
+      ? {
+          actionLabel: `Authorize ${connector.label}`,
+          actionUrl: connectorActionUrl({
+            origin: platformOrigin,
+            path: `/connectors/${connector.slug}/authorize`,
+            agentId,
+          }),
+        }
+      : {};
+
+  return {
+    connectorSlug: connector.slug,
+    label: connector.label,
+    status,
+    reason,
+    account: lookup.label,
+    authMethod: lookup.metadata.authMethod,
+    ...action,
   };
 }
 
@@ -525,7 +623,10 @@ function renderRows(candidates: GenerationCandidate[]): void {
   }
 }
 
-function renderActions(candidates: GenerationCandidate[]): void {
+function renderActions(
+  candidates: GenerationCandidate[],
+  runBound: boolean,
+): void {
   const actionable = candidates.filter((candidate) => {
     return candidate.actionLabel && candidate.actionUrl;
   });
@@ -535,6 +636,12 @@ function renderActions(candidates: GenerationCandidate[]): void {
   console.log("Next actions:");
   for (const candidate of actionable) {
     console.log(`  [${candidate.actionLabel}](${candidate.actionUrl})`);
+  }
+  if (runBound) {
+    console.log("");
+    console.log(
+      "After completing connector or authorization changes, start a new run.",
+    );
   }
 }
 
@@ -604,6 +711,7 @@ function renderText(params: {
   showAll: boolean;
   videoGenerationAllowed: boolean | undefined;
   platformOrigin: string;
+  runBound: boolean;
 }): void {
   const {
     generationType,
@@ -613,6 +721,7 @@ function renderText(params: {
     showAll,
     videoGenerationAllowed,
     platformOrigin,
+    runBound,
   } = params;
   const label = GENERATION_TYPE_LABELS[generationType];
   const scope = agentId ? "for current agent" : "(connected connectors)";
@@ -657,8 +766,34 @@ function renderText(params: {
   }
 
   if (showAll) {
-    renderActions(other);
+    renderActions(other, runBound);
   }
+}
+
+type GenerationCatalogSource =
+  | {
+      readonly kind: "run";
+      readonly connectors: readonly ConnectorCatalogItem[];
+    }
+  | {
+      readonly kind: "current";
+      readonly connectors: readonly ConnectorCatalogStatus[];
+    }
+  | { readonly kind: "none"; readonly connectors: readonly [] };
+
+async function loadGenerationCatalog(
+  connectorGenerationType: ConnectorGenerationType | null,
+  runBound: boolean,
+): Promise<GenerationCatalogSource> {
+  if (!connectorGenerationType) {
+    return { kind: "none", connectors: [] };
+  }
+  if (runBound) {
+    const { connectors } = await listConnectorCatalog();
+    return { kind: "run", connectors };
+  }
+  const { connectors } = await listConnectorCatalogStatus();
+  return { kind: "current", connectors };
 }
 
 export async function runLister(
@@ -667,9 +802,10 @@ export async function runLister(
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
   const agentId = getOkouAgentId();
+  const runBound = isRunBoundConnectorContext();
   const [catalog, enabledConnectorSlugs, platformOrigin, billing] =
     await Promise.all([
-      listConnectorCatalogStatus(),
+      loadGenerationCatalog(connectorGenerationType, runBound),
       agentId ? getAgentUserConnectors(agentId) : Promise.resolve(null),
       getPlatformOrigin(),
       (generationType === "video" || generationType === "avatar-video") &&
@@ -680,18 +816,43 @@ export async function runLister(
   const authorizedConnectorSlugs = enabledConnectorSlugs
     ? new Set(enabledConnectorSlugs)
     : null;
-  const candidates = connectorGenerationType
-    ? getGenerationConnectors(connectorGenerationType, catalog.connectors).map(
-        (connector) => {
-          return toCandidate({
-            connector,
-            authorizedConnectorSlugs,
-            agentId,
-            platformOrigin,
-          });
-        },
-      )
-    : [];
+  let candidates: GenerationCandidate[] = [];
+  if (connectorGenerationType && catalog.kind === "run") {
+    const connectors = getGenerationConnectors(
+      connectorGenerationType,
+      catalog.connectors,
+    );
+    const lookups = await resolveRunConnectorAccountLookups(
+      connectors.map((connector) => {
+        return { kind: "builtin", connectorSlug: connector.slug };
+      }),
+    );
+    candidates = connectors.map((connector, index) => {
+      const lookup = lookups[index];
+      if (!lookup) {
+        throw new Error("Missing run account lookup for generation connector");
+      }
+      return toRunCandidate({
+        connector,
+        lookup,
+        authorizedConnectorSlugs,
+        agentId,
+        platformOrigin,
+      });
+    });
+  } else if (connectorGenerationType && catalog.kind === "current") {
+    candidates = getGenerationConnectors(
+      connectorGenerationType,
+      catalog.connectors,
+    ).map((connector) => {
+      return toCurrentCandidate({
+        connector,
+        authorizedConnectorSlugs,
+        agentId,
+        platformOrigin,
+      });
+    });
+  }
   const ready = candidates.filter((candidate) => {
     return candidate.status === "ready";
   });
@@ -708,6 +869,7 @@ export async function runLister(
       ? currentPlanAllowsVideo(billing)
       : undefined,
     platformOrigin,
+    runBound,
   });
 
   const shouldShowOtherHint =

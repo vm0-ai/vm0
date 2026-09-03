@@ -12,6 +12,7 @@ import {
   CHAT_EVENT_SCHEMA_VERSION_HEADER,
   CURRENT_CHAT_EVENT_SCHEMA_VERSION,
 } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { HttpResponse, http } from "msw";
 import {
   afterEach,
@@ -38,13 +39,13 @@ const CHAT_EVENT_SCHEMA_HEADERS = {
 const CACHE_SCHEMA_VERSION_FILE = ".okou-chat-event-schema-version";
 const CACHE_SCHEMA_VERSION_BODY = `${CURRENT_CHAT_EVENT_SCHEMA_VERSION.toString()}\n`;
 
-function rawEventRow(seqId: number) {
+function rawEventRow(seqId: number): ChatEventRow {
   return {
     id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
     chatThreadId: THREAD_ID,
     runId: null,
     revokesEventId: null,
-    eventType: "output.message" as const,
+    eventType: "output.message",
     payload: { content: `message ${seqId}` },
     contextType: null,
     contextId: null,
@@ -55,7 +56,25 @@ function rawEventRow(seqId: number) {
   };
 }
 
-function snapshotNdjson(rows: readonly ReturnType<typeof rawEventRow>[]) {
+function failedEventRow(seqId: number): ChatEventRow {
+  return {
+    id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
+    chatThreadId: THREAD_ID,
+    runId: "00000000-0000-4000-8000-000000000099",
+    revokesEventId: null,
+    eventType: "run.failed",
+    payload: { error: `provider unavailable ${seqId}` },
+    failureReason: "future_reason",
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
+    seqId,
+    createdAt: "2026-08-12T10:00:00.000Z",
+  };
+}
+
+function snapshotNdjson(rows: readonly ChatEventRow[]) {
   return `${rows
     .map((row) => {
       return JSON.stringify(row);
@@ -103,9 +122,9 @@ describe("okou chat messages command", () => {
 
   it("synchronizes a snapshot and hot event files", async () => {
     const outputDirectory = await createOutputDirectory();
-    const snapshotLastRow = rawEventRow(2);
+    const snapshotLastRow = failedEventRow(2);
     const snapshotRows = [rawEventRow(1), snapshotLastRow];
-    const hotRow = rawEventRow(3);
+    const hotRow = failedEventRow(3);
     server.use(
       http.get(SNAPSHOT_URL, ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");

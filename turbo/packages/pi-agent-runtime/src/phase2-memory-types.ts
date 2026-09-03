@@ -80,7 +80,7 @@ export interface PiMemoryPhase2ConsolidationArgs {
   readonly model: PiAgentModelConfig;
   readonly heartbeat: () => Promise<boolean>;
   readonly onLifecycle?: (event: PiMemoryPhase2LifecycleEvent) => void;
-  readonly onUsage?: (event: PiMemoryPhase2UsageEvent) => void;
+  readonly onUsage?: (event: PiMemoryPhase2UsageEvent) => Promise<void> | void;
 }
 
 export interface PiMemoryPhase2PreparedFile {
@@ -135,6 +135,11 @@ export interface PiMemoryPhase2PreparedResult extends PiMemoryPhase2ResultBase {
 export type PiMemoryPhase2ConsolidationResult =
   | PiMemoryPhase2NoDiffResult
   | PiMemoryPhase2PreparedResult;
+
+export type RunPiMemoryPhase2Consolidation = (
+  args: PiMemoryPhase2ConsolidationArgs,
+  signal: AbortSignal,
+) => Promise<PiMemoryPhase2ConsolidationResult>;
 
 export type PiMemoryPhase2FailureClass =
   | "aborted"

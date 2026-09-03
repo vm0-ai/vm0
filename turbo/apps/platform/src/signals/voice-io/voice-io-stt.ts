@@ -56,6 +56,18 @@ const internalAudioActivityMonitor$ = state<AudioActivityMonitor | null>(null);
 const internalStartingPromise$ =
   state<Promise<VoiceRecordingStartup | null> | null>(null);
 const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
+export interface VoiceRecordingLifecycle {
+  readonly finish: () => Promise<void>;
+  readonly fail: () => Promise<void>;
+}
+
+interface VoiceRecordingCompletion {
+  readonly finish: () => Promise<void>;
+  readonly fail: () => Promise<void>;
+}
+const internalRecordingCompletion$ = state<VoiceRecordingCompletion | null>(
+  null,
+);
 const audioInputQuotaReload$ = state(0);
 
 // ---------------------------------------------------------------------------
@@ -487,6 +499,7 @@ const resetState$ = command(({ set }) => {
   set(internalAudioActivityMonitor$, null);
   set(internalStartingPromise$, null);
   set(internalStopAndTranscribePromise$, null);
+  set(internalRecordingCompletion$, null);
   set(internalStream$, null);
 });
 
@@ -507,6 +520,47 @@ const startMediaRecorder$ = command(
     set(internalRecordingStartedAt$, recordingStartedAt);
     set(internalRecording$, true);
     return recordingStartedAt;
+  },
+);
+
+const prepareRecordingLifecycle$ = command(
+  (
+    { set },
+    parentSignal: AbortSignal,
+    lifecycle: VoiceRecordingLifecycle | undefined,
+  ): AbortSignal => {
+    const signal = set(resetRecord$, parentSignal);
+    if (lifecycle) {
+      let settled = false;
+      const settleOnce = async (
+        callback: () => Promise<void>,
+      ): Promise<void> => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        await callback();
+      };
+      set(internalRecordingCompletion$, {
+        finish: async () => {
+          await settleOnce(lifecycle.finish);
+        },
+        fail: async () => {
+          await settleOnce(lifecycle.fail);
+        },
+      });
+    } else {
+      set(internalRecordingCompletion$, null);
+    }
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(resetState$);
+      },
+      { once: true },
+    );
+    set(prepareRecordingStart$);
+    return signal;
   },
 );
 
@@ -743,7 +797,7 @@ interface VoiceSegmentSessionOptions {
   readonly isVoiceActivityReliable: () => boolean;
   readonly resetSilenceTimerSignal: () => AbortSignal;
   readonly onLongSilence: () => void;
-  readonly onQuotaExceeded: () => void;
+  readonly onQuotaExceeded: () => Promise<void>;
   readonly onRecorderChanged: (recorder: MediaRecorder) => void;
 }
 
@@ -764,7 +818,7 @@ async function uploadCapturedBlob(
   );
   if (!result.ok) {
     if (result.quotaExceeded) {
-      options.onQuotaExceeded();
+      await options.onQuotaExceeded();
     }
     return "";
   }
@@ -1028,6 +1082,7 @@ export const startRecording$ = command(
     { get, set },
     onSegmentTranscribed: VoiceSegmentTranscribedCallback,
     autoSegment: boolean,
+    lifecycle: VoiceRecordingLifecycle | undefined,
     parentSignal: AbortSignal,
   ) => {
     if (
@@ -1038,15 +1093,7 @@ export const startRecording$ = command(
       return;
     }
 
-    const signal = set(resetRecord$, parentSignal);
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(resetState$);
-      },
-      { once: true },
-    );
-    set(prepareRecordingStart$);
+    const signal = set(prepareRecordingLifecycle$, parentSignal, lifecycle);
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
     let silenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
@@ -1081,8 +1128,10 @@ export const startRecording$ = command(
               silenceStop.resolve(undefined);
             }
           },
-          onQuotaExceeded: () => {
+          onQuotaExceeded: async () => {
+            const recordingCompletion = get(internalRecordingCompletion$);
             set(resetRecord$);
+            await recordingCompletion?.fail();
           },
           onRecorderChanged: (nextRecorder) => {
             set(internalRecorder$, nextRecorder);
@@ -1115,6 +1164,9 @@ export const startRecording$ = command(
     set(internalStartingPromise$, starting);
     const startup = await starting;
     if (!startup) {
+      const recordingCompletion = get(internalRecordingCompletion$);
+      set(resetRecord$);
+      await recordingCompletion?.finish();
       return;
     }
     const { stream, session: recordingSession, recordingStartedAt } = startup;
@@ -1178,33 +1230,41 @@ export const stopAndTranscribe$ = command(
       return;
     }
 
+    const recordingCompletion = get(internalRecordingCompletion$);
     const completion = withCleanup(
-      (async () => {
-        const recorder = get(internalRecorder$);
-        const session = get(internalRecordingSession$);
-        const audioActivityMonitor = get(internalAudioActivityMonitor$);
-        if (audioActivityMonitor) {
-          stopAudioActivityMonitor(audioActivityMonitor);
-          await closeAudioContextQuietly(audioActivityMonitor.audioContext);
-          signal.throwIfAborted();
-          set(internalAudioActivityMonitor$, null);
-          set(internalSpeechDetected$, false);
-          set(internalVoiceLevel$, 0);
-        }
-
-        if (!session) {
-          if (recorder && recorder.state !== "inactive") {
-            recorder.stop();
+      withCleanup(
+        (async () => {
+          const recorder = get(internalRecorder$);
+          const session = get(internalRecordingSession$);
+          const audioActivityMonitor = get(internalAudioActivityMonitor$);
+          if (audioActivityMonitor) {
+            stopAudioActivityMonitor(audioActivityMonitor);
+            await closeAudioContextQuietly(audioActivityMonitor.audioContext);
+            signal.throwIfAborted();
+            set(internalAudioActivityMonitor$, null);
+            set(internalSpeechDetected$, false);
+            set(internalVoiceLevel$, 0);
           }
-          return;
-        }
 
-        set(internalRecording$, false);
-        set(internalTranscribing$, true);
-        await session.stopAndTranscribe(signal);
-      })(),
-      () => {
-        set(resetRecord$);
+          if (!session) {
+            if (recorder && recorder.state !== "inactive") {
+              recorder.stop();
+            }
+            return;
+          }
+
+          set(internalRecording$, false);
+          set(internalTranscribing$, true);
+          await session.stopAndTranscribe(signal);
+        })(),
+        () => {
+          set(resetRecord$);
+        },
+      ),
+      async () => {
+        if (recordingCompletion) {
+          await recordingCompletion.finish();
+        }
       },
     );
     set(internalStopAndTranscribePromise$, completion);

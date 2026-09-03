@@ -396,13 +396,16 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
-      // Slices 4a and 5a intentionally have no Phase 2 worker or public
-      // mutation API. These real-PostgreSQL tests pin their finite job,
-      // publication, Storage notification, and concurrency contracts until a
-      // later slice exposes that boundary.
+      // Slices 4a through 5b intentionally have no Phase 2 public mutation API
+      // or activation hook. These focused tests pin the finite job, archive,
+      // usage, worker composition, publication, Storage notification, and
+      // concurrency contracts until a later slice exposes that boundary.
+      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
+      "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
+      "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       // Terra route activation is explicitly deferred. This compatibility
       // slice must pin the pre-admission provider/transport contract before a
@@ -554,13 +557,16 @@ export default [
       // with the sandbox runtime; route output cannot expose its full virtual
       // filesystem, ignore-rule, and precedence matrix.
       "src/signals/services/__tests__/pi-resource-snapshot.service.test.ts",
-      // Slices 4a and 5a intentionally have no Phase 2 worker or public
-      // mutation API. Keep their exact PostgreSQL concurrency, publication,
-      // Storage notification, and selection contracts isolated until a later
-      // slice exposes a route.
+      // Slices 4a through 5b intentionally have no Phase 2 public mutation API
+      // or activation hook. Keep their exact archive, usage, worker,
+      // PostgreSQL concurrency, publication, Storage notification, and
+      // selection contracts isolated until a later slice exposes a route.
+      "src/signals/services/__tests__/pi-memory-phase2-archive.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-publication.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-selection.service.test.ts",
+      "src/signals/services/__tests__/pi-memory-phase2-usage.service.test.ts",
+      "src/signals/services/__tests__/pi-memory-phase2-worker.service.test.ts",
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       "src/signals/services/__tests__/pi-memory-phase2-job.test-fixture.ts",
       // Terra route activation is explicitly deferred, so its pre-admission

@@ -76,6 +76,10 @@ export type UserMessageRenderPart =
       readonly signals: AgentReferenceSignals;
     }
   | {
+      readonly type: "voice";
+      readonly part: UserMessagePartOfType<"voice">;
+    }
+  | {
       readonly type: "template";
       readonly part: UserMessagePartOfType<"template">;
     }

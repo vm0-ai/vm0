@@ -17,6 +17,33 @@ import {
 } from "../chat-threads";
 
 describe("google drive artifact recovery contract", () => {
+  it("keeps account readiness additive across API and Platform versions", () => {
+    const legacyNotSynced = { status: "not_synced" } as const;
+    const accountReadyNotSynced = {
+      status: "not_synced",
+      accountReady: true,
+    } as const;
+    const previousNotSyncedSchema = z.object({
+      status: z.literal("not_synced"),
+    });
+
+    expect(
+      chatThreadArtifactGoogleDriveSyncSchema.parse(legacyNotSynced),
+    ).toStrictEqual(legacyNotSynced);
+    expect(previousNotSyncedSchema.parse(accountReadyNotSynced)).toStrictEqual(
+      legacyNotSynced,
+    );
+    expect(
+      chatThreadArtifactGoogleDriveSyncSchema.parse(accountReadyNotSynced),
+    ).toStrictEqual(accountReadyNotSynced);
+    expect(
+      chatThreadArtifactGoogleDriveSyncSchema.parse({
+        status: "unknown",
+        accountReady: true,
+      }),
+    ).toStrictEqual({ status: "unknown", accountReady: true });
+  });
+
   it("keeps disconnected recovery additive across API and Platform versions", () => {
     const legacyDisconnected = { status: "disconnected" } as const;
     const exactReconnect = {

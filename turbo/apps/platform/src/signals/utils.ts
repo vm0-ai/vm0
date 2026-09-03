@@ -278,14 +278,14 @@ export async function settle<T>(
 
 export async function withCleanup<T>(
   promise: Promise<T>,
-  cleanup: () => void,
+  cleanup: () => void | Promise<void>,
 ): Promise<T> {
   // Centralizes command cleanup that must preserve the original promise result.
   // eslint-disable-next-line no-restricted-syntax -- helper preserves rejection while guaranteeing cleanup
   try {
     return await promise;
   } finally {
-    cleanup();
+    await cleanup();
   }
 }
 // ---------------------------------------------------------------------------
