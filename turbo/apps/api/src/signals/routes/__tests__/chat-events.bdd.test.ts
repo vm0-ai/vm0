@@ -15312,6 +15312,230 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
+  it("overlaps attachment metadata with thread model reconciliation", async () => {
+    const { actor, agentId, providerId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    const thread = await chat.createThread(actor, {
+      agentId,
+      model: "claude-sonnet-5",
+    });
+
+    await seedVm0BuiltInModelKey("gpt-5.6-terra");
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "built-in",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const files = Array.from({ length: 2 }, (_, index) => {
+      return {
+        id: randomUUID(),
+        filename: `overlap-${index + 1}.txt`,
+        contentType: "text/plain",
+        size: 40 + index,
+      };
+    });
+    const objectsByKey = new Map(
+      files.map((file) => {
+        return [buildArtifactKeyV2(file.id, file.filename), file];
+      }),
+    );
+    const releaseHeads = createDeferredPromise<void>(context.signal);
+    let startedHeads = 0;
+    let activeHeads = 0;
+    context.mocks.s3.send.mockImplementation(
+      async (command: unknown): Promise<unknown> => {
+        if (command instanceof HeadObjectCommand) {
+          const key = command.input.Key;
+          const file =
+            typeof key === "string" ? objectsByKey.get(key) : undefined;
+          if (!file) {
+            return {};
+          }
+          startedHeads += 1;
+          activeHeads += 1;
+          await releaseHeads.promise;
+          activeHeads -= 1;
+          return {
+            ContentLength: file.size,
+            ContentType: file.contentType,
+            LastModified: new Date("2026-09-03T00:00:00.000Z"),
+            Metadata: {
+              "artifact-id": file.id,
+              filename: encodeURIComponent(file.filename),
+              "user-id": encodeURIComponent(actor.userId),
+            },
+          };
+        }
+        return { Contents: [] };
+      },
+    );
+
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    const prompt = "read attachments during model recovery";
+    const send = chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: thread.id,
+        prompt,
+        userMessage: {
+          version: 1,
+          parts: [
+            ...files.map((file) => {
+              return {
+                type: "file" as const,
+                fileId: file.id,
+                filenameSnapshot: file.filename,
+                contentType: file.contentType,
+              };
+            }),
+            { type: "text", text: prompt },
+          ],
+        },
+      },
+      [201],
+    );
+    onTestFinished(async () => {
+      if (!releaseHeads.settled()) {
+        releaseHeads.resolve(undefined);
+      }
+      threadLock.release();
+      await threadLock.done;
+      const response = await send;
+      if (response.status === 201 && response.body.runId) {
+        await cancelChatRun(actor, response.body.runId);
+      }
+    });
+
+    await expect
+      .poll(threadLock.firstBlockedStatementKind)
+      .toBe("select_for_update");
+    await expect
+      .poll(() => {
+        return startedHeads;
+      })
+      .toBe(files.length);
+    expect(activeHeads).toBe(files.length);
+
+    releaseHeads.resolve(undefined);
+    threadLock.release();
+    await threadLock.done;
+    const sent = await send;
+    if (sent.status !== 201 || !sent.body.runId) {
+      throw new Error("Expected attachment overlap send to create a run");
+    }
+    const run = await api.readRun(actor, sent.body.runId);
+    const promptPositions = files.map((file) => {
+      return run.prompt.indexOf(`[ID] ${file.id}`);
+    });
+    expect(
+      promptPositions.every((position) => {
+        return position >= 0;
+      }),
+    ).toBeTruthy();
+    expect(promptPositions).toStrictEqual(
+      [...promptPositions].sort((a, b) => {
+        return a - b;
+      }),
+    );
+  }, 90_000);
+
+  it("preserves a later thread failure when attachment lookup rejects", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const fileId = randomUUID();
+    const filename = "speculative-rejection.txt";
+    const exactKey = buildArtifactKeyV2(fileId, filename);
+    const releaseHead = createDeferredPromise<void>(context.signal);
+    let startedHeads = 0;
+    let rejectedHeads = 0;
+    context.mocks.s3.send.mockImplementation(
+      async (command: unknown): Promise<unknown> => {
+        if (
+          command instanceof HeadObjectCommand &&
+          command.input.Key === exactKey
+        ) {
+          startedHeads += 1;
+          await releaseHead.promise;
+          rejectedHeads += 1;
+          throw new Error("speculative attachment lookup failed");
+        }
+        return { Contents: [] };
+      },
+    );
+
+    let responseSettled = false;
+    const responsePromise = chat
+      .requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: randomUUID(),
+          prompt: "preserve the missing thread failure",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "file",
+                fileId,
+                filenameSnapshot: filename,
+                contentType: "text/plain",
+              },
+              { type: "text", text: "preserve the missing thread failure" },
+            ],
+          },
+        },
+        [404],
+      )
+      .then((response) => {
+        responseSettled = true;
+        return response;
+      });
+    onTestFinished(async () => {
+      if (!releaseHead.settled()) {
+        releaseHead.resolve(undefined);
+      }
+      await responsePromise;
+    });
+
+    await expect
+      .poll(() => {
+        return startedHeads;
+      })
+      .toBe(1);
+    await expect
+      .poll(() => {
+        return responseSettled;
+      })
+      .toBeTruthy();
+    const response = await responsePromise;
+    expectApiError(response.body);
+    expect(response.body.error.message).toBe("Chat thread not found");
+
+    releaseHead.resolve(undefined);
+    await expect
+      .poll(() => {
+        return rejectedHeads;
+      })
+      .toBe(1);
+  }, 30_000);
+
   it("resolves attachment metadata in ordered waves of four", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

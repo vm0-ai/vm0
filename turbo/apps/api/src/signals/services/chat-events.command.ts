@@ -805,6 +805,13 @@ function normalSendAttachmentCountBucket(
   return "5_plus";
 }
 
+function unwrapSettledResult<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") {
+    throw result.reason;
+  }
+  return result.value;
+}
+
 const resolveIncomingAttachFileMetadata$ = command(
   async (
     { set },
@@ -849,11 +856,8 @@ const resolveIncomingAttachFileMetadata$ = command(
             }),
           );
           for (const result of results) {
-            if (result.status === "rejected") {
-              throw result.reason;
-            }
+            const { file, object } = unwrapSettledResult(result);
             signal.throwIfAborted();
-            const { file, object } = result.value;
             if (!object) {
               throw new Error(
                 `User-message attachment not found: ${file.fileId}`,
@@ -2685,13 +2689,10 @@ const prepareNormalSend$ = command(
     if ("status" in agent) {
       return agent;
     }
-    const {
-      prechecked: clientEventPrechecked,
-      response: preflightClientEventResponse,
-    } = await resolveTimedPreflightClientEvent(args, db);
+    const preflight = await resolveTimedPreflightClientEvent(args, db);
     signal.throwIfAborted();
-    if (preflightClientEventResponse?.status === 201) {
-      return preflightClientEventResponse;
+    if (preflight.response?.status === 201) {
+      return preflight.response;
     }
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
       args,
@@ -2739,6 +2740,15 @@ const prepareNormalSend$ = command(
       return initialPin;
     }
 
+    const attachFileMetadataArgs = {
+      userId: args.userId,
+      userMessage: runtimeBody.userMessage,
+      timing: args.timing,
+    };
+    const attachFileMetadataResultPromise = Promise.allSettled([
+      set(resolveIncomingAttachFileMetadata$, attachFileMetadataArgs, signal),
+    ]);
+
     const threadAndRunConfiguration = await resolveTimedThread(
       args,
       db,
@@ -2769,15 +2779,9 @@ const prepareNormalSend$ = command(
     if ("status" in computerAccess) {
       return computerAccess;
     }
-    const attachFileMetadata = await set(
-      resolveIncomingAttachFileMetadata$,
-      {
-        userId: args.userId,
-        userMessage: runtimeBody.userMessage,
-        timing: args.timing,
-      },
-      signal,
-    );
+    const [attachFileMetadataResult] = await attachFileMetadataResultPromise;
+    signal.throwIfAborted();
+    const attachFileMetadata = unwrapSettledResult(attachFileMetadataResult);
     const piExecution = usesPi(args, thread, runConfiguration, featureSwitches);
 
     return {
@@ -2797,8 +2801,8 @@ const prepareNormalSend$ = command(
       initialThinkingEnabled: args.agentRunPreCreateSource === undefined,
       attachFileMetadata,
       runConfiguration,
-      clientEventPrechecked,
-      preflightClientEventConflict: preflightClientEventResponse,
+      clientEventPrechecked: preflight.prechecked,
+      preflightClientEventConflict: preflight.response,
       triggerSource: normalSendTriggerSource(args.auth),
       agentRunSource,
       piExecution,
