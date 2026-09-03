@@ -17,6 +17,8 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const OFFICE_DOCUMENT_PREVIEW_COMPATIBILITY_KEY = "officeDocumentPreview";
+
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
@@ -29,7 +31,14 @@ function featureSwitchResponseBody(params: {
   });
   return {
     switches: params.switches,
-    effectiveSwitches: registeredEffectiveSwitches,
+    effectiveSwitches: {
+      ...registeredEffectiveSwitches,
+      // The API deploys before the App, whose old builds can remain active for
+      // about two days and treat a missing value as false. Remove this bridge
+      // after the client-version floor excludes every build that reads the
+      // switch; tracked by vm0-ai/vm0#31431.
+      [OFFICE_DOCUMENT_PREVIEW_COMPATIBILITY_KEY]: true,
+    },
   };
 }
 
