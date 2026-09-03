@@ -94,9 +94,7 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
-  | "readSelectedTemplate$"
-  | "prepareTemplateInsertion$"
-  | "setTemplateAttachmentLifecycleRef$"
+  | "openTemplatePicker$"
 >;
 
 type ComposerModelUiSignals = ComposerUiSignalGroups["model"];
@@ -375,10 +373,7 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
-    readSelectedTemplate$: composer.readSelectedTemplate$,
-    prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
-    setTemplateAttachmentLifecycleRef$:
-      composer.setTemplateAttachmentLifecycleRef$,
+    openTemplatePicker$: composer.openTemplatePicker$,
   };
 }
 
@@ -504,8 +499,10 @@ export function createComposerSignals(
       (get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false)
     );
   });
+  const ui = createComposerUiSignals();
   const workflowComposer = createWorkflowComposerSignals(
     draft,
+    ui.openTemplatePickerDialog$,
     agentId$,
     {
       autoFocus: true,
@@ -513,7 +510,6 @@ export function createComposerSignals(
     },
     feedback,
   );
-  const ui = createComposerUiSignals();
   const submission = createComposerSubmissionSignals(
     options,
     eventSignals,

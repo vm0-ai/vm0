@@ -7069,101 +7069,25 @@ function inlineComposerTemplatePicker({
   };
 }
 
-function composerTemplateAttachmentLifecycleKey(
-  attachment: ComposerTemplateAttachment | undefined,
-): string {
-  return attachment
-    ? JSON.stringify([
-        attachment.type,
-        attachment.title,
-        attachment.category,
-        attachment.previewImageUrl,
-      ])
-    : "none";
-}
-
-function ComposerTemplateAttachmentSync({
+function ComposerImportedTemplateUrlRefreshLifecycle({
   signals,
 }: {
   signals: ComposerSignals;
 }) {
-  const picker = useComposerTemplatePicker(signals);
-  const onDraftChange = useComposerDraftChange(signals);
-  const runtime = signals.template.templatePreview;
-  const setLifecycleRef = useSet(
-    signals.template.setTemplateAttachmentLifecycleRef$,
-  );
   const setImportedTemplateUrlRefreshLifecycleRef = useSet(
     signals.template.importedPresentationTemplateUrlRefreshLifecycleRef$,
   );
-  const setOpen = useSet(signals.template.setTemplatePickerOpen$);
-  const setCategory = useSet(signals.template.setTemplatePickerCategory$);
-  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
-  const setReferenceValue = useSet(
-    signals.template.setTemplatePickerReferenceValue$,
-  );
-  const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
-  const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
-  const importedTemplates = useImportedPresentationTemplates(signals);
-  const attachment = selectedComposerTemplateAttachment(
-    picker?.value,
-    importedTemplates,
-  );
-  const openPicker = (category: string) => {
-    prewarmTemplatePreviewImages(
-      runtime,
-      initialTemplatePreviewImageUrlsForCategory({
-        category,
-        hasPptTab: true,
-        hasIllustrationTab: true,
-        hasVideoTab: true,
-        presentationThemeIdBySlug: cardThemeIdBySlug,
-      }),
-      templatePreviewPrewarmImageCountForCategory(category),
-    );
-    setSearch("");
-    setPreviewSlug(null);
-    setReferenceValue(readSelectedTemplate() ?? null);
-    setCategory(category);
-    setOpen(true);
-  };
-
   return (
-    <>
-      <span
-        ref={setImportedTemplateUrlRefreshLifecycleRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
-      />
-      <button
-        key={composerTemplateAttachmentLifecycleKey(attachment)}
-        ref={setLifecycleRef}
-        type="button"
-        hidden
-        data-template-type={attachment?.type}
-        data-template-title={attachment?.title}
-        data-template-category={attachment?.category}
-        data-template-preview-url={attachment?.previewImageUrl}
-        onClick={(event) => {
-          const action = event.currentTarget.dataset.templateAction;
-          if (action === "open") {
-            openPicker(
-              event.currentTarget.dataset.templateCategory ?? "slides",
-            );
-          } else if (action === "remove") {
-            picker?.onChange(undefined);
-            onDraftChange?.();
-          }
-        }}
-      />
-    </>
+    <span
+      ref={setImportedTemplateUrlRefreshLifecycleRef}
+      aria-hidden="true"
+      className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+    />
   );
 }
 
 function TemplatePickerButton({
   picker,
-  onOpen,
   hasPptTab,
   presentationItems,
   hasIllustrationTab,
@@ -7174,7 +7098,6 @@ function TemplatePickerButton({
   signals,
 }: {
   picker: ComposerTemplatePicker;
-  onOpen: () => void;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
   hasIllustrationTab: boolean;
@@ -7192,11 +7115,10 @@ function TemplatePickerButton({
   const category = useGet(signals.template.templatePickerCategory$);
   const referenceValue = useGet(signals.template.templatePickerReferenceValue$);
   const setOpen = useSet(signals.template.setTemplatePickerOpen$);
-  const setSearch = useSet(signals.template.setTemplatePickerSearch$);
-  const setPreviewSlug = useSet(signals.template.setTemplatePickerPreviewSlug$);
   const setReferenceValue = useSet(
     signals.template.setTemplatePickerReferenceValue$,
   );
+  const openTemplatePicker = useSet(signals.template.openTemplatePicker$);
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const importedTemplates = useImportedPresentationTemplates(signals);
   const selectedTitle = selectedTemplateTitle(picker.value, importedTemplates);
@@ -7244,12 +7166,11 @@ function TemplatePickerButton({
               onFocus={prewarmPicker}
               onPointerDown={prewarmPicker}
               onClick={() => {
-                onOpen();
                 prewarmPicker();
-                setSearch("");
-                setPreviewSlug(null);
-                setReferenceValue(null);
-                setOpen(true);
+                openTemplatePicker({
+                  kind: "insert",
+                  category: selectedCategory,
+                });
               }}
             >
               <SwatchBook size={18} aria-hidden="true" />
@@ -7302,13 +7223,9 @@ function ComposerTemplatePickerSlot({ signals }: { signals: ComposerSignals }) {
   const hasAvatarTab = true;
   const hasWorkflowTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  const prepareTemplateInsertion = useSet(
-    signals.template.prepareTemplateInsertion$,
-  );
   return (
     <TemplatePickerButton
       picker={picker}
-      onOpen={prepareTemplateInsertion}
       hasPptTab={hasPptTab}
       presentationItems={presentationItems}
       hasIllustrationTab={hasIllustrationTab}
@@ -11049,7 +10966,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
     >
       <CardContent className="p-0">
         <div className="flex flex-col">
-          <ComposerTemplateAttachmentSync signals={signals} />
+          <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
           {/* Edge inset is 16px on all four sides so it matches the editor's
