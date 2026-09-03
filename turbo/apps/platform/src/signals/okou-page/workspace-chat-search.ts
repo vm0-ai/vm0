@@ -11,36 +11,31 @@ import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing
 import { chatListQuery$ } from "./sidebar-state.ts";
 
 const MAX_VISIBLE_CHAT_THREAD_RESULTS = 25;
-const MAX_AGENT_LIST_DIALOG_RESULTS = 25;
-const MAX_AGENT_LIST_DIALOG_AGENT_RESULTS = 3;
-const MAX_AGENT_LIST_DIALOG_THREAD_RESULTS = 3;
+const MAX_CHAT_SEARCH_RESULTS = 25;
 
-export interface AgentListDialogChatThread {
+export interface WorkspaceSearchChatThread {
   readonly id: string;
   readonly title: string;
   readonly agentId: string;
   readonly sortAt: string;
 }
 
-interface AgentListDialogChatThreadResult {
+interface WorkspaceSearchChatThreadResult {
   readonly query: string;
-  readonly chatThreads: readonly AgentListDialogChatThread[];
+  readonly chatThreads: readonly WorkspaceSearchChatThread[];
 }
 
-interface AgentListDialogChatMessageResult {
+interface WorkspaceSearchChatMessageResult {
   readonly query: string;
   readonly chatMessages: readonly ChatSearchResult[];
 }
 
-interface AgentListDialogSearchAgent {
+interface SearchableAgent {
   readonly agentId: string;
   readonly displayName?: string | null;
 }
 
-function agentSearchRank(
-  agent: AgentListDialogSearchAgent,
-  query: string,
-): number | null {
+function agentSearchRank(agent: SearchableAgent, query: string): number | null {
   const values = [agent.displayName ?? "", agent.agentId].map((value) => {
     return value.toLowerCase();
   });
@@ -61,7 +56,7 @@ function agentSearchRank(
   return null;
 }
 
-export function rankAgentListDialogAgents<T extends AgentListDialogSearchAgent>(
+export function rankAgentsForSearch<T extends SearchableAgent>(
   agents: readonly T[],
   query: string,
 ): T[] {
@@ -80,34 +75,9 @@ export function rankAgentListDialogAgents<T extends AgentListDialogSearchAgent>(
     });
 }
 
-export function agentListDialogSearchResultCounts(args: {
-  readonly agentCount: number;
-  readonly threadCount: number;
-  readonly messageCount: number;
-}): {
-  readonly agents: number;
-  readonly threads: number;
-  readonly messages: number;
-} {
-  const hasOtherResults = args.threadCount > 0 || args.messageCount > 0;
-  const agents = Math.min(
-    args.agentCount,
-    MAX_AGENT_LIST_DIALOG_AGENT_RESULTS - (hasOtherResults ? 1 : 0),
-  );
-  const threads = Math.min(
-    args.threadCount,
-    MAX_AGENT_LIST_DIALOG_THREAD_RESULTS - (args.messageCount > 0 ? 1 : 0),
-  );
-  const messages = Math.min(
-    args.messageCount,
-    MAX_AGENT_LIST_DIALOG_RESULTS - agents - threads,
-  );
-  return { agents, threads, messages };
-}
-
-function agentListDialogChatThread(
+function workspaceSearchChatThread(
   thread: EventDrivenChatThread,
-): AgentListDialogChatThread {
+): WorkspaceSearchChatThread {
   return {
     id: thread.id,
     title:
@@ -120,20 +90,20 @@ function agentListDialogChatThread(
   };
 }
 
-export const agentListDialogChatThreadMap$ = computed((get) => {
+export const workspaceSearchChatThreadMap$ = computed((get) => {
   return new Map(
     get(eventDrivenChatThreads$).map((thread) => {
-      const result = agentListDialogChatThread(thread);
+      const result = workspaceSearchChatThread(thread);
       return [result.id, result] as const;
     }),
   );
 });
 
-export const agentListDialogChatThreads$ = computed(
-  (get): AgentListDialogChatThreadResult => {
+export const workspaceSearchChatThreads$ = computed(
+  (get): WorkspaceSearchChatThreadResult => {
     const query = get(chatListQuery$).trim().toLowerCase();
-    const threads = [...get(agentListDialogChatThreadMap$).values()];
-    const matchingThreads: AgentListDialogChatThread[] = [];
+    const threads = [...get(workspaceSearchChatThreadMap$).values()];
+    const matchingThreads: WorkspaceSearchChatThread[] = [];
     for (const thread of threads) {
       if (query && !thread.title.toLowerCase().includes(query)) {
         continue;
@@ -155,8 +125,8 @@ export const agentListDialogChatThreads$ = computed(
   },
 );
 
-export const agentListDialogChatMessages$ = computed(
-  async (get): Promise<AgentListDialogChatMessageResult> => {
+export const workspaceSearchChatMessages$ = computed(
+  async (get): Promise<WorkspaceSearchChatMessageResult> => {
     const query = get(chatListQuery$).trim().toLowerCase();
     if (!query) {
       return { query, chatMessages: [] };
@@ -166,7 +136,7 @@ export const agentListDialogChatMessages$ = computed(
       client.search({
         query: {
           keyword: query,
-          limit: MAX_AGENT_LIST_DIALOG_RESULTS,
+          limit: MAX_CHAT_SEARCH_RESULTS,
         },
       }),
       [200],

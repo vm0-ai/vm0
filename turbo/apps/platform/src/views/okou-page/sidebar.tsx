@@ -53,7 +53,7 @@ import {
   threeColumnSidebarChatThreadScrollSignals,
 } from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
 import {
-  PinnedAgentDialogs,
+  PinAgentDialogContainer,
   PinnedAgentListSection,
 } from "./sidebar-pinned.tsx";
 import { ThreeColumnSearchDialog } from "./sidebar-dialogs.tsx";
@@ -766,7 +766,7 @@ function ChatListColumn() {
                   openThreeColumnSearch();
                 }}
                 aria-label={searchLabel}
-                aria-keyshortcuts="Meta+K Control+K"
+                aria-keyshortcuts="Meta+Shift+F Control+Shift+F"
                 variant="quiet"
                 size="icon-sm"
                 iconSize="md"
@@ -831,7 +831,7 @@ export function Sidebar({ isDesktop }: { isDesktop: boolean }) {
     <>
       {isDesktop ? <ThreeColumnNav /> : <ExpandedSidebar />}
       <ThreeColumnSearchDialogContainer />
-      <PinnedAgentDialogs />
+      <PinAgentDialogContainer />
       <ChatThreadDialogs />
     </>
   );

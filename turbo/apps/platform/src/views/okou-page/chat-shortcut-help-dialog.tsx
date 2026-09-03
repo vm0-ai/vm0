@@ -18,13 +18,13 @@ type ShortcutLabelId =
   | "newChat"
   | "nextAgent"
   | "nextThread"
-  | "openAgentList"
   | "openFirstThread"
   | "previousAgent"
   | "previousThread"
   | "renameChat"
   | "scrollBottom"
   | "scrollTop"
+  | "searchWorkspace"
   | "sendMessage"
   | "setIcon"
   | "showShortcuts"
@@ -50,7 +50,7 @@ const CHAT_THREAD_SHORTCUT_SECTIONS = [
       { key: "shift+/", labelId: "showShortcuts" },
       { key: "mod+b", labelId: "toggleSidebar" },
       { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+a", labelId: "openAgentList" },
+      { key: "mod+shift+f", labelId: "searchWorkspace" },
       { key: "ctrl+shift+[", labelId: "previousAgent" },
       { key: "ctrl+shift+]", labelId: "nextAgent" },
       { key: "f2", labelId: "renameChat" },
@@ -85,7 +85,7 @@ const AGENT_CHAT_SHORTCUT_SECTIONS = [
       { key: "shift+/", labelId: "showShortcuts" },
       { key: "mod+b", labelId: "toggleSidebar" },
       { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+a", labelId: "openAgentList" },
+      { key: "mod+shift+f", labelId: "searchWorkspace" },
       { key: "ctrl+shift+[", labelId: "previousAgent" },
       { key: "ctrl+shift+]", labelId: "nextAgent" },
       { key: "mod+shift+arrowdown", labelId: "openFirstThread" },
@@ -108,7 +108,7 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
       { key: "shift+/", labelId: "showShortcuts" },
       { key: "mod+b", labelId: "toggleSidebar" },
       { key: "mod+shift+o", labelId: "newChat" },
-      { key: "mod+shift+a", labelId: "openAgentList" },
+      { key: "mod+shift+f", labelId: "searchWorkspace" },
       { key: "ctrl+shift+[", labelId: "previousAgent" },
       { key: "ctrl+shift+]", labelId: "nextAgent" },
     ],
@@ -182,9 +182,6 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     nextThread: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.nextThread;
     }),
-    openAgentList: i18n.t(($) => {
-      return $.appShell.shortcutHelp.shortcuts.openAgentList;
-    }),
     openFirstThread: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.openFirstThread;
     }),
@@ -202,6 +199,9 @@ function translatedShortcutLabels(): Readonly<Record<ShortcutLabelId, string>> {
     }),
     scrollTop: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.scrollTop;
+    }),
+    searchWorkspace: i18n.t(($) => {
+      return $.appShell.sidebar.searchWorkspace;
     }),
     sendMessage: i18n.t(($) => {
       return $.appShell.shortcutHelp.shortcuts.sendMessage;

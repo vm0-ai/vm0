@@ -27,9 +27,9 @@ import {
   subagents$,
 } from "../../signals/agent.ts";
 import {
-  agentListDialogChatThreads$,
-  rankAgentListDialogAgents,
-} from "../../signals/okou-page/agent-list-dialog-chat-threads.ts";
+  rankAgentsForSearch,
+  workspaceSearchChatThreads$,
+} from "../../signals/okou-page/workspace-chat-search.ts";
 import {
   chatListQuery$,
   setChatListQuery$,
@@ -86,9 +86,9 @@ function ForwardTargetPicker({
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const defaultAgentName = useLastResolved(defaultAgentName$) ?? assistantName;
   const subagents = useLastResolved(subagents$) ?? [];
-  const threadResult = useGet(agentListDialogChatThreads$);
+  const threadResult = useGet(workspaceSearchChatThreads$);
   const normalizedQuery = query.trim().toLowerCase();
-  const matchingAgents = rankAgentListDialogAgents(
+  const matchingAgents = rankAgentsForSearch(
     [
       ...(defaultAgentId
         ? [{ agentId: defaultAgentId, displayName: defaultAgentName }]
