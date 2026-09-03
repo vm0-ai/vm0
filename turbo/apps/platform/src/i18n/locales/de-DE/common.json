@@ -4805,12 +4805,16 @@
       },
       "description": "Feature-Schalter nach Einführungsphase anzeigen.",
       "documentTitle": "Labor",
+      "filters": {
+        "all": "Alle"
+      },
       "groups": {
         "alpha": "Alpha",
         "beta": "Beta",
         "internal": "Intern",
         "released": "Veröffentlicht"
       },
+      "maintainer": "Betreuer: {{maintainer}}",
       "title": "Labor"
     },
     "models": {

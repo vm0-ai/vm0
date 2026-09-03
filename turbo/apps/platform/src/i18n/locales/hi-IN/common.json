@@ -4805,12 +4805,16 @@
       },
       "description": "रोलआउट चरण के अनुसार फ़ीचर स्विच देखें।",
       "documentTitle": "प्रयोगशाला",
+      "filters": {
+        "all": "सभी"
+      },
       "groups": {
         "alpha": "अल्फ़ा",
         "beta": "बीटा",
         "internal": "आंतरिक",
         "released": "रिलीज़ किया गया"
       },
+      "maintainer": "अनुरक्षक: {{maintainer}}",
       "title": "प्रयोगशाला"
     },
     "models": {

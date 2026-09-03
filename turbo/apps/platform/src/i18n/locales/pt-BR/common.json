@@ -4860,12 +4860,16 @@
       },
       "description": "Veja os recursos por estágio de lançamento.",
       "documentTitle": "Laboratório",
+      "filters": {
+        "all": "Todos"
+      },
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
         "internal": "Internos",
         "released": "Lançados"
       },
+      "maintainer": "Responsável: {{maintainer}}",
       "title": "Laboratório"
     },
     "models": {

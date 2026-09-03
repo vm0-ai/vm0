@@ -4860,12 +4860,16 @@
       },
       "description": "Consulta las funciones por fase de lanzamiento.",
       "documentTitle": "Laboratorio",
+      "filters": {
+        "all": "Todos"
+      },
       "groups": {
         "alpha": "Alfa",
         "beta": "Beta",
         "internal": "Internas",
         "released": "Lanzadas"
       },
+      "maintainer": "Responsable: {{maintainer}}",
       "title": "Laboratorio"
     },
     "models": {
