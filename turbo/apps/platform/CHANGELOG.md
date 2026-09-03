@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.831.1](https://github.com/vm0-ai/vm0/compare/app-v0.831.0...app-v0.831.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* stabilize pending goal run layout ([#31455](https://github.com/vm0-ai/vm0/issues/31455)) ([408975b](https://github.com/vm0-ai/vm0/commit/408975b3ecea67454883277ef13ada0f57b480ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.614.1
+
 ## [0.831.0](https://github.com/vm0-ai/vm0/compare/app-v0.830.0...app-v0.831.0) (2026-09-03)
 
 

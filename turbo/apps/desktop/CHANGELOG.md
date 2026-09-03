@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.45.0...desktop-v0.45.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **desktop:** classify native helper lifecycle exits ([#31449](https://github.com/vm0-ai/vm0/issues/31449)) ([0398905](https://github.com/vm0-ai/vm0/commit/0398905ec0cfc6af00e931e0d74ea305d0720491))
+
 ## [0.45.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.44.5...desktop-v0.45.0) (2026-09-03)
 
 
