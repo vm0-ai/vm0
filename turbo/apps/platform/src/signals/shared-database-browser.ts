@@ -8,6 +8,8 @@ import {
   CLERK_DEV_BROWSER_NAME,
   readClerkDevBrowserJwt,
 } from "../lib/clerk-dev-browser.ts";
+import { resolveConfiguredProductionPrimaryAppDomain } from "../lib/clerk-instance-config.ts";
+import { CLERK_PRIMARY_APP_DOMAIN_PARAM } from "../lib/clerk-primary-app-domain-param.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
@@ -83,6 +85,12 @@ function createBrowserSharedDatabaseBridge(
   workerUrl.search = "";
   workerUrl.searchParams.set("userId", identity.userId);
   workerUrl.searchParams.set("orgId", identity.orgId);
+  // The Worker bundle has no copy of the deployment's primary app domain (it
+  // is substituted into index.html after the build), so the tab forwards it.
+  workerUrl.searchParams.set(
+    CLERK_PRIMARY_APP_DOMAIN_PARAM,
+    resolveConfiguredProductionPrimaryAppDomain(),
+  );
   const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
   const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
   if (vercelProtectionBypass) {

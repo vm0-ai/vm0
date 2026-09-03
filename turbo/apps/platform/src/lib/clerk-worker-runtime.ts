@@ -4,8 +4,18 @@ import {
   CLERK_DEV_BROWSER_ROTATION_HEADER,
   withClerkDevBrowserJwt,
 } from "./clerk-dev-browser.ts";
-import { resolveClerkInstanceConfig } from "./clerk-instance-config.ts";
+import { resolveClerkProductionSatelliteDomain } from "./clerk-production-topology.ts";
+import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 import type { ClerkTokenSource } from "../signals/clerk-token.ts";
+
+export interface ClerkWorkerRuntimeOptions {
+  readonly devBrowserJwt: string | null;
+  /**
+   * The deployment's Clerk primary app domain as the tab read it from
+   * index.html. Unknown values fail closed to the current topology.
+   */
+  readonly productionPrimaryAppDomain: string | null;
+}
 
 /**
  * Mirrors Clerk's own DOM-less client: `@clerk/chrome-extension` builds the
@@ -31,24 +41,24 @@ function attachDevBrowser(clerk: Clerk, devBrowserJwt: string): void {
 }
 
 export async function startClerkWorkerRuntime(
-  devBrowserJwt: string | null,
+  options: ClerkWorkerRuntimeOptions,
 ): Promise<ClerkTokenSource> {
-  const { publishableKey, satelliteConfig } = resolveClerkInstanceConfig();
-  const clerk = new Clerk(
-    publishableKey,
-    satelliteConfig ? { domain: satelliteConfig.domain } : undefined,
+  const satelliteDomain = resolveClerkProductionSatelliteDomain(
+    location.hostname,
+    options.productionPrimaryAppDomain,
   );
-  if (devBrowserJwt) {
-    attachDevBrowser(clerk, devBrowserJwt);
+  // clerk-js derives the Frontend API host from `domain` as given whenever
+  // `window` is undefined: the `clerk.` prefix the page gets for free is only
+  // added in a browser scope. Without it a satellite Worker sends every Clerk
+  // request to the app origin itself. The satellite load options are likewise
+  // ignored in a Worker, so only the host is passed.
+  const clerk = new Clerk(
+    resolvePlatformRuntimeConfig().clerkPublishableKey,
+    satelliteDomain ? { domain: `clerk.${satelliteDomain}` } : undefined,
+  );
+  if (options.devBrowserJwt) {
+    attachDevBrowser(clerk, options.devBrowserJwt);
   }
-  await clerk.load({
-    standardBrowser: false,
-    ...(satelliteConfig
-      ? {
-          isSatellite: satelliteConfig.isSatellite,
-          satelliteAutoSync: satelliteConfig.satelliteAutoSync,
-        }
-      : {}),
-  });
+  await clerk.load({ standardBrowser: false });
   return clerk;
 }
