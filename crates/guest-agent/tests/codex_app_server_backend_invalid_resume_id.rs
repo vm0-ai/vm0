@@ -26,7 +26,6 @@ async fn codex_app_server_backend_rejects_invalid_resume_id_before_spawn()
                 resume_session_id: Some(invalid_resume_id),
             },
         )?;
-        std::env::remove_var("VM0_RESUME_SESSION_ID");
         std::env::set_var(
             guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV,
             invalid_resume_id,

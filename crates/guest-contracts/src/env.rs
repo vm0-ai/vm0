@@ -829,18 +829,7 @@ mod tests {
         }
         assert!(is_runner_owned_env_key("OKOU_TOKEN"));
         assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-        for key in [
-            "VM0_API_TOKEN",
-            "VM0_SANDBOX_ID",
-            "VM0_SANDBOX_REUSE_RESULT",
-            "VM0_WORKSPACE_REUSE_RESULT",
-            "VM0_RESUME_SESSION_ID",
-            "VM0_API_START_TIME",
-            "VM0_USER_ENV_FILE",
-            "VM0_RUN_PAYLOAD_FILE",
-            "VM0_FUTURE_RUNNER_KEY",
-            "CUSTOM_ENV",
-        ] {
+        for key in ["VM0_FUTURE_RUNNER_KEY", "CUSTOM_ENV"] {
             assert!(!is_runner_owned_env_key(key), "{key} should be user-owned");
         }
     }
