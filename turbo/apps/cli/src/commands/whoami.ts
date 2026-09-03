@@ -6,7 +6,6 @@ import {
   getToken,
   decodeSandboxTokenPayload,
 } from "../lib/api/config";
-import { listConnectors } from "../lib/api/domains/connectors";
 import {
   getAgentUserConnectors,
   listUserPermissionGrants,
@@ -20,6 +19,11 @@ import {
   connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
 } from "./shared/firewall-permissions";
+import {
+  resolveRunConnectorAccountView,
+  runConnectorAccountUnavailableMessage,
+  type RunConnectorAccountEntry,
+} from "./connector/run-account-context";
 
 /**
  * Detect if running inside an agent sandbox.
@@ -30,20 +34,29 @@ function isInsideSandbox(): boolean {
   return !!getOkouAgentId();
 }
 
-function formatConnectorIdentity(connector: {
-  externalUsername: string | null;
-  externalEmail: string | null;
-  connectionStatus: "connected" | "reconnect-required";
-}): string {
-  let identity = "";
-  if (connector.externalUsername && connector.externalEmail) {
-    identity = `@${connector.externalUsername} (${connector.externalEmail})`;
-  } else if (connector.externalUsername) {
-    identity = `@${connector.externalUsername}`;
-  } else if (connector.externalEmail) {
-    identity = connector.externalEmail;
+function formatRunConnectorIdentity(
+  connector: RunConnectorAccountEntry,
+): string {
+  const account = connector.account;
+  if (account.state === "not-admitted") {
+    return chalk.dim("(unavailable for this run)");
   }
-  if (connector.connectionStatus === "reconnect-required") {
+  if (account.state === "metadata-unavailable") {
+    return chalk.dim(
+      `${account.connectionId} (metadata unavailable or deleted)`,
+    );
+  }
+
+  const metadata = account.metadata;
+  let identity = account.label;
+  if (metadata.externalUsername && metadata.externalEmail) {
+    identity = `@${metadata.externalUsername} (${metadata.externalEmail})`;
+  } else if (metadata.externalUsername) {
+    identity = `@${metadata.externalUsername}`;
+  } else if (metadata.externalEmail) {
+    identity = metadata.externalEmail;
+  }
+  if (metadata.connectionStatus === "reconnect-required") {
     identity += ` ${chalk.yellow("(needs reconnect)")}`;
   }
   return identity;
@@ -120,30 +133,36 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 
   // Connected Services section
   try {
-    if (showPermissions) {
-      // Full mode: fetch connector identities, current-user grants, and agent connector access.
-      const [connectorsResult, grantsResult, enabledResult] =
-        await Promise.allSettled([
-          listConnectors(),
+    const permissionSources = showPermissions
+      ? Promise.allSettled([
           listUserPermissionGrants(agentId!),
           getAgentUserConnectors(agentId!),
-        ]);
+        ])
+      : null;
+    const view = await resolveRunConnectorAccountView();
+    if (view.state === "unavailable") {
+      console.log();
+      console.log(chalk.bold("Connectors:"));
+      console.log(
+        `  ${chalk.dim(runConnectorAccountUnavailableMessage(view.reason))}`,
+      );
+      return;
+    }
+    if (view.connectors.length === 0) return;
 
-      if (connectorsResult.status === "rejected") return;
+    let permissionInfoBySlug = new Map<string, ConnectorPermissionInfo>();
+    let permissionDataAvailable = false;
+    if (permissionSources) {
+      // Full mode also fetches current-user grants and agent connector access.
+      const [grantsResult, enabledResult] = await permissionSources;
 
-      const identities = connectorsResult.value.connectors.filter((c) => {
-        return c.externalUsername !== null || c.externalEmail !== null;
-      });
-
-      if (identities.length === 0) return;
-
-      let permissionInfoBySlug = new Map<string, ConnectorPermissionInfo>();
-      const permissionDataAvailable =
+      if (
         grantsResult.status === "fulfilled" &&
-        enabledResult.status === "fulfilled";
-      if (permissionDataAvailable) {
+        enabledResult.status === "fulfilled"
+      ) {
+        permissionDataAvailable = true;
         const permissionInfos = await loadConnectorPermissionInfos({
-          displayConnectorSlugs: identities.map((connector) => {
+          displayConnectorSlugs: view.connectors.map((connector) => {
             return connector.slug;
           }),
           defaultPolicyConnectorSlugs: enabledResult.value,
@@ -157,34 +176,19 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
           }),
         );
       }
+    }
 
-      console.log();
-      console.log(chalk.bold("Connectors:"));
-      for (const connector of identities) {
-        const identity = formatConnectorIdentity(connector);
-        console.log(`  ${connector.slug.padEnd(14)}${identity}`);
+    console.log();
+    console.log(chalk.bold("Connectors:"));
+    for (const connector of view.connectors) {
+      const identity = formatRunConnectorIdentity(connector);
+      console.log(`  ${connector.slug.padEnd(14)}${identity}`);
 
-        if (permissionDataAvailable) {
-          const info = permissionInfoBySlug.get(connector.slug);
-          if (info) {
-            printConnectorPermissions(info);
-          }
+      if (permissionDataAvailable) {
+        const info = permissionInfoBySlug.get(connector.slug);
+        if (info) {
+          printConnectorPermissions(info);
         }
-      }
-    } else {
-      // Default mode: only fetch connector identities (1 API call)
-      const connectors = await listConnectors();
-      const identities = connectors.connectors.filter((c) => {
-        return c.externalUsername !== null || c.externalEmail !== null;
-      });
-
-      if (identities.length === 0) return;
-
-      console.log();
-      console.log(chalk.bold("Connectors:"));
-      for (const connector of identities) {
-        const identity = formatConnectorIdentity(connector);
-        console.log(`  ${connector.slug.padEnd(14)}${identity}`);
       }
     }
   } catch {
