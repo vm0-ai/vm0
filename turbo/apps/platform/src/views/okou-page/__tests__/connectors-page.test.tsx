@@ -5889,6 +5889,17 @@ describe("connectors page", () => {
     expect(
       within(createDialog).queryByLabelText("Header name"),
     ).not.toBeInTheDocument();
+    click(
+      within(createDialog).getByLabelText("Remove Automatic authentication"),
+    );
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual([]);
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("Automatic"));
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual(["automatic"]);
 
     click(connectorType);
     click(await screen.findByRole("option", { name: "HTTP API" }));
@@ -6063,13 +6074,13 @@ describe("connectors page", () => {
     });
     expect(within(nameDialog).getByLabelText("Account name")).toHaveAttribute(
       "placeholder",
-      `Account #${connectionId.slice(0, 8)}`,
+      "Unnamed account",
     );
     click(buttonByText("Skip", nameDialog));
     await waitFor(() => {
       expect(
         within(connectorCardByLabel("Public Automatic MCP")).getByText(
-          `Account #${connectionId.slice(0, 8)}`,
+          "Unnamed account",
         ),
       ).toBeInTheDocument();
     });
@@ -6084,6 +6095,160 @@ describe("connectors page", () => {
     expect(authWindow.opener).toBeNull();
     expect(authWindow.location.href).toBe("");
     expect(authWindow.closed).toBeTruthy();
+  });
+
+  it("adds and reconnects Automatic MCP accounts through account management", async () => {
+    const existingConnectionId = crypto.randomUUID();
+    const addedConnectionId = crypto.randomUUID();
+    let connector = mcpCustomConnector({
+      displayName: "Managed Automatic MCP",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "automatic",
+      connected: true,
+      connectedAccountId: existingConnectionId,
+      connectedAccountUpdatedAt: "2026-09-03T00:00:00.000Z",
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+    });
+    const existingAccount = {
+      id: existingConnectionId,
+      target: { kind: "custom" as const, customConnectorId: connector.id },
+      authMethod: "none",
+      displayName: "Existing",
+      isDefault: true,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      connectionStatus: "connected" as const,
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      updatedAt: "2026-09-03T00:00:00.000Z",
+    } satisfies ConnectorAccountConnection;
+    const accounts: ConnectorAccountConnection[] = [existingAccount];
+    const submittedAccounts: unknown[] = [];
+    context.mocks.browser.open(createMockAuthWindow());
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.agents([]);
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+      return respond(200, {
+        summaries: [
+          {
+            target: existingAccount.target,
+            accountCount: accounts.length,
+            attentionCount: 0,
+            defaultConnection: existingAccount,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, respond }) => {
+        const account = accounts.find((candidate) => {
+          return candidate.id === params.connectionId;
+        });
+        return account
+          ? respond(200, account)
+          : respond(404, {
+              error: { code: "NOT_FOUND", message: "Account not found" },
+            });
+      },
+    );
+    context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+      return respond(200, { connections: accounts, nextCursor: null });
+    });
+    context.mocks.api(
+      customConnectorOAuth2Contract.start,
+      ({ body, respond }) => {
+        submittedAccounts.push(body.account);
+        const connectionId =
+          body.account.intent === "reconnect"
+            ? body.account.connectionId
+            : addedConnectionId;
+        if (body.account.intent === "add") {
+          accounts.push({
+            ...existingAccount,
+            id: addedConnectionId,
+            displayName: null,
+            isDefault: false,
+            createdAt: "2026-09-03T00:00:01.000Z",
+            updatedAt: "2026-09-03T00:00:01.000Z",
+          });
+        }
+        connector = mcpCustomConnector({
+          ...connector,
+          connectedAccountId: connectionId,
+          connectedAccountUpdatedAt: "2026-09-03T00:00:01.000Z",
+        });
+        return respond(200, {
+          result: "connected",
+          connector,
+          connectedAccountId: connectionId,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+        [FeatureSwitchKey.ConnectorAccounts]: true,
+      },
+    });
+
+    click(
+      await waitForButtonByAriaLabel("Manage Managed Automatic MCP accounts"),
+    );
+    let manager = await screen.findByRole("dialog", {
+      name: "Manage Managed Automatic MCP accounts",
+    });
+    await within(manager).findByText("Existing");
+    const addAccount = buttonByText("Add account", manager);
+    expect(addAccount).toBeEnabled();
+    click(addAccount);
+    await waitFor(() => {
+      expect(submittedAccounts).toStrictEqual([{ intent: "add" }]);
+    });
+    const nameDialog = await screen.findByRole("dialog", {
+      name: "Name your Managed Automatic MCP account",
+    });
+    click(buttonByText("Skip", nameDialog));
+
+    click(
+      await waitForButtonByAriaLabel("Manage Managed Automatic MCP accounts"),
+    );
+    manager = await screen.findByRole("dialog", {
+      name: "Manage Managed Automatic MCP accounts",
+    });
+    const defaultGroup = within(manager).getByRole("group", {
+      name: "Existing",
+    });
+    click(within(defaultGroup).getByLabelText("Account actions"));
+    click(menuItemByText("Reconnect"));
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Connect Managed Automatic MCP",
+    });
+    click(buttonByText("Continue", connectDialog));
+
+    await waitFor(() => {
+      expect(connectDialog).not.toBeInTheDocument();
+    });
+    expect(submittedAccounts).toStrictEqual([
+      { intent: "add" },
+      { intent: "reconnect", connectionId: existingConnectionId },
+    ]);
   });
 
   it("continues Automatic MCP OAuth in the existing popup flow", async () => {
