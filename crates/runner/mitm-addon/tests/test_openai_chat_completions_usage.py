@@ -156,9 +156,7 @@ def test_sse_fast_path_bound_is_inclusive_and_overflow_replays_once():
     exact = _canonical_delta_with_size(
         openai_chat_completions._CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES
     )
-    over = _canonical_delta_with_size(
-        openai_chat_completions._CHAT_COMPLETIONS_SSE_FAST_PATH_MAX_BYTES + 1
-    )
+    over = exact[:-1] + b',"usage":{"prompt_tokens":9,"completion_tokens":2}}'
 
     with patch.object(
         openai_chat_completions.JsonSelectiveExtractor,
@@ -172,7 +170,11 @@ def test_sse_fast_path_bound_is_inclusive_and_overflow_replays_once():
         scanner.finish()
 
     assert len(finish_calls) == 1
-    assert parsed_usage == {}
+    assert parsed_usage == {
+        "tokens.input": 9,
+        "tokens.output": 2,
+        "message_id": "chatcmpl_bound",
+    }
 
 
 @pytest.mark.parametrize(
