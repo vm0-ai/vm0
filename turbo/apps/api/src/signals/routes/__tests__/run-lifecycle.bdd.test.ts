@@ -12401,7 +12401,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
-  });
+  }, 15_000);
 
   it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {

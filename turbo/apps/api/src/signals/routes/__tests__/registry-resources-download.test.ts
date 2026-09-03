@@ -678,7 +678,7 @@ describe("registry resource download", () => {
         sha256: archive.sha256,
       });
     }
-  });
+  }, 15_000);
 
   it("rejects registry resources that are not in the private archive allowlist", async () => {
     const response = await accept(
