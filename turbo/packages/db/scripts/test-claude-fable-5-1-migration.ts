@@ -8,8 +8,8 @@ import { applyMigrationsFromDirectoryUpToTag } from "./migration-consistency-hel
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(scriptDirectory, "../src/migrations");
-const previousMigration = "1065_lock_default_agent_name";
-const replacementMigration = "1066_migrate_claude_fable_5_to_5_1";
+const previousMigration = "1066_curvy_mercury";
+const replacementMigration = "1067_migrate_claude_fable_5_to_5_1";
 const testDatabase = "migration_claude_fable_5_to_5_1";
 
 interface MigrationState {

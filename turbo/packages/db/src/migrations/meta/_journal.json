@@ -1811,8 +1811,15 @@
     {
       "idx": 1066,
       "version": "7",
-      "when": 1788433102518,
-      "tag": "1066_migrate_claude_fable_5_to_5_1",
+      "when": 1788432327889,
+      "tag": "1066_curvy_mercury",
+      "breakpoints": true
+    },
+    {
+      "idx": 1067,
+      "version": "7",
+      "when": 1788434594792,
+      "tag": "1067_migrate_claude_fable_5_to_5_1",
       "breakpoints": true
     }
   ]

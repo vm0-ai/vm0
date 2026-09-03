@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, hash_map};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 use sandbox::SandboxFinalExecParkHandoff;
 use tokio::sync::{Notify, oneshot, watch};
@@ -35,10 +36,17 @@ struct ActiveRunHandoffDelivery {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ActiveRunReuseState {
     Pending,
+    Finalizing { started_at: Instant },
     ExactSandboxPublished,
     ExactSandboxHandedOff,
     NoExactSandbox,
     Released,
+}
+
+impl ActiveRunReuseState {
+    pub(super) fn can_publish_exact(self) -> bool {
+        matches!(self, Self::Pending | Self::Finalizing { .. })
+    }
 }
 
 pub(super) struct ActiveRunReuseProof {
@@ -63,7 +71,7 @@ impl ActiveRunReuseProof {
         successor_run_id: RunId,
     ) -> Option<ActiveRunHandoffRequest> {
         let mut broker = lock_handoff(&self.handoff);
-        if self.state() != ActiveRunReuseState::Pending || broker.delivery.is_some() {
+        if !self.state().can_publish_exact() || broker.delivery.is_some() {
             return None;
         }
         let (sender, receiver) = oneshot::channel();
@@ -158,6 +166,16 @@ pub(super) enum ActiveRunHandoffDeliveryResult<C> {
 }
 
 impl ActiveRunReusePublisher {
+    pub(super) fn mark_finalizing(&self, started_at: Instant) -> bool {
+        self.reuse_state.send_if_modified(|state| {
+            if *state != ActiveRunReuseState::Pending {
+                return false;
+            }
+            *state = ActiveRunReuseState::Finalizing { started_at };
+            true
+        })
+    }
+
     pub(super) fn publish_exact_sandbox(&self) -> bool {
         self.publish_without_handoff(ActiveRunReuseState::ExactSandboxPublished)
     }
@@ -226,16 +244,16 @@ impl ActiveRunReusePublisher {
         ));
         match delivery.sender.send(candidate) {
             Ok(()) => {
-                self.resolve_pending(ActiveRunReuseState::ExactSandboxHandedOff);
+                self.resolve_publishable(ActiveRunReuseState::ExactSandboxHandedOff);
                 ActiveRunHandoffDeliveryResult::Delivered
             }
             Err(candidate) => ActiveRunHandoffDeliveryResult::Failed(recover(candidate)),
         }
     }
 
-    fn resolve_pending(&self, next: ActiveRunReuseState) -> bool {
+    fn resolve_publishable(&self, next: ActiveRunReuseState) -> bool {
         self.reuse_state.send_if_modified(|state| {
-            if *state != ActiveRunReuseState::Pending {
+            if !state.can_publish_exact() {
                 return false;
             }
             *state = next;
@@ -245,7 +263,7 @@ impl ActiveRunReusePublisher {
 
     fn publish_without_handoff(&self, next: ActiveRunReuseState) -> bool {
         let mut broker = lock_handoff(&self.handoff);
-        let resolved = self.resolve_pending(next);
+        let resolved = self.resolve_publishable(next);
         if resolved {
             broker.signal.cancel();
             broker.delivery = None;
@@ -333,20 +351,20 @@ impl ActiveRuns {
             reuse_state: entry.reuse_state.subscribe(),
             handoff: Arc::clone(&entry.handoff),
         };
-        (proof.state() == ActiveRunReuseState::Pending).then_some(proof)
+        proof.state().can_publish_exact().then_some(proof)
     }
 
     pub(super) fn reuse_keys(&self) -> HashSet<String> {
         lock_entries(&self.entries)
             .values()
-            .filter(|entry| *entry.reuse_state.borrow() == ActiveRunReuseState::Pending)
+            .filter(|entry| entry.reuse_state.borrow().can_publish_exact())
             .filter_map(|entry| entry.reuse_key.clone())
             .collect()
     }
 
     pub(super) fn has_reusable_run(&self) -> bool {
         lock_entries(&self.entries).values().any(|entry| {
-            entry.reuse_key.is_some() && *entry.reuse_state.borrow() == ActiveRunReuseState::Pending
+            entry.reuse_key.is_some() && entry.reuse_state.borrow().can_publish_exact()
         })
     }
 
@@ -373,14 +391,15 @@ impl ActiveRunGuard {
             return false;
         };
         lock_entries(&self.active_runs.entries).remove(&run_id);
-        let was_pending = {
+        let was_publishable = {
             let mut handoff = lock_handoff(&self.handoff);
             handoff.signal.cancel();
             handoff.delivery = None;
-            self.reuse_state.send_replace(ActiveRunReuseState::Released)
-                == ActiveRunReuseState::Pending
+            self.reuse_state
+                .send_replace(ActiveRunReuseState::Released)
+                .can_publish_exact()
         };
-        if self.has_reuse_key && was_pending {
+        if self.has_reuse_key && was_publishable {
             self.active_runs.reuse_state_notify.notify_one();
         }
         self.has_reuse_key
@@ -475,6 +494,24 @@ mod tests {
             .finalizing_predecessor(run_id, "thread:finalizing", "vm0/default")
             .unwrap();
 
+        let started_at = Instant::now();
+        assert!(publisher.mark_finalizing(started_at));
+        assert_eq!(
+            proof.changed().await,
+            ActiveRunReuseState::Finalizing { started_at }
+        );
+        assert!(!publisher.mark_finalizing(Instant::now()));
+        assert_eq!(
+            active_runs.reuse_keys(),
+            HashSet::from(["thread:finalizing".to_string()])
+        );
+        assert!(active_runs.has_reusable_run());
+        assert!(
+            active_runs
+                .finalizing_predecessor(run_id, "thread:finalizing", "vm0/default")
+                .is_some()
+        );
+
         assert!(publisher.publish_exact_sandbox());
         assert_eq!(
             proof.changed().await,
@@ -506,6 +543,7 @@ mod tests {
             .finalizing_predecessor(no_exact_run_id, "thread:no-exact", "vm0/default")
             .unwrap();
 
+        assert!(no_exact_publisher.mark_finalizing(Instant::now()));
         assert!(no_exact_publisher.publish_no_exact_sandbox());
         assert_eq!(
             no_exact_proof.changed().await,
@@ -599,6 +637,7 @@ mod tests {
             "vm0/default".into(),
         );
         let publisher = guard.reuse_publisher();
+        assert!(publisher.mark_finalizing(Instant::now()));
         let proof = active_runs
             .finalizing_predecessor(predecessor_run_id, "thread:closed-handoff", "vm0/default")
             .unwrap();
@@ -623,7 +662,10 @@ mod tests {
             }
         };
 
-        assert_eq!(proof.state(), ActiveRunReuseState::Pending);
+        assert!(matches!(
+            proof.state(),
+            ActiveRunReuseState::Finalizing { .. }
+        ));
         let (payload, lease) = recovered.into_active_destroy_parts();
         drop(payload);
         drop(lease);

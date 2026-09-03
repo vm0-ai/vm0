@@ -2873,6 +2873,7 @@ async function insertCanonicalBatchWrites(
       eventType: "run.failed",
       content: "run failed",
       error: "runner error",
+      failureReason: "future_reason",
       runId: randomUUID(),
     },
     {
@@ -3019,6 +3020,7 @@ export async function readCanonicalChatEventStorageFixture(
       id: chatEvents.id,
       eventType: chatEvents.eventType,
       payload: chatEvents.payload,
+      failureReason: chatEvents.failureReason,
       runId: chatEvents.runId,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,

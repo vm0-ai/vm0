@@ -1,5 +1,6 @@
 import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { ChatEventType } from "@okouai/api-contracts/contracts/chat-events";
+import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
 import {
   check,
   pgTable,
@@ -72,6 +73,7 @@ export const chatEvents = pgTable(
     revokesEventId: uuid("revokes_event_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     payload: jsonb("payload").$type<ChatEventPayload>(),
+    failureReason: text("failure_reason").$type<RunFailureReasonToken>(),
     /**
      * Server-owned authority for an Official Workflow prompt awaiting a Run.
      * Keep it outside the strict public payload so an older API can continue
@@ -190,6 +192,10 @@ export const chatEvents = pgTable(
             ${table.payload} IS NOT NULL
             AND ${table.payload} ? 'userMessage'
           )`,
+      ),
+      check(
+        "chat_events_failure_reason_event_type_check",
+        sql`${table.failureReason} IS NULL OR ${table.eventType} = 'run.failed'`,
       ),
       check(
         "chat_events_input_payload_content_check",

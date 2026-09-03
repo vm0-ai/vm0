@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.308.4](https://github.com/vm0-ai/vm0/compare/cli-v9.308.3...cli-v9.308.4) (2026-09-03)
+
+
+### Bug Fixes
+
+* **cli:** make action url handoffs loss-resistant ([#31461](https://github.com/vm0-ai/vm0/issues/31461)) ([da3fa0d](https://github.com/vm0-ai/vm0/commit/da3fa0d9df45c76e052ff9d3c6a99e3cc7ffa040))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.614.2
+
 ## [9.308.3](https://github.com/vm0-ai/vm0/compare/cli-v9.308.2...cli-v9.308.3) (2026-09-03)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.614.2](https://github.com/vm0-ai/vm0/compare/core-v8.614.1...core-v8.614.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agent:** lock default agent name ([#31440](https://github.com/vm0-ai/vm0/issues/31440)) ([1c40b16](https://github.com/vm0-ai/vm0/commit/1c40b16066635e282d31752e6ce654b1422f5ecb))
+* **social:** classify mp4 downloads by media tracks ([#31418](https://github.com/vm0-ai/vm0/issues/31418)) ([23dd595](https://github.com/vm0-ai/vm0/commit/23dd5951c24da38ea4c8e3cbfaa839a1de974e42))
+
 ## [8.614.1](https://github.com/vm0-ai/vm0/compare/core-v8.614.0...core-v8.614.1) (2026-09-03)
 
 

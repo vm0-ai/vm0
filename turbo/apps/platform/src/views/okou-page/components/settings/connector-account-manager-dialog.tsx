@@ -286,12 +286,14 @@ function AccountRow({
 function AccountsCard({
   loadable,
   defaultConnection,
+  search,
   target,
   connectionActionsEnabled,
   onReconnect,
 }: {
   readonly loadable: Loadable<ConnectorAccountList>;
   readonly defaultConnection: ConnectorAccountConnection | null;
+  readonly search: string;
   readonly target: ConnectorAccountTarget;
   readonly connectionActionsEnabled: boolean;
   readonly onReconnect: (account: ConnectorAccountConnection) => void;
@@ -305,15 +307,21 @@ function AccountsCard({
   if (!loadable.data.available) {
     return <AccountsMessage messageKey="accountsUnavailable" />;
   }
-  // The default account stays pinned at the top even while a search filters the
-  // rest, so the dialog always shows which account new runs will use.
+  // At rest the default account is pinned on top, so the dialog always shows
+  // which account new runs will use. An active search owns the whole list
+  // instead: keeping a non-matching row pinned would put a visible account
+  // directly above a message saying no account was found.
   const others = loadable.data.connections.filter((account) => {
     return account.id !== defaultConnection?.id;
   });
-  if (!defaultConnection && others.length === 0) {
+  const rows: readonly ConnectorAccountConnection[] = search.trim()
+    ? loadable.data.connections
+    : defaultConnection
+      ? [defaultConnection, ...others]
+      : others;
+  if (rows.length === 0) {
     return <AccountsMessage messageKey="noAccountsFound" />;
   }
-  const rows = defaultConnection ? [defaultConnection, ...others] : others;
   return (
     <RadioGroup
       value={defaultConnection?.id ?? null}
@@ -334,9 +342,6 @@ function AccountsCard({
           </div>
         );
       })}
-      {defaultConnection && others.length === 0 ? (
-        <AccountsMessage messageKey="noAccountsFound" />
-      ) : null}
     </RadioGroup>
   );
 }
@@ -607,6 +612,7 @@ export function ConnectorAccountManagerDialog({
           <AccountsCard
             loadable={accountsLoadable}
             defaultConnection={defaultConnection}
+            search={search}
             target={target}
             connectionActionsEnabled={connectionActionsEnabled}
             onReconnect={reconnect}
