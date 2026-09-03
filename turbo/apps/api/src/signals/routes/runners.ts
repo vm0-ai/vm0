@@ -9,7 +9,6 @@ import {
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
-  runnersModelUsageObservationsContract,
   runnersModelProviderFailuresContract,
   runnersPollContract,
   runnerVersionSchema,
@@ -804,9 +803,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const modelProviderFailureBody$ = bodyResultOf(
   runnersModelProviderFailuresContract.report,
-);
-const modelUsageObservationsBody$ = bodyResultOf(
-  runnersModelUsageObservationsContract.report,
 );
 const connectorRuntimeSyncBody$ = bodyResultOf(
   runnersConnectorRuntimeSyncContract.sync,
@@ -2660,37 +2656,6 @@ const modelProviderFailureInner$ = command(
   },
 );
 
-const modelUsageObservationsInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = await set(runnerAuth$, get(authorization$), signal);
-    signal.throwIfAborted();
-    if (!auth) {
-      return unauthorizedAuthenticationRequired;
-    }
-    if (auth.type !== "official-runner") {
-      return forbidden(
-        "Only official runners can report model usage observations",
-      );
-    }
-
-    const body = await get(modelUsageObservationsBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-
-    // Old runner -> new backend compatibility: retained batches can arrive for
-    // the two-hour run lifetime plus the five-minute flush interval, including
-    // old-image resumption. Remove this sink with #30974 only after #30973 is
-    // deployed everywhere and live traffic stays at zero for that window.
-
-    return {
-      status: 200 as const,
-      body: { success: true },
-    };
-  },
-);
-
 const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
@@ -2942,10 +2907,6 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersModelProviderFailuresContract.report,
     handler: modelProviderFailureInner$,
-  },
-  {
-    route: runnersModelUsageObservationsContract.report,
-    handler: modelUsageObservationsInner$,
   },
   {
     route: runnersActiveInputsContract.reserve,

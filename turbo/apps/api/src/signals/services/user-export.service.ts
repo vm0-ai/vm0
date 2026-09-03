@@ -28,6 +28,7 @@ import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { exportJobs } from "@okouai/db/schema/export-job";
 import { emailOutbox } from "@okouai/db/schema/email-outbox";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
+import { piMemoryPublicationProvenance } from "@okouai/db/schema/pi-memory-publication-provenance";
 import { piMemoryStage1Candidates } from "@okouai/db/schema/pi-memory-stage1-candidate";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { userCache } from "@okouai/db/schema/user-cache";
@@ -755,7 +756,9 @@ function collectPiMemoryPhase2Jobs(
         status: piMemoryPhase2Jobs.status,
         inputRevision: piMemoryPhase2Jobs.inputRevision,
         completedRevision: piMemoryPhase2Jobs.completedRevision,
+        reconciliationRevision: piMemoryPhase2Jobs.reconciliationRevision,
         claimedRevision: piMemoryPhase2Jobs.claimedRevision,
+        claimedBaseVersionId: piMemoryPhase2Jobs.claimedBaseVersionId,
         leaseExpiresAt: piMemoryPhase2Jobs.leaseExpiresAt,
         retryCount: piMemoryPhase2Jobs.retryCount,
         retryAt: piMemoryPhase2Jobs.retryAt,
@@ -763,6 +766,13 @@ function collectPiMemoryPhase2Jobs(
         lastSucceededAt: piMemoryPhase2Jobs.lastSucceededAt,
         claimedSelectedCount: piMemoryPhase2Jobs.claimedSelectedCount,
         claimedSelectedUtf8Bytes: piMemoryPhase2Jobs.claimedSelectedUtf8Bytes,
+        lastObservedHeadVersionId: piMemoryPhase2Jobs.lastObservedHeadVersionId,
+        conflictCount: piMemoryPhase2Jobs.conflictCount,
+        lastConflictAt: piMemoryPhase2Jobs.lastConflictAt,
+        lastConflictingHeadVersionId:
+          piMemoryPhase2Jobs.lastConflictingHeadVersionId,
+        lastPublishedVersionId: piMemoryPhase2Jobs.lastPublishedVersionId,
+        lastPublishedAt: piMemoryPhase2Jobs.lastPublishedAt,
         createdAt: piMemoryPhase2Jobs.createdAt,
         updatedAt: piMemoryPhase2Jobs.updatedAt,
       })
@@ -780,6 +790,62 @@ function collectPiMemoryPhase2Jobs(
           : [
               {
                 path: "memory/phase2-jobs.json",
+                content: JSON.stringify(rows, null, 2),
+              },
+            ],
+      count: rows.length,
+    };
+  });
+}
+
+function collectPiMemoryPublicationProvenance(
+  runtime: ExportRuntime,
+  userId: string,
+  signal: AbortSignal,
+): Computed<
+  Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }>
+> {
+  return computed(async () => {
+    const rows = await runtime.db
+      .select({
+        id: piMemoryPublicationProvenance.id,
+        memoryStorageId: piMemoryPublicationProvenance.memoryStorageId,
+        orgId: piMemoryPublicationProvenance.orgId,
+        userId: piMemoryPublicationProvenance.userId,
+        claimedRevision: piMemoryPublicationProvenance.claimedRevision,
+        inputRevision: piMemoryPublicationProvenance.inputRevision,
+        reconciliationRevision:
+          piMemoryPublicationProvenance.reconciliationRevision,
+        selectionDigest: piMemoryPublicationProvenance.selectionDigest,
+        selectedCount: piMemoryPublicationProvenance.selectedCount,
+        selectedUtf8Bytes: piMemoryPublicationProvenance.selectedUtf8Bytes,
+        baseVersionId: piMemoryPublicationProvenance.baseVersionId,
+        preparedVersionId: piMemoryPublicationProvenance.preparedVersionId,
+        observedHeadVersionId:
+          piMemoryPublicationProvenance.observedHeadVersionId,
+        writer: piMemoryPublicationProvenance.writer,
+        outcome: piMemoryPublicationProvenance.outcome,
+        size: piMemoryPublicationProvenance.size,
+        archiveSize: piMemoryPublicationProvenance.archiveSize,
+        fileCount: piMemoryPublicationProvenance.fileCount,
+        createdAt: piMemoryPublicationProvenance.createdAt,
+      })
+      .from(piMemoryPublicationProvenance)
+      .where(eq(piMemoryPublicationProvenance.userId, userId))
+      .orderBy(
+        asc(piMemoryPublicationProvenance.orgId),
+        asc(piMemoryPublicationProvenance.memoryStorageId),
+        asc(piMemoryPublicationProvenance.createdAt),
+        asc(piMemoryPublicationProvenance.id),
+      );
+    signal.throwIfAborted();
+    return {
+      entries:
+        rows.length === 0
+          ? []
+          : [
+              {
+                path: "memory/phase2-publication-provenance.json",
                 content: JSON.stringify(rows, null, 2),
               },
             ],
@@ -1044,6 +1110,9 @@ function collectUserData(
     const memoryPhase2Jobs = await get(
       collectPiMemoryPhase2Jobs(runtime, userId, signal),
     );
+    const memoryPhase2PublicationProvenance = await get(
+      collectPiMemoryPublicationProvenance(runtime, userId, signal),
+    );
     const conversationsResult = await get(
       collectConversationMessages(runtime, userId, signal),
     );
@@ -1053,6 +1122,7 @@ function collectUserData(
       ...memory.entries,
       ...memoryStage1Candidates.entries,
       ...memoryPhase2Jobs.entries,
+      ...memoryPhase2PublicationProvenance.entries,
       ...conversationsResult.entries,
     ];
 
@@ -1069,6 +1139,8 @@ function collectUserData(
             memoryFiles: memory.count,
             memoryStage1Candidates: memoryStage1Candidates.count,
             memoryPhase2Jobs: memoryPhase2Jobs.count,
+            memoryPhase2PublicationProvenance:
+              memoryPhase2PublicationProvenance.count,
             conversationThreads: conversationsResult.threadCount,
             sessionHistories: conversationsResult.sessionHistoryCount,
           },

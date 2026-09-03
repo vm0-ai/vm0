@@ -536,7 +536,6 @@
       "agentLoading": "O agente ainda está carregando",
       "connect": "Conectar o Google Drive",
       "connectTooltip": "Conecte o Google Drive para enviar artefatos",
-      "failedToOpenConnect": "Não foi possível abrir a página de conexão do Google Drive",
       "noArtifacts": "Nenhum artefato para sincronizar",
       "partial_one": "{{synced}} de {{count}} arquivo sincronizado com o Google Drive",
       "partial_many": "{{synced}} de {{count}} arquivos sincronizados com o Google Drive",
@@ -4855,6 +4854,10 @@
       "title": "Exportar dados"
     },
     "lab": {
+      "actions": {
+        "resetAll": "Redefinir tudo",
+        "resetting": "Redefinindo…"
+      },
       "description": "Veja os recursos por estágio de lançamento.",
       "documentTitle": "Laboratório",
       "groups": {

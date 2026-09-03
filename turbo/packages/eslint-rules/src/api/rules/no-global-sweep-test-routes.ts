@@ -76,11 +76,6 @@ const GLOBAL_SWEEP_BOUNDARIES: readonly GlobalSweepBoundary[] = [
     path: "/api/cron/computer-use-screenshot-cleanup",
   },
   {
-    exportName: "modelStatsRoutes",
-    moduleName: "model-stats",
-    path: "/api/cron/aggregate-model-stats",
-  },
-  {
     exportName: "cronSyncSkillsRoutes",
     moduleName: "cron-sync-skills",
     path: "/api/cron/sync-skills",

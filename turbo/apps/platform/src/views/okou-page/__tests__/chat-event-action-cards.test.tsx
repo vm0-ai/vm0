@@ -2987,6 +2987,8 @@ describe("chat event action cards", () => {
     const threadId = "c0000000-0000-4000-a000-00000000001b";
     const mailDraftId = "c0000000-0000-4000-a000-00000000001c";
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const defaultConnectionId = "c0000000-0000-4000-a000-00000000001e";
+    const reconnectConnectionId = "c0000000-0000-4000-a000-00000000001f";
     const createdAt = "2026-07-14T10:00:00.000Z";
     const authWindow = context.mocks.browser.authWindow();
     Object.defineProperty(authWindow, "location", {
@@ -3022,6 +3024,7 @@ describe("chat event action cards", () => {
               ? "reconnect-required"
               : "connected",
             connection: {
+              id: defaultConnectionId,
               authMethod: "oauth",
               externalUsername: null,
               externalEmail: "sender@example.com",
@@ -3046,11 +3049,47 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(
       connectorOauthStartContract.start,
-      ({ params, respond }) => {
+      ({ body, params, respond }) => {
         oauthStartRequests += 1;
         expect(params.connectorSlug).toBe("gmail");
+        expect(body.account).toStrictEqual({
+          intent: "reconnect",
+          connectionId: reconnectConnectionId,
+        });
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/oauth",
+        });
+      },
+    );
+    context.mocks.api(
+      connectorAccountsContract.connection,
+      ({ params, query, respond }) => {
+        expect(params.connectionId).toBe(reconnectConnectionId);
+        expect(query).toStrictEqual({
+          kind: "builtin",
+          connectorSlug: "gmail",
+        });
+        return respond(200, {
+          id: reconnectConnectionId,
+          target: { kind: "builtin", connectorSlug: "gmail" },
+          authMethod: "oauth",
+          displayName: "Draft sender",
+          isDefault: false,
+          externalId: "draft-sender",
+          externalUsername: null,
+          externalEmail: "sender@example.com",
+          oauthScopes: [],
+          connectionStatus: reconnectRequired
+            ? "reconnect-required"
+            : "connected",
+          reconnectReason: reconnectRequired
+            ? "authorization_expired_or_revoked"
+            : null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: reconnectRequired
+            ? "2026-01-01T00:00:00Z"
+            : "2026-01-01T00:00:01Z",
         });
       },
     );
@@ -3073,6 +3112,9 @@ describe("chat event action cards", () => {
           subject: "Reconnect required",
           body: "",
           accessStatus: reconnectRequired ? "reconnect" : "ready",
+          reconnectConnectionId: reconnectRequired
+            ? reconnectConnectionId
+            : undefined,
           status: "draft",
           detailAvailable: !reconnectRequired,
           gmailDraftId: "r-reconnect",
@@ -3156,6 +3198,97 @@ describe("chat event action cards", () => {
     });
     expect(draftRequests).toBe(2);
     expect(hasSubscription("connector:changed")).toBeFalsy();
+  });
+
+  it("does not reconnect a legacy mail response without an exact account", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000020";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000021";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    let oauthStartRequests = 0;
+
+    context.mocks.api(connectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            slug: "gmail",
+            label: "Gmail",
+            connected: true,
+            connectionStatus: "reconnect-required",
+            connection: {
+              id: crypto.randomUUID(),
+              authMethod: "oauth",
+              externalUsername: null,
+              externalEmail: "default@example.com",
+              reconnectReason: "authorization_expired_or_revoked",
+            },
+            authMethods: [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description: null,
+                grantKind: "auth-code",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            singleAuthCodeAuthMethodId: "oauth",
+          }),
+        ],
+      });
+    });
+    context.mocks.api(connectorOauthStartContract.start, ({ never }) => {
+      oauthStartRequests += 1;
+      return never();
+    });
+    context.mocks.api(mailContract.getDraft, ({ respond }) => {
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: {
+          version: 3,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: [],
+          cc: [],
+          bcc: [],
+          subject: "Legacy reconnect",
+          body: "",
+          accessStatus: "reconnect",
+          status: "draft",
+          detailAvailable: false,
+          gmailDraftId: "r-legacy-reconnect",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
+          attachments: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Legacy reconnect",
+      chatEvents: [
+        {
+          id: "c0000000-0000-4000-a000-000000000022",
+          role: "assistant",
+          content: mailDraftUrl,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const card = await screen.findByLabelText(
+      "Reconnect Gmail to access email: Legacy reconnect",
+    );
+    expect(card).toBeDisabled();
+    await user.click(card);
+    expect(oauthStartRequests).toBe(0);
   });
 
   it("renders a deleted email card without an interactive sidebar trigger", async () => {

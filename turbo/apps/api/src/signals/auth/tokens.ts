@@ -42,6 +42,7 @@ interface OkouTokenOptions {
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
   readonly imageRecognitionAvailable?: boolean;
+  readonly customConnectorSourceIds?: Readonly<Record<string, string>>;
 }
 
 const jwtBaseSchema = z.object({
@@ -83,6 +84,9 @@ const okouTokenPayloadSchema = jwtBaseSchema.extend({
   publicBrand: publicBrandSchema.optional(),
   computerUseHostId: z.string().uuid().optional(),
   cloudBrowserEnabled: z.literal(true).optional(),
+  customConnectorSourceIds: z
+    .record(z.string().uuid(), z.string().uuid())
+    .optional(),
 });
 
 type OkouTokenClaims = Omit<z.infer<typeof okouTokenPayloadSchema>, "scope">;
@@ -282,6 +286,9 @@ export function verifyOkouToken(token: string): AgentAuth | null {
     ...(parsed.data.cloudBrowserEnabled
       ? { cloudBrowserEnabled: parsed.data.cloudBrowserEnabled }
       : {}),
+    ...(parsed.data.customConnectorSourceIds
+      ? { customConnectorSourceIds: parsed.data.customConnectorSourceIds }
+      : {}),
   };
 }
 
@@ -376,6 +383,9 @@ function buildOkouTokenClaims(
     ...(capabilities.includes("browser:write") &&
     options?.cloudBrowserEnabled === true
       ? { cloudBrowserEnabled: true as const }
+      : {}),
+    ...(options?.customConnectorSourceIds
+      ? { customConnectorSourceIds: options.customConnectorSourceIds }
       : {}),
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,

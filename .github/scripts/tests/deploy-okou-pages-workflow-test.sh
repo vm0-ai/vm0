@@ -323,7 +323,6 @@ worker_release_source = require_fragments(
         "wrangler deploy",
         "--env production",
         '--message "app artifact ${ARTIFACT_SHA}"',
-        "bash .github/scripts/verify-okou-app-runtime.sh",
         '"https://app.vm0.ai|https://api.vm0.ai"',
         '"https://app.okou.ai|https://api.okou.ai"',
         '"https://app-worker.vm0.ai|https://api.vm0.ai"',
@@ -337,12 +336,10 @@ if worker_release_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
-if worker_release_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
-    raise RuntimeError("production Worker must use bounded convergence probes")
 if worker_release_source.count("wrangler deploy") != 1:
     raise RuntimeError("production Worker must deploy exactly once")
 if worker_release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
-    raise RuntimeError("production Worker deployment must report failed verification")
+    raise RuntimeError("production Worker deployment must report its final job status")
 if worker_release_start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if release_start_step.get("with", {}).get("env") != "app-pages/production-shadow":
@@ -411,55 +408,34 @@ release_step_source = require_fragments(
         '"$CF_PAGES_PROJECT_NAME"',
         "production",
         '"$ARTIFACT_SHA"',
-        "bash .github/scripts/verify-okou-app-runtime.sh",
-        '"$pages_url"',
-        '"https://static.okou.io/okou-app/assets"',
-        '"$CANONICAL_ASSETS"',
         'echo "url=$pages_url"',
     ],
 )
 if release_step_source.count(shared_script) != 1:
-    raise RuntimeError(
-        "production readiness polling must follow exactly one Pages deployment"
-    )
+    raise RuntimeError("production must run exactly one Pages deployment")
 runtime_verifier = "bash .github/scripts/verify-okou-app-runtime.sh"
 domain_verifier = "bash .github/scripts/verify-okou-production-domains.sh"
 if not (
     release_step_source.index(shared_script)
-    < release_step_source.index(runtime_verifier)
     < release_step_source.index('echo "url=$pages_url"')
 ):
-    raise RuntimeError(
-        "Pages fallback readiness must finish before success output"
-    )
+    raise RuntimeError("Pages fallback deployment must finish before success output")
+for deployment_source in (release_step_source, worker_release_source):
+    if runtime_verifier in deployment_source:
+        raise RuntimeError("Release Please App deployment must trust Cloudflare success")
 for fragment in (domain_verifier, '"https://app.vm0.ai"', '"https://app.okou.ai"'):
     if fragment in release_step_source:
         raise RuntimeError(
             f"Pages fallback deployment must not verify the live Worker route: {fragment}"
         )
 if not (
-    worker_release_source.index("wrangler deploy")
-    < worker_release_source.index(runtime_verifier)
-):
-    raise RuntimeError(
-        "production Worker deployment must verify live runtime before success"
-    )
-if release_step.get("env", {}).get("CANONICAL_ASSETS") != (
-    "${{ steps.pages-production.outputs.canonical-dist }}/assets"
-):
-    raise RuntimeError("production deploy must verify the canonical App bundles")
-if release_step.get("env", {}).get("OKOU_APP_RUNTIME_MAX_ATTEMPTS") != "60":
-    raise RuntimeError("production runtime convergence must use 60 bounded probes")
-if not (
     release_steps.index(release_step) < release_steps.index(release_finish_step)
 ):
     raise RuntimeError(
-        "production readiness must finish before the GitHub Deployment is reported"
+        "production deployment must finish before the GitHub Deployment is reported"
     )
 if release_finish_step.get("with", {}).get("status") != "${{ job.status }}":
-    raise RuntimeError(
-        "GitHub Deployment completion must fail closed on readiness verification"
-    )
+    raise RuntimeError("GitHub Deployment completion must report its final job status")
 require_fragments(
     rollback_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$TARGET_COMMIT"'],

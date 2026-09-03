@@ -1635,10 +1635,8 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
-          CANONICAL_ASSETS: ${{ steps.worker-production.outputs.canonical-dist }}/assets
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
-          OKOU_APP_RUNTIME_MAX_ATTEMPTS: "60"
         run: |
           set -euo pipefail
 
@@ -1658,11 +1656,6 @@ jobs:
             "https://app-worker.vm0.ai|https://api.vm0.ai" \
             "https://app-worker.okou.ai|https://api.okou.ai"; do
             IFS='|' read -r app_origin api_origin <<< "$mapping"
-            bash .github/scripts/verify-okou-app-runtime.sh \
-              "$app_origin" \
-              "https://static.okou.io/okou-app/assets" \
-              "$CANONICAL_ASSETS"
-
             cors_result="$(
               curl -fsS \
                 --connect-timeout 10 \
@@ -1907,11 +1900,9 @@ jobs:
         id: deploy-pages
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
-          CANONICAL_ASSETS: ${{ steps.pages-production.outputs.canonical-dist }}/assets
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          OKOU_APP_RUNTIME_MAX_ATTEMPTS: "60"
           PAGES_DIST: ${{ steps.pages-production.outputs.pages-dist }}
         run: |
           set -euo pipefail
@@ -1922,10 +1913,6 @@ jobs:
             "$ARTIFACT_SHA"
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          bash .github/scripts/verify-okou-app-runtime.sh \
-            "$pages_url" \
-            "https://static.okou.io/okou-app/assets" \
-            "$CANONICAL_ASSETS"
           echo "url=$pages_url" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Cloudflare Pages dashboard URL

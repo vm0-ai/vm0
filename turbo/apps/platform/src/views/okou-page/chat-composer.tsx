@@ -7109,15 +7109,6 @@ function ComposerTemplateAttachmentSync({
     picker?.value,
     importedTemplates,
   );
-  const importedTemplateCoverUrls = uniqueTemplatePreviewImageUrls(
-    importedTemplates.flatMap((template) => {
-      const coverUrl = importedPptImageVariant(
-        template.coverUrl,
-        TEMPLATE_CARD_PREVIEW_SIZE,
-      );
-      return coverUrl === null ? [] : [coverUrl];
-    }),
-  );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -7143,20 +7134,7 @@ function ComposerTemplateAttachmentSync({
         ref={setImportedTemplateUrlRefreshLifecycleRef}
         aria-hidden="true"
         className="pointer-events-none absolute size-px overflow-hidden opacity-0"
-      >
-        {importedTemplateCoverUrls.map((coverUrl) => {
-          return (
-            <img
-              key={coverUrl}
-              alt=""
-              src={coverUrl}
-              loading="eager"
-              decoding="async"
-              fetchPriority="high"
-            />
-          );
-        })}
-      </span>
+      />
       <button
         key={composerTemplateAttachmentLifecycleKey(attachment)}
         ref={setLifecycleRef}
