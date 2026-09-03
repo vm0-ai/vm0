@@ -144,7 +144,7 @@ async function openVideoTemplatePicker(page: Page, url: URL): Promise<void> {
         currentUrl.origin === url.origin &&
         currentUrl.pathname === url.pathname &&
         report.kind === "observed" &&
-        report.state.bootstrapSkeletonPresent;
+        report.state.bootstrapSkeleton === "active";
       if (shouldRetry) {
         console.warn(
           `[e2e] Authenticated app bootstrap stalled; retrying video-template navigation. Observed Clerk state: ${describeClerkReadiness(report)}`,

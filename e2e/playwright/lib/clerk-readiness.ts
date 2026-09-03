@@ -10,7 +10,7 @@ import { errors } from "@playwright/test";
  * Recording the observed state at the timeout keeps those causes separable.
  */
 export interface ClerkReadinessState {
-  readonly bootstrapSkeletonPresent: boolean;
+  readonly bootstrapSkeleton: "active" | "hidden" | "removed";
   readonly client: "absent" | "loaded" | "loading";
   readonly organizationId: string | null;
   readonly readyState: string;
@@ -38,7 +38,7 @@ export function describeClerkReadiness(report: ClerkReadinessReport): string {
     `client=${state.client}`,
     `session=${state.sessionPresent ? "present" : "absent"}`,
     `organization=${state.organizationId ?? "none"}`,
-    `bootstrapSkeleton=${state.bootstrapSkeletonPresent ? "present" : "removed"}`,
+    `bootstrapSkeleton=${state.bootstrapSkeleton}`,
     `readyState=${state.readyState}`,
     `route=${state.route}`,
   ].join(" ");
@@ -50,9 +50,15 @@ export async function captureClerkReadiness(
   try {
     const state = await page.evaluate((): ClerkReadinessState => {
       const clerk = window.Clerk;
+      const bootstrapSkeleton = document.getElementById(
+        "app-bootstrap-skeleton",
+      );
       return {
-        bootstrapSkeletonPresent:
-          document.getElementById("app-bootstrap-skeleton") !== null,
+        bootstrapSkeleton: bootstrapSkeleton
+          ? bootstrapSkeleton.getAttribute("aria-hidden") === "true"
+            ? "hidden"
+            : "active"
+          : "removed",
         client: clerk ? (clerk.loaded ? "loaded" : "loading") : "absent",
         organizationId: clerk?.organization?.id ?? null,
         readyState: document.readyState,
