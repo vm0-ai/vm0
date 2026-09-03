@@ -1,6 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import type { OnboardingStatusResponse } from "@okouai/api-contracts/contracts/onboarding";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import { agentAvatarUrlForDefaultAgent } from "@okouai/core/agent-avatar";
 import { agentDisplayNameForPublicBrand } from "@okouai/core/public-brand";
 import { isValidTimeZone } from "@okouai/core/timezone";
 import { agents } from "@okouai/db/schema/agent";
@@ -175,8 +176,13 @@ function defaultAgentInfo(
     if (row.sound !== null) {
       metadata.sound = row.sound;
     }
-    if (row.avatarUrl !== null) {
-      metadata.avatarUrl = row.avatarUrl;
+    const avatarUrl = agentAvatarUrlForDefaultAgent({
+      agentId: composeId,
+      defaultAgentId: composeId,
+      avatarUrl: row.avatarUrl,
+    });
+    if (avatarUrl !== null) {
+      metadata.avatarUrl = avatarUrl;
     }
 
     return {

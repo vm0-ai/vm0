@@ -36,10 +36,14 @@ import {
   type AgentDeleteCopyTarget,
 } from "./components/delete-agent-dialog.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { serializeAvatarSvgConfig } from "./avatar-svg-utils.ts";
+import {
+  serializeAvatarSvgConfig,
+  type AvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { AvatarMaker } from "./avatar-maker.tsx";
+import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
   settingsFormDraft$,
   patchSettingsForm$,
@@ -83,6 +87,43 @@ interface SettingsTabProps {
   isDefaultAgent?: boolean;
   /** Callback to delete the agent. */
   onDelete?: () => Promise<void>;
+}
+
+function AvatarSettingsControl({
+  isDefaultAgent,
+  avatarUrl,
+  alt,
+  onConfirm,
+}: {
+  isDefaultAgent: boolean;
+  avatarUrl: string | null;
+  alt: string;
+  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+}) {
+  if (isDefaultAgent) {
+    return (
+      <AvatarFromUrl
+        avatarUrl={avatarUrl}
+        alt={alt}
+        className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
+      />
+    );
+  }
+
+  const resolved = resolveAvatarSvgConfig(avatarUrl);
+  return (
+    <>
+      {resolved && (
+        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
+          <AvatarSvgPreview
+            config={resolved}
+            className="h-full w-full rounded-full"
+          />
+        </div>
+      )}
+      <AvatarMaker onConfirm={onConfirm} />
+    </>
+  );
 }
 
 export function SettingsTab({
@@ -244,28 +285,21 @@ export function SettingsTab({
               label={t(($) => {
                 return $.profile.fields.avatar.label;
               })}
-              description={t(($) => {
-                return $.profile.fields.avatar.description;
-              })}
+              description={
+                isDefaultAgent
+                  ? undefined
+                  : t(($) => {
+                      return $.profile.fields.avatar.description;
+                    })
+              }
               wideControls
             >
               <div className="min-w-0 w-full">
                 <div className="flex flex-wrap gap-2 items-center">
-                  {(() => {
-                    const resolved = resolveAvatarSvgConfig(avatarUrl);
-                    if (resolved) {
-                      return (
-                        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
-                          <AvatarSvgPreview
-                            config={resolved}
-                            className="h-full w-full rounded-full"
-                          />
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  <AvatarMaker
+                  <AvatarSettingsControl
+                    isDefaultAgent={isDefaultAgent}
+                    avatarUrl={avatarUrl}
+                    alt={resolvedAgentName}
                     onConfirm={async (cfg) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
                       patchForm({
