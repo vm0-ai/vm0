@@ -19,6 +19,7 @@ pub mod epoch_milliseconds;
 pub mod exec_limits;
 pub mod exec_terminal;
 pub mod file_write;
+pub mod guest_binary;
 pub mod managed_command;
 pub mod process_containment;
 pub mod reuse_preparation;

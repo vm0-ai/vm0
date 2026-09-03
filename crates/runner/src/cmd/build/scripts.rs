@@ -733,16 +733,20 @@ wait
 
     #[test]
     fn rootfs_scripts_install_explicit_runtime_tool_hooks_without_replacing_bash() {
+        let tool_exec_path = guest_contracts::guest_binary::TOOL_EXEC_PATH;
+        let tool_exec_assignment = format!(r#"TOOL_EXEC_DEST="{tool_exec_path}""#);
+        let claude_hook_command = format!(r#""command": "{tool_exec_path} hook""#);
+        let codex_hook_command = format!(r#"command = "{tool_exec_path} hook""#);
         assert!(
-            CUSTOMIZE_SCRIPT.contains("TOOL_EXEC_DEST=\"/usr/local/bin/guest-tool-exec\""),
+            CUSTOMIZE_SCRIPT.contains(&tool_exec_assignment),
             "customize-rootfs.sh should use the canonical tool executor path"
         );
         assert!(
-            CUSTOMIZE_SCRIPT.contains("\"command\": \"/usr/local/bin/guest-tool-exec hook\""),
+            CUSTOMIZE_SCRIPT.contains(&claude_hook_command),
             "customize-rootfs.sh should configure the Claude Code tool hook"
         );
         assert!(
-            CUSTOMIZE_SCRIPT.contains("command = \"/usr/local/bin/guest-tool-exec hook\""),
+            CUSTOMIZE_SCRIPT.contains(&codex_hook_command),
             "customize-rootfs.sh should configure the Codex tool hook"
         );
         assert!(
@@ -754,8 +758,16 @@ wait
             "verify-rootfs.sh should verify the Claude Code tool hook"
         );
         assert!(
+            VERIFY_SCRIPT.contains(&claude_hook_command),
+            "verify-rootfs.sh should require the canonical Claude Code tool hook command"
+        );
+        assert!(
             VERIFY_SCRIPT.contains("check_required_file_contains \"$CODEX_TOOL_HOOK_DEST\""),
             "verify-rootfs.sh should verify the Codex tool hook"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(&codex_hook_command),
+            "verify-rootfs.sh should require the canonical Codex tool hook command"
         );
     }
 

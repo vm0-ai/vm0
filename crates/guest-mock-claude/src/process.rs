@@ -4,7 +4,8 @@ mod stream_json_input;
 
 use crate::args::ParsedArgs;
 use crate::scenario::MockScenario;
-use guest_contracts::process_containment::{CANONICAL_TOOL_CGROUP_PROCS_ENV, TOOL_EXEC_PATH};
+use guest_contracts::guest_binary::TOOL_EXEC_PATH;
+use guest_contracts::process_containment::CANONICAL_TOOL_CGROUP_PROCS_ENV;
 use std::ffi::OsStr;
 use std::io::BufReader;
 use std::process::{Command, ExitCode};
