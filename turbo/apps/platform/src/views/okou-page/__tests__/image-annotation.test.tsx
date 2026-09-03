@@ -12,6 +12,7 @@ import {
   agentsMainContract,
 } from "@okouai/api-contracts/contracts/agents";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { resolveApiBase } from "../../../signals/api-base.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
@@ -83,6 +84,10 @@ interface SavedDraft {
 function mockDraftWithImage(
   marks: ImageAnnotationMark[] | null,
   savedDrafts: SavedDraft[] = [],
+  // What the draft has stored for the attachment. A persisted attachment can
+  // carry the canonical API address rather than a public one, and that address
+  // only answers to an Authorization header.
+  storedUrl: string = FILE_URL,
 ): void {
   // A restored attachment revalidates its file before a send can use it.
   context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
@@ -120,7 +125,7 @@ function mockDraftWithImage(
           filename: "billing-page.png",
           contentType: "image/png",
           size: 4096,
-          url: FILE_URL,
+          url: storedUrl,
         },
       ],
     });
@@ -234,12 +239,15 @@ async function dragOnSurface(
  * including one the browser would have refused, which is how a read that fails
  * for every annotated screenshot still looked green here.
  */
-function mockOriginalImageBytes(): void {
-  context.mocks.http.get(FILE_URL, () => {
+function mockOriginalImageBytes(url: string = FILE_URL): { reads: number } {
+  const counter = { reads: 0 };
+  context.mocks.http.get(url, () => {
+    counter.reads += 1;
     return new Response(new Blob(["original"], { type: "image/png" }), {
       headers: { "Content-Type": "image/png" },
     });
   });
+  return counter;
 }
 
 function mockAnnotationRendering(): void {
@@ -282,8 +290,7 @@ function mockAnnotationCanvas(): void {
   );
 }
 
-function mockSuccessfulAnnotationUpload(): void {
-  mockAnnotationRendering();
+function mockAnnotatedUploadSuccess(): void {
   context.mocks.upload.success({
     id: ANNOTATED_FILE_ID,
     filename: "billing-page.annotated.png",
@@ -291,6 +298,11 @@ function mockSuccessfulAnnotationUpload(): void {
     size: 9,
     url: "https://cdn.vm7.io/artifacts/test/drafts/billing-page.annotated.png",
   });
+}
+
+function mockSuccessfulAnnotationUpload(): void {
+  mockAnnotationRendering();
+  mockAnnotatedUploadSuccess();
 }
 
 async function composerEditor(): Promise<HTMLElement> {
@@ -449,15 +461,9 @@ describe("composer image annotation", () => {
     mockChatLifecycle(context);
     mockAgentChatPage();
     const savedDrafts: SavedDraft[] = [];
-    mockSuccessfulAnnotationUpload();
-
-    const crossOriginRequests: (string | null)[] = [];
-    context.mocks.http.get(FILE_URL, ({ request }) => {
-      crossOriginRequests.push(request.headers.get("origin"));
-      return new Response(new Blob(["original"], { type: "image/png" }), {
-        headers: { "Content-Type": "image/png" },
-      });
-    });
+    mockAnnotationCanvas();
+    mockAnnotatedUploadSuccess();
+    const original = mockOriginalImageBytes();
     mockDraftWithImage(null, savedDrafts);
 
     setup(true);
@@ -479,8 +485,59 @@ describe("composer image annotation", () => {
     });
     // The bytes were actually read, rather than an image element reporting a
     // load for a src it never successfully fetched.
-    expect(crossOriginRequests.length).toBeGreaterThan(0);
+    expect(original.reads).toBeGreaterThan(0);
     expect(screen.queryByLabelText(/Try again/)).toBeNull();
+  });
+
+  /**
+   * A persisted attachment's stored address is the canonical API route, which
+   * answers only to an Authorization header — a bare `fetch` or `src` gets a
+   * 401 from it. The editor never touches that address: it exchanges it for a
+   * presigned object URL first. Flattening derived the URL a second way and
+   * skipped the exchange, so the picture the user had just drawn on was
+   * refused the moment they pressed attach.
+   */
+  it("flattens through the presigned url when the draft stored the api one", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+    mockAgentChatPage();
+    const savedDrafts: SavedDraft[] = [];
+    mockAnnotationCanvas();
+    mockAnnotatedUploadSuccess();
+    const original = mockOriginalImageBytes();
+
+    // Reading the canonical route directly is the regression: it is unreadable
+    // without the header a `fetch` cannot attach.
+    let canonicalReads = 0;
+    context.mocks.http.get("*/api/web/download-file", () => {
+      canonicalReads += 1;
+      return new Response(null, { status: 401 });
+    });
+    mockDraftWithImage(
+      null,
+      savedDrafts,
+      `${resolveApiBase()}/api/web/download-file?file_id=${FILE_ID}`,
+    );
+
+    setup(true);
+
+    await user.click(
+      await screen.findByLabelText("Open image preview for billing-page.png"),
+    );
+    await user.click(await screen.findByTestId("artifact-dialog-annotate"));
+    await screen.findByTestId("image-annotation-editor");
+    await dragOnSurface();
+    await user.click(attachMarksButton());
+
+    await waitFor(() => {
+      expect(
+        savedDrafts.some((saved) => {
+          return JSON.stringify(saved.userMessage).includes(ANNOTATED_FILE_ID);
+        }),
+      ).toBeTruthy();
+    });
+    expect(original.reads).toBeGreaterThan(0);
+    expect(canonicalReads).toBe(0);
   });
 
   it("offers a retry when the original image cannot be read", async () => {
