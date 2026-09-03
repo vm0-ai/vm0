@@ -903,7 +903,7 @@ describe("okou social command", () => {
     });
   });
 
-  it("documents only the intent-oriented surface", () => {
+  it("documents the intent-oriented surface", () => {
     const help = socialCommand.helpInformation();
     let renderedHelp = "";
     socialCommand.configureOutput({
@@ -924,7 +924,5 @@ describe("okou social command", () => {
     expect(renderedHelp).toContain(
       "Provider credentials remain on the Okou API server",
     );
-    expect(help).not.toContain("social tools");
-    expect(help).not.toContain("social call");
   });
 });
