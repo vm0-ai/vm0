@@ -1831,13 +1831,18 @@ describe("connectors page", () => {
     const accountQueries: {
       readonly limit: number;
       readonly cursor: string | null;
+      readonly includeScopeMismatch: "true" | null;
     }[] = [];
     context.mocks.api(
       connectorAccountsContract.connections,
       ({ query, respond }) => {
+        if (query.kind !== "builtin") {
+          throw new Error("Expected a built-in connector account query");
+        }
         accountQueries.push({
           limit: query.limit,
           cursor: query.cursor ?? null,
+          includeScopeMismatch: query.includeScopeMismatch ?? null,
         });
         const start = query.cursor ? Number(query.cursor) : 0;
         const page = accounts.slice(
@@ -1890,6 +1895,11 @@ describe("connectors page", () => {
         return query.cursor;
       }),
     ).toStrictEqual([null, "3", "6"]);
+    expect(
+      accountQueries.map((query) => {
+        return query.includeScopeMismatch;
+      }),
+    ).toStrictEqual(["true", "true", "true"]);
     // One bounded limit per request, wider than the whole fixture: every extra
     // page came from following the server cursor, not from a client-side slice.
     expect([...requestedLimits]).toHaveLength(1);
@@ -1901,13 +1911,18 @@ describe("connectors page", () => {
     const accountQueries: {
       readonly search: string | null;
       readonly cursor: string | null;
+      readonly includeScopeMismatch: "true" | null;
     }[] = [];
     context.mocks.api(
       connectorAccountsContract.connections,
       ({ query, respond }) => {
+        if (query.kind !== "builtin") {
+          throw new Error("Expected a built-in connector account query");
+        }
         accountQueries.push({
           search: query.search ?? null,
           cursor: query.cursor ?? null,
+          includeScopeMismatch: query.includeScopeMismatch ?? null,
         });
         const search = query.search;
         const filtered = search
@@ -1939,7 +1954,11 @@ describe("connectors page", () => {
     expect(accountQueries).toHaveLength(queryCountBeforeSearch);
     await waitFor(() => {
       expect(accountQueries.slice(queryCountBeforeSearch)).toStrictEqual([
-        { search: "Work 2", cursor: null },
+        {
+          search: "Work 2",
+          cursor: null,
+          includeScopeMismatch: "true",
+        },
       ]);
       expect(within(dialog).getByText("Work 2")).toBeInTheDocument();
       // A search owns the whole list: the default account is unpinned unless it
@@ -1954,6 +1973,7 @@ describe("connectors page", () => {
       expect(accountQueries.at(-1)).toStrictEqual({
         search: "No matching account",
         cursor: null,
+        includeScopeMismatch: "true",
       });
       expect(within(dialog).getByText("No accounts found")).toBeInTheDocument();
       expect(within(dialog).queryByText("Unnamed account")).toBeNull();
