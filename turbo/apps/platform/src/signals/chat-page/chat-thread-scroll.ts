@@ -50,6 +50,7 @@ export interface ChatThreadScrollSignals {
   readonly scrollContainer$: Computed<HTMLElement | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
+  readonly isProgrammaticScrollEvent$: Command<boolean, [EventTarget | null]>;
   readonly readRenderedThreadScrollPosition$: Command<
     ThreadScrollPosition | null,
     []
@@ -245,6 +246,16 @@ interface ScrollRuntime {
   // those events do not rewrite the held event position, and so a resize
   // restore during the animation preserves the requested behavior.
   programmaticSmoothScrollTop: number | null;
+}
+
+function isProgrammaticScroll(
+  runtime: ScrollRuntime,
+  container: HTMLElement,
+): boolean {
+  return (
+    runtime.programmaticSmoothScrollTop !== null ||
+    runtime.programmaticScrollTop === container.scrollTop
+  );
 }
 
 function createInternalScrollSignals(
@@ -664,10 +675,7 @@ function createScrollContainerOnRef(
           // too. Where they sit says nothing about where the thread sits.
           return;
         }
-        const smoothScrollTarget = runtime.programmaticSmoothScrollTop;
-        const programmatic =
-          smoothScrollTarget !== null ||
-          runtime.programmaticScrollTop === container.scrollTop;
+        const programmatic = isProgrammaticScroll(runtime, container);
         if (!programmatic) {
           // The container has left the offset this module wrote, so the reader
           // moved it. Until that happens the offset is still ours no matter how
@@ -809,6 +817,16 @@ export function createChatThreadScrollSignals(
     runtime,
   );
   const scrollContentOnRef$ = createScrollContentOnRef(threadId, navigation);
+  const isProgrammaticScrollEvent$ = command(
+    ({ get }, target: EventTarget | null): boolean => {
+      const container = get(scroll.scrollContainer$);
+      return (
+        container !== null &&
+        target === container &&
+        isProgrammaticScroll(runtime, container)
+      );
+    },
+  );
   const scrollToEvent$ = command(
     async (
       { get, set },
@@ -863,6 +881,7 @@ export function createChatThreadScrollSignals(
     scrollContainer$: scroll.scrollContainer$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
+    isProgrammaticScrollEvent$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
     autoScroll$: render.autoScroll$,
     scrollToEvent$,

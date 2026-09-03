@@ -4356,7 +4356,6 @@ function createChatPanelSignalsWithDraft(
     },
     draft,
   );
-  const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
   const messagePipeline = createChatThreadMessagePipeline(
     {
       chatActionContext: { threadId, agentId },
@@ -4372,6 +4371,11 @@ function createChatPanelSignalsWithDraft(
     ...messagePipeline,
     ...artifact,
   };
+  const feedback = createChatThreadFeedbackSignals(
+    threadId,
+    composer.feedback,
+    messages.scroll.isProgrammaticScrollEvent$,
+  );
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
   const locator = createChatConversationLocatorSignals({
     threadId,
