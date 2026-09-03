@@ -964,11 +964,11 @@ describe("POST /api/telegram/register", () => {
 
   it.each([
     {
-      caseName: "the VM0 canonical default",
+      caseName: "the VM0 canonical default rename attempt",
       apiOrigin: "https://api.vm0.ai",
       displayName: "Zero",
       seedDefaultAgent: true,
-      expectedAgentName: "Zero",
+      expectedAgentName: "Okou",
     },
     {
       caseName: "the Okou canonical default",
@@ -978,11 +978,11 @@ describe("POST /api/telegram/register", () => {
       expectedAgentName: "Okou",
     },
     {
-      caseName: "a renamed Okou canonical default",
+      caseName: "an Okou canonical default rename attempt",
       apiOrigin: "https://api.okou.ai",
       displayName: "Finance Agent",
       seedDefaultAgent: true,
-      expectedAgentName: "Finance Agent",
+      expectedAgentName: "Okou",
     },
     {
       caseName: "a non-canonical Okou agent named Zero",
