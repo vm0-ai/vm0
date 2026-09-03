@@ -1376,5 +1376,8 @@ describe("okou social command", () => {
     expect(renderedHelp).toContain(
       "Provider credentials remain on the Okou API server",
     );
+    expect(renderedHelp).toContain(
+      "one kind=page record per fetched page, followed by one metadata-only kind=summary record",
+    );
   });
 });

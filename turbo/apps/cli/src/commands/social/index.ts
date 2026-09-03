@@ -1206,6 +1206,7 @@ Notes:
   - Provider credentials remain on the Okou API server
   - Collection --limit applies to the total returned result, not one provider page
   - Collection output is aggregated unless --stream explicitly requests JSON Lines
+  - --stream writes one kind=page record per fetched page, followed by one metadata-only kind=summary record
   - Partial collection results are explicit and exit with status 2
   - Successful provider pages are billed independently
   - Transcript unavailability does not prove that a video contains no speech

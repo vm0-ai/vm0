@@ -15148,6 +15148,9 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       "collection `--limit` applies to the total result",
     );
     expect(appendSystemPrompt).toContain(
+      "JSON Lines page records followed by one metadata-only summary",
+    );
+    expect(appendSystemPrompt).toContain(
       "okou social download <url> --max-duration <seconds>",
     );
     expect(appendSystemPrompt).toContain(
