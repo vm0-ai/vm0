@@ -1,6 +1,8 @@
 import type { InboundMessage } from "ably";
 import { command, computed, state } from "ccstate";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { delay } from "signal-timers";
 
 import {
@@ -10,6 +12,7 @@ import {
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import { now } from "../lib/time.ts";
+import { accept } from "../lib/accept.ts";
 import { apiClient$ } from "../signals/api-client.ts";
 import { setApiClientRuntime$ } from "../signals/api-client-runtime.ts";
 import { initializeAppVersion$ } from "../signals/app-version.ts";
@@ -36,6 +39,7 @@ import {
   type RealtimeConnectionState,
 } from "../signals/realtime.ts";
 import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
+import { logger } from "../signals/log.ts";
 import { settle, withCleanup } from "../signals/utils.ts";
 import { clerk$ as workerClerk$ } from "../signals/worker-auth.ts";
 import {
@@ -65,6 +69,7 @@ import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
+const L = logger("SharedDatabaseWorker");
 
 export interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
@@ -87,6 +92,52 @@ function requireRuntime(
 
 const CHAT_EVENT_CATCH_UP_THROTTLE_MS = 1000;
 const RECENT_CHAT_EVENT_CATCH_UP_THREAD_COUNT = 100;
+
+const batchChatEventCatchUpEnabled$ = computed(
+  async (get): Promise<boolean> => {
+    const signal = get(rootSignal$);
+    signal.throwIfAborted();
+    const client = get(apiClient$)(featureSwitchesContract);
+    const response = await settle(
+      accept(client.get({ fetchOptions: { signal } }), [200]),
+      signal,
+    );
+    if (!response.ok) {
+      L.error("feature-switch.load", response.error, {
+        feature: FeatureSwitchKey.BatchChatEventCatchUp,
+      });
+      return false;
+    }
+    return (
+      response.value.body.effectiveSwitches[
+        FeatureSwitchKey.BatchChatEventCatchUp
+      ] ?? false
+    );
+  },
+);
+
+const catchUpLegacyChatEvents$ = command(
+  async (
+    { get },
+    indicators: ChatThreadIndicators,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    const runtime = requireRuntime(get(workerRuntimeState$));
+    await Promise.all(
+      Object.keys(indicators.threads).map((threadId) => {
+        return runtime.query(
+          {
+            dataKey: { kind: "chat-event", threadId },
+            afterSeqId: null,
+            consistency: "catch-up",
+          },
+          signal,
+        );
+      }),
+    );
+  },
+);
 
 interface CatchUpChatEventThrottle {
   lastStartedAt: number | null;
@@ -229,13 +280,20 @@ const workerChatThreadIndicatorsCache$ = computed(
 
 const loadWorkerChatThreadIndicators$ = command(
   async (
-    { set },
+    { get, set },
     source: Promise<ChatThreadIndicators>,
     signal: AbortSignal,
   ): Promise<ChatThreadIndicators> => {
-    const indicators = await source;
+    const [indicators, batchCatchUpEnabled] = await Promise.all([
+      source,
+      get(batchChatEventCatchUpEnabled$),
+    ]);
     signal.throwIfAborted();
-    await set(catchUpChatEvent$);
+    if (batchCatchUpEnabled) {
+      await set(catchUpChatEvent$);
+    } else {
+      await set(catchUpLegacyChatEvents$, indicators, signal);
+    }
     signal.throwIfAborted();
     return indicators;
   },

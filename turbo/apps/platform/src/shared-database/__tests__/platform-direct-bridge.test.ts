@@ -1,5 +1,6 @@
 import type { ChatEventRow } from "@okouai/api-contracts/contracts/chat-event-rows";
 import { CURRENT_CHAT_EVENT_SCHEMA_VERSION } from "@okouai/api-contracts/contracts/chat-event-schema-version";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatThreadsContract,
   chatThreadEventsContract,
@@ -124,7 +125,7 @@ function cachedThread(
 }
 
 describe("shared database direct Platform bridge", () => {
-  it("renders cache first, reacts to append, and catches up active and unread threads in the background", async () => {
+  it("renders cache first, reacts to append, and batch catches up active, unread, and recent threads", async () => {
     const threadId = crypto.randomUUID();
     const unreadThreadId = crypto.randomUUID();
     const activeThreadId = crypto.randomUUID();
@@ -206,6 +207,7 @@ describe("shared database direct Platform bridge", () => {
 
     await setupPage({
       context,
+      featureSwitches: { [FeatureSwitchKey.BatchChatEventCatchUp]: true },
       path: "/error",
       sharedWorkerTestTransport: "message-port",
       withoutRender: true,
@@ -314,6 +316,68 @@ describe("shared database direct Platform bridge", () => {
       }),
     ).toStrictEqual([1, 2, 3, 4]);
     expect(requestedSeqIds).toHaveLength(requestsBeforeReopen);
+  });
+
+  it("keeps the legacy unread and active catch-up path when batch catch-up is disabled", async () => {
+    const cachedThreadId = crypto.randomUUID();
+    const unreadThreadId = crypto.randomUUID();
+    const activeThreadId = crypto.randomUUID();
+    await seedChatEventCache(row(cachedThreadId, 1), [
+      cachedThread(cachedThreadId, CREATED_AT, null),
+    ]);
+
+    const requestedThreadIds: string[] = [];
+    let batchRequestCount = 0;
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: {},
+        threads: {
+          [unreadThreadId]: "unread",
+          [activeThreadId]: "active",
+        },
+      });
+    });
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    context.mocks.api(
+      chatThreadEventsContract.rows,
+      ({ params, query, respond }) => {
+        requestedThreadIds.push(params.threadId);
+        return respond(200, chatEventRowsResponse([], query));
+      },
+    );
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ respond }) => {
+      batchRequestCount += 1;
+      return respond(200, { events: {}, notFoundThreads: [] });
+    });
+
+    await setupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.BatchChatEventCatchUp]: false },
+      path: "/error",
+      sharedWorkerTestTransport: "message-port",
+      withoutRender: true,
+      user: { id: userId(), fullName: "Direct Bridge User" },
+      session: { token: "direct-bridge-token" },
+      org: {
+        activeOrg: { id: orgId(), name: "Direct Bridge Org" },
+        memberships: [{ id: orgId() }],
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(new Set(requestedThreadIds)).toStrictEqual(
+        new Set([unreadThreadId, activeThreadId]),
+      );
+    });
+    expect(requestedThreadIds).not.toContain(cachedThreadId);
+    expect(batchRequestCount).toBe(0);
   });
 
   it("does not turn a healthy SharedWorker connection red when the tab is hidden", () => {
