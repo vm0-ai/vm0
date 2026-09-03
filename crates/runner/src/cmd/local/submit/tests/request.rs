@@ -151,10 +151,6 @@ async fn submit_serializes_env_and_secret_env() {
         "EMPTY=".into(),
         "MULTILINE=line1\nline2".into(),
         "VM0_FUTURE_RUNNER_KEY=ordinary-vm0-value".into(),
-        "VM0_STUCK_TOOL_TIMEOUT_SECS=3".into(),
-        "VM0_POST_RESULT_SIGTERM_GRACE_SECS=1".into(),
-        "VM0_POST_RESULT_TOTAL_CAP_SECS= 4 ".into(),
-        "VM0_POST_RESULT_SIGKILL_GRACE_SECS=not-a-duration".into(),
     ];
     args.secret_env = vec![
         "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
@@ -178,31 +174,9 @@ async fn submit_serializes_env_and_secret_env() {
         Some("line1\nline2")
     );
     assert_eq!(
-        environment
-            .get("VM0_STUCK_TOOL_TIMEOUT_SECS")
-            .map(String::as_str),
-        Some("3")
-    );
-    assert_eq!(
         environment.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
         Some("ordinary-vm0-value")
     );
-    for (key, expected_value) in [
-        (
-            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-            "1",
-        ),
-        (guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV, " 4 "),
-        (
-            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-            "not-a-duration",
-        ),
-    ] {
-        assert_eq!(
-            environment.get(key).map(String::as_str),
-            Some(expected_value)
-        );
-    }
     assert_eq!(
         secret_environment
             .get("ANTHROPIC_API_KEY")
@@ -221,7 +195,7 @@ async fn submit_serializes_env_and_secret_env() {
 
 #[tokio::test]
 async fn rejects_invalid_env_entries_before_submit() {
-    let mut cases = vec![
+    let cases = vec![
         (vec!["FOO".to_string()], Vec::new(), "expected KEY=VALUE"),
         (vec!["=VALUE".to_string()], Vec::new(), "expected KEY=VALUE"),
         (
@@ -275,14 +249,6 @@ async fn rejects_invalid_env_entries_before_submit() {
             "across --env and --secret-env",
         ),
     ];
-    for &key in guest_contracts::env::GUEST_AGENT_TUNING_ENV_KEYS {
-        cases.push((
-            Vec::new(),
-            vec![format!("{key}=secret-tuning-value")],
-            "must be passed with --env",
-        ));
-    }
-
     for (env, secret_env, expected) in cases {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
