@@ -2392,12 +2392,14 @@ mod tests {
     }
 
     #[test]
-    fn pi_child_env_uses_canonical_run_id() {
+    fn pi_child_env_passes_v2_model_config_with_canonical_run_id() {
         let user_env = HashMap::new();
         let mut runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
         runtime.pi_session_id = Cow::Borrowed("22222222-2222-4222-8222-222222222222");
         runtime.pi_launch_config = Cow::Borrowed(r#"{"schemaVersion":2}"#);
-        runtime.pi_model_config = Cow::Borrowed(r#"{"provider":"deepseek"}"#);
+        runtime.pi_model_config = Cow::Borrowed(
+            r#"{"schemaVersion":2,"dialect":"openai-codex-responses","transport":"sse","provider":"openai-codex","baseUrl":"https://chatgpt.com/backend-api/codex","model":"gpt-5.3-codex","credentialBindings":[{"kind":"access-token","environment":"CHATGPT_ACCESS_TOKEN","secretName":"CHATGPT_ACCESS_TOKEN"},{"kind":"account-id","environment":"CHATGPT_ACCOUNT_ID","secretName":"CHATGPT_ACCOUNT_ID"}]}"#,
+        );
         let mut values = child_env::values_for_runtime(&runtime);
         values.extend(pi_child_env_values(&runtime));
         let values = child_env::normalize_values(values);

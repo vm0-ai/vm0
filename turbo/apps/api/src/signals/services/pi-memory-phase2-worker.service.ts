@@ -254,6 +254,7 @@ function providerConfig(args: {
     model: args.route.upstreamModel,
     catalogModel: PI_MEMORY_PHASE2_MODEL,
     api: "openai-responses" as const,
+    dialect: "openai-responses" as const,
     thinkingLevel: "medium" as const,
   };
 }

@@ -13,7 +13,8 @@ import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import {
-  resolvePiAgentCredential,
+  materializePiAgentModelConfig,
+  type PiAgentCredentialReference,
   type PiAgentModelConfig,
 } from "@okouai/pi-agent-runtime";
 import {
@@ -785,10 +786,10 @@ const loadApiFirstTurnResource$ = command(
   },
 );
 
-async function resolveApiFirstTurnCredential(
+async function apiFirstTurnModelConfig(
   args: ApiFirstTurnContext,
   executionContext: ApiFirstTurnExecutionContext,
-): Promise<string> {
+): Promise<PiAgentModelConfig> {
   const modelConfig = executionContext.piModelConfig;
   const decrypted = await settle(
     decryptPersistentSecretsMap(executionContext.encryptedSecrets, {
@@ -804,64 +805,48 @@ async function resolveApiFirstTurnCredential(
     );
   }
   const secrets: Record<string, string> | null = decrypted.value;
-  let apiKey = secrets?.[modelConfig.credentialSecretName];
-  const providerKey =
-    executionContext.secretConnectorMap?.[modelConfig.credentialSecretName];
-  const metadata =
-    executionContext.secretConnectorMetadataMap?.[
-      modelConfig.credentialSecretName
-    ];
-  if (!apiKey && providerKey && metadata) {
-    const resolved = await settle(
-      resolveModelProviderRuntimeSecretForApi({
-        db: args.db,
-        orgId: args.activation.orgId,
-        userId: args.activation.userId,
-        key: modelConfig.credentialSecretName,
-        providerKey,
-        metadata,
-        featureSwitchContext: {
-          userId: args.activation.userId,
-          orgId: args.activation.orgId,
-        },
-      }),
-    );
-    if (!resolved.ok) {
-      throw piApiFirstTurnError(
-        "PI_API_MODEL_CREDENTIAL_INVALID",
-        "Pi API first-turn model credential lookup failed",
-        resolved.error,
-      );
-    }
-    apiKey = resolved.value ?? undefined;
-  }
-  if (!apiKey?.trim()) {
-    throw piApiFirstTurnError(
-      "PI_API_MODEL_CREDENTIAL_INVALID",
-      "Pi API first-turn model credential is unavailable",
-    );
-  }
-  return apiKey;
-}
-
-function apiFirstTurnModelConfig(
-  config: ApiFirstTurnExecutionContext["piModelConfig"],
-  credential: string,
-): PiAgentModelConfig {
-  const {
-    apiKeyEnv: _apiKeyEnv,
-    credentialHeader,
-    credentialSecretName: _credentialSecretName,
-    ...model
-  } = config;
-  return {
-    ...model,
-    ...resolvePiAgentCredential({
-      credential,
-      header: credentialHeader,
-      target: "direct",
-    }),
-  };
+  return await materializePiAgentModelConfig({
+    config: modelConfig,
+    target: "direct",
+    async resolveCredential(binding: PiAgentCredentialReference) {
+      let value = secrets?.[binding.secretName];
+      const providerKey =
+        executionContext.secretConnectorMap?.[binding.secretName];
+      const metadata =
+        executionContext.secretConnectorMetadataMap?.[binding.secretName];
+      if (!value && providerKey && metadata) {
+        const resolved = await settle(
+          resolveModelProviderRuntimeSecretForApi({
+            db: args.db,
+            orgId: args.activation.orgId,
+            userId: args.activation.userId,
+            key: binding.secretName,
+            providerKey,
+            metadata,
+            featureSwitchContext: {
+              userId: args.activation.userId,
+              orgId: args.activation.orgId,
+            },
+          }),
+        );
+        if (!resolved.ok) {
+          throw piApiFirstTurnError(
+            "PI_API_MODEL_CREDENTIAL_INVALID",
+            "Pi API first-turn model credential lookup failed",
+            resolved.error,
+          );
+        }
+        value = resolved.value ?? undefined;
+      }
+      if (!value?.trim()) {
+        throw piApiFirstTurnError(
+          "PI_API_MODEL_CREDENTIAL_INVALID",
+          "Pi API first-turn model credential is unavailable",
+        );
+      }
+      return value;
+    },
+  });
 }
 
 async function recordApiFirstTurnUsage(
@@ -901,11 +886,10 @@ async function observeDiscardedProviderResult(
 async function executeApiModelTurn(
   args: {
     readonly activation: PiApiFirstTurnActivation;
-    readonly credential: string;
     readonly context: ApiFirstTurnContext;
     readonly commitIdentity: ApiFirstTurnCommitIdentity;
-    readonly executionContext: ApiFirstTurnExecutionContext;
     readonly launchConfig: ApiFirstTurnLaunchConfig;
+    readonly model: PiAgentModelConfig;
     readonly resourceSnapshot: PiResourceSnapshot;
     readonly sessionJsonl: string;
     readonly sessionId: string;
@@ -936,10 +920,7 @@ async function executeApiModelTurn(
       sessionJsonl: args.sessionJsonl,
       prompt: args.activation.prompt,
       appendSystemPrompt: args.activation.appendSystemPrompt,
-      model: apiFirstTurnModelConfig(
-        args.executionContext.piModelConfig,
-        args.credential,
-      ),
+      model: args.model,
       resourceSnapshot: args.resourceSnapshot,
       ownership: args.ownership,
       onMemoryRecallOutcome(outcome) {
@@ -1278,10 +1259,7 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     signal,
   );
   signal.throwIfAborted();
-  const credential = await resolveApiFirstTurnCredential(
-    args,
-    executionContext,
-  );
+  const model = await apiFirstTurnModelConfig(args, executionContext);
   signal.throwIfAborted();
   const loadedSession = await set(
     loadResumeSessionJsonl$,
@@ -1304,11 +1282,10 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
   const { startedAt, turn } = await executeApiModelTurn(
     {
       activation: args.activation,
-      credential,
       context: args,
       commitIdentity,
-      executionContext,
       launchConfig,
+      model,
       resourceSnapshot,
       sessionJsonl,
       sessionId,

@@ -84,6 +84,46 @@ fn pi_model_config_for_test() -> serde_json::Value {
     })
 }
 
+fn pi_model_config_v2_for_test(dialect: &str) -> serde_json::Value {
+    if dialect == "openai-codex-responses" {
+        return json!({
+            "schemaVersion": 2,
+            "dialect": dialect,
+            "transport": "sse",
+            "provider": "openai-codex",
+            "baseUrl": "https://chatgpt.com/backend-api",
+            "model": "gpt-5.6-terra",
+            "thinkingLevel": "low",
+            "credentialBindings": [
+                {
+                    "kind": "access-token",
+                    "environment": "CHATGPT_ACCESS_TOKEN",
+                    "secretName": "CHATGPT_ACCESS_TOKEN"
+                },
+                {
+                    "kind": "account-id",
+                    "environment": "CHATGPT_ACCOUNT_ID",
+                    "secretName": "CHATGPT_ACCOUNT_ID"
+                }
+            ]
+        });
+    }
+    json!({
+        "schemaVersion": 2,
+        "dialect": "openai-responses",
+        "transport": "sse",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-5.6-terra",
+        "thinkingLevel": "low",
+        "credentialBindings": [{
+            "kind": "api-key",
+            "environment": "OPENAI_API_KEY",
+            "secretName": "OPENAI_API_KEY"
+        }]
+    })
+}
+
 fn pi_context_for_test() -> ExecutionContext {
     let mut context = minimal_context();
     context.cli_agent_type = "pi".to_string();
@@ -1342,12 +1382,12 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
         (
             "/provider",
             json!("future-provider"),
-            "Pi model config is invalid",
+            "Pi legacy model config is invalid",
         ),
         (
             "/apiKeyEnv",
             json!("FUTURE_API_KEY"),
-            "Pi model config is invalid",
+            "Pi legacy model config is invalid",
         ),
         ("/baseUrl", json!("not a URL"), "baseUrl is invalid"),
         ("/model", json!(""), "model must not be empty"),
@@ -1379,9 +1419,95 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
     context.pi_model_config.as_mut().unwrap()["serviceTier"] = json!("fast");
     let error = validate_context_for_test(&context).unwrap_err();
     assert!(
-        error.contains("Pi model config is invalid"),
+        error.contains("Pi legacy model config is invalid"),
         "serviceTier produced unexpected error: {error}"
     );
+}
+
+#[test]
+fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
+    for dialect in ["openai-responses", "openai-codex-responses"] {
+        let mut context = pi_context_for_test();
+        let config = pi_model_config_v2_for_test(dialect);
+        context.pi_model_config = Some(config.clone());
+
+        assert!(validate_context_for_test(&context).is_ok());
+        let payload = build_run_payload_for_run(&context).unwrap();
+        let forwarded: serde_json::Value = serde_json::from_str(&payload.pi_model_config).unwrap();
+        assert_eq!(forwarded, config);
+    }
+}
+
+#[test]
+fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
+    let invalid_configs = [
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-codex-responses");
+                config["transport"] = json!("auto");
+                config
+            },
+            "Pi model config transport must be sse",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-codex-responses");
+                config["provider"] = json!("openai");
+                config
+            },
+            "Pi Codex Responses route is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-codex-responses");
+                config["credentialBindings"] = json!([{
+                    "kind": "access-token",
+                    "environment": "CHATGPT_ACCESS_TOKEN",
+                    "secretName": "CHATGPT_ACCESS_TOKEN"
+                }]);
+                config
+            },
+            "Pi credential bindings do not match the route dialect",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["credentialBindings"] = json!([{
+                    "kind": "api-key",
+                    "environment": "OPENAI_API_KEY",
+                    "secretName": "CHATGPT_REFRESH_TOKEN"
+                }]);
+                config
+            },
+            "Pi API-key binding is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["futureRouteField"] = json!(true);
+                config
+            },
+            "Pi model config v2 fields are invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["schemaVersion"] = json!(3);
+                config
+            },
+            "Pi model config generation is unsupported",
+        ),
+    ];
+
+    for (config, expected) in invalid_configs {
+        let mut context = pi_context_for_test();
+        context.pi_model_config = Some(config);
+        let error = validate_context_for_test(&context).unwrap_err();
+        assert!(
+            error.contains(expected),
+            "expected {expected:?}, got unexpected error: {error}"
+        );
+    }
 }
 
 #[test]

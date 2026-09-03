@@ -9,7 +9,7 @@ import {
   type PiMemoryRecallSelection,
   type PiLaunchConfig,
   type PiApiFirstTurnConfig,
-  type PiModelConfig,
+  type PiModelConfigLegacy as PiModelConfig,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
   piMemoryRecallSelectionSchema,
