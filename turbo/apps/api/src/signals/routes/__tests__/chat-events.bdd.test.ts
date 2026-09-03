@@ -5304,12 +5304,6 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     );
 
-    await upsertOrgPlanEntitlementFixture({
-      orgId,
-      status: "active",
-      supportByok: true,
-      restrictedVm0Models: false,
-    });
     await deleteOrgPlanEntitlementFixture(orgId);
     const missing = await requestSendEventRaw(actor, {
       agentId,
@@ -5331,7 +5325,7 @@ describe("CHAT-02: model-first provider policies", () => {
       supportByok: false,
       restrictedVm0Models: false,
     });
-    await seedVm0BuiltInModelKey("claude-sonnet-5");
+    await seedVm0BuiltInModelKey("deepseek-v4-flash");
     const byokDisabled = await chat.requestSendEvent(
       actor,
       {
@@ -5379,7 +5373,6 @@ describe("CHAT-02: model-first provider policies", () => {
       supportByok: true,
       restrictedVm0Models: true,
     });
-    await seedVm0BuiltInModelKey("deepseek-v4-flash");
     const restricted = await chat.requestSendEvent(
       actor,
       {
