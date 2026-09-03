@@ -1,0 +1,17 @@
+{
+  "source": {
+    "repo": "vm0-ai/vm0-skills",
+    "commit": "def79c9f45b43cb5ec880a3cd0aae4c362af493c",
+    "directory": "illustration-template/mono-color",
+    "upstreamRepo": "yanliudesign/mono-color-skill",
+    "upstreamCommit": "c8ff70597ddedcd65f21a0b528f6a70c35690b0a"
+  },
+  "resource": {
+    "id": "image-style:mono-color",
+    "archiveRoot": "illustration-template",
+    "packagePath": "illustration-template/mono-color",
+    "storageId": "fb77cca3-7c2b-4f81-b65d-4ceb34a2c04d",
+    "expectedVersionId": "2ae9d4c177a3b5026ced9b4cca978ebb8c9cc2fa5b08cf79a246f438c9e40083",
+    "expectedSha256": "3b4c56ae9ef0ae4ea78bebd1837eb5e7267381754916e0487b4bd370be9f0f9a"
+  }
+}

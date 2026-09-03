@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/vm0-skills",
+    "commit": "def79c9f45b43cb5ec880a3cd0aae4c362af493c",
+    "directory": "illustration-template/mono-color",
+    "upstreamRepo": "yanliudesign/mono-color-skill",
+    "upstreamCommit": "c8ff70597ddedcd65f21a0b528f6a70c35690b0a"
+  },
+  "resource": {
+    "id": "image-style:mono-color",
+    "archiveRoot": "illustration-template",
+    "packagePath": "illustration-template/mono-color",
+    "storageId": "fb77cca3-7c2b-4f81-b65d-4ceb34a2c04d",
+    "versionId": "2ae9d4c177a3b5026ced9b4cca978ebb8c9cc2fa5b08cf79a246f438c9e40083",
+    "archive": {
+      "path": "mono-color.tar.gz",
+      "sha256": "3b4c56ae9ef0ae4ea78bebd1837eb5e7267381754916e0487b4bd370be9f0f9a",
+      "byteSize": 855082
+    },
+    "totalSize": 987489,
+    "fileCount": 17,
+    "files": [
+      {
+        "path": "illustration-template/mono-color/LICENSE",
+        "hash": "2025880f6441e121c76c01bc5996e84a7498d9d5aa7222a10400d303bdd043cb",
+        "size": 1064
+      },
+      {
+        "path": "illustration-template/mono-color/REFERENCES.md",
+        "hash": "7912866b7532bfd41530917633bb5c3e3fbe85b047234c02b9b5258c51e289b0",
+        "size": 776
+      },
+      {
+        "path": "illustration-template/mono-color/REFERENCE_PROVENANCE.md",
+        "hash": "4dd6c2dd36e6cc1449664e58d0cee68f9d52825b3e5d1e6b2d3aa50057462c72",
+        "size": 8241
+      },
+      {
+        "path": "illustration-template/mono-color/SKILL.md",
+        "hash": "cad82152618966f89b65c75f787cc5b1364f868f85afa88624c6120633e87540",
+        "size": 15873
+      },
+      {
+        "path": "illustration-template/mono-color/THIRD_PARTY_NOTICES.md",
+        "hash": "45b47ff018660574f4ecb91976f3a270dd45d08c1c7342322f89cacc0101d681",
+        "size": 2353
+      },
+      {
+        "path": "illustration-template/mono-color/UPSTREAM-ASSET-LICENSE.md",
+        "hash": "1a02a8b7a3bae6b21bb5182d6865a5d4db66777a8c5c064c64c84756eebf257f",
+        "size": 1108
+      },
+      {
+        "path": "illustration-template/mono-color/checks/upstream-restricted-asset-sha256.txt",
+        "hash": "97785cd5f2bca049d05f4583f01a0a241c365839d020267f9a38f37406c0b5a9",
+        "size": 2737
+      },
+      {
+        "path": "illustration-template/mono-color/checks/verify-package.sh",
+        "hash": "8a88c97b176d6cac62b20491209ba8b1d2a4448e751b9d3ffd0f4c2119cb8a67",
+        "size": 3442
+      },
+      {
+        "path": "illustration-template/mono-color/design-system/carriers.json",
+        "hash": "32ad6bd5917c8d5ad4b0c8f78006848f941489649824f0857a7a94685914a8d7",
+        "size": 1619
+      },
+      {
+        "path": "illustration-template/mono-color/design-system/colors.json",
+        "hash": "e299d6b4a2ec36e2e59b7095b85bae5f13609f505d21c9a83561088f7c446b48",
+        "size": 4341
+      },
+      {
+        "path": "illustration-template/mono-color/design-system/compositions.json",
+        "hash": "8faec6d102a6dcf15a465123f00265609afe271dd2998baa0d56f0fb39105703",
+        "size": 2378
+      },
+      {
+        "path": "illustration-template/mono-color/design-system/imperfections.json",
+        "hash": "e281a1c7fb183af973179a7588df5745527a231462681797850227e791372715",
+        "size": 1566
+      },
+      {
+        "path": "illustration-template/mono-color/design-system/rhythm.json",
+        "hash": "02c8c4ca0bba218feeca7311b35b61362972bded129f050b288a384d61c0c920",
+        "size": 2800
+      },
+      {
+        "path": "illustration-template/mono-color/design-system/typography.json",
+        "hash": "b20f558444aab2c93b6339b76aa3178ae9e04e25eed1059cd2db8044733db26f",
+        "size": 4240
+      },
+      {
+        "path": "illustration-template/mono-color/refs/ref-harbor-ferry-duotone.jpg",
+        "hash": "de39ce18c8af087092658414d59c2e379b7f94d3cb08ae0f21466c8805bcc74a",
+        "size": 217097
+      },
+      {
+        "path": "illustration-template/mono-color/refs/ref-horseshoe-crab-one-ink.jpg",
+        "hash": "c95ff6969b89e4418927b69eaf40b1ae0e778a4ea7d2128974ea5b599e153732",
+        "size": 161749
+      },
+      {
+        "path": "illustration-template/mono-color/refs/ref-letterpress-duotone.jpg",
+        "hash": "0995e4c9558ed5f60fc75ef6d4373bc8e32c4a6391f017633412b216fc3cf87b",
+        "size": 556105
+      }
+    ]
+  }
+}

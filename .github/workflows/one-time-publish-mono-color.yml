@@ -1,0 +1,122 @@
+name: One-time publish mono-color image style
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/mono-color-release/**"
+      - ".github/workflows/one-time-publish-mono-color.yml"
+
+concurrency:
+  group: one-time-publish-mono-color-def79c9f
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'chore/one-time-publish-mono-color-def79c9f'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out pinned mono-color source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: vm0-ai/vm0-skills
+          ref: def79c9f45b43cb5ec880a3cd0aae4c362af493c
+          path: .mono-color-source
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+      - name: Rebuild and verify pinned release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="def79c9f45b43cb5ec880a3cd0aae4c362af493c"
+          test "$(git -C .mono-color-source rev-parse HEAD)" = "$source_commit"
+
+          rebuilt_archive="$RUNNER_TEMP/mono-color-rebuilt.tar.gz"
+          git -C .mono-color-source archive --format=tar "$source_commit" -- illustration-template/mono-color \
+            | gzip -n -9 >"$rebuilt_archive"
+          cmp .github/mono-color-release/prebuilt/mono-color.tar.gz "$rebuilt_archive"
+
+          release_dir="$RUNNER_TEMP/mono-color-release"
+          output_dir="$RUNNER_TEMP/mono-color-output"
+          mkdir -p "$release_dir" "$output_dir"
+          cp .github/mono-color-release/publish.mjs "$release_dir/publish.mjs"
+          cp .github/mono-color-release/mono-color-release.json "$release_dir/mono-color-release.json"
+          cp .github/mono-color-release/prebuilt/* "$output_dir/"
+          cd "$release_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund \
+            @aws-sdk/client-s3@3.1106.0 postgres@3.4.9 tar@7.5.22
+          node publish.mjs verify --output-dir "$output_dir"
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mono-color-def79c9f
+          path: ${{ runner.temp }}/mono-color-output
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-production:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+      - name: Download verified release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mono-color-def79c9f
+          path: ${{ runner.temp }}/mono-color-output
+      - name: Publish immutable archive and register version
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${NEON_API_KEY:?NEON_API_KEY is required}"
+          : "${NEON_PROJECT_ID:?NEON_PROJECT_ID is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID is required}"
+          : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
+          : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
+          : "${R2_USER_STORAGES_BUCKET_NAME:?R2_USER_STORAGES_BUCKET_NAME is required}"
+
+          release_dir="$RUNNER_TEMP/mono-color-release"
+          mkdir -p "$release_dir"
+          cp .github/mono-color-release/publish.mjs "$release_dir/publish.mjs"
+          cp .github/mono-color-release/mono-color-release.json "$release_dir/mono-color-release.json"
+          cd "$release_dir"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund \
+            @aws-sdk/client-s3@3.1106.0 postgres@3.4.9 tar@7.5.22
+
+          branch_id=$(curl -fsS \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches" \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            | jq -r '.branches[] | select(.name == "production") | .id')
+          test -n "$branch_id"
+          database_url=$(curl -fsS \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri?branch_id=${branch_id}&database_name=neondb&role_name=neondb_owner" \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            | jq -r '.uri')
+          test -n "$database_url"
+
+          DATABASE_URL="$database_url" node publish.mjs publish \
+            --output-dir "$RUNNER_TEMP/mono-color-output"
