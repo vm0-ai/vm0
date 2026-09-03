@@ -107,6 +107,7 @@ export type CustomConnectorCredentialAccess =
       readonly kind: "current";
       readonly memberConnectorId: string;
       readonly resolvedAuthMethod: "none" | "manual" | "oauth";
+      readonly connected: boolean;
       readonly runtimeAvailable: boolean;
     }
   | {
@@ -440,6 +441,7 @@ function customConnectorCredentialAccesses(
         kind: "current",
         memberConnectorId: member.id,
         resolvedAuthMethod,
+        connected: customConnectorStoredConnectionIsConnected(member, now),
         runtimeAvailable:
           customConnectorStoredConnectionHasRequiredMaterial(member) &&
           currentCustomConnectorStoredConnectionIsRuntimeAvailable(member, now),

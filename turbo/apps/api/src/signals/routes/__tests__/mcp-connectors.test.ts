@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
+import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import type { CreateCustomConnectorBody } from "@okouai/api-contracts/contracts/custom-connectors";
 import { mcpConnectorsContract } from "@okouai/api-contracts/contracts/mcp-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -7,6 +9,9 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { connectorAccountRoutes } from "../connector-accounts";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import {
@@ -65,6 +70,12 @@ function client() {
   );
 }
 
+function accountClient() {
+  return setupApp({ context, routes: connectorAccountRoutes })(
+    connectorAccountsContract,
+  );
+}
+
 function headers(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
 }
@@ -79,6 +90,37 @@ async function createRunForAgent(actor: ApiTestUser, agentId: string) {
   });
 }
 
+function exactConnectorRunToken(args: {
+  readonly actor: ApiTestUser;
+  readonly runId: string;
+  readonly customConnectorSourceIds: Readonly<Record<string, string>>;
+  readonly capabilities?: readonly Capability[];
+}): string {
+  if (!args.actor.orgId) {
+    throw new Error("MCP run tokens require an org-scoped actor");
+  }
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "okou",
+    userId: args.actor.userId,
+    orgId: args.actor.orgId,
+    runId: args.runId,
+    capabilities: [...(args.capabilities ?? ["connector:read"])],
+    customConnectorSourceIds: args.customConnectorSourceIds,
+    iat: seconds,
+    exp: seconds + 3600,
+  });
+}
+
+function requireConnectedAccountId(
+  connector: Awaited<ReturnType<typeof connectors.setCustomConnectorValues>>,
+): string {
+  if (!connector.connectedAccountId) {
+    throw new Error("Expected a connected Custom connector account");
+  }
+  return connector.connectedAccountId;
+}
+
 function stateFromAuthorizationUrl(authorizationUrl: string): string {
   const state = new URL(authorizationUrl).searchParams.get("state");
   if (!state) {
@@ -88,7 +130,7 @@ function stateFromAuthorizationUrl(authorizationUrl: string): string {
 }
 
 describe("GET /api/mcp-connectors", () => {
-  it("returns only the current Agent's MCP grants", async () => {
+  it("uses the run's exact account and connector projection", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -99,67 +141,304 @@ describe("GET /api/mcp-connectors", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "MCP Discovery Agent",
     });
-    const otherAgent = await bdd.createAgent(actor, {
-      displayName: "Other Agent",
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
+    const selected = await connectors.createCustomConnector(
+      actor,
+      manualMcpConnectorBody({
+        slug: "_selected-mcp",
+        displayName: "Selected MCP",
+        endpoint: "https://selected-mcp.example.test/server",
+      }),
+    );
+    const defaultAccountId = requireConnectedAccountId(
+      await connectors.setCustomConnectorValues(actor, selected.id, [
+        { key: "secret", kind: "secret", value: "default-v1" },
+      ]),
+    );
+    const selectedAccountId = requireConnectedAccountId(
+      await connectors.setCustomConnectorValues(
+        actor,
+        selected.id,
+        [{ key: "secret", kind: "secret", value: "selected-v1" }],
+        { intent: "add", displayName: "Run account" },
+      ),
+    );
+    const signedHttp = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: "_signed-http",
+        displayName: "Signed HTTP",
+        prefixTemplates: ["https://signed-http.example.test/v1/"],
+      }),
+    );
+    const signedHttpAccountId = requireConnectedAccountId(
+      await connectors.setCustomConnectorValues(actor, signedHttp.id, [
+        { key: "secret", kind: "secret", value: "signed-http" },
+      ]),
+    );
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+      selected.id,
+      signedHttp.id,
+    ]);
     const run = await createRunForAgent(actor, agent.agentId);
+    const exactSources = {
+      [selected.id]: selectedAccountId,
+      [signedHttp.id]: signedHttpAccountId,
+    };
 
+    await connectors.updateCustomConnector(actor, selected.id, {
+      ...manualMcpConnectorBody({
+        slug: "_selected-mcp",
+        displayName: "Selected MCP",
+        endpoint: "https://selected-mcp.example.test/server",
+      }),
+      storageVersion: 2,
+    });
+    await connectors.setCustomConnectorValues(
+      actor,
+      selected.id,
+      [{ key: "secret", kind: "secret", value: "default-v2" }],
+      { intent: "reconnect", connectionId: defaultAccountId },
+    );
+    const postStart = await connectors.createCustomConnector(
+      actor,
+      manualMcpConnectorBody({
+        slug: "_post-start-mcp",
+        displayName: "Post-start MCP",
+        endpoint: "https://post-start-mcp.example.test/server",
+      }),
+    );
+    await connectors.setCustomConnectorValues(actor, postStart.id, [
+      { key: "secret", kind: "secret", value: "post-start" },
+    ]);
+    await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [selected.id, signedHttp.id],
+      "remove",
+    );
+    await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [postStart.id],
+      "add",
+    );
+    mockClerkMembership(context, actor, "org:admin");
+
+    const staleSelected = await accept(
+      client().list({
+        headers: headers(
+          exactConnectorRunToken({
+            actor,
+            runId: run.runId,
+            customConnectorSourceIds: exactSources,
+          }),
+        ),
+      }),
+      [200],
+    );
+    expect(staleSelected.body).toStrictEqual({
+      connectors: [
+        {
+          id: selected.id,
+          slug: "_selected-mcp",
+          displayName: "Selected MCP",
+          transport: "streamable-http",
+          endpoint: "https://selected-mcp.example.test/server",
+          connected: false,
+        },
+      ],
+    });
+
+    await connectors.updateCustomConnector(actor, selected.id, {
+      ...manualMcpConnectorBody({
+        slug: "_selected-mcp",
+        displayName: "Selected MCP",
+        endpoint: "https://selected-mcp.example.test/server",
+      }),
+      storageVersion: 3,
+    });
+    await connectors.setCustomConnectorValues(
+      actor,
+      selected.id,
+      [{ key: "secret", kind: "secret", value: "selected-v3" }],
+      { intent: "reconnect", connectionId: selectedAccountId },
+    );
+    const currentSelected = await accept(
+      client().list({
+        headers: headers(
+          exactConnectorRunToken({
+            actor,
+            runId: run.runId,
+            customConnectorSourceIds: exactSources,
+          }),
+        ),
+      }),
+      [200],
+    );
+    expect(currentSelected.body.connectors).toStrictEqual([
+      expect.objectContaining({ id: selected.id, connected: true }),
+    ]);
+
+    const peer = bdd.user({ orgId: actor.orgId });
+    const peerResponse = await accept(
+      client().list({
+        headers: headers(
+          exactConnectorRunToken({
+            actor: peer,
+            runId: run.runId,
+            customConnectorSourceIds: exactSources,
+          }),
+        ),
+      }),
+      [200],
+    );
+    const foreign = bdd.user();
+    mockClerkMembership(context, foreign, "org:admin");
+    const foreignResponse = await accept(
+      client().list({
+        headers: headers(
+          exactConnectorRunToken({
+            actor: foreign,
+            runId: run.runId,
+            customConnectorSourceIds: exactSources,
+          }),
+        ),
+      }),
+      [200],
+    );
+
+    expect(peerResponse.body).toStrictEqual({ connectors: [] });
+    expect(foreignResponse.body).toStrictEqual({ connectors: [] });
+  });
+
+  it("does not fall back when the exact run account is deleted or mismatched", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
+    });
+    const agent = await bdd.createAgent(actor, {
+      displayName: "MCP exact identity Agent",
+    });
+    const selected = await connectors.createCustomConnector(
+      actor,
+      manualMcpConnectorBody({
+        slug: "_deleted-exact-mcp",
+        displayName: "Deleted exact MCP",
+        endpoint: "https://deleted-exact-mcp.example.test/server",
+      }),
+    );
+    const exactAccountId = requireConnectedAccountId(
+      await connectors.setCustomConnectorValues(actor, selected.id, [
+        { key: "secret", kind: "secret", value: "exact" },
+      ]),
+    );
+    await connectors.setCustomConnectorValues(
+      actor,
+      selected.id,
+      [{ key: "secret", kind: "secret", value: "healthy-sibling" }],
+      { intent: "add", displayName: "Healthy sibling" },
+    );
+    const other = await connectors.createCustomConnector(
+      actor,
+      manualMcpConnectorBody({
+        slug: "_other-logical-mcp",
+        displayName: "Other logical MCP",
+        endpoint: "https://other-logical-mcp.example.test/server",
+      }),
+    );
+    const otherAccountId = requireConnectedAccountId(
+      await connectors.setCustomConnectorValues(actor, other.id, [
+        { key: "secret", kind: "secret", value: "other" },
+      ]),
+    );
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+      selected.id,
+    ]);
+    const run = await createRunForAgent(actor, agent.agentId);
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    mockClerkMembership(context, actor, "org:admin");
+
+    await accept(
+      accountClient().delete({
+        headers: headers("clerk-session"),
+        params: { connectionId: exactAccountId },
+        body: {
+          target: { kind: "custom", customConnectorId: selected.id },
+        },
+      }),
+      [200],
+    );
+    const deleted = await accept(
+      client().list({
+        headers: headers(
+          exactConnectorRunToken({
+            actor,
+            runId: run.runId,
+            customConnectorSourceIds: { [selected.id]: exactAccountId },
+          }),
+        ),
+      }),
+      [200],
+    );
+    expect(deleted.body.connectors).toStrictEqual([
+      expect.objectContaining({ id: selected.id, connected: false }),
+    ]);
+
+    const mismatched = await accept(
+      client().list({
+        headers: headers(
+          exactConnectorRunToken({
+            actor,
+            runId: run.runId,
+            customConnectorSourceIds: { [selected.id]: otherAccountId },
+          }),
+        ),
+      }),
+      [200],
+    );
+    expect(mismatched.body.connectors).toStrictEqual([
+      expect.objectContaining({ id: selected.id, connected: false }),
+    ]);
+  });
+
+  it("fails closed for legacy tokens without an exact projection", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
-    const disconnected = await connectors.createCustomConnector(
-      actor,
-      manualMcpConnectorBody({
-        slug: "_alpha-mcp",
-        displayName: "Alpha MCP",
-        endpoint: "https://alpha-mcp.example.test/server",
-      }),
-    );
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Legacy MCP discovery Agent",
+    });
     const connected = await connectors.createCustomConnector(
       actor,
       manualMcpConnectorBody({
-        slug: "_zulu-mcp",
-        displayName: "Zulu MCP",
-        endpoint: "https://zulu-mcp.example.test/server",
+        slug: "_legacy-default-mcp",
+        displayName: "Legacy default MCP",
+        endpoint: "https://legacy-default-mcp.example.test/server",
       }),
     );
-    await connectors.setCustomConnectorSecret(
-      actor,
-      connected.id,
-      "zulu-secret",
-    );
-    const ungranted = await connectors.createCustomConnector(
-      actor,
-      manualMcpConnectorBody({
-        slug: "_ungranted-mcp",
-        displayName: "Ungranted MCP",
-        endpoint: "https://ungranted-mcp.example.test/server",
-      }),
-    );
-    const otherAgentConnector = await connectors.createCustomConnector(
-      actor,
-      manualMcpConnectorBody({
-        slug: "_other-agent-mcp",
-        displayName: "Other Agent MCP",
-        endpoint: "https://other-agent-mcp.example.test/server",
-      }),
-    );
-    const httpConnector = await connectors.createCustomConnector(
-      actor,
-      manualHttpCustomConnectorCreateBody({
-        slug: "_http-connector",
-        displayName: "HTTP Connector",
-        prefixTemplates: ["https://http-connector.example.test/v1/"],
-      }),
-    );
+    await connectors.setCustomConnectorSecret(actor, connected.id, "legacy");
     await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
-      disconnected.id,
       connected.id,
-      httpConnector.id,
     ]);
-    await connectors.updateAgentCustomConnectors(actor, otherAgent.agentId, [
-      otherAgentConnector.id,
-    ]);
+    const run = await createRunForAgent(actor, agent.agentId);
     mockClerkMembership(context, actor, "org:admin");
 
     const response = await accept(
@@ -173,55 +452,7 @@ describe("GET /api/mcp-connectors", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({
-      connectors: [
-        {
-          id: disconnected.id,
-          slug: "_alpha-mcp",
-          displayName: "Alpha MCP",
-          transport: "streamable-http",
-          endpoint: "https://alpha-mcp.example.test/server",
-          connected: false,
-        },
-        {
-          id: connected.id,
-          slug: "_zulu-mcp",
-          displayName: "Zulu MCP",
-          transport: "streamable-http",
-          endpoint: "https://zulu-mcp.example.test/server",
-          connected: true,
-        },
-      ],
-    });
-    expect(response.body.connectors).not.toContainEqual(
-      expect.objectContaining({ id: ungranted.id }),
-    );
-    const peer = bdd.user({ orgId: actor.orgId });
-    const peerResponse = await accept(
-      client().list({
-        headers: headers(
-          runs.okouTokenForRunWithCapabilities(peer, run.runId, [
-            "connector:read",
-          ]),
-        ),
-      }),
-      [200],
-    );
-    const foreign = bdd.user();
-    mockClerkMembership(context, foreign, "org:admin");
-    const foreignResponse = await accept(
-      client().list({
-        headers: headers(
-          runs.okouTokenForRunWithCapabilities(foreign, run.runId, [
-            "connector:read",
-          ]),
-        ),
-      }),
-      [200],
-    );
-
-    expect(peerResponse.body).toStrictEqual({ connectors: [] });
-    expect(foreignResponse.body).toStrictEqual({ connectors: [] });
+    expect(response.body).toStrictEqual({ connectors: [] });
   });
 
   it("returns an empty authoritative result when the token run is absent", async () => {
@@ -231,9 +462,11 @@ describe("GET /api/mcp-connectors", () => {
     const response = await accept(
       client().list({
         headers: headers(
-          runs.okouTokenForRunWithCapabilities(actor, randomUUID(), [
-            "connector:read",
-          ]),
+          exactConnectorRunToken({
+            actor,
+            runId: randomUUID(),
+            customConnectorSourceIds: { [randomUUID()]: randomUUID() },
+          }),
         ),
       }),
       [200],
