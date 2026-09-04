@@ -98,6 +98,7 @@ import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
+  type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { seedUserSecret, seedUserVariable } from "./helpers/user-config-state";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
@@ -1431,7 +1432,7 @@ function codexAuthJson(): string {
   });
 }
 
-async function entitledRunActor(): Promise<{
+async function entitledRunActor(userOptions: ApiTestUserOptions = {}): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
@@ -1442,7 +1443,7 @@ async function entitledRunActor(): Promise<{
 }> {
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
-  const actor = bdd.user();
+  const actor = bdd.user(userOptions);
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -1687,35 +1688,46 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
+    const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId, runnerGroup } = await entitledRunActor({
+      email: "BINGJIE@VM0.AI",
+    });
     const toolHint = "Click-driven intro-video camera moves:";
+    await bdd.readMe(actor);
 
-    const gatedOff = await api.createRun(actor, {
+    const enabledByEmail = await api.createRun(actor, {
       agentId,
       prompt: "Create a polished video from the attached source.",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
-    expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
+    const enabledByEmailClaim = await api.claimRunnerJob(enabledByEmail.runId);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(toolHint);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(
+      "okou video camera --help",
+    );
 
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.IntroVideo]: true,
+      [FeatureSwitchKey.IntroVideo]: false,
     });
 
-    const gatedOn = await api.createRun(actor, {
+    const disabledByOverride = await api.createRun(actor, {
       agentId,
       prompt: "Create a polished video from the attached source.",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
-    const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain(toolHint);
-    expect(appendSystemPrompt).toContain("okou video camera --help");
+    const disabledByOverrideClaim = await api.claimRunnerJob(
+      disabledByOverride.runId,
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").toContain(
+      "# Agent Tools",
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").not.toContain(
+      toolHint,
+    );
   });
 
   it("advertises presentation screenshots only while their rollout switch is on", async () => {

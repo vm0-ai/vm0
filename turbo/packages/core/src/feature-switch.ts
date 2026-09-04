@@ -526,6 +526,30 @@ function evaluateSwitch(fs: FeatureSwitch, hashes: ResolvedHashes): boolean {
 }
 
 /**
+ * Return defaults enabled by the supplied email identity alone.
+ *
+ * The API feature-switch response cannot evaluate email allowlists because its
+ * auth context contains only user and organization IDs. Platform reapplies
+ * these defaults after the server's effective map, before stored overrides.
+ */
+export function getEmailEnabledFeatureStates(
+  email?: string,
+): Partial<Record<FeatureSwitchKey, true>> {
+  const result: Partial<Record<FeatureSwitchKey, true>> = {};
+  if (!email) {
+    return result;
+  }
+
+  const emailHash = fnv1a(email.toLowerCase());
+  for (const key of Object.values(FeatureSwitchKey)) {
+    if (FEATURE_SWITCHES[key].enabledEmailHashes?.includes(emailHash)) {
+      result[key] = true;
+    }
+  }
+  return result;
+}
+
+/**
  * Evaluate all feature switches at once for the given context.
  *
  * Computes identity hashes once and checks all switches synchronously.
