@@ -1117,7 +1117,11 @@ function useAgentFields() {
   };
 }
 
-function useTabVisibility(agentId: string, ownerId: string) {
+function useTabVisibility(
+  agentId: string,
+  ownerId: string,
+  visibility: "public" | "private",
+) {
   const statusLoadable = useLastLoadable(onboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
@@ -1130,10 +1134,11 @@ function useTabVisibility(agentId: string, ownerId: string) {
   const currentUserId =
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isOwner = currentUserId === ownerId;
+  const canEditProfile = isOwner || (isAdmin && visibility === "public");
 
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
-  const hideProfileAndInstructions = !isAdmin && !isOwner;
+  const hideProfileAndInstructions = !canEditProfile;
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   return {
@@ -1163,7 +1168,7 @@ export function JobDetailPage() {
     isOwner,
     activeTab,
     setActiveTab,
-  } = useTabVisibility(fields.agentId, fields.ownerId);
+  } = useTabVisibility(fields.agentId, fields.ownerId, fields.visibility);
 
   if (!fields.detail && !error) {
     return <DetailSkeleton />;
