@@ -316,7 +316,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.IosPwaStartupImages]: {
     maintainer: "ethan@vm0.ai",

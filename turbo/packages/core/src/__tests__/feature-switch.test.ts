@@ -208,7 +208,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerVoiceInputShortcut]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.BaseUiSidebarScrollArea]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
@@ -252,12 +252,18 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
   });
 
-  it("should enable intro video for staff", () => {
-    const staffStates = getAllFeatureStates({
+  it("should enable intro video for Bingjie only", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "BINGJIE@VM0.AI",
+      orgId: "org_nonexistent",
+    });
+    expect(bingjieStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
       email: "ethan@vm0.ai",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(staffStates[FeatureSwitchKey.IntroVideo]).toBe(true);
+    expect(otherStaffStates[FeatureSwitchKey.IntroVideo]).toBe(false);
   });
 
   it("should enable gradient color themes for Ming only", () => {
@@ -390,7 +396,7 @@ describe("getFeatureSwitchMetadata", () => {
       metadata[FeatureSwitchKey.NotionWorkflowAutomations].rolloutStage,
     ).toBe("released");
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
-    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("beta");
+    expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("alpha");
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",
     );
