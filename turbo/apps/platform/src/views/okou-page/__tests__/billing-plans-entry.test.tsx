@@ -73,6 +73,14 @@ test("Dismissing the sidebar upgrade flow returns to the chat screen", async () 
   await setupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
   await clickSidebarUpgradeCard();
+  await screen.findByText("Start with Pro");
+  await screen.findByRole("dialog", {
+    name: "Choose a plan",
+  });
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  expect(
+    screen.queryByRole("dialog", { name: "Settings" }),
+  ).not.toBeInTheDocument();
   await dismissPlansDialog();
 
   await waitFor(() => {

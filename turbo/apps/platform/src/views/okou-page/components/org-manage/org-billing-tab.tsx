@@ -2642,6 +2642,72 @@ function BillingPricingPage({
   );
 }
 
+function StandaloneBillingPricingDialog({
+  children,
+  onClose,
+}: {
+  readonly children: React.ReactNode;
+  readonly onClose: () => void;
+}) {
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        aria-describedby={undefined}
+        className="zero-app flex h-[min(43rem,calc(100dvh-4rem))] w-[calc(100vw-2rem)] max-w-[860px] flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogTitle className="sr-only">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.choosePlan;
+          })}
+        </DialogTitle>
+        <div className="dialog-scrollable flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
+          {children}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function billingPricingReplacement({
+  onStandaloneClose,
+  pricingFlow,
+  pricingOpen,
+  pricingPage,
+  standalonePlans,
+  usagePackPlanDialogs,
+}: {
+  readonly onStandaloneClose: () => void;
+  readonly pricingFlow: React.ReactNode;
+  readonly pricingOpen: boolean;
+  readonly pricingPage: React.ReactNode;
+  readonly standalonePlans: boolean;
+  readonly usagePackPlanDialogs: boolean;
+}): React.ReactNode | null {
+  if (!pricingOpen) {
+    return null;
+  }
+  if (!usagePackPlanDialogs) {
+    return standalonePlans ? (
+      <StandaloneBillingPricingDialog onClose={onStandaloneClose}>
+        {pricingPage}
+      </StandaloneBillingPricingDialog>
+    ) : (
+      pricingPage
+    );
+  }
+  if (standalonePlans) {
+    return pricingFlow;
+  }
+  return null;
+}
+
 function shouldWaitForUsagePackMigration(loading: boolean): boolean {
   return loading;
 }
@@ -2800,7 +2866,11 @@ function UsagePackPricingFlowDialogs({
   );
 }
 
-export function OrgBillingTab() {
+export function OrgBillingTab({
+  standalonePlans = false,
+}: {
+  readonly standalonePlans?: boolean;
+}) {
   const { t } = useTranslation();
   const pricingOpen = useGet(billingSubPage$);
   const migrationOpen = useGet(billingMigrationSubPage$);
@@ -2913,24 +2983,48 @@ export function OrgBillingTab() {
     migration,
   );
 
-  if (pricingOpen && !usagePackPlanDialogs) {
-    return (
-      <BillingPricingPage
-        currentTier={currentTier}
-        canRestorePlan={canRestorePlan}
-        migration={migration}
-        migrationLoading={migrationLoading}
-        migrationOpen={migrationOpen}
-        migrationTargetTier={migrationTargetTier}
-        onMigrationBack={closeMigrationSubPage}
-        onSelectMigration={openMigrationPage}
-        scheduledChange={scheduledChange}
-        periodEnd={periodEnd}
-        onBack={dismissPlans}
-        onRestore={handleRestore}
-        paidConcurrency={paidConcurrency}
-      />
-    );
+  const pricingFlow = (
+    <UsagePackPricingFlowDialogs
+      checkoutAllowed={canStartUsagePackCheckout(status)}
+      currentTier={currentTier}
+      grantedPlanCheckoutAllowed={canConfigureGrantedUsagePackPlan(status)}
+      migration={migration}
+      migrationOpen={migrationOpen}
+      migrationTargetTier={migrationTargetTier}
+      onMigrationBack={closeMigrationSubPage}
+      onClose={dismissPlans}
+      onReplaceCancellationWithPro={replaceCancellationWithPro}
+      onSelectMigration={openMigrationPage}
+    />
+  );
+  const pricingPage = (
+    <BillingPricingPage
+      currentTier={currentTier}
+      canRestorePlan={canRestorePlan}
+      migration={migration}
+      migrationLoading={migrationLoading}
+      migrationOpen={migrationOpen}
+      migrationTargetTier={migrationTargetTier}
+      onMigrationBack={closeMigrationSubPage}
+      onSelectMigration={openMigrationPage}
+      scheduledChange={scheduledChange}
+      periodEnd={periodEnd}
+      onBack={dismissPlans}
+      onRestore={handleRestore}
+      paidConcurrency={paidConcurrency}
+    />
+  );
+  const pricingReplacement = billingPricingReplacement({
+    onStandaloneClose: dismissPlans,
+    pricingFlow,
+    pricingOpen,
+    pricingPage,
+    standalonePlans,
+    usagePackPlanDialogs,
+  });
+
+  if (pricingReplacement) {
+    return pricingReplacement;
   }
 
   return (
@@ -3092,23 +3186,7 @@ export function OrgBillingTab() {
 
       {showConcurrency && <ConcurrencyBillingSection status={status} />}
 
-      {/* Past the early return above, an open billing sub-page is an actionable
-          usage pack pricing flow. Mount it only while it is open so its catalog
-          and subscription load with the flow, not with every tab visit. */}
-      {pricingOpen && (
-        <UsagePackPricingFlowDialogs
-          checkoutAllowed={canStartUsagePackCheckout(status)}
-          currentTier={currentTier}
-          grantedPlanCheckoutAllowed={canConfigureGrantedUsagePackPlan(status)}
-          migration={migration}
-          migrationOpen={migrationOpen}
-          migrationTargetTier={migrationTargetTier}
-          onMigrationBack={closeMigrationSubPage}
-          onClose={dismissPlans}
-          onReplaceCancellationWithPro={replaceCancellationWithPro}
-          onSelectMigration={openMigrationPage}
-        />
-      )}
+      {pricingOpen && pricingFlow}
 
       <DowngradeConfirmDialog
         currentTier={currentTier}

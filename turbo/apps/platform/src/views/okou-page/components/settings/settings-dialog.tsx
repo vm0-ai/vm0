@@ -29,6 +29,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { billingPlansStandalone$ } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import {
   isAdminOnlySettingsSection,
   settingsActiveSection$,
@@ -98,7 +99,15 @@ function SectionContent({ section }: { section: SettingsSection }) {
   return <Component />;
 }
 
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export function SettingsDialog(props: SettingsDialogProps) {
+  const standalonePlans = useGet(billingPlansStandalone$);
+  if (props.open && standalonePlans) {
+    return <BillingSection standalonePlans />;
+  }
+  return <SettingsDialogSurface {...props} />;
+}
+
+function SettingsDialogSurface({ open, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
