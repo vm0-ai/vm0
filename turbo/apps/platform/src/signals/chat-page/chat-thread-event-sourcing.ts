@@ -343,20 +343,6 @@ export const eventDrivenChatThreads$ = computed((get) => {
   );
 });
 
-const eventDrivenChatThreadMap$ = computed((get) => {
-  return new Map(
-    get(eventDrivenChatThreads$).map((thread) => {
-      return [thread.id, thread] as const;
-    }),
-  );
-});
-
-export function eventDrivenChatThread(threadId: string) {
-  return computed((get) => {
-    return get(eventDrivenChatThreadMap$).get(threadId) ?? null;
-  });
-}
-
 export function optimisticChatThreadCreateUnsettled(threadId: string) {
   return computed((get): boolean => {
     return get(optimisticChatThreadCreateIds$).has(threadId);
@@ -671,7 +657,7 @@ export const touchOptimisticChatThreadSort$ = command(
   },
 );
 
-export const reconcileOptimisticChatThreadEvents$ = command(
+const reconcileOptimisticChatThreadEvents$ = command(
   ({ set }, persisted: ChatThreadEventData) => {
     set(optimisticChatThreadEventsState$, (events) => {
       return filterUnsettledOptimisticChatThreadEvents(events, persisted);

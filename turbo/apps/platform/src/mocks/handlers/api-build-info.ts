@@ -2,9 +2,8 @@ import { buildInfoContract } from "@okouai/api-contracts/contracts/build-info";
 
 import { mockApi } from "../msw-contract.ts";
 
-export const MOCK_BACKEND_COMMIT_SHA =
-  "fedcba9876543210fedcba9876543210fedcba98";
-export const MOCK_BACKEND_VERSION = "1.212.2";
+const MOCK_BACKEND_COMMIT_SHA = "fedcba9876543210fedcba9876543210fedcba98";
+const MOCK_BACKEND_VERSION = "1.212.2";
 
 export const apiBuildInfoHandlers = [
   mockApi(buildInfoContract.get, ({ respond }) => {

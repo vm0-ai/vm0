@@ -7,13 +7,8 @@ import { testContext } from "../signals/__tests__/test-helpers.ts";
 const context = testContext();
 const GOOGLE_TAG_SCRIPT_URL =
   "https://www.googletagmanager.com/gtag/js?id=AW-18144854014";
-const RETIRED_PINNED_AGENT_STORAGE_KEYS = [
-  "pinnedAgentGridRows",
-  "vm0:pinned-agent-preview-cache:v1",
-] as const;
 
 let googleAdsRequestedAfterApplicationStart = false;
-
 async function waitForApplicationStart(): Promise<void> {
   await waitFor(() => {
     expect(document.getElementById("root")?.childElementCount).toBeGreaterThan(
@@ -39,9 +34,6 @@ describe("platform entrypoint", () => {
     const root = document.createElement("div");
     root.id = "root";
     document.body.replaceChildren(root);
-    for (const key of RETIRED_PINNED_AGENT_STORAGE_KEYS) {
-      localStorage.setItem(key, "retired");
-    }
 
     const addEventListener = vi.spyOn(window, "addEventListener");
     const appendChild = document.head.appendChild.bind(document.head);

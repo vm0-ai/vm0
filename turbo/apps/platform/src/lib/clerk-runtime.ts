@@ -16,7 +16,7 @@ interface ClerkRuntimeLoadOptions {
   readonly signUpUrl: string;
 }
 
-export interface ClerkBrowserRuntime {
+interface ClerkBrowserRuntime {
   readonly clerk: PlatformClerk;
   readonly loaded: Promise<void>;
 }

@@ -42,7 +42,7 @@ export const telegramConnectLinkStatus$ = computed(
   },
 );
 
-export const reloadTelegramConnectLinkStatus$ = command(({ set }) => {
+const reloadTelegramConnectLinkStatus$ = command(({ set }) => {
   set(internalTelegramConnectLinkStatusReload$, (prev) => {
     return prev + 1;
   });

@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, state } from "ccstate";
 
 import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
@@ -36,7 +36,7 @@ const lastConnectionStatusState$ = state<SharedDatabaseConnectionStatus | null>(
 const connectionControllersState$ = state<
   ReadonlyMap<ConnectionId, AbortController>
 >(new Map());
-export interface RegisteredConnection {
+interface RegisteredConnection {
   readonly getToken: SharedDatabaseTokenProvider;
   readonly port: SharedDatabasePortLike;
 }
@@ -53,10 +53,6 @@ function deleteMapKey<TKey, TValue>(
   next.delete(key);
   return next;
 }
-
-export const connectionControllers$ = computed((get) => {
-  return get(connectionControllersState$);
-});
 
 export const broadcastSharedDatabaseWorkerMessage$ = command(
   ({ get }, message: WorkerBroadcastMessage): void => {

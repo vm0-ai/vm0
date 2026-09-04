@@ -3,7 +3,7 @@ import { appendCapturedPreviewBypassToUrl } from "../../lib/preview-bypass-cooki
 import { resolveApiBase } from "../api-base.ts";
 import type { RestorableAttachment } from "../okou-page/chat-draft.ts";
 
-export type UserMessageFileAttachment = Omit<RestorableAttachment, "url"> & {
+type UserMessageFileAttachment = Omit<RestorableAttachment, "url"> & {
   readonly url: string;
 };
 

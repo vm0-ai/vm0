@@ -290,7 +290,7 @@ const isCustomConnectorAuthorizedForTarget$ = command(
   },
 );
 
-export interface CustomConnectorConnectionResult {
+interface CustomConnectorConnectionResult {
   readonly connected: boolean;
   readonly targetAuthorized: boolean;
   readonly connectionId: string | null;

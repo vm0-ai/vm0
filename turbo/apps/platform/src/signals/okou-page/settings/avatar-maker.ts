@@ -62,7 +62,7 @@ export type AvatarMakerSelection =
   | ({ readonly mode: "composer" } & AvatarComposerSelection)
   | LegacyAvatarMakerSelection;
 
-export const AVATAR_MAKER_STEPS: readonly Step[] = [
+const AVATAR_MAKER_STEPS: readonly Step[] = [
   "face",
   "hair",
   "expression",

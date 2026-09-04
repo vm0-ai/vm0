@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 
-export interface AuthenticatedIdentity {
+interface AuthenticatedIdentity {
   readonly userId: string;
   readonly orgId: string;
   readonly email?: string;

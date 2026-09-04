@@ -65,7 +65,7 @@ import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
-export interface BootstrapSharedDatabaseWorkerOptions {
+interface BootstrapSharedDatabaseWorkerOptions {
   readonly appVersion: string;
   readonly identity: SharedDatabaseIdentity;
   readonly apiBaseUrl: string;
@@ -229,7 +229,7 @@ const runTrailingCatchUpChatEvent$ = command(
 );
 
 /** Globally serialize ChatEvent catch-up with leading and trailing throttle. */
-export const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
+const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
   const signal = get(rootSignal$);
   signal.throwIfAborted();
   const throttle = get(catchUpChatEventThrottle$);
@@ -488,7 +488,7 @@ const refreshWorkerChatIndicators$ = command(
   },
 );
 
-export const reloadWorkerChatIndicatorsFromRealtime$ = command(
+const reloadWorkerChatIndicatorsFromRealtime$ = command(
   async ({ set }, signal: AbortSignal): Promise<boolean> => {
     await set(refreshWorkerChatIndicators$, signal);
     set(reloadComputedForConnections$, "chat-thread-indicators");
@@ -496,7 +496,7 @@ export const reloadWorkerChatIndicatorsFromRealtime$ = command(
   },
 );
 
-export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
+const reloadWorkerChatIndicatorsFromReadCursor$ = command(
   async ({ set }, payload: unknown, signal: AbortSignal): Promise<boolean> => {
     await set(refreshWorkerChatIndicators$, signal);
     set(forwardChatThreadReadCursorUpdated$, payload);
@@ -505,7 +505,7 @@ export const reloadWorkerChatIndicatorsFromReadCursor$ = command(
   },
 );
 
-export const reloadWorkerComputerUseHostsFromRealtime$ = command(
+const reloadWorkerComputerUseHostsFromRealtime$ = command(
   ({ set }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "computer-use-hosts");
@@ -514,7 +514,7 @@ export const reloadWorkerComputerUseHostsFromRealtime$ = command(
   },
 );
 
-export const reloadWorkerQueueDataFromRealtime$ = command(
+const reloadWorkerQueueDataFromRealtime$ = command(
   ({ set }, signal: AbortSignal): boolean => {
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "queue-data");
