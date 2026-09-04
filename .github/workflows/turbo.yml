@@ -446,7 +446,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/toolchain-init
       # Invoke check-types directly (pnpm --filter, not turbo) so turbo's
       # dependsOn ^check-types does not re-run the shared packages here.
@@ -503,7 +503,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/toolchain-init
       # Invoke check-types directly (pnpm --filter, not turbo) so turbo's
       # dependsOn ^check-types does not re-run the shared packages here.
