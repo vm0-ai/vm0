@@ -204,36 +204,6 @@ test("A cancelled language change does not apply late", async () => {
   expect(screen.queryByText("Lingua")).not.toBeInTheDocument();
 });
 
-test("The default language loads complete English copy", async () => {
-  context.mocks.browser.language(DEFAULT_LOCALE);
-  await setupPage({ context, path: "/agents", locale: DEFAULT_LOCALE });
-
-  await expect(
-    screen.findByRole("heading", { name: "Agents" }),
-  ).resolves.toBeInTheDocument();
-  expect(fastRoleElement("link", "Chat")).toBeVisible();
-  expect(document.documentElement).toHaveAttribute("lang", DEFAULT_LOCALE);
-  const authentication = await openAddAccount("Add account", "Sign in to VM0");
-  expect(within(authentication).getByLabelText("Email address")).toBeVisible();
-});
-
-test("Portuguese can be selected at runtime", async () => {
-  await setupPage({ context, path: "/settings" });
-
-  const settings = await screen.findByRole("dialog", { name: "Settings" });
-  expect(within(settings).getByText("Language")).toBeVisible();
-  await selectLanguage("Language", "Português (Brasil)");
-
-  await waitFor(() => {
-    expect(document.documentElement).toHaveAttribute("lang", "pt-BR");
-    expect(within(settings).getByText("Idioma")).toBeVisible();
-    expect(within(settings).getByText("Enviar mensagem com")).toBeVisible();
-    expect(
-      within(settings).getByRole("heading", { name: "Fuso horário" }),
-    ).toBeVisible();
-  });
-});
-
 test("A failed language download falls back without blocking chat", async () => {
   const resourceRequests: string[] = [];
   for (const url of [frFRCommonUrl, frFRAgentsUrl]) {

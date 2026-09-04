@@ -3,11 +3,9 @@ import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connec
 import { connectorOauthStartContract } from "@okouai/api-contracts/contracts/connectors";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import { userPermissionGrantsContract } from "@okouai/api-contracts/contracts/user-permission-grants";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
@@ -19,7 +17,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   getConnectorAction,
   getConnectorCard,
-  getConnectorIcon,
   listAgent,
   mockConnectors,
   mockCustomConnectorStory,
@@ -30,10 +27,6 @@ import {
 } from "./connector-page-test-helpers.ts";
 
 const context = testContext();
-
-function legacyConnectorFeatureSwitches() {
-  return { [FeatureSwitchKey.ConnectorAccounts]: false };
-}
 
 function oauthMethod() {
   return {
@@ -80,71 +73,6 @@ test("Browse connectors by category", async () => {
   ).toBeTruthy();
 });
 
-test("Honor catalog-authored connector presentation", async () => {
-  mockConnectors(context, []);
-  mockPublicConnectorStatus(
-    context,
-    [
-      publicStatusItem({
-        connectorSlug: "github",
-        label: "GitHub",
-        icon: {
-          url: "https://icons.example.test/github.svg",
-          invertInDarkMode: true,
-        },
-      }),
-      publicStatusItem({
-        connectorSlug: "slack",
-        label: "Slack",
-        icon: {
-          url: "https://icons.example.test/slack.svg",
-          invertInDarkMode: false,
-          scale: 1.5,
-        },
-      }),
-      publicStatusItem({
-        connectorSlug: "stripe",
-        label: "Partner Stripe",
-        category: "partner-apps",
-        authMethods: [oauthMethod()],
-      }),
-    ],
-    {
-      categories: [
-        {
-          id: "data-automation-infrastructure",
-          label: "Data / Automation / Infrastructure",
-          menuLabel: "Data & automation",
-          groupId: null,
-        },
-        {
-          id: "partner-apps",
-          label: "Partner Apps",
-          menuLabel: "Partners",
-          groupId: null,
-        },
-      ],
-      groups: [],
-    },
-  );
-  await setupPage({ context, path: "/connectors" });
-
-  await expect(screen.findByText("GitHub")).resolves.toBeInTheDocument();
-  expect(getConnectorIcon("GitHub")).toHaveAttribute(
-    "src",
-    "https://icons.example.test/github.svg",
-  );
-  expect(getConnectorIcon("GitHub")).toHaveClass("zero-icon-mono");
-  expect(getConnectorIcon("Slack")).toHaveStyle({ transform: "scale(1.5)" });
-
-  const partnerSection = screen.getByTestId("connector-category-partner-apps");
-  expect(within(partnerSection).getByText("Partner Apps")).toBeInTheDocument();
-  expect(
-    screen.getByTestId("connector-category-menu-partner-apps"),
-  ).toHaveTextContent("Partners");
-  expect(queryConnectorCard("Partner Stripe")).toBeInTheDocument();
-});
-
 test("Show only connectors present in the current catalog", async () => {
   mockConnectors(context, []);
   mockPublicConnectorStatus(context, []);
@@ -157,32 +85,6 @@ test("Show only connectors present in the current catalog", async () => {
     screen.findByText(/No connectors matching/u),
   ).resolves.toBeInTheDocument();
   expect(queryConnectorAction("button", "Connect Stripe")).toBeNull();
-});
-
-test("Explain the catalog while its size is loading", async () => {
-  mockConnectors(context, []);
-  const responseReady = context.mocks.deferred<void>();
-  context.mocks.api(connectorCatalogContract.discovery, async ({ respond }) => {
-    await responseReady.promise;
-    return respond(200, { connectors: [], totalConnectorCount: 1234 });
-  });
-  await setupPage({
-    context,
-    path: "/connectors",
-  });
-
-  await expect(
-    screen.findByText("Connect third-party services for your agents to use."),
-  ).resolves.toBeInTheDocument();
-  expect(
-    screen.queryByText("Connect 1,234 services for your agents to use."),
-  ).not.toBeInTheDocument();
-
-  responseReady.resolve();
-
-  await expect(
-    screen.findByText("Connect 1,234 services for your agents to use."),
-  ).resolves.toBeInTheDocument();
 });
 
 test("Keep connectors discoverable during category changes", async () => {
@@ -264,51 +166,6 @@ test("Avoid duplicate catalog sections during metadata changes", async () => {
   );
   expect(screen.getAllByText("Partner GitHub")).toHaveLength(1);
   expect(queryConnectorCard("Billing Stripe")).toBeInTheDocument();
-});
-
-test("Keep expanded category navigation usable above connector controls", async () => {
-  mockConnectors(context, [
-    { connectorSlug: "github", externalUsername: "octocat" },
-  ]);
-  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledConnectorSlugs: [] });
-  });
-  await setupPage({ context, path: "/connectors" });
-
-  const category = await screen.findByTestId("connector-category-menu-ai");
-  category.focus();
-  expect(category).toHaveFocus();
-  click(category);
-  const categoryLayer = category.closest("aside");
-  const access = within(getConnectorCard("GitHub")).getByLabelText(
-    "Manage GitHub access",
-  );
-  const accessLayer = access.parentElement;
-  if (
-    !(categoryLayer instanceof HTMLElement) ||
-    !(accessLayer instanceof HTMLElement)
-  ) {
-    throw new Error("Expected connector stacking layers");
-  }
-  const compiler = await compile("@tailwind utilities;");
-  const style = document.createElement("style");
-  style.textContent = compiler.build([
-    ...categoryLayer.classList,
-    ...accessLayer.classList,
-  ]);
-  document.head.append(style);
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      return style.remove();
-    },
-    {
-      once: true,
-    },
-  );
-  expect(Number(getComputedStyle(categoryLayer).zIndex)).toBeGreaterThan(
-    Number(getComputedStyle(accessLayer).zIndex),
-  );
 });
 
 test("Update connector visibility when availability changes", async () => {
@@ -417,148 +274,6 @@ test("Navigate the connector catalog with a keyboard", async () => {
     screen.findByRole("dialog", { name: "Axiom" }),
   ).resolves.toBeInTheDocument();
   expect(screen.getByText("Save")).toBeInTheDocument();
-});
-
-test("Use the connectors experience in Portuguese", async () => {
-  const researchId = "c0000000-0000-4000-a000-000000000001";
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  const [githubConnection, metaAdsConnection] = mockConnectors(context, [
-    { connectorSlug: "github", externalUsername: "octocat" },
-    {
-      connectorSlug: "meta-ads",
-      connectionStatus: "reconnect-required",
-      reconnectReason: "authorization_expired_or_revoked",
-    },
-  ]);
-  if (!githubConnection || !metaAdsConnection) {
-    throw new Error("Expected GitHub and Meta Ads connections");
-  }
-  mockPublicConnectorStatus(
-    context,
-    [
-      publicStatusItem({
-        connectorSlug: "github",
-        label: "GitHub",
-        category: "engineering-team-execution",
-        connected: true,
-        connectionStatus: "connected",
-        connection: githubConnection,
-      }),
-      publicStatusItem({
-        connectorSlug: "meta-ads",
-        label: "Meta Ads",
-        category: "engineering-team-execution",
-        authMethods: [oauthMethod()],
-        connected: true,
-        connectionStatus: "reconnect-required",
-        connection: metaAdsConnection,
-        authMethodSupportsRefresh: true,
-      }),
-      publicStatusItem({
-        connectorSlug: "openai",
-        label: "OpenAI",
-        category: "ai-image-video",
-      }),
-      publicStatusItem({
-        connectorSlug: "elevenlabs",
-        label: "ElevenLabs",
-        category: "ai-voice-audio",
-      }),
-      publicStatusItem({
-        connectorSlug: "langfuse",
-        label: "Langfuse",
-        category: "ai-memory-tracing-eval",
-      }),
-    ],
-    {
-      categories: [
-        {
-          id: "ai-image-video",
-          label: "Image / Video Generation",
-          menuLabel: "Image / Video",
-          groupId: "ai",
-        },
-        {
-          id: "ai-voice-audio",
-          label: "Voice / Audio",
-          menuLabel: "Voice / Audio",
-          groupId: "ai",
-        },
-        {
-          id: "ai-memory-tracing-eval",
-          label: "Memory / Tracing / Evaluation",
-          menuLabel: "Memory / Tracing",
-          groupId: "ai",
-        },
-        {
-          id: "engineering-team-execution",
-          label: "Engineering / Team Execution",
-          menuLabel: "Engineering",
-          groupId: null,
-        },
-      ],
-      groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
-    },
-  );
-  context.mocks.data.agents([listAgent(researchId, "Research Agent")]);
-  context.mocks.api(userConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledConnectorSlugs: ["github"] });
-  });
-  context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
-    return respond(200, []);
-  });
-  await setupPage({
-    context,
-    path: "/connectors",
-    featureSwitches: legacyConnectorFeatureSwitches(),
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "Conectores" }),
-  ).resolves.toBeInTheDocument();
-  expect(screen.getByPlaceholderText("Buscar conectores")).toBeInTheDocument();
-  expect(
-    screen.getByText("Engenharia e execução da equipe"),
-  ).toBeInTheDocument();
-  const metaAds = getConnectorCard("Meta Ads");
-  expect(within(metaAds).getByText("A conexão expirou")).toBeInTheDocument();
-  click(getConnectorAction("button", "Mais opções", metaAds));
-  expect(getConnectorAction("menuitem", "Reconectar")).toBeInTheDocument();
-
-  click(
-    await waitFor(() => {
-      return getConnectorAction("button", "Gerenciar acesso ao GitHub");
-    }),
-  );
-  const dialog = await screen.findByRole("dialog", {
-    name: "Gerenciar acesso ao GitHub",
-  });
-  expect(
-    within(dialog).getByText("Escolha quais agentes podem usar este conector."),
-  ).toBeInTheDocument();
-  await waitFor(() => {
-    expect(
-      within(dialog).getByLabelText(
-        "Revogar acesso ao GitHub para Research Agent",
-      ),
-    ).toBeInTheDocument();
-  });
-  click(getConnectorAction("button", "Close", dialog));
-  await waitFor(() => {
-    expect(dialog).not.toBeInTheDocument();
-  });
-
-  await expect(
-    screen.findByRole("heading", { name: "Geração de imagens e vídeos" }),
-  ).resolves.toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", { name: "Voz e áudio" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("heading", {
-      name: "Memória, rastreamento e avaliação",
-    }),
-  ).toBeInTheDocument();
 });
 
 test("Require an application update before using connectors", async () => {

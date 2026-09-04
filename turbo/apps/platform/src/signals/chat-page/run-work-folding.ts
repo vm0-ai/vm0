@@ -52,7 +52,7 @@ export interface RunWorkFolding {
   readonly sectionsByAnchorEventId: Map<string, RunWorkSection>;
 }
 
-export function chatEventDisplayError(event: ChatEvent): string | undefined {
+function chatEventDisplayError(event: ChatEvent): string | undefined {
   if (
     event.eventType === "input.rejected" ||
     event.eventType === "output.error" ||
@@ -74,7 +74,7 @@ function chatEventHasAttachments(event: EnrichedChatEvent): boolean {
   );
 }
 
-export function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
+function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
     ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||

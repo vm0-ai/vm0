@@ -29,7 +29,7 @@ const paidAfterOnboardingStorage = localStorageSignals(
   PAID_AFTER_ONBOARDING_CONVERSION_KEY,
 );
 
-export type GoogleAdsPaidConversionKind =
+type GoogleAdsPaidConversionKind =
   | "paid_in_onboarding"
   | "paid_after_onboarding";
 

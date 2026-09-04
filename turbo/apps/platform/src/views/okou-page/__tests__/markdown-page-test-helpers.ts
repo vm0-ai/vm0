@@ -11,7 +11,7 @@ import {
   type TestContext,
 } from "../../../signals/__tests__/test-helpers.ts";
 
-export const MARKDOWN_AGENT_ID = "c0000000-0000-4000-a000-000000000071";
+const MARKDOWN_AGENT_ID = "c0000000-0000-4000-a000-000000000071";
 
 const CREATED_AT = "2026-08-10T12:00:00.000Z";
 

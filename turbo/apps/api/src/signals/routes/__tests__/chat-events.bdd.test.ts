@@ -101,6 +101,7 @@ import {
   createUsagePricingFixture,
   type UsagePricingFixture,
 } from "../../../test-fixtures/usage-pricing";
+import { withBuiltInModelRuntimeRouteCandidateUnavailableForTest } from "../../../test-fixtures/built-in-model-runtime-route";
 import { setChatThreadVideoModelFixture } from "../../../test-fixtures/chat-thread-events";
 import { seededSystemSkillArchive } from "../../../test-fixtures/seeded-system-skill-archive";
 import {
@@ -160,7 +161,6 @@ import {
   resolveVm0BuiltInModelRouteFixture,
   seedVm0BuiltInModelCandidateKeys,
   seedVm0BuiltInModelKey as seedVm0BuiltInModelKeyState,
-  setVm0BuiltInCandidateCooldownFixture,
   setRunAutonomyBudgetFixture,
   steerRunTimeBudgetFixture,
 } from "./helpers/runtime-state";
@@ -725,7 +725,7 @@ async function configureBuiltInPiModel(
 async function configureBuiltInPiModelOnOpenRouter(
   actor: ApiTestUser,
   selectedModel: "deepseek-v4-flash" | "deepseek-v4-pro" | "gpt-5.6-terra",
-): Promise<void> {
+): Promise<<T>(work: () => Promise<T>) => Promise<T>> {
   await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
   const primary = await resolveVm0BuiltInModelRouteFixture(
     context,
@@ -734,19 +734,23 @@ async function configureBuiltInPiModelOnOpenRouter(
   if (!primary || primary.provider_type === "openrouter-codex") {
     throw new Error(`Expected a primary managed route for ${selectedModel}`);
   }
-  await setVm0BuiltInCandidateCooldownFixture(
-    context,
+  const unavailableCandidate = {
     selectedModel,
-    primary,
-    new Date(now() + 10 * 60_000),
+    providerType: primary.provider_type,
+    upstreamModel: primary.upstream_model,
+  };
+  await withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
+    unavailableCandidate,
+    async () => {
+      const fallback = await resolveVm0BuiltInModelRouteFixture(
+        context,
+        selectedModel,
+      );
+      if (!fallback || fallback.provider_type !== "openrouter-codex") {
+        throw new Error(`Expected an OpenRouter fallback for ${selectedModel}`);
+      }
+    },
   );
-  const fallback = await resolveVm0BuiltInModelRouteFixture(
-    context,
-    selectedModel,
-  );
-  if (!fallback || fallback.provider_type !== "openrouter-codex") {
-    throw new Error(`Expected an OpenRouter fallback for ${selectedModel}`);
-  }
   await api.updateOrgModelPolicies(actor, [
     {
       model: selectedModel,
@@ -756,6 +760,12 @@ async function configureBuiltInPiModelOnOpenRouter(
       modelProviderId: null,
     },
   ]);
+  return async <T>(work: () => Promise<T>): Promise<T> => {
+    return await withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
+      unavailableCandidate,
+      work,
+    );
+  };
 }
 
 async function sendChatRun(
@@ -5309,8 +5319,14 @@ async function queueCapabilityProvenPiRun(args: {
     );
   }
   const anchorClaim = await claimChatRun(args.runnerGroup, anchor.runId);
+  let withModelRoute = async <T>(work: () => Promise<T>): Promise<T> => {
+    return await work();
+  };
   if (args.terraRoute === "openrouter") {
-    await configureBuiltInPiModelOnOpenRouter(args.actor, "gpt-5.6-terra");
+    withModelRoute = await configureBuiltInPiModelOnOpenRouter(
+      args.actor,
+      "gpt-5.6-terra",
+    );
   } else {
     await configureBuiltInPiModel(args.actor, "gpt-5.6-terra");
   }
@@ -5325,19 +5341,21 @@ async function queueCapabilityProvenPiRun(args: {
     },
   );
   const usagePricingResolution = await createTerraUsagePricingResolution();
-  const run = await sendChatRun(
-    args.actor,
-    {
-      agentId: args.agentId,
-      prompt: args.prompt,
-      model: "gpt-5.6-terra",
-      ...(args.codexServiceTier === undefined
-        ? {}
-        : { runOptions: { codexServiceTier: args.codexServiceTier } }),
-    },
-    "vm0",
-    usagePricingResolution,
-  );
+  const run = await withModelRoute(async () => {
+    return await sendChatRun(
+      args.actor,
+      {
+        agentId: args.agentId,
+        prompt: args.prompt,
+        model: "gpt-5.6-terra",
+        ...(args.codexServiceTier === undefined
+          ? {}
+          : { runOptions: { codexServiceTier: args.codexServiceTier } }),
+      },
+      "vm0",
+      usagePricingResolution,
+    );
+  });
   await waitForRunStatus(args.actor, run.runId, "queued");
   return { anchor, anchorClaim, run, usagePricingResolution };
 }
@@ -7334,7 +7352,10 @@ describe("CHAT-02: model-first provider policies", () => {
     async (selectedModel) => {
       const { actor, agentId } = await entitledChatActor();
       const orgId = requireOrgId(actor);
-      await configureBuiltInPiModelOnOpenRouter(actor, selectedModel);
+      const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+        actor,
+        selectedModel,
+      );
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId },
@@ -7359,10 +7380,12 @@ describe("CHAT-02: model-first provider policies", () => {
         ),
       );
 
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: `run ${selectedModel} on its managed fallback`,
-        model: selectedModel,
+      const run = await withOpenRouterRoute(async () => {
+        return await sendChatRun(actor, {
+          agentId,
+          prompt: `run ${selectedModel} on its managed fallback`,
+          model: selectedModel,
+        });
       });
       await waitForRunStatus(actor, run.runId, "completed", 10_000);
       await flushWaitUntilForTest();
@@ -7572,7 +7595,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModelOnOpenRouter(actor, "gpt-5.6-terra");
+    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+      actor,
+      "gpt-5.6-terra",
+    );
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId },
@@ -7601,16 +7627,18 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       ),
     );
-    const first = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "seed the canonical Pi binding",
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const first = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "seed the canonical Pi binding",
+          model: "gpt-5.6-terra",
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, first.runId, "completed", 10_000);
     await flushWaitUntilForTest();
 
@@ -7685,17 +7713,19 @@ describe("CHAT-02: model-first provider policies", () => {
     );
 
     const prompt = "continue the migrated OpenRouter session";
-    const second = await sendChatRun(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt,
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const second = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt,
+          model: "gpt-5.6-terra",
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, second.runId, "completed", 10_000);
     await flushWaitUntilForTest();
 
@@ -7738,7 +7768,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModelOnOpenRouter(actor, "gpt-5.6-terra");
+    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+      actor,
+      "gpt-5.6-terra",
+    );
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId },
@@ -7795,16 +7828,18 @@ describe("CHAT-02: model-first provider policies", () => {
       ),
     );
 
-    const first = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: prompts[0],
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const first = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: prompts[0],
+          model: "gpt-5.6-terra",
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, first.runId, "completed", 10_000);
     await flushWaitUntilForTest();
     const firstBinding = await readThreadSessionBinding(
@@ -7815,18 +7850,20 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected standard Terra to bind a canonical Pi session");
     }
 
-    const fast = await sendChatRun(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: prompts[1],
-        model: "gpt-5.6-terra",
-        runOptions: { codexServiceTier: "fast" },
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const fast = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt: prompts[1],
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: "fast" },
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, fast.runId, "completed", 10_000);
     await flushWaitUntilForTest();
     const fastBinding = await readThreadSessionBinding(context, first.threadId);
@@ -7838,17 +7875,19 @@ describe("CHAT-02: model-first provider policies", () => {
       "gpt-5.6-terra",
       { codexServiceTier: null },
     );
-    const returned = await sendChatRun(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: prompts[2],
-        model: "gpt-5.6-terra",
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const returned = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt: prompts[2],
+          model: "gpt-5.6-terra",
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, returned.runId, "completed", 10_000);
     await flushWaitUntilForTest();
     const returnedBinding = await readThreadSessionBinding(
@@ -7992,7 +8031,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModelOnOpenRouter(actor, "gpt-5.6-terra");
+    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+      actor,
+      "gpt-5.6-terra",
+    );
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId },
@@ -8040,17 +8082,19 @@ describe("CHAT-02: model-first provider policies", () => {
     );
 
     for (const [index, testCase] of cases.entries()) {
-      const run = await sendChatRun(
-        actor,
-        {
-          agentId,
-          prompt: `observe OpenRouter tier case ${index.toString()}`,
-          model: "gpt-5.6-terra",
-          runOptions: { codexServiceTier: "fast" },
-        },
-        "vm0",
-        usagePricingResolution,
-      );
+      const run = await withOpenRouterRoute(async () => {
+        return await sendChatRun(
+          actor,
+          {
+            agentId,
+            prompt: `observe OpenRouter tier case ${index.toString()}`,
+            model: "gpt-5.6-terra",
+            runOptions: { codexServiceTier: "fast" },
+          },
+          "vm0",
+          usagePricingResolution,
+        );
+      });
       await waitForRunStatus(actor, run.runId, "completed", 10_000);
       await flushWaitUntilForTest();
       await expectTerraApiFollowUpUsage(run.runId, testCase.expectedSuffix);
@@ -9798,7 +9842,10 @@ describe("CHAT-02: model-first provider policies", () => {
     };
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
 
-    await configureBuiltInPiModelOnOpenRouter(actor, "gpt-5.6-terra");
+    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+      actor,
+      "gpt-5.6-terra",
+    );
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId: actor.orgId },
@@ -9833,17 +9880,19 @@ describe("CHAT-02: model-first provider policies", () => {
       ),
     );
     const checkpointObjects = mockPiCheckpointObjectStore();
-    const first = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt: "create a settled Pi checkpoint",
-        model: "gpt-5.6-terra",
-        runOptions: { codexServiceTier: "fast" },
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const first = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "create a settled Pi checkpoint",
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: "fast" },
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, first.runId, "completed");
     await flushWaitUntilForTest();
     expect(modelCalls).toBe(1);
@@ -9881,18 +9930,20 @@ describe("CHAT-02: model-first provider policies", () => {
 
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const prompt = "preserve this original prompt for official compaction";
-    const second = await sendChatRun(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt,
-        model: "gpt-5.6-terra",
-        runOptions: { codexServiceTier: "fast" },
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const second = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt,
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: "fast" },
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     await waitForRunStatus(actor, second.runId, "queued");
     context.mocks.axiomLogging.debug.mockClear();
     await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
@@ -10044,7 +10095,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = requireOrgId(actor);
     const usagePricingResolution = await createTerraUsagePricingResolution();
-    await configureBuiltInPiModelOnOpenRouter(actor, "gpt-5.6-terra");
+    const withOpenRouterRoute = await configureBuiltInPiModelOnOpenRouter(
+      actor,
+      "gpt-5.6-terra",
+    );
     await updateFeatureSwitchesForUser(
       context,
       { ...actor, orgId },
@@ -10107,17 +10161,19 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     const checkpointObjects = mockPiCheckpointObjectStore();
     const prompt = "use the Okou CLI through the Sandbox handoff";
-    const run = await sendChatRun(
-      actor,
-      {
-        agentId,
-        prompt,
-        model: "gpt-5.6-terra",
-        runOptions: { codexServiceTier: "fast" },
-      },
-      "vm0",
-      usagePricingResolution,
-    );
+    const run = await withOpenRouterRoute(async () => {
+      return await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt,
+          model: "gpt-5.6-terra",
+          runOptions: { codexServiceTier: "fast" },
+        },
+        "vm0",
+        usagePricingResolution,
+      );
+    });
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
     await expect
       .poll(() => {
@@ -10601,10 +10657,12 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(1);
 
-    const failedHandoff = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "reject a non-native Sandbox H2",
+    const failedHandoff = await withOpenRouterRoute(async () => {
+      return await sendChatRun(actor, {
+        agentId,
+        threadId: run.threadId,
+        prompt: "reject a non-native Sandbox H2",
+      });
     });
     const failedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${failedHandoff.runId}/manifest.json`;
     await expect
@@ -10707,10 +10765,12 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestCancelRun(actor, explicitResume.runId, [200]);
     await waitForRunStatus(actor, explicitResume.runId, "cancelled");
 
-    const cancelledHandoff = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "reject H2 after an explicit Pi handoff is cancelled",
+    const cancelledHandoff = await withOpenRouterRoute(async () => {
+      return await sendChatRun(actor, {
+        agentId,
+        threadId: run.threadId,
+        prompt: "reject H2 after an explicit Pi handoff is cancelled",
+      });
     });
     const cancelledManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${cancelledHandoff.runId}/manifest.json`;
     await expect
@@ -10748,10 +10808,12 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(3);
 
-    const racedHandoff = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "reject standalone H2 during an early successful completion",
+    const racedHandoff = await withOpenRouterRoute(async () => {
+      return await sendChatRun(actor, {
+        agentId,
+        threadId: run.threadId,
+        prompt: "reject standalone H2 during an early successful completion",
+      });
     });
     const racedManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${racedHandoff.runId}/manifest.json`;
     await expect
@@ -10807,10 +10869,12 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(4);
 
-    const retry = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "resume only the last completed Pi checkpoint",
+    const retry = await withOpenRouterRoute(async () => {
+      return await sendChatRun(actor, {
+        agentId,
+        threadId: run.threadId,
+        prompt: "resume only the last completed Pi checkpoint",
+      });
     });
     const retryManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${retry.runId}/manifest.json`;
     await expect
@@ -10862,10 +10926,12 @@ describe("CHAT-02: model-first provider policies", () => {
     ).resolves.toStrictEqual(canonicalConversation);
     expect(modelCalls).toBe(5);
 
-    const reportedFailureHandoff = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "retry one atomically reported Pi failure",
+    const reportedFailureHandoff = await withOpenRouterRoute(async () => {
+      return await sendChatRun(actor, {
+        agentId,
+        threadId: run.threadId,
+        prompt: "retry one atomically reported Pi failure",
+      });
     });
     const reportedFailureManifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${reportedFailureHandoff.runId}/manifest.json`;
     await expect

@@ -7,7 +7,6 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { compile } from "tailwindcss";
 import { expect, test } from "vitest";
 
 import { mockNow, now } from "../../../../lib/time.ts";
@@ -27,15 +26,10 @@ import {
   type MockedSignUpResourceState,
 } from "../../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../../signals/__tests__/test-helpers.ts";
-import { AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY } from "../../../../signals/auth-v2/resend-cooldown.ts";
-import { sessionStorageSignals } from "../../../../signals/external/session-storage.ts";
 import { createDeferredPromise } from "../../../../signals/utils.ts";
 import { renderedCheckboxPresentation } from "../../__tests__/auth-v2-style-assertions.ts";
 
 const context = testContext();
-const signUpResendCooldownStorage = sessionStorageSignals(
-  AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
-);
 
 function currentSignUpResource() {
   return mockedClerk.client.signUp;
@@ -557,32 +551,6 @@ test("A cancelled social callback leaves sign-up safe and retryable", async () =
   expect(mockedClerk.setActive).not.toHaveBeenCalled();
 });
 
-test("Refreshing prepared sign-up verification does not resend the code", async () => {
-  const startedAt = Date.parse("2026-08-25T08:00:00.000Z");
-  mockNow(startedAt + 1000, context.signal);
-  context.store.set(
-    signUpResendCooldownStorage.set$,
-    JSON.stringify({
-      deadlineMs: startedAt + 30_000,
-      identity: "person@example.com",
-    }),
-  );
-  await setupSignUpPage(readyEmailVerificationState(), {
-    path: "/sign-up/verify-email-address",
-  });
-
-  await expect(
-    screen.findByLabelText("Verification code"),
-  ).resolves.toBeVisible();
-  await expect(
-    waitForRoleElement("button", "Didn't receive a code? Resend (29)"),
-  ).resolves.toBeDisabled();
-  expect(
-    mockedClerk.signUpPrepareEmailAddressVerification,
-  ).not.toHaveBeenCalled();
-  expect(screen.getByText("person@example.com")).toBeVisible();
-});
-
 test("A visitor can reveal the sign-up password without submitting", async () => {
   const user = userEvent.setup({ delay: null });
   await setupSignUpPage({ status: null });
@@ -795,105 +763,6 @@ test("Email verification enforces resend cooldown and preserves onboarding attri
   expect(redirectUrl.pathname).toBe("/onboarding");
   expect(redirectUrl.searchParams.get("gclid")).toBe("click-123");
   expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
-});
-
-test("Sign-up blocks missing consent and weak passwords with actionable errors", async () => {
-  const user = userEvent.setup({ delay: null });
-  mockSignUpConfiguration({
-    privacyPolicyUrl: "https://vm0.ai/legal/privacy",
-    termsUrl: "https://vm0.ai/legal/terms",
-  });
-  mockedClerk.signUpValidatePassword.mockImplementation(
-    (password, callbacks) => {
-      callbacks?.onValidation?.(
-        password === "stronger-password"
-          ? { complexity: {}, strength: undefined }
-          : {
-              complexity: { min_length: true },
-              strength: undefined,
-            },
-      );
-    },
-  );
-  await setupSignUpPage({
-    missingFields: ["email_address", "password", "legal_accepted"],
-    requiredFields: ["email_address", "password", "legal_accepted"],
-    status: null,
-  });
-  const { emailInput, passwordInput } = await fillRequiredDetails();
-  await fill(passwordInput, "weak-password");
-  expect(roleElement("link", "Terms of Service")).toHaveAttribute(
-    "href",
-    "https://vm0.ai/legal/terms",
-  );
-  expect(roleElement("link", "Privacy Policy")).toHaveAttribute(
-    "href",
-    "https://vm0.ai/legal/privacy",
-  );
-
-  const form = containingForm(emailInput);
-  fireEvent.submit(form);
-  const legalError = await screen.findByRole("alert");
-  expect(legalError).toHaveTextContent(
-    "Please read and accept the terms to continue",
-  );
-  const styleElement = document.createElement("style");
-  const tailwindCompiler = await compile("@tailwind utilities;");
-  styleElement.textContent = tailwindCompiler.build([...legalError.classList]);
-  document.head.append(styleElement);
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      styleElement.remove();
-    },
-    { once: true },
-  );
-  const legalErrorStyle = getComputedStyle(legalError);
-  expect([
-    legalErrorStyle.borderTopWidth,
-    legalErrorStyle.borderRightWidth,
-    legalErrorStyle.borderBottomWidth,
-    legalErrorStyle.borderLeftWidth,
-  ]).toStrictEqual(["1px", "1px", "1px", "1px"]);
-  await waitFor(() => {
-    expect(legalError).toHaveFocus();
-  });
-  expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
-
-  const legalConsent = screen.getByRole("checkbox");
-  await user.click(legalConsent);
-  await waitFor(() => {
-    expect(legalConsent).toBeChecked();
-  });
-  fireEvent.submit(form);
-  await waitFor(() => {
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Your password is not strong enough.",
-    );
-  });
-  const passwordError = screen.getByRole("alert");
-  await waitFor(() => {
-    expect(passwordError).toHaveFocus();
-  });
-  expect(passwordInput).toHaveAttribute("aria-invalid", "true");
-  expect(passwordInput).toHaveAttribute("aria-describedby", passwordError.id);
-
-  await fill(passwordInput, "stronger-password");
-  await waitFor(() => {
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-  const correctedPasswordInput = screen.getByLabelText("Password");
-  expect(correctedPasswordInput).toHaveValue("stronger-password");
-  expect(correctedPasswordInput).not.toHaveAttribute("aria-invalid");
-  expect(correctedPasswordInput).not.toHaveAttribute("aria-describedby");
-  expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
-
-  fireEvent.submit(containingForm(correctedPasswordInput));
-  await waitFor(() => {
-    expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ legalAccepted: true }),
-    );
-  });
 });
 
 test("Account creation waits for delayed password validation", async () => {

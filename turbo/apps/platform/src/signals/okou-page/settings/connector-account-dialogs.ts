@@ -34,7 +34,7 @@ export interface DefaultConnectorAccountMutationOptions {
   readonly useDefaultConnectorProjection: true;
 }
 
-export function connectorAccountMutationFor(
+function connectorAccountMutationFor(
   mode: ConnectorAccountConnectMode | undefined,
 ): ConnectorAccountMutationIntent | undefined {
   if (!mode) {
@@ -236,13 +236,6 @@ export const connectorAccountNamePromptValue$ = computed((get) => {
 export const setConnectorAccountNamePromptValue$ = command(
   ({ set }, value: string) => {
     set(internalConnectorAccountNamePromptValue$, value);
-  },
-);
-
-export const openConnectorAccountNamePrompt$ = command(
-  ({ set }, prompt: ConnectorAccountNamePrompt) => {
-    set(internalConnectorAccountNamePromptValue$, "");
-    set(internalConnectorAccountNamePrompt$, prompt);
   },
 );
 

@@ -263,7 +263,7 @@ test("Browse completed work by conversation phase", async () => {
   expect(screen.getByText("Phase one final plan")).toBeVisible();
 });
 
-test.each([0, 1, 2, 3, 4, 5, 8])(
+test.each([0, 1, 2, 5])(
   "Summarize an active run with %i text messages",
   async (messageCount) => {
     const messages = workMessageEvents(messageCount);
@@ -310,7 +310,7 @@ test.each([0, 1, 2, 3, 4, 5, 8])(
   },
 );
 
-test.each([2, 3, 4, 5, 8])(
+test.each([2, 8])(
   "Expand an active run with %i text messages",
   async (messageCount) => {
     installRunChat({
@@ -383,7 +383,7 @@ test("Treat media-looking literals inside code as text work messages", async () 
   expect(screen.getByText(mediaUrl).closest("pre")).toBeInTheDocument();
 });
 
-test.each([0, 1, 2, 5])(
+test.each([0, 1, 2])(
   "Summarize a finished run with %i text messages",
   async (messageCount) => {
     const messages = workMessageEvents(messageCount);

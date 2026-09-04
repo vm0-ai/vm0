@@ -34,7 +34,7 @@ import {
 } from "../i18n/resources.ts";
 import { initializeI18n } from "../i18n/index.ts";
 
-export const TEST_APP_VERSION = "0.540.0";
+const TEST_APP_VERSION = "0.540.0";
 
 const {
   set$: setFeatureSwitchCacheLocalStorage$,
@@ -96,7 +96,7 @@ export type SetupPageAuth = null | {
   readonly session?: MockedSession | null;
 };
 
-export interface SetupPageOptions {
+interface SetupPageOptions {
   readonly appVersion?: string;
   readonly context: TestContext;
   readonly path: string;
@@ -369,7 +369,7 @@ function waitForFirstPageContent(signal: AbortSignal): {
   };
 }
 
-export interface StartedPage {
+interface StartedPage {
   readonly ready: Promise<void>;
 }
 

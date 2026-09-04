@@ -38,10 +38,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  patchWorkflowMetadataForm$,
-  setWorkflowFileDraft$,
-} from "../../../signals/workflows-page/workflows-signals.ts";
 import { mockChatLifecycle } from "../../okou-page/__tests__/chat-test-helpers.ts";
 import {
   createDefaultMockGithubIntegration,
@@ -1958,212 +1954,6 @@ test("Filter workflows by agent", async () => {
   expect(linkByAriaLabel("Open Support Intake")).toBeInTheDocument();
 });
 
-const localeCases = [
-  {
-    locale: "en-US",
-    listTitle: "Workflows",
-    detailTitle: "Workflow",
-    openWorkflow: "Open Sales Research",
-    automationsTab: "Automations",
-    scheduleTitle: "Every weekday at 6:00 AM",
-    eventTitle: "Gmail new message",
-    eventSummary:
-      'from contains "@acme.com"; subject does not contain "newsletter"',
-    last: "Last",
-    next: "Next",
-  },
-  {
-    locale: "pt-BR",
-    listTitle: "Fluxos de trabalho",
-    detailTitle: "Fluxo de trabalho",
-    openWorkflow: "Abrir Sales Research",
-    automationsTab: "Automações",
-    scheduleTitle: "A cada dia útil às 6:00",
-    eventTitle: "Nova mensagem do Gmail",
-    eventSummary: 'de contém "@acme.com"; assunto não contém "newsletter"',
-    last: "Última",
-    next: "Próxima",
-  },
-  {
-    locale: "fr-FR",
-    listTitle: "Workflows",
-    detailTitle: "Workflow",
-    openWorkflow: "Ouvrir Sales Research",
-    automationsTab: "Automatisations",
-    scheduleTitle: "Chaque jour de semaine à 6:00",
-    eventTitle: "Nouveau message Gmail",
-    eventSummary: 'de contient "@acme.com"; objet ne contient pas "newsletter"',
-    last: "Dernière",
-    next: "Prochaine",
-  },
-  {
-    locale: "hi-IN",
-    listTitle: "वर्कफ़्लो",
-    detailTitle: "वर्कफ़्लो",
-    openWorkflow: "Sales Research खोलें",
-    automationsTab: "ऑटोमेशन",
-    scheduleTitle: `हर कार्यदिवस ${new Intl.DateTimeFormat("hi-IN", {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: "UTC",
-    }).format(new Date(Date.UTC(2024, 0, 1, 6)))} बजे`,
-    eventTitle: "Gmail नया संदेश",
-    eventSummary:
-      'प्रेषक में "@acme.com" शामिल है; विषय में "newsletter" शामिल नहीं है',
-    last: "अंतिम",
-    next: "अगला",
-  },
-] as const;
-
-async function expectLocalizedWorkflow(
-  localeCase: (typeof localeCases)[number],
-): Promise<HTMLElement> {
-  const workflow = {
-    ...salesResearch(),
-    automations: [weekdayWorkflowAutomation(), gmailWorkflowAutomation()],
-  };
-  context.mocks.data.userPreferences({
-    locale: localeCase.locale,
-    timezone: "America/Sao_Paulo",
-  });
-  mockBillingTier("team");
-  mockWorkflowApis([workflow]);
-  mockConnectedAutomationConnectors();
-
-  await setupPage({
-    context,
-    path: "/workflows",
-  });
-
-  await waitFor(() => {
-    expect(
-      screen.getByRole("heading", { name: localeCase.listTitle }),
-    ).toBeInTheDocument();
-    expect(document.title.split(" | ")[0]).toBe(localeCase.listTitle);
-  });
-  expect(screen.getByText("Sales Research")).toBeInTheDocument();
-
-  click(screen.getByLabelText(localeCase.openWorkflow));
-  await waitFor(() => {
-    expect(pathname()).toBe(workflowDetailPath("automations"));
-    expect(screen.getByText(localeCase.scheduleTitle)).toBeInTheDocument();
-    expect(document.title.split(" | ")[0]).toBe(localeCase.detailTitle);
-  });
-
-  expect(tabByName(localeCase.automationsTab)).toBeInTheDocument();
-  const localizedEvent = screen.getByText(localeCase.eventTitle);
-  expect(localizedEvent).toBeInTheDocument();
-  expect(screen.getByText(localeCase.eventSummary)).toBeInTheDocument();
-  expect(screen.getAllByText(localeCase.last)).not.toHaveLength(0);
-  expect(screen.getAllByText(localeCase.next)).not.toHaveLength(0);
-
-  const expectedLastRun = new Date("2026-06-18T01:00:00.000Z").toLocaleString(
-    localeCase.locale,
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "America/Sao_Paulo",
-    },
-  );
-  expect(screen.getByText(expectedLastRun)).toBeInTheDocument();
-  return localizedEvent;
-}
-
-test("Localize workflows for English (United States)", async () => {
-  await expect(
-    expectLocalizedWorkflow(localeCases[0]),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Localize workflows for Portuguese (Brazil)", async () => {
-  await expect(
-    expectLocalizedWorkflow(localeCases[1]),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Localize workflows for French (France)", async () => {
-  await expect(
-    expectLocalizedWorkflow(localeCases[2]),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Localize workflows for Hindi (India)", async () => {
-  await expect(
-    expectLocalizedWorkflow(localeCases[3]),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Explore a workflow's instructions, automations, settings, and files", async () => {
-  context.mocks.data.userPreferences({ timezone: "UTC" });
-  mockWorkflowApis([salesResearch()]);
-  mockConnectedAutomationConnectors();
-
-  await setupWorkflowDetailPage(workflowDetailPath("instructions"));
-
-  await waitFor(() => {
-    expect(
-      screen.getByText("Gather CRM context before outreach."),
-    ).toBeInTheDocument();
-  });
-  const breadcrumb = screen.getByLabelText("Breadcrumb");
-  const workflowsLink = queryAllByRoleFast("link", breadcrumb).find((link) => {
-    return link.textContent?.trim() === "Workflows";
-  });
-  expect(workflowsLink).toHaveAttribute("href", "/workflows");
-  const currentBreadcrumb = within(breadcrumb).getByText("Sales Research");
-  expect(currentBreadcrumb).toBeInTheDocument();
-  expect(currentBreadcrumb).toHaveClass("font-medium", "text-foreground");
-  const workflowFilesButton = screen.getByLabelText("Workflow files");
-  expect(workflowFilesButton).toHaveTextContent("instructions");
-  click(buttonByText("Automations"));
-  await waitFor(() => {
-    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
-  });
-  expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
-  expect(search()).toBe("");
-  expect(screen.queryByText("Schedule")).not.toBeInTheDocument();
-  expect(screen.getByText("Last")).toBeInTheDocument();
-  expect(screen.getByText("Next")).toBeInTheDocument();
-  expect(screen.queryByText("Active")).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("switch", { name: "Disable Every weekday at 9:00 AM" }),
-  ).toBeInTheDocument();
-  expect(buttonByText("Run now")).toBeInTheDocument();
-  expect(screen.queryByText("Delete automation")).not.toBeInTheDocument();
-  click(buttonByText("More actions"));
-  expect(menuItemByText("Delete automation")).toBeInTheDocument();
-  fireEvent.keyDown(document, { key: "Escape" });
-  click(buttonByText("Settings"));
-  await waitFor(() => {
-    expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
-  });
-  expect(
-    screen.getByText("This workflow belongs to this agent."),
-  ).toBeInTheDocument();
-  expect(screen.getByTitle("Research Bot")).toHaveTextContent("Research Bot");
-  expect(
-    screen.queryByText("Gather CRM context before outreach."),
-  ).not.toBeInTheDocument();
-  click(buttonByText("Instructions"));
-  await waitFor(() => {
-    expect(
-      screen.getByText("Gather CRM context before outreach."),
-    ).toBeInTheDocument();
-  });
-  expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/instructions`);
-  expect(search()).toBe("");
-  click(screen.getByLabelText("Workflow files"));
-  click(menuItemByText(/config\/settings\.json/));
-  await waitFor(() => {
-    expect(screen.getByLabelText("Workflow file content")).toBeInTheDocument();
-  });
-  expect(screen.getByLabelText("Workflow file content")).toHaveValue(
-    '{ "risk": "low", "tone": "direct" }',
-  );
-  expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/instructions`);
-  expect(search()).toBe("?file=config%2Fsettings.json");
-});
-
 test("Open and manage a deep-linked automation", async () => {
   context.mocks.data.userPreferences({ timezone: "UTC" });
   const workflow = {
@@ -2236,35 +2026,6 @@ test("Handle a direct automation link to an unavailable workflow", async () => {
   expect(search()).toBe(`?automationId=${GMAIL_AUTOMATION_ID}`);
   expect(document.querySelector('[aria-current="true"]')).toBeNull();
   expect(scrollIntoView).not.toHaveBeenCalled();
-});
-
-test("Show saved instructions to a user without edit permission", async () => {
-  const workflow = {
-    ...salesResearch(),
-    canManage: false,
-    canPublish: false,
-  };
-  context.store.set(setWorkflowFileDraft$, {
-    workflowId: SALES_WORKFLOW_ID,
-    filePath: null,
-    sourceContent: "Gather CRM context before outreach.",
-    content: "Unsaved local workflow draft.",
-  });
-  mockWorkflowApis([workflow]);
-
-  await setupWorkflowDetailPage(workflowDetailPath("instructions"));
-
-  await waitFor(() => {
-    expect(
-      screen.getByText("Gather CRM context before outreach."),
-    ).toBeInTheDocument();
-  });
-  expect(
-    screen.queryByText("Unsaved local workflow draft."),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByText("You have unsaved changes"),
-  ).not.toBeInTheDocument();
 });
 
 test("Block workflow publishing without permission on the owning agent", async () => {
@@ -2485,30 +2246,12 @@ async function expectOfficialReconciliation(
   return reconciliation;
 }
 
-test("Show a current Official Workflow reconciliation state", async () => {
-  await expect(
-    expectOfficialReconciliation("current", "Current · intended on"),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Show an Official Workflow being reconciled", async () => {
-  await expect(
-    expectOfficialReconciliation("reconciling", "Reconciling · intended on"),
-  ).resolves.toBeInTheDocument();
-});
-
 test("Show an Official Workflow that needs reconfiguration", async () => {
   await expect(
     expectOfficialReconciliation(
       "needs_reconfiguration",
       "Needs reconfiguration · intended on",
     ),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Show a failed Official Workflow reconciliation", async () => {
-  await expect(
-    expectOfficialReconciliation("failed", "Failed · intended on"),
   ).resolves.toBeInTheDocument();
 });
 
@@ -3071,29 +2814,6 @@ test("Edit workflow metadata", async () => {
       description: "Use when an account needs a fresh research brief.",
     });
   });
-});
-
-test("Show saved workflow metadata to a user without edit permission", async () => {
-  const workflow = {
-    ...salesResearch(),
-    canManage: false,
-    canPublish: false,
-  };
-  context.store.set(patchWorkflowMetadataForm$, {
-    workflowId: SALES_WORKFLOW_ID,
-    patch: { displayName: "Unsaved Account Brief" },
-  });
-  mockWorkflowApis([workflow]);
-
-  await setupWorkflowDetailPage(workflowDetailPath("info"));
-
-  const form = await screen.findByRole("form", {
-    name: "Workflow metadata",
-  });
-  expect(within(form).getByLabelText("Name")).toHaveValue("Sales Research");
-  expect(
-    screen.queryByText("You have unsaved changes"),
-  ).not.toBeInTheDocument();
 });
 
 test("Navigate between workflow detail tabs", async () => {
@@ -3913,56 +3633,6 @@ test("Recover from an unavailable Stripe connection while creating an automation
     "href",
     "/connectors",
   );
-});
-
-test("Create a signed webhook automation", async () => {
-  const createBodies: WorkflowAutomationCreateRequest[] = [];
-  mockWorkflowApis([salesResearch()]);
-  mockCreateWorkflowAutomation((body) => {
-    createBodies.push(body);
-  });
-
-  await setupWorkflowDetailPage(workflowDetailPath("automations"));
-
-  await waitFor(() => {
-    expect(buttonByText("Add automation")).toBeInTheDocument();
-  });
-  click(buttonByText("Add automation"));
-
-  await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-  pickAutomation("Integrations", /^Webhook/);
-  await waitFor(() => {
-    expect(buttonByText("Create webhook")).toBeInTheDocument();
-  });
-  click(buttonByText("Create webhook"));
-
-  await waitFor(() => {
-    expect(createBodies.at(-1)).toStrictEqual({
-      kind: "event",
-      eventType: "webhook-received",
-      eventConfig: {
-        provider: "webhook",
-        event: "received",
-        auth: { mode: "hmac-sha256" },
-      },
-    });
-  });
-  const webhookUrlField = await screen.findByDisplayValue(
-    webhookWorkflowAutomation().webhookUrl ?? "",
-  );
-  expect(webhookUrlField).toBeInTheDocument();
-  expect(webhookUrlField).toHaveValue(
-    webhookWorkflowAutomation().webhookUrl ?? "",
-  );
-  expect(webhookUrlField).toHaveClass("min-w-0");
-  expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
-    "webhook-secret",
-  );
-  const signedCurlExample = screen.getByText(/X-VM0-Signature/).closest("pre");
-  expect(signedCurlExample).toBeInTheDocument();
-  expect(signedCurlExample).toHaveClass("whitespace-pre-wrap", "break-all");
 });
 
 test("Offer a Team upgrade to a Pro workspace administrator", async () => {

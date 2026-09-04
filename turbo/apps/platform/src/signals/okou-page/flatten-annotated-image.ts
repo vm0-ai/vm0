@@ -406,7 +406,7 @@ function drawMark(
   context.fillText(mark.text, x, y);
 }
 
-export interface FlattenedAnnotatedImage {
+interface FlattenedAnnotatedImage {
   readonly file: File;
   readonly width: number;
   readonly height: number;

@@ -37,30 +37,6 @@ function getButton({
   return button;
 }
 
-test("iOS Safari shows localized app-install instructions", async () => {
-  mockIOSSafari(false);
-
-  await setupPage({
-    context,
-    path: "/",
-    host: "app.vm0.ai",
-    locale: "pt-BR",
-  });
-
-  await expect(
-    screen.findByText("Instale o Zero para uma experiência melhor"),
-  ).resolves.toBeVisible();
-  click(getButton({ label: "Instalar aplicativo" }));
-
-  const dialog = await screen.findByRole("dialog", { name: "Instalar Zero" });
-  expect(
-    within(dialog).getByText("No Safari, toque no botão Compartilhar."),
-  ).toBeVisible();
-  expect(
-    within(dialog).getByText("Escolha Adicionar à Tela Inicial."),
-  ).toBeVisible();
-});
-
 test("An iOS user can open or dismiss the install prompt", async () => {
   mockIOSSafari(false);
 

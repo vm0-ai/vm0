@@ -527,7 +527,7 @@ const completeBootstrap$ = command(
   },
 );
 
-export interface BootstrapRuntime {
+interface BootstrapRuntime {
   readonly authenticatedRealtimeDaemon: Promise<void>;
   readonly ready: Promise<void>;
   readonly sharedDatabaseDaemon: Promise<void>;

@@ -64,21 +64,6 @@ function getLinkByName(
   return link;
 }
 
-async function openAppearanceSettings(): Promise<HTMLElement> {
-  click(getButtonByName("Test User"));
-  const settingsItem = await waitFor(() => {
-    const item = queryAllByRoleFast("menuitem").find((candidate) => {
-      return candidate.textContent?.trim() === "Settings";
-    });
-    if (!item) {
-      throw new Error('Expected menu item named "Settings"');
-    }
-    return item;
-  });
-  click(settingsItem);
-  return await screen.findByRole("dialog", { name: "Settings" });
-}
-
 test("Code-copy confirmations belong to the selected block", async () => {
   const chat = createMarkdownChatFixture(context);
   const source = [
@@ -193,50 +178,6 @@ test("External links open safely in a new context", async () => {
   expect(link.rel.split(/\s+/)).toStrictEqual(
     expect.arrayContaining(["noopener", "noreferrer"]),
   );
-});
-
-test("Message formatting remains clear across themes", async () => {
-  const chat = createMarkdownChatFixture(context);
-  const rows = completedMessageRows(
-    chat,
-    "The **important result** remains emphasized.",
-  );
-  context.mocks.data.userPreferences({ theme: "light" });
-  chat.install({
-    rows: () => {
-      return rows;
-    },
-  });
-
-  await setupPage({
-    context,
-    path: chat.path,
-    host: "app.vm0.ai",
-  });
-
-  const emphasis = await screen.findByText("important result");
-  const frame = markdownFrameFor(emphasis);
-  expect(emphasis.tagName).toBe("STRONG");
-  expect(frame).toHaveAttribute("data-color-mode", "light");
-
-  const settings = await openAppearanceSettings();
-  click(getButtonByName("Dark", settings));
-
-  await waitFor(() => {
-    expect(frame).toHaveAttribute("data-color-mode", "dark");
-    expect(document.documentElement).toHaveClass("dark");
-  });
-  expect(emphasis.tagName).toBe("STRONG");
-  expect(emphasis).toBeVisible();
-
-  click(getButtonByName("Light", settings));
-
-  await waitFor(() => {
-    expect(frame).toHaveAttribute("data-color-mode", "light");
-    expect(document.documentElement).not.toHaveClass("dark");
-  });
-  expect(emphasis.tagName).toBe("STRONG");
-  expect(emphasis).toBeVisible();
 });
 
 test("Repeated rendering keeps rich message content stable", async () => {

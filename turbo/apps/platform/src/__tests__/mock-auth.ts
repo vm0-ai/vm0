@@ -32,7 +32,7 @@ interface MockedClerkListenerOptions {
   readonly skipInitialEmit?: boolean;
 }
 
-export interface MockedInvitation {
+interface MockedInvitation {
   id: string;
   accept?: () => Promise<unknown>;
   publicOrganizationData?: {
@@ -64,7 +64,7 @@ export interface MockedClientSession {
   };
 }
 
-export interface MockedAuthV2Capabilities {
+interface MockedAuthV2Capabilities {
   readonly appleOAuth?: boolean;
   readonly googleOAuth?: boolean;
   readonly googleOneTapClientId?: string | null;
@@ -342,9 +342,7 @@ export function mockSignUpConfiguration(
   };
 }
 
-export function mockSignUpPasswordValidation(
-  validation: PasswordValidation,
-): void {
+function mockSignUpPasswordValidation(validation: PasswordValidation): void {
   internalMockedPasswordValidation = validation;
 }
 

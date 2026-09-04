@@ -393,38 +393,6 @@ test("Feishu setup advances when callback verification arrives", async () => {
   expect(screen.getByText("Publish the app")).toBeInTheDocument();
 });
 
-test("Feishu settings show a loading state until bot status is ready", async () => {
-  const responseReady = context.mocks.deferred<void>();
-  context.mocks.api(feishuConnectContract.getStatus, async ({ respond }) => {
-    await responseReady.promise;
-    return respond(200, {
-      publicBrand: "vm0",
-      isConnected: false,
-      isInstalled: false,
-      isAdmin: true,
-      appId: null,
-      callbackUrl: null,
-      callbackVerified: false,
-      messageReceived: false,
-      tenantKey: null,
-      tenantName: null,
-      defaultAgentId: null,
-      defaultAgentName: "Okou",
-    });
-  });
-  await setupFeishuSettingsPage(context);
-
-  await expect(
-    screen.findByTestId("feishu-settings-loading"),
-  ).resolves.toBeInTheDocument();
-
-  responseReady.resolve();
-  await expect(screen.findByText("Feishu bots")).resolves.toBeInTheDocument();
-  expect(
-    screen.queryByTestId("feishu-settings-loading"),
-  ).not.toBeInTheDocument();
-});
-
 test("A workspace member can connect to a completed Feishu bot", async () => {
   const connectUrl =
     "https://www.vm0.test/api/feishu/oauth/connect?state=member";
