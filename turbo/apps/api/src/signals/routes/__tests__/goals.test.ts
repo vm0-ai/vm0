@@ -1,4 +1,5 @@
 import { HttpResponse, http } from "msw";
+import { z } from "zod";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
@@ -120,24 +121,27 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
   };
 }
 
+const openRouterBodySchema = z.object({
+  model: z.string(),
+  messages: z.array(z.object({ role: z.string(), content: z.string() })),
+  max_tokens: z.number().optional(),
+  reasoning: z
+    .object({ effort: z.enum(["none", "minimal", "low", "medium", "high"]) })
+    .optional(),
+});
+
 /**
  * Goal creation is the only fast-path caller on this route, but the OpenRouter
  * endpoint is shared, so match the objective-brief system prompt rather than
  * counting every completion request.
  */
-function isObjectiveBriefRequest(body: Record<string, unknown>): boolean {
-  const messages = body.messages;
-  if (!Array.isArray(messages)) {
-    return false;
-  }
-  const system: unknown = messages[0];
-  const content =
-    typeof system === "object" && system !== null && "content" in system
-      ? system.content
-      : undefined;
+function isObjectiveBriefRequest(
+  body: z.infer<typeof openRouterBodySchema>,
+): boolean {
   return (
-    typeof content === "string" &&
-    content.includes("Rewrite the goal objective into a short objective brief")
+    body.messages[0]?.content.includes(
+      "Rewrite the goal objective into a short objective brief",
+    ) ?? false
   );
 }
 
@@ -695,12 +699,12 @@ describe("agent goals", () => {
     const fixture = await seedGoalApiFixture();
     mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
 
-    let briefRequestBody: Record<string, unknown> | undefined;
+    let briefRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
         async ({ request }) => {
-          const body = (await request.json()) as Record<string, unknown>;
+          const body = openRouterBodySchema.parse(await request.json());
           if (isObjectiveBriefRequest(body)) {
             briefRequestBody = body;
           }
@@ -745,7 +749,7 @@ describe("agent goals", () => {
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
         async ({ request }) => {
-          const body = (await request.json()) as Record<string, unknown>;
+          const body = openRouterBodySchema.parse(await request.json());
           if (isObjectiveBriefRequest(body)) {
             briefRequests += 1;
           }
