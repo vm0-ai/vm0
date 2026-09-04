@@ -466,6 +466,21 @@ describe("new UI neutral gray palette", () => {
       ).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it("keeps the dialog overlay on Ink when theme-aware grays invert", () => {
+    const lightProperties = readCustomProperties(
+      readRuleBody(globalCss, ":root[data-new-ui]"),
+    );
+    const darkProperties = new Map(lightProperties);
+    for (const [name, value] of readCustomProperties(
+      readRuleBody(globalCss, ".dark[data-new-ui],"),
+    )) {
+      darkProperties.set(name, value);
+    }
+
+    expect(rgbToHex(color(lightProperties, "--overlay"))).toBe("#242321");
+    expect(rgbToHex(color(darkProperties, "--overlay"))).toBe("#242321");
+  });
 });
 
 // The rail caption and the two composer placeholders draw their color through a
@@ -523,5 +538,35 @@ describe("new UI opacity-modified text", () => {
       "@custom-variant new-ui (&:where([data-new-ui], [data-new-ui] *));",
     );
     expect(globalCss).toContain(":root[data-new-ui] {");
+  });
+});
+
+// The segment control is only legible when its track separates from the page
+// and the white selection separates from the track. Under the new palette both
+// gaps ran through `--muted`'s gray-100, which clears 1.06:1 against white, so
+// the whole control dissolved. The track owns its own token now.
+describe("new UI segment control track", () => {
+  it("gives the track a token the base theme resolves to muted", () => {
+    expect(globalCss).toContain(
+      "--color-segment-track: hsl(var(--segment-track));",
+    );
+    expect(readRuleBody(globalCss, "  :root")).toMatch(
+      /--segment-track:\s*var\(--muted\);/,
+    );
+  });
+
+  it("steps the light track off muted so the control separates from the page", () => {
+    expect(readRuleBody(globalCss, ":root[data-new-ui]")).toMatch(
+      /--segment-track:\s*var\(--gray-200\);/,
+    );
+  });
+
+  // Chrome keeps the ramp's warm Ink; only content goes neutral, so the two nav
+  // columns must not follow the body copy off `--gray-950`.
+  it("keeps body copy neutral while the sidebar stays on Ink", () => {
+    const newUiLight = readRuleBody(globalCss, ":root[data-new-ui]");
+
+    expect(newUiLight).toMatch(/--foreground:\s*0 0% 14\.1%;/);
+    expect(newUiLight).toMatch(/--sidebar-foreground:\s*var\(--gray-950\);/);
   });
 });

@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   agentInstructionsContract,
   agentsByIdContract,
+  type AgentMetadataRequest,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import {
@@ -66,13 +67,18 @@ function tabByText(text: string): HTMLElement {
   return tab;
 }
 
-function prepareAgentProfile(avatarUrl: string | null = "preset:0"): {
+function prepareAgentProfile(
+  avatarUrl: string | null = "preset:0",
+  ownerId = "test-user-123",
+): {
+  readonly lastUpdate: () => AgentMetadataRequest | null;
   readonly lastSavedProfile: () => AgentResponse | null;
 } {
+  let lastUpdate: AgentMetadataRequest | null = null;
   let lastSavedProfile: AgentResponse | null = null;
   let detail: AgentResponse = {
     agentId: AGENT_ID,
-    ownerId: "test-user-123",
+    ownerId,
     description: "A helpful agent",
     displayName: "Research Agent",
     sound: "professional",
@@ -95,7 +101,7 @@ function prepareAgentProfile(avatarUrl: string | null = "preset:0"): {
     },
     {
       agentId: AGENT_ID,
-      ownerId: "test-user-123",
+      ownerId,
       displayName: detail.displayName,
       description: detail.description,
       sound: detail.sound,
@@ -107,6 +113,7 @@ function prepareAgentProfile(avatarUrl: string | null = "preset:0"): {
     return respond(200, detail);
   });
   context.mocks.api(agentsByIdContract.updateMetadata, ({ body, respond }) => {
+    lastUpdate = body;
     detail = { ...detail, ...body };
     lastSavedProfile = detail;
     return respond(200, detail);
@@ -115,6 +122,9 @@ function prepareAgentProfile(avatarUrl: string | null = "preset:0"): {
     return respond(200, { content: null, filename: null });
   });
   return {
+    lastUpdate: () => {
+      return lastUpdate;
+    },
     lastSavedProfile: () => {
       return lastSavedProfile;
     },
@@ -307,6 +317,41 @@ test("Create and save a composer avatar from the profile page", async () => {
   expect(renderedAvatarSvgLayerSrcs(editDialog).slice(0, 4)).toStrictEqual(
     savedLayerSrcs,
   );
+});
+
+test("Allow an org admin to update another user's public agent avatar", async () => {
+  const profile = prepareAgentProfile("preset:0", "agent-owner");
+  context.mocks.data.org({
+    id: "org_default",
+    name: "Default Org",
+    role: "admin",
+  });
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
+
+  click(await findCustomizeAvatarButton());
+
+  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  click(within(dialog).getByLabelText("Randomize avatar"));
+  click(within(dialog).getByText("Use this avatar"));
+
+  await waitFor(() => {
+    expect(profile.lastSavedProfile()).not.toBeNull();
+  });
+  const savedProfile = profile.lastSavedProfile();
+  if (!savedProfile) {
+    throw new Error("Expected the avatar update to finish");
+  }
+  const update = profile.lastUpdate();
+  if (!update) {
+    throw new Error("Expected an avatar update request");
+  }
+  expect(savedProfile.avatarUrl).not.toBe("preset:0");
+  expect(savedProfile.visibility).toBe("public");
+  expect(update).not.toHaveProperty("visibility");
 });
 
 test("Keep the default agent’s canonical identity read-only", async () => {

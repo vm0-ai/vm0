@@ -21,7 +21,6 @@ import {
   type SocialKitRequest,
 } from "@okouai/api-contracts/contracts/social";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { usageRecordContract } from "@okouai/api-contracts/contracts/usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -51,7 +50,6 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import { reconcileSocialKitDownloadsForTest } from "./helpers/runtime-state";
 
@@ -2459,20 +2457,12 @@ describe("managed SocialKit route", () => {
       contentType: "video/mp4",
     },
   ])(
-    "files $caseName by its detected media once the switch is on",
+    "files $caseName by its detected media",
     async ({ payload, filename, contentType }) => {
       const actor = createBddApi(context).user();
-      if (!actor.orgId) {
-        throw new Error("Expected the download actor to have an organization");
-      }
       configureProvider();
       const pricing = await setupConfiguredPricing();
       await fundActor(actor);
-      await updateFeatureSwitchesForUser(
-        context,
-        { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-        { [FeatureSwitchKey.SocialDownloadDetectedMediaType]: true },
-      );
 
       const body = await completeDownloadWithPayload(actor, pricing, payload);
 
@@ -2489,17 +2479,9 @@ describe("managed SocialKit route", () => {
 
   it("keeps the requested format for an unrecognized container", async () => {
     const actor = createBddApi(context).user();
-    if (!actor.orgId) {
-      throw new Error("Expected the download actor to have an organization");
-    }
     configureProvider();
     const pricing = await setupConfiguredPricing();
     await fundActor(actor);
-    await updateFeatureSwitchesForUser(
-      context,
-      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.SocialDownloadDetectedMediaType]: true },
-    );
     const payload = new Uint8Array([
       0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00,
@@ -2513,28 +2495,6 @@ describe("managed SocialKit route", () => {
         filename: "Public clip.mp4",
         contentType: "video/mp4",
         sizeBytes: payload.byteLength,
-      },
-    });
-  });
-
-  it("keeps the requested format for the same artifact while the switch is off", async () => {
-    const actor = createBddApi(context).user();
-    configureProvider();
-    const pricing = await setupConfiguredPricing();
-    await fundActor(actor);
-
-    const body = await completeDownloadWithPayload(
-      actor,
-      pricing,
-      AUDIO_ONLY_PAYLOAD,
-    );
-
-    expect(body).toMatchObject({
-      status: "completed",
-      artifact: {
-        filename: "Public clip.mp4",
-        contentType: "video/mp4",
-        sizeBytes: AUDIO_ONLY_PAYLOAD.byteLength,
       },
     });
   });

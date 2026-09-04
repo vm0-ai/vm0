@@ -357,7 +357,7 @@ export function SettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            visibility,
+            ...(canEditVisibility ? { visibility } : {}),
           },
           pageSignal,
         );
@@ -415,7 +415,7 @@ export function SettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          visibility,
+                          ...(canEditVisibility ? { visibility } : {}),
                         },
                         pageSignal,
                       );
