@@ -1107,12 +1107,17 @@ describe("team page navigation", () => {
   it("deletes an agent from the profile tab", async () => {
     mockTeamAPIs();
     let deleted = false;
-    context.mocks.api(agentsByIdContract.delete, ({ params, respond }) => {
-      if (params.id === researchAgentId) {
-        deleted = true;
-      }
-      return respond(204);
-    });
+    const deleteResponse = context.mocks.deferred<void>();
+    context.mocks.api(
+      agentsByIdContract.delete,
+      async ({ params, respond }) => {
+        await deleteResponse.promise;
+        if (params.id === researchAgentId) {
+          deleted = true;
+        }
+        return respond(204);
+      },
+    );
     // Once the agent is deleted, any refetch of it must 404 — exactly as
     // production behaves. This guards against reloading the just-deleted agent
     // and surfacing an "Agent not found" error toast over the success toast.
@@ -1158,6 +1163,17 @@ describe("team page navigation", () => {
     ).toBeInTheDocument();
 
     click(buttonByText("Delete agent", deleteDialog));
+
+    await waitFor(() => {
+      expect(within(deleteDialog).getByText("Deleting…")).toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button", deleteDialog).some((button) => {
+          return button.textContent?.trim() === "Cancel";
+        }),
+      ).toBeFalsy();
+    });
+
+    deleteResponse.resolve();
 
     await waitFor(() => {
       expect(screen.getByText("Agent deleted")).toBeInTheDocument();
