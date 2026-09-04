@@ -97,7 +97,7 @@ export const insufficientCredits = makeApiError(
   "InsufficientCreditsError",
   "INSUFFICIENT_CREDITS",
   402,
-  "Insufficient credits. Add credits or configure your own API key to continue.",
+  "Insufficient credits. Check your workspace billing to continue.",
 );
 
 export const providerIncompatible = makeApiError(

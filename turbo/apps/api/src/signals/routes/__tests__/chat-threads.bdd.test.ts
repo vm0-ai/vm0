@@ -1324,7 +1324,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       expectApiError(restrictedSelection.body);
       expect(restrictedSelection.body.error).toStrictEqual({
         message:
-          "Insufficient credits. Add credits or configure your own API key to continue.",
+          "Insufficient credits. Check your workspace billing to continue.",
         code: "INSUFFICIENT_CREDITS",
       });
 

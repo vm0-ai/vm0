@@ -5,7 +5,9 @@ import {
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
   getCodexChatGptAccountUnsupportedModel,
+  INSUFFICIENT_CREDITS_ADD_CREDITS_MESSAGE,
   INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE,
+  INSUFFICIENT_CREDITS_UPGRADE_MESSAGE,
   isActionableRunError,
   isAgentExecutionTimeoutRunError,
   isCodexChatGptAccountUnsupportedModelRunError,
@@ -88,7 +90,7 @@ describe("formatRunErrorForExternalSurface", () => {
         },
       }),
     ).toBe(
-      "Insufficient credits. Please add credits to continue.\n\nAdd credits: https://app.example.test/?settings=billing&billingView=credits",
+      `${INSUFFICIENT_CREDITS_ADD_CREDITS_MESSAGE}\n\nAdd credits: https://app.example.test/?settings=billing&billingView=credits`,
     );
   });
 
@@ -118,8 +120,25 @@ describe("formatRunErrorForExternalSurface", () => {
         },
       }),
     ).toBe(
-      "Insufficient credits. Please add credits to continue.\n\nCompare plans: https://app.example.test/?settings=billing&billingView=plans",
+      `${INSUFFICIENT_CREDITS_UPGRADE_MESSAGE}\n\nCompare plans: https://app.example.test/?settings=billing&billingView=plans`,
     );
+  });
+
+  it("never tells a plan that cannot buy credits to add credits or bring its own API key", () => {
+    const formatted = formatRunErrorForExternalSurface({
+      code: "INSUFFICIENT_CREDITS",
+      message:
+        "Insufficient credits. Add credits or configure your own API key to continue.",
+      insufficientCredits: {
+        canManageBilling: true,
+        comparePlansUrl:
+          "https://app.example.test/?settings=billing&billingView=plans",
+      },
+    });
+
+    expect(formatted).not.toContain("Add credits");
+    expect(formatted).not.toContain("your own API key");
+    expect(formatted).toContain("Compare plans:");
   });
 
   it("shows Codex usage limit errors verbatim", () => {
