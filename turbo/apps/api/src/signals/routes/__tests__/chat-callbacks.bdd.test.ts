@@ -1831,6 +1831,9 @@ describe("CHAT-02: completed chat callback", () => {
 
     const prompt = "Summarize the migration plan";
     const run = await startChatRun(actor, { agentId, prompt });
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "The final assistant answer"),
