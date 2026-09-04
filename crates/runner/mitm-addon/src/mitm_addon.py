@@ -751,6 +751,8 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
     request_header_fields = flow.request.headers.fields
     if len(request_header_fields) > _MAX_REQUEST_HEADER_FIELDS:
+        # A local response waits for body completion. Kill before mitmproxy's
+        # Expect lookup instead of retaining or rescanning the rejected tuple.
         flow.request.headers.fields = ()
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         flow.kill()
