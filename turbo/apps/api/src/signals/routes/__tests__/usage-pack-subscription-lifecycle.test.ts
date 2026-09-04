@@ -304,6 +304,7 @@ async function readBillingStatus(fixture: UsagePackLifecycleFixture) {
 async function seedUsagePackLifecycle(
   selections: readonly UsagePackSelection[],
   tier: "pro" | "team" = "pro",
+  credits = 0,
 ): Promise<UsagePackLifecycleFixture> {
   const orgId = `org_usage_pack_${randomUUID()}`;
   const customerId = `cus_${randomUUID()}`;
@@ -318,7 +319,7 @@ async function seedUsagePackLifecycle(
       return selection.invitationId !== undefined;
     })?.invitationId ?? null;
 
-  await seedOrgMetadata({ orgId, tier: "limited-free-1", credits: 0 });
+  await seedOrgMetadata({ orgId, tier: "limited-free-1", credits });
   const seeded = await usagePackStateAction({
     action: "seed",
     orgId,
@@ -1312,15 +1313,17 @@ describe("usage pack subscription Stripe lifecycle", () => {
     );
   });
 
-  it("reconciles an expired payment failure through the existing billing fallback", async () => {
+  it("clears negative credits on the first paid upgrade but not after a payment-failure downgrade", async () => {
     mockNow(new Date("2999-02-01T00:00:00.000Z"));
     onTestFinished(() => {
       clearMockNow();
     });
     const userId = `user_${randomUUID()}`;
-    const fixture = await seedUsagePackLifecycle([
-      { userId, usagePackUsd: 20 },
-    ]);
+    const fixture = await seedUsagePackLifecycle(
+      [{ userId, usagePackUsd: 20 }],
+      "pro",
+      -5000,
+    );
     const quantities = new Map([[TEST_PRICE_PACK_20, 1]]);
     const paidPeriod = period(-32);
     let currentSubscription = stripeSubscription(
@@ -1341,6 +1344,10 @@ describe("usage pack subscription Stripe lifecycle", () => {
         }),
       ),
       200,
+    );
+    const firstUpgradeOrg = (await readUsagePackState(fixture)).org;
+    expect(firstUpgradeOrg).toStrictEqual(
+      expect.objectContaining({ tier: "pro", credits: 0 }),
     );
 
     currentSubscription = stripeSubscription(fixture, paidPeriod, quantities, {
@@ -1363,6 +1370,40 @@ describe("usage pack subscription Stripe lifecycle", () => {
       expect.objectContaining({
         tier: "limited-free-1",
         subscriptionStatus: "past_due",
+      }),
+    );
+
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "limited-free-1",
+      credits: -3000,
+    });
+    const recoveredPeriod = period(0);
+    currentSubscription = stripeSubscription(
+      fixture,
+      recoveredPeriod,
+      quantities,
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    await postStripeEvent(
+      stripeEvent(
+        "invoice.paid",
+        paidInvoice(fixture, {
+          invoiceId: `in_${randomUUID()}`,
+          paidPeriod: recoveredPeriod,
+          quantities,
+        }),
+      ),
+      200,
+    );
+    const recoveredOrg = (await readUsagePackState(fixture)).org;
+    expect(recoveredOrg).toStrictEqual(
+      expect.objectContaining({
+        tier: "pro",
+        subscriptionStatus: "active",
+        credits: -3000,
       }),
     );
   });
