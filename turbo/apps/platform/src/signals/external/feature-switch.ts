@@ -1,6 +1,9 @@
 import { command, computed } from "ccstate";
 import type { BrowserClerk as Clerk } from "@clerk/shared/types";
-import { getAllFeatureStates } from "@okouai/core/feature-switch";
+import {
+  getAllFeatureStates,
+  getEmailEnabledFeatureStates,
+} from "@okouai/core/feature-switch";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { clerk$ } from "../auth";
@@ -12,6 +15,7 @@ import { createAuthedContractClient } from "../api-client-base.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { readClerkToken } from "../clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
+import { syncShellDocumentAttributes$ } from "../theme.ts";
 import {
   featureSwitchCacheState$,
   setFeatureSwitchLocalStorage$,
@@ -89,13 +93,11 @@ const apiFeatureSwitchClient$ = computed((get) => {
 
 function applySwitches(
   result: Record<FeatureSwitchKey, boolean>,
-  overrides: Partial<Record<string, boolean>> | undefined,
-  effectiveSwitches: Partial<Record<string, boolean>> | undefined,
+  switches: Partial<Record<string, boolean>> | undefined,
 ) {
-  const resolvedSwitches = effectiveSwitches ?? overrides;
-  if (resolvedSwitches) {
+  if (switches) {
     for (const key of Object.values(FeatureSwitchKey)) {
-      const value = resolvedSwitches[key];
+      const value = switches[key];
       if (value !== undefined) {
         result[key] = Boolean(value);
       }
@@ -117,6 +119,10 @@ export const composerImageAnnotationEnabled$ = computed((get): boolean => {
 
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+});
+
+export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
 });
 
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
@@ -165,10 +171,12 @@ const hydrateFeatureSwitch$ = command(
     });
     applySwitches(
       combined,
-      result.body.switches,
-      result.body.effectiveSwitches,
+      result.body.effectiveSwitches ?? result.body.switches,
     );
+    applySwitches(combined, getEmailEnabledFeatureStates(identity.email));
+    applySwitches(combined, result.body.switches);
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(syncShellDocumentAttributes$);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: combined[FeatureSwitchKey.OkouDebug],

@@ -1,5 +1,10 @@
 import { command, computed, state } from "ccstate";
 import {
+  derivePlatformServiceOrigin,
+  isOkouProductionHostname,
+  type PlatformService,
+} from "@okouai/core/platform-service-origin";
+import {
   resolveClerkInstanceConfig,
   resolveClerkSatelliteConfig,
   resolveConfiguredProductionPrimaryAppDomain,
@@ -12,12 +17,7 @@ import {
   setPostHogUser,
 } from "../lib/posthog.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
-import {
-  derivePlatformServiceOrigin,
-  isOkouProductionHostname,
-  type PlatformService,
-  resolvePlatformEnvironment,
-} from "../lib/platform-host.ts";
+import { resolvePlatformEnvironment } from "../lib/platform-host.ts";
 import {
   resolveClerkProductionSatelliteDomain,
   resolveClerkProductionTopology,
@@ -193,16 +193,49 @@ export function resolveAppAuthUrl(
   return url.toString();
 }
 
-export function resolveSatelliteAuthRouteRedirectUrl(
+interface SatelliteAuthRouteNavigation {
+  readonly completionRedirectUrl: string;
+  readonly preservesRouteState: boolean;
+}
+
+function mergeClerkAuthHash(clerkHash: string, routeHash: string): string {
+  if (!routeHash) {
+    return clerkHash;
+  }
+
+  const clerkHashQueryIndex = clerkHash.indexOf("?");
+  if (clerkHashQueryIndex === -1) {
+    return routeHash;
+  }
+
+  const clerkHashParams = new URLSearchParams(
+    clerkHash.slice(clerkHashQueryIndex + 1),
+  );
+  const routeHashQueryIndex = routeHash.indexOf("?");
+  const routeHashPath =
+    routeHashQueryIndex === -1
+      ? routeHash
+      : routeHash.slice(0, routeHashQueryIndex);
+  const routeHashParams = new URLSearchParams(
+    routeHashQueryIndex === -1 ? "" : routeHash.slice(routeHashQueryIndex + 1),
+  );
+  for (const [key, value] of clerkHashParams) {
+    routeHashParams.set(key, value);
+  }
+
+  const routeHashSearch = routeHashParams.toString();
+  return routeHashSearch
+    ? `${routeHashPath}?${routeHashSearch}`
+    : routeHashPath;
+}
+
+function resolveSatelliteAuthRouteNavigation(
   mode: "sign-in" | "sign-up",
-): string | null {
+): SatelliteAuthRouteNavigation | null {
   if (!resolveClerkSatelliteConfig()) {
     return null;
   }
 
-  // Clerk authentication must run on the configured primary app. Keep the
-  // satellite destination explicit so the primary flow can safely return to
-  // the originating brand after it completes.
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
   const completionRedirectUrl =
     mode === "sign-in"
@@ -216,12 +249,17 @@ export function resolveSatelliteAuthRouteRedirectUrl(
           allowedRedirectOrigins,
           location.hash,
         );
-  const redirectUrl = new URL(resolveAppAuthUrl("/sign-in"));
-  redirectUrl.pathname = location.pathname;
-  redirectUrl.search = location.search;
-  redirectUrl.hash = location.hash;
-  redirectUrl.searchParams.set("redirect_url", completionRedirectUrl);
-  return redirectUrl.toString();
+  const authRoute = mode === "sign-in" ? "/sign-in" : "/sign-up";
+  const routeState = new URLSearchParams(location.search);
+  routeState.delete("redirect_url");
+
+  return {
+    completionRedirectUrl,
+    preservesRouteState:
+      location.pathname !== authRoute ||
+      routeState.size > 0 ||
+      location.hash !== "",
+  };
 }
 
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
@@ -424,6 +462,63 @@ export const clerk$ = computed(async () => {
 
   return runtime.clerk;
 });
+
+/**
+ * Moves satellite authentication to Clerk's primary app without bypassing
+ * Clerk's session-sync lifecycle. Stateful routes keep their path, query, and
+ * hash on top of the URL constructed by Clerk.
+ */
+export const navigateSatelliteAuthRoute$ = command(
+  async (
+    { get },
+    mode: "sign-in" | "sign-up",
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const navigation = resolveSatelliteAuthRouteNavigation(mode);
+    if (!navigation) {
+      return false;
+    }
+
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    if (!navigation.preservesRouteState) {
+      if (mode === "sign-in") {
+        await clerk.redirectToSignIn({
+          redirectUrl: navigation.completionRedirectUrl,
+        });
+      } else {
+        await clerk.redirectToSignUp({
+          redirectUrl: navigation.completionRedirectUrl,
+        });
+      }
+      signal.throwIfAborted();
+      return true;
+    }
+
+    const authUrl = new URL(
+      mode === "sign-in"
+        ? clerk.buildSignInUrl({
+            redirectUrl: navigation.completionRedirectUrl,
+          })
+        : clerk.buildSignUpUrl({
+            redirectUrl: navigation.completionRedirectUrl,
+          }),
+      location.href,
+    );
+    authUrl.pathname = location.pathname;
+    const routeState = new URLSearchParams(location.search);
+    routeState.delete("redirect_url");
+    for (const [key, value] of routeState) {
+      authUrl.searchParams.append(key, value);
+    }
+    authUrl.hash = mergeClerkAuthHash(authUrl.hash, location.hash);
+
+    await clerk.navigate(authUrl.toString());
+    signal.throwIfAborted();
+    return true;
+  },
+);
 
 /**
  * Command to setup Clerk authentication listeners.

@@ -6,8 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { command } from "ccstate";
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@okouai/api-contracts/contracts/model-providers";
 import {
@@ -22,9 +21,8 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
-  detachedSetupPage,
   queryAllByRoleFast,
-  setupPageAndWaitForContent,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockedClerk,
@@ -32,8 +30,6 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { foregroundReady$ } from "../../../signals/foreground-catch-up.ts";
-import { subscribeRealtimeReadyCatchUp$ } from "../../../signals/realtime.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -117,8 +113,8 @@ function connectedPersonalClaudeCodeProvider(
   };
 }
 
-function prepareDefaultAgent(): void {
-  context.mocks.data.agents([
+function prepareDefaultAgent(targetContext = context): void {
+  targetContext.mocks.data.agents([
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
@@ -242,22 +238,17 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-async function closeAccountMenu(): Promise<void> {
-  fireEvent.keyDown(document.body, { key: "Escape" });
-  await waitFor(() => {
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-  });
-}
-
-function setupAddAccountPage(): void {
+function setupAddAccountPage(): Promise<void> {
   prepareDefaultAgent();
-  detachedSetupPage({
+  return setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    user: {
-      id: "test-user-123",
-      fullName: "Alex Rivera",
-      email: "alex.rivera@example.test",
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
     },
   });
 }
@@ -353,1142 +344,904 @@ function mockMemberAccountSidebar(): void {
   });
 }
 
-describe("zero sidebar account menu", () => {
-  it("restores visible focus to the account trigger when the menu closes", async () => {
-    const user = userEvent.setup();
-    prepareDefaultAgent();
+test("Return keyboard focus after closing the account menu", async () => {
+  const user = userEvent.setup();
+  prepareDefaultAgent();
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-    });
-
-    const accountButton = await findAccountMenuTrigger();
-
-    await user.click(accountButton);
-    const menu = await screen.findByRole("menu");
-    expect(menu).toBeInTheDocument();
-
-    await user.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-      expect(accountButton).toHaveFocus();
-      expect(accountButton.matches(":focus-visible")).toBeTruthy();
-    });
+    },
   });
 
-  it("shows realtime recovery status beside the expanded account only in debug mode", async () => {
-    context.mocks.browser.matchMedia(false);
-    prepareDefaultAgent();
+  const accountButton = await findAccountMenuTrigger();
 
-    await setupPageAndWaitForContent({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      sharedWorkerTestTransport: "message-port",
+  await user.click(accountButton);
+  const menu = await screen.findByRole("menu");
+  expect(menu).toBeInTheDocument();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(accountButton).toHaveFocus();
+    expect(accountButton.matches(":focus-visible")).toBeTruthy();
+  });
+});
+
+test("Show realtime recovery status only in Debug mode", async () => {
+  context.mocks.browser.matchMedia(false);
+  prepareDefaultAgent();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    sharedWorkerTestTransport: "message-port",
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
-    });
-
-    click(await screen.findByLabelText("Open menu"));
-    const accountButton = await findAccountMenuTrigger();
-    await waitFor(() => {
-      expect(accountButton.closest("aside")).toHaveAttribute(
-        "data-sidebar-expanded",
-        "true",
-      );
-      expect(within(accountButton).queryByRole("status")).toBeNull();
-      expect(
-        context.mocks.ably.hasChannelSubscriptionOnChannel(
-          "user-org:test-user-123:org_default",
-        ),
-      ).toBeTruthy();
-    });
-
-    act(() => {
-      context.mocks.ably.triggerSharedWorkerConnectionState("disconnected", {
-        retryIn: 5000,
-      });
-    });
-    await waitFor(() => {
-      expect(
-        within(accountButton).getByRole("status", {
-          name: "Realtime reconnecting",
-        }),
-      ).toBeInTheDocument();
-    });
-
-    act(() => {
-      context.mocks.ably.triggerSharedWorkerConnectionState("connected");
-    });
-    await waitFor(() => {
-      expect(within(accountButton).queryByRole("status")).toBeNull();
-    });
-
-    act(() => {
-      context.mocks.ably.triggerSharedWorkerFailure(
-        "terminal connection failure",
-      );
-    });
-    await waitFor(() => {
-      expect(
-        within(accountButton).getByRole("status", {
-          name: "Realtime disconnected",
-        }),
-      ).toBeInTheDocument();
-    });
+    },
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
   });
 
-  it("keeps realtime recovery status hidden when debug mode is disabled", async () => {
-    context.mocks.browser.matchMedia(false);
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    click(await screen.findByLabelText("Open menu"));
-    const accountButton = await findAccountMenuTrigger();
-    await waitFor(() => {
-      expect(accountButton.closest("aside")).toHaveAttribute(
-        "data-sidebar-expanded",
-        "true",
-      );
-    });
+  click(await screen.findByLabelText("Open menu"));
+  const accountButton = await findAccountMenuTrigger();
+  await waitFor(() => {
+    expect(accountButton.closest("aside")).toHaveAttribute(
+      "data-sidebar-expanded",
+      "true",
+    );
     expect(within(accountButton).queryByRole("status")).toBeNull();
+    expect(
+      context.mocks.ably.hasChannelSubscriptionOnChannel(
+        "user-org:test-user-123:org_default",
+      ),
+    ).toBeTruthy();
+  });
 
-    act(() => {
-      context.mocks.ably.triggerConnectionState("disconnected", {
-        retryIn: 5000,
-      });
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerConnectionState("disconnected", {
+      retryIn: 5000,
     });
+  });
+  await waitFor(() => {
+    expect(
+      within(accountButton).getByRole("status", {
+        name: "Realtime reconnecting",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerConnectionState("connected");
+  });
+  await waitFor(() => {
     expect(within(accountButton).queryByRole("status")).toBeNull();
   });
 
-  it("refreshes member usage pack credits without requesting org billing", async () => {
-    mockMemberAccountSidebar();
-    let usagePackCredits = 20_400;
-    let usagePackCreditRequests = 0;
-    let billingRequests = 0;
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      billingRequests += 1;
-      return respond(200, {
-        tier: "pro",
-        credits: 12_500,
-        onboardingPaymentPending: false,
-        subscriptionStatus: "active",
-        currentPeriodEnd: "2026-04-01T00:00:00Z",
-        cancelAtPeriodEnd: false,
-        scheduledChange: null,
-        hasSubscription: true,
-        autoRecharge: { enabled: false, threshold: null, amount: null },
-        creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
-        creditBreakdown: [],
-        creditGrants: [],
-        concurrencyLimit: 0,
-        concurrencySubscriptions: [],
-      });
-    });
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      usagePackCreditRequests += 1;
-      return respond(200, {
-        totalCredits: usagePackCredits,
-        purchasedCredits: Math.max(0, usagePackCredits - 400),
-        bonusCredits: 400,
-        creditGrants: [],
-      });
-    });
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerFailure(
+      "terminal connection failure",
+    );
+  });
+  await waitFor(() => {
+    expect(
+      within(accountButton).getByRole("status", {
+        name: "Realtime disconnected",
+      }),
+    ).toBeInTheDocument();
+  });
+});
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+test("Hide realtime recovery status outside Debug mode", async () => {
+  context.mocks.browser.matchMedia(false);
+  prepareDefaultAgent();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    sharedWorkerTestTransport: "message-port",
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-    });
+    },
+  });
 
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-      expect(billingRequests).toBeGreaterThan(0);
-    });
-    billingRequests = 0;
-    const menu = await openAccountMenu();
-    const usagePackItem = await within(menu).findByTestId(
-      "account-menu-credit-balance",
+  click(await screen.findByLabelText("Open menu"));
+  const normalAccountButton = await findAccountMenuTrigger();
+  await waitFor(() => {
+    expect(normalAccountButton.closest("aside")).toHaveAttribute(
+      "data-sidebar-expanded",
+      "true",
     );
     expect(
-      within(usagePackItem).getByText("20,400 credits"),
+      context.mocks.ably.hasChannelSubscriptionOnChannel(
+        "user-org:test-user-123:org_default",
+      ),
+    ).toBeTruthy();
+  });
+
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerConnectionState("disconnected", {
+      retryIn: 5000,
+    });
+  });
+  await waitFor(() => {
+    expect(within(normalAccountButton).queryByRole("status")).toBeNull();
+  });
+
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerConnectionState("connected");
+  });
+  await waitFor(() => {
+    expect(within(normalAccountButton).queryByRole("status")).toBeNull();
+  });
+
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerFailure(
+      "terminal connection failure",
+    );
+  });
+  await waitFor(() => {
+    expect(within(normalAccountButton).queryByRole("status")).toBeNull();
+  });
+});
+
+test("Show a member’s latest package credits in the account menu", async () => {
+  mockMemberAccountSidebar();
+  let usagePackCredits = 20_400;
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, {
+      tier: "pro",
+      credits: 12_500,
+      onboardingPaymentPending: false,
+      subscriptionStatus: "active",
+      currentPeriodEnd: "2026-04-01T00:00:00Z",
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 0,
+      concurrencySubscriptions: [],
+    });
+  });
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: usagePackCredits,
+      purchasedCredits: Math.max(0, usagePackCredits - 400),
+      bonusCredits: 400,
+      creditGrants: [],
+    });
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  await waitFor(() => {
+    expect(context.mocks.ably.hasSubscription("billing:changed")).toBeTruthy();
+  });
+  const menu = await openAccountMenu();
+  const usagePackItem = await within(menu).findByTestId(
+    "account-menu-credit-balance",
+  );
+  expect(within(usagePackItem).getByText("20,400 credits")).toBeInTheDocument();
+  expect(within(menu).queryByText("32,900 credits")).toBeNull();
+
+  usagePackCredits = 500;
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  const refreshedMenu = await openAccountMenu();
+  const refreshedUsagePackItem = await within(refreshedMenu).findByTestId(
+    "account-menu-credit-balance",
+  );
+  await waitFor(() => {
+    expect(
+      within(refreshedUsagePackItem).getByText("500 credits"),
     ).toBeInTheDocument();
-    expect(within(menu).queryByText("32,900 credits")).toBeNull();
+  });
 
-    usagePackCredits = 500;
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
+  click(refreshedUsagePackItem);
 
-    const refreshedMenu = await openAccountMenu();
-    const refreshedUsagePackItem = await within(refreshedMenu).findByTestId(
-      "account-menu-credit-balance",
-    );
-    await waitFor(() => {
-      expect(
-        within(refreshedUsagePackItem).getByText("500 credits"),
-      ).toBeInTheDocument();
-    });
-    expect(usagePackCreditRequests).toBe(2);
-    expect(billingRequests).toBe(0);
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Credit balance" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("usage-pack-credit-card")).toBeInTheDocument();
+  });
+});
 
-    click(refreshedUsagePackItem);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Credit balance" }),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("usage-pack-credit-card")).toBeInTheDocument();
+test("Combine workspace and member-package credits for administrators", async () => {
+  mockAdminAccountSidebar();
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 20_400,
+      purchasedCredits: 20_000,
+      bonusCredits: 400,
+      creditGrants: [],
     });
   });
 
-  it("shows admins one total combining organization and personal usage pack credits", async () => {
-    mockAdminAccountSidebar();
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      return respond(200, {
-        totalCredits: 20_400,
-        purchasedCredits: 20_000,
-        bonusCredits: 400,
-        creditGrants: [],
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const menu = await openAccountMenu();
+  const creditItem = await within(menu).findByTestId(
+    "account-menu-credit-balance",
+  );
+  expect(within(creditItem).getByText("32,900 credits")).toBeInTheDocument();
+  expect(within(menu).queryByText("12,500 credits")).toBeNull();
+  expect(within(menu).queryByText("20,400 credits")).toBeNull();
+});
+
+test("Export account data from the account menu", async () => {
+  mockAdminAccountSidebar();
+  const openMock = context.mocks.browser.open(null);
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const menu = await openAccountMenu();
+
+  await waitFor(() => {
+    expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+    expect(within(menu).getByText("Export data")).toBeInTheDocument();
+  });
+
+  click(within(menu).getByText("Export data"));
+
+  await waitFor(() => {
+    expect(
+      openMock.calls.some((call) => {
+        return call.url?.endsWith("/export") ?? false;
+      }),
+    ).toBeTruthy();
+  });
+});
+
+test("Open workspace Credit balance from the account menu", async () => {
+  mockAdminAccountSidebar();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const menu = await openAccountMenu();
+
+  await waitFor(() => {
+    expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+  });
+
+  click(within(menu).getByText("12,500 credits"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("dialog", { name: "Settings" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Credit balance" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("credit-balance-info")).toBeInTheDocument();
+    expect(screen.getByText("12,500")).toBeInTheDocument();
+  });
+});
+
+test("Refresh account balances when the menu opens", async () => {
+  mockAdminAccountSidebar();
+  mockAdminBillingStatus(12_500);
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  let menu = await openAccountMenu();
+  await waitFor(() => {
+    expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+  });
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  const refreshRequested = context.mocks.deferred<void>();
+  mockAdminBillingStatus(250, {
+    onRequest: () => {
+      refreshRequested.resolve(undefined);
+    },
+  });
+
+  menu = await openAccountMenu();
+  await refreshRequested.promise;
+  await waitFor(() => {
+    expect(within(menu).getByText("250 credits")).toBeInTheDocument();
+  });
+});
+
+test("Hide subscription usage when the account-menu feature is off", async () => {
+  mockAdminAccountSidebar();
+  context.mocks.data.personalModelProviders([
+    connectedPersonalCodexProvider(),
+    connectedPersonalClaudeCodeProvider(),
+  ]);
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const menu = await openAccountMenu();
+
+  await waitFor(() => {
+    expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+  });
+  expect(
+    within(menu).queryByTestId("account-menu-subscriptions"),
+  ).not.toBeInTheDocument();
+});
+
+test("Review personal subscription usage in the account menu", async () => {
+  mockBrowserTimeZone("America/New_York");
+  mockNow(new Date("2030-01-01T00:48:00.000Z"), context.signal);
+  mockAdminAccountSidebar();
+  context.mocks.data.personalModelProviders([
+    connectedPersonalCodexProvider({
+      subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:48:00.000Z",
+    }),
+    connectedPersonalClaudeCodeProvider(),
+  ]);
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+    featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
+  });
+
+  const menu = await openAccountMenu();
+  const panel = await within(menu).findByTestId("account-menu-subscriptions");
+
+  expect(within(panel).queryByText("Subscriptions")).not.toBeInTheDocument();
+  expect(
+    within(panel).queryByLabelText("Refresh subscriptions"),
+  ).not.toBeInTheDocument();
+  expect(
+    within(panel).getByRole("heading", { name: "Codex" }),
+  ).toBeInTheDocument();
+  expect(
+    within(panel).getByRole("heading", { name: "Claude Code" }),
+  ).toBeInTheDocument();
+  expect(within(panel).getAllByText("5h")).toHaveLength(2);
+  expect(within(panel).getAllByText("week")).toHaveLength(2);
+  expect(within(panel).getByText("82%")).toBeInTheDocument();
+  expect(within(panel).getByText("55%")).toBeInTheDocument();
+  expect(within(panel).getByText("88%")).toBeInTheDocument();
+  expect(within(panel).getByText("76%")).toBeInTheDocument();
+  const resetCredits = within(panel).getByText("2 resets left · expires in 3d");
+  expect(resetCredits).toBeInTheDocument();
+  expect(within(panel).queryByText(/^resets /)).not.toBeInTheDocument();
+  expect(
+    within(panel).queryByText(/codex\.user@example\.com/),
+  ).not.toBeInTheDocument();
+
+  const codexFiveHour = within(panel).getByRole("progressbar", {
+    name: "Codex 5h remaining",
+  });
+  expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
+  fireEvent.focus(codexFiveHour);
+
+  await waitFor(() => {
+    expectVisibleText("Resets in 4h 12m");
+    expectVisibleText(
+      formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
+    );
+  });
+  fireEvent.focus(resetCredits);
+  await waitFor(() => {
+    expectVisibleText(
+      `Soonest reset expires ${formatResetInTimeZone(
+        "2030-01-04T00:48:00.000Z",
+        "America/New_York",
+      )}`,
+    );
+  });
+
+  const credits = within(menu).getByText("12,500 credits");
+  const codex = within(panel).getByRole("heading", { name: "Codex" });
+  expect(
+    credits.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+test("Reset Codex usage from the account menu", async () => {
+  mockAdminAccountSidebar();
+  context.mocks.data.personalModelProviders([connectedPersonalCodexProvider()]);
+  context.mocks.api(
+    personalModelProvidersByTypeContract.resetSubscriptionUsage,
+    ({ respond }) => {
+      const provider = connectedPersonalCodexProvider({
+        subscriptionResetCredits: 1,
       });
-    });
+      context.mocks.data.personalModelProviders([provider]);
+      return respond(200, { outcome: "reset" });
+    },
+  );
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-    });
-
-    const menu = await openAccountMenu();
-    const creditItem = await within(menu).findByTestId(
-      "account-menu-credit-balance",
-    );
-    expect(within(creditItem).getByText("32,900 credits")).toBeInTheDocument();
-    expect(within(menu).queryByText("12,500 credits")).toBeNull();
-    expect(within(menu).queryByText("20,400 credits")).toBeNull();
+    },
+    featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
   });
 
-  it("opens credit balance and export data from the account menu", async () => {
-    mockAdminAccountSidebar();
-    const openMock = context.mocks.browser.open(null);
+  let menu = await openAccountMenu();
+  let panel = await within(menu).findByTestId("account-menu-subscriptions");
+  expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
+  click(within(panel).getByText("Reset"));
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
+  const confirmDialog = await screen.findByRole("dialog", {
+    name: "Reset Codex usage?",
+  });
+  expect(within(confirmDialog).getByText(/2 resets left/)).toBeInTheDocument();
+  const resetButton = queryAllByRoleFast("button", confirmDialog).find(
+    (button) => {
+      return button.textContent === "Reset usage";
+    },
+  );
+  if (!resetButton) {
+    throw new Error("Reset usage button not found");
+  }
+  click(resetButton);
 
-    let menu = await openAccountMenu();
-
-    await waitFor(() => {
-      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
-      expect(within(menu).getByText("Export data")).toBeInTheDocument();
-    });
-
-    click(within(menu).getByText("Export data"));
-
-    await waitFor(() => {
-      expect(
-        openMock.calls.some((call) => {
-          return call.url?.endsWith("/export") ?? false;
-        }),
-      ).toBeTruthy();
-    });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("12,500 credits"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Settings" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Credit balance" }),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("credit-balance-info")).toBeInTheDocument();
-      expect(screen.getByText("12,500")).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Reset Codex usage?" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("refreshes the org credit balance when the menu opens", async () => {
-    mockAdminAccountSidebar();
+  menu = await openAccountMenu();
+  panel = await within(menu).findByTestId("account-menu-subscriptions");
+  expect(within(panel).getByText("1 reset left")).toBeInTheDocument();
+});
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    let menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
-    });
-
-    // The org spends credits elsewhere; the next menu open must reflect it.
-    mockAdminBillingStatus(500);
-
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-    });
-    expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
+test("Reuse recent subscription usage, then refresh without blanking it", async () => {
+  const openedAt = new Date("2030-01-01T00:48:00.000Z").getTime();
+  mockNow(openedAt, context.signal);
+  mockAdminAccountSidebar();
+  let modelProviders: ModelProviderResponse[] = [
+    connectedPersonalCodexProvider(),
+    connectedPersonalClaudeCodeProvider(),
+  ];
+  let requestCount = 0;
+  context.mocks.api(personalModelProvidersMainContract.list, ({ respond }) => {
+    requestCount += 1;
+    return respond(200, { modelProviders });
   });
 
-  it("refreshes visible billing data after returning to the foreground", async () => {
-    mockAdminAccountSidebar();
-    mockAdminBillingStatus(12_500);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-    });
-
-    let menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
-    });
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    mockAdminBillingStatus(500);
-    window.dispatchEvent(new Event("focus"));
-    menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-    });
-    expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-    mockAdminBillingStatus(250);
-
-    menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("250 credits")).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-    mockAdminBillingStatus(125, {
-      failFirstRequest: true,
-    });
-
-    window.dispatchEvent(new Event("focus"));
-    menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("125 credits")).toBeInTheDocument();
-    });
+    },
+    featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
   });
 
-  it("joins a foreground billing refresh that already started", async () => {
-    let billingRequests = 0;
-    mockAdminAccountSidebar();
-    mockAdminBillingStatus(12_500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
+  let menu = await openAccountMenu();
+  let panel = await within(menu).findByTestId("account-menu-subscriptions");
+  expect(within(panel).getByText("82%")).toBeInTheDocument();
+  const requestsAfterFirstOpen = requestCount;
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-      expect(billingRequests).toBeGreaterThan(0);
-    });
-
-    const initialMenu = await openAccountMenu();
-    await waitFor(() => {
-      expect(
-        within(initialMenu).getByText("12,500 credits"),
-      ).toBeInTheDocument();
-    });
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    const catchUpCanFinish = context.mocks.deferred<void>();
-    const holdForegroundCatchUp$ = command(
-      async (_ctx, signal: AbortSignal): Promise<void> => {
-        await catchUpCanFinish.promise;
-        signal.throwIfAborted();
-      },
-    );
-    context.store.set(
-      subscribeRealtimeReadyCatchUp$,
-      holdForegroundCatchUp$,
-      context.signal,
-    );
-
-    mockAdminBillingStatus(500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    billingRequests = 0;
-
-    window.dispatchEvent(new Event("focus"));
-    await waitFor(() => {
-      expect(billingRequests).toBe(1);
-    });
-    const foregroundReady = context.store.get(foregroundReady$);
-    expect(foregroundReady.pending).toBeTruthy();
-
-    const menu = await openAccountMenu();
-    expect(billingRequests).toBe(1);
-
-    catchUpCanFinish.resolve();
-    await foregroundReady.promise;
-    await waitFor(() => {
-      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
-    });
-  });
-
-  it("joins a foreground billing request after the catch-up barrier settles", async () => {
-    let billingRequests = 0;
-    mockAdminAccountSidebar();
-    mockAdminBillingStatus(12_500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-      expect(billingRequests).toBeGreaterThan(0);
-    });
-
-    const initialMenu = await openAccountMenu();
-    await waitFor(() => {
-      expect(
-        within(initialMenu).getByText("12,500 credits"),
-      ).toBeInTheDocument();
-    });
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    const foregroundRequestStarted = context.mocks.deferred<void>();
-    const foregroundResponseReady = context.mocks.deferred<void>();
-    mockAdminBillingStatus(500, {
-      firstRequestGate: {
-        onStarted: () => {
-          foregroundRequestStarted.resolve();
+  modelProviders = [
+    connectedPersonalCodexProvider({
+      subscriptionUsage: {
+        fiveHour: {
+          usedPercent: 36,
+          remainingPercent: 64,
+          resetAt: "2030-01-01T05:00:00.000Z",
+          windowSeconds: 18_000,
         },
-        waitUntil: foregroundResponseReady.promise,
+        weekly: {
+          usedPercent: 70,
+          remainingPercent: 30,
+          resetAt: "2030-01-07T00:00:00.000Z",
+          windowSeconds: 604_800,
+        },
       },
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
-    billingRequests = 0;
+    }),
+    connectedPersonalClaudeCodeProvider(),
+  ];
 
-    window.dispatchEvent(new Event("focus"));
-    await foregroundRequestStarted.promise;
-    await waitFor(() => {
-      expect(context.store.get(foregroundReady$).pending).toBeFalsy();
-    });
-
-    const menu = await openAccountMenu();
-    foregroundResponseReady.resolve();
-    await waitFor(() => {
-      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
-    });
+  expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("defers minimal-layout billing refresh until the account menu opens", async () => {
-    let billingRequests = 0;
-    mockAdminAccountSidebar();
-    mockAdminBillingStatus(500, {
-      onRequest: () => {
-        billingRequests += 1;
-      },
-    });
+  mockNow(openedAt + 59_999, context.signal);
+  menu = await openAccountMenu();
+  panel = await within(menu).findByTestId("account-menu-subscriptions");
+  expect(requestCount).toBe(requestsAfterFirstOpen);
+  expect(within(panel).getByText("82%")).toBeInTheDocument();
+  expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
 
-    detachedSetupPage({
-      context,
-      path: `/connectors/github/connect?agentId=${AGENT_ID}`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    await screen.findByText("Zero needs GitHub to proceed");
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-    });
-    expect(billingRequests).toBe(0);
-
-    window.dispatchEvent(new Event("focus"));
-    const foregroundReady = context.store.get(foregroundReady$);
-    await foregroundReady.promise;
-    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
-    expect(billingRequests).toBe(0);
-
-    const menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
-      expect(billingRequests).toBe(1);
-    });
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("hides account menu subscriptions when the feature switch is disabled", async () => {
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-      connectedPersonalClaudeCodeProvider(),
-    ]);
+  mockNow(openedAt + 60_000, context.signal);
+  menu = await openAccountMenu();
+  panel = await within(menu).findByTestId("account-menu-subscriptions");
+  await waitFor(() => {
+    expect(requestCount).toBe(requestsAfterFirstOpen + 1);
+    expect(within(panel).getByText("64%")).toBeInTheDocument();
+    expect(within(panel).getByText("30%")).toBeInTheDocument();
+  });
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => {
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 
-    const menu = await openAccountMenu();
+  const refreshStarted = context.mocks.deferred<void>();
+  const refreshReady = context.mocks.deferred<void>();
+  context.mocks.api(
+    personalModelProvidersMainContract.list,
+    async ({ respond }) => {
+      refreshStarted.resolve();
+      await refreshReady.promise;
+      return respond(200, { modelProviders: [] });
+    },
+  );
 
-    await waitFor(() => {
-      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
-    });
+  mockNow(openedAt + 120_000, context.signal);
+  menu = await openAccountMenu();
+  panel = await within(menu).findByTestId("account-menu-subscriptions");
+  await refreshStarted.promise;
+  expect(within(panel).getByText("64%")).toBeInTheDocument();
+  expect(within(panel).getByText("30%")).toBeInTheDocument();
+
+  refreshReady.resolve();
+  await waitFor(() => {
     expect(
       within(menu).queryByTestId("account-menu-subscriptions"),
     ).not.toBeInTheDocument();
   });
+});
 
-  it("shows subscription usage grouped below credits in the account menu", async () => {
-    mockBrowserTimeZone("America/New_York");
-    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-      connectedPersonalClaudeCodeProvider(),
-    ]);
+test("Open personal Settings and manage account security", async () => {
+  prepareDefaultAgent();
+  context.mocks.data.userPreferences({
+    captureNetworkBodiesRemaining: 0,
+  });
 
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
+    },
+    featureSwitches: {
+      [FeatureSwitchKey.MorningBrief]: true,
+      [FeatureSwitchKey.OkouDebug]: true,
+    },
+  });
 
-    const menu = await openAccountMenu();
-    const panel = await within(menu).findByTestId("account-menu-subscriptions");
+  const menu = await openAccountMenu();
+  expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
+  expect(
+    within(menu).getByText("alex.rivera@example.test"),
+  ).toBeInTheDocument();
 
-    expect(within(panel).queryByText("Subscriptions")).not.toBeInTheDocument();
+  click(within(menu).getByText("Settings"));
+
+  await waitFor(() => {
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    expect(dialog).toBeInTheDocument();
     expect(
-      within(panel).queryByLabelText("Refresh subscriptions"),
+      screen.getByRole("heading", { name: "Preference" }),
+    ).toBeInTheDocument();
+    // Scoped to the dialog: the sidebar account row also carries the name.
+    expect(within(dialog).getByText("Account & Security")).toBeInTheDocument();
+    expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("alex.rivera@example.test"),
+    ).toBeInTheDocument();
+    const morningBrief = within(dialog).getByTestId("morning-brief-preference");
+    expect(morningBrief.previousElementSibling).toContainElement(
+      within(dialog).getByText("Time zone"),
+    );
+    expect(within(dialog).queryByText("Send now")).toBeNull();
+  });
+
+  const openedSettingsDialog = screen.getByRole("dialog", {
+    name: "Settings",
+  });
+  await waitFor(() => {
+    const activeElement = document.activeElement;
+    expect(openedSettingsDialog).not.toHaveFocus();
+    expect(activeElement).toBeInstanceOf(HTMLElement);
+    expect(openedSettingsDialog).toContainElement(activeElement as HTMLElement);
+  });
+
+  const userProfileLink = linkByText("Manage");
+  expect(userProfileLink).toHaveAttribute(
+    "href",
+    "https://accounts.example.test/user",
+  );
+  expect(userProfileLink).toHaveAttribute("target", "_blank");
+  expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
+});
+
+test("Open personal Settings and manage account security from the production satellite", async () => {
+  prepareDefaultAgent();
+  context.mocks.data.userPreferences({
+    captureNetworkBodiesRemaining: 0,
+  });
+
+  await setupPage({
+    context,
+    host: "app.okou.ai",
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const satelliteMenu = await openAccountMenu();
+  expect(within(satelliteMenu).getByText("Alex Rivera")).toBeInTheDocument();
+  expect(
+    within(satelliteMenu).getByText("alex.rivera@example.test"),
+  ).toBeInTheDocument();
+
+  click(within(satelliteMenu).getByText("Settings"));
+  const settingsDialog = await screen.findByRole("dialog", {
+    name: "Settings",
+  });
+  expect(
+    screen.getByRole("heading", { name: "Preference" }),
+  ).toBeInTheDocument();
+  expect(
+    within(settingsDialog).getByText("Account & Security"),
+  ).toBeInTheDocument();
+  expect(within(settingsDialog).getByText("Alex Rivera")).toBeInTheDocument();
+  expect(
+    within(settingsDialog).getByText("alex.rivera@example.test"),
+  ).toBeInTheDocument();
+
+  await waitFor(() => {
+    const activeElement = document.activeElement;
+    expect(settingsDialog).not.toHaveFocus();
+    expect(activeElement).toBeInstanceOf(HTMLElement);
+    expect(settingsDialog).toContainElement(activeElement as HTMLElement);
+  });
+
+  const satelliteProfileLink = linkByText("Manage");
+  expect(satelliteProfileLink).toHaveAttribute(
+    "href",
+    "https://accounts.vm0.ai/user",
+  );
+  expect(satelliteProfileLink).toHaveAttribute("target", "_blank");
+  expect(satelliteProfileLink).toHaveAttribute("rel", "noreferrer");
+});
+
+test("Toggle network-body capture in Debug settings", async () => {
+  prepareDefaultAgent();
+  context.mocks.data.userPreferences({
+    captureNetworkBodiesRemaining: 0,
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+
+  const menu = await openAccountMenu();
+  expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
+  expect(
+    within(menu).getByText("alex.rivera@example.test"),
+  ).toBeInTheDocument();
+
+  click(within(menu).getByText("Settings"));
+
+  await waitFor(() => {
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    expect(dialog).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Preference" }),
+    ).toBeInTheDocument();
+    // Scoped to the dialog: the sidebar account row also carries the name.
+    expect(within(dialog).getByText("Account & Security")).toBeInTheDocument();
+    expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("alex.rivera@example.test"),
+    ).toBeInTheDocument();
+  });
+
+  click(buttonByText("Debug"));
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Debug" })).toBeInTheDocument();
+    expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
+  });
+
+  click(screen.getByRole("switch"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Enabled for the next 3 runs")).toBeInTheDocument();
+  });
+
+  click(screen.getByRole("switch"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
+  });
+});
+
+test("Hide Debug settings without Debug access", async () => {
+  prepareDefaultAgent();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat?settings=debug`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const dialog = await screen.findByRole("dialog", { name: "Settings" });
+  expect(
+    within(dialog).getByRole("heading", { name: "Preference" }),
+  ).toBeInTheDocument();
+  expect(within(dialog).queryByText("Debug")).not.toBeInTheDocument();
+});
+
+test("Restore page interaction after closing Settings", async () => {
+  prepareDefaultAgent();
+  const user = userEvent.setup({ delay: null });
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const menu = await openAccountMenu();
+  click(within(menu).getByText("Settings"));
+
+  const dialog = await screen.findByRole("dialog", { name: "Settings" });
+  click(within(dialog).getByLabelText("Close"));
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Settings" }),
     ).not.toBeInTheDocument();
-    expect(
-      within(panel).getByRole("heading", { name: "Codex" }),
-    ).toBeInTheDocument();
-    expect(
-      within(panel).getByRole("heading", { name: "Claude Code" }),
-    ).toBeInTheDocument();
-    expect(within(panel).getAllByText("5h")).toHaveLength(2);
-    expect(within(panel).getAllByText("week")).toHaveLength(2);
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-    expect(within(panel).getByText("55%")).toBeInTheDocument();
-    expect(within(panel).getByText("88%")).toBeInTheDocument();
-    expect(within(panel).getByText("76%")).toBeInTheDocument();
-    expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
-    expect(within(panel).queryByText(/^resets /)).not.toBeInTheDocument();
-    expect(
-      within(panel).queryByText(/codex\.user@example\.com/),
-    ).not.toBeInTheDocument();
-
-    const codexFiveHour = within(panel).getByRole("progressbar", {
-      name: "Codex 5h remaining",
-    });
-    expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
-    fireEvent.focus(codexFiveHour);
-
-    await waitFor(() => {
-      expectVisibleText("Resets in 4h 12m");
-      expectVisibleText(
-        formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
-      );
-    });
-
-    const credits = within(menu).getByText("12,500 credits");
-    const codex = within(panel).getByRole("heading", { name: "Codex" });
-    expect(
-      credits.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("shows when the soonest Codex reset expires", async () => {
-    mockAdminAccountSidebar();
-    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider({
-        subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:00:00.000Z",
-      }),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    const menu = await openAccountMenu();
-    const panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(
-      within(panel).getByText("2 resets left · expires in 3d"),
-    ).toBeInTheDocument();
-  });
-
-  it("omits the expiry when no Codex reset is left", async () => {
-    mockAdminAccountSidebar();
-    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider({
-        subscriptionResetCredits: 0,
-        subscriptionResetCreditsNextExpiresAt: "2030-01-04T00:00:00.000Z",
-      }),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    const menu = await openAccountMenu();
-    const panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(within(panel).getByText("0 resets left")).toBeInTheDocument();
-    expect(within(panel).queryByText(/expires/)).not.toBeInTheDocument();
-  });
-
-  it("resets Codex usage from the account menu", async () => {
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-    context.mocks.api(
-      personalModelProvidersByTypeContract.resetSubscriptionUsage,
-      ({ respond }) => {
-        const provider = connectedPersonalCodexProvider({
-          subscriptionResetCredits: 1,
-        });
-        context.mocks.data.personalModelProviders([provider]);
-        return respond(200, { outcome: "reset" });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    let menu = await openAccountMenu();
-    let panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
-    click(within(panel).getByText("Reset"));
-
-    const confirmDialog = await screen.findByRole("dialog", {
-      name: "Reset Codex usage?",
-    });
-    expect(
-      within(confirmDialog).getByText(/2 resets left/),
-    ).toBeInTheDocument();
-    const resetButton = queryAllByRoleFast("button", confirmDialog).find(
-      (button) => {
-        return button.textContent === "Reset usage";
-      },
-    );
-    if (!resetButton) {
-      throw new Error("Reset usage button not found");
-    }
-    click(resetButton);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Reset Codex usage?" }),
-      ).not.toBeInTheDocument();
-    });
-
-    menu = await openAccountMenu();
-    panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(within(panel).getByText("1 reset left")).toBeInTheDocument();
-  });
-
-  it("refreshes account menu subscriptions once the last read goes stale", async () => {
-    mockAdminAccountSidebar();
-    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
-
-    let providers = [
-      connectedPersonalCodexProvider(),
-      connectedPersonalClaudeCodeProvider(),
-    ];
-    let listCalls = 0;
-    context.mocks.api(
-      personalModelProvidersMainContract.list,
-      ({ respond }) => {
-        listCalls += 1;
-        return respond(200, { modelProviders: providers });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    let menu = await openAccountMenu();
-    let panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-    const callsAfterFirstOpen = listCalls;
-
-    providers = [
-      connectedPersonalCodexProvider({
-        subscriptionUsage: {
-          fiveHour: {
-            usedPercent: 36,
-            remainingPercent: 64,
-            resetAt: "2030-01-01T05:00:00.000Z",
-            windowSeconds: 18_000,
-          },
-          weekly: {
-            usedPercent: 70,
-            remainingPercent: 30,
-            resetAt: "2030-01-07T00:00:00.000Z",
-            windowSeconds: 604_800,
-          },
-        },
-      }),
-      connectedPersonalClaudeCodeProvider(),
-    ];
-
-    await closeAccountMenu();
-    menu = await openAccountMenu();
-    panel = await within(menu).findByTestId("account-menu-subscriptions");
-
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-    expect(within(panel).queryByText("64%")).not.toBeInTheDocument();
-    expect(listCalls).toBe(callsAfterFirstOpen);
-
-    mockNow(context.signal, new Date("2030-01-01T00:01:01.000Z"));
-    await closeAccountMenu();
-    menu = await openAccountMenu();
-    panel = await within(menu).findByTestId("account-menu-subscriptions");
-
-    await waitFor(() => {
-      expect(within(panel).getByText("64%")).toBeInTheDocument();
-      expect(within(panel).getByText("30%")).toBeInTheDocument();
-    });
-    expect(listCalls).toBeGreaterThan(callsAfterFirstOpen);
-  });
-
-  it("keeps loaded subscription usage visible while a menu refresh is pending", async () => {
-    mockAdminAccountSidebar();
-    mockNow(context.signal, new Date("2030-01-01T00:00:00.000Z"));
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    let menu = await openAccountMenu();
-    let panel = await within(menu).findByTestId("account-menu-subscriptions");
-    expect(
-      within(panel).getByRole("heading", { name: "Codex" }),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-    expect(
-      within(panel).queryByRole("heading", { name: "Claude Code" }),
-    ).not.toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    const refreshReady = context.mocks.deferred<void>();
-    let refreshRequested = false;
-    context.mocks.api(
-      personalModelProvidersMainContract.list,
-      async ({ respond }) => {
-        refreshRequested = true;
-        await refreshReady.promise;
-        return respond(200, { modelProviders: [] });
-      },
-    );
-
-    mockNow(context.signal, new Date("2030-01-01T00:01:01.000Z"));
-    menu = await openAccountMenu();
-    panel = await within(menu).findByTestId("account-menu-subscriptions");
-
-    await waitFor(() => {
-      expect(refreshRequested).toBeTruthy();
-    });
-    expect(
-      within(panel).getByRole("heading", { name: "Codex" }),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText("82%")).toBeInTheDocument();
-    expect(
-      within(panel).queryByRole("heading", { name: "Claude Code" }),
-    ).not.toBeInTheDocument();
-
-    refreshReady.resolve();
-
-    await waitFor(() => {
-      expect(
-        within(menu).queryByTestId("account-menu-subscriptions"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("links to the hosted user profile in a new tab and changes debug capture", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.userPreferences({
-      captureNetworkBodiesRemaining: 0,
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: {
-        [FeatureSwitchKey.OkouDebug]: true,
-        [FeatureSwitchKey.MorningBrief]: true,
-      },
-    });
-
-    const menu = await openAccountMenu();
-    expect(within(menu).getByText("Alex Rivera")).toBeInTheDocument();
-    expect(
-      within(menu).getByText("alex.rivera@example.test"),
-    ).toBeInTheDocument();
-
-    click(within(menu).getByText("Settings"));
-
-    await waitFor(() => {
-      const dialog = screen.getByRole("dialog", { name: "Settings" });
-      expect(dialog).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: "Preference" }),
-      ).toBeInTheDocument();
-      // Scoped to the dialog: the sidebar account row also carries the name.
-      expect(
-        within(dialog).getByText("Account & Security"),
-      ).toBeInTheDocument();
-      expect(within(dialog).getByText("Alex Rivera")).toBeInTheDocument();
-      expect(
-        within(dialog).getByText("alex.rivera@example.test"),
-      ).toBeInTheDocument();
-      const morningBrief = within(dialog).getByTestId(
-        "morning-brief-preference",
-      );
-      expect(morningBrief.previousElementSibling).toContainElement(
-        within(dialog).getByText("Time zone"),
-      );
-      expect(within(dialog).queryByText("Send now")).not.toBeInTheDocument();
-    });
-
-    const openedSettingsDialog = screen.getByRole("dialog", {
-      name: "Settings",
-    });
-    await waitFor(() => {
-      const activeElement = document.activeElement;
-      expect(openedSettingsDialog).not.toHaveFocus();
-      expect(activeElement).toBeInstanceOf(HTMLElement);
-      expect(openedSettingsDialog).toContainElement(
-        activeElement as HTMLElement,
-      );
-    });
-
-    const userProfileLink = linkByText("Manage");
-    expect(userProfileLink).toHaveAttribute(
-      "href",
-      "https://accounts.example.test/user",
-    );
-    expect(userProfileLink).toHaveAttribute("target", "_blank");
-    expect(userProfileLink).toHaveAttribute("rel", "noreferrer");
-    expect(mockedClerk.buildUserProfileUrl).toHaveBeenCalledWith();
-    expect(mockedClerk.buildUrlWithAuth).toHaveBeenCalledWith(
-      "https://accounts.example.test/user",
-    );
-
-    click(buttonByText("Debug"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Debug" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
-      expect(screen.getByText("Disabled")).toBeInTheDocument();
-    });
-
-    click(screen.getByRole("switch"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Enabled for the next 3 runs"),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByRole("switch"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Disabled")).toBeInTheDocument();
-    });
-
-    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
-    click(buttonByLabel("Close", settingsDialog));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Settings" }),
-      ).not.toBeInTheDocument();
-      expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
-    });
-    expect(document.body.style.pointerEvents).not.toBe("none");
-
-    const reopenedMenu = await openAccountMenu();
-    expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
-  });
-
-  it("links the production satellite to the primary hosted user profile", async () => {
-    context.mocks.browser.url("https://app.okou.ai/");
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    const menu = await openAccountMenu();
-    click(within(menu).getByText("Settings"));
-
-    await screen.findByRole("dialog", { name: "Settings" });
-    expect(linkByText("Manage")).toHaveAttribute(
-      "href",
-      "https://accounts.vm0.ai/user",
-    );
-  });
-
-  it("keeps the VM0 satellite on the existing hosted profile after cutover", async () => {
-    Reflect.set(window, "__vm0ClerkBootstrap", {
-      productionPrimaryAppDomain: "app.okou.ai",
-    });
-    try {
-      context.mocks.browser.url("https://app.vm0.ai/");
-      prepareDefaultAgent();
-
-      detachedSetupPage({
-        context,
-        path: `/agents/${AGENT_ID}/chat`,
-        user: {
-          id: "test-user-123",
-          fullName: "Alex Rivera",
-          email: "alex.rivera@example.test",
-        },
-      });
-
-      const menu = await openAccountMenu();
-      click(within(menu).getByText("Settings"));
-
-      await screen.findByRole("dialog", { name: "Settings" });
-      expect(linkByText("Manage")).toHaveAttribute(
-        "href",
-        "https://accounts.vm0.ai/user",
-      );
-    } finally {
-      Reflect.deleteProperty(window, "__vm0ClerkBootstrap");
-    }
-  });
-
-  it("hides debug settings when OkouDebug is disabled", async () => {
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat?settings=debug`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    const dialog = await screen.findByRole("dialog", { name: "Settings" });
-    expect(
-      within(dialog).getByRole("heading", { name: "Preference" }),
-    ).toBeInTheDocument();
-    expect(within(dialog).queryByText("Debug")).not.toBeInTheDocument();
-  });
-
-  it("restores page interactivity after closing settings", async () => {
-    prepareDefaultAgent();
-    const user = userEvent.setup({ delay: null });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-    });
-
-    const menu = await openAccountMenu();
-    click(within(menu).getByText("Settings"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Settings" });
-    click(within(dialog).getByLabelText("Close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Settings" }),
-      ).not.toBeInTheDocument();
-    });
-
-    expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
-    expect(document.body.style.pointerEvents).not.toBe("none");
-
-    const chatList = await screen.findByTestId("chat-list-column");
-    await user.click(within(chatList).getByLabelText("Open chat list menu"));
-    await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
-  });
-
-  it("shows account switching, add-account, and sign-out actions", async () => {
-    prepareDefaultAgent();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
+  expect(document.body.style.pointerEvents).not.toBe("none");
+
+  const chatList = await screen.findByTestId("chat-list-column");
+  await user.click(within(chatList).getByLabelText("Open chat list menu"));
+  await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
+});
+
+test("Switch to another signed-in account", async () => {
+  prepareDefaultAgent();
+
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
@@ -1519,321 +1272,254 @@ describe("zero sidebar account menu", () => {
           },
         ],
       },
-    });
+    },
+  });
 
-    let menu = await openAccountMenu();
-    click(within(menu).getByText("Switch account"));
+  const menu = await openAccountMenu();
+  click(within(menu).getByText("Switch account"));
 
-    await waitFor(() => {
-      expect(screen.getByText("Jamie Chen")).toBeInTheDocument();
-      expect(screen.getByText("jamie.chen@example.test")).toBeInTheDocument();
-      expect(screen.getByText("Add account")).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Jamie Chen")).toBeInTheDocument();
+    expect(screen.getByText("jamie.chen@example.test")).toBeInTheDocument();
+  });
 
-    click(screen.getByText("Add account"));
-    const addAccountDialog = await screen.findByTestId(
-      "auth-v2-add-account-dialog",
+  click(await screen.findByText("Jamie Chen"));
+
+  await waitFor(() => {
+    expect(mockedClerk.setActive).toHaveBeenCalledWith(
+      expect.objectContaining({ session: "session-jamie" }),
     );
-    await expect(
-      within(addAccountDialog).findByLabelText("Email address"),
-    ).resolves.toBeVisible();
-    click(buttonByLabel("Close", addAccountDialog));
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("auth-v2-add-account-dialog"),
-      ).not.toBeInTheDocument();
-    });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("Switch account"));
-    click(await screen.findByText("Jamie Chen"));
-
-    await waitFor(() => {
-      expect(mockedClerk.setActive).toHaveBeenCalledWith(
-        expect.objectContaining({ session: "session-jamie" }),
-      );
-    });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("Sign out"));
-
-    await waitFor(() => {
-      expect(mockedClerk.signOut).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: "test-session-id",
-          redirectUrl: expect.stringMatching(/\/sign-in\?.*redirect_url=/),
-        }),
-      );
-    });
   });
+});
 
-  it("opens the custom v2 add-account dialog at identifier entry", async () => {
-    setupAddAccountPage();
-    const originalUrl = window.location.href;
-    const dialog = await openAuthV2AddAccountDialog();
-    expect(dialog).toHaveAttribute("role", "dialog");
-    expect(within(dialog).getByTestId("app-auth-v2")).toBeVisible();
-    await expect(
-      within(dialog).findByLabelText("Email address"),
-    ).resolves.toBeVisible();
-    expect(window.location.href).toBe(originalUrl);
+test("Open Add account without leaving the current page", async () => {
+  await setupAddAccountPage();
+  const originalUrl = window.location.href;
+  const dialog = await openAuthV2AddAccountDialog();
+  expect(dialog).toHaveAttribute("role", "dialog");
+  expect(within(dialog).getByTestId("app-auth-v2")).toBeVisible();
+  await expect(
+    within(dialog).findByLabelText("Email address"),
+  ).resolves.toBeVisible();
+  expect(window.location.href).toBe(originalUrl);
 
-    click(buttonByLabel("Close", dialog));
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("auth-v2-add-account-dialog"),
-      ).not.toBeInTheDocument();
-    });
-    expect(window.location.href).toBe(originalUrl);
+  click(buttonByLabel("Close", dialog));
+  await waitFor(() => {
+    expect(
+      screen.queryByTestId("auth-v2-add-account-dialog"),
+    ).not.toBeInTheDocument();
   });
+  expect(window.location.href).toBe(originalUrl);
+});
 
-  it("keeps add-account organization continuation and restart in the dialog", async () => {
-    setupAddAccountPage();
-    const originalUrl = window.location.href;
-    const dialog = await openAuthV2AddAccountDialog();
-    const organizationMembership = {
-      id: "membership_target",
-      organization: {
-        id: "org_target",
-        imageUrl: null,
-        name: "Target Organization",
+test("Continue or restart organization selection while adding an account", async () => {
+  await setupAddAccountPage();
+  const originalUrl = window.location.href;
+  const dialog = await openAuthV2AddAccountDialog();
+  const organizationMembership = {
+    id: "membership_target",
+    organization: {
+      id: "org_target",
+      imageUrl: null,
+      name: "Target Organization",
+    },
+  };
+
+  mockedClerk.setActive.mockImplementation(async (params) => {
+    await params.navigate?.({
+      decorateUrl: (url) => {
+        return url;
       },
-    };
-
-    mockedClerk.setActive.mockImplementation(async (params) => {
-      await params.navigate?.({
-        decorateUrl: (url) => {
-          return url;
-        },
-        session: {
-          currentTask: { key: "choose-organization" },
-          id: "session_pending",
-          status: "pending",
-          user: { organizationMemberships: [organizationMembership] },
-        },
-      });
+      session: {
+        currentTask: { key: "choose-organization" },
+        id: "session_pending",
+        status: "pending",
+        user: { organizationMemberships: [organizationMembership] },
+      },
     });
+  });
 
+  mockSignInResource({
+    status: "needs_first_factor",
+    supportedFirstFactors: [{ strategy: "password" }],
+  });
+  mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
+  const identifier = await within(dialog).findByLabelText("Email address");
+  fireEvent.change(identifier, {
+    target: { value: "second.account@example.test" },
+  });
+  fireEvent.submit(containingForm(identifier));
+
+  const password = await within(dialog).findByLabelText("Password");
+  mockSignInResource({
+    createdSessionId: "session_pending",
+    status: "complete",
+  });
+  mockedClerk.signInAttemptFirstFactor.mockResolvedValue(
+    mockedClerk.client.signIn,
+  );
+  fireEvent.change(password, { target: { value: "correct-password" } });
+  fireEvent.submit(containingForm(password));
+
+  await expect(
+    within(dialog).findByRole("heading", {
+      name: "Choose an organization",
+    }),
+  ).resolves.toBeVisible();
+  expect(window.location.href).toBe(originalUrl);
+
+  await waitFor(() => {
+    expect(
+      buttonByLabel("Continue with Target Organization", dialog),
+    ).toBeVisible();
+  });
+  click(buttonByLabel("Continue with Target Organization", dialog));
+  await waitFor(() => {
+    expect(buttonByText("Start over", dialog)).toBeVisible();
+  });
+  expect(window.location.href).toBe(originalUrl);
+
+  click(buttonByText("Start over", dialog));
+  await expect(
+    within(dialog).findByLabelText("Email address"),
+  ).resolves.toBeVisible();
+  expect(mockedClerk.signOut).toHaveBeenCalledWith({
+    sessionId: "session_pending",
+  });
+  expect(window.location.href).toBe(originalUrl);
+});
+
+test("Cancel an unfinished Add account sign-in", async () => {
+  await setupAddAccountPage();
+  const originalUrl = window.location.href;
+  const dialog = await openAuthV2AddAccountDialog();
+
+  mockSignInResource({
+    status: "needs_first_factor",
+    supportedFirstFactors: [{ strategy: "password" }],
+  });
+  mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
+  const identifier = await within(dialog).findByLabelText("Email address");
+  fireEvent.change(identifier, {
+    target: { value: "second.account@example.test" },
+  });
+  fireEvent.submit(containingForm(identifier));
+
+  const attempt = createDeferredPromise<typeof mockedClerk.client.signIn>(
+    context.signal,
+  );
+  mockedClerk.signInAttemptFirstFactor.mockReturnValue(attempt.promise);
+  const password = await within(dialog).findByLabelText("Password");
+  fireEvent.change(password, { target: { value: "correct-password" } });
+  fireEvent.submit(containingForm(password));
+  await waitFor(() => {
+    expect(mockedClerk.signInAttemptFirstFactor).toHaveBeenCalledTimes(1);
+  });
+
+  click(buttonByLabel("Close", dialog));
+  await waitFor(() => {
+    expect(
+      screen.queryByTestId("auth-v2-add-account-dialog"),
+    ).not.toBeInTheDocument();
+  });
+
+  await act(async () => {
     mockSignInResource({
-      status: "needs_first_factor",
-      supportedFirstFactors: [{ strategy: "password" }],
-    });
-    mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
-    const identifier = await within(dialog).findByLabelText("Email address");
-    fireEvent.change(identifier, {
-      target: { value: "second.account@example.test" },
-    });
-    fireEvent.submit(containingForm(identifier));
-
-    const password = await within(dialog).findByLabelText("Password");
-    mockSignInResource({
-      createdSessionId: "session_pending",
+      createdSessionId: "session_after_close",
       status: "complete",
     });
-    mockedClerk.signInAttemptFirstFactor.mockResolvedValue(
-      mockedClerk.client.signIn,
-    );
-    fireEvent.change(password, { target: { value: "correct-password" } });
-    fireEvent.submit(containingForm(password));
+    attempt.resolve(mockedClerk.client.signIn);
+    await attempt.promise;
+  });
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  expect(window.location.href).toBe(originalUrl);
+});
 
-    await expect(
-      within(dialog).findByRole("heading", {
-        name: "Choose an organization",
+test("Sign out from the account menu", async () => {
+  prepareDefaultAgent();
+
+  await setupPage({
+    context,
+    host: "app.okou.ai",
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    },
+  });
+
+  const menu = await openAccountMenu();
+  click(within(menu).getByText("Sign out"));
+
+  await waitFor(() => {
+    expect(mockedClerk.signOut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "test-session-id",
+        redirectUrl: expect.stringMatching(
+          /(?=.*\/sign-in#\/\?)(?=.*redirect_url=)(?=.*__clerk_synced%3Dfalse)/,
+        ),
       }),
-    ).resolves.toBeVisible();
-    expect(window.location.href).toBe(originalUrl);
-
-    await waitFor(() => {
-      expect(
-        buttonByLabel("Continue with Target Organization", dialog),
-      ).toBeVisible();
-    });
-    click(buttonByLabel("Continue with Target Organization", dialog));
-    await waitFor(() => {
-      expect(buttonByText("Start over", dialog)).toBeVisible();
-    });
-    expect(window.location.href).toBe(originalUrl);
-
-    click(buttonByText("Start over", dialog));
-    await expect(
-      within(dialog).findByLabelText("Email address"),
-    ).resolves.toBeVisible();
-    expect(mockedClerk.signOut).toHaveBeenCalledWith({
-      sessionId: "session_pending",
-    });
-    expect(window.location.href).toBe(originalUrl);
-  });
-
-  it("cancels an in-flight add-account attempt when the dialog closes", async () => {
-    setupAddAccountPage();
-    const originalUrl = window.location.href;
-    const dialog = await openAuthV2AddAccountDialog();
-
-    mockSignInResource({
-      status: "needs_first_factor",
-      supportedFirstFactors: [{ strategy: "password" }],
-    });
-    mockedClerk.clientSignInCreate.mockResolvedValue(mockedClerk.client.signIn);
-    const identifier = await within(dialog).findByLabelText("Email address");
-    fireEvent.change(identifier, {
-      target: { value: "second.account@example.test" },
-    });
-    fireEvent.submit(containingForm(identifier));
-
-    const attempt = createDeferredPromise<typeof mockedClerk.client.signIn>(
-      context.signal,
     );
-    mockedClerk.signInAttemptFirstFactor.mockReturnValue(attempt.promise);
-    const password = await within(dialog).findByLabelText("Password");
-    fireEvent.change(password, { target: { value: "correct-password" } });
-    fireEvent.submit(containingForm(password));
-    await waitFor(() => {
-      expect(mockedClerk.signInAttemptFirstFactor).toHaveBeenCalledTimes(1);
-    });
+  });
+});
 
-    click(buttonByLabel("Close", dialog));
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("auth-v2-add-account-dialog"),
-      ).not.toBeInTheDocument();
-    });
+test("Keep an active session open when background auth recovery fails", async () => {
+  mockAdminAccountSidebar();
+  context.mocks.data.personalModelProviders([connectedPersonalCodexProvider()]);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
 
-    await act(async () => {
-      mockSignInResource({
-        createdSessionId: "session_after_close",
-        status: "complete",
-      });
-      attempt.resolve(mockedClerk.client.signIn);
-      await attempt.promise;
+  context.mocks.api(personalModelProvidersMainContract.list, ({ respond }) => {
+    return respond(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Unauthorized",
+      },
     });
-    expect(mockedClerk.setActive).not.toHaveBeenCalled();
-    expect(window.location.href).toBe(originalUrl);
+  });
+  mockedClerk.sessionGetToken.mockImplementation((options) => {
+    return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
   });
 
-  it("preserves satellite session sync after signing out", async () => {
-    prepareDefaultAgent();
-    context.mocks.browser.url("https://app.okou.ai/");
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
         email: "alex.rivera@example.test",
       },
-    });
-
-    const menu = await openAccountMenu();
-    click(within(menu).getByText("Sign out"));
-
-    await waitFor(() => {
-      expect(mockedClerk.signOut).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: "test-session-id",
-          redirectUrl: expect.stringMatching(/__clerk_synced%3Dfalse/),
-        }),
-      );
-    });
+    },
+    featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
   });
 
-  it("keeps an active session open when a browser request returns unauthorized", async () => {
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-
-    let modelProviderRequests = 0;
-    context.mocks.api(
-      personalModelProvidersMainContract.list,
-      ({ respond }) => {
-        modelProviderRequests += 1;
-        return respond(401, {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Unauthorized",
-          },
-        });
-      },
-    );
-    mockedClerk.sessionGetToken.mockImplementation((options) => {
-      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
+  const chatList = await screen.findByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith({
+      skipCache: true,
     });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    await waitFor(() => {
-      expect(modelProviderRequests).toBe(1);
-    });
-    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
+  expect(chatList).toBeInTheDocument();
+  expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
+});
 
-  it("keeps the app open when a background request returns unauthorized", async () => {
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-
-    let modelProviderRequests = 0;
-    context.mocks.api(
-      personalModelProvidersMainContract.list,
-      ({ respond }) => {
-        modelProviderRequests += 1;
-        return respond(401, {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Unauthorized",
-          },
-        });
-      },
-    );
-    mockedClerk.sessionGetToken.mockImplementation((options) => {
-      return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    await waitFor(() => {
-      expect(modelProviderRequests).toBe(1);
-    });
-    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-    expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
+test("Localize sidebar account actions without changing account data", async () => {
+  mockAdminAccountSidebar();
+  context.mocks.data.personalModelProviders([connectedPersonalCodexProvider()]);
+  context.mocks.data.userPreferences({
+    locale: "pt-BR",
+    supportedLocales: ["en-US", "pt-BR"],
   });
+  const openMock = context.mocks.browser.open(null);
 
-  it("localizes account actions without changing account data or routes", async () => {
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-    context.mocks.data.userPreferences({
-      locale: "pt-BR",
-      supportedLocales: ["en-US", "pt-BR"],
-    });
-    const openMock = context.mocks.browser.open(null);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    auth: {
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",
@@ -1861,62 +1547,62 @@ describe("zero sidebar account menu", () => {
           },
         ],
       },
-      featureSwitches: {
-        [FeatureSwitchKey.SidebarSubscriptionUsage]: true,
-      },
-    });
+    },
+    featureSwitches: {
+      [FeatureSwitchKey.SidebarSubscriptionUsage]: true,
+    },
+  });
 
-    let menu = await openAccountMenu();
-    expect(within(menu).getByText("Alex Rivera")).toBeVisible();
-    expect(within(menu).getByText("alex.rivera@example.test")).toBeVisible();
-    expect(within(menu).getByText("Configurações")).toBeVisible();
-    expect(within(menu).getByText("Trocar de conta")).toBeVisible();
-    expect(within(menu).getByText("Exportar dados")).toBeVisible();
-    expect(within(menu).getByText("Sair")).toBeVisible();
-    expect(within(menu).getByText("12.500 créditos")).toBeVisible();
-    const subscriptions = await within(menu).findByTestId(
-      "account-menu-subscriptions",
-    );
+  let menu = await openAccountMenu();
+  expect(within(menu).getByText("Alex Rivera")).toBeVisible();
+  expect(within(menu).getByText("alex.rivera@example.test")).toBeVisible();
+  expect(within(menu).getByText("Configurações")).toBeVisible();
+  expect(within(menu).getByText("Trocar de conta")).toBeVisible();
+  expect(within(menu).getByText("Exportar dados")).toBeVisible();
+  expect(within(menu).getByText("Sair")).toBeVisible();
+  expect(within(menu).getByText("12.500 créditos")).toBeVisible();
+  const subscriptions = await within(menu).findByTestId(
+    "account-menu-subscriptions",
+  );
+  expect(
+    within(subscriptions).getByText("2 redefinições restantes"),
+  ).toBeVisible();
+  expect(
+    within(subscriptions).getByRole("progressbar", {
+      name: "Codex: 5h restante",
+    }),
+  ).toHaveAttribute("aria-valuenow", "82");
+  expect(within(subscriptions).getByText("Redefinir")).toBeInTheDocument();
+
+  click(within(menu).getByText("Exportar dados"));
+  await waitFor(() => {
     expect(
-      within(subscriptions).getByText("2 redefinições restantes"),
-    ).toBeVisible();
-    expect(
-      within(subscriptions).getByRole("progressbar", {
-        name: "Codex: 5h restante",
+      openMock.calls.some((call) => {
+        return call.url?.endsWith("/export") ?? false;
       }),
-    ).toHaveAttribute("aria-valuenow", "82");
-    expect(within(subscriptions).getByText("Redefinir")).toBeInTheDocument();
+    ).toBeTruthy();
+  });
 
-    click(within(menu).getByText("Exportar dados"));
-    await waitFor(() => {
-      expect(
-        openMock.calls.some((call) => {
-          return call.url?.endsWith("/export") ?? false;
-        }),
-      ).toBeTruthy();
+  menu = await openAccountMenu();
+  click(within(menu).getByText("Trocar de conta"));
+  await waitFor(() => {
+    const menuItems = queryAllByRoleFast("menuitem");
+    const switchAccount = menuItems.find((item) => {
+      return (
+        item.textContent?.includes("Jamie Chen") === true &&
+        item.textContent.includes("jamie.chen@example.test")
+      );
     });
-
-    menu = await openAccountMenu();
-    click(within(menu).getByText("Trocar de conta"));
-    await waitFor(() => {
-      const menuItems = queryAllByRoleFast("menuitem");
-      const switchAccount = menuItems.find((item) => {
-        return (
-          item.textContent?.includes("Jamie Chen") === true &&
-          item.textContent.includes("jamie.chen@example.test")
-        );
-      });
-      if (!switchAccount) {
-        throw new Error("Expected the account switch menu item");
-      }
-      expect(within(switchAccount).getByText("Jamie Chen")).toBeVisible();
-      expect(
-        within(switchAccount).getByText("jamie.chen@example.test"),
-      ).toBeVisible();
-      const addAccount = menuItems.find((item) => {
-        return item.textContent === "Adicionar conta";
-      });
-      expect(addAccount).toBeVisible();
+    if (!switchAccount) {
+      throw new Error("Expected the account switch menu item");
+    }
+    expect(within(switchAccount).getByText("Jamie Chen")).toBeVisible();
+    expect(
+      within(switchAccount).getByText("jamie.chen@example.test"),
+    ).toBeVisible();
+    const addAccount = menuItems.find((item) => {
+      return item.textContent === "Adicionar conta";
     });
+    expect(addAccount).toBeVisible();
   });
 });

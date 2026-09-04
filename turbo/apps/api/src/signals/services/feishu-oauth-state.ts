@@ -22,7 +22,7 @@ const feishuOAuthStateSchema = z.object({
   userId: z.string().min(1),
   callbackTarget: z.literal("app").optional(),
   oauthRedirectTarget: z.literal("app").optional(),
-  redirectUri: z.url().optional(),
+  redirectUri: z.url(),
   publicBrand: publicBrandSchema,
   timestamp: z.number().int(),
 });
@@ -41,7 +41,7 @@ function createFeishuOAuthState(args: {
   readonly userId: string;
   readonly callbackTarget?: "app";
   readonly oauthRedirectTarget?: "app";
-  readonly redirectUri?: string;
+  readonly redirectUri: string;
   readonly publicBrand: PublicBrand;
   readonly timestamp?: number;
 }): string {

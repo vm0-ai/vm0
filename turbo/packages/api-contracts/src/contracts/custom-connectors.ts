@@ -8,6 +8,22 @@ const c = initContract();
 
 export const CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS = 2_048;
 
+export const CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES = {
+  AUTHENTICATION_RESPONSE_INVALID: "MCP_OAUTH_AUTHENTICATION_RESPONSE_INVALID",
+  DISCOVERY_INVALID: "MCP_OAUTH_DISCOVERY_INVALID",
+  AUTHORIZATION_UNSUPPORTED: "MCP_OAUTH_AUTHORIZATION_UNSUPPORTED",
+  CLIENT_REGISTRATION_UNAVAILABLE: "MCP_OAUTH_CLIENT_REGISTRATION_UNAVAILABLE",
+  CLIENT_REGISTRATION_REJECTED: "MCP_OAUTH_CLIENT_REGISTRATION_REJECTED",
+  CLIENT_REGISTRATION_INVALID: "MCP_OAUTH_CLIENT_REGISTRATION_INVALID",
+  CLIENT_REGISTRATION_CONFLICT: "MCP_OAUTH_CLIENT_REGISTRATION_CONFLICT",
+  UNSAFE_URL: "MCP_OAUTH_UNSAFE_URL",
+  PROVIDER_UNAVAILABLE: "MCP_OAUTH_PROVIDER_UNAVAILABLE",
+  BINDING_CHANGED: "MCP_OAUTH_BINDING_CHANGED",
+} as const;
+
+export type CustomConnectorAutomaticOAuthErrorCode =
+  (typeof CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES)[keyof typeof CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES];
+
 export const customConnectorSlugSchema = z
   .string()
   .regex(/^_[a-z0-9][a-z0-9-]{0,60}[a-z0-9]$/u);
@@ -197,7 +213,7 @@ const customConnectorNoAuthResponseSchema = z
 const customConnectorCustomOAuthResponseSchema = z
   .object({
     authMode: z.literal("oauth"),
-    oauthSetup: z.literal("custom").optional(),
+    oauthSetup: z.never().optional(),
     oauthConfig: customConnectorOAuthConfigSchema,
   })
   .transform((value) => {

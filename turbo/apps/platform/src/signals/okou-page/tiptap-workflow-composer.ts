@@ -79,6 +79,7 @@ import {
   AGENT_MENTION_NODE_NAME,
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
+  draftToEditorDoc,
   INLINE_TEMPLATE_NODE_NAME,
   messageDocumentToEditorDoc,
   TEMPLATE_ATTACHMENT_NODE_NAME,
@@ -826,7 +827,8 @@ function buildFeedbackItemChrome(
 // nodes: the placeholder text lives in an attribute and appears via CSS.
 const FEEDBACK_PLACEHOLDER_PARAGRAPH_CLASS =
   "before:pointer-events-none before:float-left before:h-0 " +
-  "before:text-muted-foreground/40 before:content-[attr(data-placeholder)]";
+  "before:text-muted-foreground/40 new-ui:before:text-muted-foreground/80 " +
+  "before:content-[attr(data-placeholder)]";
 
 function buildFeedbackChromeDecorations(
   doc: ProseMirrorNode,
@@ -2198,8 +2200,9 @@ function workflowComposerDocumentForValue(
 function workflowComposerDocumentForUserMessage(
   editor: Editor,
   value: Parameters<DraftInputSyncTarget["syncUserMessage"]>[0],
+  draftVoice: Parameters<DraftInputSyncTarget["syncUserMessage"]>[1],
 ): ProseMirrorNode | null {
-  const document = messageDocumentToEditorDoc(value);
+  const document = draftToEditorDoc(value, draftVoice);
   return document ? editor.schema.nodeFromJSON(document) : null;
 }
 
@@ -2210,15 +2213,21 @@ function workflowComposerDocumentForDraft(
     readonly userMessage:
       | Parameters<DraftInputSyncTarget["syncUserMessage"]>[0]
       | null;
+    readonly draftVoice: Parameters<DraftInputSyncTarget["syncUserMessage"]>[1];
     readonly editorDocument: EditorDocumentSnapshot | null;
   },
 ): ProseMirrorNode {
   if (feedbackItemsFromWorkflowComposer(editor).length > 0) {
     return editor.state.doc;
   }
-  const userMessageDocument = draft.userMessage
-    ? workflowComposerDocumentForUserMessage(editor, draft.userMessage)
-    : null;
+  const userMessageDocument =
+    draft.userMessage || draft.draftVoice
+      ? workflowComposerDocumentForUserMessage(
+          editor,
+          draft.userMessage,
+          draft.draftVoice,
+        )
+      : null;
   const restoredEditorDocument = draft.editorDocument
     ? editor.schema.nodeFromJSON(draft.editorDocument.toEditorDocument())
     : null;
@@ -2451,8 +2460,12 @@ function createMountedDraftInputSyncTarget({
         syncEditorDocument();
       }
     },
-    syncUserMessage(value) {
-      const document = workflowComposerDocumentForUserMessage(editor, value);
+    syncUserMessage(value, draftVoice) {
+      const document = workflowComposerDocumentForUserMessage(
+        editor,
+        value,
+        draftVoice,
+      );
       if (!document) {
         return;
       }
@@ -2530,6 +2543,7 @@ function createMountEditorCommand({
         workflowComposerDocumentForDraft(editor, {
           input: get(draft.input$),
           userMessage: set(draft.takeRestoredUserMessage$),
+          draftVoice: set(draft.takeRestoredDraftVoice$),
           editorDocument: set(draft.readEditorDocument$),
         }),
       );

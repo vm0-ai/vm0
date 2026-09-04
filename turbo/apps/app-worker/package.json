@@ -1,6 +1,6 @@
 {
   "name": "@okouai/app-worker",
-  "version": "1.2.0",
+  "version": "1.4.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,14 +9,16 @@
     "test": "node ../../../.github/scripts/tests/okou-app-worker-test.mjs src/worker.js ../platform/index.html ../platform/public/manifest.webmanifest"
   },
   "dependencies": {
-    "@clerk/backend": "^3.13.1"
+    "@clerk/backend": "^3.13.1",
+    "@okouai/core": "workspace:*"
   },
   "devDependencies": {
     "@okouai/eslint-config": "workspace:*",
     "@okouai/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.75.0",
-    "typescript": "6.0.3",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "wrangler": "^4.90.1"
   }
 }

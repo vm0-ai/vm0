@@ -17,9 +17,13 @@ import {
   Input,
   Switch,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@okouai/ui";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Wand } from "lucide-react";
 import {
   Alert,
   AlertDescription,
@@ -39,7 +43,7 @@ import {
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   serializeAvatarSvgConfig,
-  type AvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
@@ -99,7 +103,7 @@ function AvatarSettingsControl({
   isDefaultAgent: boolean;
   avatarUrl: string | null;
   alt: string;
-  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
 }) {
   if (isDefaultAgent) {
     return (
@@ -111,19 +115,60 @@ function AvatarSettingsControl({
     );
   }
 
+  // An existing avatar is its own edit entry, so the dashed circle stays
+  // exclusive to the empty state and never reads as "add another avatar".
   const resolved = resolveAvatarSvgConfig(avatarUrl);
   return (
-    <>
-      {resolved && (
-        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
-          <AvatarSvgPreview
-            config={resolved}
-            className="h-full w-full rounded-full"
-          />
-        </div>
-      )}
-      <AvatarMaker onConfirm={onConfirm} />
-    </>
+    <AvatarMaker
+      avatarUrl={avatarUrl}
+      onConfirm={onConfirm}
+      trigger={
+        resolved
+          ? (openMaker) => {
+              return <AvatarEditButton config={resolved} onClick={openMaker} />;
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+function AvatarEditButton({
+  config,
+  onClick,
+}: {
+  config: ResolvedAvatarSvgConfig;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation("agents");
+  const label = t(($) => {
+    return $.avatar.actions.customize;
+  });
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            className="relative shrink-0 rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label={label}
+          >
+            <AvatarSvgPreview
+              config={config}
+              className="h-12 w-12 rounded-full border-2 border-primary ring-2 ring-primary/20"
+            />
+            <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
+              <Wand size={10} />
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -312,7 +357,7 @@ export function SettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            visibility,
+            ...(canEditVisibility ? { visibility } : {}),
           },
           pageSignal,
         );
@@ -370,7 +415,7 @@ export function SettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          visibility,
+                          ...(canEditVisibility ? { visibility } : {}),
                         },
                         pageSignal,
                       );

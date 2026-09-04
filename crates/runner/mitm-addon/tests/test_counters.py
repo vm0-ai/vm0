@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 import flow_metadata_keys as metadata_keys
+import state_file
 import usage
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import RecordingEnqueue, event
@@ -59,7 +60,7 @@ class TestUsagePendingCounter:
     def test_reset_for_tests_reenables_pending_write_failure_signal(self, tmp_path, mitm_ctx):
         with (
             mitm_ctx() as mock_log,
-            patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
+            patch.object(state_file.Path, "open", side_effect=OSError("disk full")),
         ):
             usage.set_pending_path(str(tmp_path / "usage-pending-before-reset"))
             usage.write_pending_snapshot(flush_request_id="before-reset")
@@ -353,7 +354,7 @@ class TestUsagePendingCounter:
         with (
             mitm_ctx() as mock_log,
             patch.object(
-                usage.counters.Path,
+                state_file.Path,
                 "replace",
                 side_effect=OSError("replace failed\nretry"),
             ),
@@ -391,7 +392,7 @@ class TestUsagePendingCounter:
 
         with (
             mitm_ctx() as mock_log,
-            patch.object(usage.counters.Path, "open", side_effect=write_error),
+            patch.object(state_file.Path, "open", side_effect=write_error),
         ):
             usage.set_pending_path(pending_path)
             for _ in range(2):
@@ -424,6 +425,6 @@ class TestUsagePendingCounter:
 
         with (
             mitm_ctx(),
-            patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
+            patch.object(state_file.Path, "open", side_effect=OSError("disk full")),
         ):
             usage.write_pending_snapshot(flush_request_id="request-1")  # should not raise

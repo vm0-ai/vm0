@@ -34,6 +34,66 @@ describe("registry resource download", () => {
   const CURRENT_PRESENTATION_SHA256 =
     "e37fd617e744c2e89765ec0b24a30977ad89a876a30176e0bacf8e32209f5394";
 
+  it("downloads the current presentation template HEAD by resource id", async () => {
+    const id = "template:html-ppt-schoolhouse-runbook";
+    const anchorVersionId =
+      "81e7f95dd13cec5f08f54ac965c51b62f87d9c7f8d29370c027aeeed3758571c";
+    const headVersionId = "a".repeat(64);
+    const s3Key = "registry-fixture/schoolhouse-runbook/latest";
+    const fixture = await seedPrivateRegistryResourceVersionFixture({
+      storageName: `registry-resource@${id}`,
+      versionId: anchorVersionId,
+      s3Key: "registry-fixture/schoolhouse-runbook/anchor",
+      size: 4321,
+      archiveSize: 1234,
+      fileCount: 12,
+      headVersion: {
+        versionId: headVersionId,
+        s3Key,
+        size: 5432,
+        archiveSize: 2345,
+        fileCount: 13,
+      },
+    });
+    onTestFinished(fixture.cleanup);
+
+    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "registry-resource-test");
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/registry/schoolhouse-runbook-latest.tar.gz",
+    );
+
+    const response = await accept(
+      client().downloadPresentationTemplate({
+        headers: authHeaders(),
+        query: { id },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://r2.example.com/registry/schoolhouse-runbook-latest.tar.gz",
+    });
+    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls.at(-1)?.[1];
+    expect(signedCommand).toMatchObject({
+      input: {
+        Bucket: "registry-resource-test",
+        Key: `${s3Key}/archive.tar.gz`,
+      },
+    });
+  });
+
+  it("keeps non-presentation resources off the current-template route", async () => {
+    const response = await accept(
+      client().downloadPresentationTemplate({
+        headers: authHeaders(),
+        query: { id: "image-style:vm0-illustration" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
   it("downloads the presentation archive for the current registry digest", async () => {
     const id = "template:html-ppt-schoolhouse-runbook";
     const versionId =

@@ -1100,16 +1100,16 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "ZERO_APP_URL".into(),
+            "CUSTOM_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "VM0_FUTURE_RUNNER_KEY".into(),
+            "CUSTOM_FUTURE_KEY".into(),
             "https://ordinary.runner-env.example.test".into(),
         ),
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
-        ("VM0_PROMPT".into(), "hostile-user-prompt".into()),
+        ("CUSTOM_PROMPT".into(), "hostile-user-prompt".into()),
         ("CUSTOM_API_TOKEN".into(), "user-token".into()),
         (
             guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV.into(),
@@ -1122,7 +1122,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "https://app.runner-env.example.test/path".into(),
         ),
         (
-            "ZERO_APP_URL".into(),
+            "CUSTOM_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
     ]);
@@ -1190,8 +1190,8 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "CUSTOM_USER_ENV",
         "LARGE_USER_ENV",
         "OKOU_APP_URL",
-        "ZERO_APP_URL",
-        "VM0_FUTURE_RUNNER_KEY",
+        "CUSTOM_APP_URL",
+        "CUSTOM_FUTURE_KEY",
         "CUSTOM_API_TOKEN",
         "BASH_ENV",
         "NODE_OPTIONS",
@@ -1236,7 +1236,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
         "https://app.runner-env.example.test/path"
     );
     assert_eq!(
-        user_env.get("ZERO_APP_URL").unwrap(),
+        user_env.get("CUSTOM_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"
     );
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
@@ -1246,11 +1246,11 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     );
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
     assert_eq!(
-        user_env.get("VM0_FUTURE_RUNNER_KEY").map(String::as_str),
+        user_env.get("CUSTOM_FUTURE_KEY").map(String::as_str),
         Some("https://ordinary.runner-env.example.test")
     );
     assert_eq!(
-        user_env.get("VM0_PROMPT").map(String::as_str),
+        user_env.get("CUSTOM_PROMPT").map(String::as_str),
         Some("hostile-user-prompt")
     );
     assert_eq!(

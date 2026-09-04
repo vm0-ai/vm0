@@ -32,11 +32,11 @@ import {
 } from "./chat-event-test-helpers.ts";
 
 import { fill } from "../../../__tests__/page-helper.ts";
-import { nowIso } from "../../../__tests__/time.ts";
 import {
   chatEventRowsResponse,
   type TestContext,
 } from "../../../signals/__tests__/test-helpers.ts";
+import { nowDate } from "../../../lib/time.ts";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -403,6 +403,8 @@ export function mockChatLifecycle(
   let runUserEventId = "msg-user-sent";
   let runUserMessage: UserMessageDocument | undefined;
   let runAssociated = false;
+  let runSequence = 0;
+  let currentRunId = MOCK_RUN_ID;
   const initialDynamicSeqId = Math.max(
     (historyEvents.length + chatEvents.length + 1) * 4,
     ...[...historyEvents, ...chatEvents].flatMap((event) => {
@@ -422,17 +424,12 @@ export function mockChatLifecycle(
   let latestThreadEventId: string | null = null;
   let latestThreadEventSeqId: number | null = null;
   const queuedEvents: MockChatEvent[] = [];
-  const optionActiveRunIds = options?.activeRunIds ?? [];
+  const lifecycleEvents: MockChatEvent[] = [];
+  let activeRunIds = options?.activeRunIds ?? [];
 
   const allocateDynamicSeqId = (): number => {
     nextDynamicSeqId++;
     return nextDynamicSeqId;
-  };
-
-  const rememberRunUserEventId = (clientEventId: string | undefined) => {
-    if (clientEventId !== undefined) {
-      runUserEventId = clientEventId;
-    }
   };
 
   const markRunCancelled = () => {
@@ -451,7 +448,7 @@ export function mockChatLifecycle(
     clientEventId?: string;
   }) => {
     const clientEventId = body.clientEventId ?? crypto.randomUUID();
-    const now = nowIso();
+    const now = nowDate().toISOString();
     options?.onRecallEventAppend?.({
       revokesEventId: body.revokesEventId,
       clientEventId,
@@ -473,7 +470,7 @@ export function mockChatLifecycle(
     clientEventId?: string;
   }) => {
     const clientEventId = body.clientEventId ?? crypto.randomUUID();
-    const now = nowIso();
+    const now = nowDate().toISOString();
     options?.onInterruptEventAppend?.({
       interruptsRunId: body.interruptsRunId,
       clientEventId,
@@ -492,10 +489,56 @@ export function mockChatLifecycle(
 
   const terminal = new Set(["completed", "failed", "cancelled", "timeout"]);
 
+  const associatedRunEvents = (): (MockChatEvent & { id: string })[] => {
+    if (!runAssociated) {
+      return [];
+    }
+    const events: (MockChatEvent & { id: string })[] = [
+      {
+        id: runUserEventId,
+        role: "user",
+        content: runPrompt ?? "Hello",
+        ...(runUserMessage ? { userMessage: runUserMessage } : {}),
+        runId: currentRunId,
+        seqId: runUserSeqId,
+        createdAt: "2026-03-10T00:00:01Z",
+      },
+      {
+        id: `msg-assistant-${currentRunId}`,
+        role: "assistant",
+        content: resultContent || null,
+        runId: currentRunId,
+        error: runError ?? undefined,
+        runLifecycleEvent:
+          runStatus === "failed" || runStatus === "cancelled"
+            ? runStatus
+            : undefined,
+        seqId: assistantSeqId,
+        createdAt: "2026-03-10T00:00:02Z",
+      },
+    ];
+    if (runStatus === "completed") {
+      events.push({
+        id: `msg-assistant-marker-${currentRunId}`,
+        role: "assistant",
+        content: null,
+        runId: currentRunId,
+        runLifecycleEvent: "completed",
+        seqId: completedMarkerSeqId,
+        createdAt: "2026-03-10T00:00:03Z",
+      });
+    }
+    return events;
+  };
+
+  const archiveAssociatedRun = (): void => {
+    lifecycleEvents.push(...associatedRunEvents().map(cloneMockChatEvent));
+    runAssociated = false;
+  };
+
   const hasActiveRun = () => {
     return (
-      optionActiveRunIds.length > 0 ||
-      (runAssociated && !terminal.has(runStatus))
+      activeRunIds.length > 0 || (runAssociated && !terminal.has(runStatus))
     );
   };
 
@@ -529,7 +572,6 @@ export function mockChatLifecycle(
     id: string;
     seqId: number;
   })[] => {
-    const assistantId = "msg-assistant-run";
     const historicalEvents = historyEvents.map((event, i) => {
       return {
         id: `msg-history-${i}`,
@@ -551,8 +593,8 @@ export function mockChatLifecycle(
     // `runId: undefined`, which we respect via the `in` check.
     appendSeedChatEvents({
       pagedEvents,
-      chatEvents,
-      activeRunIds: optionActiveRunIds,
+      chatEvents: [...chatEvents, ...lifecycleEvents],
+      activeRunIds,
     });
 
     for (const event of queuedEvents) {
@@ -562,42 +604,7 @@ export function mockChatLifecycle(
       });
     }
 
-    // After a run is associated, append user + assistant events.
-    if (runAssociated) {
-      pagedEvents.push({
-        id: runUserEventId,
-        role: "user",
-        content: runPrompt ?? "Hello",
-        ...(runUserMessage ? { userMessage: runUserMessage } : {}),
-        runId: MOCK_RUN_ID,
-        seqId: runUserSeqId,
-        createdAt: "2026-03-10T00:00:01Z",
-      });
-      pagedEvents.push({
-        id: assistantId,
-        role: "assistant",
-        content: resultContent || null,
-        runId: MOCK_RUN_ID,
-        error: runError ?? undefined,
-        runLifecycleEvent:
-          runStatus === "failed" || runStatus === "cancelled"
-            ? runStatus
-            : undefined,
-        seqId: assistantSeqId,
-        createdAt: "2026-03-10T00:00:02Z",
-      });
-      if (runStatus === "completed") {
-        pagedEvents.push({
-          id: "msg-assistant-run-marker",
-          role: "assistant",
-          content: null,
-          runId: MOCK_RUN_ID,
-          runLifecycleEvent: "completed",
-          seqId: completedMarkerSeqId,
-          createdAt: "2026-03-10T00:00:03Z",
-        });
-      }
-    }
+    pagedEvents.push(...associatedRunEvents());
 
     return pagedEvents
       .map((event, index) => {
@@ -629,7 +636,7 @@ export function mockChatLifecycle(
     if (options?.appendGate) {
       await options.appendGate;
     }
-    const now = nowIso();
+    const now = nowDate().toISOString();
     queuedEvents.push({
       id: clientEventId,
       role: "user" as const,
@@ -658,9 +665,13 @@ export function mockChatLifecycle(
     } else if (options?.sendGate) {
       await options.sendGate;
     }
-    if (body.prompt) {
-      runPrompt = body.prompt;
+    if (runAssociated) {
+      archiveAssociatedRun();
     }
+    runSequence += 1;
+    currentRunId = `d0000000-0000-4000-a000-${String(runSequence).padStart(12, "0")}`;
+    runPrompt = body.prompt ?? null;
+    runUserEventId = body.clientEventId ?? crypto.randomUUID();
     runUserMessage = body.userMessage;
     if (body.cloudBrowserEnabled === true) {
       computerUseHostId = null;
@@ -669,9 +680,11 @@ export function mockChatLifecycle(
       computerUseHostId = body.computerUseHostId;
       cloudBrowserEnabled = false;
     }
-    rememberRunUserEventId(body.clientEventId);
     const modelSelection = modelSelectionFromBody(body);
     options?.onRunCreate?.({ ...body, modelSelection });
+    runStatus = "running";
+    runError = null;
+    resultContent = "";
     selectedModel = modelSelection?.selectedModel ?? selectedModel;
     codexServiceTier = body.runOptions?.codexServiceTier ?? null;
     runAssociated = true;
@@ -680,7 +693,7 @@ export function mockChatLifecycle(
     completedMarkerSeqId = undefined;
     createChatEvent(threadId);
     return {
-      runId: MOCK_RUN_ID,
+      runId: currentRunId,
       threadId,
       status: "pending" as const,
       createdAt: "2026-03-10T00:00:00Z",
@@ -697,7 +710,10 @@ export function mockChatLifecycle(
   });
   context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
     const rows = mockChatEventRows(
-      normalizeMockChatEvents(buildCanonicalEvents().map(cloneMockChatEvent)),
+      normalizeMockChatEvents(
+        buildCanonicalEvents().map(cloneMockChatEvent),
+        threadId,
+      ),
     )
       .filter((row) => {
         return row.seqId > query.sinceSeqId;
@@ -769,7 +785,7 @@ export function mockChatLifecycle(
   context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     const activeThreadIds = new Set<string>();
     if (
-      optionActiveRunIds.length > 0 ||
+      activeRunIds.length > 0 ||
       (runAssociated && !terminal.has(runStatus))
     ) {
       activeThreadIds.add(threadId);
@@ -908,6 +924,35 @@ export function mockChatLifecycle(
       latestThreadEventSeqId = (latestThreadEventSeqId ?? 0) + 1;
     },
     completeRun: (content?: string) => {
+      const activeSeedRunId = activeRunIds.at(-1);
+      if (!runAssociated && activeSeedRunId !== undefined) {
+        runStatus = "completed";
+        const completedAt = nowDate().toISOString();
+        if (content) {
+          lifecycleEvents.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content,
+            runId: activeSeedRunId,
+            seqId: allocateDynamicSeqId(),
+            createdAt: completedAt,
+          });
+        }
+        lifecycleEvents.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: null,
+          runId: activeSeedRunId,
+          runLifecycleEvent: "completed",
+          seqId: allocateDynamicSeqId(),
+          createdAt: completedAt,
+        });
+        activeRunIds = activeRunIds.filter((runId) => {
+          return runId !== activeSeedRunId;
+        });
+        createChatEvent(threadId);
+        return;
+      }
       runStatus = "completed";
       resultContent = content ?? "";
       threadTitle = threadTitle ?? runPrompt;

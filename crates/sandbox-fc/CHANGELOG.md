@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.38.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.12...sandbox-fc-v0.38.13) (2026-09-04)
+
+
+### Documentation
+
+* **sandbox-fc:** clarify bounded balloon settling during park ([#31554](https://github.com/vm0-ai/vm0/issues/31554)) ([8055807](https://github.com/vm0-ai/vm0/commit/8055807e3763229d95eaef3bb27dd08f166c839e))
+
+## [0.38.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.11...sandbox-fc-v0.38.12) (2026-09-04)
+
+## [0.38.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.10...sandbox-fc-v0.38.11) (2026-09-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** bound snapshot marker reads ([#31582](https://github.com/vm0-ai/vm0/issues/31582)) ([e72c363](https://github.com/vm0-ai/vm0/commit/e72c36312d49dbc6a73ed5a0f14d68583d9ed779))
+
+## [0.38.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.9...sandbox-fc-v0.38.10) (2026-09-04)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** preserve supported guest capacity ([#31594](https://github.com/vm0-ai/vm0/issues/31594)) ([920d77b](https://github.com/vm0-ai/vm0/commit/920d77b8d15682d69e4e9d9a89395ec8a45d4bbd))
+
 ## [0.38.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.8...sandbox-fc-v0.38.9) (2026-09-03)
 
 ## [0.38.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.38.7...sandbox-fc-v0.38.8) (2026-09-03)

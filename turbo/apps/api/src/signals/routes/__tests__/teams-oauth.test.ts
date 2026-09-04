@@ -32,8 +32,6 @@ const APP_ORIGIN = "https://app.vm0.test";
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const MICROSOFT_ME_URL = "https://graph.microsoft.com/v1.0/me";
-const TEAMS_APP_ID = "00000000-0000-0000-0000-000000000001";
-const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 
 async function appRequest(
   path: string,
@@ -70,14 +68,6 @@ function callbackPath(args: {
   }
   params.set("state", JSON.stringify(args.state));
   return `/api/integrations/teams/oauth/callback?${params.toString()}`;
-}
-
-function teamsInstallUrl(tenantId: string): string {
-  const url = new URL(`https://teams.microsoft.com/l/app/${TEAMS_APP_ID}`);
-  url.searchParams.set("installAppPackage", "true");
-  url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
-  url.searchParams.set("tenantId", tenantId);
-  return url.toString();
 }
 
 function mockMicrosoftOAuth(args: {
@@ -125,14 +115,6 @@ async function seedMembership(
   role: "admin" | "member" = "admin",
 ): Promise<void> {
   await store.set(seedOrgMembership$, { orgId, userId, role }, context.signal);
-}
-
-async function uninstalledTeamsFixture(
-  track: (
-    fixturePromise: Promise<TeamsConnectFixture>,
-  ) => Promise<TeamsConnectFixture>,
-): Promise<TeamsConnectFixture> {
-  return await track(Promise.resolve(teamsConnectFixture()));
 }
 
 async function seedTeamsInstallation(

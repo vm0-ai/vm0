@@ -964,6 +964,7 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
         {
           threadId,
           userMessage: null,
+          draftVoice: null,
           attachments: null,
         },
         signal,
@@ -1233,9 +1234,6 @@ const registerUserMessageRenderPart$ = command(
       }
       case "template": {
         return { type: "template", part };
-      }
-      case "voice": {
-        return { type: "voice", part };
       }
       case "automation": {
         return { type: "automation", part };
@@ -3500,6 +3498,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
       {
         content: messageDocumentToPrompt(userMessage) ?? "",
         userMessage,
+        draftVoice: null,
         generationTemplate:
           templatePart?.type === "template" ? templatePart.template : undefined,
         attachments: userMessageFileAttachments(userMessage).map(

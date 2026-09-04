@@ -269,6 +269,17 @@ def test_registered_flow_metadata_guard_ignores_literals_after_fixed_starred_pre
     assert violations == []
 
 
+def test_registered_flow_metadata_guard_flags_static_starred_mapping_keys(tmp_path):
+    source_path = tmp_path / "static_starred_mapping_keys.py"
+    _write_python_source(source_path, "static_starred_mapping_keys.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "static_starred_mapping_keys.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_flags_composed_iterables(tmp_path):
     source_path = tmp_path / "composed_iterables.py"
     _write_python_source(source_path, "composed_iterables.base.py.txt")

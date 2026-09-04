@@ -7,6 +7,7 @@ import {
   chatThreadImageModelContract,
   chatThreadModelSelectionContract,
   chatThreadVideoModelContract,
+  type DraftVoice,
   type PersistedAttachment,
   type UserMessageInputDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -50,6 +51,7 @@ interface ChatThreadRealtimeHandlers {
 interface PatchDraftArgs {
   readonly threadId: string;
   readonly userMessage: UserMessageInputDocument | null;
+  readonly draftVoice: DraftVoice | null;
   readonly attachments: PersistedAttachment[] | null;
 }
 
@@ -87,7 +89,7 @@ type ChatRealtimeSubscription = {
 export const patchChatThreadDraft$ = command(
   async (
     { get, set },
-    { threadId, userMessage, attachments }: PatchDraftArgs,
+    { threadId, userMessage, draftVoice, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(apiClient$)(chatThreadByIdContract);
@@ -96,6 +98,7 @@ export const patchChatThreadDraft$ = command(
         params: { id: threadId },
         body: {
           draftUserMessage: userMessage,
+          ...(draftVoice ? { draftVoice } : {}),
           draftAttachments: attachments,
         },
         fetchOptions: { signal },

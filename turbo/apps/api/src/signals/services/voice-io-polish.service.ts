@@ -8,13 +8,13 @@ import { command } from "ccstate";
 import { notConfigured } from "../../lib/error";
 import { requestSignal$ } from "../context/hono";
 import {
+  FAST_PATH_MODEL,
   generateText,
   isLlmConfigured,
   OpenRouterRequestError,
 } from "../external/openrouter";
 import { settle } from "../utils";
 
-const VOICE_IO_POLISH_MODEL = "google/gemini-3.1-flash-lite";
 const VOICE_IO_POLISH_MAX_TOKENS = 65_536;
 const VOICE_IO_POLISH_SYSTEM_PROMPT = [
   "The task is careful editing of raw voice dictation into send-ready writing, rather than summarization or assistance.",
@@ -65,7 +65,7 @@ export const polishVoiceTranscript$ = command(
 
     const generated = await settle(
       generateText(
-        VOICE_IO_POLISH_MODEL,
+        FAST_PATH_MODEL,
         [
           { role: "system", content: VOICE_IO_POLISH_SYSTEM_PROMPT },
           { role: "user", content: JSON.stringify(body) },

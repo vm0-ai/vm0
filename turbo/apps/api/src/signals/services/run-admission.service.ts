@@ -2,6 +2,7 @@ import {
   isBuiltInModelProviderType,
   isLimitedFree1RestrictedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
+import { agentRuns } from "@okouai/db/schema/agent-run";
 import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { and, eq, gt, lte, sql, sum } from "drizzle-orm";
@@ -12,13 +13,18 @@ import {
 } from "../../lib/db-structured-result";
 import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../../lib/time";
+import type { Tx } from "../../lib/db-types";
 import type { Db } from "../external/db";
 import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
 import { getSpendableUsagePackCredits } from "./usage-pack-credit.service";
-import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
+import {
+  lockOrgCredits,
+  resolveUsageAllowanceAvailability,
+  resolveUsageAllowanceAvailabilityForLockedOrg,
+} from "./usage-allowance.service";
 
 type CreditDb = Pick<Db, "$with" | "select" | "with">;
 
@@ -34,6 +40,44 @@ type OrgPlanRunAdmissionCapabilities = Pick<
   OrgPlanCapabilities,
   "status" | "supportByok" | "restrictedVm0Models"
 >;
+
+export interface RunCreditAdmissionState {
+  readonly orgId: string;
+  readonly status: typeof agentRuns.$inferSelect.status;
+  readonly creditAdmitted: boolean;
+}
+
+export function runHasActiveCreditAdmission(
+  run: Pick<RunCreditAdmissionState, "status" | "creditAdmitted">,
+): boolean {
+  return (
+    run.creditAdmitted && (run.status === "pending" || run.status === "running")
+  );
+}
+
+export async function loadRunCreditAdmissionState(params: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<RunCreditAdmissionState | undefined> {
+  const [run] = await params.db
+    .select({
+      orgId: agentRuns.orgId,
+      status: agentRuns.status,
+      creditAdmitted: agentRuns.creditAdmitted,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, params.runId),
+        eq(agentRuns.orgId, params.orgId),
+        eq(agentRuns.userId, params.userId),
+      ),
+    )
+    .limit(1);
+  return run;
+}
 
 export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
@@ -115,6 +159,23 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
   readonly selectedModel?: string | null;
   readonly availability: OrgCreditAvailability | null;
 }): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+  return await checkResolvedOrgCreditsForRunAdmissionWithAllowance({
+    ...params,
+    resolveAllowance: async () => {
+      return await resolveUsageAllowanceAvailability(params.db, params.orgId);
+    },
+  });
+}
+
+async function checkResolvedOrgCreditsForRunAdmissionWithAllowance(params: {
+  readonly orgId: string;
+  readonly modelProviderType: string | null | undefined;
+  readonly selectedModel?: string | null;
+  readonly availability: OrgCreditAvailability | null;
+  readonly resolveAllowance: () => Promise<{
+    readonly remainingUnits: number;
+  } | null>;
+}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
   const { availability } = params;
   if (!availability) {
     return insufficientCredits();
@@ -136,13 +197,31 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
     return undefined;
   }
 
-  const allowance = await resolveUsageAllowanceAvailability(
-    params.db,
-    params.orgId,
-  );
+  const allowance = await params.resolveAllowance();
   return allowance && allowance.remainingUnits > 0
     ? undefined
     : insufficientCredits();
+}
+
+export async function checkOrgCreditsForRunAdmissionInTransaction(params: {
+  readonly db: Tx;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelProviderType: string | null | undefined;
+  readonly selectedModel?: string | null;
+}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+  await lockOrgCredits(params.db, params.orgId);
+  const availability = await resolveOrgCreditAvailability(params);
+  return await checkResolvedOrgCreditsForRunAdmissionWithAllowance({
+    ...params,
+    availability,
+    resolveAllowance: async () => {
+      return await resolveUsageAllowanceAvailabilityForLockedOrg(
+        params.db,
+        params.orgId,
+      );
+    },
+  });
 }
 
 export function checkOrgPlanRunAdmission(params: {

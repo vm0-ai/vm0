@@ -370,8 +370,7 @@ async function expectAutomationSourceAnnotation(
   fixture: ChatAutomationFixture,
   automationId: string,
   sourceRun: { readonly runId: string; readonly threadId: string },
-  expectedDisplayMessage?: string,
-): Promise<void> {
+): Promise<string | null> {
   const automation = await accept(
     automationsClient().get({
       headers: authHeaders(),
@@ -402,9 +401,6 @@ async function expectAutomationSourceAnnotation(
   if (!automationInput || automationInput.eventType !== "input.prompt") {
     throw new Error("Expected the triggered automation input");
   }
-  if (expectedDisplayMessage) {
-    expect(chatEventDisplayText(automationInput)).toBe(expectedDisplayMessage);
-  }
   expect(
     automationInput.userMessage.parts.filter((part) => {
       return (
@@ -424,6 +420,7 @@ async function expectAutomationSourceAnnotation(
       href: `/chats/${sourceRun.threadId}#run-${sourceRun.runId}`,
     },
   ]);
+  return chatEventDisplayText(automationInput);
 }
 
 describe("chat-run-finished workflow automations", () => {
@@ -581,10 +578,12 @@ describe("chat-run-finished workflow automations", () => {
         readLatestWorkflowAutomationRunFixture(context, patternMatch),
       ).resolves.toMatchObject({ autonomyBudget: 1 });
 
-      await expectAutomationSourceAnnotation(
+      const displayMessage = await expectAutomationSourceAnnotation(
         fixture,
         fireAlways,
         run,
+      );
+      expect(displayMessage).toBe(
         "A run in the watched chat thread completed.",
       );
 
@@ -690,6 +689,7 @@ describe("chat-run-finished workflow automations", () => {
     "fires a %s-run automation when the terminal run pauses the goal",
     { timeout: 30_000 },
     async (terminalStatus) => {
+      expect.hasAssertions();
       const fixture = await setupChatAutomationFixture();
       const run = await startWatchedChatRun(
         fixture,
@@ -726,6 +726,7 @@ describe("chat-run-finished workflow automations", () => {
     "fires the completed-run automation when continuation launch failure pauses the goal",
     { timeout: 60_000 },
     async () => {
+      expect.hasAssertions();
       const fixture = await setupChatAutomationFixture();
       const firstRun = await startWatchedChatRun(
         fixture,

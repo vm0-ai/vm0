@@ -1,5 +1,79 @@
 # Changelog
 
+## [8.621.2](https://github.com/vm0-ai/vm0/compare/core-v8.621.1...core-v8.621.2) (2026-09-04)
+
+
+### Performance Improvements
+
+* move type checking to the typescript 7 native compiler ([#31716](https://github.com/vm0-ai/vm0/issues/31716)) ([aa41353](https://github.com/vm0-ai/vm0/commit/aa41353c983fbc0212ec1e06aa34b56a71bf2166))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.2
+
+## [8.621.1](https://github.com/vm0-ai/vm0/compare/core-v8.621.0...core-v8.621.1) (2026-09-04)
+
+
+### Refactoring
+
+* consolidate desktop recording under intro video switch ([#31730](https://github.com/vm0-ai/vm0/issues/31730)) ([262f6db](https://github.com/vm0-ai/vm0/commit/262f6db498a4d2951d538b9af723bb199a21f311))
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+
+## [8.621.0](https://github.com/vm0-ai/vm0/compare/core-v8.620.0...core-v8.621.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.0
+
+## [8.620.0](https://github.com/vm0-ai/vm0/compare/core-v8.619.1...core-v8.620.0) (2026-09-04)
+
+
+### Features
+
+* add avatar composer v2 ([#31526](https://github.com/vm0-ai/vm0/issues/31526)) ([0812c8b](https://github.com/vm0-ai/vm0/commit/0812c8bfb4c4d8a8e416717573a3d5a6609347f8))
+* add progressive artifact preview switch ([#31682](https://github.com/vm0-ai/vm0/issues/31682)) ([8aa24e8](https://github.com/vm0-ai/vm0/commit/8aa24e8b2decb7545ff6bc44c7575bbeac19c188))
+* **core:** roll out connector accounts to all users ([#31608](https://github.com/vm0-ai/vm0/issues/31608)) ([aca7cf7](https://github.com/vm0-ai/vm0/commit/aca7cf7ea9e6a36a37cfedbfcd987394f977add5))
+
+
+### Bug Fixes
+
+* **platform:** stabilize connector popover placement ([#31474](https://github.com/vm0-ai/vm0/issues/31474)) ([6e4b8a5](https://github.com/vm0-ai/vm0/commit/6e4b8a534911d1f74e6c10dc8c92454fc3c3df91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.401.0
+
+## [8.619.1](https://github.com/vm0-ai/vm0/compare/core-v8.619.0...core-v8.619.1) (2026-09-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.400.1
+
 ## [8.619.0](https://github.com/vm0-ai/vm0/compare/core-v8.618.0...core-v8.619.0) (2026-09-03)
 
 

@@ -249,4 +249,104 @@ describe("Pi agent model adapter", () => {
       "account-id-from-binding",
     );
   });
+
+  it("preserves a native Codex Responses tool call over forced SSE", async () => {
+    const config = {
+      provider: "openai-codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: "gpt-5.6-terra",
+      apiKey: "opaque-not-a-jwt",
+      accountId: "account-id-from-binding",
+      dialect: "openai-codex-responses",
+      transport: "sse",
+    } as const;
+    const model = resolvePiAgentModel(config);
+    if (!model || model.api !== "openai-codex-responses") {
+      throw new Error("Expected a native Codex Responses model");
+    }
+    const call = {
+      type: "function_call",
+      id: "fc_native_tool",
+      call_id: "call_native_tool",
+      name: "bash",
+      arguments: '{"command":"okou --help"}',
+      status: "completed",
+    };
+    const response = {
+      id: "resp_native_tool",
+      object: "response",
+      status: "completed",
+      output: [call],
+      usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
+    };
+    const providerEvents = [
+      {
+        type: "response.created",
+        response: {
+          ...response,
+          status: "in_progress",
+          output: [],
+          usage: null,
+        },
+      },
+      {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { ...call, arguments: "", status: "in_progress" },
+      },
+      {
+        type: "response.function_call_arguments.delta",
+        output_index: 0,
+        item_id: call.id,
+        delta: call.arguments,
+      },
+      {
+        type: "response.function_call_arguments.done",
+        output_index: 0,
+        item_id: call.id,
+        arguments: call.arguments,
+      },
+      { type: "response.output_item.done", output_index: 0, item: call },
+      { type: "response.completed", response },
+    ]
+      .map((event) => {
+        return `data: ${JSON.stringify(event)}\n\n`;
+      })
+      .join("");
+    const providerFetch = vi.fn(async () => {
+      return new Response(providerEvents, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+
+    const stream = piAgentStreamForConfig(config)(
+      model,
+      {
+        messages: [{ role: "user", content: "use a tool", timestamp: 1 }],
+        tools: [],
+      },
+      {
+        apiKey: config.apiKey,
+        fetch: providerFetch,
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    for await (const _event of stream) {
+      // Drain the native event stream before inspecting its canonical result.
+    }
+
+    expect(providerFetch).toHaveBeenCalledOnce();
+    await expect(stream.result()).resolves.toMatchObject({
+      stopReason: "toolUse",
+      content: [
+        {
+          type: "toolCall",
+          id: "call_native_tool|fc_native_tool",
+          name: "bash",
+          arguments: { command: "okou --help" },
+        },
+      ],
+    });
+  });
 });

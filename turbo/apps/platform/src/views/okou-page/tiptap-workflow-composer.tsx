@@ -139,6 +139,21 @@ function workflowComposerPlaceholder(sending: boolean | undefined): string {
       });
 }
 
+function workflowComposerHasContent(editor: Editor): boolean {
+  let textblockCount = 0;
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (!node.isTextblock) {
+      continue;
+    }
+    textblockCount += 1;
+    if (node.content.size > 0 || textblockCount > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function WorkflowComposerPlaceholder({
   composer,
   sending,
@@ -148,21 +163,21 @@ function WorkflowComposerPlaceholder({
 }) {
   useTranslation();
   const hasInput = useGet(composer.editor.hasInput$);
-  const hasEditorText = useEditorState({
+  const hasEditorContent = useEditorState({
     editor: composer.editor.editor,
     selector: ({ editor }) => {
-      return editor.state.doc.textContent.length > 0;
+      return workflowComposerHasContent(editor);
     },
   });
   const hasTemplateAttachment = useGet(
     composer.template.hasTemplateAttachment$,
   );
-  if (hasInput || hasEditorText) {
+  if (hasInput || hasEditorContent) {
     return null;
   }
   return (
     <div
-      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/40 ${
+      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/40 new-ui:text-muted-foreground/80 ${
         hasTemplateAttachment ? "top-[54px]" : "top-0 pt-4"
       }`}
       aria-hidden="true"

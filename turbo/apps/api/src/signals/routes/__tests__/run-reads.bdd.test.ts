@@ -1849,7 +1849,6 @@ function expectTimeCursorAxiomResume(
   expected: {
     readonly cursor: string;
     readonly order: "asc" | "desc";
-    readonly hasCreatedAtBound?: boolean;
   },
 ): void {
   const apl = call[0];
@@ -1858,9 +1857,6 @@ function expectTimeCursorAxiomResume(
     noCache: true,
   });
   expect(apl).toContain(`| order by _time ${expected.order}`);
-  if (expected.hasCreatedAtBound) {
-    expect(apl).toContain("| where _time >= datetime(");
-  }
   expect(apl).not.toContain("| where _time > datetime(");
   expect(apl).not.toContain("| where _time < datetime(");
   expect(apl).not.toContain("_vm0Cursor >");

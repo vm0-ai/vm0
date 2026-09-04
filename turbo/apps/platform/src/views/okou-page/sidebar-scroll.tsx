@@ -16,6 +16,7 @@ import { baseUiSidebarScrollAreaEnabled$ } from "../../signals/external/feature-
 interface OverlayScrollAreaProps {
   readonly "aria-label"?: string;
   readonly className?: string;
+  readonly contentClassName?: string;
   readonly children: ReactNode;
   readonly onFocus?: FocusEventHandler<HTMLDivElement>;
   readonly onPointerDownCapture?: PointerEventHandler<HTMLDivElement>;
@@ -37,10 +38,11 @@ function updateScrollMetrics(
   });
 }
 
-/** Existing scroll area retained unchanged behind the disabled switch. */
+/** Existing custom scroll behavior retained behind the disabled switch. */
 function LegacyOverlayScrollArea({
   "aria-label": ariaLabel,
   className,
+  contentClassName,
   children,
   onFocus,
   onPointerDownCapture,
@@ -71,10 +73,14 @@ function LegacyOverlayScrollArea({
         aria-label={ariaLabel}
         data-testid={dataTestId}
       >
-        {children}
+        <div className={contentClassName}>{children}</div>
       </div>
+      {/* The thumb hugs the viewport's edge instead of floating in the middle
+          of the gutter. Beside the workspace card that gutter is only four
+          pixels wide, and anything further in overlaps the trailing menu
+          button on the row it is scrolling past. */}
       <div
-        className={`absolute -right-2 top-0 bottom-0 w-[6px] pointer-events-none opacity-0 transition-opacity duration-150 ${
+        className={`absolute right-px top-0 bottom-0 w-[6px] pointer-events-none opacity-0 transition-opacity duration-150 ${
           thumbStyleValue.visible
             ? "group-hover/sidebar-scroll:opacity-100"
             : ""
@@ -93,6 +99,7 @@ function LegacyOverlayScrollArea({
 function BaseUiOverlayScrollArea({
   "aria-label": ariaLabel,
   className,
+  contentClassName,
   children,
   onFocus,
   onPointerDownCapture,
@@ -109,13 +116,11 @@ function BaseUiOverlayScrollArea({
   };
 
   return (
-    <ScrollArea.Root
-      className={`group/sidebar-scroll relative ${className ?? ""}`}
-    >
+    <ScrollArea.Root className={className}>
       <ScrollArea.Viewport
         ref={setViewportRef}
-        className="h-full overflow-x-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        style={{ ...style, overflowX: "hidden", overflowY: "auto" }}
+        className="h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        style={style}
         onFocus={onFocus}
         onPointerDownCapture={onPointerDownCapture}
         onScroll={handleScroll}
@@ -124,22 +129,19 @@ function BaseUiOverlayScrollArea({
         aria-label={ariaLabel}
         data-testid={dataTestId}
       >
-        <ScrollArea.Content style={{ minWidth: "100%" }}>
+        <ScrollArea.Content className={contentClassName}>
           {children}
         </ScrollArea.Content>
       </ScrollArea.Viewport>
+      {/* The track stays wide enough to grab; `justify-end` keeps the thumb
+          itself against the viewport's edge, clear of the trailing menu button
+          on the rows beside the workspace card. */}
       <ScrollArea.Scrollbar
-        className="w-3 px-[3.5px] opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100"
-        style={{
-          insetInlineEnd: "-0.5rem",
-          paddingBlockEnd: 0,
-          paddingBlockStart: 0,
-        }}
+        className="m-px flex w-3 justify-end opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100 data-scrolling:duration-0"
         data-testid="sidebar-scrollbar"
       >
         <ScrollArea.Thumb
           className="w-[5px] rounded-full bg-foreground/15"
-          style={{ marginBlockEnd: 0, marginBlockStart: 0 }}
           data-testid="sidebar-scrollbar-thumb"
         />
       </ScrollArea.Scrollbar>

@@ -1834,7 +1834,6 @@ def _finish_response_handling(
 ) -> None:
 
     request_size = _request_size(flow)
-    stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
     model_provider_failure.finish_http_response(flow)
 
@@ -1863,35 +1862,6 @@ def _finish_response_handling(
     response_streaming.finalize_model_sse_usage(flow)
     response_streaming.finalize_model_json_usage(flow, proxy_log_path)
 
-    # Report proxy-extracted usage for model provider responses.
-    # For non-streaming responses, fall back to extracting usage from the
-    # buffered JSON body only for legacy/test flows that did not pass through
-    # responseheaders() and therefore have no incremental extractor.
-    if (
-        not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
-        and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
-        and stream_buf
-        and response_streaming.uses_model_json_fallback(
-            flow,
-            websocket_header_work_limit=_WEBSOCKET_HANDSHAKE_HEADER_WORK_LIMIT,
-        )
-    ):
-        model_protocol = response_streaming.model_usage_protocol(flow)
-        json_usage, json_error = usage.extract_model_usage_with_error_from_json(
-            model_protocol,
-            bytes(stream_buf),
-            flow.response.headers if flow.response else None,
-        )
-        if json_usage:
-            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
-        elif json_error is not None:
-            log_proxy_entry(
-                proxy_log_path,
-                "warn",
-                "Model provider JSON usage extraction failed",
-                type="usage_event",
-                error=json_error,
-            )
     terminal_usage.report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).

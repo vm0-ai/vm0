@@ -81,12 +81,13 @@ function mintOkouToken(args: {
   });
 }
 
-function telegramOauthHead(contentLength: string, expectedOrigin?: string) {
+function telegramOauthHead(
+  contentLength: string,
+  observedOrigins: (string | null)[] = [],
+) {
   return http.head("https://oauth.telegram.org/auth", ({ request }) => {
     const url = new URL(request.url);
-    if (expectedOrigin) {
-      expect(url.searchParams.get("origin")).toBe(expectedOrigin);
-    }
+    observedOrigins.push(url.searchParams.get("origin"));
     return new HttpResponse(null, {
       headers: { "content-length": contentLength },
     });
@@ -227,6 +228,7 @@ describe("GET /api/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when the token has no active organization membership", async () => {
+    expect.hasAssertions();
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],
     });
@@ -252,6 +254,7 @@ describe("GET /api/integrations/telegram/bots", () => {
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
+    expect.hasAssertions();
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({
       context,
@@ -436,6 +439,7 @@ describe("GET /api/integrations/telegram", () => {
   });
 
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -783,6 +787,7 @@ describe("GET /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -932,7 +937,8 @@ describe("GET /api/integrations/telegram/link", () => {
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
     mockEnv("APP_URL", "https://app.example.com");
-    server.use(telegramOauthHead("2048", "https://app.example.com"));
+    const observedOrigins: (string | null)[] = [];
+    server.use(telegramOauthHead("2048", observedOrigins));
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,
@@ -958,6 +964,7 @@ describe("GET /api/integrations/telegram/link", () => {
         domainConfigured: true,
       },
     });
+    expect(observedOrigins).toStrictEqual(["https://app.example.com"]);
   });
 
   it("returns official bot link status with the login bot id", async () => {
@@ -1090,6 +1097,7 @@ describe("POST /api/integrations/telegram/link", () => {
   }
 
   it("returns 401 when not authenticated", async () => {
+    expect.hasAssertions();
     const client = setupApp({
       context,
       routes: integrationsTelegramRoutes,

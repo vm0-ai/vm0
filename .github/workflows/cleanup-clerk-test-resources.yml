@@ -15,6 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  npm_config_audit: "false"
   DRY_RUN: ${{ inputs.dry-run || false }}
 
 jobs:
@@ -39,7 +40,7 @@ jobs:
           cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
           cleanup-stale
           browser,playwright,paid-onboarding,runner,runner-real-codex,runner-real-claude,runner-mock-claude
-          --ci-older-than-hours 0.5
+          --ci-older-than-hours 2
           --staging-browser-older-than-hours 8
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}

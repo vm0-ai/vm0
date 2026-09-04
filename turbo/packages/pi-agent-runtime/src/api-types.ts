@@ -148,6 +148,8 @@ export interface PiApiAssistantMessage {
   readonly model: string;
   readonly responseId?: string;
   readonly stopReason: PiApiAssistantStopReason;
+  /** Content-free product classification; native provider diagnostics stay private. */
+  readonly failureReason?: "reconnect_required" | "usage_limit";
   readonly timestamp: number;
   readonly usage: {
     readonly input: number;

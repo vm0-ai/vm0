@@ -15,7 +15,23 @@ import {
 } from "@okouai/ui";
 import { Wand, ChevronLeft, ChevronRight, Dices } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
+import type { TFunction } from "i18next";
+import {
+  AVATAR_COMPOSER_EXPRESSIONS,
+  AVATAR_COMPOSER_FACE_SHAPES,
+  AVATAR_COMPOSER_HAIR_COLORS,
+  AVATAR_COMPOSER_HAIR_STYLES,
+  AVATAR_COMPOSER_SKIN_TONES,
+  isAvatarComposerCombinationCompatible,
+  updateAvatarComposerConfig,
+  type AvatarComposerSelection,
+} from "@okouai/core/agent-avatar";
+import {
+  isLegacyAvatarSvgConfig,
+  type AvatarSvgConfig,
+  type LegacyAvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
   bestEffort,
@@ -24,11 +40,15 @@ import {
   Reason,
 } from "../../signals/utils.ts";
 import {
+  type AvatarMakerSelection,
+  type ComposerStep,
+  type LegacyStep,
   type Step,
-  AVATAR_MAKER_STEPS,
   avatarMakerOpen$,
   avatarMakerConfig$,
+  avatarMakerEditing$,
   avatarMakerStep$,
+  avatarMakerSteps$,
   avatarMakerStepIdx$,
   avatarMakerJustPicked$,
   avatarMakerShowSparkles$,
@@ -108,6 +128,218 @@ function Sparkles({ active }: { active: boolean }) {
   );
 }
 
+type ComposerAvatarMakerSelection = {
+  readonly mode: "composer";
+} & AvatarComposerSelection;
+
+function avatarMakerSelections(
+  step: ComposerStep,
+): readonly ComposerAvatarMakerSelection[] {
+  switch (step) {
+    case "face": {
+      return AVATAR_COMPOSER_FACE_SHAPES.map((value) => {
+        return { mode: "composer", field: "face", value };
+      });
+    }
+    case "hair": {
+      return AVATAR_COMPOSER_HAIR_STYLES.map((value) => {
+        return { mode: "composer", field: "hair", value };
+      });
+    }
+    case "expression": {
+      return AVATAR_COMPOSER_EXPRESSIONS.map((value) => {
+        return { mode: "composer", field: "expression", value };
+      });
+    }
+    case "skin": {
+      return AVATAR_COMPOSER_SKIN_TONES.map((value) => {
+        return { mode: "composer", field: "skin", value };
+      });
+    }
+    case "hairColor": {
+      return AVATAR_COMPOSER_HAIR_COLORS.map((value) => {
+        return { mode: "composer", field: "hairColor", value };
+      });
+    }
+  }
+}
+
+function avatarOptionLabel(value: string): string {
+  const label = value.replaceAll("-", " ");
+  return `${label.slice(0, 1).toLocaleUpperCase()}${label.slice(1)}`;
+}
+
+function ComposerStepOptions({
+  step,
+  config,
+  justPicked,
+  selectOption,
+}: {
+  step: ComposerStep;
+  config: AvatarSvgConfig;
+  justPicked: string | null;
+  selectOption: (selection: AvatarMakerSelection) => void;
+}) {
+  return avatarMakerSelections(step).map((selection, index) => {
+    const isPicked = justPicked === `${selection.field}-${selection.value}`;
+    const disabled =
+      selection.field === "hair" &&
+      !isAvatarComposerCombinationCompatible(
+        selection.value,
+        config.expression,
+      );
+    const preview = updateAvatarComposerConfig(config, selection);
+    return (
+      <button
+        key={selection.value}
+        type="button"
+        disabled={disabled}
+        className={cn(
+          "rounded-full transition-all hover:scale-110 disabled:opacity-30 disabled:hover:scale-100",
+          isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
+        )}
+        style={{
+          animation: `avatar-option-appear 0.2s ease-out ${index * 0.05}s both`,
+        }}
+        onClick={() => {
+          return selectOption(selection);
+        }}
+        aria-label={avatarOptionLabel(selection.value)}
+      >
+        <AvatarSvgPreview config={preview} size={56} />
+      </button>
+    );
+  });
+}
+
+function legacyStepLabel(step: LegacyStep, t: TFunction<"agents">): string {
+  switch (step) {
+    case "rotation": {
+      return t(($) => {
+        return $.avatar.steps.angle;
+      });
+    }
+    case "skin": {
+      return t(($) => {
+        return $.avatar.steps.skin;
+      });
+    }
+    case "hairStyle": {
+      return t(($) => {
+        return $.avatar.steps.hair;
+      });
+    }
+    case "hairColor": {
+      return t(($) => {
+        return $.avatar.steps.color;
+      });
+    }
+    case "expression": {
+      return t(($) => {
+        return $.avatar.steps.face;
+      });
+    }
+    case "intensity": {
+      return t(($) => {
+        return $.avatar.steps.mood;
+      });
+    }
+  }
+}
+
+function LegacyStepOptions({
+  step,
+  config,
+  justPicked,
+  selectOption,
+}: {
+  step: LegacyStep;
+  config: LegacyAvatarSvgConfig;
+  justPicked: string | null;
+  selectOption: (selection: AvatarMakerSelection) => void;
+}) {
+  const { t } = useTranslation("agents");
+  if (step === "intensity") {
+    const labels = {
+      d: t(($) => {
+        return $.avatar.intensity.chill;
+      }),
+      m: t(($) => {
+        return $.avatar.intensity.normal;
+      }),
+      h: t(($) => {
+        return $.avatar.intensity.hyped;
+      }),
+    };
+    return (["d", "m", "h"] as const).map((value, index) => {
+      const preview = { ...config, intensity: value };
+      return (
+        <button
+          key={value}
+          type="button"
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-full transition-all hover:scale-110",
+            justPicked === `intensity-${value}` &&
+              "scale-110 ring-2 ring-primary ring-offset-2",
+          )}
+          style={{
+            animation: `avatar-option-appear 0.2s ease-out ${index * 0.05}s both`,
+          }}
+          onClick={() => {
+            selectOption({ mode: "legacy", field: "intensity", value });
+          }}
+          aria-label={labels[value]}
+        >
+          <AvatarSvgPreview config={preview} size={56} />
+          <span className="text-[10px] text-muted-foreground">
+            {labels[value]}
+          </span>
+        </button>
+      );
+    });
+  }
+
+  const start = step === "skin" ? 0 : 1;
+  return Array.from({ length: 5 }, (_, index) => {
+    const value = index + start;
+    const preview: LegacyAvatarSvgConfig = { ...config, [step]: value };
+    return (
+      <button
+        key={value}
+        type="button"
+        className={cn(
+          "rounded-full transition-all hover:scale-110",
+          justPicked === `${step}-${value}` &&
+            "scale-110 ring-2 ring-primary ring-offset-2",
+        )}
+        style={{
+          animation: `avatar-option-appear 0.2s ease-out ${index * 0.05}s both`,
+        }}
+        onClick={() => {
+          selectOption({ mode: "legacy", field: step, value });
+        }}
+        aria-label={`${legacyStepLabel(step, t)} ${index + 1}`}
+      >
+        <AvatarSvgPreview config={preview} size={56} />
+      </button>
+    );
+  });
+}
+
+function isComposerStep(step: Step): step is ComposerStep {
+  return (
+    step === "face" ||
+    step === "hair" ||
+    step === "expression" ||
+    step === "skin" ||
+    step === "hairColor"
+  );
+}
+
+function isLegacyStep(step: Step): step is LegacyStep {
+  return step !== "face" && step !== "hair";
+}
+
 function StepOptions({
   step,
   config,
@@ -115,100 +347,28 @@ function StepOptions({
   selectOption,
 }: {
   step: Step;
-  config: AvatarSvgConfig;
+  config: ResolvedAvatarSvgConfig;
   justPicked: string | null;
-  selectOption: (field: Step, value: number | string) => void;
+  selectOption: (selection: AvatarMakerSelection) => void;
 }) {
-  const { t } = useTranslation("agents");
-  const intensityLabels = {
-    d: t(($) => {
-      return $.avatar.intensity.chill;
-    }),
-    m: t(($) => {
-      return $.avatar.intensity.normal;
-    }),
-    h: t(($) => {
-      return $.avatar.intensity.hyped;
-    }),
-  };
-
-  if (step === "intensity") {
-    return (["d", "m", "h"] as const).map((val, i) => {
-      const isPicked = justPicked === `intensity-${val}`;
-      const preview = { ...config, intensity: val };
-      return (
-        <button
-          key={val}
-          type="button"
-          className={cn(
-            "flex flex-col items-center gap-1 rounded-full transition-all hover:scale-110",
-            isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
-          )}
-          style={{
-            animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
-          }}
-          onClick={() => {
-            return selectOption("intensity", val);
-          }}
-        >
-          <AvatarSvgPreview config={preview} size={56} />
-          <span className="text-[10px] text-muted-foreground">
-            {intensityLabels[val]}
-          </span>
-        </button>
-      );
-    });
+  if (isLegacyAvatarSvgConfig(config)) {
+    return isLegacyStep(step) ? (
+      <LegacyStepOptions
+        step={step}
+        config={config}
+        justPicked={justPicked}
+        selectOption={selectOption}
+      />
+    ) : null;
   }
-
-  if (step === "skin") {
-    return Array.from({ length: 5 }, (_, i) => {
-      const val = i;
-      const isPicked = justPicked === `skin-${val}`;
-      const preview = { ...config, skin: val };
-      return (
-        <button
-          key={val}
-          type="button"
-          className={cn(
-            "rounded-full transition-all hover:scale-110",
-            isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
-          )}
-          style={{
-            animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
-          }}
-          onClick={() => {
-            return selectOption("skin", val);
-          }}
-        >
-          <AvatarSvgPreview config={preview} size={56} />
-        </button>
-      );
-    });
-  }
-
-  return Array.from({ length: 5 }, (_, i) => {
-    const val = i + 1;
-    const isPicked = justPicked === `${step}-${val}`;
-    const preview = { ...config, [step]: val };
-    return (
-      <button
-        key={val}
-        type="button"
-        className={cn(
-          "rounded-full transition-all hover:scale-110",
-          isPicked && "scale-110 ring-2 ring-primary ring-offset-2",
-        )}
-        style={{
-          animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
-        }}
-        onClick={() => {
-          return selectOption(step, val);
-        }}
-      >
-        <AvatarSvgPreview config={preview as AvatarSvgConfig} size={56} />
-      </button>
-    );
-  });
+  return isComposerStep(step) ? (
+    <ComposerStepOptions
+      step={step}
+      config={config}
+      justPicked={justPicked}
+      selectOption={selectOption}
+    />
+  ) : null;
 }
 
 function AvatarPreviewWithShuffle() {
@@ -268,25 +428,34 @@ function AvatarPreviewWithShuffle() {
 
 function StepNavigator() {
   const { t } = useTranslation("agents");
+  const config = useGet(avatarMakerConfig$);
   const step = useGet(avatarMakerStep$);
+  const steps = useGet(avatarMakerSteps$);
   const stepIdx = useGet(avatarMakerStepIdx$);
   const goBack = useSet(goBackStep$);
   const goForward = useSet(goForwardStep$);
+  const legacy = isLegacyAvatarSvgConfig(config);
   const stepLabels: Record<Step, string> = {
-    rotation: t(($) => {
-      return $.avatar.steps.angle;
+    face: t(($) => {
+      return $.avatar.steps.face;
+    }),
+    hair: t(($) => {
+      return $.avatar.steps.hair;
+    }),
+    expression: t(($) => {
+      return legacy ? $.avatar.steps.face : $.avatar.steps.mood;
     }),
     skin: t(($) => {
       return $.avatar.steps.skin;
     }),
-    hairStyle: t(($) => {
-      return $.avatar.steps.hair;
-    }),
     hairColor: t(($) => {
       return $.avatar.steps.color;
     }),
-    expression: t(($) => {
-      return $.avatar.steps.face;
+    rotation: t(($) => {
+      return $.avatar.steps.angle;
+    }),
+    hairStyle: t(($) => {
+      return $.avatar.steps.hair;
     }),
     intensity: t(($) => {
       return $.avatar.steps.mood;
@@ -296,7 +465,7 @@ function StepNavigator() {
   return (
     <>
       <div className="flex items-center gap-1">
-        {AVATAR_MAKER_STEPS.map((stepKey, i) => {
+        {steps.map((stepKey, i) => {
           return (
             <div
               key={stepKey}
@@ -338,7 +507,7 @@ function StepNavigator() {
           type="button"
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
-            stepIdx === AVATAR_MAKER_STEPS.length - 1 && "invisible",
+            stepIdx === steps.length - 1 && "invisible",
           )}
           onClick={goForward}
           aria-label={t(($) => {
@@ -355,10 +524,11 @@ function StepNavigator() {
 function AvatarMakerDialogBody({
   onConfirm,
 }: {
-  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
 }) {
   const { t } = useTranslation("agents");
   const config = useGet(avatarMakerConfig$);
+  const editing = useGet(avatarMakerEditing$);
   const step = useGet(avatarMakerStep$);
   const justPicked = useGet(avatarMakerJustPicked$);
   const saving = useGet(avatarMakerSaving$);
@@ -367,6 +537,21 @@ function AvatarMakerDialogBody({
   const pageSignal = useGet(pageSignal$);
   const closeMaker = useSet(closeAvatarMaker$);
   const setSaving = useSet(setAvatarMakerSaving$);
+
+  const title = editing
+    ? t(($) => {
+        return $.avatar.editTitle;
+      })
+    : t(($) => {
+        return $.avatar.title;
+      });
+  const description = editing
+    ? t(($) => {
+        return $.avatar.editDescription;
+      })
+    : t(($) => {
+        return $.avatar.description;
+      });
 
   const handleConfirm = onDomEventFn(async () => {
     setSaving(true);
@@ -387,11 +572,7 @@ function AvatarMakerDialogBody({
       className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden"
     >
       <DialogHeader className="sr-only">
-        <DialogTitle>
-          {t(($) => {
-            return $.avatar.title;
-          })}
-        </DialogTitle>
+        <DialogTitle>{title}</DialogTitle>
         <DialogDescription>
           {t(($) => {
             return $.avatar.accessibilityDescription;
@@ -407,30 +588,21 @@ function AvatarMakerDialogBody({
       {/* Controls section */}
       <div className="flex flex-col items-center gap-4 px-6 py-5">
         <div className="text-center">
-          <h2 className="text-base font-semibold">
-            {t(($) => {
-              return $.avatar.title;
-            })}
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {t(($) => {
-              return $.avatar.description;
-            })}
-          </p>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         </div>
         <StepNavigator />
-        <div className="flex gap-3 flex-wrap justify-center">
-          <StepOptions
-            step={step}
-            config={config}
-            justPicked={justPicked}
-            selectOption={(field, value) => {
-              detach(
-                selectOption(field, value, pageSignal),
-                Reason.DomCallback,
-              );
-            }}
-          />
+        <div className="h-48 w-full overflow-y-auto px-1 py-1">
+          <div className="flex min-h-full flex-wrap content-center justify-center gap-3">
+            <StepOptions
+              step={step}
+              config={config}
+              justPicked={justPicked}
+              selectOption={(selection) => {
+                detach(selectOption(selection, pageSignal), Reason.DomCallback);
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -456,16 +628,25 @@ function AvatarMakerDialogBody({
 }
 
 interface AvatarMakerProps {
-  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
+  /** Avatar to load for editing. Omit to start from a random avatar. */
+  avatarUrl?: string | null;
   /** Custom trigger element. Receives `openMaker` as `onClick`. When omitted, the default wand button is rendered. */
   trigger?: (openMaker: () => void) => React.ReactNode;
 }
 
-export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
+export function AvatarMaker({
+  onConfirm,
+  avatarUrl = null,
+  trigger,
+}: AvatarMakerProps) {
   const { t } = useTranslation("agents");
   const open = useGet(avatarMakerOpen$);
-  const openMaker = useSet(openAvatarMaker$);
+  const setOpenMaker = useSet(openAvatarMaker$);
   const closeMaker = useSet(closeAvatarMaker$);
+  const openMaker = () => {
+    setOpenMaker(avatarUrl);
+  };
 
   return (
     <>
@@ -493,9 +674,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={() => {
-                  return openMaker();
-                }}
+                onClick={openMaker}
                 className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 aria-label={t(($) => {
                   return $.avatar.create;
@@ -507,7 +686,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
             <TooltipContent side="bottom">
               <p className="text-xs">
                 {t(($) => {
-                  return $.avatar.actions.customize;
+                  return $.avatar.create;
                 })}
               </p>
             </TooltipContent>

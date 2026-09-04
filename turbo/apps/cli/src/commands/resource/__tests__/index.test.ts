@@ -187,6 +187,44 @@ describe("okou resource pull command", () => {
     );
   });
 
+  it("pulls the current presentation template by id without a digest", async () => {
+    const id = "template:html-ppt-schoolhouse-runbook";
+    server.use(
+      http.get(
+        "http://localhost:3000/api/registry/presentation-templates/download",
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get("id")).toBe(id);
+          expect(url.searchParams.has("expectedSha256")).toBe(false);
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer test-token",
+          );
+          return HttpResponse.json({
+            url: downloadUrl,
+          });
+        },
+      ),
+      http.get(downloadUrl, () => {
+        return new HttpResponse(ILLUSTRATION_ARCHIVE, {
+          headers: { "content-type": "application/gzip" },
+        });
+      }),
+    );
+
+    await resourceCommand.parseAsync([
+      "node",
+      "cli",
+      "pull",
+      id,
+      "--dir",
+      outputDir,
+    ]);
+
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+      `✓ Pulled ${id}`,
+    );
+  });
+
   it("resolves the pull-only presentation reverse-template guide through the command", async () => {
     const reverseTemplateSha256 =
       "4b2bb4ee2a041d57a2fe9ba07b796a690c6dbe130c6e232fa98364b6ed6aeb11";

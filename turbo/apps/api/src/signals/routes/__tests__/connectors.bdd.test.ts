@@ -14,6 +14,7 @@ import { Buffer } from "node:buffer";
 import type { ConnectorResponse } from "@okouai/api-contracts/contracts/connector-schemas";
 import { connectorCatalogContract } from "@okouai/api-contracts/contracts/connector-catalog";
 import {
+  CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES,
   customConnectorsContract,
   type CreateCustomConnectorBody,
 } from "@okouai/api-contracts/contracts/custom-connectors";
@@ -590,6 +591,9 @@ describe("CONN-02: OAuth start and callback", () => {
 
     const bdd = createBddApi(context);
     const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    });
     const initialStart = await connectorsApi.startOauth(
       actor,
       "github",
@@ -3014,6 +3018,35 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     });
 
+    const legacyCustomState = `legacy-custom-oauth-${randomUUID()}`;
+    await seedCustomConnectorOAuthStateContext(context, {
+      state: legacyCustomState,
+      orgId: requiredOrgId(owner),
+      userId: owner.userId,
+      customConnectorId: connector.id,
+      storageVersion: 1,
+      redirectUri: "https://app.vm0.test/api/custom-connectors/oauth2/callback",
+      oauthContext: {
+        oauthSetup: "custom",
+        connectorId: connector.id,
+        storageVersion: 1,
+      },
+    });
+    await expect(
+      readCustomConnectorOAuthStorageState(context, legacyCustomState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: { context_valid: false },
+    });
+    const legacyCustomCallback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "legacy-custom-oauth-code",
+        state: legacyCustomState,
+      });
+    expect(legacyCustomCallback.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+
     const customAuthorizationUrl =
       await connectorsApi.startCustomConnectorOAuth2(owner, connector.id);
     const customState = stateFromAuthorizationUrl(customAuthorizationUrl);
@@ -3845,7 +3878,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       );
     expectApiError(discoveryFailure.body);
     expect(discoveryFailure.body.error).toMatchObject({
-      code: "UPSTREAM_UNAVAILABLE",
+      code: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.PROVIDER_UNAVAILABLE,
     });
     expect(discoveryProvider.registrationBodies).toHaveLength(0);
     await connectorsApi.deleteCustomConnector(admin, discoveryConnector.id);
@@ -3866,7 +3899,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       );
       expectApiError(dcrFailure.body);
       expect(dcrFailure.body.error).toMatchObject({
-        code: "UPSTREAM_UNAVAILABLE",
+        code: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.PROVIDER_UNAVAILABLE,
       });
       expect(dcrProvider.registrationBodies).toHaveLength(1);
       await connectorsApi.deleteCustomConnector(admin, dcrConnector.id);
@@ -3875,7 +3908,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
   it.each([
     {
+      boundary: "an invalid MCP authentication response",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.AUTHENTICATION_RESPONSE_INVALID,
+      providerOptions: {
+        registration: "cimd" as const,
+        authentication: "invalid" as const,
+      },
+    },
+    {
       boundary: "a mismatched protected resource",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.DISCOVERY_INVALID,
       providerOptions: {
         registration: "cimd" as const,
         resource: "https://automatic-mcp.example.test/other-resource",
@@ -3883,6 +3927,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     },
     {
       boundary: "an unsafe authorization endpoint",
+      expectedCode: CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.UNSAFE_URL,
       providerOptions: {
         registration: "cimd" as const,
         authorizationEndpoint: "https://localhost/authorize",
@@ -3890,23 +3935,114 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     },
     {
       boundary: "a mismatched metadata issuer",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.DISCOVERY_INVALID,
       providerOptions: {
         registration: "cimd" as const,
         metadataIssuer: "https://other-issuer.example.test",
       },
     },
-  ])("rejects Automatic OAuth with $boundary", async ({ providerOptions }) => {
+    {
+      boundary: "unsupported authorization code",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.AUTHORIZATION_UNSUPPORTED,
+      providerOptions: {
+        registration: "cimd" as const,
+        authorizationCodeSupported: false,
+      },
+    },
+    {
+      boundary: "unsupported PKCE",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.AUTHORIZATION_UNSUPPORTED,
+      providerOptions: {
+        registration: "cimd" as const,
+        pkceS256Supported: false,
+      },
+    },
+    {
+      boundary: "no automatic client registration",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_UNAVAILABLE,
+      providerOptions: { registration: "none" as const },
+    },
+    {
+      boundary: "rejected client registration",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_REJECTED,
+      providerOptions: {
+        registration: "dcr" as const,
+        dcrFailureStatus: 400,
+        dcrFailureDescription: "private-upstream-sentinel",
+      },
+    },
+    {
+      boundary: "invalid client registration details",
+      expectedCode:
+        CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_INVALID,
+      providerOptions: {
+        registration: "dcr" as const,
+        invalidDcrResponse: true,
+      },
+    },
+  ])(
+    "rejects Automatic OAuth with $boundary",
+    async ({ expectedCode, providerOptions }) => {
+      mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
+      mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
+      mockEnv("APP_URL", "https://app.vm0.ai");
+      const provider = mockAutomaticMcpOAuthProvider(context, providerOptions);
+      const admin = createBddApi(context).user({ orgRole: "org:admin" });
+      await connectorsApi.updateFeatureSwitches(admin, {
+        [FeatureSwitchKey.CustomConnectorMcp]: true,
+      });
+      const connector = await connectorsApi.createCustomConnector(admin, {
+        kind: "mcp",
+        displayName: "BDD Rejected Automatic OAuth",
+        endpoint: provider.endpoint,
+        transport: "streamable-http",
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "automatic",
+      });
+
+      const rejected = await connectorsApi.requestStartCustomConnectorOAuth2(
+        admin,
+        connector.id,
+        [400],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error).toStrictEqual({
+        code: expectedCode,
+        message:
+          "Automatic MCP OAuth setup failed. Check the server's OAuth configuration or choose another authentication method.",
+      });
+      expect(rejected.body.error.message).not.toContain(
+        "private-upstream-sentinel",
+      );
+      expect(provider.tokenBodies).toHaveLength(0);
+
+      await connectorsApi.deleteCustomConnector(admin, connector.id);
+    },
+  );
+
+  it("returns a distinct code when connected accounts hold an incompatible DCR client", async () => {
     mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
     mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
     mockEnv("APP_URL", "https://app.vm0.ai");
-    const provider = mockAutomaticMcpOAuthProvider(context, providerOptions);
+    const provider = mockAutomaticMcpOAuthProvider(context, {
+      registration: "dcr",
+      challengeScope: "read",
+    });
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
+      [FeatureSwitchKey.ConnectorAccounts]: true,
     });
     const connector = await connectorsApi.createCustomConnector(admin, {
       kind: "mcp",
-      displayName: "BDD Rejected Automatic OAuth",
+      displayName: "BDD Automatic DCR Scope Conflict",
       endpoint: provider.endpoint,
       transport: "streamable-http",
       fields: [],
@@ -3915,15 +4051,29 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       authMode: "automatic",
     });
 
-    const rejected = await connectorsApi.requestStartCustomConnectorOAuth2(
+    const firstAuthorization = await connectorsApi.startCustomConnectorOAuth2(
+      admin,
+      connector.id,
+    );
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "automatic-dcr-scope-conflict-code",
+      state: stateFromAuthorizationUrl(firstAuthorization),
+      iss: provider.issuer,
+    });
+    provider.setChallengeScope("read write");
+
+    const conflict = await connectorsApi.requestStartCustomConnectorOAuth2(
       admin,
       connector.id,
       [400],
+      undefined,
+      { intent: "add" },
     );
-    expectApiError(rejected.body);
-    expect(rejected.body.error.code).toBe("BAD_REQUEST");
-    expect(provider.registrationBodies).toHaveLength(0);
-    expect(provider.tokenBodies).toHaveLength(0);
+    expectApiError(conflict.body);
+    expect(conflict.body.error.code).toBe(
+      CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_CONFLICT,
+    );
+    expect(provider.registrationBodies).toHaveLength(1);
 
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
@@ -4071,9 +4221,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       readAutomaticOAuthBindingState(context, connectorAccountId),
     ).resolves.toMatchObject({ exists: true, valid: true });
 
-    const validState = `automatic-oauth-${randomUUID()}`;
+    const legacyState = `legacy-automatic-oauth-${randomUUID()}`;
     await seedCustomConnectorOAuthStateContext(context, {
-      state: validState,
+      state: legacyState,
       orgId: requiredOrgId(admin),
       userId: admin.userId,
       customConnectorId,
@@ -4098,23 +4248,21 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     });
     await expect(
-      readCustomConnectorOAuthStorageState(context, validState),
+      readCustomConnectorOAuthStorageState(context, legacyState),
     ).resolves.toMatchObject({
       custom_oauth_state: {
-        context_valid: true,
-        auth_mode: "automatic",
-        context_format: "legacy",
+        context_valid: false,
       },
     });
-    const callback =
+    const legacyCallback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
-        code: "automatic-oauth-code",
-        state: validState,
+        code: "legacy-automatic-oauth-code",
+        state: legacyState,
         iss: "https://issuer.example.test",
       });
-    expect(callback.body).toStrictEqual({
+    expect(legacyCallback.body).toStrictEqual({
       status: "error",
-      message: "OAuth token exchange failed - please try again",
+      message: "Invalid OAuth state - please try again",
     });
 
     const canonicalState = `canonical-automatic-oauth-${randomUUID()}`;
@@ -4149,7 +4297,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       custom_oauth_state: {
         context_valid: true,
         auth_mode: "automatic",
-        context_format: "canonical",
       },
     });
     const canonicalCallback =
@@ -6118,6 +6265,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("invalidates every organization member for definitions and only the owner for credentials", async () => {
+    expect.hasAssertions();
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
     const member = bdd.user({ orgId: admin.orgId, orgRole: "org:member" });

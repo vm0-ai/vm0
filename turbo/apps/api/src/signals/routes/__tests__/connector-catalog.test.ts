@@ -916,6 +916,7 @@ describe("GET /api/connector-catalog", () => {
       [200],
     );
 
+    expect(listResponse.body.connectors.length).toBeGreaterThan(0);
     for (const connector of listResponse.body.connectors) {
       const detailResponse = await accept(
         client.get({

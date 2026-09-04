@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.185.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.0...runner-rs-v0.185.1) (2026-09-04)
+
+
+### Refactoring
+
+* **python:** centralize runner state marker publication ([#31552](https://github.com/vm0-ai/vm0/issues/31552)) ([69f17fc](https://github.com/vm0-ai/vm0/commit/69f17fcf19f5017a60191a0edafc40dc6ea951ba))
+
+## [0.185.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.16...runner-rs-v0.185.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+
+
+### Bug Fixes
+
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+* **python:** detect mapping keys in starred calls ([#31584](https://github.com/vm0-ai/vm0/issues/31584)) ([abd4c00](https://github.com/vm0-ai/vm0/commit/abd4c0008fff1890fbc306b36ff2ad35041d06e9))
+
+
+### Performance Improvements
+
+* **python:** bound resolved auth base validation work ([#31587](https://github.com/vm0-ai/vm0/issues/31587)) ([edba27b](https://github.com/vm0-ai/vm0/commit/edba27bf0926b978b6327b3ec078d2f591d98118))
+
+## [0.184.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.15...runner-rs-v0.184.16) (2026-09-04)
+
+
+### Bug Fixes
+
+* **runner:** centralize gc serialization ([#31671](https://github.com/vm0-ai/vm0/issues/31671)) ([c3dbc79](https://github.com/vm0-ai/vm0/commit/c3dbc79ae6f3c5f11f359621efc4591bffa4c678))
+* **runner:** validate shared pi model constraints ([#31604](https://github.com/vm0-ai/vm0/issues/31604)) ([64eddf2](https://github.com/vm0-ai/vm0/commit/64eddf256934747393a2d98636560ca2fad45a6c))
+
+## [0.184.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.14...runner-rs-v0.184.15) (2026-09-04)
+
 ## [0.184.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.13...runner-rs-v0.184.14) (2026-09-03)
 
 

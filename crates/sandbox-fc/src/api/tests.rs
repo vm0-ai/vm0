@@ -770,7 +770,7 @@ async fn configure_balloon_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
     let client = ApiClient::new(&sock_path).unwrap();
-    let result = client.configure_balloon(0, true, 0).await;
+    let result = client.configure_balloon(0, true, true, 0).await;
     assert!(result.is_ok());
 
     let request = api.next_request().await;
@@ -778,6 +778,8 @@ async fn configure_balloon_succeeds_on_204() {
     let body = request_body_json(&request);
     assert_eq!(body["amount_mib"], 0);
     assert_eq!(body["deflate_on_oom"], true);
+    assert_eq!(body["free_page_reporting"], true);
+    assert!(body.get("free_page_hinting").is_none());
     assert_eq!(body["stats_polling_interval_s"], 0);
 }
 

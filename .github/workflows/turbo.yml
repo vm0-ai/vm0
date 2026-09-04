@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  npm_config_audit: "false"
+
 jobs:
   # Detect release-please context across all event types (PR, push, merge queue).
   # github.head_ref is empty in merge_group events, so we extract the PR number
@@ -427,15 +430,15 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
       # The two heavy app type-checks (api, @okouai/app ≈ 57% of the former
-      # serial total) run in the separate lint-types-apps job below. Here we
-      # check everything else. Dependency packages resolve via source
-      # (exports point at src/*.ts, no build step), so the apps job can run
-      # its tsc standalone without re-running these — no duplicated work.
+      # serial total) run in separate jobs below. Here we check everything
+      # else. Dependency packages resolve via source
+      # (exports point at src/*.ts, no build step), so both jobs can run tsc
+      # standalone without re-running these — no duplicated work.
       - name: Type Check (shared packages)
         working-directory: turbo
         run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!@okouai/app'
 
-  lint-types-apps:
+  lint-type-app:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -443,12 +446,66 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/toolchain-init
-      # Heaviest tsc projects, split off lint-types so they run on their own
-      # runner. Kept serial (one tsc at a time) to stay within runner memory —
-      # the same reason the root check-types uses --concurrency=1. Each app's
-      # check-types is invoked directly (pnpm --filter, not turbo) so turbo's
+      # Invoke check-types directly (pnpm --filter, not turbo) so turbo's
+      # dependsOn ^check-types does not re-run the shared packages here.
+      - name: Type Check (@okouai/app)
+        working-directory: turbo
+        run: |
+          set +e
+          result_file=".memory-results/app-check-types.jsonl"
+          rm -f "$result_file"
+
+          node scripts/measure-memory.mjs \
+            --label ci-app-check-types \
+            --json "$result_file" \
+            -- pnpm --filter @okouai/app run check-types
+          status=$?
+
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const file = process.argv[1];
+            if (!fs.existsSync(file)) {
+              process.exit(0);
+            }
+
+            const lines = fs.readFileSync(file, "utf8").trim().split(/\n/).filter(Boolean);
+            if (lines.length === 0) {
+              process.exit(0);
+            }
+
+            const result = JSON.parse(lines[lines.length - 1]);
+            const durationSeconds = (result.durationMs / 1000).toFixed(1);
+            const summary = [
+              "### Type Check (@okouai/app) memory",
+              "",
+              `- Peak RSS: ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB)`,
+              `- Duration: ${durationSeconds}s`,
+              `- Exit code: ${result.exitCode}`,
+              "",
+            ].join("\n");
+
+            console.log(`Peak RSS (@okouai/app check-types): ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB), duration ${durationSeconds}s`);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          ' "$result_file"
+
+          exit "$status"
+
+  lint-type-api:
+    needs: [detect-turbo-ts-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260825
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      # Invoke check-types directly (pnpm --filter, not turbo) so turbo's
       # dependsOn ^check-types does not re-run the shared packages here.
       - name: Type Check (api)
         working-directory: turbo
@@ -494,9 +551,6 @@ jobs:
           ' "$result_file"
 
           exit "$status"
-      - name: Type Check (@okouai/app)
-        working-directory: turbo
-        run: pnpm --filter @okouai/app run check-types
 
   lint-format:
     needs: [detect-turbo-ts-checks]
@@ -1342,6 +1396,9 @@ jobs:
           OKOU_APP_GIT_COMMIT_SHA: ${{ steps.artifact.outputs.sha }}
           VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW: ${{ vars.PLAUSIBLE_SCRIPT_URL }}
           VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION: ${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+          # Merge-group and main builds create the release artifact. PR preview builds receive no token.
+          # Public by design: provision only an ingest-only token scoped to vm0-client-telemetry-prod.
+          VITE_AXIOM_CLIENT_TELEMETRY_TOKEN: ${{ github.event_name != 'pull_request' && vars.AXIOM_CLIENT_TELEMETRY_TOKEN || '' }}
           VITE_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
           VITE_SENTRY_DSN_PROD: ${{ vars.SENTRY_DSN_APP_PROD }}
           VITE_VAPID_PUBLIC_KEY_PREVIEW: ${{ vars.VAPID_PUBLIC_KEY_PREVIEW }}
@@ -2998,7 +3055,8 @@ jobs:
       - file-size-check
       - lint-eslint
       - lint-types
-      - lint-types-apps
+      - lint-type-app
+      - lint-type-api
       - lint-format
       - lint-knip
       - test-migrate
@@ -3102,7 +3160,8 @@ jobs:
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-types" "${{ needs.lint-types.result }}" "$TS_CHECK_SKIP_ALLOWED"
-          check_result "lint-types-apps" "${{ needs.lint-types-apps.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-type-app" "${{ needs.lint-type-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-type-api" "${{ needs.lint-type-api.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-format" "${{ needs.lint-format.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-knip" "${{ needs.lint-knip.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-cli" "${{ needs.test-cli.result }}" "$TS_CHECK_SKIP_ALLOWED"

@@ -1,10 +1,11 @@
 import {
   avatarSvgLayerUrls,
-  type AvatarSvgConfig,
+  isLegacyAvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
 
 interface AvatarSvgPreviewProps {
-  config: AvatarSvgConfig;
+  config: ResolvedAvatarSvgConfig;
   size?: number;
   className?: string;
   alt?: string;
@@ -31,10 +32,12 @@ export function AvatarSvgPreview({
       {...(alt ? { role: "img", "aria-label": alt } : undefined)}
       data-testid={testId}
     >
-      <div className="absolute inset-0 scale-[1.25]">
-        <img alt="" src={urls.head} className={layerClassName} />
-        <img alt="" src={urls.face} className={layerClassName} />
-        <img alt="" src={urls.hair} className={layerClassName} />
+      <div
+        className={`absolute inset-0 ${isLegacyAvatarSvgConfig(config) ? "scale-[1.25]" : ""}`}
+      >
+        {urls.map((src) => {
+          return <img key={src} alt="" src={src} className={layerClassName} />;
+        })}
       </div>
     </div>
   );

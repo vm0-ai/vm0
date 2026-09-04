@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
 import type { ChatEventUsagePayload } from "@okouai/api-contracts/contracts/chat-threads";
 import { chatEventCompatibilityRole } from "@okouai/api-contracts/contracts/chat-events";
+import { mergeChatEventUsagePayloads } from "./chat-event-usage.ts";
+import { isGoalContinuationInput } from "./chat-event-types.ts";
 
 interface RunSegment {
   readonly runId: string;
@@ -35,6 +37,10 @@ export interface RunGroupFold {
 export interface RunGroupFolding {
   readonly visibleGroups: ChatEventGroup[];
   readonly foldsByNextGroupId: ReadonlyMap<string, readonly RunGroupFold[]>;
+}
+
+export interface RunGroupFoldingOptions {
+  readonly preserveGoalRunsForWorkFolding?: boolean;
 }
 
 const internalRunGroupExpansionOverrides$ = state<Map<string, boolean>>(
@@ -120,68 +126,6 @@ function setLatestUsageForRun(
   }
 }
 
-interface UsageBreakdownAccumulator {
-  readonly kind: string;
-  credits: number;
-  readonly providers: Map<string, number>;
-}
-
-function mergeUsagePayloads(
-  usages: readonly ChatEventUsagePayload[],
-): ChatEventUsagePayload | undefined {
-  if (usages.length === 0) {
-    return undefined;
-  }
-
-  let totalCredits = 0;
-  let settledAt = "";
-  const breakdownByKind = new Map<string, UsageBreakdownAccumulator>();
-
-  for (const usage of usages) {
-    totalCredits += usage.totalCredits;
-    settledAt = usage.settledAt;
-
-    for (const kindBreakdown of usage.breakdown) {
-      let accumulator = breakdownByKind.get(kindBreakdown.kind);
-      if (accumulator === undefined) {
-        accumulator = {
-          kind: kindBreakdown.kind,
-          credits: 0,
-          providers: new Map(),
-        };
-        breakdownByKind.set(kindBreakdown.kind, accumulator);
-      }
-
-      accumulator.credits += kindBreakdown.credits;
-
-      for (const providerBreakdown of kindBreakdown.providers) {
-        accumulator.providers.set(
-          providerBreakdown.provider,
-          (accumulator.providers.get(providerBreakdown.provider) ?? 0) +
-            providerBreakdown.credits,
-        );
-      }
-    }
-  }
-
-  return {
-    version: 1,
-    totalCredits,
-    settledAt,
-    breakdown: Array.from(breakdownByKind.values()).map((accumulator) => {
-      return {
-        kind: accumulator.kind,
-        credits: accumulator.credits,
-        providers: Array.from(accumulator.providers.entries()).map(
-          ([provider, credits]) => {
-            return { provider, credits };
-          },
-        ),
-      };
-    }),
-  };
-}
-
 function mergedUsageForRunSegments(
   runSegments: readonly GroupedRunSegment[],
   usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
@@ -193,7 +137,7 @@ function mergedUsageForRunSegments(
       usages.push(usage);
     }
   }
-  return mergeUsagePayloads(usages);
+  return mergeChatEventUsagePayloads(usages);
 }
 
 function attachUsageToGroups(
@@ -546,6 +490,7 @@ export function buildRunGroupFolding(
   groups: readonly ChatEventGroup[],
   expansionOverrides?: ReadonlyMap<string, boolean>,
   protectedEventId: string | null = null,
+  options: RunGroupFoldingOptions = {},
 ): RunGroupFolding | null {
   const segments = eventSegmentsFromGroups(groups);
   const usageByRunId = usageByRunIdFromGroups(groups);
@@ -575,6 +520,20 @@ export function buildRunGroupFolding(
     const runSegments = segments
       .slice(index, endIndex)
       .filter(isGroupedRunSegment);
+    if (
+      options.preserveGoalRunsForWorkFolding &&
+      runSegments.some((item) => {
+        return item.events.some(isGoalContinuationInput);
+      })
+    ) {
+      visibleGroups.push(
+        ...runSegments.flatMap((item) => {
+          return segmentGroups(item, usageByRunId);
+        }),
+      );
+      index = endIndex;
+      continue;
+    }
     const foldSection = buildFoldSection(
       runSegments,
       usageByRunId,

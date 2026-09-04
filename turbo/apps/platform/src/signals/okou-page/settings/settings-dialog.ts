@@ -8,10 +8,13 @@ import { resetSignal } from "../../utils.ts";
 import { reloadConnectorCatalogDiagnostics$ } from "./connector-catalog-diagnostics.ts";
 import { reloadBuiltInModelCooldownDiagnostics$ } from "./built-in-model-cooldown-diagnostics.ts";
 import {
+  billingPlansStandalone$,
+  billingSubPage$,
   clearBillingScrollTarget$,
   clearPendingLogo$,
   initProfileName$,
   requestBuyCreditsScroll$,
+  setBillingPlansStandalone$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
 import {
@@ -188,6 +191,9 @@ const releaseSettingsDialogSession$ = command(({ set }) => {
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
   set(resetUsagePackPricing$);
+  // The billing sub-page belongs to the session, not to the tab: a closed
+  // dialog must not reopen on the plans page the next time it is opened.
+  set(setBillingSubPage$, false);
   set(internalSettingsDialogOpen$, false);
 });
 
@@ -202,6 +208,20 @@ export const closeSettingsModal$ = command(({ get, set }) => {
     params.delete("billingView");
     set(updateSearchParams$, params);
   }
+});
+
+/**
+ * Dismiss the billing plans surface. A standalone upgrade flow was launched
+ * from outside Settings, so dismissing it closes the whole dialog and returns
+ * to the launching screen; a flow reached from inside Settings goes back to the
+ * billing tab.
+ */
+export const dismissBillingPlans$ = command(({ get, set }) => {
+  if (get(billingPlansStandalone$)) {
+    set(closeSettingsModal$);
+    return;
+  }
+  set(setBillingSubPage$, false);
 });
 
 export const setSettingsDialogOpen$ = command(
@@ -226,6 +246,9 @@ export const setSettingsDialogOpen$ = command(
     );
     set(internalSettingsDialogSignal$, modalSignal);
     set(internalSettingsDialogSessionActive$, true);
+    // A plans sub-page that is already open when the session starts was opened
+    // by an entry point outside Settings, so that flow owns the whole dialog.
+    set(setBillingPlansStandalone$, get(billingSubPage$));
     set(reloadBillingStatus$);
     if (get(internalActiveSection$) === "debug") {
       set(reloadConnectorCatalogDiagnostics$);

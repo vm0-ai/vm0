@@ -1846,8 +1846,22 @@
     {
       "idx": 1071,
       "version": "7",
-      "when": 1788510190435,
-      "tag": "1071_add_heygen_avatar_iii_pricing",
+      "when": 1788482123509,
+      "tag": "1071_amazing_famine",
+      "breakpoints": true
+    },
+    {
+      "idx": 1072,
+      "version": "7",
+      "when": 1788522137500,
+      "tag": "1072_huge_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 1073,
+      "version": "7",
+      "when": 1788530536993,
+      "tag": "1073_spicy_maestro",
       "breakpoints": true
     }
   ]

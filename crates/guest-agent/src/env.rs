@@ -12,6 +12,7 @@ use api_contracts::generated::{
     constants::runners::paths::{CANONICAL_CLAUDE_CONFIG_DIR, CANONICAL_CODEX_HOME_DIR},
     types::runners::storage::ArtifactEntryMissingRootPolicy,
 };
+use guest_contracts::env::{CliAgentTypeSelection, CliFramework};
 
 use crate::constants;
 use guest_common::log_warn;
@@ -43,10 +44,26 @@ pub enum Framework {
 impl Framework {
     /// Stable CLI agent type string used in runner/web contracts and logs.
     pub fn agent_type(self) -> &'static str {
-        match self {
-            Framework::ClaudeCode => "claude-code",
-            Framework::Codex => "codex",
-            Framework::Pi => "pi",
+        CliFramework::from(self).as_cli_agent_type()
+    }
+}
+
+impl From<CliFramework> for Framework {
+    fn from(framework: CliFramework) -> Self {
+        match framework {
+            CliFramework::ClaudeCode => Self::ClaudeCode,
+            CliFramework::Codex => Self::Codex,
+            CliFramework::Pi => Self::Pi,
+        }
+    }
+}
+
+impl From<Framework> for CliFramework {
+    fn from(framework: Framework) -> Self {
+        match framework {
+            Framework::ClaudeCode => Self::ClaudeCode,
+            Framework::Codex => Self::Codex,
+            Framework::Pi => Self::Pi,
         }
     }
 }
@@ -607,18 +624,14 @@ impl GuestConfig {
 }
 
 fn framework_from_cli_agent_type(value: &str) -> Framework {
-    match value {
-        "codex" => Framework::Codex,
-        "pi" => Framework::Pi,
-        "" | "claude-code" => Framework::ClaudeCode,
-        other => {
-            log_warn!(
-                LOG_TAG,
-                "Unknown CLI_AGENT_TYPE={other:?}, defaulting to claude-code"
-            );
-            Framework::ClaudeCode
-        }
+    let selection = CliAgentTypeSelection::parse(value);
+    if selection.is_unknown() {
+        log_warn!(
+            LOG_TAG,
+            "Unknown CLI_AGENT_TYPE={value:?}, defaulting to claude-code"
+        );
     }
+    selection.framework().into()
 }
 
 fn non_empty(value: &str) -> Option<&str> {
@@ -1038,10 +1051,26 @@ mod tests {
             Framework::ClaudeCode
         );
         assert_eq!(framework_from_cli_agent_type("codex"), Framework::Codex);
+        assert_eq!(framework_from_cli_agent_type("pi"), Framework::Pi);
         assert_eq!(
             framework_from_cli_agent_type("unexpected"),
             Framework::ClaudeCode
         );
+    }
+
+    #[test]
+    fn guest_config_preserves_unknown_cli_agent_type_while_falling_back() {
+        let (_tmp, raw) =
+            raw_config_fixture_with_run_payload(&guest_contracts::env::RunPayload::default());
+        let raw = GuestConfigRaw {
+            cli_agent_type: "custom-agent".to_string(),
+            ..raw
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.cli_agent_type, "custom-agent");
+        assert_eq!(config.framework, Framework::ClaudeCode);
     }
 
     #[test]

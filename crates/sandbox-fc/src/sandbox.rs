@@ -539,12 +539,16 @@ pub struct FirecrackerSandbox {
     delete_workspace_on_leak_cleanup: bool,
     /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
     pub(crate) destroyed: bool,
-    /// Tracks whether the sandbox is currently in the idle/parked state.
-    /// When true, balloon is inflated (for large VMs) and vCPUs are paused.
-    /// Set by `park()` on success and cleared by `unpark()`. Used to make
-    /// both methods idempotent, to let `unpark()` know whether it should
-    /// touch the balloon controller, and to let `stop()` skip vsock
-    /// graceful shutdown (guest can't respond with paused vCPUs).
+    /// Tracks whether the sandbox has completed the park transition into the
+    /// idle/parked lifecycle state. A successful park pauses vCPUs, but this
+    /// flag does not prove that a large VM's balloon reached its target:
+    /// reclaim may be partial, skipped, or interrupted by an exact-successor
+    /// handoff. The separate `park_outcome` records reuse eligibility, so a
+    /// sandbox can be parked but non-reusable after severe memory retention.
+    /// Set by `park()` after the pause succeeds and cleared by a completed
+    /// `unpark()`. Used to make both methods idempotent, to let `unpark()` know
+    /// whether it should touch the balloon controller, and to let `stop()`
+    /// skip vsock graceful shutdown (a paused guest cannot respond).
     is_parked: bool,
     /// Eligibility returned by the completed park that set `is_parked`.
     /// Retained so an idempotent repeated park cannot upgrade a non-reusable
@@ -2251,11 +2255,18 @@ impl Sandbox for FirecrackerSandbox {
     // -- idle transitions --
     //
     // `park()` is called by the runner when a sandbox is handed off to the
-    // idle pool. It stops the reactive balloon controller, inflates the
-    // balloon to reclaim guest memory, waits for inflation to complete,
-    // then pauses vCPUs to eliminate idle CPU overhead (timer ticks,
-    // kernel scheduling). Ordering: inflate before pause — the guest
-    // balloon driver needs running vCPUs to process the inflate.
+    // idle pool. It stops the reactive balloon controller and, for large VMs,
+    // requests balloon inflation to reclaim guest memory. It makes a bounded
+    // settle attempt before pausing vCPUs to eliminate idle CPU overhead
+    // (timer ticks, kernel scheduling). Settling may finish at the target,
+    // within tolerance, under guest memory pressure, at the deadline (with at
+    // most one bounded progress grace period), or after a non-fatal stats
+    // error. These outcomes still reach the paused boundary; severe memory
+    // retention is reported as parked but non-reusable. An exact-successor
+    // handoff may skip balloon setup or interrupt the settle wait, shortening
+    // idle-only compaction before the pause. Ordering: attempt inflation and
+    // settling before pause — the guest balloon driver needs running vCPUs to
+    // process the inflate.
     //
     // `unpark()` is called when the runner pulls the sandbox back out of
     // the idle pool. It resumes vCPUs, deflates the balloon, and respawns

@@ -9,7 +9,8 @@ import {
   type PiMemoryRecallSelection,
   type PiLaunchConfig,
   type PiApiFirstTurnConfig,
-  type PiModelConfigLegacy as PiModelConfig,
+  type PiModelConfig,
+  type PiModelConfigLegacy,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
   piMemoryRecallSelectionSchema,
@@ -842,6 +843,7 @@ export function isThreadSessionSnapshotStale(
 interface CommitPreparedLaunchArgs {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly creditAdmitted: boolean;
   readonly context: FinalizedPreparedRunContext;
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
@@ -876,7 +878,9 @@ interface ResolvedModelProviderEnvironment {
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
-  readonly credentialHeader?: NonNullable<PiModelConfig["credentialHeader"]>;
+  readonly credentialHeader?: NonNullable<
+    PiModelConfigLegacy["credentialHeader"]
+  >;
 }
 
 type BuiltinRuntimeTargetRegistration = Extract<
@@ -2498,6 +2502,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
+  readonly piExecution: boolean;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
@@ -2706,10 +2711,11 @@ async function resolveExactPersonalModelProviderAccount(
   if (
     !args.modelProviderId ||
     args.modelProviderCredentialScope === "org" ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.PersonalModelProviderAccounts,
-      args.featureSwitchContext,
-    )
+    (!args.piExecution &&
+      !isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        args.featureSwitchContext,
+      ))
   ) {
     return null;
   }
@@ -6336,6 +6342,7 @@ interface LaunchRunRowsArgs {
     | AgentRunOfficialWorkflowProvenance
     | undefined;
   readonly error: string | undefined;
+  readonly creditAdmitted: boolean;
 }
 
 interface LaunchSessionValues {
@@ -6371,6 +6378,7 @@ function launchRunValues(
     userId: args.userId,
     orgId: args.orgId,
     status: args.status,
+    creditAdmitted: args.creditAdmitted,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
@@ -7510,6 +7518,7 @@ function preparedLaunchRowsArgs(args: {
     officialWorkflowProvenance:
       args.commit.context.officialWorkflowRun?.provenance,
     error: undefined,
+    creditAdmitted: args.status === "pending" && args.commit.creditAdmitted,
   };
 }
 
@@ -7983,6 +7992,7 @@ async function persistFailedLaunch(
     launchSnapshot: args.context.launchSnapshot,
     officialWorkflowProvenance: args.context.officialWorkflowRun?.provenance,
     error: message,
+    creditAdmitted: false,
   });
   return {
     kind: "failed",
@@ -8620,6 +8630,7 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         builtInModelRuntimeRoute: args.builtInModelRuntimeRoute,
+        piExecution: args.piExecution,
         featureSwitchContext: options.featureSwitchContext,
       })
     : null;
@@ -9979,6 +9990,7 @@ function flushQueueFirstClaimLostTiming(args: {
 interface AtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
+  readonly creditAdmitted: boolean;
   readonly context: FinalizedPreparedRunContext;
   readonly timing: ApiDispatchTimingCollector;
   readonly phaseTiming: ApiDispatchPhaseCollector;
@@ -10184,6 +10196,7 @@ function createAtomicLaunchRun(
           return await commitPreparedLaunch({
             db: input.db,
             createArgs: input.args,
+            creditAdmitted: input.creditAdmitted,
             context: input.context,
             identity,
             callbackRows,
@@ -10359,6 +10372,9 @@ export const completeAgentRun$ = command(
       context.modelProvider?.type ?? args.modelProviderType;
     const selectedModel =
       context.modelProvider?.selectedModel ?? args.selectedModelOverride;
+    const creditAdmitted =
+      args.enforceVm0Credits === true &&
+      isBuiltInModelProviderType(context.modelProvider?.type);
     const admissionGate = await timing.measure(
       "api_dispatch_check_run_admission",
       "top_level",
@@ -10370,9 +10386,7 @@ export const completeAgentRun$ = command(
             userId: args.userId,
             modelProviderType,
             selectedModel,
-            enforceVm0Credits:
-              args.enforceVm0Credits === true &&
-              isBuiltInModelProviderType(context.modelProvider?.type),
+            enforceVm0Credits: creditAdmitted,
             timing,
           },
           signal,
@@ -10389,6 +10403,7 @@ export const completeAgentRun$ = command(
         {
           db,
           args,
+          creditAdmitted,
           context,
           timing,
           phaseTiming: input.prepared.phaseTiming,

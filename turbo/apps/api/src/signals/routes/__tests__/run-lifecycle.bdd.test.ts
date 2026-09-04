@@ -98,6 +98,7 @@ import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
+  type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { seedUserSecret, seedUserVariable } from "./helpers/user-config-state";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
@@ -879,15 +880,9 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly publicBrand?: PublicBrand;
-  readonly chatThreadId?: string;
 }): void {
   expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
   expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
-  if (args.chatThreadId) {
-    expect(args.platformEnvironment.OKOU_CHAT_THREAD_ID).toBe(
-      args.chatThreadId,
-    );
-  }
   expect(
     Object.keys(args.environment ?? {}).filter((key) => {
       return key.startsWith("ZERO_");
@@ -1101,17 +1096,33 @@ function expectClaimRouteResponseTimingActions(args: {
 }): void {
   const events = claimRouteTimingEventsForRun(args.runId);
   const expectedActionTypes = new Set(args.expectedActionTypes);
-  for (const actionType of CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES) {
-    const matchingEvents = events.filter((event) => {
-      return event.op_type === actionType;
-    });
-    if (!expectedActionTypes.has(actionType)) {
-      expect(matchingEvents).toHaveLength(0);
-      continue;
-    }
+  const actionCounts = CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES.map(
+    (actionType) => {
+      return {
+        actionType,
+        count: events.filter((event) => {
+          return event.op_type === actionType;
+        }).length,
+      };
+    },
+  );
+  const expectedActionCounts = CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES.map(
+    (actionType) => {
+      return {
+        actionType,
+        count: expectedActionTypes.has(actionType) ? 1 : 0,
+      };
+    },
+  );
+  expect(actionCounts).toStrictEqual(expectedActionCounts);
 
-    expect(matchingEvents).toHaveLength(1);
-    const event = matchingEvents[0];
+  for (const actionType of args.expectedActionTypes) {
+    const event = events.find((candidate) => {
+      return candidate.op_type === actionType;
+    });
+    if (!event) {
+      throw new Error(`Expected claim response timing for ${actionType}`);
+    }
     expect(event).toStrictEqual(
       expect.objectContaining({
         source: "api",
@@ -1431,7 +1442,7 @@ function codexAuthJson(): string {
   });
 }
 
-async function entitledRunActor(): Promise<{
+async function entitledRunActor(userOptions: ApiTestUserOptions = {}): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
@@ -1442,7 +1453,7 @@ async function entitledRunActor(): Promise<{
 }> {
   const bdd = createBddApi(context);
   const api = createRunsApi(context);
-  const actor = bdd.user();
+  const actor = bdd.user(userOptions);
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
@@ -1686,6 +1697,49 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
+  it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor({
+      email: "BINGJIE@VM0.AI",
+    });
+    const toolHint = "Click-driven intro-video camera moves:";
+    await bdd.readMe(actor);
+
+    const enabledByEmail = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const enabledByEmailClaim = await api.claimRunnerJob(enabledByEmail.runId);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(toolHint);
+    expect(enabledByEmailClaim.appendSystemPrompt ?? "").toContain(
+      "okou video camera --help",
+    );
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.IntroVideo]: false,
+    });
+
+    const disabledByOverride = await api.createRun(actor, {
+      agentId,
+      prompt: "Create a polished video from the attached source.",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const disabledByOverrideClaim = await api.claimRunnerJob(
+      disabledByOverride.runId,
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").toContain(
+      "# Agent Tools",
+    );
+    expect(disabledByOverrideClaim.appendSystemPrompt ?? "").not.toContain(
+      toolHint,
+    );
+  });
+
   it("advertises presentation screenshots only while their rollout switch is on", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -1714,6 +1768,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
     const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
     expect(gatedOnClaim.appendSystemPrompt ?? "").toContain(toolHint);
+  });
+
+  it("asks chat runs for a generic progressive artifact preview only while its switch is on", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const promptHeading = "# Progressive Artifact Preview";
+
+    const gatedOff = await api.createRun(actor, {
+      agentId,
+      prompt: "make a launch deck",
+      modelProvider: "anthropic-api-key",
+    });
+    const gatedOffRun = await api.readRun(actor, gatedOff.runId);
+    expect(gatedOffRun.appendSystemPrompt ?? "").not.toContain(promptHeading);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ProgressiveArtifactPreview]: true,
+    });
+
+    const gatedOn = await api.createRun(actor, {
+      agentId,
+      prompt: "make a launch deck",
+      modelProvider: "anthropic-api-key",
+    });
+    const gatedOnRun = await api.readRun(actor, gatedOn.runId);
+    const appendSystemPrompt = gatedOnRun.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain(promptHeading);
+    expect(appendSystemPrompt).toContain("returned Alias URL");
+    expect(appendSystemPrompt).toContain("still working on it");
+    expect(appendSystemPrompt).toContain("same `--site` slug");
+    expect(appendSystemPrompt).toContain(
+      "Do not report named stages, draft/final labels, or completion percentages",
+    );
   });
 
   it("emits api dispatch timing for exact-empty direct dispatch runs", async () => {
@@ -6830,6 +6918,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("keeps runner heartbeat snapshots ordered", async () => {
+    expect.hasAssertions();
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -6921,24 +7010,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         throw new Error("Expected ordered-heartbeat poll to return 200");
       }
       expect(poll.body.job?.runId).toBe(followUp.runId);
-      if (expectedResource) {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
-          kind: "preference",
-          runnerIdentity: {
-            runnerId,
-            heartbeatGeneration: 1,
-          },
-          tier:
-            expectedResource === "reusableSandbox"
-              ? "reusableSandbox"
-              : "workspaceCache",
-          expiresAt: expect.any(String),
-        });
-      } else {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
-          kind: "noPreference",
-        });
-      }
+      const preference = runnerPreference(poll.body.job);
+      const preferenceProjection =
+        preference?.kind === "preference"
+          ? {
+              kind: preference.kind,
+              runnerIdentity: preference.runnerIdentity,
+              tier: preference.tier,
+              expiresAtType: typeof preference.expiresAt,
+            }
+          : { kind: preference?.kind };
+      const expectedPreferenceProjection =
+        expectedResource === undefined
+          ? { kind: "noPreference" }
+          : {
+              kind: "preference",
+              runnerIdentity: {
+                runnerId,
+                heartbeatGeneration: 1,
+              },
+              tier: expectedResource,
+              expiresAtType: "string",
+            };
+      expect(preferenceProjection).toStrictEqual(expectedPreferenceProjection);
       await api.requestCancelRun(actor, followUp.runId, [200]);
       await flushWaitUntilForTest();
     }
@@ -8119,7 +8213,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const agentId = onboarding.defaultAgentId;
     await expect(api.readBillingStatus(actor)).resolves.toMatchObject({
       tier: "limited-free-1",
-      credits: 3000,
+      credits: 1000,
       onboardingPaymentPending: false,
     });
     const modelPolicies = await misc.listModelPolicies(actor);
@@ -14049,7 +14143,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
       [400],
     );
-    expectApiError(rejected.body);
+    expect(rejected.body).toStrictEqual({
+      error: {
+        message: `Invalid base URL "https://\${{ vars.JIRA_DOMAIN }}" in firewall "jira": host policy does not allow resolved host "attacker.example"`,
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("refreshes queued connector grants from the stored permission baseline", async () => {
@@ -14952,7 +15051,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     }
 
     const directEnvironment = {
-      ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
+      CUSTOM_AGENT_ID: `\${{ vars.CUSTOM_AGENT_ID }}`,
       CUSTOM_API_TOKEN: `\${{ secrets.CUSTOM_API_TOKEN }}`,
     };
     const directAgent = await api.createDirectAgent(actor, {
@@ -14974,13 +15073,13 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       agentId: directAgent.agentId,
       prompt: "consume an application-owned Zero context",
       modelProviderType: "anthropic-api-key",
-      vars: { ZERO_AGENT_ID: directAgent.agentId },
+      vars: { CUSTOM_AGENT_ID: directAgent.agentId },
       secrets: { CUSTOM_API_TOKEN: directOkouToken },
     });
     await api.heartbeatRunner(runnerGroup);
     const directClaim = await api.claimRunnerJob(direct.runId);
     expect(directClaim.environment).toMatchObject({
-      ZERO_AGENT_ID: directAgent.agentId,
+      CUSTOM_AGENT_ID: directAgent.agentId,
       CUSTOM_API_TOKEN: directOkouToken,
     });
     expect(directClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
@@ -15292,9 +15391,6 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
       value: "***",
     });
     expect(claim.environment?.APP_URL).toBeUndefined();
-    expect(claim.environment ?? {}).not.toHaveProperty(
-      "ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED",
-    );
     expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
       kind: "builtin",
       name: "slack",
@@ -18846,6 +18942,7 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       }),
       await completeFailure({}),
       await completeFailure({ failureReason: "session_history_limit" }),
+      await completeFailure({ failureReason: "execution_timeout" }),
       await completeFailure({ failureReason: "unsupported_model" }),
     ];
     for (const control of visibleControls) {

@@ -25,6 +25,12 @@
 //! Serialization always includes `cleanupPaths` and omits `instructionCleanups` when it is empty.
 //! Unknown top-level and mount fields are ignored during deserialization so future fields can be
 //! added compatibly.
+//!
+//! `storageId` is optional in canonical `storageMounts` input. For a `writeback: true` mount,
+//! omitting `storageId` defaults the value to `None` and preserves it as
+//! [`ArtifactEntry::vas_storage_id`] == `None`; deserialization does not require the field. The
+//! normal runner producer supplies an identifier for writeback mounts, but that producer behavior
+//! is not an input requirement of this decoder.
 
 use std::collections::HashSet;
 
@@ -220,7 +226,10 @@ pub struct ArtifactEntry {
     /// VAS storage name used for diagnostics and cache identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vas_storage_name: Option<String>,
-    /// VAS storage identifier retained in the runner payload.
+    /// Optional VAS storage identifier retained from the runner payload or canonical input.
+    ///
+    /// A writeback mount accepted by canonical deserialization may omit `storageId`, in which case
+    /// this value is `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vas_storage_id: Option<String>,
     /// VAS version identifier used for diagnostics and cache identity.
@@ -238,7 +247,11 @@ pub struct StorageMountEntry {
     /// Storage name retained for diagnostics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Immutable Storage identifier, present for writeback mounts.
+    /// Optional immutable Storage identifier.
+    ///
+    /// The normal runner producer supplies this for writeback mounts, but canonical deserialization
+    /// accepts a writeback mount without `storageId`. In that case, the value defaults to `None` and
+    /// is retained as [`ArtifactEntry::vas_storage_id`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage_id: Option<String>,
     /// Resolved Storage version identifier.

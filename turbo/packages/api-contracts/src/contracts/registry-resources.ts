@@ -6,6 +6,25 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 export const registryResourceDownloadContract = c.router({
+  downloadPresentationTemplate: {
+    method: "GET",
+    path: "/api/registry/presentation-templates/download",
+    headers: authHeadersSchema,
+    query: z.object({
+      id: z.string().min(1, "Resource id is required"),
+    }),
+    responses: {
+      200: z.object({
+        url: z.url(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get the current presentation template archive",
+  },
   download: {
     method: "GET",
     path: "/api/registry/resources/download",

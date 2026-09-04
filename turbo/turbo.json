@@ -90,6 +90,7 @@
     "NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL",
     "VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW",
     "VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION",
+    "VITE_AXIOM_CLIENT_TELEMETRY_TOKEN",
     "VITE_POSTHOG_KEY",
     "POSTHOG_KEY",
     "POSTHOG_HOST",
@@ -268,12 +269,6 @@
     "NEXT_RUNTIME",
     "NEXT_PUBLIC_VERCEL_ENV",
     "AGENT_BROWSER_EXECUTABLE_PATH",
-    "GCP_PROJECT_ID",
-    "GCP_PROJECT_NUMBER",
-    "GCP_SERVICE_ACCOUNT_EMAIL",
-    "GCP_WORKLOAD_IDENTITY_POOL_ID",
-    "GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID",
-    "GEMINI_API_KEY",
     "DEV"
   ],
   "tasks": {
@@ -330,7 +325,8 @@
       "outputs": []
     },
     "check-types": {
-      "dependsOn": ["^check-types", "^build"]
+      "dependsOn": ["^check-types", "^build"],
+      "env": ["TSC_CHECKERS"]
     },
     "test": {
       "dependsOn": ["^build"]

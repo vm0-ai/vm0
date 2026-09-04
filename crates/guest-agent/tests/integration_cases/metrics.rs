@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 const METRICS_INTERVAL: Duration = Duration::from_secs(5);
 #[cfg(unix)]
-const WRITE_FAILURE_CHILD_ENV: &str = "VM0_TEST_METRICS_WRITE_FAILURE_CHILD";
+const WRITE_FAILURE_CHILD_ENV: &str = "OKOU_TEST_METRICS_WRITE_FAILURE_CHILD";
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 

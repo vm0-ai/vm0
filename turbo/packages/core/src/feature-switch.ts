@@ -316,31 +316,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the guided intro video upload, screen recording, avatar, and voice workflow in new chat.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
-  [FeatureSwitchKey.DesktopScreenRecording]: {
-    maintainer: "bingjie@vm0.ai",
+  [FeatureSwitchKey.AvatarComposerV2]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.IosPwaStartupImages]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Generate iOS PWA startup images from the inline bootstrap skeleton.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SocialDownloadDetectedMediaType]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "File a social download by the media kind detected from its leading file structure instead of the requested format, so an audio-only result stops being recorded as video/mp4.",
-    enabled: false,
-    // Staff first: this decides the stored filename and content type, and the
-    // extension is baked into the public artifact URL, so widen only after real
-    // downloads confirm the detection agrees with the requested format.
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Use the background-free avatar composer for new agents and avatar customization.",
+    enabled: true,
   },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
@@ -392,6 +374,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ProgressiveArtifactPreview]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Publish coherent website and HTML presentation previews while the agent continues improving them.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -479,8 +468,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Enable multiple credential accounts per built-in or custom connector.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the composer connector popover collision frame stable while filtering so placement does not flip.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -521,6 +516,30 @@ function evaluateSwitch(fs: FeatureSwitch, hashes: ResolvedHashes): boolean {
   if (hashes.orgIdHash && fs.enabledOrgIdHashes?.includes(hashes.orgIdHash))
     return true;
   return false;
+}
+
+/**
+ * Return defaults enabled by the supplied email identity alone.
+ *
+ * The API feature-switch response cannot evaluate email allowlists because its
+ * auth context contains only user and organization IDs. Platform reapplies
+ * these defaults after the server's effective map, before stored overrides.
+ */
+export function getEmailEnabledFeatureStates(
+  email?: string,
+): Partial<Record<FeatureSwitchKey, true>> {
+  const result: Partial<Record<FeatureSwitchKey, true>> = {};
+  if (!email) {
+    return result;
+  }
+
+  const emailHash = fnv1a(email.toLowerCase());
+  for (const key of Object.values(FeatureSwitchKey)) {
+    if (FEATURE_SWITCHES[key].enabledEmailHashes?.includes(emailHash)) {
+      result[key] = true;
+    }
+  }
+  return result;
 }
 
 /**
