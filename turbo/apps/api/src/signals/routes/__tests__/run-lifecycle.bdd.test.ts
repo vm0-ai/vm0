@@ -879,15 +879,9 @@ function expectCanonicalOkouRunEnvironment(args: {
   readonly orgId: string;
   readonly runId: string;
   readonly publicBrand?: PublicBrand;
-  readonly chatThreadId?: string;
 }): void {
   expect(args.platformEnvironment.OKOU_APP_URL).toBe(args.appUrl);
   expect(args.platformEnvironment.OKOU_AGENT_ID).toBe(args.agentId);
-  if (args.chatThreadId) {
-    expect(args.platformEnvironment.OKOU_CHAT_THREAD_ID).toBe(
-      args.chatThreadId,
-    );
-  }
   expect(
     Object.keys(args.environment ?? {}).filter((key) => {
       return key.startsWith("ZERO_");
@@ -1101,17 +1095,33 @@ function expectClaimRouteResponseTimingActions(args: {
 }): void {
   const events = claimRouteTimingEventsForRun(args.runId);
   const expectedActionTypes = new Set(args.expectedActionTypes);
-  for (const actionType of CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES) {
-    const matchingEvents = events.filter((event) => {
-      return event.op_type === actionType;
-    });
-    if (!expectedActionTypes.has(actionType)) {
-      expect(matchingEvents).toHaveLength(0);
-      continue;
-    }
+  const actionCounts = CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES.map(
+    (actionType) => {
+      return {
+        actionType,
+        count: events.filter((event) => {
+          return event.op_type === actionType;
+        }).length,
+      };
+    },
+  );
+  const expectedActionCounts = CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES.map(
+    (actionType) => {
+      return {
+        actionType,
+        count: expectedActionTypes.has(actionType) ? 1 : 0,
+      };
+    },
+  );
+  expect(actionCounts).toStrictEqual(expectedActionCounts);
 
-    expect(matchingEvents).toHaveLength(1);
-    const event = matchingEvents[0];
+  for (const actionType of args.expectedActionTypes) {
+    const event = events.find((candidate) => {
+      return candidate.op_type === actionType;
+    });
+    if (!event) {
+      throw new Error(`Expected claim response timing for ${actionType}`);
+    }
     expect(event).toStrictEqual(
       expect.objectContaining({
         source: "api",
@@ -6988,24 +6998,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         throw new Error("Expected ordered-heartbeat poll to return 200");
       }
       expect(poll.body.job?.runId).toBe(followUp.runId);
-      if (expectedResource) {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
-          kind: "preference",
-          runnerIdentity: {
-            runnerId,
-            heartbeatGeneration: 1,
-          },
-          tier:
-            expectedResource === "reusableSandbox"
-              ? "reusableSandbox"
-              : "workspaceCache",
-          expiresAt: expect.any(String),
-        });
-      } else {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
-          kind: "noPreference",
-        });
-      }
+      const preference = runnerPreference(poll.body.job);
+      const preferenceProjection =
+        preference?.kind === "preference"
+          ? {
+              kind: preference.kind,
+              runnerIdentity: preference.runnerIdentity,
+              tier: preference.tier,
+              expiresAtType: typeof preference.expiresAt,
+            }
+          : { kind: preference?.kind };
+      const expectedPreferenceProjection =
+        expectedResource === undefined
+          ? { kind: "noPreference" }
+          : {
+              kind: "preference",
+              runnerIdentity: {
+                runnerId,
+                heartbeatGeneration: 1,
+              },
+              tier: expectedResource,
+              expiresAtType: "string",
+            };
+      expect(preferenceProjection).toStrictEqual(expectedPreferenceProjection);
       await api.requestCancelRun(actor, followUp.runId, [200]);
       await flushWaitUntilForTest();
     }

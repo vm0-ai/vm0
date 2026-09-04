@@ -885,7 +885,7 @@ async function expectGoalDrainPreCreateTiming(args: {
   readonly runId: string;
   readonly schedulerOrigin: "chat_callback" | "terminal_callback_fallback";
   readonly builtInModelContext: boolean;
-  readonly skippedHigherPriorityDrains?: boolean;
+  readonly skippedHigherPriorityDrains: boolean;
   readonly forbiddenValues: readonly string[];
 }): Promise<void> {
   const expectedActionTypes = [
@@ -963,10 +963,15 @@ async function expectGoalDrainPreCreateTiming(args: {
   ].map((actionType) => {
     return timingEventsForAction(goalDrainEvents, actionType)[0]?.duration_ms;
   });
+  const numericHigherPriorityDrainDurations = [
+    expect.any(Number),
+    expect.any(Number),
+  ];
+  const expectedHigherPriorityDrainDurations = args.skippedHigherPriorityDrains
+    ? [0, 0]
+    : numericHigherPriorityDrainDurations;
   expect(higherPriorityDrainDurations).toStrictEqual(
-    args.skippedHigherPriorityDrains
-      ? [0, 0]
-      : [expect.any(Number), expect.any(Number)],
+    expectedHigherPriorityDrainDurations,
   );
 
   const entrypointGapEvents = timingEventsForAction(
@@ -2198,6 +2203,7 @@ Goal CLI:
       runId: continuation.runId,
       schedulerOrigin: "terminal_callback_fallback",
       builtInModelContext: false,
+      skippedHigherPriorityDrains: false,
       forbiddenValues: [
         goalBrief,
         actor.userId,
