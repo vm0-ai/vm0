@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.185.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.185.0...runner-rs-v0.185.1) (2026-09-04)
+
+
+### Refactoring
+
+* **python:** centralize runner state marker publication ([#31552](https://github.com/vm0-ai/vm0/issues/31552)) ([69f17fc](https://github.com/vm0-ai/vm0/commit/69f17fcf19f5017a60191a0edafc40dc6ea951ba))
+
 ## [0.185.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.16...runner-rs-v0.185.0) (2026-09-04)
 
 

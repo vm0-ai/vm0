@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.621.1](https://github.com/vm0-ai/vm0/compare/core-v8.621.0...core-v8.621.1) (2026-09-04)
+
+
+### Refactoring
+
+* consolidate desktop recording under intro video switch ([#31730](https://github.com/vm0-ai/vm0/issues/31730)) ([262f6db](https://github.com/vm0-ai/vm0/commit/262f6db498a4d2951d538b9af723bb199a21f311))
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+
 ## [8.621.0](https://github.com/vm0-ai/vm0/compare/core-v8.620.0...core-v8.621.0) (2026-09-04)
 
 

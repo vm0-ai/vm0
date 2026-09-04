@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.545.1](https://github.com/vm0-ai/vm0/compare/api-v1.545.0...api-v1.545.1) (2026-09-04)
+
+
+### Refactoring
+
+* **registry:** trim presentation download response ([#31707](https://github.com/vm0-ai/vm0/issues/31707)) ([98a36b7](https://github.com/vm0-ai/vm0/commit/98a36b7269d543f8009f8cbda307d678d391cda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+    * @okouai/db bumped to 1.240.6
+    * @okouai/pi-agent-runtime bumped to 1.16.2
+
 ## [1.545.0](https://github.com/vm0-ai/vm0/compare/api-v1.544.0...api-v1.545.0) (2026-09-04)
 
 
