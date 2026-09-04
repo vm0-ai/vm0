@@ -111,6 +111,21 @@ fn private_write_timeout_stage(error: &RunnerError) -> Option<&'static str> {
     })
 }
 
+fn connector_account_context_write_allows_continue(error: &RunnerError) -> bool {
+    matches!(
+        error,
+        RunnerError::Sandbox(sandbox::SandboxError::Operation {
+            operation: sandbox::SandboxOperation::WriteFile,
+            reason: sandbox::SandboxOperationReason::GuestRejected,
+            ..
+        }) | RunnerError::Sandbox(sandbox::SandboxError::OperationTimeout {
+            operation: sandbox::SandboxOperation::WriteFile,
+            stage: sandbox::SandboxOperationTimeoutStage::BeforeFrameWrite,
+            ..
+        })
+    )
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionHistoryIdentityReason {
     FinalizeMetadataPathUnresolved,
@@ -1998,6 +2013,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 outcome = outcome.unwrap_or("write_failed"),
                 "connector account context unavailable"
             );
+            if !connector_account_context_write_allows_continue(&error) {
+                return Err(error);
+            }
         }
     }
     let env_build_started = Instant::now();

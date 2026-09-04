@@ -134,7 +134,11 @@ fn protocol_invalid_input(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, error.to_string())
 }
 
-fn error_is_write_file_guest_error(error: &io::Error) -> bool {
+/// Returns whether a file-write error came from a decoded terminal guest rejection.
+///
+/// This classification proves that the request reached a terminal response and
+/// does not include transport, protocol, or timeout failures.
+pub fn is_write_file_guest_rejection(error: &io::Error) -> bool {
     error
         .get_ref()
         .is_some_and(|error| error.is::<WriteFileGuestError>())
@@ -561,7 +565,7 @@ impl VsockHost {
         .await;
 
         if let Err(error) = result {
-            if error_is_write_file_guest_error(&error) {
+            if is_write_file_guest_rejection(&error) {
                 normal_operation.complete()?;
             }
             return Err(error);
@@ -648,7 +652,7 @@ impl VsockHost {
 
         if let Err(error) = result {
             // Best-effort cleanup of the temp file.
-            let terminal_error = error_is_write_file_guest_error(&error);
+            let terminal_error = is_write_file_guest_rejection(&error);
             let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
             if terminal_error && cleanup_result.is_ok() {
                 normal_operation.complete()?;

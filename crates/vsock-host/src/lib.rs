@@ -102,7 +102,10 @@ pub use exec_operation::{
     SessionHistoryIdentityVerifyRequest, SupervisedExecCancelHandle, SupervisedExecControl,
     SupervisedExecHandle, SupervisedExecRequest, SupervisedExecStartTiming,
 };
-pub use file::{COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult, WriteFileEntry};
+pub use file::{
+    COPY_FILE_STREAM_MAX_BYTES, CopyFileOptions, CopyFileResult, WriteFileEntry,
+    is_write_file_guest_rejection,
+};
 pub use guest_dns_readiness::GuestDnsReadinessResult;
 pub use guest_state_restore::GuestStateRestoreResult;
 pub use guest_storage_manifest::GuestStorageManifestResult;

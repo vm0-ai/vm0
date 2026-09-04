@@ -1288,13 +1288,15 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
 }
 
 #[tokio::test]
-async fn execute_inner_continues_when_connector_account_context_write_fails() {
+async fn execute_inner_continues_when_connector_account_context_guest_rejects_write() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
-        "connector account context write failed",
-    )));
+    overrides.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::GuestRejected,
+        message: "connector account context write rejected".into(),
+    }));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let context = minimal_context();
 
