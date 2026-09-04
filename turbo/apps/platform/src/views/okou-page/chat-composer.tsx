@@ -7,6 +7,7 @@ import type {
   ReactNode,
 } from "react";
 import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   useGet,
   useSet,
@@ -223,6 +224,7 @@ import {
   codexFastModeEnabled$,
   composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
+  featureSwitch$,
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -695,6 +697,8 @@ function PendingItemsStripHeader({
 
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const runWorkFoldingEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);
@@ -714,9 +718,10 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const events = pendingEvents.filter((event) => {
     return event.kind === "automation";
   });
-  const activeGoal = activeGoalObjective
-    ? { objective: activeGoalObjective }
-    : undefined;
+  const activeGoal =
+    !runWorkFoldingEnabled && activeGoalObjective
+      ? { objective: activeGoalObjective }
+      : undefined;
   const count = queued.length + events.length;
   const messageLabel = t(
     ($) => {
