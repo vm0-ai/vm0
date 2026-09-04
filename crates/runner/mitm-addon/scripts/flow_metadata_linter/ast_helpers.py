@@ -155,6 +155,8 @@ def _static_iterable_first_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
     if isinstance(node, ast.Call):
         if _is_static_mapping_expression(node):
             return _static_mapping_first_key_outcomes(node)
+        if _is_unbound_dict_keys_call(node):
+            return _static_unbound_mapping_outcomes(node, include_all=False)
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr == "keys"
@@ -234,6 +236,8 @@ def _static_iterable_element_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
     if isinstance(node, ast.Call):
         if _is_static_mapping_expression(node):
             return _static_mapping_key_outcomes(node)
+        if _is_unbound_dict_keys_call(node):
+            return _static_unbound_mapping_outcomes(node, include_all=True)
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr == "keys"
@@ -291,6 +295,8 @@ def _static_mapping_first_key_outcomes(node: ast.AST) -> _StaticIterableOutcomes
         return _static_outcomes((), may_be_empty=True)
     if isinstance(node.func, ast.Attribute) and _is_mapping_copy_call(node):
         return _static_mapping_first_key_outcomes(node.func.value)
+    if _is_unbound_dict_copy_call(node):
+        return _static_unbound_mapping_outcomes(node, include_all=False)
     if _is_dict_fromkeys_call(node):
         return _static_fromkeys_outcomes(node, include_all=False)
     if _is_dict_constructor_call(node):
@@ -329,6 +335,8 @@ def _static_mapping_key_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
         return _static_outcomes((), may_be_empty=True)
     if isinstance(node.func, ast.Attribute) and _is_mapping_copy_call(node):
         return _static_mapping_key_outcomes(node.func.value)
+    if _is_unbound_dict_copy_call(node):
+        return _static_unbound_mapping_outcomes(node, include_all=True)
     if _is_dict_fromkeys_call(node):
         return _static_fromkeys_outcomes(node, include_all=True)
     if _is_dict_constructor_call(node):
@@ -350,6 +358,25 @@ def _static_fromkeys_outcomes(node: ast.Call, *, include_all: bool) -> _StaticIt
         [key for outcome in key_outcomes for key in outcome.nodes],
         may_be_empty=argument_outcomes.may_be_empty
         or any(outcome.may_be_empty for outcome in key_outcomes),
+    )
+
+
+def _static_unbound_mapping_outcomes(
+    node: ast.Call, *, include_all: bool
+) -> _StaticIterableOutcomes:
+    argument_outcomes = _static_first_call_argument_outcomes(node.args)
+    mapping_outcomes = [
+        (
+            _static_mapping_key_outcomes(argument)
+            if include_all
+            else _static_mapping_first_key_outcomes(argument)
+        )
+        for argument in argument_outcomes.nodes
+    ]
+    return _static_outcomes(
+        [key for outcome in mapping_outcomes for key in outcome.nodes],
+        may_be_empty=argument_outcomes.may_be_empty
+        or any(outcome.may_be_empty for outcome in mapping_outcomes),
     )
 
 
@@ -470,6 +497,25 @@ def _is_mapping_copy_call(node: ast.Call) -> bool:
     )
 
 
+def _is_unbound_dict_keys_call(node: ast.Call) -> bool:
+    return _is_unbound_dict_method_call(node, "keys")
+
+
+def _is_unbound_dict_copy_call(node: ast.Call) -> bool:
+    return _is_unbound_dict_method_call(node, "copy")
+
+
+def _is_unbound_dict_method_call(node: ast.Call, method_name: str) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "dict"
+        and node.func.attr == method_name
+        and len(node.args) == 1
+        and not node.keywords
+    )
+
+
 def _is_static_mapping_expression(node: ast.AST) -> bool:
     if isinstance(node, ast.NamedExpr):
         return _is_static_mapping_expression(node.value)
@@ -485,6 +531,7 @@ def _is_static_mapping_expression(node: ast.AST) -> bool:
             _is_dict_constructor_call(node)
             or _is_dict_fromkeys_call(node)
             or _is_mapping_copy_call(node)
+            or _is_unbound_dict_copy_call(node)
         )
     )
 
