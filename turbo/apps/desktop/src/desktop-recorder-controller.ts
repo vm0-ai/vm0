@@ -90,7 +90,7 @@ export class DesktopRecorderController {
 
   /**
    * Applies the effective native recording availability resolved from the
-   * `introVideo` and `desktopScreenRecording` feature switches.
+   * `introVideo` feature switch.
    *
    * Turning it off releases the native helper rather than only hiding the
    * entry point. An in-flight recording is stopped first so the file on disk is
