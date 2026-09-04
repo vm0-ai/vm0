@@ -129,12 +129,18 @@ test("Connection diagnostics remain available during startup", async () => {
     expect(
       within(diagnostics).getByText("channel: attached"),
     ).toBeInTheDocument();
+    // The direct Worker test transport shares globalThis with the page, so both
+    // valid connection spans can appear in the page capture.
     expect(
-      within(diagnostics).getByText(/realtime\.initial-connection · start/u),
-    ).toBeInTheDocument();
+      within(diagnostics).queryAllByText(
+        /realtime\.initial-connection · start/u,
+      ),
+    ).not.toHaveLength(0);
     expect(
-      within(diagnostics).getByText(/realtime\.initial-connection · finish/u),
-    ).toBeInTheDocument();
+      within(diagnostics).queryAllByText(
+        /realtime\.initial-connection · finish/u,
+      ),
+    ).not.toHaveLength(0);
   });
   expect(releaseFeatureSwitches.settled()).toBeFalsy();
 });
