@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
@@ -122,18 +123,59 @@ test("Authentication link actions remain readable in light and dark themes", asy
     return linkByText("Sign up");
   });
   const surface = screen.getByTestId("app-auth-v2");
-  await expect(
-    renderedAuthV2LinkContrast(signUp, surface, "light", context.signal),
-  ).resolves.toBeGreaterThanOrEqual(4.5);
+  for (const palette of ["current-ui", "new-ui"] as const) {
+    await expect(
+      renderedAuthV2LinkContrast(
+        signUp,
+        surface,
+        "light",
+        palette,
+        context.signal,
+      ),
+    ).resolves.toBeGreaterThanOrEqual(4.5);
+  }
 
   click(buttonByLabel("Toggle theme"));
 
   await waitFor(() => {
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
-  await expect(
-    renderedAuthV2LinkContrast(signUp, surface, "dark", context.signal),
-  ).resolves.toBeGreaterThanOrEqual(4.5);
+  for (const palette of ["current-ui", "new-ui"] as const) {
+    await expect(
+      renderedAuthV2LinkContrast(
+        signUp,
+        surface,
+        "dark",
+        palette,
+        context.signal,
+      ),
+    ).resolves.toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test("Authentication stays on the current palette without the switch", async () => {
+  await setupPage({
+    auth: null,
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-in",
+  });
+
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  expect(document.documentElement).not.toHaveAttribute("data-new-ui");
+});
+
+test("Authentication signs the user in on the palette their switch selects", async () => {
+  await setupPage({
+    auth: null,
+    cachedFeatureSwitches: { [FeatureSwitchKey.NewUi]: true },
+    context,
+    host: "app.vm0.ai",
+    path: "/sign-in",
+  });
+
+  await expect(screen.findByLabelText("Email address")).resolves.toBeVisible();
+  expect(document.documentElement).toHaveAttribute("data-new-ui");
 });
 
 test("Okou authentication localizes app copy while keeping English startup metadata", async () => {

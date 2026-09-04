@@ -3,12 +3,18 @@ import { Moon, Sun } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
 } from "../../lib/static-assets.ts";
 import type { AuthBrandContext } from "../../signals/auth.ts";
-import { setTheme$, theme$ } from "../../signals/theme.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  applyNewUiDocumentAttribute,
+  setTheme$,
+  theme$,
+} from "../../signals/theme.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
 interface AuthShellProps {
@@ -20,9 +26,18 @@ export function AuthShell({ authBrand, children }: AuthShellProps) {
   const { t } = useTranslation();
   const theme = useGet(theme$);
   const setTheme = useSet(setTheme$);
+  const newUiEnabled = useGet(featureSwitch$)[FeatureSwitchKey.NewUi] ?? false;
 
   return (
     <div
+      ref={(element) => {
+        // The palette is a per-user switch and this page runs before there is a
+        // session to read it from, so it comes off the cache the last signed-in
+        // session left behind. A returning user therefore signs in on the same
+        // brand they left, and a first-ever visitor gets the current one --
+        // which is the same answer the switch itself gives them.
+        applyNewUiDocumentAttribute(element !== null && newUiEnabled);
+      }}
       className="zero-app relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
       data-testid="app-auth-layout"
     >

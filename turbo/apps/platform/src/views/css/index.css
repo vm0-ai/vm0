@@ -37,6 +37,13 @@
   --color-usage-kind-video: #358a8e;
   --color-usage-kind-connector: #98928b;
   --color-usage-kind-other: #e1c43c;
+
+  /* Brand as text on the authentication card. Its own token because the two
+     palettes disagree about which stop that is, and the card is the one place
+     the brand carries 13px body copy, so the answer has to clear 4.5:1 in both
+     themes. See the pair it resolves from below. */
+  --color-auth-link: hsl(var(--auth-link));
+  --color-auth-link-hover: hsl(var(--auth-link-hover));
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
@@ -49,6 +56,15 @@
   --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
   --zero-desktop-titlebar-height: 48px;
+}
+
+/* The orange ramp mirrors between themes, so its 900 is a brand red in light
+   and a light salmon in dark, and both clear 4.5:1 on the card. `--brand-text`
+   cannot stand in for it here: on this ramp that token is the brand stop
+   itself, which reads at 3.69:1 on white. */
+:root {
+  --auth-link: var(--primary-900);
+  --auth-link-hover: var(--primary-950);
 }
 
 @supports (height: 100lvh) {
@@ -2060,6 +2076,15 @@ html:has(.zero-dialog-overlay)
   --color-usage-kind-video: #008d76;
   --color-usage-kind-connector: #779aad;
   --color-usage-kind-other: #c8b800;
+}
+
+/* Amber does not mirror, so the 900 the orange ramp used for the card's
+   secondary actions is a near-black brown in both themes: body copy in light,
+   and 1.2:1 against the dark canvas. Here `--brand-text` is the readable one --
+   a stop below the brand in light (6.2:1), the brand itself in dark (7.3:1). */
+:root[data-new-ui] {
+  --auth-link: var(--brand-text);
+  --auth-link-hover: var(--brand-text-hover);
 }
 
 /* Shadows carry a hue of their own, so a cool one greys the warm surfaces. */

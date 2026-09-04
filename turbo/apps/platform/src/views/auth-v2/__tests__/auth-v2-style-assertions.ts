@@ -38,11 +38,25 @@ const authV2ActionTheme = `
   @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
   @theme {
     --color-card: rgb(255 255 255);
-    --color-primary-900: rgb(208 50 0);
-    --color-primary-950: rgb(92 41 24);
+    --color-auth-link: rgb(208 50 0);
   }
   @tailwind utilities;
 `;
+
+/* The resolved value of `--auth-link` and the card it sits on, per palette and
+   per theme, taken from `packages/ui`'s design system and the platform sheet.
+   The compiler above only ever sees the light branch, so the dark and gated
+   branches are restated as a plain override below. */
+const AUTH_LINK_SURFACES = {
+  "current-ui": {
+    light: { card: "rgb(255 255 255)", link: "rgb(208 50 0)" }, // primary-900
+    dark: { card: "rgb(37 37 39)", link: "rgb(255 148 110)" }, // primary-900
+  },
+  "new-ui": {
+    light: { card: "rgb(255 255 255)", link: "rgb(136 86 0)" }, // brand-text
+    dark: { card: "rgb(43 42 40)", link: "rgb(255 165 0)" }, // brand-text
+  },
+} as const;
 
 function colorChannels(color: string): readonly [number, number, number] {
   const channels = color
@@ -85,8 +99,10 @@ export async function renderedAuthV2LinkContrast(
   linkAction: HTMLElement,
   surface: HTMLElement,
   theme: "dark" | "light",
+  palette: keyof typeof AUTH_LINK_SURFACES,
   signal: AbortSignal,
 ): Promise<number> {
+  const resolved = AUTH_LINK_SURFACES[palette][theme];
   const compiler = await compile(authV2ActionTheme);
   const styleElement = document.createElement("style");
   const effectiveRestingColorClasses = (element: HTMLElement): string[] => {
@@ -126,10 +142,9 @@ export async function renderedAuthV2LinkContrast(
   ];
   styleElement.textContent = [
     compiler.build(restingColorClasses),
-    `[data-theme="dark"] {
-      --color-card: rgb(37 37 39);
-      --color-primary-900: rgb(255 148 110);
-      --color-primary-950: rgb(254 213 199);
+    `:root {
+      --color-card: ${resolved.card};
+      --color-auth-link: ${resolved.link};
     }`,
   ].join("\n");
   document.head.append(styleElement);
