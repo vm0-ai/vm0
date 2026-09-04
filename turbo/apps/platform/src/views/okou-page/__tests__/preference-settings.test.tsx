@@ -105,6 +105,44 @@ describe("unified preference settings", () => {
     expect(new URLSearchParams(search()).get("settings")).toBe("debug");
   });
 
+  it("updates the shell document color theme", async () => {
+    context.mocks.data.userPreferences({ colorTheme: "blue-horizon" });
+
+    await setupPage({
+      context,
+      path: "/agents?settings=preference",
+      featureSwitches: {
+        [FeatureSwitchKey.GradientColorThemes]: true,
+      },
+    });
+
+    const colorTheme = await screen.findByRole("group", {
+      name: "Color theme",
+    });
+    expect(document.documentElement).toHaveAttribute(
+      "data-color-theme",
+      "blue-horizon",
+    );
+
+    const goldenHourButton = queryAllByRoleFast("button", colorTheme).find(
+      (candidate) => {
+        return candidate.textContent?.trim() === "Golden hour";
+      },
+    );
+    if (!goldenHourButton) {
+      throw new Error("Golden hour button not found");
+    }
+    click(goldenHourButton);
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute(
+        "data-color-theme",
+        "golden-hour",
+      );
+      expect(goldenHourButton).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
   it("hides Morning Brief when only Official Workflows is available", async () => {
     await setupPage({
       context,
