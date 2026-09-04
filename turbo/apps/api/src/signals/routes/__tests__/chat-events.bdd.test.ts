@@ -14863,6 +14863,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(upstreamAuthorization).toBe("Bearer title-key");
     expect(titleRequestBody).toMatchObject({
       model: "google/gemini-3.8-flash",
+      max_tokens: 512,
       reasoning: { effort: "low" },
     });
 
@@ -14895,7 +14896,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(recommender.eventType).toBe("output.followups");
     expect(followupRequestBody).toMatchObject({
       model: "google/gemini-3.8-flash",
-      max_tokens: 400,
+      max_tokens: 1024,
       reasoning: { effort: "low" },
     });
     const futureFollowups = resolveChatEventRecommendedFollowups(recommender);
