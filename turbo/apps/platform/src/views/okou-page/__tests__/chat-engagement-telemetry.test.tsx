@@ -7,7 +7,7 @@ import {
   buttonByLabel,
   buttonByText,
   context,
-  detachedSetupPage,
+  setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -86,7 +86,7 @@ describe("chat engagement telemetry", () => {
       ],
     });
 
-    detachedSetupPage({
+    await setupPage({
       context,
       path: `/chats/${threadId}`,
       featureSwitches: {
@@ -147,7 +147,7 @@ describe("chat engagement telemetry", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPage({ context, path: `/chats/${threadId}` });
 
     const expandWork = await waitFor(() => {
       return buttonByLabel("Expand work history");
@@ -206,7 +206,7 @@ describe("chat engagement telemetry", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    await setupPage({ context, path: `/chats/${threadId}` });
 
     click(
       await waitFor(() => {
