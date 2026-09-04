@@ -1,0 +1,569 @@
+import {
+  browserContract,
+  type BrowserSession,
+} from "@okouai/api-contracts/contracts/browser";
+import {
+  chatThreadByIdContract,
+  chatThreadEventsContract,
+} from "@okouai/api-contracts/contracts/chat-threads";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { expect, test } from "vitest";
+
+import {
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
+import {
+  chatEventRowsResponse,
+  testContext,
+} from "../../../signals/__tests__/test-helpers.ts";
+import {
+  mockChatEventRows,
+  normalizeMockChatEvents,
+  type MockChatEventInput,
+} from "./chat-event-test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
+
+const context = testContext();
+
+const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
+const OPEN_EVENT_ID = "b0000000-0000-4000-a000-000000000902";
+const CLOSE_EVENT_ID = "b0000000-0000-4000-a000-000000000903";
+const LIVE_BROWSER_TITLE = "Live browser: research";
+
+function liveBrowserSession(
+  overrides: Partial<BrowserSession> = {},
+): BrowserSession {
+  return {
+    threadId: THREAD_ID,
+    name: "research",
+    status: "active",
+    viewerUrl: `https://viewer.example.test/browsers/${THREAD_ID}`,
+    liveUrl: "https://viewer.example.test/live/research",
+    screenshotUrl: null,
+    proxyCountryCode: null,
+    timeoutMinutes: 240,
+    screen: { width: 1440, height: 900, resizable: true },
+    idleExpiresAt: "2026-09-01T12:10:00.000Z",
+    suspendedAt: null,
+    suspensionReason: null,
+    createdAt: "2026-09-01T12:00:00.000Z",
+    updatedAt: "2026-09-01T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+interface BrowserApiControl {
+  readonly closeRequests: () => number;
+  readonly endBeforeNextResize: () => void;
+  readonly liveSessionWasRead: () => boolean;
+  readonly resizeAspectRatios: () => readonly number[];
+  readonly setSession: (session: BrowserSession | null) => void;
+}
+
+function mockBrowserApi(
+  initialSession: BrowserSession | null,
+): BrowserApiControl {
+  let currentSession = initialSession;
+  let latestReadSession: BrowserSession | null = null;
+  let closeRequestCount = 0;
+  let resizeWillMiss = false;
+  const resizeRequests: number[] = [];
+
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    latestReadSession = currentSession;
+    return currentSession === null
+      ? respond(404, {
+          error: {
+            code: "BROWSER_NOT_FOUND",
+            message: "Managed browser not found",
+          },
+        })
+      : respond(200, { browser: currentSession });
+  });
+  context.mocks.api(browserContract.open, ({ body, respond }) => {
+    currentSession = liveBrowserSession();
+    return respond(200, {
+      browser: currentSession,
+      lifecycleEventId: body.eventId,
+    });
+  });
+  context.mocks.api(browserContract.close, ({ body, respond }) => {
+    closeRequestCount += 1;
+    return respond(200, { lifecycleEventId: body.eventId });
+  });
+  context.mocks.api(browserContract.leaseByThread, ({ respond }) => {
+    return currentSession === null
+      ? respond(404, {
+          error: {
+            code: "BROWSER_NOT_FOUND",
+            message: "Managed browser not found",
+          },
+        })
+      : respond(200, { browser: currentSession });
+  });
+  context.mocks.api(browserContract.resizeByThread, ({ body, respond }) => {
+    resizeRequests.push(body.aspectRatio);
+    if (resizeWillMiss || currentSession === null) {
+      resizeWillMiss = false;
+      currentSession = null;
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    }
+    currentSession = liveBrowserSession({
+      screen: {
+        width: 1440,
+        height: Math.round(1440 / body.aspectRatio),
+        resizable: true,
+      },
+      updatedAt: "2026-09-01T12:01:00.000Z",
+    });
+    return respond(200, { browser: currentSession });
+  });
+
+  return {
+    closeRequests: () => {
+      return closeRequestCount;
+    },
+    endBeforeNextResize: () => {
+      resizeWillMiss = true;
+    },
+    liveSessionWasRead: () => {
+      return latestReadSession?.status === "active";
+    },
+    resizeAspectRatios: () => {
+      return resizeRequests;
+    },
+    setSession: (session) => {
+      currentSession = session;
+    },
+  };
+}
+
+function browserOpenEvent(seqId = 1): MockChatEventInput {
+  return {
+    id: OPEN_EVENT_ID,
+    eventType: "browser.open",
+    content: null,
+    runId: undefined,
+    seqId,
+    createdAt: "2026-09-01T12:00:03.000Z",
+  };
+}
+
+function browserCloseEvent(seqId = 2): MockChatEventInput {
+  return {
+    id: CLOSE_EVENT_ID,
+    eventType: "browser.close",
+    content: null,
+    runId: undefined,
+    seqId,
+    createdAt: "2026-09-01T12:00:04.000Z",
+  };
+}
+
+function completedConversationEvents(): MockChatEventInput[] {
+  return [
+    {
+      id: "navigation-browser-user",
+      role: "user",
+      content: "Research the release notes",
+      runId: "navigation-browser-run",
+      seqId: 1,
+      createdAt: "2026-09-01T12:00:00.000Z",
+    },
+    {
+      id: "navigation-browser-reply",
+      role: "assistant",
+      content: "I am checking the release notes now.",
+      runId: "navigation-browser-run",
+      seqId: 2,
+      createdAt: "2026-09-01T12:00:01.000Z",
+    },
+    {
+      id: "navigation-browser-complete",
+      role: "assistant",
+      content: null,
+      runId: "navigation-browser-run",
+      runLifecycleEvent: "completed",
+      seqId: 3,
+      createdAt: "2026-09-01T12:00:02.000Z",
+    },
+  ];
+}
+
+function mockWideScreen(): void {
+  context.mocks.browser.matchMedia((query) => {
+    return query === "(min-width: 1280px)";
+  });
+}
+
+function mockNarrowScreen(): void {
+  context.mocks.browser.matchMedia(false);
+}
+
+function openConversation(chatEvents: MockChatEventInput[]): Promise<void> {
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    threadTitle: "Browser navigation",
+    chatEvents,
+  });
+  return setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    host: "app.vm0.ai",
+  });
+}
+
+async function expectConversationReady(): Promise<void> {
+  await waitFor(() => {
+    expect(buttonByName("Open browser")).toBeVisible();
+  });
+  await waitFor(() => {
+    expect(
+      document.querySelector("[data-chat-skeleton]"),
+    ).not.toBeInTheDocument();
+  });
+}
+
+function queryButtonByName(
+  name: string,
+  container: ParentNode = document.body,
+): HTMLButtonElement | null {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.trim() === name
+    );
+  });
+  return button instanceof HTMLButtonElement ? button : null;
+}
+
+function buttonByName(
+  name: string,
+  container: ParentNode = document.body,
+): HTMLButtonElement {
+  const button = queryButtonByName(name, container);
+  if (!button) {
+    throw new Error(`Button not found: ${name}`);
+  }
+  return button;
+}
+
+function liveBrowserSidebar(): HTMLElement {
+  return screen.getByRole("complementary", { name: "Live browser" });
+}
+
+interface ViewportGeometry {
+  readonly resizeTo: (width: number, height: number) => void;
+}
+
+function installViewportGeometry(
+  viewport: HTMLElement,
+  initialWidth: number,
+  initialHeight: number,
+): ViewportGeometry {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    viewport,
+    "getBoundingClientRect",
+  );
+  let width = initialWidth;
+  let height = initialHeight;
+  Object.defineProperty(viewport, "getBoundingClientRect", {
+    configurable: true,
+    value: (): DOMRect => {
+      return {
+        bottom: height,
+        height,
+        left: 0,
+        right: width,
+        toJSON: () => {
+          return {};
+        },
+        top: 0,
+        width,
+        x: 0,
+        y: 0,
+      } as DOMRect;
+    },
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (descriptor) {
+        Object.defineProperty(viewport, "getBoundingClientRect", descriptor);
+        return;
+      }
+      Reflect.deleteProperty(viewport, "getBoundingClientRect");
+    },
+    { once: true },
+  );
+  return {
+    resizeTo: (nextWidth, nextHeight) => {
+      width = nextWidth;
+      height = nextHeight;
+      act(() => {
+        window.dispatchEvent(new Event("resize"));
+      });
+    },
+  };
+}
+
+test("Automatically show a browser that starts in the background", async () => {
+  mockWideScreen();
+  const chatEvents = completedConversationEvents();
+  const browser = mockBrowserApi(null);
+  await openConversation(chatEvents);
+  await expectConversationReady();
+  expect(
+    screen.queryByRole("complementary", { name: "Live browser" }),
+  ).toBeNull();
+
+  await waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadDetailChanged:${THREAD_ID}`,
+      ),
+    ).toBeTruthy();
+    expect(
+      context.mocks.ably.hasSubscription("browserSessionChanged"),
+    ).toBeTruthy();
+  });
+
+  const updateStarted = context.mocks.deferred<void>();
+  const finishUpdate = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
+    updateStarted.resolve(undefined);
+    await finishUpdate.promise;
+    return respond(200, {
+      lastReadAt: "2026-09-01T12:00:00.000Z",
+      cancellationRecoveryPending: false,
+    });
+  });
+  context.mocks.ably.trigger(`chatThreadDetailChanged:${THREAD_ID}`, {
+    threadId: THREAD_ID,
+  });
+  await updateStarted.promise;
+
+  browser.setSession(liveBrowserSession());
+  context.mocks.ably.trigger("browserSessionChanged", {
+    threadId: THREAD_ID,
+  });
+  await waitFor(() => {
+    expect(browser.liveSessionWasRead()).toBeTruthy();
+  });
+  const backgroundRows = mockChatEventRows(
+    normalizeMockChatEvents(
+      [
+        browserOpenEvent(4),
+        {
+          id: "background-browser-report",
+          role: "assistant",
+          content: "The browser started in the background.",
+          runId: "background-browser-run",
+          seqId: 5,
+          createdAt: "2026-09-01T12:00:04.000Z",
+        },
+      ],
+      THREAD_ID,
+    ),
+  );
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    const rows = backgroundRows.filter((row) => {
+      return row.seqId > query.sinceSeqId;
+    });
+    return respond(200, chatEventRowsResponse(rows, query));
+  });
+  createChatEvent(THREAD_ID);
+
+  await expect(
+    screen.findByText("The browser started in the background."),
+  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(buttonByName("Open browser")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+  await expect(screen.findByTitle(LIVE_BROWSER_TITLE)).resolves.toBeVisible();
+  expect(finishUpdate.settled()).toBeFalsy();
+  finishUpdate.resolve(undefined);
+});
+
+test("Do not reopen a browser whose latest activity is closed", async () => {
+  mockWideScreen();
+  mockBrowserApi(liveBrowserSession());
+  await openConversation([browserOpenEvent(1), browserCloseEvent(2)]);
+
+  await expectConversationReady();
+  expect(
+    screen.queryByRole("complementary", { name: "Live browser" }),
+  ).toBeNull();
+  expect(screen.queryByTitle(LIVE_BROWSER_TITLE)).toBeNull();
+});
+
+test("Fit a live browser when the available sidebar space changes", async () => {
+  mockWideScreen();
+  const browser = mockBrowserApi(liveBrowserSession());
+  await openConversation([browserOpenEvent()]);
+
+  const liveFrame = await screen.findByTitle(LIVE_BROWSER_TITLE);
+  expect(liveFrame).toBeVisible();
+  const viewport = document.querySelector<HTMLElement>(
+    "[data-browser-session-viewport]",
+  );
+  if (!viewport) {
+    throw new Error("Live browser viewport is not mounted");
+  }
+  const geometry = installViewportGeometry(viewport, 600, 600);
+  geometry.resizeTo(600, 600);
+
+  const fit = await waitFor(() => {
+    return buttonByName("Fit browser to window");
+  });
+  expect(fit).toBeVisible();
+  click(fit);
+
+  await waitFor(() => {
+    expect(browser.resizeAspectRatios()).toStrictEqual([1]);
+    expect(queryButtonByName("Fit browser to window")).toBeNull();
+  });
+
+  geometry.resizeTo(800, 600);
+  const fitAfterResize = await waitFor(() => {
+    return buttonByName("Fit browser to window");
+  });
+  browser.endBeforeNextResize();
+  click(fitAfterResize);
+
+  await waitFor(() => {
+    expect(browser.resizeAspectRatios()).toStrictEqual([1, 4 / 3]);
+  });
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeVisible();
+  expect(screen.queryByText("Browser unavailable")).toBeNull();
+});
+
+test("Respect a user's decision to close an auto-opened browser", async () => {
+  mockWideScreen();
+  const chatEvents = [browserOpenEvent(1)];
+  const browser = mockBrowserApi(liveBrowserSession());
+  await openConversation(chatEvents);
+
+  await expect(screen.findByTitle(LIVE_BROWSER_TITLE)).resolves.toBeVisible();
+  click(buttonByName("Close live browser", liveBrowserSidebar()));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("complementary", { name: "Live browser" }),
+    ).toBeNull();
+  });
+  expect(browser.closeRequests()).toBe(1);
+
+  chatEvents.push({
+    id: "navigation-browser-progress",
+    role: "assistant",
+    content: `The same browser is still working: /browsers/${THREAD_ID}`,
+    runId: "navigation-browser-progress-run",
+    seqId: 2,
+    createdAt: "2026-09-01T12:00:05.000Z",
+  });
+  createChatEvent(THREAD_ID);
+
+  await waitFor(() => {
+    expect(buttonByName("Open research browser")).toBeVisible();
+  });
+  expect(
+    screen.queryByRole("complementary", { name: "Live browser" }),
+  ).toBeNull();
+});
+
+test("Start and close a browser from the thread sidebar", async () => {
+  mockWideScreen();
+  const browser = mockBrowserApi(null);
+  await openConversation(completedConversationEvents());
+  await expectConversationReady();
+
+  click(buttonByName("Open browser"));
+  const sidebar = await screen.findByRole("complementary", {
+    name: "Live browser",
+  });
+  expect(within(sidebar).getByText("Browser not live")).toBeVisible();
+  const start = buttonByName("Start browser", sidebar);
+  expect(start).toBeEnabled();
+
+  click(start);
+  await expect(screen.findByTitle(LIVE_BROWSER_TITLE)).resolves.toBeVisible();
+
+  click(buttonByName("Close live browser", liveBrowserSidebar()));
+  await waitFor(() => {
+    expect(screen.queryByTitle(LIVE_BROWSER_TITLE)).toBeNull();
+  });
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeVisible();
+  expect(browser.closeRequests()).toBe(1);
+});
+
+test("Keep the browser closed when the screen cannot show split view", async () => {
+  mockNarrowScreen();
+  mockBrowserApi(liveBrowserSession());
+  await openConversation([browserOpenEvent()]);
+
+  await expectConversationReady();
+  expect(
+    screen.queryByRole("complementary", { name: "Live browser" }),
+  ).toBeNull();
+  expect(screen.queryByTitle(LIVE_BROWSER_TITLE)).toBeNull();
+});
+
+test("Automatically show a running thread browser on a wide screen", async () => {
+  mockWideScreen();
+  mockBrowserApi(liveBrowserSession());
+  await openConversation([browserOpenEvent()]);
+
+  await expect(screen.findByTitle(LIVE_BROWSER_TITLE)).resolves.toBeVisible();
+  expect(liveBrowserSidebar()).toBeVisible();
+});
+
+test("Open a stopped browser card and offer a new session", async () => {
+  mockWideScreen();
+  mockBrowserApi(null);
+  await openConversation([
+    {
+      id: "stopped-browser-card",
+      role: "assistant",
+      content: `The prior browser is available here: /browsers/${THREAD_ID}`,
+      runId: "stopped-browser-run",
+      seqId: 1,
+      createdAt: "2026-09-01T12:00:00.000Z",
+    },
+    {
+      id: "stopped-browser-complete",
+      eventType: "run.completed",
+      content: null,
+      runId: "stopped-browser-run",
+      seqId: 2,
+      createdAt: "2026-09-01T12:00:01.000Z",
+    },
+  ]);
+
+  const stoppedLabel = await screen.findByText("Stopped");
+  const card = stoppedLabel.closest("button");
+  if (!(card instanceof HTMLButtonElement)) {
+    throw new Error("Stopped browser card is not actionable");
+  }
+  expect(card).toHaveTextContent("Stopped");
+  expect(
+    screen.queryByRole("complementary", { name: "Live browser" }),
+  ).toBeNull();
+  click(card);
+
+  const sidebar = await screen.findByRole("complementary", {
+    name: "Live browser",
+  });
+  expect(within(sidebar).getByText("Browser not live")).toBeVisible();
+  expect(buttonByName("Start browser", sidebar)).toBeEnabled();
+});

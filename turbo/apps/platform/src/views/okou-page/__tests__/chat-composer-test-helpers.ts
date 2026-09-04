@@ -374,7 +374,7 @@ export function mockThread(options?: {
       200,
       chatEventRowsResponse(
         mockChatEventRows(
-          normalizeMockChatEvents(options?.messages ?? []),
+          normalizeMockChatEvents(options?.messages ?? [], THREAD_ID),
         ).filter((row) => {
           return row.seqId > query.sinceSeqId;
         }),

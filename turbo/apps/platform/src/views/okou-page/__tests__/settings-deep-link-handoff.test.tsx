@@ -3,11 +3,10 @@ import {
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
-import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -28,55 +27,55 @@ const DEFAULT_AGENT = {
   visibility: "private",
 } satisfies AgentResponse;
 
-describe("settings deep-link handoff", () => {
-  it("waits for the stable agent route before opening settings", async () => {
-    context.store.set(setLastUsedAgentId$, DEFAULT_AGENT.agentId);
-    const agentsRequestStarted = context.mocks.deferred<void>();
-    const releaseAgentsRequest = context.mocks.deferred<void>();
-    context.mocks.api(agentsMainContract.list, async ({ respond }) => {
-      agentsRequestStarted.resolve(undefined);
-      await releaseAgentsRequest.promise;
-      return respond(200, [DEFAULT_AGENT]);
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=billing&billingView=plans",
-    });
-
-    await agentsRequestStarted.promise;
-    expect(
-      screen.queryByRole("dialog", { name: "Choose a plan" }),
-    ).not.toBeInTheDocument();
-
-    releaseAgentsRequest.resolve(undefined);
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${DEFAULT_AGENT.agentId}/chat`);
-    });
-    await expect(
-      screen.findByRole("dialog", { name: "Choose a plan" }),
-    ).resolves.toBeInTheDocument();
+test("A Settings deep link waits for the stable home conversation", async () => {
+  context.store.set(setLastUsedAgentId$, DEFAULT_AGENT.agentId);
+  const agentsRequestStarted = context.mocks.deferred<void>();
+  const releaseAgentsRequest = context.mocks.deferred<void>();
+  context.mocks.api(agentsMainContract.list, async ({ respond }) => {
+    agentsRequestStarted.resolve(undefined);
+    await releaseAgentsRequest.promise;
+    return respond(200, [DEFAULT_AGENT]);
   });
 
-  it("processes settings on the root route when no home agent exists", async () => {
-    context.store.set(clearLastUsedAgentId$);
-    context.mocks.data.onboardingStatus({
-      hasDefaultAgent: false,
-      defaultAgentId: null,
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/?settings=billing",
-    });
-
-    await expect(
-      screen.findByRole("dialog", { name: "Settings" }),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByRole("heading", { name: "Billing" }),
-    ).resolves.toBeInTheDocument();
-    expect(pathname()).toBe("/");
+  await setupPage({
+    context,
+    path: "/?settings=billing&billingView=plans",
   });
+
+  await agentsRequestStarted.promise;
+  expect(
+    screen.queryByRole("dialog", { name: "Choose a plan" }),
+  ).not.toBeInTheDocument();
+
+  releaseAgentsRequest.resolve(undefined);
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe(
+      `/agents/${DEFAULT_AGENT.agentId}/chat`,
+    );
+  });
+  await expect(
+    screen.findByRole("dialog", { name: "Choose a plan" }),
+  ).resolves.toBeInTheDocument();
+});
+
+test("A Settings deep link opens on the root page without a home agent", async () => {
+  context.store.set(clearLastUsedAgentId$);
+  context.mocks.data.onboardingStatus({
+    hasDefaultAgent: false,
+    defaultAgentId: null,
+  });
+
+  await setupPage({
+    context,
+    path: "/?settings=billing",
+  });
+
+  await expect(
+    screen.findByRole("dialog", { name: "Settings" }),
+  ).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByRole("heading", { name: "Billing" }),
+  ).resolves.toBeInTheDocument();
+  expect(window.location.pathname).toBe("/");
 });
