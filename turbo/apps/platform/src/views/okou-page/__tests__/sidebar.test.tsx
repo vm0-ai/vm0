@@ -1,15 +1,12 @@
 import {
   act,
-  cleanup,
   fireEvent,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   chatSearchContract,
   chatThreadByIdContract,
@@ -22,10 +19,12 @@ import {
   chatThreadUnpinContract,
   chatThreadsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   agentsByIdContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { artifactCatalogContract } from "@okouai/api-contracts/contracts/artifact-catalog";
 import {
   billingStatusContract,
@@ -43,46 +42,25 @@ import {
 } from "../../../mocks/handlers/workflow-automations-store.ts";
 import {
   click,
-  detachedSetupPage,
+  setupPage,
   fill,
   holdElementAnimations,
   queryAllByRoleFast,
-  setupPage,
-  setupPageAndWaitForContent,
 } from "../../../__tests__/page-helper.ts";
-import { mockOrganization } from "../../../__tests__/mock-auth.ts";
-import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { emptySearchImg } from "../platform-assets.ts";
 import {
   testContext,
   chatEventRowsResponse,
 } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname, search } from "../../../signals/location.ts";
-import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { setChatPageImageModelSelection$ } from "../../../signals/okou-page/chat-page.ts";
-import {
-  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  getChatThreadVirtualListScrollMargin,
-} from "../../../signals/okou-page/sidebar-state.ts";
-import { cachedPinnedAgentPreviewSnapshot$ } from "../../../signals/okou-page/pinned-agents.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
   changeChatThreadList,
   changeChatThreadReadCursor,
 } from "../../../mocks/mock-helpers.ts";
-
-// Base UI Scroll Area reads Web Animations during layout; happy-dom does not
-// implement that browser API. Keep the shim local so other Base UI components
-// retain their synchronous no-animation test behavior.
-if (typeof Element.prototype.getAnimations !== "function") {
-  Object.defineProperty(Element.prototype, "getAnimations", {
-    configurable: true,
-    value: () => {
-      return [];
-    },
-  });
-}
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -98,7 +76,6 @@ function mountedComposer(): HTMLElement {
 }
 
 const context = testContext();
-const refreshContext = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
@@ -123,8 +100,8 @@ interface SidebarThread {
   readonly sortAt?: string;
 }
 
-function prepareDefaultAgent(): void {
-  context.mocks.data.agents([
+function prepareDefaultAgent(targetContext = context): void {
+  targetContext.mocks.data.agents([
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
@@ -137,8 +114,7 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
-/** Top tier: the sidebar has no next plan to advertise, so it renders no card. */
-function teamBillingStatus(): BillingStatusResponse {
+function topTierBillingStatus(): BillingStatusResponse {
   return {
     tier: "team",
     credits: 100,
@@ -234,38 +210,21 @@ const OVERFLOW_PINNED_AGENTS = [
   },
 ] as const;
 
-interface OverflowingPinnedAgentOptions {
-  readonly researchDisplayName?: string;
-  readonly researchAvatarUrl?: string | null;
-}
-
 /**
  * Pins five agents so the grid holds six cards plus Pin, which overflows the
  * five-column row and puts cards on both sides of the Pin button.
  */
-function prepareOverflowingPinnedAgents(
-  targetContext = context,
-  options: OverflowingPinnedAgentOptions = {},
-): string[] {
+function prepareOverflowingPinnedAgents(targetContext = context): string[] {
   const agents = prepareAgents(targetContext);
-  const customizedAgents = agents.map((agent) => {
-    if (agent.agentId !== RESEARCH_AGENT_ID) {
-      return agent;
-    }
-    return {
-      ...agent,
-      displayName: options.researchDisplayName ?? agent.displayName,
-      avatarUrl:
-        options.researchAvatarUrl === undefined
-          ? agent.avatarUrl
-          : options.researchAvatarUrl,
-    };
-  });
+  const templateAgent = agents[1];
+  if (!templateAgent) {
+    throw new Error("Pinned-agent template is unavailable");
+  }
   targetContext.mocks.data.agents([
-    ...customizedAgents,
+    ...agents,
     ...OVERFLOW_PINNED_AGENTS.map((agent) => {
       return {
-        ...agents[1]!,
+        ...templateAgent,
         agentId: agent.agentId,
         displayName: agent.displayName,
       };
@@ -301,8 +260,9 @@ function mockChatThreadSnapshot(
   activeThreadIds: () => readonly string[] = () => {
     return [];
   },
+  targetContext = context,
 ): void {
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+  targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
     return respond(200, {
       chatThreads: snapshotThreads.map((thread, index) => {
@@ -329,10 +289,10 @@ function mockChatThreadSnapshot(
       latestSeqId: null,
     });
   });
-  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+  targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+  targetContext.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
     return respond(200, {
       agents: {},
       threads: Object.fromEntries(
@@ -342,42 +302,6 @@ function mockChatThreadSnapshot(
       ),
     });
   });
-}
-
-function deferPinnedAgentPreferences(
-  targetContext: ReturnType<typeof testContext>,
-  pinnedAgentIds: readonly string[],
-  onRequest: () => void = () => {},
-) {
-  const gate = targetContext.mocks.deferred<void>();
-  targetContext.mocks.api(userPreferencesContract.get, async ({ respond }) => {
-    onRequest();
-    await gate.promise;
-    return respond(200, {
-      timezone: null,
-      locale: null,
-      translationLanguage: null,
-      supportedLocales: [
-        "en-US",
-        "pt-BR",
-        "ja-JP",
-        "ko-KR",
-        "id-ID",
-        "de-DE",
-        "es-ES",
-        "it-IT",
-        "fr-FR",
-        "hi-IN",
-      ],
-      pinnedAgentIds: [...pinnedAgentIds],
-      sendMode: "enter",
-      cloudBrowserEnabledByDefault: true,
-      theme: "system",
-      colorTheme: "blue-horizon",
-      captureNetworkBodiesRemaining: 0,
-    });
-  });
-  return gate;
 }
 
 function mockUnreadAgents(
@@ -480,9 +404,9 @@ function pinnedAgentLink(
 }
 
 function setupSidebarPage(
-  options: Parameters<typeof detachedSetupPage>[0],
-): void {
-  detachedSetupPage(options);
+  options: Parameters<typeof setupPage>[0],
+): Promise<void> {
+  return setupPage(options);
 }
 
 function pinnedAgentNames(container: HTMLElement): string[] {
@@ -604,10 +528,20 @@ function openChatListMenu(): void {
   click(within(sidebar()).getByLabelText("Open chat list menu"));
 }
 
+function chatListNewChatButton(): HTMLElement {
+  const menuButton = within(sidebar()).getByLabelText("Open chat list menu");
+  const actions = menuButton.parentElement;
+  if (!actions) {
+    throw new Error("Chat list actions not found");
+  }
+  return within(actions).getByLabelText("New chat");
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
   activeThreadIds: readonly string[] = [],
+  targetContext = context,
 ): {
   threads: SidebarThread[];
 } {
@@ -620,15 +554,16 @@ function mockSidebarThreadStory(
     () => {
       return activeThreadIds;
     },
+    targetContext,
   );
 
-  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+  targetContext.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
       cancellationRecoveryPending: false,
     });
   });
-  context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
+  targetContext.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
     threads = threads.map((thread) => {
       return thread.id === params.id
         ? { ...thread, pinnedAt: "2026-03-10T12:00:00Z" }
@@ -636,13 +571,16 @@ function mockSidebarThreadStory(
     });
     return respond(204);
   });
-  context.mocks.api(chatThreadUnpinContract.unpin, ({ params, respond }) => {
-    threads = threads.map((thread) => {
-      return thread.id === params.id ? { ...thread, pinnedAt: null } : thread;
-    });
-    return respond(204);
-  });
-  context.mocks.api(
+  targetContext.mocks.api(
+    chatThreadUnpinContract.unpin,
+    ({ params, respond }) => {
+      threads = threads.map((thread) => {
+        return thread.id === params.id ? { ...thread, pinnedAt: null } : thread;
+      });
+      return respond(204);
+    },
+  );
+  targetContext.mocks.api(
     chatThreadRenameContract.rename,
     ({ params, body, respond }) => {
       threads = threads.map((thread) => {
@@ -657,1671 +595,768 @@ function mockSidebarThreadStory(
       return respond(204);
     },
   );
-  context.mocks.api(chatThreadByIdContract.delete, ({ params, respond }) => {
-    threads = threads.filter((thread) => {
-      return thread.id !== params.id;
-    });
-    return respond(204);
-  });
+  targetContext.mocks.api(
+    chatThreadByIdContract.delete,
+    ({ params, respond }) => {
+      threads = threads.filter((thread) => {
+        return thread.id !== params.id;
+      });
+      return respond(204);
+    },
+  );
 
   return { threads };
 }
 
-describe("zero sidebar", () => {
-  it("keeps known threads visible while creating a new chat", async () => {
-    prepareDefaultAgent();
-    const createDeferred = context.mocks.deferred<void>();
-    let createdThreadBody: { readonly videoModel?: string } | undefined;
-    const threads = [
-      {
-        id: EXISTING_THREAD_ID,
-        title: "Existing conversation",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ];
-    mockChatThreadSnapshot(() => {
-      return threads;
-    });
-    context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
-      createdThreadBody = body;
-      await createDeferred.promise;
-      return respond(201, {
-        id: body.clientThreadId ?? "created-thread-id",
-        title: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        selectedModel: body.model ?? "claude-sonnet-4-6",
-        serviceTier: body.serviceTier ?? null,
-      });
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-        cancellationRecoveryPending: false,
-      });
-    });
+test("Browse a long sidebar chat history", async () => {
+  prepareDefaultAgent();
+  const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+    return createThread(
+      `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+      `Refresh overflow ${index + 1}`,
+    );
+  });
+  mockSidebarThreadStory(
+    [
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ],
+    [...overflowThreads, createThread(ARCHIVED_THREAD_ID, "Archived context")],
+  );
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const newChatButton = await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Existing conversation"),
-      ).toBeInTheDocument();
-      const chatThreadsTitle = within(sidebar()).getByText("Chats with Zero");
-      if (!chatThreadsTitle.parentElement) {
-        throw new Error("Chat threads header not found");
-      }
-      return within(chatThreadsTitle.parentElement).getByLabelText("New chat");
-    });
-
-    click(newChatButton);
-
-    await waitFor(() => {
-      const sidebar = screen.getByTestId("chat-list-column");
-      expect(
-        within(sidebar).getByText("Existing conversation"),
-      ).toBeInTheDocument();
-      expect(within(sidebar).getByText("New chat")).toBeInTheDocument();
-      expect(
-        sidebar.querySelectorAll('[data-testid="sidebar-skeleton"]'),
-      ).toHaveLength(0);
-      expect(createdThreadBody).toBeDefined();
-    });
-    expect(createdThreadBody?.videoModel).toBeUndefined();
-
-    createDeferred.resolve();
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
   });
 
-  it("renders event-sourced sidebar threads while indicators are pending", async () => {
-    prepareDefaultAgent();
-    let indicatorRequests = 0;
-
-    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-      return respond(200, {
-        chatThreads: [
-          {
-            id: EXISTING_THREAD_ID,
-            agentId: AGENT_ID,
-            title: "Event-sourced conversation",
-            sortAt: "2026-03-10T00:00:00Z",
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: null,
-            serviceTier: null,
-            computerUseHostId: null,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      });
-    });
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, { events: [], hasMore: false });
-    });
-    context.mocks.api(chatThreadsContract.indicators, ({ never }) => {
-      indicatorRequests += 1;
-      return never();
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Event-sourced conversation"),
-      ).toBeInTheDocument();
-      expect(
-        sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
-      ).toHaveLength(0);
-      expect(indicatorRequests).toBe(1);
-    });
+  await waitFor(() => {
     expect(
-      within(threadRowByTitle("Event-sourced conversation")).queryByLabelText(
-        "Running",
-      ),
+      within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
+    ).toBeInTheDocument();
+  });
+
+  const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
+  Object.defineProperties(scrollArea, {
+    clientHeight: { configurable: true, value: 200 },
+    scrollHeight: { configurable: true, value: 1000 },
+    scrollTop: { configurable: true, value: 780, writable: true },
+  });
+  fireEvent.scroll(scrollArea);
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
+  });
+  expect(within(sidebar()).queryByText("Release plan")).toBeNull();
+  expect(within(sidebar()).queryByText("Load more")).not.toBeInTheDocument();
+
+  openThreadMenu("Archived context");
+  click(menuItemByText("Delete chat"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Delete chat?",
+  });
+  click(buttonByText("Delete", dialog));
+
+  // Model a browser-clamped live offset without another scroll event.
+  scrollArea.scrollTop = 0;
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(
+      within(sidebar()).queryByText("Archived context"),
     ).not.toBeInTheDocument();
   });
+});
 
-  it("refreshes rendered unread indicators from shared thread invalidations", async () => {
-    mockMobileLayout();
-    prepareAgents();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
-    ]);
-    let hasUnread = false;
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, {
-        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
-        threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
-      });
-    });
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, {
-        unreads: hasUnread
-          ? [
-              {
-                threadId: EXISTING_THREAD_ID,
-                unreadAt: "2026-03-10T00:05:00Z",
-              },
-            ]
-          : [],
-      });
-    });
+test("Drag the sidebar scrollbar when enabled", async () => {
+  prepareDefaultAgent();
+  context.mocks.browser.noAnimations();
 
-    await setupPageAndWaitForContent({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      sharedWorkerTestTransport: "message-port",
-    });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.BaseUiSidebarScrollArea]: true,
+    },
+  });
 
-    const nav = await waitFor(() => {
-      const current = mobileSidebar();
-      expect(within(current).getByText("Zero")).toBeInTheDocument();
-      return current;
-    });
-    const agentRow = agentRowByName(nav, "Zero");
-    const threadRow = await waitFor(() => {
-      return threadRowByTitle("Remote unread conversation", nav);
-    });
-    await waitFor(() => {
-      expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
-      expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
-    });
+  const scrollArea = await waitFor(() => {
+    const current = within(sidebar()).getByTestId("sidebar-scroll-area");
+    expect(current).toBeInTheDocument();
+    return current;
+  });
+  Object.defineProperties(scrollArea, {
+    clientHeight: { configurable: true, value: 200 },
+    clientWidth: { configurable: true, value: 200 },
+    scrollHeight: { configurable: true, value: 1000 },
+    scrollTop: { configurable: true, value: 0, writable: true },
+    scrollWidth: { configurable: true, value: 200 },
+  });
+  scrollArea.style.scrollSnapType = "y mandatory";
+  fireEvent.scroll(scrollArea);
 
-    hasUnread = true;
-    changeChatThreadList();
+  const scrollbar = await screen.findByTestId("sidebar-scrollbar");
+  const thumb = await screen.findByTestId("sidebar-scrollbar-thumb");
+  scrollbar.style.paddingBlockStart = "0px";
+  scrollbar.style.paddingBlockEnd = "0px";
+  thumb.style.marginBlockStart = "0px";
+  thumb.style.marginBlockEnd = "0px";
+  Object.defineProperty(scrollbar, "offsetHeight", {
+    configurable: true,
+    value: 200,
+  });
+  Object.defineProperty(thumb, "offsetHeight", {
+    configurable: true,
+    value: 40,
+  });
 
-    await waitFor(() => {
-      expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
-      expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
+  let capturedPointerId: number | null = null;
+  Object.defineProperties(thumb, {
+    hasPointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => {
+        return capturedPointerId === pointerId;
+      },
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => {
+        if (capturedPointerId === pointerId) {
+          capturedPointerId = null;
+        }
+      },
+    },
+    setPointerCapture: {
+      configurable: true,
+      value: (pointerId: number) => {
+        capturedPointerId = pointerId;
+      },
+    },
+  });
+
+  fireEvent.pointerDown(thumb, {
+    button: 0,
+    buttons: 1,
+    clientY: 20,
+    pointerId: 1,
+  });
+  expect(scrollArea.style.scrollSnapType).toBe("none");
+
+  fireEvent.pointerMove(thumb, {
+    buttons: 1,
+    clientY: 100,
+    pointerId: 1,
+  });
+  expect(scrollArea.scrollTop).toBe(400);
+
+  fireEvent.pointerUp(thumb, {
+    button: 0,
+    buttons: 0,
+    clientY: 100,
+    pointerId: 1,
+  });
+  expect(scrollArea.style.scrollSnapType).toBe("y mandatory");
+});
+
+test("Collapse and expand Manage navigation", async () => {
+  mockMobileLayout();
+  prepareDefaultAgent();
+
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+  const nav = await waitFor(() => {
+    const current = mobileSidebar();
+    expect(within(current).getByText("Agents")).toBeInTheDocument();
+    expect(within(current).getByText("Connectors")).toBeInTheDocument();
+    return current;
+  });
+
+  const scrollArea = within(nav).getByTestId("sidebar-scroll-area");
+  Object.defineProperty(scrollArea, "clientHeight", {
+    configurable: true,
+    value: 200,
+  });
+  Object.defineProperty(scrollArea, "scrollHeight", {
+    configurable: true,
+    value: 1000,
+  });
+  Object.defineProperty(scrollArea, "scrollTop", {
+    configurable: true,
+    value: 120,
+  });
+  fireEvent.scroll(scrollArea);
+
+  await waitFor(() => {
+    expect(scrollArea.getAttribute("style")).toContain("box-shadow:");
+  });
+
+  const scrollWrapper = scrollArea.parentElement;
+  if (!scrollWrapper) {
+    throw new Error("Sidebar scroll wrapper not found");
+  }
+  const scrollbarTrack = scrollArea.nextElementSibling;
+  if (!(scrollbarTrack instanceof HTMLElement)) {
+    throw new Error("Sidebar scrollbar track not found");
+  }
+
+  expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
+  expect(scrollbarTrack).toHaveClass(
+    "opacity-0",
+    "transition-opacity",
+    "duration-150",
+    "group-hover/sidebar-scroll:opacity-100",
+  );
+  expect(scrollbarTrack.style.opacity).toBe("");
+  fireEvent.mouseEnter(scrollWrapper);
+  fireEvent.mouseLeave(scrollWrapper);
+  expect(scrollbarTrack.style.opacity).toBe("");
+
+  Object.defineProperty(scrollArea, "scrollHeight", {
+    configurable: true,
+    value: 200,
+  });
+  fireEvent.scroll(scrollArea);
+  expect(scrollbarTrack).not.toHaveClass(
+    "group-hover/sidebar-scroll:opacity-100",
+  );
+
+  click(within(nav).getByText("Manage"));
+
+  await waitFor(() => {
+    expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("Connectors")).not.toBeInTheDocument();
+  });
+
+  click(within(nav).getByText("Manage"));
+
+  await waitFor(() => {
+    expect(within(nav).getByText("Agents")).toBeInTheDocument();
+    expect(within(nav).getByText("Connectors")).toBeInTheDocument();
+  });
+
+  const workflows = within(nav).getByText("Workflows");
+  const connectors = within(nav).getByText("Connectors");
+  const artifacts = within(nav).getByText("Artifacts");
+  expect(
+    workflows.compareDocumentPosition(connectors) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(
+    connectors.compareDocumentPosition(artifacts) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
+});
+
+test("Combine chat-title and message results in workspace search", async () => {
+  mockMobileLayout();
+  prepareAgents();
+  context.mocks.data.agents([
+    {
+      agentId: AGENT_ID,
+      ownerId: "test-user-123",
+      displayName: "Zero",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      visibility: "public",
+    },
+    {
+      agentId: RESEARCH_AGENT_ID,
+      ownerId: "test-user-123",
+      displayName: "Deploy alpha",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      visibility: "public",
+    },
+    {
+      agentId: SUPPORT_AGENT_ID,
+      ownerId: "test-user-123",
+      displayName: "Planning deploy",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      visibility: "public",
+    },
+    {
+      agentId: "c0000000-0000-4000-a000-000000000004",
+      ownerId: "test-user-123",
+      displayName: "Deploy beta",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      visibility: "public",
+    },
+    {
+      agentId: "c0000000-0000-4000-a000-000000000005",
+      ownerId: "test-user-123",
+      displayName: "Deploy gamma",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      visibility: "public",
+    },
+  ]);
+  const deployThread = createThread(RESEARCH_THREAD_ID, "Deployment notes", {
+    agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+  });
+  const deployFollowup = createThread(
+    INCIDENT_THREAD_ID,
+    "Deployment follow-up",
+    { agent: { id: RESEARCH_AGENT_ID, avatarUrl: null } },
+  );
+  const deployArchive = createThread(
+    AUTOMATION_THREAD_ID,
+    "Deployment archive",
+    { agent: { id: RESEARCH_AGENT_ID, avatarUrl: null } },
+  );
+  mockSidebarThreadStory([deployThread, deployFollowup, deployArchive]);
+  const searchResponse = context.mocks.deferred<void>();
+  let requestedKeyword: string | undefined;
+  context.mocks.api(chatSearchContract.search, async ({ query, respond }) => {
+    requestedKeyword = query.keyword;
+    await searchResponse.promise;
+    return respond(200, {
+      results: Array.from({ length: 25 }, (_, index) => {
+        return {
+          chatThreadId: RESEARCH_THREAD_ID,
+          agentName: "Research Agent",
+          matchedMessage: {
+            chatThreadId: RESEARCH_THREAD_ID,
+            role: "user" as const,
+            content: `Production deploy ${index + 1} finished successfully`,
+            createdAt: "2026-03-10T00:10:00Z",
+            seqId: index + 1,
+            runId: null,
+          },
+          matchedRanges: [{ start: 11, end: 17 }],
+        };
+      }),
+      hasMore: false,
     });
   });
 
-  it("keeps the sidebar responsive when a draft membership request rejects", async () => {
-    prepareDefaultAgent();
-    const draftResponse = context.mocks.deferred<void>();
-    let draftRequests = 0;
-    let draftResponseSent = false;
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Existing conversation"),
-    ]);
-    context.mocks.api(chatThreadsContract.drafts, async ({ respond }) => {
-      draftRequests += 1;
-      await draftResponse.promise;
-      draftResponseSent = true;
-      return respond(401, {
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Draft membership unavailable",
-        },
-      });
-    });
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await waitFor(() => {
-      expect(draftRequests).toBe(1);
-      expect(
-        within(sidebar()).getByText("Existing conversation"),
-      ).toBeInTheDocument();
-    });
-
-    draftResponse.resolve();
-    await waitFor(() => {
-      expect(draftResponseSent).toBeTruthy();
-      expect(
-        within(sidebar()).getByText("Existing conversation"),
-      ).toBeInTheDocument();
-    });
-    openChatListMenu();
-    expect(menuItemByText("All chats")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(mobileSidebar()).toBeInTheDocument();
+  });
+  fireEvent.keyDown(document.body, {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
   });
 
-  it("preserves server thread order while creating an optimistic new chat", async () => {
-    prepareDefaultAgent();
-    const createDeferred = context.mocks.deferred<void>();
-    const serverOrderedThreads = [
-      {
-        id: EXISTING_THREAD_ID,
-        title: "A server first",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        pinnedAt: null,
-      },
-      {
-        id: INCIDENT_THREAD_ID,
-        title: "B server second",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-11T00:00:00Z",
-        pinnedAt: null,
-      },
-      {
-        id: AUTOMATION_THREAD_ID,
-        title: "C server third",
-        agent: { id: AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-12T00:00:00Z",
-        pinnedAt: null,
-      },
-    ];
-    mockChatThreadSnapshot(() => {
-      return serverOrderedThreads;
-    });
-    context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
-      await createDeferred.promise;
-      return respond(201, {
-        id: body.clientThreadId ?? "created-thread-id",
-        title: null,
-        createdAt: "2026-03-12T12:00:00Z",
-        selectedModel: body.model ?? "claude-sonnet-4-6",
-        serviceTier: body.serviceTier ?? null,
-      });
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-        cancellationRecoveryPending: false,
-      });
-    });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "deploy",
+  );
 
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await waitFor(() => {
+    expect(requestedKeyword).toBe("deploy");
+    expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+    expect(within(dialog).getByText("Deployment archive")).toBeInTheDocument();
+    expect(within(dialog).getByText("Searching...")).toBeInTheDocument();
+  });
 
-    const newChatButton = await waitFor(() => {
-      expect(
-        visibleThreadTitles([
-          "A server first",
-          "B server second",
-          "C server third",
-        ]),
-      ).toStrictEqual(["A server first", "B server second", "C server third"]);
-      const chatThreadsTitle = within(sidebar()).getByText("Chats with Zero");
-      if (!chatThreadsTitle.parentElement) {
-        throw new Error("Chat threads header not found");
-      }
-      return within(chatThreadsTitle.parentElement).getByLabelText("New chat");
+  searchResponse.resolve();
+
+  await waitFor(() => {
+    expect(within(dialog).queryByText("Searching...")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("28 results")).toBeInTheDocument();
+  });
+  const [highlighted] = within(dialog).getAllByText("deploy");
+  if (!highlighted) {
+    throw new Error("Highlighted message search term not found");
+  }
+  expect(highlighted).toHaveClass("text-foreground");
+
+  const results = within(dialog).getAllByRole("option");
+  expect(results).toHaveLength(28);
+  expect(results[0]).toHaveTextContent("Deployment notes");
+  expect(results[1]).toHaveTextContent("Deployment follow-up");
+  expect(results[2]).toHaveTextContent("Deployment archive");
+  expect(results[3]).toHaveTextContent(
+    "Production deploy 1 finished successfully",
+  );
+  expect(within(dialog).queryByText("Deploy alpha")).not.toBeInTheDocument();
+  const messageResult = highlighted.closest('[role="option"]');
+  if (!(messageResult instanceof HTMLElement)) {
+    throw new Error("Message search result not found");
+  }
+  click(messageResult);
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Search chats, messages, workflows, and artifacts...",
+      }),
+    ).not.toBeInTheDocument();
+    expect(document.title).toBe("Deployment notes | VM0");
+  });
+});
+
+test("Create a new chat without hiding existing conversations", async () => {
+  prepareDefaultAgent();
+  context.mocks.data.userModelPreference({
+    selectedModel: null,
+    serviceTier: null,
+    selectedImageModel: "fal-ai/qwen-image",
+    updatedAt: "2026-08-18T00:00:00Z",
+  });
+  const createDeferred = context.mocks.deferred<void>();
+  let createdImageModel: string | undefined;
+  const serverOrderedThreads = [
+    {
+      id: EXISTING_THREAD_ID,
+      title: "A server first",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+      pinnedAt: null,
+    },
+    {
+      id: INCIDENT_THREAD_ID,
+      title: "B server second",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-11T00:00:00Z",
+      pinnedAt: null,
+    },
+    {
+      id: AUTOMATION_THREAD_ID,
+      title: "C server third",
+      agent: { id: AGENT_ID, avatarUrl: null },
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-12T00:00:00Z",
+      pinnedAt: null,
+    },
+  ];
+  mockChatThreadSnapshot(() => {
+    return serverOrderedThreads;
+  });
+  context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
+    createdImageModel = body.imageModel;
+    await createDeferred.promise;
+    return respond(201, {
+      id: body.clientThreadId ?? "created-thread-id",
+      title: null,
+      createdAt: "2026-03-12T12:00:00Z",
+      selectedModel: body.model ?? "claude-sonnet-4-6",
+      serviceTier: body.serviceTier ?? null,
     });
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+    return respond(200, {
+      lastReadAt: null,
+      cancellationRecoveryPending: false,
+    });
+  });
 
-    click(newChatButton);
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await waitFor(() => {
-      expect(
-        visibleThreadTitles([
-          "New chat",
-          "A server first",
-          "B server second",
-          "C server third",
-        ]),
-      ).toStrictEqual([
+  const newChatButton = await waitFor(() => {
+    expect(
+      visibleThreadTitles([
+        "A server first",
+        "B server second",
+        "C server third",
+      ]),
+    ).toStrictEqual(["A server first", "B server second", "C server third"]);
+    return chatListNewChatButton();
+  });
+
+  context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
+
+  click(newChatButton);
+
+  await waitFor(() => {
+    expect(
+      visibleThreadTitles([
         "New chat",
         "A server first",
         "B server second",
         "C server third",
-      ]);
-    });
-
-    createDeferred.resolve();
-  });
-
-  it("requests unread chat threads and filters the event-sourced list", async () => {
-    prepareDefaultAgent();
-    const pinnedUnreadThread = createThread(
-      AUTOMATION_THREAD_ID,
-      "Pinned incident",
-      {
-        pinnedAt: "2026-03-10T12:00:00Z",
-      },
-    );
-    const currentThread = createThread(EXISTING_THREAD_ID, "Release plan");
-    const unreadThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
-    const archivedThread = createThread(ARCHIVED_THREAD_ID, "Archived context");
-    const allThreads = [
-      pinnedUnreadThread,
-      currentThread,
-      unreadThread,
-      archivedThread,
-    ];
-    let unreadsRequests = 0;
-
-    mockChatThreadSnapshot(() => {
-      return allThreads;
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-        cancellationRecoveryPending: false,
-      });
-    });
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      unreadsRequests += 1;
-      return respond(200, {
-        unreads: [
-          {
-            threadId: AUTOMATION_THREAD_ID,
-            unreadAt: "2026-03-10T00:04:00Z",
-          },
-          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
-        ],
-      });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
-    });
-
-    openChatListMenu();
-    click(menuItemByText("Unread only"));
-
-    await waitFor(() => {
-      expect(unreadsRequests).toBeGreaterThan(0);
-      expect(
-        visibleThreadTitles(["Pinned incident", "Incident notes"]),
-      ).toStrictEqual(["Pinned incident", "Incident notes"]);
-      expect(
-        within(sidebar()).queryByText("Release plan"),
-      ).not.toBeInTheDocument();
-      expect(
-        within(sidebar()).queryByText("Archived context"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps an event-sourced pinned current chat at the front of the pinned section", async () => {
-    prepareDefaultAgent();
-    const pinnedCurrentThread = createThread(
-      EXISTING_THREAD_ID,
-      "Release plan",
-      {
-        pinnedAt: "2026-03-10T12:00:00Z",
-      },
-    );
-    const pinnedThread = createThread(AUTOMATION_THREAD_ID, "Pinned incident", {
-      pinnedAt: "2026-03-10T11:00:00Z",
-    });
-    const unpinnedThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
-
-    mockChatThreadSnapshot(() => {
-      return [pinnedCurrentThread, pinnedThread, unpinnedThread];
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        lastReadAt: null,
-        cancellationRecoveryPending: false,
-      });
-    });
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, { unreads: [] });
-    });
-
-    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(
-        visibleThreadTitles([
-          "Release plan",
-          "Pinned incident",
-          "Incident notes",
-        ]),
-      ).toStrictEqual(["Release plan", "Pinned incident", "Incident notes"]);
-    });
-  });
-
-  it("clears a thread unread marker optimistically before mark-read resolves", async () => {
-    prepareDefaultAgent();
-    const markReadDeferred = context.mocks.deferred<void>();
-    let markReadCalls = 0;
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      ]),
+    ).toStrictEqual([
+      "New chat",
+      "A server first",
+      "B server second",
+      "C server third",
     ]);
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, {
-        unreads: [
-          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
-        ],
-      });
-    });
-    context.mocks.api(
-      chatThreadEventsContract.rows,
-      ({ params, query, respond }) => {
-        return respond(
-          200,
-          chatEventRowsResponse(
-            mockChatEventRows(
-              params.threadId === INCIDENT_THREAD_ID
-                ? [
-                    {
-                      id: "incident-message-1",
-                      threadId: INCIDENT_THREAD_ID,
-                      eventType: "run.completed" as const,
-                      runId: "mock-run",
-                      content: null,
-                      runLifecycleEvent: "completed" as const,
-                      seqId: 1,
-                      createdAt: "2026-03-10T00:05:00Z",
-                    },
-                  ]
-                : [],
-            ).filter((row) => {
-              return row.seqId > query.sinceSeqId;
-            }),
-            query,
-          ),
-        );
-      },
-    );
-    context.mocks.api(
-      chatThreadMarkReadContract.markRead,
-      async ({ respond }) => {
-        markReadCalls += 1;
-        await markReadDeferred.promise;
-        return respond(200, {
-          lastReadAt: "2026-03-10T00:05:00Z",
-          unreads: [],
-        });
-      },
-    );
-
-    setupSidebarPage({ context, path: `/chats/${INCIDENT_THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(markReadCalls).toBe(1);
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    click(threadLinkByTitle("Release plan"));
-
-    await waitFor(() => {
-      expect(
-        within(threadRowByTitle("Incident notes")).queryByLabelText("Unread"),
-      ).not.toBeInTheDocument();
-    });
-
-    markReadDeferred.resolve();
-
-    changeChatThreadReadCursor({
-      threadId: INCIDENT_THREAD_ID,
-      agentId: AGENT_ID,
-      lastReadAt: null,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-    });
+    expect(createdImageModel).toBeUndefined();
   });
 
-  it("pins and unpins a chat thread from the sidebar menu", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(INCIDENT_THREAD_ID, "Incident notes"),
-        createThread(AUTOMATION_THREAD_ID, "Running analysis"),
-        createThread(ARCHIVED_THREAD_ID, "Draft brief"),
-      ],
-      [],
-      [AUTOMATION_THREAD_ID],
-    );
-    context.mocks.api(chatThreadsContract.drafts, ({ respond }) => {
-      return respond(200, { draftThreadIds: [ARCHIVED_THREAD_ID] });
-    });
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, {
-        unreads: [
-          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
-        ],
-      });
-    });
+  createDeferred.resolve();
+});
 
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
+test("Delete a chat after reviewing the impact", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(INCIDENT_THREAD_ID, "Incident notes"),
+  ]);
 
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-      expect(
-        within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-      expect(
-        within(threadRowByTitle("Running analysis")).getByLabelText("Running"),
-      ).toBeInTheDocument();
-      expect(
-        within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
-    ).toHaveAttribute("role", "img");
-    expect(
-      within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
-    ).toHaveAttribute("role", "img");
+  await setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
-    openThreadMenu("Release plan");
-    click(menuItemByText("Pin chat"));
-
-    await waitFor(() => {
-      expect(
-        within(threadRowByTitle("Release plan")).getByTestId(
-          "chat-thread-pinned-indicator",
-        ),
-      ).toBeInTheDocument();
-    });
-
-    click(
-      within(threadRowByTitle("Release plan")).getByTestId(
-        "chat-thread-pinned-indicator",
-      ),
-    );
-    click(menuItemByText("Unpin chat"));
-
-    await waitFor(() => {
-      expect(
-        within(threadRowByTitle("Release plan")).queryByTestId(
-          "chat-thread-pinned-indicator",
-        ),
-      ).not.toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
   });
 
-  it("marks the current chat unread from the sidebar menu", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-    ]);
-    let markedUnreadThreadId: string | null = null;
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, {
-        unreads:
-          markedUnreadThreadId === null
-            ? []
-            : [
-                {
-                  threadId: markedUnreadThreadId,
-                  unreadAt: "2026-03-10T00:05:00Z",
-                },
-              ],
-      });
-    });
-    context.mocks.api(
-      chatThreadMarkUnreadContract.markUnread,
-      ({ params, respond }) => {
-        markedUnreadThreadId = params.id;
-        // The API publishes the read-cursor signal before it responds.
-        changeChatThreadReadCursor();
-        return respond(200, {
-          lastReadAt: null,
-          unreads: [
-            {
-              threadId: params.id,
-              unreadAt: "2026-03-10T00:05:00Z",
-            },
-          ],
-        });
-      },
-    );
+  openThreadMenu("Release plan");
+  click(menuItemByText("Delete chat"));
 
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Delete chat?",
+  });
+  expect(
+    within(dialog).getByText(
+      "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. Any linked automations will be paused. This action cannot be undone.",
+    ),
+  ).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-    });
+  click(buttonByText("Cancel", dialog));
 
-    openThreadMenu("Release plan");
-    click(menuItemByText("Mark unread"));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(markedUnreadThreadId).toBe(EXISTING_THREAD_ID);
-    });
+  openThreadMenu("Release plan");
+  click(menuItemByText("Delete chat"));
+
+  const confirmDialog = await screen.findByRole("dialog", {
+    name: "Delete chat?",
+  });
+  click(buttonByText("Delete", confirmDialog));
+
+  await waitFor(() => {
     expect(
-      within(threadRowByTitle("Release plan")).queryByLabelText("Unread"),
+      within(sidebar()).queryByText("Release plan"),
     ).not.toBeInTheDocument();
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+  });
+});
 
-    click(threadLinkByTitle("Incident notes"));
-
-    await waitFor(() => {
-      expect(
-        within(threadRowByTitle("Release plan")).getByLabelText("Unread"),
-      ).toBeInTheDocument();
+test("Filter the chat list to unread conversations", async () => {
+  prepareDefaultAgent();
+  const pinnedUnreadThread = createThread(
+    AUTOMATION_THREAD_ID,
+    "Pinned incident",
+    {
+      pinnedAt: "2026-03-10T12:00:00Z",
+    },
+  );
+  const currentThread = createThread(EXISTING_THREAD_ID, "Release plan");
+  const unreadThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
+  const archivedThread = createThread(ARCHIVED_THREAD_ID, "Archived context");
+  const allThreads = [
+    pinnedUnreadThread,
+    currentThread,
+    unreadThread,
+    archivedThread,
+  ];
+  mockChatThreadSnapshot(() => {
+    return allThreads;
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+    return respond(200, {
+      lastReadAt: null,
+      cancellationRecoveryPending: false,
+    });
+  });
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, {
+      unreads: [
+        {
+          threadId: AUTOMATION_THREAD_ID,
+          unreadAt: "2026-03-10T00:04:00Z",
+        },
+        { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
+      ],
     });
   });
 
-  it("renames a chat thread from the sidebar menu", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(INCIDENT_THREAD_ID, "Incident notes"),
-      ],
-      [],
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-    });
-
-    openThreadMenu("Release plan");
-    click(menuItemByText("Rename chat"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Release plan");
-
-    await fill(titleInput, "Launch plan");
-    click(buttonByText("Rename", dialog));
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Launch plan")).toBeInTheDocument();
-      expect(
-        within(sidebar()).queryByText("Release plan"),
-      ).not.toBeInTheDocument();
-    });
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
   });
 
-  it("prefills sidebar rename from event-driven thread metadata", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-    });
-
-    openThreadMenu("Incident notes");
-    click(menuItemByText("Rename chat"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
-      "Incident notes",
-    );
-  });
-
-  it("keeps the rename draft while closing and resets it on the next open", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-    });
-
-    openThreadMenu("Release plan");
-    click(menuItemByText("Rename chat"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    await fill(titleInput, "Unsaved title");
-    const finishCloseAnimation = holdElementAnimations(dialog);
-    click(buttonByText("Cancel", dialog));
-
-    expect(titleInput).toBeInTheDocument();
-    expect(titleInput).toBeVisible();
-    expect(titleInput).toHaveValue("Unsaved title");
-
-    finishCloseAnimation();
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Rename chat" }),
-      ).not.toBeInTheDocument();
-    });
-
-    openThreadMenu("Incident notes");
-    click(menuItemByText("Rename chat"));
-
-    const reopenedDialog = await screen.findByRole("dialog", {
-      name: "Rename chat",
-    });
-    expect(
-      within(reopenedDialog).getByPlaceholderText("Chat title"),
-    ).toHaveValue("Incident notes");
-  });
-
-  it("renames a chat thread by double-clicking from the sidebar", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(INCIDENT_THREAD_ID, "Incident notes"),
-      ],
-      [],
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    fireEvent.doubleClick(threadLinkByTitle("Release plan"));
-
-    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
-    const titleInput = within(dialog).getByPlaceholderText("Chat title");
-    expect(titleInput).toHaveValue("Release plan");
-
-    await fill(titleInput, "Launch plan");
-    click(buttonByText("Rename", dialog));
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Launch plan")).toBeInTheDocument();
-      expect(
-        within(sidebar()).queryByText("Release plan"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("loads more sidebar chats and deletes a chat", async () => {
-    prepareDefaultAgent();
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b1000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(
-        within(sidebar()).getByText("Scheduled launch"),
-      ).toBeInTheDocument();
-      expect(
-        within(sidebar()).queryByTestId("sidebar-chat-threads-load-more"),
-      ).toBeNull();
-    });
-
-    openThreadMenu("Scheduled launch");
-    click(menuItemByText("Delete chat"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
-    });
-    click(buttonByText("Cancel", dialog));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", {
-          name: "Delete chat?",
-        }),
-      ).not.toBeInTheDocument();
-      expect(
-        within(sidebar()).getByText("Scheduled launch"),
-      ).toBeInTheDocument();
-    });
-
-    openThreadMenu("Scheduled launch");
-    click(menuItemByText("Delete chat"));
-
-    const confirmDialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
-    });
-    click(buttonByText("Delete", confirmDialog));
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).queryByText("Scheduled launch"),
-      ).not.toBeInTheDocument();
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-  });
-
-  it("virtualizes sidebar chats", async () => {
-    prepareDefaultAgent();
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b2000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Virtual overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.BaseUiSidebarScrollArea]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).queryByTestId("sidebar-chat-threads-load-more"),
-      ).toBeNull();
-      expect(
-        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-      ).toBeInTheDocument();
-    });
-
-    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-    Object.defineProperty(scrollArea, "clientHeight", {
-      configurable: true,
-      value: 200,
-    });
-    Object.defineProperty(scrollArea, "scrollHeight", {
-      configurable: true,
-      value: 1000,
-    });
-    Object.defineProperty(scrollArea, "scrollTop", {
-      configurable: true,
-      value: 0,
-    });
-    fireEvent.scroll(scrollArea);
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-    expect(within(sidebar()).queryByText("Archived context")).toBeNull();
-
-    Object.defineProperty(scrollArea, "scrollTop", {
-      configurable: true,
-      value: 780,
-    });
-    fireEvent.scroll(scrollArea);
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("mounts only the sidebar for the current viewport", async () => {
-    prepareDefaultAgent();
-    const mediaQuery = mockMobileLayout();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(mobileSidebar()).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
-    expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
-
-    act(() => {
-      mediaQuery.setMatches(true);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("labeled-nav-rail")).toBeInTheDocument();
-      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
-    });
-    expect(queryMobileSidebar()).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
-
-    act(() => {
-      mediaQuery.setMatches(false);
-    });
-
-    await waitFor(() => {
-      expect(mobileSidebar()).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
-  });
-
-  it("keeps virtualized chats visible after deletion refreshes a clamped viewport", async () => {
-    prepareDefaultAgent();
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Refresh overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-      ).toBeInTheDocument();
-    });
-
-    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-    Object.defineProperties(scrollArea, {
-      clientHeight: { configurable: true, value: 200 },
-      scrollHeight: { configurable: true, value: 1000 },
-      scrollTop: { configurable: true, value: 780, writable: true },
-    });
-    fireEvent.scroll(scrollArea);
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
-    });
-    expect(within(sidebar()).queryByText("Release plan")).toBeNull();
-
-    openThreadMenu("Archived context");
-    click(menuItemByText("Delete chat"));
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
-    });
-    click(buttonByText("Delete", dialog));
-
-    // Model a browser-clamped live offset without another scroll event.
-    scrollArea.scrollTop = 0;
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(
-        within(sidebar()).queryByText("Archived context"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("does not scroll the current chat into view from pointer focus after virtual scrolling", async () => {
-    prepareDefaultAgent();
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b2100000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Touchable overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-      ).toBeInTheDocument();
-    });
-
-    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-    let scrollTop = 780;
-    Object.defineProperty(scrollArea, "clientHeight", {
-      configurable: true,
-      value: 200,
-    });
-    Object.defineProperty(scrollArea, "scrollHeight", {
-      configurable: true,
-      value: 1000,
-    });
-    Object.defineProperty(scrollArea, "scrollTop", {
-      configurable: true,
-      get: () => {
-        return scrollTop;
-      },
-      set: (value) => {
-        scrollTop = value;
-      },
-    });
-    fireEvent.scroll(scrollArea);
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.pointerDown(scrollArea, { pointerType: "touch" });
-    fireEvent.focus(scrollArea);
-
-    expect(scrollTop).toBe(780);
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
     expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
   });
 
-  it("keeps the chat thread focus ring inside the virtual row", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
+  openChatListMenu();
+  click(menuItemByText("Unread only"));
 
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const link = await waitFor(() => {
-      return threadLinkByTitle("Release plan");
-    });
-
-    expect(link).toHaveClass("focus-visible:outline-none");
-    expect(link).toHaveClass("focus-visible:ring-2");
-    expect(link).toHaveClass("focus-visible:ring-inset");
-    expect(link).toHaveClass("focus-visible:ring-ring");
-  });
-
-  it("focuses the current main chat when the thread list receives focus", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    within(sidebar()).getByTestId("sidebar-scroll-area").focus();
-
-    await waitFor(() => {
-      expect(threadLinkByTitle("Release plan")).toHaveFocus();
-    });
-    expect(threadLinkByTitle("Incident notes")).not.toHaveFocus();
-  });
-
-  it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
-      return createThread(
-        `b2500000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Switched overflow ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory(
-      [
-        createThread(EXISTING_THREAD_ID, "Release plan"),
-        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-      ],
-      [
-        ...overflowThreads,
-        createThread(ARCHIVED_THREAD_ID, "Archived context"),
-      ],
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Research Agent")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(
-        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-      ).toBeInTheDocument();
-    });
-
-    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-    const pinnedHeader = within(sidebar()).getByTestId(
-      "pinned-agents-horizontal",
-    );
-    const pinnedAgent = within(pinnedHeader).getByText("Research Agent");
-    const chatTitle = within(sidebar()).getByText("Chats with Zero");
-    expect(scrollArea).not.toContainElement(pinnedHeader);
-    expect(scrollArea).not.toContainElement(pinnedAgent);
-    expect(scrollArea).not.toContainElement(chatTitle);
-    expect(scrollArea).toContainElement(threadLinkByTitle("Release plan"));
-
-    Object.defineProperty(scrollArea, "clientHeight", {
-      configurable: true,
-      value: 200,
-    });
-    Object.defineProperty(scrollArea, "scrollHeight", {
-      configurable: true,
-      value: 1000,
-    });
-    Object.defineProperty(scrollArea, "scrollTop", {
-      configurable: true,
-      value: 780,
-    });
-    fireEvent.scroll(scrollArea);
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Archived context"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("leaves the footer as the only owner of the gap below the thread list", async () => {
-    prepareDefaultAgent();
-    mockChatThreadSnapshot(() => {
-      return [createThread(EXISTING_THREAD_ID, "Release plan")];
-    });
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await waitFor(() => {
-      return within(sidebar()).getByText("Chats with Zero");
-    });
-
-    const pinnedContent = within(sidebar()).getByTestId(
-      "pinned-agents-horizontal",
-    ).parentElement;
-    const content = pinnedContent?.parentElement;
-    if (
-      !(pinnedContent instanceof HTMLElement) ||
-      !(content instanceof HTMLElement)
-    ) {
-      throw new Error("Chat list content wrapper not found");
-    }
-
-    // Horizontal spacing belongs to the content inside the full-width scroll
-    // area, while this outer column only owns the spacing above the list.
-    expect(pinnedContent).toHaveClass("px-3");
-    // The footer below supplies the bottom boundary out of its own padding.
-    // A bottom padding here stacks a second one on top of it, which reads as
-    // a void under the last thread row.
-    expect(content).toHaveClass("pt-1");
-    expect(content).not.toHaveClass("p-3");
-    expect(content).not.toHaveClass("pb-3");
-  });
-
-  it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
-    prepareDefaultAgent();
-    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
-      return createThread(
-        `b3000000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Leading chat ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory([
-      ...leadingThreads,
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-      expect(
-        within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-      ).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(scrollArea.scrollTop).toBeGreaterThan(0);
-    });
-  });
-
-  it("scrolls the current chat in the three-column desktop list on page setup", async () => {
-    prepareDefaultAgent();
-    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
-      return createThread(
-        `b3050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Three-column leading chat ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory([
-      ...leadingThreads,
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const desktopList = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(within(desktopList).getByText("Release plan")).toBeInTheDocument();
-      expect(
-        within(desktopList).getByTestId("sidebar-scroll-area").scrollTop,
-      ).toBeGreaterThan(0);
-    });
-  });
-
-  it("renders 100 chat threads before the sidebar viewport is measured", async () => {
-    prepareDefaultAgent();
-    const firstThread = createThread(EXISTING_THREAD_ID, "Fallback chat 1");
-    const threads = [
-      firstThread,
-      ...Array.from({ length: 119 }, (_, index) => {
-        return createThread(
-          `b3200000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-          `Fallback chat ${index + 2}`,
-        );
-      }),
-    ];
-    mockSidebarThreadStory(threads);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${firstThread.id}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getAllByTestId("sidebar-chat-thread-virtual-row"),
-      ).toHaveLength(100);
-    });
-  });
-
-  it("aligns the current virtualized chat row with the sidebar scroll area top on page setup", async () => {
-    prepareDefaultAgent();
-    const leadingThreads = Array.from({ length: 24 }, (_, index) => {
-      return createThread(
-        `b3100000-0000-4000-a000-${String(index).padStart(12, "0")}`,
-        `Leading precise chat ${index + 1}`,
-      );
-    });
-    mockSidebarThreadStory([
-      ...leadingThreads,
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-    const virtualList = within(sidebar()).getByTestId(
-      "sidebar-chat-threads-virtual-list",
-    );
-    const currentRow = threadLinkByTitle("Release plan").closest(
-      '[data-testid="sidebar-chat-thread-virtual-row"]',
-    );
-    if (!(currentRow instanceof HTMLElement)) {
-      throw new Error("Release plan virtual row not found");
-    }
-    const currentIndex = Number(currentRow.dataset.index);
-    const scrollMargin = getChatThreadVirtualListScrollMargin(
-      scrollArea,
-      virtualList,
-    );
-
-    expect(scrollArea.scrollTop).toBe(
-      scrollMargin + currentIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-    );
-  });
-
-  it("computes the virtual chat list margin relative to the scroll viewport", () => {
-    const scrollViewport = document.createElement("div");
-    const virtualList = document.createElement("div");
-    Object.defineProperty(scrollViewport, "offsetTop", {
-      configurable: true,
-      value: 8,
-    });
-    Object.defineProperty(virtualList, "offsetTop", {
-      configurable: true,
-      value: 88,
-    });
-
+  await waitFor(() => {
     expect(
-      getChatThreadVirtualListScrollMargin(scrollViewport, virtualList),
-    ).toBe(80);
+      visibleThreadTitles(["Pinned incident", "Incident notes"]),
+    ).toStrictEqual(["Pinned incident", "Incident notes"]);
+    expect(
+      within(sidebar()).queryByText("Release plan"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar()).queryByText("Archived context"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("Find conversations by title in workspace search", async () => {
+  prepareAgents();
+  const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
+  const researchThread = createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+    agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+  });
+  const supportThread = createThread(INCIDENT_THREAD_ID, "Support escalation", {
+    agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+  });
+  mockSidebarThreadStory(
+    [defaultThread, researchThread, supportThread],
+    [],
+    [INCIDENT_THREAD_ID],
+  );
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, {
+      unreads: [
+        {
+          threadId: EXISTING_THREAD_ID,
+          unreadAt: "2026-03-10T00:05:00Z",
+        },
+      ],
+    });
   });
 
-  it("cancels and confirms deleting a regular chat from the sidebar", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-    ]);
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+  await waitFor(() => {
+    expect(sidebar()).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-    });
+  fireEvent.keyDown(document.body, {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+  });
 
-    openThreadMenu("Release plan");
-    click(menuItemByText("Delete chat"));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  const search = within(dialog).getByPlaceholderText(
+    "Search chats, messages, workflows, and artifacts...",
+  );
 
-    const dialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
-    });
+  await fill(search, "research");
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("Research kickoff")).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. Any linked automations will be paused. This action cannot be undone.",
+      within(dialog).queryByText("Support escalation"),
+    ).not.toBeInTheDocument();
+  });
+
+  await fill(search, "support");
+  await waitFor(() => {
+    expect(
+      within(agentRowByName(dialog, "Support escalation")).getByLabelText(
+        "Running",
       ),
     ).toBeInTheDocument();
-
-    click(buttonByText("Cancel", dialog));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-    });
-
-    openThreadMenu("Release plan");
-    click(menuItemByText("Delete chat"));
-
-    const confirmDialog = await screen.findByRole("dialog", {
-      name: "Delete chat?",
-    });
-    click(buttonByText("Delete", confirmDialog));
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).queryByText("Release plan"),
-      ).not.toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
-    });
   });
+  click(within(dialog).getByText("Support escalation"));
 
-  it("lists pinned agents in pinned order under the three-column nav", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual([
-        "Zero",
-        "Support Agent",
-        "Research Agent",
-      ]);
-    });
-
-    click(screen.getByLabelText("Pin an agent"));
-
-    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+  await waitFor(() => {
     expect(
-      dialogAgentOrder(dialogList, ["Research Agent", "Support Agent"]),
-    ).toStrictEqual(["Support Agent", "Research Agent"]);
-  });
-
-  it("marks the current thread agent as selected in the pinned agent grid", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-    mockSidebarThreadStory([
-      createThread(RESEARCH_THREAD_ID, "Research kickoff", {
-        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-      }),
-    ]);
-
-    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(pinnedAgentLink(grid, "Research Agent")).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
-    });
-    expect(pinnedAgentLink(grid, "Zero")).not.toHaveAttribute("aria-current");
-  });
-
-  it("closes the mobile sidebar after selecting a pinned agent", async () => {
-    mockMobileLayout();
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-    const openedTargets = context.mocks.browser.open();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(
-        pinnedAgentLink(mobileSidebar(), "Research Agent"),
-      ).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Open menu"));
-    await waitFor(() => {
-      expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
-    });
-
-    fireEvent.click(pinnedAgentLink(mobileSidebar(), "Research Agent"), {
-      metaKey: true,
-    });
-    await waitFor(() => {
-      expect(openedTargets.calls).toStrictEqual([
-        expect.objectContaining({
-          target: "_blank",
-          url: expect.stringContaining(`/agents/${RESEARCH_AGENT_ID}/chat`),
-        }),
-      ]);
-      expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
-    });
-
-    click(pinnedAgentLink(mobileSidebar(), "Zero"));
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
-      expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
-    });
-
-    click(screen.getByLabelText("Open menu"));
-    await waitFor(() => {
-      expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
-    });
-
-    click(pinnedAgentLink(mobileSidebar(), "Research Agent"));
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
-      expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
-    });
-  });
-
-  it("opens workspace search with mod+shift+f and intercepts the page event", async () => {
-    prepareAgents();
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await waitFor(() => {
-      expect(sidebar()).toBeInTheDocument();
-    });
-
-    const propagated = vi.fn<(event: KeyboardEvent) => void>();
-    document.body.addEventListener("keydown", propagated, {
-      signal: context.signal,
-    });
-    const event = new KeyboardEvent("keydown", {
-      key: "f",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    document.body.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBeTruthy();
-    expect(propagated).not.toHaveBeenCalled();
-    await expect(
-      screen.findByRole("dialog", {
+      screen.queryByRole("dialog", {
         name: "Search chats, messages, workflows, and artifacts...",
       }),
-    ).resolves.toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(document.title).toBe("Support escalation | VM0");
+  });
+});
+
+test("Focus the current chat from the thread list", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
   });
 
-  it("opens workspace search with mod+shift+f while the composer is focused", async () => {
-    prepareAgents();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    const composer = mountedComposer();
-    composer.focus();
-    const event = new KeyboardEvent("keydown", {
-      key: "F",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    composer.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBeTruthy();
-    await expect(
-      screen.findByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
-      }),
-    ).resolves.toBeInTheDocument();
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
   });
 
-  it("ignores repeated and composing workspace search shortcuts", async () => {
-    prepareAgents();
+  within(sidebar()).getByTestId("sidebar-scroll-area").focus();
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
+  await waitFor(() => {
+    expect(threadLinkByTitle("Release plan")).toHaveFocus();
+  });
+  const currentLink = threadLinkByTitle("Release plan");
+  expect(currentLink).toHaveClass("focus-visible:outline-none");
+  expect(currentLink).toHaveClass("focus-visible:ring-2");
+  expect(currentLink).toHaveClass("focus-visible:ring-inset");
+  expect(currentLink).toHaveClass("focus-visible:ring-ring");
+  expect(threadLinkByTitle("Incident notes")).not.toHaveFocus();
+});
 
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    const composer = mountedComposer();
-    composer.focus();
-    const repeatedEvent = new KeyboardEvent("keydown", {
-      key: "F",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      repeat: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    composer.dispatchEvent(repeatedEvent);
-    expect(repeatedEvent.defaultPrevented).toBeFalsy();
+test("Hide and show the chat list without losing workspace search", async () => {
+  prepareDefaultAgent();
 
-    const composingEvent = new KeyboardEvent("keydown", {
-      key: "F",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      isComposing: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    composer.dispatchEvent(composingEvent);
-    expect(composingEvent.defaultPrevented).toBeFalsy();
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
 
-    const legacyImeEvent = new KeyboardEvent("keydown", {
-      key: "F",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    Object.defineProperty(legacyImeEvent, "keyCode", { value: 229 });
-    composer.dispatchEvent(legacyImeEvent);
-    expect(legacyImeEvent.defaultPrevented).toBeFalsy();
+  await screen.findByPlaceholderText(PLACEHOLDER);
+  const rail = await screen.findByTestId("labeled-nav-rail");
+  const list = screen.getByTestId("chat-list-column");
+  const hideButton = within(list).getByLabelText("Hide chat list");
+  expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+
+  click(hideButton);
+
+  await waitFor(() => {
+    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  });
+  expect(rail).toBeInTheDocument();
+  const showButton = within(rail).getByLabelText("Show chat list");
+  expect(showButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+
+  const composer = mountedComposer();
+  composer.focus();
+  const searchEvent = new KeyboardEvent("keydown", {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(searchEvent);
+
+  expect(searchEvent.defaultPrevented).toBeTruthy();
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
+  await waitFor(() => {
     expect(
       screen.queryByRole("dialog", {
         name: "Search chats, messages, workflows, and artifacts...",
@@ -2329,2507 +1364,2084 @@ describe("zero sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens workspace search with mod+shift+f on a mobile viewport", async () => {
-    mockMobileLayout();
-    prepareAgents();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await waitFor(() => {
-      expect(mobileSidebar()).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, {
-      key: "f",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await expect(
-      screen.findByRole("dialog", {
-        name: "Search chats, messages, workflows, and artifacts...",
-      }),
-    ).resolves.toBeInTheDocument();
+  const restoredComposer = mountedComposer();
+  restoredComposer.focus();
+  fireEvent.keyDown(restoredComposer, {
+    key: "b",
+    code: "KeyB",
+    keyCode: 66,
+    ctrlKey: true,
   });
 
-  it("moves to the next pinned agent chat from the composer", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
-    });
+  await waitFor(() => {
+    expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
+    expect(
+      within(rail).queryByLabelText("Show chat list"),
+    ).not.toBeInTheDocument();
+  });
+});
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
+test("Keep chat navigation usable while secondary data is unavailable", async () => {
+  prepareDefaultAgent();
+  const indicatorResponse = context.mocks.deferred<void>();
+  const draftResponse = context.mocks.deferred<void>();
+  const draftRequestStarted = context.mocks.deferred<void>();
+  const draftResponseReturned = context.mocks.deferred<void>();
+  const indicatorRequestStarted = context.mocks.deferred<void>();
 
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    await waitFor(() => {
-      if (pathname() === `/agents/${RESEARCH_AGENT_ID}/chat`) {
-        return;
-      }
-      const composer = mountedComposer();
-      composer.focus();
-      fireEvent.keyDown(composer, {
-        key: "}",
-        ctrlKey: true,
-        shiftKey: true,
-      });
-      throw new Error("Pinned agent navigation has not happened yet");
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Existing conversation"),
+  ]);
+  context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
+    indicatorRequestStarted.resolve();
+    await indicatorResponse.promise;
+    return respond(200, { agents: {}, threads: {} });
+  });
+  context.mocks.api(chatThreadsContract.drafts, async ({ respond }) => {
+    draftRequestStarted.resolve();
+    await draftResponse.promise;
+    const response = respond(401, {
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Draft membership unavailable",
+      },
     });
+    draftResponseReturned.resolve();
+    return response;
+  });
+
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await indicatorRequestStarted.promise;
+
+  await waitFor(() => {
+    expect(
+      within(sidebar()).getByText("Existing conversation"),
+    ).toBeInTheDocument();
+    expect(
+      sidebar().querySelectorAll('[data-testid="sidebar-skeleton"]'),
+    ).toHaveLength(0);
+  });
+  expect(
+    within(threadRowByTitle("Existing conversation")).queryByLabelText(
+      "Running",
+    ),
+  ).not.toBeInTheDocument();
+
+  indicatorResponse.resolve();
+  await draftRequestStarted.promise;
+  draftResponse.resolve();
+  await draftResponseReturned.promise;
+  await waitFor(() => {
+    expect(
+      within(sidebar()).getByText("Existing conversation"),
+    ).toBeInTheDocument();
+  });
+  expect(chatListNewChatButton()).toBeInTheDocument();
+  openChatListMenu();
+  expect(queryMenuItemByText("New chat")).not.toBeInTheDocument();
+  expect(menuItemByText("All chats")).toBeInTheDocument();
+  expect(menuItemByText("Unread only")).toBeInTheDocument();
+});
+
+test("Mount only the sidebar for the current viewport", async () => {
+  prepareDefaultAgent();
+  const mediaQuery = mockMobileLayout();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  await waitFor(() => {
+    expect(mobileSidebar()).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+  expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
+
+  act(() => {
+    mediaQuery.setMatches(true);
+  });
+
+  await waitFor(() => {
+    expect(screen.getByTestId("labeled-nav-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
+  });
+  expect(queryMobileSidebar()).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
+
+  act(() => {
+    mediaQuery.setMatches(false);
+  });
+
+  await waitFor(() => {
+    expect(mobileSidebar()).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("labeled-nav-rail")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("sidebar-scroll-area")).toHaveLength(1);
+});
+
+test("Keep pin management usable with many pinned agents", async () => {
+  const pinnedAgentIds = prepareOverflowingPinnedAgents();
+  const preferencesGate = context.mocks.deferred<void>();
+  context.mocks.api(userPreferencesContract.get, async ({ respond }) => {
+    await preferencesGate.promise;
+    return respond(200, {
+      timezone: null,
+      locale: null,
+      translationLanguage: null,
+      supportedLocales: [
+        "en-US",
+        "pt-BR",
+        "ja-JP",
+        "ko-KR",
+        "id-ID",
+        "de-DE",
+        "es-ES",
+        "it-IT",
+        "fr-FR",
+        "hi-IN",
+      ],
+      pinnedAgentIds,
+      sendMode: "enter",
+      cloudBrowserEnabledByDefault: true,
+      theme: "system",
+      colorTheme: "blue-horizon",
+      captureNetworkBodiesRemaining: 0,
+    });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
+  const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
+  expect(within(pinnedSection).getByText("Pinned agents")).toBeVisible();
+  expect(buttonByLabel("Pin an agent", grid)).toBeVisible();
+
+  preferencesGate.resolve();
+
+  await waitFor(() => {
+    expect(pinnedAgentLink(grid, "Billing Agent")).toBeVisible();
+  });
+  expect(
+    queryAllByRoleFast("link", grid).map((link) => {
+      return link.textContent?.trim();
+    }),
+  ).toStrictEqual([
+    "Zero",
+    "Research Agent",
+    "Support Agent",
+    "Operations Agent",
+    "Analytics Agent",
+    "Billing Agent",
+  ]);
+
+  const pinAgent = queryAllByRoleFast("button", grid).find((candidate) => {
+    return candidate.getAttribute("aria-label") === "Pin an agent";
+  });
+  if (!pinAgent) {
+    throw new Error("Pin agent button not found");
+  }
+  // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+  // Billing, so Pin closes the first row and the rest wrap after it.
+  const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
+  const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
+
+  expect(
+    fourthAgent.compareDocumentPosition(pinAgent) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(
+    pinAgent.compareDocumentPosition(fifthAgent) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+test("Keep pinned agents and the chat heading visible while conversations scroll", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+  const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+    return createThread(
+      `b2500000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+      `Switched overflow ${index + 1}`,
+    );
+  });
+  mockSidebarThreadStory(
+    [
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ],
+    [...overflowThreads, createThread(ARCHIVED_THREAD_ID, "Archived context")],
+  );
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(
+      within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
+    ).toBeInTheDocument();
+  });
+
+  const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
+  const pinnedHeader = within(sidebar()).getByTestId(
+    "pinned-agents-horizontal",
+  );
+  const pinnedAgent = within(pinnedHeader).getByText("Research Agent");
+  const chatTitle = within(sidebar()).getByText("Chats with Zero");
+  expect(scrollArea).not.toContainElement(pinnedHeader);
+  expect(scrollArea).not.toContainElement(pinnedAgent);
+  expect(scrollArea).not.toContainElement(chatTitle);
+  expect(scrollArea).toContainElement(threadLinkByTitle("Release plan"));
+
+  Object.defineProperty(scrollArea, "clientHeight", {
+    configurable: true,
+    value: 200,
+  });
+  Object.defineProperty(scrollArea, "scrollHeight", {
+    configurable: true,
+    value: 1000,
+  });
+  Object.defineProperty(scrollArea, "scrollTop", {
+    configurable: true,
+    value: 780,
+  });
+  fireEvent.scroll(scrollArea);
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
+  });
+});
+
+test("Route New chat to the current agent and Chat to the default agent", async () => {
+  prepareAgents();
+  mockSidebarThreadStory([
+    createThread(RESEARCH_THREAD_ID, "Research conversation", {
+      agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${RESEARCH_THREAD_ID}`,
+  });
+
+  const rail = await screen.findByTestId("labeled-nav-rail");
+  await screen.findByPlaceholderText(PLACEHOLDER);
+  expect(
+    within(screen.getByTestId("chat-list-column")).getByText(
+      "Research conversation",
+    ),
+  ).toBeInTheDocument();
+  await screen.findByText("Chats with Research Agent");
+
+  const list = screen.getByTestId("chat-list-column");
+  const searchButton = within(list).getByLabelText("Search workspace");
+  if (!searchButton.parentElement) {
+    throw new Error("Chat header not found");
+  }
+  click(within(searchButton.parentElement).getByLabelText("New chat"));
+
+  await waitFor(() => {
     expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
   });
 
-  it("moves to an unread unpinned agent shown in the sidebar", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-    mockUnreadAgents(() => {
-      return [SUPPORT_AGENT_ID];
-    });
+  const chatLink = within(rail).getByLabelText("Chat");
+  expect(chatLink).toHaveAttribute("href", `/agents/${AGENT_ID}/chat`);
+  click(chatLink);
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${RESEARCH_AGENT_ID}/chat`,
-    });
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+  });
+});
 
-    const nav = await waitFor(() => {
-      const current = sidebar();
-      expect(within(current).getByText("Support Agent")).toBeInTheDocument();
-      return current;
-    });
-    expect(
-      within(agentRowByName(nav, "Support Agent")).getByLabelText("Unread"),
-    ).toBeInTheDocument();
+test("Localize mobile agent navigation", async () => {
+  mockMobileLayout();
+  prepareAgents();
 
-    fireEvent.keyDown(document.body, {
-      key: "}",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
-    });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    locale: "pt-BR",
   });
 
-  it("keeps the chat list owner when switching to a pinned agent chat", async () => {
-    prepareAgents();
-    const supportUnreadGate = context.mocks.deferred<void>();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+  const nav = await waitFor(() => {
+    const drawer = mobileSidebar();
+    expect(within(drawer).getByText("Agentes")).toBeInTheDocument();
+    return drawer;
+  });
+
+  expect(within(nav).getByText("Fixados")).toBeInTheDocument();
+  expect(within(nav).getByText("Zero")).toBeInTheDocument();
+});
+
+test("Localize shell navigation and shortcut help", async () => {
+  const mediaQuery = mockDesktopLayout();
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Localized conversation"),
+  ]);
+  setMockWorkflowAutomations([
+    createMockWorkflowAutomation({
+      chatThreadId: EXISTING_THREAD_ID,
+    }),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+    locale: "pt-BR",
+  });
+
+  const rail = await screen.findByTestId("labeled-nav-rail");
+  expect(
+    within(rail).getByRole("navigation", { name: "Barra lateral" }),
+  ).toBeInTheDocument();
+  expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+  const workflowsLink = within(rail).getByLabelText("Fluxos de trabalho");
+  expect(workflowsLink).toHaveAttribute("title", "Fluxos de trabalho");
+  expect(within(rail).getByText("Conectores")).toBeInTheDocument();
+  expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
+  expect(within(rail).getByLabelText("Onde Zero trabalha")).toBeInTheDocument();
+
+  act(() => {
+    mediaQuery.setMatches(false);
+  });
+
+  expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
+  await expect(
+    screen.findByLabelText("Abrir artefatos no celular"),
+  ).resolves.toBeInTheDocument();
+  expect(
+    screen.getByLabelText("Abrir automações no celular"),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Recolher barra lateral")).toBeInTheDocument();
+
+  fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Atalhos de teclado",
+  });
+  expect(
+    within(dialog).getByText("Atalhos disponíveis nesta página"),
+  ).toBeInTheDocument();
+  expect(within(dialog).getByText("Mostrar atalhos")).toBeInTheDocument();
+  expect(
+    within(dialog).getByLabelText("Fechar atalhos de teclado"),
+  ).toBeInTheDocument();
+
+  click(within(dialog).getByLabelText("Fechar atalhos de teclado"));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Atalhos de teclado" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("Locate the current chat in a long sidebar history", async () => {
+  prepareDefaultAgent();
+  const leadingThreads = Array.from({ length: 24 }, (_, index) => {
+    return createThread(
+      `b3050000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+      `Three-column leading chat ${index + 1}`,
+    );
+  });
+  mockSidebarThreadStory([
+    ...leadingThreads,
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  const desktopList = await screen.findByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(within(desktopList).getByText("Release plan")).toBeInTheDocument();
+    expect(
+      within(desktopList).getByTestId("sidebar-scroll-area").scrollTop,
+    ).toBeGreaterThan(0);
+  });
+});
+
+test("Mark all current-agent chats read from the chat-list menu", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Existing conversation"),
+    createThread(INCIDENT_THREAD_ID, "Unread conversation"),
+  ]);
+
+  let hasUnread = true;
+  const markedAgentIds: string[] = [];
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, {
+      agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+      threads: hasUnread ? { [INCIDENT_THREAD_ID]: "unread" } : {},
     });
-    const researchThread = createThread(
-      RESEARCH_THREAD_ID,
-      "Research kickoff",
-      {
-        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-      },
-    );
-    const supportThread = createThread(
-      INCIDENT_THREAD_ID,
-      "Support escalation",
-      {
-        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
-      },
-    );
-    const olderSupportThread = createThread(
-      AUTOMATION_THREAD_ID,
-      "Support archive",
-      {
-        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
-      },
-    );
-    mockSidebarThreadStory([researchThread, supportThread, olderSupportThread]);
-    context.mocks.api(
-      chatThreadsContract.unreads,
-      async ({ query, respond }) => {
-        if (query.agentId === SUPPORT_AGENT_ID) {
-          await supportUnreadGate.promise;
-        }
-        const threadId =
-          query.agentId === SUPPORT_AGENT_ID
-            ? INCIDENT_THREAD_ID
-            : RESEARCH_THREAD_ID;
-        return respond(200, {
-          unreads: [
+  });
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, {
+      unreads: hasUnread
+        ? [
             {
-              threadId,
+              threadId: INCIDENT_THREAD_ID,
               unreadAt: "2026-03-10T00:05:00Z",
             },
-          ],
-        });
-      },
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${RESEARCH_THREAD_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Research kickoff"),
-      ).toBeInTheDocument();
-    });
-    openChatListMenu();
-    click(menuItemByText("Unread only"));
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Research kickoff"),
-      ).toBeInTheDocument();
-    });
-    const chatList = within(sidebar()).getByLabelText("Chat threads");
-
-    fireEvent.keyDown(document.body, {
-      key: "}",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
-      expect(
-        within(sidebar()).queryByText("Research kickoff"),
-      ).not.toBeInTheDocument();
-      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
-    });
-
-    supportUnreadGate.resolve(undefined);
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Support escalation"),
-      ).toBeInTheDocument();
-      expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
+          ]
+        : [],
     });
   });
+  context.mocks.api(
+    chatThreadMarkAgentReadContract.markAgentRead,
+    ({ body, respond }) => {
+      markedAgentIds.push(body.agentId);
+      hasUnread = false;
+      changeChatThreadReadCursor();
+      return respond(204);
+    },
+  );
 
-  it("opens the pinned agent chat even when the next agent has a thread", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
-    });
-    const researchThread = createThread(
-      RESEARCH_THREAD_ID,
-      "Research kickoff",
-      {
-        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-      },
-    );
-    const supportThread = createThread(
-      INCIDENT_THREAD_ID,
-      "Support escalation",
-      {
-        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
-      },
-    );
-    mockSidebarThreadStory([researchThread, supportThread]);
-
-    setupSidebarPage({ context, path: `/chats/${RESEARCH_THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(
-        within(sidebar()).getByText("Research kickoff"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(document.body, {
-      key: "}",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
-    });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
   });
 
-  it("toggles the chat list with mod+b while the chat composer is focused", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    const list = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(within(list).getByLabelText("Hide chat list")).toBeInTheDocument();
-    });
-
-    composer.focus();
-    expect(composer).toHaveFocus();
-    fireEvent.keyDown(composer, {
-      key: "b",
-      code: "KeyB",
-      keyCode: 66,
-      ctrlKey: true,
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-      expect(
-        within(screen.getByTestId("labeled-nav-rail")).getByLabelText(
-          "Show chat list",
-        ),
-      ).toBeInTheDocument();
-    });
+  const list = await screen.findByTestId("chat-list-column");
+  await waitFor(() => {
+    expect(within(list).getByText("Unread conversation")).toBeInTheDocument();
+    expect(within(list).getAllByLabelText("Unread").length).toBeGreaterThan(0);
   });
 
-  it("opens shortcut help from the agent chat page when composer is not focused", async () => {
-    prepareAgents();
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(sidebar()).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Keyboard Shortcuts",
-    });
-    expect(within(dialog).getByText("Show shortcuts")).toBeInTheDocument();
-    expect(within(dialog).getByText("Voice input")).toBeInTheDocument();
-    expect(within(dialog).getByText("Search workspace")).toBeInTheDocument();
-  });
-
-  it("ignores global shortcuts while a dialog is open", async () => {
-    prepareAgents();
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    await waitFor(() => {
-      expect(sidebar()).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(document.body, {
-      key: "f",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await screen.findByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
-    });
-
-    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
-
-    expect(screen.queryByText("Keyboard Shortcuts")).not.toBeInTheDocument();
-  });
-
-  it("shows agent unread indicators and dropdown actions", async () => {
-    mockMobileLayout();
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-
-    let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
-    mockUnreadAgents(() => {
-      return unreadAgentIds;
-    });
-
-    await setupPageAndWaitForContent({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      sharedWorkerTestTransport: "message-port",
-    });
-
-    const nav = await waitFor(() => {
-      const current = mobileSidebar();
-      expect(within(current).getByText("Research Agent")).toBeInTheDocument();
-      return current;
-    });
-    const researchSidebarRow = agentRowByName(nav, "Research Agent");
-    const supportSidebarRow = await waitFor(() => {
-      return agentRowByName(nav, "Support Agent");
-    });
-    await waitFor(() => {
-      expect(
-        within(researchSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-      expect(
-        within(researchSidebarRow).getByLabelText("Open agent menu"),
-      ).toBeInTheDocument();
-      expect(
-        within(researchSidebarRow).queryByLabelText("Unpin"),
-      ).not.toBeInTheDocument();
-      expect(
-        within(supportSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-    });
-
-    click(within(supportSidebarRow).getByLabelText("Open agent menu"));
-    expect(menuItemByText("Mark all read")).toBeInTheDocument();
-    expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
-    expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
-    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
-
-    click(within(researchSidebarRow).getByLabelText("Open agent menu"));
-    expect(menuItemByText("Unpin")).toBeInTheDocument();
-    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
-
-    unreadAgentIds = [SUPPORT_AGENT_ID];
-    changeChatThreadReadCursor({
-      agentId: RESEARCH_AGENT_ID,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(researchSidebarRow).queryByLabelText("Unread"),
-      ).not.toBeInTheDocument();
-      expect(
-        within(supportSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("marks all pinned agent chats read from the agent menu", async () => {
-    mockMobileLayout();
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID],
-    });
-
-    let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
-    const markedAgentIds: string[] = [];
-    mockUnreadAgents(() => {
-      return unreadAgentIds;
-    });
-    context.mocks.api(
-      chatThreadMarkAgentReadContract.markAgentRead,
-      ({ body, respond }) => {
-        markedAgentIds.push(body.agentId);
-        unreadAgentIds = unreadAgentIds.filter((id) => {
-          return id !== body.agentId;
-        });
-        changeChatThreadReadCursor();
-        return respond(204);
-      },
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const nav = await waitFor(() => {
-      const current = mobileSidebar();
-      expect(within(current).getByText("Research Agent")).toBeInTheDocument();
-      return current;
-    });
-    const researchSidebarRow = agentRowByName(nav, "Research Agent");
-    await waitFor(() => {
-      expect(
-        within(researchSidebarRow).getByLabelText("Unread"),
-      ).toBeInTheDocument();
-    });
-
-    click(within(researchSidebarRow).getByLabelText("Open agent menu"));
-    click(menuItemByText("Mark all read"));
-
-    await waitFor(() => {
-      expect(markedAgentIds).toStrictEqual([RESEARCH_AGENT_ID]);
-      expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
-      expect(
-        within(researchSidebarRow).queryByLabelText("Unread"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("marks all default agent chats read from the default agent menu", async () => {
-    mockMobileLayout();
-    prepareAgents();
-
-    let hasUnread = true;
-    const markedAgentIds: string[] = [];
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, {
-        agents: { [AGENT_ID]: hasUnread ? "unread" : "active" },
-        threads: {
-          [INCIDENT_THREAD_ID]: "active",
-          ...(hasUnread ? { [EXISTING_THREAD_ID]: "unread" as const } : {}),
-        },
-      });
-    });
-    context.mocks.api(
-      chatThreadMarkAgentReadContract.markAgentRead,
-      ({ body, respond }) => {
-        markedAgentIds.push(body.agentId);
-        hasUnread = false;
-        changeChatThreadReadCursor();
-        return respond(204);
-      },
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const nav = await waitFor(() => {
-      const current = mobileSidebar();
-      expect(within(current).getByText("Zero")).toBeInTheDocument();
-      return current;
-    });
-    const defaultSidebarRow = agentRowByName(nav, "Zero");
-    const defaultUnread = await waitFor(() => {
-      return within(defaultSidebarRow).getByLabelText("Unread");
-    });
-    const defaultMenuTrigger =
-      within(defaultSidebarRow).getByLabelText("Open agent menu");
-    expect(defaultUnread).toBeVisible();
-
-    click(defaultMenuTrigger);
-    expect(menuItemByText("Mark all read")).toBeInTheDocument();
-    expect(queryAllByRoleFast("menuitem")).toHaveLength(1);
-    expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
-    click(menuItemByText("Mark all read"));
-
-    await waitFor(() => {
-      expect(markedAgentIds).toStrictEqual([AGENT_ID]);
-      expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
-      expect(
-        within(defaultSidebarRow).queryByLabelText("Unread"),
-      ).not.toBeInTheDocument();
-      expect(
-        within(defaultSidebarRow).queryByLabelText("Open agent menu"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("hides and reopens the chat list", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Hide chat list"));
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
-    click(within(rail).getByLabelText("Show chat list"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
-    });
-  });
-
-  it("localizes agent navigation in the three-column rail", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.userPreferences({
-      locale: "pt-BR",
-      supportedLocales: ["en-US", "pt-BR"],
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
-    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
-  });
-
-  it("uses CSS hover for the scrollbar and toggles the manage section", async () => {
-    mockMobileLayout();
-    prepareDefaultAgent();
-
-    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-    const nav = await waitFor(() => {
-      const current = mobileSidebar();
-      expect(within(current).getByText("Agents")).toBeInTheDocument();
-      expect(within(current).getByText("Connectors")).toBeInTheDocument();
-      return current;
-    });
-
-    const scrollArea = within(nav).getByTestId("sidebar-scroll-area");
-    Object.defineProperty(scrollArea, "clientHeight", {
-      configurable: true,
-      value: 200,
-    });
-    Object.defineProperty(scrollArea, "scrollHeight", {
-      configurable: true,
-      value: 1000,
-    });
-    Object.defineProperty(scrollArea, "scrollTop", {
-      configurable: true,
-      value: 120,
-    });
-    fireEvent.scroll(scrollArea);
-
-    await waitFor(() => {
-      expect(scrollArea.getAttribute("style")).toContain("box-shadow:");
-    });
-
-    const scrollWrapper = scrollArea.parentElement;
-    if (!scrollWrapper) {
-      throw new Error("Sidebar scroll wrapper not found");
-    }
-    const scrollbarTrack = scrollArea.nextElementSibling;
-    if (!(scrollbarTrack instanceof HTMLElement)) {
-      throw new Error("Sidebar scrollbar track not found");
-    }
-
-    expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
-    expect(scrollbarTrack).toHaveClass(
-      "opacity-0",
-      "transition-opacity",
-      "duration-150",
-      "group-hover/sidebar-scroll:opacity-100",
-    );
-    expect(scrollbarTrack.style.opacity).toBe("");
-    fireEvent.mouseEnter(scrollWrapper);
-    fireEvent.mouseLeave(scrollWrapper);
-    expect(scrollbarTrack.style.opacity).toBe("");
-
-    Object.defineProperty(scrollArea, "scrollHeight", {
-      configurable: true,
-      value: 200,
-    });
-    fireEvent.scroll(scrollArea);
-    expect(scrollbarTrack).not.toHaveClass(
-      "group-hover/sidebar-scroll:opacity-100",
-    );
-
-    click(within(nav).getByText("Manage"));
-
-    await waitFor(() => {
-      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
-      expect(within(nav).queryByText("Connectors")).not.toBeInTheDocument();
-    });
-
-    click(within(nav).getByText("Manage"));
-
-    await waitFor(() => {
-      expect(within(nav).getByText("Agents")).toBeInTheDocument();
-      expect(within(nav).getByText("Connectors")).toBeInTheDocument();
-    });
-  });
-
-  it("drags the Base UI three-column scrollbar when its feature switch is enabled", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.BaseUiSidebarScrollArea]: true,
-      },
-    });
-
-    const nav = await screen.findByTestId("chat-list-column");
-    const scrollArea = within(nav).getByTestId("sidebar-scroll-area");
-    Object.defineProperties(scrollArea, {
-      clientHeight: { configurable: true, value: 200 },
-      clientWidth: { configurable: true, value: 200 },
-      scrollHeight: { configurable: true, value: 1000 },
-      scrollTop: { configurable: true, value: 0, writable: true },
-      scrollWidth: { configurable: true, value: 200 },
-    });
-    fireEvent.scroll(scrollArea);
-
-    const scrollbar = await within(nav).findByTestId("sidebar-scrollbar");
-    const thumb = within(scrollbar).getByTestId("sidebar-scrollbar-thumb");
-    // Browsers expose unspecified logical spacing as 0px. happy-dom returns
-    // an empty string, which Base UI's drag geometry parses as NaN.
-    scrollbar.style.paddingBlockStart = "0px";
-    scrollbar.style.paddingBlockEnd = "0px";
-    thumb.style.marginBlockStart = "0px";
-    thumb.style.marginBlockEnd = "0px";
-    let capturedPointerId: number | null = null;
-    Object.defineProperties(scrollbar, {
-      offsetHeight: { configurable: true, value: 200 },
-    });
-    Object.defineProperties(thumb, {
-      offsetHeight: { configurable: true, value: 40 },
-      setPointerCapture: {
-        configurable: true,
-        value: (pointerId: number) => {
-          capturedPointerId = pointerId;
-        },
-      },
-      hasPointerCapture: {
-        configurable: true,
-        value: (pointerId: number) => {
-          return capturedPointerId === pointerId;
-        },
-      },
-      releasePointerCapture: {
-        configurable: true,
-        value: (pointerId: number) => {
-          if (capturedPointerId === pointerId) {
-            capturedPointerId = null;
-          }
-        },
-      },
-    });
-
-    fireEvent.pointerDown(thumb, {
-      button: 0,
-      clientY: 0,
-      pointerId: 1,
-    });
-    fireEvent.pointerMove(thumb, {
-      buttons: 1,
-      clientY: 80,
-      pointerId: 1,
-    });
-
-    expect(scrollArea.scrollTop).toBe(400);
-
-    fireEvent.pointerUp(thumb, { pointerId: 1 });
-    expect(capturedPointerId).toBeNull();
-  });
-
-  it("orders artifacts after connectors in the manage navigation", async () => {
-    mockMobileLayout();
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const nav = await waitFor(() => {
-      return mobileSidebar();
-    });
-
-    expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    const workflows = within(nav).getByText("Workflows");
-    const connectors = within(nav).getByText("Connectors");
-    const artifacts = within(nav).getByText("Artifacts");
+  click(within(list).getByLabelText("Open chat list menu"));
+  await waitFor(() => {
     expect(
-      workflows.compareDocumentPosition(connectors) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      connectors.compareDocumentPosition(artifacts) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
-  });
-
-  it("renders the three-column chat navigation and actions", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const rail = await waitFor(() => {
-      return screen.getByTestId("labeled-nav-rail");
-    });
-
-    // Labeled icon rail carries text captions for its nav destinations.
-    const chatLink = within(rail).getByLabelText("Chat");
-    expect(within(rail).getByText("Chat")).toBeInTheDocument();
-    expect(
-      chatLink.querySelector(".lucide-message-circle"),
-    ).toBeInTheDocument();
-    expect(within(rail).getByText("Agents")).toBeInTheDocument();
-    expect(within(rail).getByText("Connectors")).toBeInTheDocument();
-
-    // The middle list column owns the chat header and pinned agents.
-    const list = screen.getByTestId("chat-list-column");
-    expect(within(list).getByText("Chat")).toBeInTheDocument();
-    const searchButton = within(list).getByLabelText("Search workspace");
-    const chatThreadsTitle = within(list).getByText("Chats with Zero");
-    if (!searchButton.parentElement || !chatThreadsTitle.parentElement) {
-      throw new Error("Chat action headers not found");
-    }
-    const headerNewChatButton = within(
-      searchButton.parentElement,
-    ).getByLabelText("New chat");
-    const threadNewChatButton = within(
-      chatThreadsTitle.parentElement,
-    ).getByLabelText("New chat");
-    expect(searchButton).toHaveAttribute(
-      "aria-keyshortcuts",
-      "Meta+Shift+F Control+Shift+F",
-    );
-    expect(
-      headerNewChatButton.querySelector(".lucide-square-pen"),
-    ).toBeInTheDocument();
-    expect(chatThreadsTitle.parentElement).toContainElement(
-      threadNewChatButton,
-    );
-    expect(
-      threadNewChatButton.querySelector(".lucide-plus"),
-    ).toBeInTheDocument();
-    expect(
-      within(list).getByTestId("pinned-agents-horizontal"),
-    ).toBeInTheDocument();
-  });
-
-  it("omits shortcut hints from three-column action tooltips", async () => {
-    const user = userEvent.setup();
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    const list = screen.getByTestId("chat-list-column");
-    const searchButton = within(list).getByLabelText("Search workspace");
-    const hideButton = within(list).getByLabelText("Hide chat list");
-
-    await user.hover(searchButton);
-    const searchTooltip = await waitFor(() => {
-      const popup = document.querySelector('[data-slot="tooltip-content"]');
-      if (!(popup instanceof HTMLElement)) {
-        throw new Error("Search workspace tooltip is not open");
-      }
-      return popup;
-    });
-    expect(searchTooltip).toHaveTextContent(/^Search workspace$/);
-    await user.unhover(searchButton);
-    await waitFor(() => {
-      expect(
-        document.querySelector('[data-slot="tooltip-content"]'),
-      ).not.toBeInTheDocument();
-    });
-
-    await user.hover(hideButton);
-    const hideTooltip = await waitFor(() => {
-      const popup = document.querySelector('[data-slot="tooltip-content"]');
-      if (!(popup instanceof HTMLElement)) {
-        throw new Error("Hide chat list tooltip is not open");
-      }
-      return popup;
-    });
-    expect(hideTooltip).toHaveTextContent(/^Hide chat list$/);
-
-    expect(searchButton).toHaveAttribute(
-      "aria-keyshortcuts",
-      "Meta+Shift+F Control+Shift+F",
-    );
-    expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
-  });
-
-  it("collapses the upgrade slot when the chat list has no upgrade card", async () => {
-    prepareDefaultAgent();
-    mockChatThreadSnapshot(() => {
-      return [];
-    });
-    context.mocks.api(billingStatusContract.get, ({ respond }) => {
-      return respond(200, teamBillingStatus());
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(
-        within(list).getByTestId("pinned-agents-horizontal"),
-      ).toBeInTheDocument();
-    });
-
-    // Boundary exception (docs/testing/testing-external-behavior.md): the
-    // regression is the slot's reserved height, which clips the last thread
-    // row above an empty strip. jsdom loads no stylesheet and computes no
-    // layout, so no page-visible surface can observe it. The state itself is
-    // still built the production way, from the billing response the page
-    // fetches. Visual proof lives on the PR preview walkthrough.
-    const upgradeSlot = list.lastElementChild;
-    expect(upgradeSlot).toBeEmptyDOMElement();
-    expect(upgradeSlot).toHaveClass("empty:hidden");
-  });
-
-  it("routes new chat to the current agent and chat rail to the default agent", async () => {
-    prepareAgents();
-    mockSidebarThreadStory([
-      createThread(RESEARCH_THREAD_ID, "Research conversation", {
-        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+      queryAllByRoleFast("menuitem").map((item) => {
+        return item.textContent?.replace(/\s+/g, " ").trim();
       }),
-    ]);
+    ).toStrictEqual(["Mark all read", "All chats", "Unread only"]);
+  });
+  const menuWithMarkAllRead =
+    document.querySelector<HTMLElement>('[role="menu"]');
+  if (!menuWithMarkAllRead) {
+    throw new Error("Open chat list menu not found");
+  }
+  expect(
+    menuWithMarkAllRead.querySelectorAll('[role="separator"]'),
+  ).toHaveLength(1);
+  click(menuItemByText("Mark all read"));
 
-    setupSidebarPage({
-      context,
-      path: `/chats/${RESEARCH_THREAD_ID}`,
-    });
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    expect(
-      within(screen.getByTestId("chat-list-column")).getByText(
-        "Research conversation",
-      ),
-    ).toBeInTheDocument();
-    await screen.findByText("Chats with Research Agent");
-
-    const list = screen.getByTestId("chat-list-column");
-    const searchButton = within(list).getByLabelText("Search workspace");
-    if (!searchButton.parentElement) {
-      throw new Error("Chat header not found");
-    }
-    const newChatButton = within(searchButton.parentElement).getByLabelText(
-      "New chat",
-    );
-    click(newChatButton);
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
-    });
-
-    const chatLink = within(rail).getByLabelText("Chat");
-    expect(chatLink).toHaveAttribute("href", `/agents/${AGENT_ID}/chat`);
-    click(chatLink);
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
-    });
-    click(
-      within(screen.getByTestId("labeled-nav-rail")).getByLabelText("Chat"),
-    );
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(markedAgentIds).toStrictEqual([AGENT_ID]);
+    expect(within(list).queryByLabelText("Unread")).not.toBeInTheDocument();
   });
 
-  it("hides only the three-column chat list and keeps search available", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    await screen.findByPlaceholderText(PLACEHOLDER);
-    const rail = await screen.findByTestId("labeled-nav-rail");
-    const list = screen.getByTestId("chat-list-column");
-    const hideButton = within(list).getByLabelText("Hide chat list");
-    expect(hideButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
-
-    click(hideButton);
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
-    });
-    expect(rail).toBeInTheDocument();
-    const showButton = within(rail).getByLabelText("Show chat list");
-    expect(showButton).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
-
-    const composer = mountedComposer();
-    composer.focus();
-    const searchEvent = new KeyboardEvent("keydown", {
-      key: "f",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    composer.dispatchEvent(searchEvent);
-
-    expect(searchEvent.defaultPrevented).toBeTruthy();
-    const dialog = await screen.findByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
-    });
-    fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", {
-          name: "Search chats, messages, workflows, and artifacts...",
-        }),
-      ).not.toBeInTheDocument();
-    });
-
-    const restoredComposer = mountedComposer();
-    restoredComposer.focus();
-    fireEvent.keyDown(restoredComposer, {
-      key: "b",
-      code: "KeyB",
-      keyCode: 66,
-      ctrlKey: true,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-list-column")).toBeInTheDocument();
-      expect(
-        within(rail).queryByLabelText("Show chat list"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps the three-column chat list on one text and box inset", async () => {
-    prepareDefaultAgent();
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await waitFor(() => {
-      return screen.getByTestId("chat-list-column");
-    });
-
-    const pinnedSection = within(list).getByTestId("pinned-agents-horizontal");
-    const scroller = pinnedSection.parentElement;
-    if (!(scroller instanceof HTMLElement)) {
-      throw new Error("Chat list content wrapper is not rendered");
-    }
-
-    // Rows, the pinned grid and the section labels all sit on a 12px content
-    // inset, and each label adds its own pl-2 so every text in the column
-    // starts at the same 20px. Dropping either half pulls one of them out of
-    // line with the rest.
-    expect(scroller).toHaveClass("px-3");
-    expect(scroller).not.toHaveClass("px-2");
-    expect(within(list).getByText("Chat")).toHaveClass("pl-2");
-
-    // The pinned label carries the same h-8 row box as the chats section title
-    // below it, which is what keeps the gap above the two section headers even.
-    const pinnedLabel = within(pinnedSection).getByText("Pinned agents");
-    expect(pinnedLabel).toHaveClass("flex", "h-8", "items-center", "pl-2");
-    expect(pinnedLabel).not.toHaveClass("pb-2");
-
-    expect(
-      within(list).getByRole("region", { name: "Chat threads" }),
-    ).toBeInTheDocument();
-
-    // The label row supplies that bottom gap, so the grid must not stack a
-    // second one under the avatars.
-    const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
-    expect(grid).not.toHaveClass("pb-1");
-  });
-
-  it("shows a visible unread indicator on a pinned agent", async () => {
-    prepareDefaultAgent();
-    mockUnreadAgents(() => {
-      return [AGENT_ID];
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    const card = await waitFor(() => {
-      return within(grid).getByTestId("pinned-agent-card");
-    });
-    const unread = await waitFor(() => {
-      return within(card).getByLabelText("Unread");
-    });
-
-    expect(unread).toBeVisible();
-    expect(unread).toHaveAttribute("role", "img");
-  });
-
-  // A grid tile is a fifth of the sidebar wide, so the caption below the avatar
-  // is truncated to a few characters. Hovering has to spell the name out.
-  it("reveals the full pinned agent name on hover", async () => {
-    context.mocks.data.agents([
-      {
-        agentId: AGENT_ID,
-        ownerId: "test-user-123",
-        displayName: "Growth Experiments Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        visibility: "public",
-      },
-    ]);
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    const card = await waitFor(() => {
-      return within(grid).getByTestId("pinned-agent-card");
-    });
-    await userEvent.setup().hover(card);
-
-    const tooltip = await waitFor(() => {
-      const popup = document.querySelector('[data-slot="tooltip-content"]');
-      if (!(popup instanceof HTMLElement)) {
-        throw new Error("Pinned agent tooltip is not open");
-      }
-      return popup;
-    });
-    expect(within(tooltip).getByText("Growth Experiments Agent")).toBeVisible();
-  });
-
-  it("searches chats and messages in the three-column spotlight", async () => {
-    prepareAgents();
-    mockSidebarThreadStory([
-      createThread(RESEARCH_THREAD_ID, "Deployment notes", {
-        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-      }),
-      createThread(INCIDENT_THREAD_ID, "Incident response", {
-        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
-      }),
-    ]);
-    context.mocks.api(chatSearchContract.search, ({ query, respond }) => {
-      return respond(200, {
-        results:
-          query.keyword === "deploy"
-            ? [
-                {
-                  chatThreadId: INCIDENT_THREAD_ID,
-                  agentName: "Support Agent",
-                  matchedMessage: {
-                    chatThreadId: INCIDENT_THREAD_ID,
-                    role: "user" as const,
-                    content: "Production deploy completed successfully",
-                    createdAt: "2026-03-10T00:10:00Z",
-                    seqId: 1,
-                    runId: null,
-                  },
-                  matchedRanges: [{ start: 11, end: 17 }],
-                },
-              ]
-            : [],
-        hasMore: false,
-      });
-    });
-    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
-      return respond(200, { artifacts: [], nextCursor: null });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Search workspace"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
-    });
-    await fill(
-      within(dialog).getByPlaceholderText(
-        "Search chats, messages, workflows, and artifacts...",
-      ),
-      "deploy",
-    );
-
-    await waitFor(() => {
-      expect(within(dialog).getByText("2 results")).toBeInTheDocument();
-      expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
-      expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
-      expect(
-        within(dialog).queryByText("Research Agent"),
-      ).not.toBeInTheDocument();
-    });
-
-    click(buttonByText("Messages", dialog));
-    expect(
-      within(dialog).queryByText("Deployment notes"),
-    ).not.toBeInTheDocument();
-    expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
-
-    await fill(
-      within(dialog).getByPlaceholderText(
-        "Search chats, messages, workflows, and artifacts...",
-      ),
-      "missing",
-    );
-    await waitFor(() => {
-      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
-      expect(within(dialog).getByText("0 results")).toBeInTheDocument();
-    });
-
-    await fill(
-      within(dialog).getByPlaceholderText(
-        "Search chats, messages, workflows, and artifacts...",
-      ),
-      "deploy",
-    );
-    click(buttonByText("Chats", dialog));
-    await waitFor(() => {
-      expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
-      expect(
-        within(dialog).queryByText("Incident response"),
-      ).not.toBeInTheDocument();
-    });
-
-    click(within(dialog).getByText("Deployment notes"));
-    await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${RESEARCH_THREAD_ID}`);
-      expect(
-        screen.queryByRole("dialog", {
-          name: "Search chats, messages, workflows, and artifacts...",
-        }),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("searches workflows and artifacts in the three-column spotlight", async () => {
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: vi.fn<HTMLElement["scrollIntoView"]>(),
-    });
-    prepareAgents();
-    mockSidebarThreadStory([
-      createThread(RESEARCH_THREAD_ID, "Launch notes", {
-        agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
-      }),
-      createThread(INCIDENT_THREAD_ID, "Incident response", {
-        agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
-      }),
-    ]);
-    context.mocks.api(chatSearchContract.search, ({ query, respond }) => {
-      return respond(200, {
-        results:
-          query.keyword === "launch"
-            ? [
-                {
-                  chatThreadId: INCIDENT_THREAD_ID,
-                  agentName: "Support Agent",
-                  matchedMessage: {
-                    chatThreadId: INCIDENT_THREAD_ID,
-                    role: "user" as const,
-                    content: "Prepare the launch checklist",
-                    createdAt: "2026-03-10T00:10:00Z",
-                    seqId: 1,
-                    runId: null,
-                  },
-                  matchedRanges: [{ start: 12, end: 18 }],
-                },
-              ]
-            : [],
-        hasMore: false,
-      });
-    });
-    const workflow: WorkflowDetailResponse = {
-      id: WORKFLOW_ID,
-      agentId: RESEARCH_AGENT_ID,
-      agentName: "research-agent",
-      agentDisplayName: "Research Agent",
-      name: "launch-workflow",
-      displayName: "Launch workflow",
-      description: "Prepare a launch plan",
-      visibility: "private",
-      ownerUserId: "test-user-123",
-      ownerUserDisplayName: "Test User",
-      ownerUserImageUrl: null,
-      createdAt: "2026-03-10T00:05:00.000Z",
-      canManage: true,
-      canPublish: true,
-      official: null,
-      createdByUserId: "test-user-123",
-      updatedByUserId: "test-user-123",
-      updatedAt: "2026-03-10T00:05:00.000Z",
-      instruction: "Prepare a launch plan",
-      files: [],
-      fileContents: [],
-      automations: [],
-    };
-    context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
-      return respond(200, [workflow]);
-    });
-    context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
-      return respond(200, workflow);
-    });
-    context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
-      return respond(200, {
-        artifacts:
-          query.keyword === "launch" || query.kind === "video"
-            ? [
-                {
-                  id: ARTIFACT_ID,
-                  kind: "video",
-                  title: "launch-demo.mp4",
-                  thumbnail: {
-                    url: "https://cdn.vm0.io/artifacts/test/launch-demo.webp",
-                  },
-                  createdAt: "2026-03-10T00:06:00.000Z",
-                  updatedAt: "2026-03-10T00:06:00.000Z",
-                },
-              ]
-            : [],
-        nextCursor: null,
-      });
-    });
-    context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
-      return respond(200, {
-        id: ARTIFACT_ID,
-        kind: "video",
-        title: "launch-demo.mp4",
-        thumbnail: null,
-        createdAt: "2026-03-10T00:06:00.000Z",
-        updatedAt: "2026-03-10T00:06:00.000Z",
-        file: {
-          id: "f0000000-0000-4000-a000-000000000001",
-          filename: "launch-demo.mp4",
-          contentType: "video/mp4",
-          size: 4096,
-          url: "https://artifacts.example.com/launch-demo.mp4",
-          previewImageUrl: null,
-        },
-        model: "video-model",
-        durationSeconds: 12,
-      });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Search workspace"));
-    let dialog = await screen.findByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
-    });
-    await fill(
-      within(dialog).getByPlaceholderText(
-        "Search chats, messages, workflows, and artifacts...",
-      ),
-      "launch",
-    );
-
-    await waitFor(() => {
-      expect(within(dialog).getByText("4 results")).toBeInTheDocument();
-      expect(within(dialog).getByText("Launch notes")).toBeInTheDocument();
-      expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
-      expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
-      expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
-    });
-    const artifactThumbnail = within(dialog).getByTestId(
-      "spotlight-artifact-thumbnail",
-    );
-    expect(artifactThumbnail).toHaveAttribute(
-      "src",
-      "https://cdn.vm0.io/cdn-cgi/image/width=64,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/launch-demo.webp",
-    );
-    expect(artifactThumbnail).toHaveAttribute("loading", "eager");
-    fireEvent.error(artifactThumbnail);
-    await waitFor(() => {
-      expect(artifactThumbnail).toHaveClass("hidden");
-      expect(
-        within(dialog).getByTestId("spotlight-artifact-kind-icon-video"),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Workflows", dialog));
-    expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
-    expect(within(dialog).queryByText("Launch notes")).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("launch-demo.mp4"),
-    ).not.toBeInTheDocument();
-
-    click(buttonByText("Artifacts", dialog));
-    expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("Launch workflow"),
-    ).not.toBeInTheDocument();
-    click(within(dialog).getByText("launch-demo.mp4"));
-
-    await waitFor(() => {
-      expect(pathname()).toBe("/artifacts");
-      const params = new URLSearchParams(search());
-      expect(params.get("tab")).toBe("video");
-      expect(params.get("artifact")).toBe(ARTIFACT_ID);
-    });
-    await expect(
-      screen.findByLabelText("Video preview for launch-demo.mp4"),
-    ).resolves.toHaveAttribute(
-      "src",
-      "https://artifacts.example.com/launch-demo.mp4",
-    );
-    click(buttonByLabel("Close"));
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("Video preview for launch-demo.mp4"),
-      ).not.toBeInTheDocument();
-      expect(pathname()).toBe("/artifacts");
-      const params = new URLSearchParams(search());
-      expect(params.get("tab")).toBe("video");
-      expect(params.has("artifact")).toBeFalsy();
-    });
-
-    act(() => {
-      window.history.back();
-    });
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
-    });
-
-    const searchEvent = new KeyboardEvent("keydown", {
-      key: "f",
-      code: "KeyF",
-      ctrlKey: true,
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    });
-    document.body.dispatchEvent(searchEvent);
-    expect(searchEvent.defaultPrevented).toBeTruthy();
-    dialog = await screen.findByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
-    });
-    await fill(
-      within(dialog).getByPlaceholderText(
-        "Search chats, messages, workflows, and artifacts...",
-      ),
-      "launch",
-    );
-    click(buttonByText("Workflows", dialog));
-    click(await within(dialog).findByText("Launch workflow"));
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/workflows/${WORKFLOW_ID}`);
-    });
-  });
-
-  it("ages spotlight rows and illustrates the empty result set", async () => {
-    mockNow(context.signal);
-    prepareAgents();
-    mockSidebarThreadStory([
-      createThread(RESEARCH_THREAD_ID, "Minutes old", {
-        sortAt: isoFromNowMs(-5 * 60 * 1000),
-      }),
-      createThread(INCIDENT_THREAD_ID, "Hours old", {
-        sortAt: isoFromNowMs(-3 * 60 * 60 * 1000),
-      }),
-      createThread(AUTOMATION_THREAD_ID, "Days old", {
-        sortAt: isoFromNowMs(-2 * 24 * 60 * 60 * 1000),
-      }),
-      createThread(ARCHIVED_THREAD_ID, "Older than a month", {
-        sortAt: isoFromNowMs(-60 * 24 * 60 * 60 * 1000),
-      }),
-    ]);
-    context.mocks.api(chatSearchContract.search, ({ respond }) => {
-      return respond(200, { results: [], hasMore: false });
-    });
-    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
-      return respond(200, { artifacts: [], nextCursor: null });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Search workspace"));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Search chats, messages, workflows, and artifacts...",
-    });
-
-    const rowFor = async (title: string): Promise<HTMLElement> => {
-      const row = (await within(dialog).findByText(title)).closest(
-        '[role="option"]',
-      );
-      if (!(row instanceof HTMLElement)) {
-        throw new Error(`no spotlight row for ${title}`);
-      }
-      return row;
-    };
-
-    const minutesRow = await rowFor("Minutes old");
-    expect(minutesRow).toHaveTextContent("5 minutes ago");
-    const hoursRow = await rowFor("Hours old");
-    expect(hoursRow).toHaveTextContent("3 hours ago");
-    const daysRow = await rowFor("Days old");
-    expect(daysRow).toHaveTextContent("2 days ago");
-
-    // Past a month a relative phrase stops helping, so the row shows the
-    // absolute date instead. Assert the shape rather than an exact string so
-    // the expectation does not depend on the runner's timezone.
-    const archived = await rowFor("Older than a month");
-    expect(archived).not.toHaveTextContent("ago");
-    expect(archived).toHaveTextContent(/[A-Z][a-z]{2} \d{1,2},/u);
-
-    await fill(
-      within(dialog).getByPlaceholderText(
-        "Search chats, messages, workflows, and artifacts...",
-      ),
-      "nothing matches this",
-    );
-
-    await waitFor(() => {
-      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
-    });
-    expect(within(dialog).queryByText("Minutes old")).not.toBeInTheDocument();
-    const emptyState = within(dialog)
-      .getByText("No results found")
-      .closest("div");
-    expect(emptyState?.querySelector("img")).toHaveAttribute(
-      "src",
-      emptySearchImg,
-    );
-  });
-
-  it("opens horizontal pinned agent actions from context interactions", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    const researchAgent = await waitFor(() => {
-      return pinnedAgentLink(grid, "Research Agent");
-    });
-
-    fireEvent.contextMenu(researchAgent);
-    expect(menuItemByText("Unpin")).toBeInTheDocument();
-    click(menuItemByText("Unpin"));
-    await waitFor(() => {
-      expect(within(grid).queryByText("Research Agent")).toBeNull();
-    });
-
-    const supportAgent = pinnedAgentLink(grid, "Support Agent");
-    fireEvent.touchStart(supportAgent, {
-      touches: [{ identifier: 1, clientX: 12, clientY: 12 }],
-    });
-    await waitFor(() => {
-      expect(menuItemByText("Unpin")).toBeInTheDocument();
-    });
-    fireEvent.touchEnd(supportAgent, {
-      touches: [],
-      changedTouches: [{ identifier: 1, clientX: 12, clientY: 12 }],
-    });
-    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
-    await waitFor(() => {
-      expect(queryMenuItemByText("Unpin")).toBeNull();
-    });
-
-    click(supportAgent);
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
-    });
-  });
-
-  it("marks all chats read from the three-column chat list menu", async () => {
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Existing conversation"),
-      createThread(INCIDENT_THREAD_ID, "Unread conversation"),
-    ]);
-
-    let hasUnread = true;
-    const markedAgentIds: string[] = [];
-    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-      return respond(200, {
-        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
-        threads: hasUnread ? { [INCIDENT_THREAD_ID]: "unread" } : {},
-      });
-    });
-    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-      return respond(200, {
-        unreads: hasUnread
-          ? [
-              {
-                threadId: INCIDENT_THREAD_ID,
-                unreadAt: "2026-03-10T00:05:00Z",
-              },
-            ]
-          : [],
-      });
-    });
-    context.mocks.api(
-      chatThreadMarkAgentReadContract.markAgentRead,
-      ({ body, respond }) => {
-        markedAgentIds.push(body.agentId);
-        hasUnread = false;
-        changeChatThreadReadCursor();
-        return respond(204);
-      },
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    await waitFor(() => {
-      expect(within(list).getByText("Unread conversation")).toBeInTheDocument();
-      expect(within(list).getAllByLabelText("Unread").length).toBeGreaterThan(
-        0,
-      );
-    });
-
-    click(within(list).getByLabelText("Open chat list menu"));
-    await waitFor(() => {
-      expect(
-        queryAllByRoleFast("menuitem").map((item) => {
-          return item.textContent?.replace(/\s+/g, " ").trim();
-        }),
-      ).toStrictEqual(["Mark all read", "All chats", "Unread only"]);
-    });
-    click(menuItemByText("Mark all read"));
-
-    await waitFor(() => {
-      expect(markedAgentIds).toStrictEqual([AGENT_ID]);
-      expect(within(list).queryByLabelText("Unread")).not.toBeInTheDocument();
-    });
-
-    click(within(list).getByLabelText("Open chat list menu"));
+  click(within(list).getByLabelText("Open chat list menu"));
+  await waitFor(() => {
     expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("menuitem").map((item) => {
+        return item.textContent?.replace(/\s+/g, " ").trim();
+      }),
+    ).toStrictEqual(["All chats", "Unread only"]);
+    const menuWithoutMarkAllRead =
+      document.querySelector<HTMLElement>('[role="menu"]');
+    if (!menuWithoutMarkAllRead) {
+      throw new Error("Open chat list menu not found");
+    }
+    expect(
+      menuWithoutMarkAllRead.querySelectorAll('[role="separator"]'),
+    ).toHaveLength(0);
+  });
+});
+
+test("Mark all of an agent’s chats read", async () => {
+  mockMobileLayout();
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
   });
 
-  it("creates a new chat thread from the three-column header", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.userModelPreference({
-      selectedModel: null,
-      serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
-      updatedAt: "2026-08-18T00:00:00Z",
-    });
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Existing conversation"),
-    ]);
-    let createdThreadId: string | undefined;
-    let createdAgentId: string | undefined;
-    let createdImageModel: string | undefined;
-    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
-      createdThreadId = body.clientThreadId ?? "created-thread-id";
-      createdAgentId = body.agentId;
-      createdImageModel = body.imageModel;
-      return respond(201, {
-        id: createdThreadId,
-        title: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        selectedModel: body.model ?? "claude-sonnet-4-6",
-        serviceTier: body.serviceTier ?? null,
+  let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
+  const markedAgentIds: string[] = [];
+  mockUnreadAgents(() => {
+    return unreadAgentIds;
+  });
+  context.mocks.api(
+    chatThreadMarkAgentReadContract.markAgentRead,
+    ({ body, respond }) => {
+      markedAgentIds.push(body.agentId);
+      unreadAgentIds = unreadAgentIds.filter((id) => {
+        return id !== body.agentId;
       });
-    });
+      changeChatThreadReadCursor();
+      return respond(204);
+    },
+  );
 
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    const chatThreadsTitle = await within(list).findByText("Chats with Zero");
-    if (!chatThreadsTitle.parentElement) {
-      throw new Error("Chat threads header not found");
-    }
-    const newChatButton = within(chatThreadsTitle.parentElement).getByLabelText(
-      "New chat",
-    );
-    await waitFor(() => {
-      expect(newChatButton).toBeEnabled();
-    });
-    click(newChatButton);
-
-    expect(pathname()).not.toBe("/");
-    await waitFor(() => {
-      expect(createdAgentId).toBe(AGENT_ID);
-      // A blank thread pins no image model, so it follows the live member
-      // default instead of freezing it at creation time.
-      expect(createdImageModel).toBeUndefined();
-      expect(createdThreadId).toBeDefined();
-      expect(pathname()).toBe(`/chats/${createdThreadId}`);
-      expect(within(list).getByText("New chat")).toBeInTheDocument();
-    });
-    if (!createdThreadId) {
-      throw new Error("Created thread id not captured");
-    }
-    expect(
-      context.store.get(eventDrivenChatThread(createdThreadId)),
-    ).toMatchObject({ selectedImageModel: null });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
   });
 
-  it("ignores a temporary landing image pick when creating a blank thread", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.userModelPreference({
-      selectedModel: null,
-      serviceTier: null,
-      selectedImageModel: "fal-ai/qwen-image",
-      updatedAt: "2026-08-18T00:00:00Z",
+  const nav = await waitFor(() => {
+    const current = mobileSidebar();
+    expect(within(current).getByText("Research Agent")).toBeInTheDocument();
+    return current;
+  });
+  const researchSidebarRow = agentRowByName(nav, "Research Agent");
+  const supportSidebarRow = agentRowByName(nav, "Support Agent");
+  await waitFor(() => {
+    expect(
+      within(researchSidebarRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+    expect(
+      within(supportSidebarRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+  });
+
+  click(within(researchSidebarRow).getByLabelText("Open agent menu"));
+  click(menuItemByText("Mark all read"));
+
+  await waitFor(() => {
+    expect(markedAgentIds).toStrictEqual([RESEARCH_AGENT_ID]);
+    expect(
+      within(researchSidebarRow).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(supportSidebarRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+  });
+
+  click(within(researchSidebarRow).getByLabelText("Open agent menu"));
+  expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
+  expect(menuItemByText("Unpin")).toBeInTheDocument();
+});
+
+test("Mark conversations read and unread from the sidebar", async () => {
+  prepareDefaultAgent();
+  const unreadSnapshotRefreshed = context.mocks.deferred<void>();
+  const markReadDeferred = context.mocks.deferred<void>();
+  const markReadStarted = context.mocks.deferred<void>();
+  const markReadCompleted = context.mocks.deferred<void>();
+  const unreadThreadIds = new Set<string>();
+  let unreadAt = "2026-03-10T00:05:00Z";
+  let holdReleaseRead = false;
+  const serverUnreads = () => {
+    return [...unreadThreadIds].map((threadId) => {
+      return { threadId, unreadAt };
     });
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Existing conversation"),
-    ]);
-    let createdThreadId: string | undefined;
-    let createdImageModel: string | undefined;
-    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
-      createdThreadId = body.clientThreadId ?? "created-thread-id";
-      createdImageModel = body.imageModel;
-      return respond(201, {
-        id: createdThreadId,
-        title: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        selectedModel: body.model ?? "claude-sonnet-4-6",
-        serviceTier: body.serviceTier ?? null,
+  };
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(INCIDENT_THREAD_ID, "Incident notes"),
+  ]);
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    const unreads = serverUnreads();
+    if (
+      unreadThreadIds.has(EXISTING_THREAD_ID) &&
+      !unreadSnapshotRefreshed.settled()
+    ) {
+      unreadSnapshotRefreshed.resolve();
+    }
+    return respond(200, { unreads });
+  });
+  context.mocks.api(
+    chatThreadMarkUnreadContract.markUnread,
+    ({ params, respond }) => {
+      unreadThreadIds.add(params.id);
+      changeChatThreadReadCursor({
+        threadId: params.id,
+        agentId: AGENT_ID,
+        lastReadAt: null,
       });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    // The user temporarily switched the landing composer image model without
-    // pressing "Use this for future chats". A blank thread must not pin that pick; it
-    // stays unpinned (null) so it follows the live member default.
-    context.store.set(setChatPageImageModelSelection$, "fal-ai/flux-pro/v1.1");
-
-    const list = await screen.findByTestId("chat-list-column");
-    const chatThreadsTitle = await within(list).findByText("Chats with Zero");
-    if (!chatThreadsTitle.parentElement) {
-      throw new Error("Chat threads header not found");
-    }
-    const newChatButton = within(chatThreadsTitle.parentElement).getByLabelText(
-      "New chat",
-    );
-    await waitFor(() => {
-      expect(newChatButton).toBeEnabled();
-    });
-    click(newChatButton);
-
-    await waitFor(() => {
-      expect(createdThreadId).toBeDefined();
-    });
-    expect(createdImageModel).toBeUndefined();
-    if (!createdThreadId) {
-      throw new Error("Created thread id not captured");
-    }
-    expect(
-      context.store.get(eventDrivenChatThread(createdThreadId)),
-    ).toMatchObject({ selectedImageModel: null });
-  });
-
-  it("keeps skeletons when pinned agent previews have not been cached", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    const preferencesGate = deferPinnedAgentPreferences(
-      context,
-      pinnedAgentIds,
-    );
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
-    );
-    expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
-
-    preferencesGate.resolve();
-
-    await waitFor(() => {
-      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
-  });
-
-  it("renders cached pinned agent names and avatars during refresh", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents(context, {
-      researchAvatarUrl: "preset:1",
-    });
-    context.mocks.data.userPreferences({ pinnedAgentIds });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const initialGrid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(
-        within(initialGrid).getAllByTestId("pinned-agent-card"),
-      ).toHaveLength(6);
-    });
-    await waitFor(async () => {
-      const cached = await context.store.get(cachedPinnedAgentPreviewSnapshot$);
-      expect(cached?.agents).toHaveLength(6);
-    });
-    const initialAvatarMarkup = within(
-      pinnedAgentLink(initialGrid, "Research Agent"),
-    ).getByTestId("pinned-agent-avatar").innerHTML;
-
-    cleanup();
-
-    const refreshPinnedAgentIds = prepareOverflowingPinnedAgents(
-      refreshContext,
-      {
-        researchDisplayName: "Updated Research Agent",
-        researchAvatarUrl: "preset:2",
-      },
-    );
-    const preferencesGate = deferPinnedAgentPreferences(
-      refreshContext,
-      refreshPinnedAgentIds,
-    );
-
-    setupSidebarPage({
-      context: refreshContext,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual([
-        "Zero",
-        "Research Agent",
-        "Support Agent",
-        "Operations Agent",
-        "Analytics Agent",
-        "Billing Agent",
-      ]);
-    });
-    expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
-    expect(
-      within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
-        "pinned-agent-avatar",
-      ).innerHTML,
-    ).toBe(initialAvatarMarkup);
-
-    preferencesGate.resolve();
-
-    await waitFor(() => {
-      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
-      expect(pinnedAgentNames(grid)).toStrictEqual([
-        "Zero",
-        "Updated Research Agent",
-        "Support Agent",
-        "Operations Agent",
-        "Analytics Agent",
-        "Billing Agent",
-      ]);
-    });
-    expect(
-      within(pinnedAgentLink(grid, "Updated Research Agent")).getByTestId(
-        "pinned-agent-avatar",
-      ).innerHTML,
-    ).not.toBe(initialAvatarMarkup);
-  });
-
-  it("does not reuse pinned agent previews for another organization", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const initialGrid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(
-        within(initialGrid).getAllByTestId("pinned-agent-card"),
-      ).toHaveLength(6);
-    });
-    await waitFor(async () => {
-      const cached = await context.store.get(cachedPinnedAgentPreviewSnapshot$);
-      expect(cached?.agents).toHaveLength(6);
-    });
-
-    cleanup();
-
-    const refreshPinnedAgentIds =
-      prepareOverflowingPinnedAgents(refreshContext);
-    const preferencesGate = deferPinnedAgentPreferences(
-      refreshContext,
-      refreshPinnedAgentIds,
-    );
-    setupSidebarPage({
-      context: refreshContext,
-      path: `/agents/${AGENT_ID}/chat`,
-      org: {
-        activeOrg: { id: "org_other", name: "Other Org" },
-        memberships: [{ id: "org_other" }],
+      return respond(200, {
+        lastReadAt: null,
+        unreads: serverUnreads(),
+      });
+    },
+  );
+  context.mocks.api(
+    chatThreadMarkReadContract.markRead,
+    async ({ params, respond }) => {
+      unreadThreadIds.delete(params.id);
+      if (params.id === EXISTING_THREAD_ID && holdReleaseRead) {
+        markReadStarted.resolve();
+        await markReadDeferred.promise;
+        markReadCompleted.resolve();
+      }
+      return respond(200, {
+        lastReadAt: "2026-03-10T00:05:00Z",
+        unreads: serverUnreads(),
+      });
+    },
+  );
+  context.mocks.api(
+    chatThreadEventsContract.rows,
+    ({ params, query, respond }) => {
+      return respond(
+        200,
+        chatEventRowsResponse(
+          mockChatEventRows(
+            params.threadId === EXISTING_THREAD_ID
+              ? [
+                  {
+                    id: "release-message-1",
+                    threadId: EXISTING_THREAD_ID,
+                    eventType: "run.completed" as const,
+                    runId: "mock-run",
+                    content: null,
+                    runLifecycleEvent: "completed" as const,
+                    seqId: 1,
+                    createdAt: "2026-03-10T00:05:00Z",
+                  },
+                ]
+              : [],
+          ).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+          query,
+        ),
+      );
+    },
+  );
+  context.mocks.api(browserContract.get, ({ respond }) => {
+    return respond(404, {
+      error: {
+        code: "BROWSER_NOT_FOUND",
+        message: "Managed browser not found",
       },
     });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
-    );
-    expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
-
-    preferencesGate.resolve();
-    await waitFor(() => {
-      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
   });
 
-  it("discards an in-flight pinned agent preview refresh after the organization changes", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    const requestStarted = context.mocks.deferred<void>();
-    const preferencesGate = deferPinnedAgentPreferences(
-      context,
-      pinnedAgentIds,
-      () => {
-        if (!requestStarted.settled()) {
-          requestStarted.resolve();
-        }
-      },
-    );
+  await setupSidebarPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
 
-    const setup = setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-    await requestStarted.promise;
-
-    mockOrganization({
-      activeOrg: { id: "org_other", name: "Other Org" },
-      memberships: [{ id: "org_other" }],
-    });
-    preferencesGate.resolve();
-    await setup;
-
-    cleanup();
-
-    const refreshPinnedAgentIds =
-      prepareOverflowingPinnedAgents(refreshContext);
-    const refreshPreferencesGate = deferPinnedAgentPreferences(
-      refreshContext,
-      refreshPinnedAgentIds,
-    );
-    setupSidebarPage({
-      context: refreshContext,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
-    );
-    expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
-
-    refreshPreferencesGate.resolve();
-    await waitFor(() => {
-      expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
   });
 
-  it("keeps Pin after the first four pinned agents in navigation order", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds });
+  openThreadMenu("Release plan");
+  click(menuItemByText("Mark unread"));
+  await unreadSnapshotRefreshed.promise;
+  expect(
+    within(threadRowByTitle("Release plan")).queryByLabelText("Unread"),
+  ).not.toBeInTheDocument();
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
+  click(threadLinkByTitle("Incident notes"));
 
-    const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
-    const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
-
-    const pinAgent = queryAllByRoleFast("button", grid).find((candidate) => {
-      return candidate.getAttribute("aria-label") === "Pin an agent";
-    });
-    if (!pinAgent) {
-      throw new Error("Pin agent button not found");
-    }
-    // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
-    // Billing, so Pin closes the first row and the rest wrap after it.
-    const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
-    const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
-
+  await waitFor(() => {
     expect(
-      fourthAgent.compareDocumentPosition(pinAgent) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      pinAgent.compareDocumentPosition(fifthAgent) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-
-  it("keeps the pin dialog open and confirms a row pin", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(2);
-    });
-
-    click(screen.getByLabelText("Pin an agent"));
-
-    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
-    const pinnedOption = commandItemByText(dialogList, "Research Agent");
-    expect(pinnedOption.getAttribute("aria-disabled")).not.toBe("true");
-
-    click(commandItemByText(dialogList, "Support Agent"));
-
-    await expect(
-      screen.findByText("Support Agent pinned"),
-    ).resolves.toBeInTheDocument();
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual([
-        "Zero",
-        "Research Agent",
-        "Support Agent",
-      ]);
-    });
-    expect(dialogList).toBeInTheDocument();
-    expect(
-      buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")),
+      within(threadRowByTitle("Release plan")).getByLabelText("Unread"),
     ).toBeInTheDocument();
-    click(screen.getByLabelText("Close"));
-    await waitFor(() => {
-      expect(screen.queryByTestId("pin-agent-dialog-list")).toBeNull();
-    });
-    expect(pinnedAgentLink(grid, "Support Agent")).toBeInTheDocument();
   });
 
-  it("keeps the pin dialog open and confirms an unpin", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({
-      pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
-    });
+  holdReleaseRead = true;
+  click(threadLinkByTitle("Release plan"));
+  await markReadStarted.promise;
+  click(threadLinkByTitle("Incident notes"));
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(3);
-    });
-
-    click(screen.getByLabelText("Pin an agent"));
-
-    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
-    const pinnedRow = commandItemByText(dialogList, "Support Agent");
-    click(buttonByText("Unpin", pinnedRow));
-
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
-    });
-    expect(dialogList).toBeInTheDocument();
+  await waitFor(() => {
     expect(
-      buttonByText("Pin", commandItemByText(dialogList, "Support Agent")),
-    ).toBeInTheDocument();
-    await expect(
-      screen.findByText("Support Agent unpinned"),
-    ).resolves.toBeInTheDocument();
+      within(threadRowByTitle("Release plan")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
   });
 
-  it("keeps the pin dialog open after its row action pins an agent", async () => {
-    prepareAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds: [] });
+  markReadDeferred.resolve();
+  await markReadCompleted.promise;
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
+  unreadAt = "2026-03-10T00:06:00Z";
+  unreadThreadIds.add(EXISTING_THREAD_ID);
+  context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+    threadId: EXISTING_THREAD_ID,
+    agentId: AGENT_ID,
+    lastReadAt: null,
+  });
 
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(1);
-    });
-
-    click(screen.getByLabelText("Pin an agent"));
-
-    const dialogList = await screen.findByTestId("pin-agent-dialog-list");
-    const unpinnedRow = commandItemByText(dialogList, "Support Agent");
-    click(buttonByText("Pin", unpinnedRow));
-
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Support Agent"]);
-    });
-    expect(dialogList).toBeInTheDocument();
+  await waitFor(() => {
     expect(
-      buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")),
+      within(threadRowByTitle("Release plan")).getByLabelText("Unread"),
     ).toBeInTheDocument();
-    await expect(
-      screen.findByText("Support Agent pinned"),
-    ).resolves.toBeInTheDocument();
+  });
+});
+
+test("Move to the next relevant agent with a shortcut", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+  mockSidebarThreadStory([
+    createThread(INCIDENT_THREAD_ID, "Support escalation", {
+      agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
+  mockUnreadAgents(() => {
+    return [SUPPORT_AGENT_ID];
   });
 
-  it("reorders pinned agents without retaining the browser link payload", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${RESEARCH_AGENT_ID}/chat`,
+  });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
+  const nav = await waitFor(() => {
+    const current = sidebar();
+    expect(within(current).getByText("Support Agent")).toBeInTheDocument();
+    return current;
+  });
+  expect(
+    within(agentRowByName(nav, "Support Agent")).getByLabelText("Unread"),
+  ).toBeInTheDocument();
 
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
+  fireEvent.keyDown(document.body, {
+    key: "}",
+    ctrlKey: true,
+    shiftKey: true,
+  });
+
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
+    expect(
+      within(sidebar()).getByText("Support escalation"),
+    ).toBeInTheDocument();
+  });
+});
+
+test("Navigate pinned agents from the mobile sidebar", async () => {
+  mockMobileLayout();
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+  const openedTargets = context.mocks.browser.open();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  await waitFor(() => {
+    expect(
+      pinnedAgentLink(mobileSidebar(), "Research Agent"),
+    ).toBeInTheDocument();
+  });
+
+  click(screen.getByLabelText("Open menu"));
+  await waitFor(() => {
+    expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
+  });
+
+  fireEvent.click(pinnedAgentLink(mobileSidebar(), "Research Agent"), {
+    metaKey: true,
+  });
+  await waitFor(() => {
+    expect(openedTargets.calls).toStrictEqual([
+      expect.objectContaining({
+        target: "_blank",
+        url: expect.stringContaining(`/agents/${RESEARCH_AGENT_ID}/chat`),
+      }),
+    ]);
+    expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
+  });
+
+  click(pinnedAgentLink(mobileSidebar(), "Zero"));
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
+  });
+
+  click(screen.getByLabelText("Open menu"));
+  await waitFor(() => {
+    expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
+  });
+
+  click(pinnedAgentLink(mobileSidebar(), "Research Agent"));
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+    expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
+  });
+});
+
+test("Open and use workspace search with the keyboard", async () => {
+  prepareAgents();
+  mockSidebarThreadStory([
+    createThread(INCIDENT_THREAD_ID, "Support escalation", {
+      agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
+
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+  await waitFor(() => {
+    expect(sidebar()).toBeInTheDocument();
+  });
+
+  fireEvent.keyDown(document.body, {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+  });
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  const search = within(dialog).getByPlaceholderText(
+    "Search chats, messages, workflows, and artifacts...",
+  );
+
+  await fill(search, "support");
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("Support escalation")).toBeInTheDocument();
+  });
+
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "Enter" });
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Search chats, messages, workflows, and artifacts...",
+      }),
+    ).not.toBeInTheDocument();
+    expect(document.title).toBe("Support escalation | VM0");
+  });
+});
+
+test("Show current shortcuts without stacking help over workspace search", async () => {
+  prepareAgents();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+    },
+  });
+
+  await waitFor(() => {
+    expect(sidebar()).toBeInTheDocument();
+  });
+
+  fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+  const shortcutDialog = await screen.findByRole("dialog", {
+    name: "Keyboard Shortcuts",
+  });
+  expect(
+    within(shortcutDialog).getByText("Show shortcuts"),
+  ).toBeInTheDocument();
+  expect(within(shortcutDialog).getByText("Search workspace")).toBeVisible();
+  expect(within(shortcutDialog).getByText("Voice input")).toBeVisible();
+  click(within(shortcutDialog).getByLabelText("Close keyboard shortcuts"));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Keyboard Shortcuts" }),
+    ).not.toBeInTheDocument();
+  });
+
+  fireEvent.keyDown(document.body, {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+  });
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+
+  fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+  expect(
+    screen.queryByRole("dialog", { name: "Keyboard Shortcuts" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getAllByRole("dialog")).toStrictEqual([dialog]);
+});
+
+test("Open workspace search once from a focused composer shortcut", async () => {
+  prepareAgents();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  await screen.findByPlaceholderText(PLACEHOLDER);
+  const composer = mountedComposer();
+  composer.focus();
+  const repeatedEvent = new KeyboardEvent("keydown", {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+    repeat: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(repeatedEvent);
+
+  expect(repeatedEvent.defaultPrevented).toBeFalsy();
+  expect(
+    screen.queryByRole("dialog", {
+      name: "Search chats, messages, workflows, and artifacts...",
+    }),
+  ).not.toBeInTheDocument();
+
+  const event = new KeyboardEvent("keydown", {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(event);
+
+  expect(event.defaultPrevented).toBeTruthy();
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  expect(dialog).toBeInTheDocument();
+});
+
+test("Open workspace search from a mobile viewport", async () => {
+  mockMobileLayout();
+  prepareAgents();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  await waitFor(() => {
+    expect(mobileSidebar()).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
+
+  fireEvent.keyDown(document.body, {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+  });
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  expect(dialog).toBeInTheDocument();
+});
+
+test("Pin and unpin agents without closing the pin manager", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({ pinnedAgentIds: [RESEARCH_AGENT_ID] });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(2);
+  });
+
+  click(screen.getByLabelText("Pin an agent"));
+
+  const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+  const supportRow = commandItemByText(dialogList, "Support Agent");
+  click(buttonByText("Pin", supportRow));
+
+  await waitFor(() => {
     expect(pinnedAgentNames(grid)).toStrictEqual([
       "Zero",
       "Research Agent",
       "Support Agent",
+    ]);
+  });
+  expect(dialogList).toBeInTheDocument();
+  expect(
+    buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")),
+  ).toBeInTheDocument();
+  await expect(
+    screen.findByText("Support Agent pinned"),
+  ).resolves.toBeInTheDocument();
+
+  click(buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")));
+
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+  });
+  expect(dialogList).toBeInTheDocument();
+  expect(
+    buttonByText("Pin", commandItemByText(dialogList, "Support Agent")),
+  ).toBeInTheDocument();
+  await expect(
+    screen.findByText("Support Agent unpinned"),
+  ).resolves.toBeInTheDocument();
+});
+
+test("Preserve the user’s pinned-agent order", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [SUPPORT_AGENT_ID, RESEARCH_AGENT_ID],
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Support Agent",
+      "Research Agent",
+    ]);
+  });
+
+  click(screen.getByLabelText("Pin an agent"));
+
+  const dialogList = await screen.findByTestId("pin-agent-dialog-list");
+  expect(
+    dialogAgentOrder(dialogList, ["Research Agent", "Support Agent"]),
+  ).toStrictEqual(["Support Agent", "Research Agent"]);
+});
+
+test("Highlight the current thread’s agent in the pinned grid", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+  mockSidebarThreadStory([
+    createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+      agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${RESEARCH_THREAD_ID}`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(pinnedAgentLink(grid, "Research Agent")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+  expect(pinnedAgentLink(grid, "Zero")).not.toHaveAttribute("aria-current");
+});
+
+test("Recognize and pin sidebar conversation states", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory(
+    [
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      createThread(AUTOMATION_THREAD_ID, "Running analysis"),
+      createThread(ARCHIVED_THREAD_ID, "Draft brief"),
+    ],
+    [],
+    [AUTOMATION_THREAD_ID],
+  );
+  context.mocks.api(chatThreadsContract.drafts, ({ respond }) => {
+    return respond(200, { draftThreadIds: [ARCHIVED_THREAD_ID] });
+  });
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, {
+      unreads: [
+        { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
+      ],
+    });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    expect(
+      within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+    expect(
+      within(threadRowByTitle("Running analysis")).getByLabelText("Running"),
+    ).toBeInTheDocument();
+    expect(
+      within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
+    ).toBeInTheDocument();
+  });
+  expect(
+    within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
+  ).toHaveAttribute("role", "img");
+  expect(
+    within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
+  ).toHaveAttribute("role", "img");
+
+  openThreadMenu("Release plan");
+  click(menuItemByText("Pin chat"));
+
+  await waitFor(() => {
+    expect(
+      within(threadRowByTitle("Release plan")).getByTestId(
+        "chat-thread-pinned-indicator",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  click(
+    within(threadRowByTitle("Release plan")).getByTestId(
+      "chat-thread-pinned-indicator",
+    ),
+  );
+  click(menuItemByText("Unpin chat"));
+
+  await waitFor(() => {
+    expect(
+      within(threadRowByTitle("Release plan")).queryByTestId(
+        "chat-thread-pinned-indicator",
+      ),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("Refresh agent and thread unread indicators", async () => {
+  mockMobileLayout();
+  prepareAgents();
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
+  ]);
+  let hasUnread = false;
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, {
+      agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+      threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+    });
+  });
+  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+    return respond(200, {
+      unreads: hasUnread
+        ? [
+            {
+              threadId: EXISTING_THREAD_ID,
+              unreadAt: "2026-03-10T00:05:00Z",
+            },
+          ]
+        : [],
+    });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    sharedWorkerTestTransport: "message-port",
+  });
+
+  const nav = await waitFor(() => {
+    const current = mobileSidebar();
+    expect(within(current).getByText("Zero")).toBeInTheDocument();
+    return current;
+  });
+  const agentRow = agentRowByName(nav, "Zero");
+  const threadRow = await waitFor(() => {
+    return threadRowByTitle("Remote unread conversation", nav);
+  });
+  await waitFor(() => {
+    expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
+    expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
+  });
+
+  hasUnread = true;
+  changeChatThreadList();
+
+  await waitFor(() => {
+    expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
+    expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
+  });
+});
+
+test("Rename a conversation from the sidebar", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([
+    createThread(EXISTING_THREAD_ID, "Release plan"),
+    createThread(INCIDENT_THREAD_ID, "Incident notes"),
+  ]);
+
+  await setupSidebarPage({
+    context,
+    path: `/chats/${EXISTING_THREAD_ID}`,
+  });
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+  });
+
+  openThreadMenu("Release plan");
+  click(menuItemByText("Rename chat"));
+
+  const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+  const titleInput = within(dialog).getByPlaceholderText("Chat title");
+  expect(titleInput).toHaveValue("Release plan");
+  await fill(titleInput, "Launch plan");
+  click(buttonByText("Rename", dialog));
+
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Launch plan")).toBeInTheDocument();
+    expect(
+      within(sidebar()).queryByText("Release plan"),
+    ).not.toBeInTheDocument();
+  });
+
+  openThreadMenu("Incident notes");
+  click(menuItemByText("Rename chat"));
+
+  const draftDialog = await screen.findByRole("dialog", {
+    name: "Rename chat",
+  });
+  const draftInput = within(draftDialog).getByPlaceholderText("Chat title");
+  expect(draftInput).toHaveValue("Incident notes");
+  await fill(draftInput, "Unsaved title");
+  const finishCloseAnimation = holdElementAnimations(draftDialog);
+  click(buttonByText("Cancel", draftDialog));
+
+  expect(draftInput).toBeInTheDocument();
+  expect(draftInput).toBeVisible();
+  expect(draftInput).toHaveValue("Unsaved title");
+
+  finishCloseAnimation();
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Rename chat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  openThreadMenu("Incident notes");
+  click(menuItemByText("Rename chat"));
+
+  const reopenedDialog = await screen.findByRole("dialog", {
+    name: "Rename chat",
+  });
+  expect(within(reopenedDialog).getByPlaceholderText("Chat title")).toHaveValue(
+    "Incident notes",
+  );
+});
+
+test("Reorder pinned agents while keeping Zero first", async () => {
+  const pinnedAgentIds = prepareOverflowingPinnedAgents();
+  context.mocks.data.userPreferences({ pinnedAgentIds });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  await waitFor(() => {
+    expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+  });
+  expect(pinnedAgentNames(grid)).toStrictEqual([
+    "Zero",
+    "Research Agent",
+    "Support Agent",
+    "Operations Agent",
+    "Analytics Agent",
+    "Billing Agent",
+  ]);
+
+  const dragged = pinnedAgentLink(grid, "Support Agent");
+  const target = pinnedAgentLink(grid, "Billing Agent");
+  const dataTransfer = createDataTransferStub({
+    "text/uri-list": dragged.href,
+    "text/plain": dragged.href,
+  });
+  fireEvent.dragStart(dragged, { dataTransfer });
+  expect(dataTransfer.getData("text/uri-list")).toBe("");
+  expect(dataTransfer.getData("text/plain")).toBe("");
+  expect(dataTransfer.getData("application/x-okou-pinned-agent")).toBe(
+    SUPPORT_AGENT_ID,
+  );
+  fireEvent.dragOver(target, { dataTransfer });
+  await waitFor(() => {
+    expect(
+      within(target).getByTestId("pinned-agent-drop-caret"),
+    ).toBeInTheDocument();
+  });
+  expect(
+    within(target).getByTestId("pinned-agent-drop-caret").className,
+  ).toContain("-right-");
+  fireEvent.drop(target, { dataTransfer });
+
+  await waitFor(() => {
+    expect(pinnedAgentNames(grid)).toStrictEqual([
+      "Zero",
+      "Research Agent",
       "Operations Agent",
       "Analytics Agent",
       "Billing Agent",
+      "Support Agent",
     ]);
+  });
 
-    const dragged = pinnedAgentLink(grid, "Support Agent");
-    const target = pinnedAgentLink(grid, "Billing Agent");
-    const dataTransfer = createDataTransferStub({
-      "text/uri-list": dragged.href,
-      "text/plain": dragged.href,
+  const orderAfterReorder = pinnedAgentNames(grid);
+  const lead = pinnedAgentLink(grid, "Zero");
+  const leadDropTransfer = createDataTransferStub();
+  fireEvent.dragStart(pinnedAgentLink(grid, "Research Agent"), {
+    dataTransfer: leadDropTransfer,
+  });
+  expect(
+    fireEvent.dragOver(lead, { dataTransfer: leadDropTransfer }),
+  ).toBeFalsy();
+  expect(fireEvent.drop(lead, { dataTransfer: leadDropTransfer })).toBeFalsy();
+  fireEvent.dragEnd(pinnedAgentLink(grid, "Research Agent"), {
+    dataTransfer: leadDropTransfer,
+  });
+  expect(pinnedAgentNames(grid)).toStrictEqual(orderAfterReorder);
+  expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
+});
+
+test("Search and open workflows and artifacts from the shell", async () => {
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn<HTMLElement["scrollIntoView"]>(),
+  });
+  prepareAgents();
+  mockSidebarThreadStory([
+    createThread(RESEARCH_THREAD_ID, "Launch notes", {
+      agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+    }),
+    createThread(INCIDENT_THREAD_ID, "Incident response", {
+      agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
+  context.mocks.api(chatSearchContract.search, ({ query, respond }) => {
+    return respond(200, {
+      results:
+        query.keyword === "launch"
+          ? [
+              {
+                chatThreadId: INCIDENT_THREAD_ID,
+                agentName: "Support Agent",
+                matchedMessage: {
+                  chatThreadId: INCIDENT_THREAD_ID,
+                  role: "user" as const,
+                  content: "Prepare the launch checklist",
+                  createdAt: "2026-03-10T00:10:00Z",
+                  seqId: 1,
+                  runId: null,
+                },
+                matchedRanges: [{ start: 12, end: 18 }],
+              },
+            ]
+          : [],
+      hasMore: false,
     });
-    fireEvent.dragStart(dragged, { dataTransfer });
-    expect(dataTransfer.getData("text/uri-list")).toBe("");
-    expect(dataTransfer.getData("text/plain")).toBe("");
-    expect(dataTransfer.getData("application/x-okou-pinned-agent")).toBe(
-      SUPPORT_AGENT_ID,
+  });
+  const workflow: WorkflowDetailResponse = {
+    id: WORKFLOW_ID,
+    agentId: RESEARCH_AGENT_ID,
+    agentName: "research-agent",
+    agentDisplayName: "Research Agent",
+    name: "launch-workflow",
+    displayName: "Launch workflow",
+    description: "Prepare a launch plan",
+    visibility: "private",
+    ownerUserId: "test-user-123",
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
+    createdAt: "2026-03-10T00:05:00.000Z",
+    canManage: true,
+    canPublish: true,
+    createdByUserId: "test-user-123",
+    updatedByUserId: "test-user-123",
+    updatedAt: "2026-03-10T00:05:00.000Z",
+    official: null,
+    instruction: "Prepare a launch plan",
+    files: [],
+    fileContents: [],
+    automations: [],
+  };
+  context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
+    return respond(200, [workflow]);
+  });
+  context.mocks.api(workflowsDetailContract.get, ({ respond }) => {
+    return respond(200, workflow);
+  });
+  context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
+    return respond(200, {
+      artifacts:
+        query.keyword === "launch" || query.kind === "video"
+          ? [
+              {
+                id: ARTIFACT_ID,
+                kind: "video",
+                title: "launch-demo.mp4",
+                thumbnail: {
+                  url: "https://cdn.vm0.io/artifacts/test/launch-demo.webp",
+                },
+                createdAt: "2026-03-10T00:06:00.000Z",
+                updatedAt: "2026-03-10T00:06:00.000Z",
+              },
+            ]
+          : [],
+      nextCursor: null,
+    });
+  });
+  context.mocks.api(artifactCatalogContract.get, ({ respond }) => {
+    return respond(200, {
+      id: ARTIFACT_ID,
+      kind: "video",
+      title: "launch-demo.mp4",
+      thumbnail: null,
+      createdAt: "2026-03-10T00:06:00.000Z",
+      updatedAt: "2026-03-10T00:06:00.000Z",
+      file: {
+        id: "f0000000-0000-4000-a000-000000000001",
+        filename: "launch-demo.mp4",
+        contentType: "video/mp4",
+        size: 4096,
+        url: "https://artifacts.example.com/launch-demo.mp4",
+        previewImageUrl: null,
+      },
+      model: "video-model",
+      durationSeconds: 12,
+    });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const list = await screen.findByTestId("chat-list-column");
+  click(within(list).getByLabelText("Search workspace"));
+  let dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "launch",
+  );
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("4 results")).toBeInTheDocument();
+    expect(within(dialog).getByText("Launch notes")).toBeInTheDocument();
+    expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
+    expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
+    expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
+  });
+  const artifactThumbnail = within(dialog).getByTestId(
+    "spotlight-artifact-thumbnail",
+  );
+  expect(artifactThumbnail).toHaveAttribute(
+    "src",
+    "https://cdn.vm0.io/cdn-cgi/image/width=64,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/test/launch-demo.webp",
+  );
+  expect(artifactThumbnail).toHaveAttribute("loading", "eager");
+  fireEvent.error(artifactThumbnail);
+  await waitFor(() => {
+    expect(artifactThumbnail).toHaveClass("hidden");
+    expect(
+      within(dialog).getByTestId("spotlight-artifact-kind-icon-video"),
+    ).toBeInTheDocument();
+  });
+
+  click(buttonByText("Workflows", dialog));
+  expect(within(dialog).getByText("Launch workflow")).toBeInTheDocument();
+  expect(within(dialog).queryByText("Launch notes")).not.toBeInTheDocument();
+  expect(within(dialog).queryByText("launch-demo.mp4")).not.toBeInTheDocument();
+
+  click(buttonByText("Artifacts", dialog));
+  expect(within(dialog).getByText("launch-demo.mp4")).toBeInTheDocument();
+  expect(within(dialog).queryByText("Launch workflow")).not.toBeInTheDocument();
+  click(within(dialog).getByText("launch-demo.mp4"));
+
+  await waitFor(() => {
+    expect(pathname()).toBe("/artifacts");
+    const params = new URLSearchParams(search());
+    expect(params.get("tab")).toBe("video");
+    expect(params.get("artifact")).toBe(ARTIFACT_ID);
+  });
+  await expect(
+    screen.findByLabelText("Video preview for launch-demo.mp4"),
+  ).resolves.toHaveAttribute(
+    "src",
+    "https://artifacts.example.com/launch-demo.mp4",
+  );
+  click(buttonByLabel("Close"));
+  await waitFor(() => {
+    expect(
+      screen.queryByLabelText("Video preview for launch-demo.mp4"),
+    ).not.toBeInTheDocument();
+    expect(pathname()).toBe("/artifacts");
+    const params = new URLSearchParams(search());
+    expect(params.get("tab")).toBe("video");
+    expect(params.has("artifact")).toBeFalsy();
+  });
+
+  act(() => {
+    window.history.back();
+  });
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+  });
+
+  const searchEvent = new KeyboardEvent("keydown", {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  document.body.dispatchEvent(searchEvent);
+  expect(searchEvent.defaultPrevented).toBeTruthy();
+  dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "launch",
+  );
+  click(buttonByText("Workflows", dialog));
+  click(await within(dialog).findByText("Launch workflow"));
+
+  await waitFor(() => {
+    expect(pathname()).toBe(`/workflows/${WORKFLOW_ID}`);
+  });
+});
+
+test("Search, pin, and open an agent from the pin manager", async () => {
+  prepareAgents();
+  const researchThread = createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+    agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+  });
+
+  mockChatThreadSnapshot(() => {
+    return [researchThread];
+  });
+
+  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  click(screen.getByLabelText("Pin an agent"));
+
+  const dialog = await screen.findByRole("dialog", { name: "Pin an agent" });
+  expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+  expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+
+  await fill(
+    within(dialog).getByPlaceholderText("Search agents..."),
+    "support",
+  );
+
+  await waitFor(() => {
+    expect(
+      within(dialog).queryByText("Research Agent"),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  });
+
+  await fill(within(dialog).getByPlaceholderText("Search agents..."), "ops");
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("No results found")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Support Agent")).not.toBeInTheDocument();
+  });
+
+  click(within(dialog).getByLabelText("Clear search"));
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+  });
+
+  const researchRow = commandItemByText(dialog, "Research Agent");
+  click(buttonByText("Pin", researchRow));
+
+  await waitFor(() => {
+    expect(
+      buttonByText("Unpin", commandItemByText(dialog, "Research Agent")),
+    ).toBeInTheDocument();
+    expect(pinnedAgentNames(grid)).toContain("Research Agent");
+  });
+
+  click(within(dialog).getByLabelText("Close"));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Pin an agent" }),
+    ).not.toBeInTheDocument();
+  });
+  click(pinnedAgentLink(grid, "Research Agent"));
+
+  await waitFor(() => {
+    expect(
+      within(sidebar()).getByText("Chats with Research Agent"),
+    ).toBeInTheDocument();
+    expect(within(sidebar()).getByText("Research kickoff")).toBeInTheDocument();
+  });
+});
+
+test("Search workspace chats and messages", async () => {
+  prepareAgents();
+  mockSidebarThreadStory([
+    createThread(RESEARCH_THREAD_ID, "Deployment notes", {
+      agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+    }),
+    createThread(INCIDENT_THREAD_ID, "Incident response", {
+      agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
+  context.mocks.api(chatSearchContract.search, ({ query, respond }) => {
+    return respond(200, {
+      results:
+        query.keyword === "deploy"
+          ? [
+              {
+                chatThreadId: INCIDENT_THREAD_ID,
+                agentName: "Support Agent",
+                matchedMessage: {
+                  chatThreadId: INCIDENT_THREAD_ID,
+                  role: "user" as const,
+                  content: "Production deploy completed successfully",
+                  createdAt: "2026-03-10T00:10:00Z",
+                  seqId: 1,
+                  runId: null,
+                },
+                matchedRanges: [{ start: 11, end: 17 }],
+              },
+            ]
+          : [],
+      hasMore: false,
+    });
+  });
+  context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+    return respond(200, { artifacts: [], nextCursor: null });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const list = await screen.findByTestId("chat-list-column");
+  click(within(list).getByLabelText("Search workspace"));
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "deploy",
+  );
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("2 results")).toBeInTheDocument();
+    expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+    expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Research Agent"),
+    ).not.toBeInTheDocument();
+  });
+
+  click(buttonByText("Messages", dialog));
+  expect(
+    within(dialog).queryByText("Deployment notes"),
+  ).not.toBeInTheDocument();
+  expect(within(dialog).getByText("Incident response")).toBeInTheDocument();
+
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "missing",
+  );
+  await waitFor(() => {
+    expect(within(dialog).getByText("No results found")).toBeInTheDocument();
+    expect(within(dialog).getByText("0 results")).toBeInTheDocument();
+  });
+
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "deploy",
+  );
+  click(buttonByText("Chats", dialog));
+  await waitFor(() => {
+    expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Incident response"),
+    ).not.toBeInTheDocument();
+  });
+
+  click(within(dialog).getByText("Deployment notes"));
+  await waitFor(() => {
+    expect(pathname()).toBe(`/chats/${RESEARCH_THREAD_ID}`);
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Search chats, messages, workflows, and artifacts...",
+      }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("Show unread agents and contextual actions in the pinned section", async () => {
+  mockMobileLayout();
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID],
+  });
+
+  let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
+  mockUnreadAgents(() => {
+    return unreadAgentIds;
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    sharedWorkerTestTransport: "message-port",
+  });
+
+  const nav = await waitFor(() => {
+    const current = mobileSidebar();
+    expect(within(current).getByText("Research Agent")).toBeInTheDocument();
+    return current;
+  });
+  const researchSidebarRow = agentRowByName(nav, "Research Agent");
+  const supportSidebarRow = await waitFor(() => {
+    return agentRowByName(nav, "Support Agent");
+  });
+  await waitFor(() => {
+    expect(
+      within(researchSidebarRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+    expect(
+      within(researchSidebarRow).getByLabelText("Open agent menu"),
+    ).toBeInTheDocument();
+    expect(
+      within(researchSidebarRow).queryByLabelText("Unpin"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(supportSidebarRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+  });
+
+  click(within(supportSidebarRow).getByLabelText("Open agent menu"));
+  expect(menuItemByText("Mark all read")).toBeInTheDocument();
+  expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
+  expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
+  fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+
+  click(within(researchSidebarRow).getByLabelText("Open agent menu"));
+  expect(menuItemByText("Unpin")).toBeInTheDocument();
+  fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+
+  unreadAgentIds = [SUPPORT_AGENT_ID];
+  changeChatThreadReadCursor({
+    agentId: RESEARCH_AGENT_ID,
+  });
+
+  await waitFor(() => {
+    expect(
+      within(researchSidebarRow).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(supportSidebarRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+  });
+});
+
+test("Show useful search-result ages and an illustrated empty state", async () => {
+  const now = Date.parse("2026-03-10T12:00:00.000Z");
+  mockNow(now, context.signal);
+  prepareAgents();
+  mockSidebarThreadStory([
+    createThread(RESEARCH_THREAD_ID, "Minutes old", {
+      sortAt: new Date(now - 5 * 60 * 1000).toISOString(),
+    }),
+    createThread(INCIDENT_THREAD_ID, "Hours old", {
+      sortAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+    }),
+    createThread(AUTOMATION_THREAD_ID, "Days old", {
+      sortAt: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    }),
+    createThread(ARCHIVED_THREAD_ID, "Older than a month", {
+      sortAt: new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString(),
+    }),
+  ]);
+  context.mocks.api(chatSearchContract.search, ({ respond }) => {
+    return respond(200, { results: [], hasMore: false });
+  });
+  context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+    return respond(200, { artifacts: [], nextCursor: null });
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const list = await screen.findByTestId("chat-list-column");
+  click(within(list).getByLabelText("Search workspace"));
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
+
+  const rowFor = async (title: string): Promise<HTMLElement> => {
+    const row = (await within(dialog).findByText(title)).closest(
+      '[role="option"]',
     );
-    fireEvent.dragOver(target, { dataTransfer });
-    fireEvent.drop(target, { dataTransfer });
+    if (!(row instanceof HTMLElement)) {
+      throw new Error(`no spotlight row for ${title}`);
+    }
+    return row;
+  };
 
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual([
-        "Zero",
-        "Research Agent",
-        "Operations Agent",
-        "Analytics Agent",
-        "Billing Agent",
-        "Support Agent",
-      ]);
-    });
+  const minutesRow = await rowFor("Minutes old");
+  expect(minutesRow).toHaveTextContent("5 minutes ago");
+  const hoursRow = await rowFor("Hours old");
+  expect(hoursRow).toHaveTextContent("3 hours ago");
+  const daysRow = await rowFor("Days old");
+  expect(daysRow).toHaveTextContent("2 days ago");
+
+  // Past a month a relative phrase stops helping, so the row shows the
+  // absolute date instead. Assert the shape rather than an exact string so
+  // the expectation does not depend on the runner's timezone.
+  const archived = await rowFor("Older than a month");
+  expect(archived).not.toHaveTextContent("ago");
+  expect(archived).toHaveTextContent(/[A-Z][a-z]{2} \d{1,2},/u);
+
+  await fill(
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
+    "nothing matches this",
+  );
+
+  await waitFor(() => {
+    expect(within(dialog).getByText("No results found")).toBeInTheDocument();
   });
+  expect(within(dialog).queryByText("Minutes old")).not.toBeInTheDocument();
+  const emptyState = within(dialog)
+    .getByText("No results found")
+    .closest("div");
+  expect(emptyState?.querySelector("img")).toHaveAttribute(
+    "src",
+    emptySearchImg,
+  );
+});
 
-  it("shows drag handles only while a reorder drag is in flight", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
-
-    expect(
-      within(grid).queryAllByTestId("pinned-agent-drag-handle"),
-    ).toHaveLength(0);
-
-    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: createDataTransferStub(),
-    });
-
-    expect(
-      within(pinnedAgentLink(grid, "Operations Agent")).getByTestId(
-        "pinned-agent-drag-handle",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(pinnedAgentLink(grid, "Support Agent")).queryByTestId(
-        "pinned-agent-drag-handle",
-      ),
-    ).toBeNull();
-    expect(
-      within(pinnedAgentLink(grid, "Zero")).queryByTestId(
-        "pinned-agent-drag-handle",
-      ),
-    ).toBeNull();
+test("Update the existing chat list when switching agents", async () => {
+  prepareAgents();
+  const supportUnreadGate = context.mocks.deferred<void>();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
   });
-
-  it("marks the landing slot with an insertion caret while dragging", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
-
-    // Billing Agent sits after Support Agent, so a forwards drag lands after it.
-    const forwards = createDataTransferStub();
-    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: forwards,
-    });
-    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
-      dataTransfer: forwards,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(grid).getAllByTestId("pinned-agent-drop-caret"),
-      ).toHaveLength(1);
-    });
-    expect(
-      within(pinnedAgentLink(grid, "Billing Agent")).getByTestId(
-        "pinned-agent-drop-caret",
-      ).className,
-    ).toContain("-right-");
-
-    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: forwards,
-    });
-    await waitFor(() => {
-      expect(
-        within(grid).queryAllByTestId("pinned-agent-drop-caret"),
-      ).toHaveLength(0);
-    });
-
-    // Research Agent sits before Support Agent, so a backwards drag lands before it.
-    const backwards = createDataTransferStub();
-    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: backwards,
-    });
-    fireEvent.dragOver(pinnedAgentLink(grid, "Research Agent"), {
-      dataTransfer: backwards,
-    });
-
-    await waitFor(() => {
-      expect(
-        within(pinnedAgentLink(grid, "Research Agent")).getByTestId(
-          "pinned-agent-drop-caret",
-        ).className,
-      ).toContain("-left-");
-    });
+  const researchThread = createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+    agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
   });
-
-  it("leaves the lead agent in place when it is dragged", async () => {
-    const pinnedAgentIds = prepareOverflowingPinnedAgents();
-    context.mocks.data.userPreferences({ pinnedAgentIds });
-    const savedPinnedOrders: string[][] = [];
-    let storedPinnedAgentIds = [...pinnedAgentIds];
-    context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
-      // Boot also writes unrelated preferences such as the timezone, so only a
-      // request that carries pinned ids counts as a reorder.
-      if (body.pinnedAgentIds !== undefined) {
-        storedPinnedAgentIds = [...body.pinnedAgentIds];
-        savedPinnedOrders.push([...body.pinnedAgentIds]);
-      }
-      const nextPinnedAgentIds = storedPinnedAgentIds;
-      context.mocks.data.userPreferences({
-        pinnedAgentIds: [...nextPinnedAgentIds],
-      });
-      return respond(200, {
-        timezone: null,
-        locale: null,
-        translationLanguage: null,
-        supportedLocales: [
-          "en-US",
-          "pt-BR",
-          "ja-JP",
-          "ko-KR",
-          "id-ID",
-          "de-DE",
-          "es-ES",
-          "it-IT",
-          "fr-FR",
-          "hi-IN",
-        ],
-        pinnedAgentIds: [...nextPinnedAgentIds],
-        sendMode: "enter",
-        cloudBrowserEnabledByDefault: true,
-        theme: "system",
-        colorTheme: "blue-horizon",
-        captureNetworkBodiesRemaining: 0,
-      });
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const grid = await screen.findByTestId("pinned-agents-grid");
-    await waitFor(() => {
-      expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
-    });
-
-    const leadDragTransfer = createDataTransferStub();
-    const lead = pinnedAgentLink(grid, "Zero");
-    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: leadDragTransfer,
-    });
-    expect(
-      fireEvent.dragOver(lead, { dataTransfer: leadDragTransfer }),
-    ).toBeFalsy();
-    expect(
-      fireEvent.drop(lead, { dataTransfer: leadDragTransfer }),
-    ).toBeFalsy();
-    fireEvent.dragEnd(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: leadDragTransfer,
-    });
-
-    // A later reorder gives the lead drop time to land if it were not a no-op,
-    // so the recorded requests below prove it never reached the API.
-    const reorderTransfer = createDataTransferStub();
-    fireEvent.dragStart(pinnedAgentLink(grid, "Support Agent"), {
-      dataTransfer: reorderTransfer,
-    });
-    fireEvent.dragOver(pinnedAgentLink(grid, "Billing Agent"), {
-      dataTransfer: reorderTransfer,
-    });
-    fireEvent.drop(pinnedAgentLink(grid, "Billing Agent"), {
-      dataTransfer: reorderTransfer,
-    });
-
-    await waitFor(() => {
-      expect(pinnedAgentNames(grid)).toStrictEqual([
-        "Zero",
-        "Research Agent",
-        "Operations Agent",
-        "Analytics Agent",
-        "Billing Agent",
-        "Support Agent",
-      ]);
-    });
-    expect(savedPinnedOrders).toStrictEqual([
-      [
-        RESEARCH_AGENT_ID,
-        OVERFLOW_PINNED_AGENTS[0].agentId,
-        OVERFLOW_PINNED_AGENTS[1].agentId,
-        OVERFLOW_PINNED_AGENTS[2].agentId,
-        SUPPORT_AGENT_ID,
+  const supportThread = createThread(INCIDENT_THREAD_ID, "Support escalation", {
+    agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+  });
+  const olderSupportThread = createThread(
+    AUTOMATION_THREAD_ID,
+    "Support archive",
+    {
+      agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+    },
+  );
+  mockSidebarThreadStory([researchThread, supportThread, olderSupportThread]);
+  context.mocks.api(chatThreadsContract.unreads, async ({ query, respond }) => {
+    if (query.agentId === SUPPORT_AGENT_ID) {
+      await supportUnreadGate.promise;
+    }
+    const threadId =
+      query.agentId === SUPPORT_AGENT_ID
+        ? INCIDENT_THREAD_ID
+        : RESEARCH_THREAD_ID;
+    return respond(200, {
+      unreads: [
+        {
+          threadId,
+          unreadAt: "2026-03-10T00:05:00Z",
+        },
       ],
-    ]);
-    expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
+    });
   });
 
-  it("localizes desktop and mobile shell navigation and shortcut help", async () => {
-    const mediaQuery = mockDesktopLayout();
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Localized conversation"),
-    ]);
-    setMockWorkflowAutomations([
-      createMockWorkflowAutomation({
-        chatThreadId: EXISTING_THREAD_ID,
-      }),
-    ]);
-    context.mocks.data.userPreferences({
-      locale: "pt-BR",
-      supportedLocales: ["en-US", "pt-BR"],
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
-    expect(
-      within(rail).getByRole("navigation", { name: "Barra lateral" }),
-    ).toBeInTheDocument();
-    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
-    const workflowsLink = within(rail).getByLabelText("Fluxos de trabalho");
-    expect(workflowsLink).toHaveAttribute("title", "Fluxos de trabalho");
-    expect(within(rail).getByText("Conectores")).toBeInTheDocument();
-    expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
-    expect(
-      within(rail).getByLabelText("Onde Zero trabalha"),
-    ).toBeInTheDocument();
-
-    act(() => {
-      mediaQuery.setMatches(false);
-    });
-
-    expect(screen.getByLabelText("Abrir menu")).toBeInTheDocument();
-    await expect(
-      screen.findByLabelText("Abrir artefatos no celular"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir automações no celular"),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Recolher barra lateral")).toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Atalhos de teclado",
-    });
-    expect(
-      within(dialog).getByText("Atalhos disponíveis nesta página"),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText("Mostrar atalhos")).toBeInTheDocument();
-    expect(
-      within(dialog).getByLabelText("Fechar atalhos de teclado"),
-    ).toBeInTheDocument();
+  await setupSidebarPage({
+    context,
+    path: `/chats/${RESEARCH_THREAD_ID}`,
   });
 
-  it("localizes desktop and mobile shell navigation in Japanese", async () => {
-    const mediaQuery = mockDesktopLayout();
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Localized conversation"),
-    ]);
-    setMockWorkflowAutomations([
-      createMockWorkflowAutomation({
-        chatThreadId: EXISTING_THREAD_ID,
-      }),
-    ]);
-    context.mocks.data.userPreferences({
-      locale: "ja-JP",
-      supportedLocales: ["en-US", "ja-JP"],
-    });
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Research kickoff")).toBeInTheDocument();
+  });
+  openChatListMenu();
+  click(menuItemByText("Unread only"));
+  await waitFor(() => {
+    expect(within(sidebar()).getByText("Research kickoff")).toBeInTheDocument();
+  });
+  const chatList = within(sidebar()).getByLabelText("Chat threads");
 
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
-    expect(
-      within(rail).getByRole("navigation", { name: "サイドバー" }),
-    ).toBeInTheDocument();
-    expect(within(rail).getByText("エージェント")).toBeInTheDocument();
-    expect(within(rail).getByText("ワークフロー")).toBeInTheDocument();
-    expect(within(rail).getByText("コネクター")).toBeInTheDocument();
-    expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
-    expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
-
-    act(() => {
-      mediaQuery.setMatches(false);
-    });
-
-    expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
-    await expect(
-      screen.findByLabelText("モバイルでアーティファクトを開く"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByLabelText("モバイルでオートメーションを開く"),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("サイドバーを折りたたむ")).toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "キーボードショートカット",
-    });
-    expect(
-      within(dialog).getByText("このページで利用可能なショートカット"),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText("ショートカットを表示する"),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByLabelText("キーボードショートカットを閉じる"),
-    ).toBeInTheDocument();
+  fireEvent.keyDown(document.body, {
+    key: "}",
+    ctrlKey: true,
+    shiftKey: true,
   });
 
-  it("localizes desktop and mobile shell navigation in Spanish", async () => {
-    const mediaQuery = mockDesktopLayout();
-    prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Localized conversation"),
-    ]);
-    setMockWorkflowAutomations([
-      createMockWorkflowAutomation({
-        chatThreadId: EXISTING_THREAD_ID,
-      }),
-    ]);
-    context.mocks.data.userPreferences({
-      locale: "es-ES",
-      supportedLocales: ["en-US", "es-ES"],
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/chats/${EXISTING_THREAD_ID}`,
-    });
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
     expect(
-      within(rail).getByRole("navigation", { name: "Barra lateral" }),
-    ).toBeInTheDocument();
-    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
-    expect(within(rail).getByText("Flujos de trabajo")).toBeInTheDocument();
-    expect(within(rail).getByText("Conectores")).toBeInTheDocument();
-    expect(within(rail).getByText("Artefactos")).toBeInTheDocument();
-    expect(
-      within(rail).getByLabelText("Dónde trabaja Zero"),
-    ).toBeInTheDocument();
-
-    act(() => {
-      mediaQuery.setMatches(false);
-    });
-
-    expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
-    await expect(
-      screen.findByLabelText("Abrir artefactos en móvil"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Abrir automatizaciones en móvil"),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Contraer barra lateral")).toBeInTheDocument();
-
-    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Atajos de teclado",
-    });
-    expect(
-      within(dialog).getByText("Atajos disponibles en esta página"),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText("Mostrar atajos de teclado"),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByLabelText("Cerrar atajos de teclado"),
-    ).toBeInTheDocument();
+      within(sidebar()).queryByText("Research kickoff"),
+    ).not.toBeInTheDocument();
+    expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
   });
 
-  it("keeps localized navigation accessible while hiding and showing the chat list", async () => {
-    prepareDefaultAgent();
-    context.mocks.data.userPreferences({
-      locale: "pt-BR",
-      supportedLocales: ["en-US", "pt-BR"],
-    });
-
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const list = await screen.findByTestId("chat-list-column");
-    click(within(list).getByLabelText("Ocultar lista de conversas"));
-
-    const rail = await screen.findByTestId("labeled-nav-rail");
+  supportUnreadGate.resolve(undefined);
+  await waitFor(() => {
     expect(
-      within(rail).getByRole("navigation", { name: "Barra lateral" }),
+      within(sidebar()).getByText("Support escalation"),
     ).toBeInTheDocument();
-    expect(within(rail).getByLabelText("Agentes")).toBeInTheDocument();
-
-    click(within(rail).getByLabelText("Mostrar lista de conversas"));
-    await screen.findByTestId("chat-list-column");
+    expect(within(sidebar()).getByLabelText("Chat threads")).toBe(chatList);
   });
+});
+
+test("Use context actions on pinned agents", async () => {
+  prepareAgents();
+  context.mocks.data.userPreferences({
+    pinnedAgentIds: [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID],
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  const researchAgent = await waitFor(() => {
+    return pinnedAgentLink(grid, "Research Agent");
+  });
+
+  fireEvent.contextMenu(researchAgent);
+  expect(menuItemByText("Unpin")).toBeInTheDocument();
+  click(menuItemByText("Unpin"));
+  await waitFor(() => {
+    expect(within(grid).queryByText("Research Agent")).toBeNull();
+  });
+
+  const supportAgent = pinnedAgentLink(grid, "Support Agent");
+  fireEvent.touchStart(supportAgent, {
+    touches: [{ identifier: 1, clientX: 12, clientY: 12 }],
+  });
+  await waitFor(() => {
+    expect(menuItemByText("Unpin")).toBeInTheDocument();
+  });
+  fireEvent.touchEnd(supportAgent, {
+    touches: [],
+    changedTouches: [{ identifier: 1, clientX: 12, clientY: 12 }],
+  });
+  fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+  await waitFor(() => {
+    expect(queryMenuItemByText("Unpin")).toBeNull();
+  });
+
+  click(supportAgent);
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${SUPPORT_AGENT_ID}/chat`);
+  });
+});
+
+test("Collapse the chat-list upgrade slot when no upgrade card exists", async () => {
+  prepareDefaultAgent();
+  mockChatThreadSnapshot(() => {
+    return [];
+  });
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, topTierBillingStatus());
+  });
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const list = await screen.findByTestId("chat-list-column");
+  await expect(
+    within(list).findByTestId("pinned-agents-horizontal"),
+  ).resolves.toBeVisible();
+  const upgradeSlot = list.lastElementChild;
+  expect(upgradeSlot).toBeEmptyDOMElement();
+  expect(upgradeSlot).toHaveClass("empty:hidden");
+});
+
+test("Show the three-column chat navigation and actions", async () => {
+  prepareDefaultAgent();
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+  });
+
+  const rail = await waitFor(() => {
+    return screen.getByTestId("labeled-nav-rail");
+  });
+
+  const chatLink = within(rail).getByLabelText("Chat");
+  expect(within(rail).getByText("Chat")).toBeInTheDocument();
+  expect(chatLink.querySelector(".lucide-message-circle")).toBeInTheDocument();
+  expect(within(rail).getByText("Agents")).toBeInTheDocument();
+  expect(within(rail).getByText("Connectors")).toBeInTheDocument();
+
+  const list = screen.getByTestId("chat-list-column");
+  expect(within(list).getByText("Chat")).toBeInTheDocument();
+  const searchButton = within(list).getByLabelText("Search workspace");
+  const chatThreadsTitle = within(list).getByText("Chats with Zero");
+  if (!searchButton.parentElement || !chatThreadsTitle.parentElement) {
+    throw new Error("Chat action headers not found");
+  }
+  const headerNewChat = within(searchButton.parentElement).getByLabelText(
+    "New chat",
+  );
+  const threadNewChat = within(chatThreadsTitle.parentElement).getByLabelText(
+    "New chat",
+  );
+  expect(searchButton).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Meta+Shift+F Control+Shift+F",
+  );
+  expect(headerNewChat.querySelector(".lucide-square-pen")).toBeInTheDocument();
+  expect(threadNewChat.querySelector(".lucide-plus")).toBeInTheDocument();
+  expect(
+    within(list).getByTestId("pinned-agents-horizontal"),
+  ).toBeInTheDocument();
 });

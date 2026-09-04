@@ -483,13 +483,14 @@ export function triggerAblyEvent(topic: string, data?: unknown): void {
   for (const listener of userRealtimeEventListeners) {
     listener(message);
   }
-  const channelPrefix = isSharedDatabaseRealtimeTopic(topic)
-    ? "user-org:"
-    : "user:";
+  if (isSharedDatabaseRealtimeTopic(topic)) {
+    triggerChatDatabaseEvent(topic, data);
+    return;
+  }
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       for (const [channelName, channel] of realtime.namedChannels()) {
-        if (channelName.startsWith(channelPrefix)) {
+        if (channelName.startsWith("user:")) {
           channel.trigger(topic, data);
         }
       }
@@ -786,6 +787,11 @@ export function hasChannelSubscriptionOnChannel(channelName: string): boolean {
     }
   }
   return false;
+}
+
+/** Whether the test Shared Database bridge can receive server publishes. */
+export function hasSharedDatabaseSubscription(): boolean {
+  return chatDatabaseEventListeners.size > 0;
 }
 
 /** Reset all subscriptions and captured auth state between tests. */
