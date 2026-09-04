@@ -24,6 +24,9 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
     expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
+    expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
+      "progressiveArtifactPreview",
+    );
     expect(FeatureSwitchKey.MarkdownHexColorPreview).toBe(
       "markdownHexColorPreview",
     );
@@ -184,6 +187,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
@@ -216,6 +222,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(
       false,

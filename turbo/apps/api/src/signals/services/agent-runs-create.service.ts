@@ -52,6 +52,7 @@ import {
   type AgentRunModelPin,
 } from "./agent-run-create.service";
 import { buildAgentExecutionConfig } from "./agent-execution-config";
+import { isWebChatTriggerSource } from "./chat-trigger-source.service";
 import {
   resolveChatThreadSession,
   type ChatThreadSessionResolution,
@@ -335,6 +336,26 @@ function buildExecutionTimeLimitPrompt(): string {
   ].join("\n");
 }
 
+function buildProgressiveArtifactPreviewPrompt(args: {
+  readonly triggerSource: TriggerSource;
+  readonly enabled: boolean;
+}): string | null {
+  if (!args.enabled || !isWebChatTriggerSource(args.triggerSource)) {
+    return null;
+  }
+
+  return [
+    "# Progressive Artifact Preview",
+    "",
+    "When generating a static website or HTML presentation:",
+    "- As soon as a coherent, navigable first draft exists, publish it with `okou host`. For an HTML presentation, include `--artifact-kind presentation-html` on every publish.",
+    "- Share the returned Alias URL in a brief commentary update and say that you are still working on it.",
+    "- Continue improving the artifact, and republish the same directory with the same `--site` slug at meaningful checkpoints so the Alias keeps showing the newest version.",
+    "- Keep the in-progress status generic. Do not report named stages, draft/final labels, or completion percentages.",
+    "- Complete the normal verification and publish the final version before your final response.",
+  ].join("\n");
+}
+
 function buildIntegrationToolsPrompt(
   triggerSource: TriggerSource,
 ): readonly string[] {
@@ -561,6 +582,7 @@ function buildAppendSystemPrompt(args: {
   readonly connectorAccountsEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
+  readonly progressiveArtifactPreviewEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent, args.publicBrand);
   return [
@@ -573,6 +595,10 @@ function buildAppendSystemPrompt(args: {
       connectorAccountsEnabled: args.connectorAccountsEnabled,
       presentationScreenshotEnabled: args.presentationScreenshotEnabled,
       presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+    }),
+    buildProgressiveArtifactPreviewPrompt({
+      triggerSource: args.triggerSource,
+      enabled: args.progressiveArtifactPreviewEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
   ]
@@ -754,6 +780,7 @@ function createRunBody(args: {
   readonly connectorAccountsEnabled: boolean;
   readonly presentationScreenshotEnabled: boolean;
   readonly presentationTemplatesEnabled: boolean;
+  readonly progressiveArtifactPreviewEnabled: boolean;
 }) {
   const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
@@ -766,6 +793,7 @@ function createRunBody(args: {
     connectorAccountsEnabled: args.connectorAccountsEnabled,
     presentationScreenshotEnabled: args.presentationScreenshotEnabled,
     presentationTemplatesEnabled: args.presentationTemplatesEnabled,
+    progressiveArtifactPreviewEnabled: args.progressiveArtifactPreviewEnabled,
   });
   return {
     prompt: args.body.prompt,
@@ -974,6 +1002,10 @@ function buildZeroCreateAgentRunArgs(args: {
       ),
       presentationTemplatesEnabled: isFeatureEnabled(
         FeatureSwitchKey.PresentationTemplates,
+        args.featureSwitchContext,
+      ),
+      progressiveArtifactPreviewEnabled: isFeatureEnabled(
+        FeatureSwitchKey.ProgressiveArtifactPreview,
         args.featureSwitchContext,
       ),
     }),
