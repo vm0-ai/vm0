@@ -699,6 +699,7 @@ describe("chat drafts", () => {
       validationRequests += 1;
       return respond(200, {
         url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+        publicUrl: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
       });
     });
 

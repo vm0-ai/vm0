@@ -541,7 +541,10 @@ function createComposerVoiceInputSignals(
             );
             await set(draft.save$, signal);
           }),
-          quota.limit === null,
+          {
+            autoSegment: quota.limit === null,
+            autoStopOnSilence: false,
+          },
           {
             started: () => {
               voiceDraftId = set(workflowComposer.voiceDraft.start$);
@@ -578,7 +581,10 @@ function createComposerVoiceInputSignals(
           set(workflowComposer.appendText$, text);
           await set(draft.save$, signal);
         }),
-        quota.limit === null,
+        {
+          autoSegment: quota.limit === null,
+          autoStopOnSilence: true,
+        },
         undefined,
         signal,
       );
