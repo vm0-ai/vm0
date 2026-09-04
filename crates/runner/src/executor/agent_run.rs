@@ -2774,7 +2774,7 @@ mod tests {
         let mut index = 0;
 
         while remaining > 0 {
-            let key = format!("VM0_FILL_{index}");
+            let key = format!("TEST_FILL_{index}");
             let overhead = key.len() + 2;
             if remaining <= overhead {
                 pairs
@@ -2797,14 +2797,14 @@ mod tests {
     #[test]
     fn bootstrap_exec_boundary_rejects_oversized_env_value_without_value_leak() {
         let secret = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let env_pairs = vec![("VM0_OVERSIZED".to_string(), secret.clone())];
+        let env_pairs = vec![("TEST_OVERSIZED".to_string(), secret.clone())];
 
         let error = validate_agent_bootstrap_exec_boundary(&env_pairs)
             .unwrap_err()
             .to_string();
 
         assert!(error.contains("guest-agent bootstrap argv/env too large"));
-        assert!(error.contains("VM0_OVERSIZED"));
+        assert!(error.contains("TEST_OVERSIZED"));
         assert!(!error.contains(&secret));
     }
 
@@ -2812,7 +2812,7 @@ mod tests {
     fn bootstrap_exec_boundary_rejects_aggregate_overflow() {
         let value = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES - 16);
         let env_pairs: Vec<(String, String)> = (0..20)
-            .map(|index| (format!("VM0_CHUNK_{index}"), value.clone()))
+            .map(|index| (format!("TEST_CHUNK_{index}"), value.clone()))
             .collect();
 
         let error = validate_agent_bootstrap_exec_boundary(&env_pairs)

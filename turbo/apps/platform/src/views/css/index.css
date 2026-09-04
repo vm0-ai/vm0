@@ -204,89 +204,41 @@ body {
   }
 }
 
-/* Shimmer text effect for active/thinking states */
-@keyframes zero-shimmer-window {
+/* Shimmer text effect for active/thinking states.
+
+   The bright band lives in the label's own background gradient, so the only
+   thing that moves is the gradient's paint origin. Sweeping it instead with a
+   translated overlay needs the overlay and the text copy inside it to cancel
+   each other out on every frame, and the compositor rasterises each animated
+   layer against its own whole-device-pixel origin, so that cancellation drifts
+   by up to a pixel and the status text jitters sideways. Nothing here moves a
+   box that holds glyphs, so the text cannot shift.
+
+   `contain: paint` keeps the per-frame repaint inside the label. */
+@keyframes zero-shimmer {
   from {
-    transform: translate3d(-50%, 0, 0);
+    background-position: 100% center;
   }
   to {
-    transform: translate3d(283.333333%, 0, 0);
+    background-position: -100% center;
   }
-}
-@keyframes zero-shimmer-highlight {
-  from {
-    transform: translate3d(30%, 0, 0);
-  }
-  to {
-    transform: translate3d(-170%, 0, 0);
-  }
-}
-@keyframes zero-shimmer-highlight-secondary {
-  from {
-    transform: translate3d(230%, 0, 0);
-  }
-  to {
-    transform: translate3d(30%, 0, 0);
-  }
-}
-.zero-shimmer-text-shell {
-  position: relative;
-  contain: paint;
 }
 .zero-shimmer-text {
-  background-color: hsl(var(--muted-foreground) / 0.8);
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground) / 0.8) 0%,
+    hsl(var(--muted-foreground) / 0.8) 35%,
+    hsl(var(--foreground)) 48%,
+    hsl(var(--foreground)) 52%,
+    hsl(var(--muted-foreground) / 0.8) 65%,
+    hsl(var(--muted-foreground) / 0.8) 100%
+  );
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-.zero-shimmer-window {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 60%;
-  overflow: hidden;
-  background-color: hsl(var(--background));
-  pointer-events: none;
-  user-select: none;
-  /* Map the old 35%-65% band from its 200%-wide gradient into one window. */
-  -webkit-mask-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    black 43.333333%,
-    black 56.666667%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    black 43.333333%,
-    black 56.666667%,
-    transparent 100%
-  );
-  animation: zero-shimmer-window 3.5s linear infinite;
-  will-change: transform;
-}
-.zero-shimmer-highlight {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  display: block;
-  width: 166.666667%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background-color: hsl(var(--foreground));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: zero-shimmer-highlight 3.5s linear infinite;
-  will-change: transform;
-}
-.zero-shimmer-window-secondary {
-  left: -200%;
-}
-.zero-shimmer-window-secondary .zero-shimmer-highlight {
-  animation-name: zero-shimmer-highlight-secondary;
+  contain: paint;
+  animation: zero-shimmer 3.5s linear infinite;
 }
 
 @keyframes zero-thinking-in {
@@ -1964,8 +1916,7 @@ details > summary {
    rendered inside the dialog keeps running. */
 html:has(.zero-dialog-overlay)
   :is(
-    .zero-shimmer-window,
-    .zero-shimmer-highlight,
+    .zero-shimmer-text,
     .zero-blocks span,
     .zero-thinking-spinner,
     .mic-starting-spinner,

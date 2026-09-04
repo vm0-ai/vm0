@@ -15,8 +15,9 @@ use super::workspaces::is_base_dir_lock_name;
 /// because this GC pass runs before version GC, which relies on those lock paths
 /// to coordinate with concurrent service install/uninstall commands. The
 /// systemd reload lock is also retained because non-runner lifecycle owners use
-/// the same stable path with plain `flock`. Stale version service locks are
-/// cleaned by a post-version-GC pass.
+/// the same stable path with plain `flock`. The global GC lock remains stable so
+/// old external holders and runner-owned locking coordinate on the same inode.
+/// Stale version service locks are cleaned by a post-version-GC pass.
 pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -39,6 +40,7 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
         // the base_dir metadata needed to rediscover dead-runner workspaces.
         if RunnerServiceUnit::from_lock_file_name(name).is_some()
             || entry.path() == home.systemd_daemon_reload_lock()
+            || entry.path() == home.gc_lock()
             || is_base_dir_lock_name(name)
         {
             continue;
@@ -126,14 +128,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_orphaned_locks_preserves_systemd_reload_lock() {
+    async fn gc_orphaned_locks_preserves_host_global_locks() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
         let reload_lock = home.systemd_daemon_reload_lock();
+        let gc_lock = home.gc_lock();
         let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
         std::fs::write(&reload_lock, "").unwrap();
+        std::fs::write(&gc_lock, "").unwrap();
         std::fs::write(&stale_lock, "").unwrap();
 
         let report = gc_orphaned_locks(&home, false).await.unwrap();
@@ -143,6 +147,10 @@ mod tests {
         assert!(
             reload_lock.exists(),
             "the shared systemd reload lock must keep a stable inode"
+        );
+        assert!(
+            gc_lock.exists(),
+            "the global GC lock must keep a stable inode"
         );
         assert!(
             !stale_lock.exists(),

@@ -19,6 +19,24 @@ type AbortSignalTimeoutMock = Mock<
 >;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
+type AxiomSdkConstructor = typeof import("@axiomhq/js").Axiom;
+type AxiomSdkClient = InstanceType<AxiomSdkConstructor>;
+type AxiomSdkConstructorArguments = ConstructorParameters<AxiomSdkConstructor>;
+type AxiomSdkQueryBridge = (
+  ...args: Parameters<AxiomSdkClient["query"]>
+) => Promise<unknown>;
+type ResendConstructorArguments = ConstructorParameters<
+  typeof import("resend").Resend
+>;
+type SlackWebClientConstructorArguments = ConstructorParameters<
+  typeof import("@slack/web-api").WebClient
+>;
+type AxiomLoggerConstructorArguments = ConstructorParameters<
+  typeof import("@axiomhq/logging").Logger
+>;
+type AxiomJSTransportConstructorArguments = ConstructorParameters<
+  typeof import("@axiomhq/logging").AxiomJSTransport
+>;
 
 function resolveDefaultStripePrice(priceId: unknown): Promise<unknown> {
   return Promise.resolve({
@@ -32,15 +50,11 @@ function resolveDefaultStripePrice(priceId: unknown): Promise<unknown> {
   });
 }
 
-interface AxiomClientOptions {
-  readonly onError?: (error: Error) => void;
-  readonly token?: string;
-}
 interface AxiomSdkClientMock {
-  readonly options: AxiomClientOptions;
-  readonly flush: AsyncMock;
-  readonly ingest: UnknownMock;
-  readonly query: AsyncMock;
+  readonly options: AxiomSdkConstructorArguments[0];
+  readonly flush: Mock<AxiomSdkClient["flush"]>;
+  readonly ingest: Mock<AxiomSdkClient["ingest"]>;
+  readonly query: Mock<AxiomSdkQueryBridge>;
 }
 interface BrowserUseCdpCommand {
   readonly id: number;
@@ -294,6 +308,15 @@ export interface ApiTestMocks {
     readonly nativeNodeFetchIntegration: Mock<(...args: unknown[]) => unknown>;
   };
 }
+
+interface ResendClientMock {
+  readonly emails: {
+    readonly send: ApiTestMocks["resend"]["send"];
+  };
+}
+type SlackWebClientMock = Omit<ApiTestMocks["slack"], "fetchFile">;
+type AxiomLoggerMock = ApiTestMocks["axiomLogging"];
+type AxiomJSTransportMock = Readonly<Record<string, never>>;
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const axiom = {
@@ -912,13 +935,16 @@ vi.mock("web-push", async (importActual) => {
 
 vi.mock("resend", () => {
   return {
-    Resend: vi.fn(function (): unknown {
-      return {
-        emails: {
-          send: apiTestMocks.resend.send,
-        },
-      };
-    }),
+    Resend: vi.fn<(...args: ResendConstructorArguments) => ResendClientMock>(
+      function () {
+        const client: ResendClientMock = {
+          emails: {
+            send: apiTestMocks.resend.send,
+          },
+        };
+        return client;
+      },
+    ),
   };
 });
 
@@ -1056,8 +1082,10 @@ vi.mock("stripe", async (importOriginal) => {
 
 vi.mock("@slack/web-api", () => {
   return {
-    WebClient: vi.fn(function (): unknown {
-      return {
+    WebClient: vi.fn<
+      (...args: SlackWebClientConstructorArguments) => SlackWebClientMock
+    >(function () {
+      const client: SlackWebClientMock = {
         assistant: {
           threads: {
             setStatus: apiTestMocks.slack.assistant.threads.setStatus,
@@ -1093,6 +1121,7 @@ vi.mock("@slack/web-api", () => {
           info: apiTestMocks.slack.users.info,
         },
       };
+      return client;
     }),
   };
 });
@@ -1155,44 +1184,50 @@ vi.mock("../signals/external/axiom", async () => {
 
 vi.mock("@axiomhq/js", () => {
   return {
-    Axiom: vi.fn<(options: AxiomClientOptions) => unknown>(function (
-      options: AxiomClientOptions,
-    ) {
-      apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
-        options.onError?.(error);
-      });
-      const client: AxiomSdkClientMock = {
-        options,
-        flush: vi.fn((...args: unknown[]) => {
-          return apiTestMocks.axiom.flush(...args);
-        }),
-        ingest: vi.fn((...args: unknown[]) => {
-          return apiTestMocks.axiom.sdkIngest(...args);
-        }),
-        query: vi.fn((...args: unknown[]) => {
-          return apiTestMocks.axiom.query(...args);
-        }),
-      };
-      apiTestMocks.axiom.clients.push(client);
-      return client;
-    }),
+    Axiom: vi.fn<(...args: AxiomSdkConstructorArguments) => AxiomSdkClientMock>(
+      function (options) {
+        apiTestMocks.axiom.clientError.mockImplementation((error: Error) => {
+          options.onError?.(error);
+        });
+        const client: AxiomSdkClientMock = {
+          options,
+          flush: vi.fn<AxiomSdkClient["flush"]>(async (...args) => {
+            await apiTestMocks.axiom.flush(...args);
+          }),
+          ingest: vi.fn<AxiomSdkClient["ingest"]>((...args) => {
+            apiTestMocks.axiom.sdkIngest(...args);
+          }),
+          query: vi.fn<AxiomSdkQueryBridge>((...args) => {
+            return apiTestMocks.axiom.query(...args);
+          }),
+        };
+        apiTestMocks.axiom.clients.push(client);
+        return client;
+      },
+    ),
   };
 });
 
 vi.mock("@axiomhq/logging", () => {
   return {
     EVENT: Symbol("EVENT"),
-    Logger: vi.fn(function () {
-      return {
+    Logger: vi.fn<
+      (...args: AxiomLoggerConstructorArguments) => AxiomLoggerMock
+    >(function () {
+      const logger: AxiomLoggerMock = {
         debug: apiTestMocks.axiomLogging.debug,
         info: apiTestMocks.axiomLogging.info,
         warn: apiTestMocks.axiomLogging.warn,
         error: apiTestMocks.axiomLogging.error,
         flush: apiTestMocks.axiomLogging.flush,
       };
+      return logger;
     }),
-    AxiomJSTransport: vi.fn(function () {
-      return {};
+    AxiomJSTransport: vi.fn<
+      (...args: AxiomJSTransportConstructorArguments) => AxiomJSTransportMock
+    >(function () {
+      const transport: AxiomJSTransportMock = {};
+      return transport;
     }),
   };
 });

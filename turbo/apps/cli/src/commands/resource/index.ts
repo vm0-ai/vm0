@@ -20,7 +20,10 @@ import {
   type VideoTemplateRegistryEntry,
 } from "@okouai/core/resource-registry";
 
-import { getRegistryResourceDownload } from "../../lib/api/domains/registry-resources";
+import {
+  getPresentationTemplateDownload,
+  getRegistryResourceDownload,
+} from "../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
@@ -122,18 +125,25 @@ export const resourceCommand = new Command()
           }
 
           console.log(chalk.dim(`Pulling ${entry.id}...`));
-          const download = await getRegistryResourceDownload({
-            id: entry.id,
-            expectedSha256: archive.sha256,
-          });
-          if (download.sha256 !== archive.sha256) {
-            throw new Error(
-              `Resource archive digest metadata mismatch: expected ${archive.sha256}, got ${download.sha256}`,
-            );
+          let buffer: Buffer;
+          if (findPresentationRunbookResource(entry.id)) {
+            const download = await getPresentationTemplateDownload({
+              id: entry.id,
+            });
+            buffer = await downloadArchive(download.url);
+          } else {
+            const download = await getRegistryResourceDownload({
+              id: entry.id,
+              expectedSha256: archive.sha256,
+            });
+            if (download.sha256 !== archive.sha256) {
+              throw new Error(
+                `Resource archive digest metadata mismatch: expected ${archive.sha256}, got ${download.sha256}`,
+              );
+            }
+            buffer = await downloadArchive(download.url);
+            verifyArchive(buffer, archive.sha256);
           }
-
-          const buffer = await downloadArchive(download.url);
-          verifyArchive(buffer, archive.sha256);
 
           const outputDir = path.resolve(options.dir);
           const tmpDir = await mkdtemp(path.join(tmpdir(), "resource-"));

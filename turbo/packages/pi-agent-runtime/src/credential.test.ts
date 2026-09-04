@@ -132,11 +132,13 @@ describe("Pi agent credential resolution", () => {
         },
       ],
     });
+    const resolutionOrder: string[] = [];
     await expect(
       materializePiAgentModelConfig({
         config,
         target: "direct",
         resolveCredential(binding) {
+          resolutionOrder.push(binding.kind);
           switch (binding.environment) {
             case "CHATGPT_ACCESS_TOKEN":
               return "opaque-access-token";
@@ -158,5 +160,6 @@ describe("Pi agent credential resolution", () => {
       apiKey: "opaque-access-token",
       accountId: "account-id",
     });
+    expect(resolutionOrder).toStrictEqual(["access-token", "account-id"]);
   });
 });

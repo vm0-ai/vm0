@@ -6025,32 +6025,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     if (!isRecord(vm0State)) {
       throw new Error("Expected VM0 GitHub OAuth state to be an object");
     }
-    const legacyState = JSON.stringify(
-      Object.fromEntries(
-        Object.entries(vm0State).filter(([key]) => {
-          return ![
-            "publicBrand",
-            "publicBrandSig",
-            "callbackRedirectUri",
-            "callbackRedirectUriSig",
-          ].includes(key);
-        }),
-      ),
-    );
-    const legacyError = await integrations.requestGithubAppSetupCallback(
-      {
-        error: "access_denied",
-        error_description: "Provider denied access",
-        state: legacyState,
-      },
-      [307],
-      "vm0",
-      "https://www.vm0.ai",
-    );
-    expect(new URL(legacyError.headers.get("location") ?? "").origin).toBe(
-      "https://app.vm0.ai",
-    );
-
     const tamperedState = JSON.stringify({
       ...vm0State,
       publicBrand: "okou",

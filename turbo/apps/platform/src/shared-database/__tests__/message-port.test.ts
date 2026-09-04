@@ -122,7 +122,7 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    reloadRequired: vi.fn<() => void>(),
+    workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
 }
@@ -157,6 +157,7 @@ function initializeWorker(): void {
 }
 
 function connectProtocolTransport(
+  bridgeSignal: AbortSignal,
   events: SharedDatabaseBridgeEvents = bridgeEvents(),
 ): {
   readonly bridge: MessagePortSharedDatabaseBridge;
@@ -170,7 +171,11 @@ function connectProtocolTransport(
     context.signal,
   );
   return {
-    bridge: new MessagePortSharedDatabaseBridge(platformPort, events),
+    bridge: new MessagePortSharedDatabaseBridge(
+      platformPort,
+      events,
+      bridgeSignal,
+    ),
     platformPort,
     workerPort,
   };
@@ -178,8 +183,8 @@ function connectProtocolTransport(
 
 test("Keep concurrent shared chat loads independent", async () => {
   initializeWorker();
-  const { bridge } = connectProtocolTransport();
   const owner = createChildAbortController(context.signal);
+  const { bridge } = connectProtocolTransport(owner.signal);
   await bridge.registerTab(owner.signal);
   const firstKey = dataKey(crypto.randomUUID());
   const secondKey = dataKey(crypto.randomUUID());
@@ -236,8 +241,8 @@ test("Keep concurrent shared chat loads independent", async () => {
 
 test("Cancel one shared chat load without cancelling worker progress", async () => {
   initializeWorker();
-  const { bridge, workerPort } = connectProtocolTransport();
   const owner = createChildAbortController(context.signal);
+  const { bridge, workerPort } = connectProtocolTransport(owner.signal);
   await bridge.registerTab(owner.signal);
   const key = dataKey(crypto.randomUUID());
   const canonicalRow = row(key.threadId, 1);
@@ -287,10 +292,10 @@ test("Cancel one shared chat load without cancelling worker progress", async () 
 
 test("Disconnect one tab without interrupting another tab", async () => {
   initializeWorker();
-  const first = connectProtocolTransport();
-  const second = connectProtocolTransport();
   const firstOwner = createChildAbortController(context.signal);
   const secondOwner = createChildAbortController(context.signal);
+  const first = connectProtocolTransport(firstOwner.signal);
+  const second = connectProtocolTransport(secondOwner.signal);
   await first.bridge.registerTab(firstOwner.signal);
   await second.bridge.registerTab(secondOwner.signal);
 
@@ -314,7 +319,7 @@ test("Disconnect one tab without interrupting another tab", async () => {
 
 test("Reject shared-data access before the tab is registered", async () => {
   initializeWorker();
-  const { bridge } = connectProtocolTransport();
+  const { bridge } = connectProtocolTransport(context.signal);
 
   await expect(
     bridge.query(
@@ -332,9 +337,11 @@ test("Reject shared-data access before the tab is registered", async () => {
 
 test("Validate shared chat results received from the worker", async () => {
   const [platformPort, workerPort] = messagePortPair();
+  const owner = createChildAbortController(context.signal);
   const bridge = new MessagePortSharedDatabaseBridge(
     platformPort,
     bridgeEvents(),
+    owner.signal,
   );
   workerPort.addEventListener("message", (event) => {
     const message = event.data;
@@ -354,7 +361,6 @@ test("Validate shared chat results received from the worker", async () => {
     }
   });
   workerPort.start();
-  const owner = createChildAbortController(context.signal);
   await bridge.registerTab(owner.signal);
 
   await expect(
@@ -367,4 +373,63 @@ test("Validate shared chat results received from the worker", async () => {
       owner.signal,
     ),
   ).rejects.toMatchObject({ name: "ZodError" });
+});
+
+test("Stop pending requests when the bridge lifecycle ends", async () => {
+  const [platformPort, workerPort] = messagePortPair();
+  const owner = createChildAbortController(context.signal);
+  const bridge = new MessagePortSharedDatabaseBridge(
+    platformPort,
+    bridgeEvents(),
+    owner.signal,
+  );
+  const requestsStarted = context.mocks.deferred<void>();
+  const requestIds = new Map<"get-computed" | "query", string>();
+  workerPort.addEventListener("message", (event) => {
+    const message = event.data;
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      "type" in message &&
+      (message.type === "get-computed" || message.type === "query") &&
+      "requestId" in message &&
+      typeof message.requestId === "string"
+    ) {
+      requestIds.set(message.type, message.requestId);
+      if (requestIds.size === 2) {
+        requestsStarted.resolve(undefined);
+      }
+    }
+  });
+  workerPort.start();
+  await bridge.registerTab(owner.signal);
+
+  const caller = createChildAbortController(context.signal);
+  const pendingQuery = bridge.query(
+    {
+      dataKey: dataKey(crypto.randomUUID()),
+      afterSeqId: null,
+      consistency: "cache-only",
+    },
+    caller.signal,
+  );
+  const pendingComputed = bridge.getComputed("chat-thread-indicators");
+  await requestsStarted.promise;
+  const reason = new DOMException("Bridge closed", "AbortError");
+  owner.abort(reason);
+
+  await expect(pendingQuery).rejects.toBe(reason);
+  await expect(pendingComputed).rejects.toBe(reason);
+  expect(platformPort.closed).toBeTruthy();
+
+  for (const requestId of requestIds.values()) {
+    workerPort.postMessage({
+      type: "result",
+      requestId,
+      value: { agents: {}, threads: {} },
+    });
+  }
+  await expect(bridge.getComputed("chat-thread-indicators")).rejects.toBe(
+    reason,
+  );
 });

@@ -1400,6 +1400,57 @@ describe("workflows", () => {
     ).toBeTruthy();
   });
 
+  it("copies schedule-only workflows without binding a chat thread", async () => {
+    const actor = user();
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Schedule Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Schedule Copy Target Agent",
+      visibility: "private",
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: `schedule-copy-${randomUUID().slice(0, 8)}`,
+      instruction: "# schedule copy source",
+    });
+    const automation = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "schedule",
+          schedule: { type: "loop", intervalSeconds: 900 },
+        },
+      }),
+      [201],
+    );
+    expect(automation.body.chatThreadId).toBeNull();
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+    const copiedAutomations = await accept(
+      automationsClient().list({
+        headers: authHeaders(actor),
+        params: { workflowId: copied.body.id },
+      }),
+      [200],
+    );
+
+    expect(copiedAutomations.body).toHaveLength(1);
+    expect(copiedAutomations.body[0]).toMatchObject({
+      kind: "schedule",
+      chatThreadId: null,
+    });
+  });
+
   it("rebinds copied Gmail automations to the target thread default account", async () => {
     const actor = user();
     if (!actor.orgId) {

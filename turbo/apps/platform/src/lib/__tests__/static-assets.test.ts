@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import indexHtml from "../../../index.html?raw";
 import { settingsIconAssetUrl } from "../../views/okou-page/components/settings/settings-icon-assets.ts";
 import {
+  avatarComposerAssetUrl,
   avatarSvgAssetUrl,
   computerUseIllustrationImg,
   emptyArtifactImg,
@@ -97,6 +98,9 @@ const OKOU_PAGE_ILLUSTRATIONS = Object.freeze({
 test("Generated avatar assets keep their published address", () => {
   expect(avatarSvgAssetUrl("head-1.svg")).toContain(
     `${FROZEN_CDN_PREFIX}assets/avatar-svg/`,
+  );
+  expect(avatarComposerAssetUrl("faces/round-gold.svg")).toContain(
+    `${FROZEN_CDN_PREFIX}assets/avatar-svg-v2/v31-contained-hair-fill-20260830/`,
   );
 });
 

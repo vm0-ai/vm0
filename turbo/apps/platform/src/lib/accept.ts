@@ -8,6 +8,7 @@ export const ACCEPT_ERROR_EVENT = "okou-accept-error";
 export interface AcceptErrorEventDetail {
   readonly kind: "http-status" | "message" | "request-failed";
   readonly show: boolean;
+  readonly code?: string;
   readonly status?: number;
   message?: string;
 }
@@ -39,6 +40,7 @@ function extractError(
         : "UNKNOWN";
     const detail: AcceptErrorEventDetail = {
       kind: "message",
+      code,
       message: body.error.message,
       show,
     };

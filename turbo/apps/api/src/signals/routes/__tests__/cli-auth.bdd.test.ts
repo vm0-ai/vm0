@@ -1008,6 +1008,7 @@ describe("CLI-TEST: test-codex-oauth", () => {
   });
 
   it("maps invalid pasted auth.json inputs to endpoint errors", async () => {
+    expect.hasAssertions();
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
 

@@ -2684,6 +2684,18 @@
         "continueToProvider": "Gehen Sie weiter zum Anbieter, um den Zugriff zu autorisieren.",
         "continueWithAutomatic": "Weiter, während Okou prüft, wie sich dieser MCP-Server authentifiziert.",
         "description": "Ihr Secret wird im Ruhezustand verschlüsselt und von der Firewall in ausgehende Anfragen eingefügt. Es wird dem Agenten niemals als Umgebungsvariable angezeigt.",
+        "errors": {
+          "authenticationResponseInvalid": "Der MCP-Server hat eine nicht unterstützte Authentifizierungsantwort zurückgegeben. Prüfen Sie den MCP-Endpunkt und seine Authentifizierungskonfiguration oder wenden Sie sich an den Serveradministrator.",
+          "authorizationUnsupported": "Der OAuth-Anbieter unterstützt die Anforderungen der automatischen Authentifizierung nicht. Verwenden Sie benutzerdefiniertes OAuth nur, wenn Sie bereits kompatible Client-Anmeldedaten haben, oder wenden Sie sich an den Okou-Support.",
+          "bindingChanged": "Die MCP-OAuth-Autorität oder Client-Registrierung hat sich geändert. Verbinden Sie das Connector-Konto erneut und versuchen Sie es noch einmal.",
+          "clientRegistrationConflict": "Der vorhandene automatische OAuth-Client kann die erforderlichen Berechtigungen nicht anfordern, solange verbundene Konten ihn verwenden. Trennen Sie diese Konten und verbinden Sie sie erneut oder verwenden Sie benutzerdefiniertes OAuth mit registrierten Client-Anmeldedaten.",
+          "clientRegistrationInvalid": "Der OAuth-Anbieter hat ungültige Client-Registrierungsdaten zurückgegeben. Wenden Sie sich an den Serveradministrator oder verwenden Sie benutzerdefiniertes OAuth, wenn Sie bereits gültige registrierte Client-Anmeldedaten haben.",
+          "clientRegistrationRejected": "Der OAuth-Anbieter hat die automatische Client-Registrierung abgelehnt und beschränkt möglicherweise unterstützte MCP-Clients oder Registrierungsdaten. Verwenden Sie einen vom Anbieter unterstützten MCP-Client, benutzerdefiniertes OAuth nur mit bereits registrierten Client-Anmeldedaten oder wenden Sie sich an den Okou-Support.",
+          "clientRegistrationUnavailable": "Der OAuth-Anbieter bietet keine unterstützte Methode zur automatischen Client-Registrierung an. Verwenden Sie benutzerdefiniertes OAuth, wenn Sie bereits registrierte Client-Anmeldedaten haben, oder wenden Sie sich an den Okou-Support.",
+          "discoveryInvalid": "Die OAuth-Discovery-Metadaten des MCP-Servers sind unvollständig oder widersprüchlich. Korrigieren Sie die veröffentlichten Metadaten, wenn Sie den Server verwalten, oder wenden Sie sich an den Serveradministrator.",
+          "providerUnavailable": "Der MCP-OAuth-Anbieter ist vorübergehend nicht verfügbar oder begrenzt Anfragen. Versuchen Sie es später erneut und prüfen Sie die Verfügbarkeit des Anbieters.",
+          "unsafeUrl": "Der MCP-Server hat eine OAuth-URL veröffentlicht, die kein öffentlicher HTTPS-Endpunkt ist. Korrigieren Sie die veröffentlichten OAuth-URLs des Servers und versuchen Sie es erneut."
+        },
         "save": "Speichern",
         "saving": "Speichern…",
         "title": "Verbinden Sie {{connector}}"
@@ -5089,7 +5101,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Agenten die Verwendung eines Cloud-Browsers in neuen Chats erlauben",
+          "description": "Cloud-Browser in neuen Chats standardmäßig aktivieren. Du kannst das in jedem Chat ändern.",
           "title": "Cloud-Browser"
         },
         "description": "Lege Standardeinstellungen für neue Chats und die Art des Nachrichtenversands fest.",

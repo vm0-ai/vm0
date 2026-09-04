@@ -70,6 +70,14 @@ if ! grep -Fxq 'package/okou.js' <<<"$package_contents"; then
   echo "CLI package is missing the canonical okou.js implementation" >&2
   exit 1
 fi
+if ! grep -Fxq 'package/image-resize-worker.js' <<<"$package_contents"; then
+  echo "CLI package is missing image-resize-worker.js" >&2
+  exit 1
+fi
+if ! grep -Fxq 'package/photon_rs_bg.wasm' <<<"$package_contents"; then
+  echo "CLI package is missing photon_rs_bg.wasm" >&2
+  exit 1
+fi
 if grep -Fxq 'package/zero.js' <<<"$package_contents"; then
   echo "CLI package contains an unexpected duplicate zero.js implementation" >&2
   exit 1

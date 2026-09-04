@@ -4,6 +4,9 @@ import {
   agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
+import { parseAvatarComposerUrl } from "@okouai/core/agent-avatar";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   screen,
   waitFor,
@@ -125,8 +128,9 @@ function configureCatalog(
     readonly defaultAgentId?: string;
     readonly instructions?: Readonly<Record<string, string>>;
   } = {},
-): void {
+): { readonly lastCreatedAgent: () => AgentResponse | null } {
   let agents = [...initialAgents];
+  let lastCreatedAgent: AgentResponse | null = null;
   const instructions = new Map(Object.entries(options.instructions ?? {}));
   context.mocks.data.onboardingStatus({
     defaultAgentId: options.defaultAgentId ?? initialAgents[0]?.agentId ?? null,
@@ -141,6 +145,7 @@ function configureCatalog(
       displayName: body.displayName ?? null,
       visibility: body.visibility ?? "private",
     });
+    lastCreatedAgent = created;
     agents = [...agents, created];
     return respond(201, created);
   });
@@ -175,6 +180,11 @@ function configureCatalog(
       return respond(200, selected);
     },
   );
+  return {
+    lastCreatedAgent: () => {
+      return lastCreatedAgent;
+    },
+  };
 }
 
 async function openCreateDialog(
@@ -247,11 +257,70 @@ test("Pressing Enter creates a named private agent", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("Create a public agent with a customized avatar", async () => {
-  configureCatalog([
+test("Use composer defaults while a pre-v2 switch cache is being refreshed", async () => {
+  const previousCacheKey = "vm0:feature-switch-cache:v4";
+  const featureRequestStarted = context.mocks.deferred<void>();
+  const releaseFeatureRequest = context.mocks.deferred<void>();
+  const catalog = configureCatalog([
     agent(CORE_AGENT_ID, { displayName: "Core Agent", visibility: "public" }),
   ]);
-  await setupPage({ context, path: "/agents" });
+  globalThis.localStorage.setItem(
+    previousCacheKey,
+    JSON.stringify({ [FeatureSwitchKey.Dummy]: true }),
+  );
+  context.mocks.api(
+    featureSwitchesContract.get,
+    async ({ respond, withSignal }) => {
+      featureRequestStarted.resolve(undefined);
+      await withSignal(releaseFeatureRequest.promise);
+      return respond(200, {
+        switches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+        effectiveSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+      });
+    },
+  );
+
+  try {
+    await setupPage({
+      context,
+      path: "/agents",
+      preserveFeatureSwitchCache: true,
+    });
+    await featureRequestStarted.promise;
+    const creationDialog = await openCreateDialog("Private");
+
+    click(buttonByLabel("Customize avatar", creationDialog));
+    const avatarDialog = await screen.findByRole("dialog", {
+      name: "Give your agent a face",
+    });
+    expect(within(avatarDialog).getByText("Face")).toBeVisible();
+    expect(within(avatarDialog).queryByText("Angle")).not.toBeInTheDocument();
+    click(buttonByText("Cancel", avatarDialog));
+    await waitFor(() => {
+      expect(avatarDialog).not.toBeInTheDocument();
+    });
+
+    await fill(within(creationDialog).getByLabelText("Name"), "Cache Agent");
+    click(buttonByText("Create", creationDialog));
+    await waitForAgentCard(CREATED_AGENT_ID);
+
+    expect(
+      parseAvatarComposerUrl(catalog.lastCreatedAgent()?.avatarUrl),
+    ).not.toBeNull();
+  } finally {
+    releaseFeatureRequest.resolve(undefined);
+  }
+});
+
+test("Create a public agent with a customized avatar", async () => {
+  const catalog = configureCatalog([
+    agent(CORE_AGENT_ID, { displayName: "Core Agent", visibility: "public" }),
+  ]);
+  await setupPage({
+    context,
+    path: "/agents",
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+  });
   const creationDialog = await openCreateDialog("Public");
   await fill(within(creationDialog).getByLabelText("Name"), "Marketing Bot");
 
@@ -260,13 +329,13 @@ test("Create a public agent with a customized avatar", async () => {
   const avatarDialog = await screen.findByRole("dialog", {
     name: "Give your agent a face",
   });
-  expect(within(avatarDialog).getByText("Angle")).toBeVisible();
+  expect(within(avatarDialog).getByText("Face")).toBeVisible();
   click(buttonByLabel("Randomize avatar", avatarDialog));
-  for (const step of ["Skin", "Hair", "Color", "Face", "Mood"]) {
+  for (const step of ["Hair", "Mood", "Skin", "Color"]) {
     click(buttonByLabel("Next step", avatarDialog));
     await expect(within(avatarDialog).findByText(step)).resolves.toBeVisible();
   }
-  click(buttonByText("Hyped", avatarDialog));
+  click(buttonByLabel("Blue", avatarDialog));
 
   click(buttonByText("Use this avatar", avatarDialog));
 
@@ -275,6 +344,9 @@ test("Create a public agent with a customized avatar", async () => {
 
   const createdCard = await waitForAgentCard(CREATED_AGENT_ID);
   expect(createdCard).toHaveTextContent("Marketing Bot");
+  expect(
+    parseAvatarComposerUrl(catalog.lastCreatedAgent()?.avatarUrl),
+  ).not.toBeNull();
   expect(
     within(createdCard).getByRole("img", { name: "Marketing Bot" }),
   ).toBeVisible();
