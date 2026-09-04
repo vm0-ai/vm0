@@ -150,6 +150,9 @@ describe("chat lifecycle", () => {
     });
     const actions = credit.closest('[data-testid="chat-event-actions"]');
     expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).queryByLabelText("View run logs"),
+    ).not.toBeInTheDocument();
     const copy = within(actions as HTMLElement).getByLabelText("Copy message");
     expect(
       copy.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING,

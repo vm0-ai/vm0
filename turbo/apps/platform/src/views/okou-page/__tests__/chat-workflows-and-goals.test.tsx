@@ -165,7 +165,7 @@ describe("chat lifecycle", () => {
     expect(screen.getByText(rejectedPrompt)).toBeInTheDocument();
   });
 
-  it("opens run details from assistant message actions", async () => {
+  it("opens run details from assistant message actions when debug is enabled", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e9000000-0000-4000-a000-000000000002";
     const runId = "a0000000-0000-4000-a000-000000000001";
@@ -192,7 +192,11 @@ describe("chat lifecycle", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+    });
 
     await waitFor(() => {
       expect(screen.getByText(assistantReply)).toBeInTheDocument();
