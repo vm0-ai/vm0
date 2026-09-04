@@ -580,12 +580,12 @@
 
     /* Theme-aware Colors */
     --white: 0 0% 100%; /* #FFFFFF */
-    --black: 42.9 4.3% 13.5%; /* #242321 - Ink */
+    --black: var(--gray-950); /* gray-950 - Ink */
 
     /* Dialog scrim. Deliberately NOT theme-aware: --black inverts to #FFFFFF
        in dark, which would lighten the backdrop instead of dimming it. The
        dark theme reuses this value and only raises the alpha. */
-    --overlay: 42.9 4.3% 13.5%; /* #242321 - Ink */
+    --overlay: var(--gray-950); /* gray-950 - Ink */
 
     /* ===================================
      * Semantic Colors (Light Theme)
@@ -652,8 +652,12 @@
        full strength that frame overpowered the sheet it holds. Lightness moves
        to the midpoint with white while saturation holds, which halves the
        channel spread by the same factor and keeps the hue intact. */
-    --sidebar: 17.1 41.2% 98.4%; /* #FDFAF9 - half of the theme grey */
-    --sidebar-rail: 17.1 17.9% 92.4%; /* #EFEAE8 - the site's nav grey */
+    --sidebar: var(
+      --gray-50
+    ); /* gray-50 - chat column, one step off the canvas */
+    --sidebar-rail: var(
+      --gray-200
+    ); /* gray-200 - deepest chrome, under the chat column */
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
