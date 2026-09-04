@@ -930,6 +930,26 @@ test("Add a Codex route and make it the workspace default", async () => {
   ).toHaveTextContent("GPT 5.6 Sol");
 });
 
+test("Add a GPT 6 Astra Codex subscription model route", async () => {
+  mockAdminOrg();
+  context.mocks.data.orgModelProviders([]);
+  context.mocks.data.orgModelPolicies([]);
+  await openProvidersTab();
+
+  click(buttonByText("Add model"));
+  const dialog = screen.getByRole("dialog", { name: "Add model" });
+  click(within(dialog).getByRole("combobox"));
+  click(await screen.findByRole("option", { name: "GPT 6 Astra" }));
+  click(radioByName(/Codex subscription/u));
+  click(buttonByText("Add model", dialog));
+
+  const codexRow = await screen.findByTestId(
+    "org-model-policy-row-gpt-6-astra",
+  );
+  expect(within(codexRow).getByText("GPT 6 Astra")).toBeInTheDocument();
+  expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
+});
+
 test("Offer an upgrade for restricted Pro models", async () => {
   mockAdminOrg();
   mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });

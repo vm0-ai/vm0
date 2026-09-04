@@ -104,6 +104,7 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "claude-sonnet-4-6": "anthropic-api-key",
     "deepseek-v4-flash": "deepseek",
     "deepseek-v4-pro": "deepseek",
+    "gpt-6-astra": "openai-api-key",
     "gpt-5.6-sol": "openai-api-key",
     "gpt-5.6-terra": "openai-api-key",
     "gpt-5.6-luna": "openai-api-key",
