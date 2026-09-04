@@ -151,11 +151,14 @@ async function rewriteElementById(html, id, handler) {
     if (!tagName || openingIndex === undefined) {
       return html;
     }
-    const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "giu");
+    const tagPattern = /<\/?([A-Za-z][A-Za-z0-9:-]*)\b[^>]*>/giu;
     tagPattern.lastIndex = openingIndex + openingMatch[0].length;
     let depth = 1;
     let closingMatch;
     for (const candidate of html.matchAll(tagPattern)) {
+      if (candidate[1]?.toLowerCase() !== tagName.toLowerCase()) {
+        continue;
+      }
       if (candidate.index < tagPattern.lastIndex) {
         continue;
       }
@@ -392,7 +395,7 @@ function appBootstrapJson(html, path) {
     /<script\b[^>]*data-vm0-api-bootstrap=""[^>]*>([\s\S]*?)<\/script>/giu,
   )) {
     const attributes = parseAttributes(match[0]);
-    if (attributes.get("data-path") === path) {
+    if (attributes.get("data-path") === encodeURIComponent(path)) {
       return JSON.parse(match[1]);
     }
   }

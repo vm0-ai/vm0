@@ -202,14 +202,6 @@ function serializeClerkEdgeSession(session) {
     .replaceAll("\u2029", "\\u2029");
 }
 
-function escapeHtmlAttribute(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
 function appBootstrapRequestHeaders(request, requestUrl) {
   const headers = new Headers({
     Accept: "application/json",
@@ -278,10 +270,8 @@ async function fetchAppBootstrap(request, requestUrl, fetcher) {
 }
 
 function appBootstrapScript(entry) {
-  const method = escapeHtmlAttribute(entry.method);
-  const path = escapeHtmlAttribute(entry.path);
-  const contentType = escapeHtmlAttribute(entry.contentType);
-  return `<script type="application/json" data-vm0-api-bootstrap="" data-method="${method}" data-path="${path}" data-content-type="${contentType}">${serializeClerkEdgeSession(entry.body)}</script>`;
+  const path = encodeURIComponent(entry.path);
+  return `<script type="application/json" data-vm0-api-bootstrap="" data-method="GET" data-path="${path}" data-content-type="application/json">${serializeClerkEdgeSession(entry.body)}</script>`;
 }
 
 function clerkEdgeSessionAuthorizedParty(requestUrl, env) {

@@ -19,7 +19,7 @@ test("uses a matching bootstrap response once before falling back to the network
   script.type = "application/json";
   script.dataset.vm0ApiBootstrap = "";
   script.dataset.method = "GET";
-  script.dataset.path = featureSwitchesContract.get.path;
+  script.dataset.path = encodeURIComponent(featureSwitchesContract.get.path);
   script.dataset.contentType = "application/json";
   script.textContent = JSON.stringify(bootstrapBody);
   document.body.append(script);

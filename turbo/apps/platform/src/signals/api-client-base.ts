@@ -38,18 +38,19 @@ function takeBootstrapResponse(
   readonly body: unknown;
   readonly headers: Headers;
 } | null {
-  if (typeof document === "undefined") {
+  const currentDocument = globalThis.document;
+  if (currentDocument === undefined) {
     return null;
   }
 
   const url = new URL(requestUrl, baseUrl);
   const path = `${url.pathname}${url.search}`;
-  for (const script of document.querySelectorAll<HTMLScriptElement>(
+  for (const script of currentDocument.querySelectorAll<HTMLScriptElement>(
     API_BOOTSTRAP_SELECTOR,
   )) {
     if (
       script.dataset.method !== method ||
-      script.dataset.path !== path ||
+      script.dataset.path !== encodeURIComponent(path) ||
       script.dataset.contentType !== "application/json"
     ) {
       continue;
