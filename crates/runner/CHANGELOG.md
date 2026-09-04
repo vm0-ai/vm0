@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.185.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.16...runner-rs-v0.185.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+
+
+### Bug Fixes
+
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+* **python:** detect mapping keys in starred calls ([#31584](https://github.com/vm0-ai/vm0/issues/31584)) ([abd4c00](https://github.com/vm0-ai/vm0/commit/abd4c0008fff1890fbc306b36ff2ad35041d06e9))
+
+
+### Performance Improvements
+
+* **python:** bound resolved auth base validation work ([#31587](https://github.com/vm0-ai/vm0/issues/31587)) ([edba27b](https://github.com/vm0-ai/vm0/commit/edba27bf0926b978b6327b3ec078d2f591d98118))
+
 ## [0.184.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.15...runner-rs-v0.184.16) (2026-09-04)
 
 

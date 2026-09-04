@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.3.1...app-worker-v1.4.0) (2026-09-04)
+
+
+### Features
+
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.621.0
+
 ## [1.3.1](https://github.com/vm0-ai/vm0/compare/app-worker-v1.3.0...app-worker-v1.3.1) (2026-09-04)
 
 
