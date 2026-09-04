@@ -6239,6 +6239,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
   });
 
   it("invalidates every organization member for definitions and only the owner for credentials", async () => {
+    expect.hasAssertions();
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
     const member = bdd.user({ orgId: admin.orgId, orgRole: "org:member" });
