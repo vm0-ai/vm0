@@ -137,26 +137,26 @@ fn pi_context_for_test() -> ExecutionContext {
 
 #[test]
 fn effective_cli_framework_matches_guest_agent_fallback_semantics() {
-    assert_eq!(normalized_cli_agent_type(""), "claude-code");
-    assert_eq!(normalized_cli_agent_type("claude-code"), "claude-code");
-    assert_eq!(normalized_cli_agent_type("custom-agent"), "custom-agent");
+    for (value, framework) in [
+        ("claude-code", EffectiveCliFramework::ClaudeCode),
+        ("codex", EffectiveCliFramework::Codex),
+        ("pi", EffectiveCliFramework::Pi),
+    ] {
+        assert_eq!(normalized_cli_agent_type(value), value);
+        assert_eq!(effective_cli_framework(value), framework);
+    }
 
     assert_eq!(
         effective_cli_framework(""),
         EffectiveCliFramework::ClaudeCode
     );
-    assert_eq!(
-        effective_cli_framework("claude-code"),
-        EffectiveCliFramework::ClaudeCode
-    );
+    assert_eq!(normalized_cli_agent_type(""), "claude-code");
+
     assert_eq!(
         effective_cli_framework("custom-agent"),
         EffectiveCliFramework::ClaudeCode
     );
-    assert_eq!(
-        effective_cli_framework("codex"),
-        EffectiveCliFramework::Codex
-    );
+    assert_eq!(normalized_cli_agent_type("custom-agent"), "custom-agent");
 }
 
 #[test]
