@@ -311,3 +311,35 @@ test("Explain the impact before deleting an agent", async () => {
   expect(screen.getByDisplayValue("Research Agent")).toBeInTheDocument();
   expect(profile.lastSavedProfile()).toBeNull();
 });
+
+test("Hide cancellation once agent deletion starts", async () => {
+  prepareAgentProfile();
+  const deleteResponse = context.mocks.deferred<void>();
+  context.mocks.api(agentsByIdContract.delete, async ({ respond }) => {
+    await deleteResponse.promise;
+    return respond(204);
+  });
+
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+  await findAgentNameInput();
+  click(screen.getByText("Delete agent"));
+
+  const deleteDialog = await screen.findByRole("dialog");
+  click(within(deleteDialog).getByText("Delete agent"));
+
+  await waitFor(() => {
+    expect(within(deleteDialog).getByText("Deleting…")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button", deleteDialog).some((button) => {
+        return button.textContent?.trim() === "Cancel";
+      }),
+    ).toBeFalsy();
+  });
+
+  deleteResponse.resolve();
+
+  await waitFor(() => {
+    expect(screen.getByText("Agent deleted")).toBeInTheDocument();
+  });
+});
