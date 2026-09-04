@@ -1856,6 +1856,13 @@
       "when": 1788522137500,
       "tag": "1072_huge_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 1073,
+      "version": "7",
+      "when": 1788524575677,
+      "tag": "1073_majestic_cerebro",
+      "breakpoints": true
     }
   ]
 }

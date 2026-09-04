@@ -83,6 +83,7 @@ export const agentRuns = pgTable(
     lastEventSequence: integer("last_event_sequence"),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    creditAdmittedAt: timestamp("credit_admitted_at"),
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
