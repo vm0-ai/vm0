@@ -2732,6 +2732,18 @@
         "continueToProvider": "Continuer vers le fournisseur pour autoriser l'accès.",
         "continueWithAutomatic": "Continuez pendant qu’Okou vérifie le mode d’authentification de ce serveur MCP.",
         "description": "Votre secret est chiffré au repos et injecté dans les requêtes sortantes par le pare-feu. Il n'est jamais exposé à l'agent en tant que variable d'environnement.",
+        "errors": {
+          "authenticationResponseInvalid": "Le serveur MCP a renvoyé une réponse d’authentification non prise en charge. Vérifiez le point de terminaison MCP et sa configuration d’authentification, ou contactez l’administrateur du serveur.",
+          "authorizationUnsupported": "Le fournisseur OAuth ne prend pas en charge les exigences d’autorisation utilisées par l’authentification automatique. Utilisez OAuth personnalisé uniquement si vous disposez déjà d’identifiants client compatibles, ou contactez l’assistance Okou.",
+          "bindingChanged": "L’autorité OAuth MCP ou l’enregistrement du client a changé. Reconnectez le compte du connecteur, puis réessayez.",
+          "clientRegistrationConflict": "Le client OAuth automatique existant ne peut pas demander les autorisations requises tant que des comptes connectés l’utilisent. Déconnectez ces comptes puis reconnectez-les, ou utilisez OAuth personnalisé avec des identifiants client enregistrés.",
+          "clientRegistrationInvalid": "Le fournisseur OAuth a renvoyé des informations d’enregistrement de client non valides. Contactez l’administrateur du serveur, ou utilisez OAuth personnalisé si vous disposez déjà d’identifiants client enregistrés valides.",
+          "clientRegistrationRejected": "Le fournisseur OAuth a refusé l’enregistrement automatique du client et peut limiter les clients MCP ou les métadonnées d’enregistrement pris en charge. Utilisez un client MCP pris en charge par le fournisseur, OAuth personnalisé uniquement avec des identifiants client déjà enregistrés, ou contactez l’assistance Okou.",
+          "clientRegistrationUnavailable": "Le fournisseur OAuth ne propose aucune méthode prise en charge pour l’enregistrement automatique du client. Utilisez OAuth personnalisé si vous disposez déjà d’identifiants client enregistrés, ou contactez l’assistance Okou.",
+          "discoveryInvalid": "Les métadonnées de découverte OAuth du serveur MCP sont incomplètes ou incohérentes. Corrigez les métadonnées publiées si vous gérez le serveur, ou contactez l’administrateur du serveur.",
+          "providerUnavailable": "Le fournisseur OAuth MCP est temporairement indisponible ou limite les requêtes. Réessayez plus tard et vérifiez la disponibilité du fournisseur.",
+          "unsafeUrl": "Le serveur MCP a publié une URL OAuth qui n’est pas un point de terminaison HTTPS public. Corrigez les URL OAuth publiées par le serveur avant de réessayer."
+        },
         "save": "Enregistrer",
         "saving": "Enregistrement en cours…",
         "title": "Connecter {{connector}}"

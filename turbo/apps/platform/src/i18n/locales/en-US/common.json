@@ -2676,6 +2676,18 @@
         "continueToProvider": "Continue to the provider to authorize access.",
         "continueWithAutomatic": "Continue while Okou checks how this MCP server authenticates.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
+        "errors": {
+          "authenticationResponseInvalid": "The MCP server returned an unsupported authentication response. Verify the MCP endpoint and its authentication setup, or contact the server administrator.",
+          "authorizationUnsupported": "The OAuth provider does not support the authorization requirements used by Automatic authentication. Use Custom OAuth only if you already have compatible client credentials, or contact Okou support.",
+          "bindingChanged": "The MCP OAuth authority or client registration changed. Reconnect the connector account and try again.",
+          "clientRegistrationConflict": "The existing automatic OAuth client cannot request the required permissions while connected accounts still use it. Disconnect those accounts and connect again, or use Custom OAuth with registered client credentials.",
+          "clientRegistrationInvalid": "The OAuth provider returned invalid client registration details. Contact the server administrator, or use Custom OAuth if you already have valid registered client credentials.",
+          "clientRegistrationRejected": "The OAuth provider rejected automatic client registration and may restrict supported MCP clients or registration metadata. Use a provider-supported MCP client, use Custom OAuth only if you already have registered client credentials, or contact Okou support.",
+          "clientRegistrationUnavailable": "The OAuth provider does not offer a supported automatic client registration method. Use Custom OAuth if you already have registered client credentials, or contact Okou support.",
+          "discoveryInvalid": "The MCP server's OAuth discovery metadata is incomplete or inconsistent. Fix the advertised metadata if you manage the server, or contact the server administrator.",
+          "providerUnavailable": "The MCP OAuth provider is temporarily unavailable or rate-limited. Try again later and check the provider's availability.",
+          "unsafeUrl": "The MCP server advertised an OAuth URL that is not a public HTTPS endpoint. Fix the server's advertised OAuth URLs before trying again."
+        },
         "save": "Save",
         "saving": "Saving…",
         "title": "Connect {{connector}}"

@@ -24,6 +24,10 @@ import {
 } from "@modelcontextprotocol/client";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
+import {
+  CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES,
+  type CustomConnectorAutomaticOAuthErrorCode,
+} from "@okouai/api-contracts/contracts/custom-connectors";
 import { connectors } from "@okouai/db/schema/connector";
 import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-connector-account-oauth-binding";
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
@@ -38,6 +42,7 @@ import {
   encryptStoredSecretValue,
 } from "./crypto.utils";
 import {
+  McpOAuthUnsafeUrlError,
   mcpOAuthSafeFetch,
   validateMcpOAuthPublicUrl,
 } from "./mcp-oauth-safe-fetch.service";
@@ -230,23 +235,94 @@ export async function readCustomConnectorAutomaticOAuthBinding(
   return parsed.success ? parsed.data : null;
 }
 
-type AutomaticOAuthFailureKind =
-  | "unsafe"
-  | "incompatible"
-  | "temporary"
-  | "binding-drift";
+type AutomaticOAuthIncompatibleReason =
+  | "invalid-authentication-response"
+  | "invalid-discovery-metadata"
+  | "unsupported-authorization"
+  | "registration-unavailable"
+  | "registration-rejected"
+  | "invalid-registration"
+  | "registration-conflict";
+
+type AutomaticOAuthFailure =
+  | {
+      readonly kind: "unsafe";
+      readonly reason: "unsafe-url";
+    }
+  | {
+      readonly kind: "temporary";
+      readonly reason: "temporary-upstream";
+    }
+  | {
+      readonly kind: "binding-drift";
+      readonly reason: "binding-drift";
+    }
+  | {
+      readonly kind: "incompatible";
+      readonly reason: AutomaticOAuthIncompatibleReason;
+    };
+
+type AutomaticOAuthFailureKind = AutomaticOAuthFailure["kind"];
+
+type AutomaticOAuthRemoteOperation =
+  | "MCP authorization challenge"
+  | "protected resource discovery"
+  | "authorization server discovery"
+  | "authorization endpoint validation"
+  | "dynamic client registration"
+  | "authorization request"
+  | "token refresh";
 
 export class CustomConnectorAutomaticOAuthError extends Error {
   readonly kind: AutomaticOAuthFailureKind;
+  readonly reason: AutomaticOAuthFailure["reason"];
 
   constructor(
-    kind: AutomaticOAuthFailureKind,
+    failure: AutomaticOAuthFailure,
     message: string,
     cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "CustomConnectorAutomaticOAuthError";
-    this.kind = kind;
+    this.kind = failure.kind;
+    this.reason = failure.reason;
+  }
+}
+
+export function customConnectorAutomaticOAuthErrorCode(
+  error: CustomConnectorAutomaticOAuthError,
+): CustomConnectorAutomaticOAuthErrorCode {
+  switch (error.reason) {
+    case "invalid-authentication-response": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.AUTHENTICATION_RESPONSE_INVALID;
+    }
+    case "invalid-discovery-metadata": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.DISCOVERY_INVALID;
+    }
+    case "unsupported-authorization": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.AUTHORIZATION_UNSUPPORTED;
+    }
+    case "registration-unavailable": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_UNAVAILABLE;
+    }
+    case "registration-rejected": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_REJECTED;
+    }
+    case "invalid-registration": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_INVALID;
+    }
+    case "registration-conflict": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.CLIENT_REGISTRATION_CONFLICT;
+    }
+    case "unsafe-url": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.UNSAFE_URL;
+    }
+    case "temporary-upstream": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.PROVIDER_UNAVAILABLE;
+    }
+    case "binding-drift": {
+      return CUSTOM_CONNECTOR_AUTOMATIC_OAUTH_ERROR_CODES.BINDING_CHANGED;
+    }
   }
 }
 
@@ -270,8 +346,27 @@ function temporaryUpstreamStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
+function incompatibleRemoteFailureReason(
+  operation: AutomaticOAuthRemoteOperation,
+): AutomaticOAuthIncompatibleReason {
+  switch (operation) {
+    case "MCP authorization challenge": {
+      return "invalid-authentication-response";
+    }
+    case "dynamic client registration": {
+      return "invalid-registration";
+    }
+    case "authorization request": {
+      return "unsupported-authorization";
+    }
+    default: {
+      return "invalid-discovery-metadata";
+    }
+  }
+}
+
 function automaticOAuthRemoteFailure(
-  operation: string,
+  operation: AutomaticOAuthRemoteOperation,
   error: unknown,
 ): CustomConnectorAutomaticOAuthError {
   if (error instanceof CustomConnectorAutomaticOAuthError) {
@@ -279,26 +374,34 @@ function automaticOAuthRemoteFailure(
   }
   if (error instanceof RegistrationRejectedError) {
     return new CustomConnectorAutomaticOAuthError(
-      temporaryUpstreamStatus(error.status) ? "temporary" : "incompatible",
+      temporaryUpstreamStatus(error.status)
+        ? { kind: "temporary", reason: "temporary-upstream" }
+        : { kind: "incompatible", reason: "registration-rejected" },
       `MCP OAuth ${operation} failed`,
       error,
     );
   }
   if (error instanceof IssuerMismatchError || error instanceof z.ZodError) {
     return new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      {
+        kind: "incompatible",
+        reason:
+          operation === "dynamic client registration"
+            ? "invalid-registration"
+            : "invalid-discovery-metadata",
+      },
       `MCP OAuth ${operation} returned incompatible metadata`,
       error,
     );
   }
-  const message = externalErrorMessage(error);
-  if (message.includes("MCP OAuth URL is not allowed")) {
+  if (error instanceof McpOAuthUnsafeUrlError) {
     return new CustomConnectorAutomaticOAuthError(
-      "unsafe",
+      { kind: "unsafe", reason: "unsafe-url" },
       `MCP OAuth ${operation} used an unsafe URL`,
       error,
     );
   }
+  const message = externalErrorMessage(error);
   const code = externalErrorCode(error);
   if (
     code === "server_error" ||
@@ -313,20 +416,23 @@ function automaticOAuthRemoteFailure(
     /timed? ?out|aborted|socket|network/iu.test(message)
   ) {
     return new CustomConnectorAutomaticOAuthError(
-      "temporary",
+      { kind: "temporary", reason: "temporary-upstream" },
       `MCP OAuth ${operation} is temporarily unavailable`,
       error,
     );
   }
   return new CustomConnectorAutomaticOAuthError(
-    "incompatible",
+    {
+      kind: "incompatible",
+      reason: incompatibleRemoteFailureReason(operation),
+    },
     `MCP OAuth ${operation} is not compatible with Automatic OAuth`,
     error,
   );
 }
 
 async function automaticOAuthRemote<T>(
-  operation: string,
+  operation: AutomaticOAuthRemoteOperation,
   signal: AbortSignal,
   task: () => Promise<T>,
 ): Promise<T> {
@@ -400,13 +506,13 @@ function requiredHttpsUrl(value: string, field: string): string {
   const parsed = z.string().url().safeParse(value);
   if (!parsed.success) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-discovery-metadata" },
       `MCP OAuth ${field} must be a URL`,
     );
   }
   if (new URL(parsed.data).protocol !== "https:") {
     throw new CustomConnectorAutomaticOAuthError(
-      "unsafe",
+      { kind: "unsafe", reason: "unsafe-url" },
       `MCP OAuth ${field} must use HTTPS`,
     );
   }
@@ -474,7 +580,7 @@ async function discoverAutomaticOAuthAuthority(
   ).href;
   if (resource !== expectedResource) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-discovery-metadata" },
       "MCP OAuth protected resource metadata does not match the connector endpoint",
     );
   }
@@ -486,7 +592,7 @@ async function discoverAutomaticOAuthAuthority(
     : advertisedIssuers?.[0];
   if (!advertisedIssuer) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-discovery-metadata" },
       args.expectedIssuer
         ? "MCP OAuth protected resource metadata no longer advertises the bound authorization server"
         : "MCP OAuth protected resource metadata does not advertise an authorization server",
@@ -504,7 +610,7 @@ async function discoverAutomaticOAuthAuthority(
   );
   if (!authorizationServerMetadata) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-discovery-metadata" },
       "MCP OAuth authorization server metadata was not found",
     );
   }
@@ -513,7 +619,7 @@ async function discoverAutomaticOAuthAuthority(
     issuer
   ) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-discovery-metadata" },
       "MCP OAuth authorization server metadata issuer does not match",
     );
   }
@@ -533,7 +639,7 @@ async function discoverAutomaticOAuthAuthority(
   const tokenEndpointValue = authorizationServerMetadata.token_endpoint;
   if (!tokenEndpointValue) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-discovery-metadata" },
       "MCP OAuth authorization server does not advertise a token endpoint",
     );
   }
@@ -545,7 +651,7 @@ async function discoverAutomaticOAuthAuthority(
     )
   ) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "unsupported-authorization" },
       "MCP OAuth authorization server does not support authorization code with PKCE S256",
     );
   }
@@ -732,7 +838,7 @@ function dcrRegistrationTimes(client: {
       (!Number.isFinite(expiresAt.getTime()) || expiresAt <= issuedAt))
   ) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-registration" },
       "MCP OAuth dynamic registration returned invalid lifetime values",
     );
   }
@@ -752,7 +858,7 @@ function dcrTokenAuthMethod(args: {
     (selected === "none") !== (args.client.client_secret === undefined)
   ) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "invalid-registration" },
       "MCP OAuth dynamic registration returned incompatible client authentication",
     );
   }
@@ -773,19 +879,19 @@ async function createDcrRegistration(
   },
   signal: AbortSignal,
 ): Promise<PersistedDcrRegistration> {
-  const registered = await automaticOAuthRemote(
+  const client = await automaticOAuthRemote(
     "dynamic client registration",
     signal,
     async () => {
-      return await registerClient(args.issuer, {
+      const registered = await registerClient(args.issuer, {
         metadata: args.metadata,
         clientMetadata: args.clientMetadata,
         scope: args.scope,
         fetchFn: fetchWithSignal(signal),
       });
+      return dcrClientInformationSchema.parse(registered);
     },
   );
-  const client = dcrClientInformationSchema.parse(registered);
   const tokenEndpointAuthMethod = dcrTokenAuthMethod({
     client,
     metadata: args.metadata,
@@ -854,7 +960,7 @@ async function resolveAutomaticOAuthClient(
   }
   if (!args.metadata.registration_endpoint) {
     throw new CustomConnectorAutomaticOAuthError(
-      "incompatible",
+      { kind: "incompatible", reason: "registration-unavailable" },
       "MCP OAuth server requires a Custom OAuth app",
     );
   }
@@ -903,7 +1009,7 @@ async function resolveAutomaticOAuthClient(
         lockedExisting.expiresAt <= nowDate();
       if (linkedAccounts.length > 0 && !expired) {
         throw new CustomConnectorAutomaticOAuthError(
-          "incompatible",
+          { kind: "incompatible", reason: "registration-conflict" },
           "Existing MCP OAuth registration is not compatible with the requested scopes",
         );
       }
@@ -990,7 +1096,7 @@ async function discoverBoundAutomaticOAuthAuthority(
     }
     if (error instanceof CustomConnectorAutomaticOAuthError) {
       throw new CustomConnectorAutomaticOAuthError(
-        "binding-drift",
+        { kind: "binding-drift", reason: "binding-drift" },
         "MCP OAuth authority changed",
         error,
       );
@@ -1014,7 +1120,7 @@ async function discoverBoundAutomaticOAuthAuthority(
     )
   ) {
     throw new CustomConnectorAutomaticOAuthError(
-      "binding-drift",
+      { kind: "binding-drift", reason: "binding-drift" },
       "MCP OAuth authority changed",
     );
   }
@@ -1239,7 +1345,7 @@ async function boundClientInformation(args: {
       args.context.tokenEndpointAuthMethod !== "none"
     ) {
       throw new CustomConnectorAutomaticOAuthError(
-        "binding-drift",
+        { kind: "binding-drift", reason: "binding-drift" },
         "MCP OAuth client binding changed",
       );
     }
@@ -1271,7 +1377,7 @@ async function boundClientInformation(args: {
     (registration.expiresAt !== null && registration.expiresAt <= nowDate())
   ) {
     throw new CustomConnectorAutomaticOAuthError(
-      "binding-drift",
+      { kind: "binding-drift", reason: "binding-drift" },
       "MCP OAuth dynamic registration changed",
     );
   }
@@ -1419,7 +1525,7 @@ export async function refreshCustomConnectorAutomaticOAuthToken(
         error.code === "temporarily_unavailable"
       ) {
         throw new CustomConnectorAutomaticOAuthError(
-          "temporary",
+          { kind: "temporary", reason: "temporary-upstream" },
           "MCP OAuth token refresh is temporarily unavailable",
           error,
         );
@@ -1431,7 +1537,7 @@ export async function refreshCustomConnectorAutomaticOAuthToken(
       throw remoteFailure;
     }
     throw new CustomConnectorAutomaticOAuthError(
-      "binding-drift",
+      { kind: "binding-drift", reason: "binding-drift" },
       "MCP OAuth token authority changed",
       remoteFailure,
     );
