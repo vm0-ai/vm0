@@ -33,12 +33,22 @@ import {
   VOICE_IO_POLISH_MAX_TEXT_CHARS,
   voiceIoPolishContract,
 } from "@okouai/api-contracts/contracts/voice-io-polish";
+import {
+  VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
+  voiceIoTranscribeContract,
+} from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import type { WorkflowSummary } from "@okouai/api-contracts/contracts/workflows";
 import { accept } from "../../lib/accept.ts";
+import { logger } from "../log.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal, settle } from "../utils.ts";
+import { prepareVoiceDraftAudio } from "../voice-io/voice-draft-audio.ts";
+import {
+  openAudioInputQuotaRecovery$,
+  refreshAudioInputQuota$,
+} from "../voice-io/voice-io-stt.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
 import {
   createComposerFeedbackModel,
@@ -96,6 +106,8 @@ import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
 import { apiClient$ } from "../api-client.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
+
+const L = logger("Composer:VoiceDraft");
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -247,6 +259,10 @@ export interface WorkflowComposerVoiceDraftSignals {
   readonly start$: Command<string, []>;
   readonly appendTranscript$: Command<void, [string, string]>;
   readonly markFailed$: Command<void, [string]>;
+  readonly completeRecording$: Command<
+    Promise<boolean>,
+    [string, Blob, VoiceDraftFinishMode, AbortSignal]
+  >;
   readonly finish$: Command<
     Promise<boolean>,
     [string, VoiceDraftFinishMode, AbortSignal]
@@ -1591,37 +1607,108 @@ function replaceVoiceDraftWithText(
   );
 }
 
-function createVoiceDraftSignals(
+function createCompleteVoiceDraftRecordingCommand(
   editor: Editor,
-  statusState$: State<VoiceDraftStatus | null>,
+  retryRecordings: Map<string, Blob>,
   lastAssistantMessage$: Computed<string | undefined> | undefined,
-): WorkflowComposerVoiceDraftSignals {
-  const hasDraft$ = computed((get): boolean => {
-    return get(statusState$) !== null;
-  });
-  const status$ = computed((get): VoiceDraftStatus | null => {
-    return get(statusState$);
-  });
-  const start$ = command((): string => {
-    return startVoiceDraft(editor);
-  });
-  const appendTranscript$ = command(
-    (_context, id: string, value: string): void => {
-      appendVoiceDraftTranscript(editor, id, value);
+): WorkflowComposerVoiceDraftSignals["completeRecording$"] {
+  return command(
+    async (
+      { get, set },
+      id: string,
+      recording: Blob,
+      mode: VoiceDraftFinishMode,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const located = locateVoiceDraft(editor.state.doc, id);
+      if (
+        !located ||
+        voiceDraftNodeAttributes(located.node).status === "processing"
+      ) {
+        return false;
+      }
+      retryRecordings.set(id, recording);
+      setVoiceDraftAttributes(editor, id, {
+        status: "processing",
+        visible: mode === "retry",
+      });
+
+      const prepared = await settle(
+        prepareVoiceDraftAudio(recording, signal),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!prepared.ok) {
+        L.error("Voice draft audio preparation failed", prepared.error);
+        setVoiceDraftAttributes(editor, id, {
+          status: "failed",
+          visible: true,
+        });
+        return false;
+      }
+
+      const formData = new FormData();
+      for (const file of prepared.value) {
+        formData.append("file", file);
+      }
+      const lastAssistantMessage = lastAssistantMessage$
+        ? get(lastAssistantMessage$)?.trim()
+        : undefined;
+      const boundedReference = lastAssistantMessage?.slice(
+        0,
+        VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
+      );
+      if (boundedReference) {
+        formData.append("lastAssistantMessage", boundedReference);
+      }
+
+      const client = get(apiClient$)(voiceIoTranscribeContract);
+      const result = await settle(
+        accept(
+          client.post({ body: formData, fetchOptions: { signal } }),
+          [200, 402, 429],
+          signal,
+        ),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!result.ok || result.value.status !== 200) {
+        setVoiceDraftAttributes(editor, id, {
+          status: "failed",
+          visible: true,
+        });
+        if (
+          result.ok &&
+          (result.value.status === 402 || result.value.status === 429)
+        ) {
+          await set(openAudioInputQuotaRecovery$, signal);
+        }
+        return false;
+      }
+
+      appendVoiceDraftTranscript(editor, id, result.value.body.transcript);
+      retryRecordings.delete(id);
+      replaceVoiceDraftWithText(
+        editor,
+        id,
+        result.value.body.polishedText,
+        mode === "automatic",
+      );
+      set(refreshAudioInputQuota$);
+      return true;
     },
   );
-  const markFailed$ = command((_context, id: string): void => {
-    setVoiceDraftAttributes(editor, id, {
-      status: "failed",
-      visible: true,
-    });
-  });
-  const remove$ = command((_context, id: string): void => {
-    removeVoiceDraft(editor, id);
-  });
-  const finish$ = command(
+}
+
+function createFinishVoiceDraftCommand(
+  editor: Editor,
+  retryRecordings: Map<string, Blob>,
+  lastAssistantMessage$: Computed<string | undefined> | undefined,
+  completeRecording$: WorkflowComposerVoiceDraftSignals["completeRecording$"],
+): WorkflowComposerVoiceDraftSignals["finish$"] {
+  return command(
     async (
-      { get },
+      { get, set },
       id: string,
       mode: VoiceDraftFinishMode,
       signal: AbortSignal,
@@ -1634,6 +1721,10 @@ function createVoiceDraftSignals(
       if (attributes.status === "processing") {
         return false;
       }
+      const retryRecording = retryRecordings.get(id);
+      if (retryRecording) {
+        return await set(completeRecording$, id, retryRecording, mode, signal);
+      }
       const text = attributes.transcript.trim();
       if (!text) {
         removeVoiceDraft(editor, id, false);
@@ -1641,6 +1732,8 @@ function createVoiceDraftSignals(
       }
       const lastAssistantMessage = lastAssistantMessage$
         ? get(lastAssistantMessage$)
+            ?.trim()
+            .slice(0, VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS)
         : undefined;
       setVoiceDraftAttributes(editor, id, {
         status: "processing",
@@ -1672,12 +1765,56 @@ function createVoiceDraftSignals(
       return true;
     },
   );
+}
+
+function createVoiceDraftSignals(
+  editor: Editor,
+  statusState$: State<VoiceDraftStatus | null>,
+  lastAssistantMessage$: Computed<string | undefined> | undefined,
+): WorkflowComposerVoiceDraftSignals {
+  const retryRecordings = new Map<string, Blob>();
+  const hasDraft$ = computed((get): boolean => {
+    return get(statusState$) !== null;
+  });
+  const status$ = computed((get): VoiceDraftStatus | null => {
+    return get(statusState$);
+  });
+  const start$ = command((): string => {
+    return startVoiceDraft(editor);
+  });
+  const appendTranscript$ = command(
+    (_context, id: string, value: string): void => {
+      appendVoiceDraftTranscript(editor, id, value);
+    },
+  );
+  const markFailed$ = command((_context, id: string): void => {
+    setVoiceDraftAttributes(editor, id, {
+      status: "failed",
+      visible: true,
+    });
+  });
+  const remove$ = command((_context, id: string): void => {
+    retryRecordings.delete(id);
+    removeVoiceDraft(editor, id);
+  });
+  const completeRecording$ = createCompleteVoiceDraftRecordingCommand(
+    editor,
+    retryRecordings,
+    lastAssistantMessage$,
+  );
+  const finish$ = createFinishVoiceDraftCommand(
+    editor,
+    retryRecordings,
+    lastAssistantMessage$,
+    completeRecording$,
+  );
   return {
     hasDraft$,
     status$,
     start$,
     appendTranscript$,
     markFailed$,
+    completeRecording$,
     finish$,
     remove$,
   };

@@ -189,6 +189,7 @@ import { voiceIoQuotaRoutes } from "./routes/voice-io-quota";
 import { voiceIoPolishRoutes } from "./routes/voice-io-polish";
 import { voiceIoSpeechRoutes } from "./routes/voice-io-speech";
 import { voiceIoSttRoutes } from "./routes/voice-io-stt";
+import { voiceIoTranscribeRoutes } from "./routes/voice-io-transcribe";
 import { videoIoGenerateRoutes } from "./routes/video-io-generate";
 import { webDownloadRoutes } from "./routes/web-download";
 import { webFileUrlRoutes } from "./routes/web-file-url";
@@ -317,6 +318,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...voiceIoPolishRoutes,
   ...voiceIoSpeechRoutes,
   ...voiceIoSttRoutes,
+  ...voiceIoTranscribeRoutes,
   ...webDownloadRoutes,
   ...webFileUrlRoutes,
   ...queuePositionRoutes,

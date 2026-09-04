@@ -530,35 +530,35 @@ function createComposerVoiceInputSignals(
         let voiceDraftId: string | null = null;
         await set(
           startRecording$,
-          onDomEventFn(async (text: string) => {
-            if (voiceDraftId === null) {
-              return;
-            }
-            set(
-              workflowComposer.voiceDraft.appendTranscript$,
-              voiceDraftId,
-              text,
-            );
-            await set(draft.save$, signal);
-          }),
+          onDomEventFn(() => {}),
           {
-            autoSegment: quota.limit === null,
+            autoSegment: false,
             autoStopOnSilence: false,
           },
           {
             started: () => {
               voiceDraftId = set(workflowComposer.voiceDraft.start$);
             },
-            finish: async () => {
+            finish: async (recording) => {
               if (voiceDraftId === null) {
                 return;
               }
-              await set(
-                workflowComposer.voiceDraft.finish$,
-                voiceDraftId,
-                "automatic",
-                signal,
-              );
+              if (recording) {
+                await set(
+                  workflowComposer.voiceDraft.completeRecording$,
+                  voiceDraftId,
+                  recording.blob,
+                  "automatic",
+                  signal,
+                );
+              } else {
+                await set(
+                  workflowComposer.voiceDraft.finish$,
+                  voiceDraftId,
+                  "automatic",
+                  signal,
+                );
+              }
               signal.throwIfAborted();
               await set(draft.save$, signal);
             },

@@ -834,6 +834,7 @@ function mockAudioContext(signal: AbortSignal): void {
 
 interface VoiceInputMockOptions {
   readonly audioContextReady?: Promise<void>;
+  readonly durationSeconds?: number;
   readonly getUserMediaReady?: Promise<void>;
   readonly onRecorderStart?: () => void;
   readonly onRecorderStop?: () => void;
@@ -887,7 +888,16 @@ function mockVoiceInput(
   function nextRecordingBlob(mimeType: string, standalone: boolean): Blob {
     recordingChunkIndex += 1;
     const prefix = standalone ? "voice" : "chunk";
-    return new Blob([`${prefix}-${recordingChunkIndex}`], { type: mimeType });
+    const value = `${prefix}-${recordingChunkIndex}`;
+    const blob = new Blob([value], { type: mimeType });
+    if (typeof blob.arrayBuffer !== "function") {
+      Object.defineProperty(blob, "arrayBuffer", {
+        value: (): Promise<ArrayBuffer> => {
+          return Promise.resolve(new TextEncoder().encode(value).buffer);
+        },
+      });
+    }
+    return blob;
   }
 
   class TestAnalyser {
@@ -915,6 +925,24 @@ function mockVoiceInput(
 
     createAnalyser(): AnalyserNode {
       return new TestAnalyser() as unknown as AnalyserNode;
+    }
+
+    decodeAudioData(_audioData: ArrayBuffer): Promise<AudioBuffer> {
+      const length = Math.round(
+        16_000 *
+          (options.durationSeconds === undefined ? 1 : options.durationSeconds),
+      );
+      const samples = new Float32Array(length);
+      samples.fill(0.1);
+      return Promise.resolve({
+        duration: length / 16_000,
+        length,
+        numberOfChannels: 1,
+        sampleRate: 16_000,
+        getChannelData: () => {
+          return samples;
+        },
+      } as unknown as AudioBuffer);
     }
   }
 

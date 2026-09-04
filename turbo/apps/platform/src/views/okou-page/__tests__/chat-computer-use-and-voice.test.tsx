@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { FeatureSwitchKey } from "@okouai/core";
 import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
@@ -1209,14 +1210,14 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("uses the latest assistant message as polish context", async () => {
+  it("uses the latest assistant message as multimodal reference context", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000026";
     const rawTranscript = "um ship the nebula release";
     const polishedTranscript = "Ship the Project Nebula release.";
     const lastAssistantMessage =
       "The current release is called Project Nebula.";
-    const polishBodies: unknown[] = [];
+    const references: unknown[] = [];
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, {
       threadId,
@@ -1240,15 +1241,19 @@ describe("chat lifecycle", () => {
       ],
     });
 
-    context.mocks.http.post("*/api/voice-io/stt", () => {
-      return new Response(JSON.stringify({ text: rawTranscript }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
-      polishBodies.push(body);
-      return respond(200, { text: polishedTranscript });
-    });
+    context.mocks.http.post(
+      "*/api/voice-io/transcribe",
+      async ({ request }) => {
+        const body = await request.formData();
+        references.push(body.get("lastAssistantMessage"));
+        expect(body.getAll("file")).toHaveLength(1);
+        return HttpResponse.json({
+          transcript: rawTranscript,
+          polishedText: polishedTranscript,
+          language: "en-US",
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -1268,9 +1273,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(composer).toHaveTextContent(polishedTranscript);
     });
-    expect(polishBodies).toStrictEqual([
-      { text: rawTranscript, lastAssistantMessage },
-    ]);
+    expect(references).toStrictEqual([lastAssistantMessage]);
   });
 
   it("replaces the composer footer while finishing a voice draft at the last selection", async () => {
@@ -1278,21 +1281,24 @@ describe("chat lifecycle", () => {
     const threadId = "e2000000-0000-4000-a000-000000000025";
     const rawTranscript = "um polished transcript";
     const polishedTranscript = "polished transcript";
-    const polishRequested = context.mocks.deferred<void>();
-    const polishReady = context.mocks.deferred<void>();
+    const transcriptionRequested = context.mocks.deferred<void>();
+    const transcriptionReady = context.mocks.deferred<void>();
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
-    context.mocks.http.post("*/api/voice-io/stt", () => {
-      return new Response(JSON.stringify({ text: rawTranscript }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-    context.mocks.api(voiceIoPolishContract.post, async ({ body, respond }) => {
-      expect(body).toStrictEqual({ text: rawTranscript });
-      polishRequested.resolve(undefined);
-      await polishReady.promise;
-      return respond(200, { text: polishedTranscript });
-    });
+    context.mocks.http.post(
+      "*/api/voice-io/transcribe",
+      async ({ request }) => {
+        const body = await request.formData();
+        expect(body.getAll("file")).toHaveLength(1);
+        transcriptionRequested.resolve(undefined);
+        await transcriptionReady.promise;
+        return HttpResponse.json({
+          transcript: rawTranscript,
+          polishedText: polishedTranscript,
+          language: "en-US",
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -1322,14 +1328,14 @@ describe("chat lifecycle", () => {
     expect(
       pressVoiceInputShortcut(document.body, { ctrlKey: true }),
     ).toBeFalsy();
-    await polishRequested.promise;
+    await transcriptionRequested.promise;
 
     await expect(
       within(composerShell).findByRole("status"),
     ).resolves.toHaveTextContent("Transcribing...");
     expect(within(composerShell).queryByLabelText("Send")).toBeNull();
 
-    polishReady.resolve(undefined);
+    transcriptionReady.resolve(undefined);
 
     await waitFor(() => {
       expect(composer.textContent).toBe("Start polished transcript end");
@@ -1345,30 +1351,31 @@ describe("chat lifecycle", () => {
     const rawTranscript = "um ship Friday no Monday";
     const polishedTranscript = "Ship on Monday.";
     const draftPatches: unknown[] = [];
-    let polishCalls = 0;
+    let transcriptionCalls = 0;
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.patch("*/api/chat-threads/:id", async ({ request }) => {
       draftPatches.push(await request.json());
       return new Response(null, { status: 200 });
     });
-    context.mocks.http.post("*/api/voice-io/stt", () => {
-      return new Response(JSON.stringify({ text: rawTranscript }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
-      expect(body).toStrictEqual({ text: rawTranscript });
-      polishCalls += 1;
-      if (polishCalls === 1) {
-        return respond(503, {
-          error: {
-            code: "PROVIDER_UNAVAILABLE",
-            message: "Voice draft cleanup is temporarily unavailable",
+    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+      transcriptionCalls += 1;
+      if (transcriptionCalls === 1) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "PROVIDER_UNAVAILABLE",
+              message: "Voice draft transcription is temporarily unavailable",
+            },
           },
-        });
+          { status: 503 },
+        );
       }
-      return respond(200, { text: polishedTranscript });
+      return HttpResponse.json({
+        transcript: rawTranscript,
+        polishedText: polishedTranscript,
+        language: "en-US",
+      });
     });
 
     detachedSetupPage({
@@ -1400,15 +1407,15 @@ describe("chat lifecycle", () => {
 
     const failedDraft = await screen.findByLabelText("Voice draft");
     expect(failedDraft).toBeVisible();
-    expect(failedDraft).toHaveTextContent(rawTranscript);
     expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(transcriptionCalls).toBe(1);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
         draftUserMessage: null,
         draftVoice: {
           version: 1,
           id: expect.any(String),
-          transcript: rawTranscript,
+          transcript: "",
         },
         draftAttachments: null,
       });
@@ -1417,6 +1424,7 @@ describe("chat lifecycle", () => {
     await user.click(buttonByText("Finish"));
 
     await waitFor(() => {
+      expect(transcriptionCalls).toBe(2);
       expect(composer).toHaveTextContent(polishedTranscript);
       expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeEnabled();
@@ -1430,7 +1438,7 @@ describe("chat lifecycle", () => {
         draftAttachments: null,
       });
     });
-    expect(polishCalls).toBe(2);
+    expect(transcriptionCalls).toBe(2);
 
     composer.focus();
     await user.keyboard("{Control>}z{/Control}");
@@ -1450,72 +1458,35 @@ describe("chat lifecycle", () => {
     expect(screen.getByLabelText("Send")).toBeEnabled();
   });
 
-  it("reveals a durable voice draft when a later segment reaches quota", async () => {
+  it("uses one multimodal request for a complete voice draft", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000024";
-    const rawTranscript = "First raw segment";
-    const firstRequestStarted = context.mocks.deferred<void>();
-    const releaseFirstRequest = context.mocks.deferred<void>();
-    const firstSpeechResumed = context.mocks.deferred<void>();
-    const secondRequestStarted = context.mocks.deferred<void>();
-    const releaseSecondRequest = context.mocks.deferred<void>();
-    const secondSpeechResumed = context.mocks.deferred<void>();
-    const draftPatches: unknown[] = [];
-    let currentRms = 0.1;
-    let transcriptionCalls = 0;
-    let polishCalls = 0;
-    context.mocks.browser.voiceInput({
-      rms: () => {
-        if (
-          currentRms > 0 &&
-          transcriptionCalls === 1 &&
-          !firstSpeechResumed.settled()
-        ) {
-          firstSpeechResumed.resolve(undefined);
-        }
-        if (
-          currentRms > 0 &&
-          transcriptionCalls === 2 &&
-          !secondSpeechResumed.settled()
-        ) {
-          secondSpeechResumed.resolve(undefined);
-        }
-        return currentRms;
-      },
-    });
+    const rawTranscript = "um one complete recording";
+    const polishedTranscript = "One complete recording.";
+    let multimodalCalls = 0;
+    let legacySttCalls = 0;
+    let legacyPolishCalls = 0;
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: null });
     });
-    context.mocks.http.patch("*/api/chat-threads/:id", async ({ request }) => {
-      draftPatches.push(await request.json());
-      return new Response(null, { status: 200 });
+    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+      multimodalCalls += 1;
+      return HttpResponse.json({
+        transcript: rawTranscript,
+        polishedText: polishedTranscript,
+        language: "en-US",
+      });
     });
-    context.mocks.http.post("*/api/voice-io/stt", async () => {
-      const requestIndex = transcriptionCalls;
-      transcriptionCalls += 1;
-      if (requestIndex === 0) {
-        firstRequestStarted.resolve(undefined);
-        await releaseFirstRequest.promise;
-        return new Response(JSON.stringify({ text: rawTranscript }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      secondRequestStarted.resolve(undefined);
-      await releaseSecondRequest.promise;
-      return new Response(
-        JSON.stringify({
-          error: {
-            code: "DAILY_RATE_LIMIT_EXCEEDED",
-            message: "Daily request rate limit exceeded",
-          },
-          quota: { count: 500, limit: 500 },
-        }),
-        { status: 429, headers: { "Content-Type": "application/json" } },
-      );
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      legacySttCalls += 1;
+      return new Response(JSON.stringify({ text: "Legacy STT" }), {
+        headers: { "Content-Type": "application/json" },
+      });
     });
     context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
-      polishCalls += 1;
+      legacyPolishCalls += 1;
       return respond(200, { text: "This should not be used." });
     });
 
@@ -1533,41 +1504,25 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
 
-    currentRms = 0;
-    await firstRequestStarted.promise;
-    currentRms = 0.1;
-    await firstSpeechResumed.promise;
-    releaseFirstRequest.resolve(undefined);
     await waitFor(() => {
-      expect(draftPatches).toContainEqual({
-        draftUserMessage: null,
-        draftVoice: {
-          version: 1,
-          id: expect.any(String),
-          transcript: rawTranscript,
-        },
-        draftAttachments: null,
-      });
+      const waveform = document.querySelector("[data-voice-level-waveform]");
+      expect(waveform).not.toBeNull();
+      expect(
+        Array.from(waveform?.children ?? []).some((child) => {
+          return child instanceof HTMLElement && child.style.height === "16px";
+        }),
+      ).toBeTruthy();
     });
-
-    currentRms = 0;
-    await secondRequestStarted.promise;
-    currentRms = 0.1;
-    await secondSpeechResumed.promise;
-    releaseSecondRequest.resolve(undefined);
-
-    const failedDraft = await screen.findByLabelText("Voice draft");
-    expect(failedDraft).toBeVisible();
-    expect(failedDraft).toHaveTextContent(rawTranscript);
-    expect(screen.getByLabelText("Finish")).toBeEnabled();
-    expect(screen.getByLabelText("Remove voice draft")).toBeEnabled();
-    expect(screen.getByLabelText("Send")).toBeDisabled();
+    const composer = screen.getByPlaceholderText(PLACEHOLDER);
+    expect(multimodalCalls).toBe(0);
+    expect(legacySttCalls).toBe(0);
+    await user.click(screen.getByLabelText("Stop recording"));
     await waitFor(() => {
-      expect(screen.queryByLabelText("Stop recording")).not.toBeInTheDocument();
-      expect(draftPatches.length).toBeGreaterThanOrEqual(2);
+      expect(composer).toHaveTextContent(polishedTranscript);
     });
-    expect(transcriptionCalls).toBe(2);
-    expect(polishCalls).toBe(0);
+    expect(multimodalCalls).toBe(1);
+    expect(legacySttCalls).toBe(0);
+    expect(legacyPolishCalls).toBe(0);
   });
 
   it("restores a persisted voice draft as an actionable blocked item", async () => {
@@ -1935,10 +1890,10 @@ describe("chat lifecycle", () => {
   it("keeps a voice draft recording after extended silence", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000030";
-    const silenceSegmentRequested = context.mocks.deferred<void>();
     const continuedSilenceObserved = context.mocks.deferred<void>();
     let sampleCount = 0;
     let continuedSilenceStartedAt: number | null = null;
+    let multimodalCalls = 0;
     let transcriptionCalls = 0;
     let polishCalls = 0;
     context.mocks.browser.voiceInput({
@@ -1947,11 +1902,12 @@ describe("chat lifecycle", () => {
         if (sampleCount <= 2) {
           return 0.1;
         }
-        if (silenceSegmentRequested.settled()) {
-          continuedSilenceStartedAt ??= performance.now();
-          if (performance.now() - continuedSilenceStartedAt >= 100) {
-            continuedSilenceObserved.resolve(undefined);
-          }
+        continuedSilenceStartedAt ??= performance.now();
+        if (
+          performance.now() - continuedSilenceStartedAt >= 100 &&
+          !continuedSilenceObserved.settled()
+        ) {
+          continuedSilenceObserved.resolve(undefined);
         }
         return 0;
       },
@@ -1960,9 +1916,16 @@ describe("chat lifecycle", () => {
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
       return respond(200, { allowed: true, count: 0, limit: null });
     });
+    context.mocks.http.post("*/api/voice-io/transcribe", () => {
+      multimodalCalls += 1;
+      return HttpResponse.json({
+        transcript: "Extended voice draft",
+        polishedText: "Extended voice draft.",
+        language: "en-US",
+      });
+    });
     context.mocks.http.post("*/api/voice-io/stt", () => {
       transcriptionCalls += 1;
-      silenceSegmentRequested.resolve(undefined);
       return new Response(JSON.stringify({ text: "Extended voice draft" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1988,7 +1951,8 @@ describe("chat lifecycle", () => {
 
     await continuedSilenceObserved.promise;
     expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
-    expect(transcriptionCalls).toBe(1);
+    expect(multimodalCalls).toBe(0);
+    expect(transcriptionCalls).toBe(0);
     expect(polishCalls).toBe(0);
 
     await user.click(screen.getByLabelText("Stop recording"));
@@ -1996,7 +1960,9 @@ describe("chat lifecycle", () => {
       expect(composer).toHaveTextContent("Extended voice draft.");
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
-    expect(polishCalls).toBe(1);
+    expect(multimodalCalls).toBe(1);
+    expect(transcriptionCalls).toBe(0);
+    expect(polishCalls).toBe(0);
   });
 
   it("appends a delayed voice input segment to the current composer text", async () => {
