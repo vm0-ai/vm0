@@ -6302,6 +6302,7 @@ describe("CHAT-02: model-first provider policies", () => {
   }, 90_000);
 
   it("decodes persisted launch snapshots at webhook completion before Stage 1 admission", async () => {
+    mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
     const snapshots = [
       ["historical null", null, false],
       [
@@ -6386,6 +6387,30 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(candidate, name).toEqual(
         admitted ? expect.objectContaining({ sourceRunId: run.runId }) : null,
       );
+      if (admitted && candidate) {
+        expect(candidate.sourceHistoryHash).toBe(
+          createHash("sha256")
+            .update(`bdd chat session history ${run.runId}`)
+            .digest("hex"),
+        );
+        expect(
+          candidate.eligibleAt.getTime() -
+            candidate.sourceCompletedAt.getTime(),
+        ).toBe(60_000);
+        await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
+          cliAgentType: "pi",
+        });
+        await flushWaitUntilForTest();
+        await expect(
+          readPiMemoryStage1CandidateFixture({
+            orgId,
+            userId: actor.userId,
+          }),
+        ).resolves.toMatchObject({
+          sourceRunId: run.runId,
+          sourceHistoryHash: candidate.sourceHistoryHash,
+        });
+      }
     }
   }, 90_000);
 
