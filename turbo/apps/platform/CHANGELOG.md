@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.841.0](https://github.com/vm0-ai/vm0/compare/app-v0.840.0...app-v0.841.0) (2026-09-04)
+
+
+### Features
+
+* **platform:** add client red telemetry ([#31656](https://github.com/vm0-ai/vm0/issues/31656)) ([7abbd22](https://github.com/vm0-ai/vm0/commit/7abbd22abd2ea690664569fc616236dc913a06ab))
+
+
+### Bug Fixes
+
+* **platform:** align goal ui with work folding ([#31659](https://github.com/vm0-ai/vm0/issues/31659)) ([2c31b59](https://github.com/vm0-ai/vm0/commit/2c31b591d8349ab5de267ea88bb6ab7081a4aeaf))
+
+
+### Refactoring
+
+* consolidate desktop recording under intro video switch ([#31730](https://github.com/vm0-ai/vm0/issues/31730)) ([262f6db](https://github.com/vm0-ai/vm0/commit/262f6db498a4d2951d538b9af723bb199a21f311))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.1
+    * @okouai/core bumped to 8.621.1
+
 ## [0.840.0](https://github.com/vm0-ai/vm0/compare/app-v0.839.0...app-v0.840.0) (2026-09-04)
 
 
