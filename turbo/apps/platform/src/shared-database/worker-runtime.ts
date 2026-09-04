@@ -359,19 +359,20 @@ export class SharedDatabaseWorkerRuntime {
 
     const writes: ChatEventBatchWrite[] = Object.entries(
       response.body.events,
-    ).map(([threadId, rows]) => {
+    ).flatMap(([threadId, rows]) => {
       const last = rows.at(-1);
-      return {
-        dataKey: scopeSharedDatabaseDataKey(
-          { kind: "chat-event", threadId },
-          this.identity,
-        ),
-        rows,
-        cursor:
-          last === undefined
-            ? requireChatEventCursor(cursors, threadId)
-            : { lastEventId: last.id, lastSeqId: last.seqId },
-      };
+      return last === undefined
+        ? []
+        : [
+            {
+              dataKey: scopeSharedDatabaseDataKey(
+                { kind: "chat-event", threadId },
+                this.identity,
+              ),
+              rows,
+              cursor: { lastEventId: last.id, lastSeqId: last.seqId },
+            },
+          ];
     });
     const batchWritten = await this.persistChatEventBatch(writes, signal);
     const rebuiltThreadIds = await Promise.all(
