@@ -349,7 +349,7 @@ async function failQueuedRunAdmission(
     .set({
       status: "failed",
       completedAt: nowDate(),
-      creditAdmittedAt: null,
+      creditAdmitted: false,
       error,
       failureReason: "insufficient_credits",
     })
@@ -389,9 +389,7 @@ async function promoteAdmittedQueuedRun(
     .set({
       status: "pending",
       lastHeartbeatAt: new Date(promotedAt),
-      creditAdmittedAt: isBuiltInModelProviderType(lockedRun.modelProvider)
-        ? new Date(promotedAt)
-        : null,
+      creditAdmitted: isBuiltInModelProviderType(lockedRun.modelProvider),
       runnerGroup: payload.runnerGroup,
     })
     .where(

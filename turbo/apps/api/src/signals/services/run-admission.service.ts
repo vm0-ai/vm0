@@ -44,15 +44,14 @@ type OrgPlanRunAdmissionCapabilities = Pick<
 export interface RunCreditAdmissionState {
   readonly orgId: string;
   readonly status: typeof agentRuns.$inferSelect.status;
-  readonly creditAdmittedAt: Date | null;
+  readonly creditAdmitted: boolean;
 }
 
 export function runHasActiveCreditAdmission(
-  run: Pick<RunCreditAdmissionState, "status" | "creditAdmittedAt">,
+  run: Pick<RunCreditAdmissionState, "status" | "creditAdmitted">,
 ): boolean {
   return (
-    run.creditAdmittedAt !== null &&
-    (run.status === "pending" || run.status === "running")
+    run.creditAdmitted && (run.status === "pending" || run.status === "running")
   );
 }
 
@@ -66,7 +65,7 @@ export async function loadRunCreditAdmissionState(params: {
     .select({
       orgId: agentRuns.orgId,
       status: agentRuns.status,
-      creditAdmittedAt: agentRuns.creditAdmittedAt,
+      creditAdmitted: agentRuns.creditAdmitted,
     })
     .from(agentRuns)
     .where(

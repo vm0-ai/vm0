@@ -6378,7 +6378,7 @@ function launchRunValues(
     userId: args.userId,
     orgId: args.orgId,
     status: args.status,
-    creditAdmittedAt: args.creditAdmitted ? createdAt : null,
+    creditAdmitted: args.creditAdmitted,
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     vars: args.body.vars ?? null,
