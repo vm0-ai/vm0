@@ -52,6 +52,7 @@ const VM0_APP_METADATA = {
     "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
   documentTitle: "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
   openGraphTitle: "VM0 - Your Trustworthy AI Teammate",
+  socialImagePath: "web/og-image.png",
   staticAssetsOrigin: "https://static.vm0.io",
   twitterDescription:
     "VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
@@ -65,6 +66,7 @@ const OKOU_APP_METADATA = {
   documentTitle:
     "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
   openGraphTitle: "Okou - Your Trustworthy AI Teammate",
+  socialImagePath: "web/okou-og-image-373c892e.png",
   staticAssetsOrigin: "https://static.okou.io",
   twitterDescription:
     "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
@@ -306,7 +308,7 @@ function rewriteAppPage(response, metadata, edgeSession) {
     .on('meta[property="og:description"]', setMetaContent(metadata.description))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on(
       'meta[property="og:image:alt"]',
@@ -322,7 +324,7 @@ function rewriteAppPage(response, metadata, edgeSession) {
     )
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on("head", {
       element(element) {
@@ -399,14 +401,14 @@ function rewriteFound(response, title, canonicalUrl, metadata) {
     .on('meta[property="og:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
     .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on("head", {
       element(element) {
