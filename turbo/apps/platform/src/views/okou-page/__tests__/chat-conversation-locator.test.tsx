@@ -862,6 +862,42 @@ describe("chat conversation locator", () => {
     });
   });
 
+  it("indexes goal continuations inside their triggering run work", async () => {
+    const { rail, resize } = await renderMeasuredThread({
+      threadId: GOAL_THREAD_ID,
+      threadTitle: "Goal work locator turns",
+      chatEvents: goalConversation(),
+      renderedText: "Latest goal result in the locator",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunWorkFolding]: true,
+      },
+    });
+
+    expect(screen.queryByText("First goal result in the locator")).toBeNull();
+    expect(ticksOf(rail)).toHaveLength(10);
+
+    fireEvent.click(screen.getByLabelText("Expand work history"));
+    await screen.findByText("First goal result in the locator");
+    resize.automationAll();
+    await waitFor(() => {
+      expect(ticksOf(rail)).toHaveLength(10);
+    });
+
+    pointerAt(rail, 0, "pointerenter");
+    const mergedAssistantTick = ticksOf(rail).find((tick) => {
+      return tick.dataset.turnIndex === "9";
+    });
+    expect(mergedAssistantTick).toBeDefined();
+    pointerAt(
+      rail,
+      Number.parseFloat(mergedAssistantTick!.style.top),
+      "pointermove",
+    );
+    await waitFor(() => {
+      expect(locatorPreview()).toHaveTextContent("Goal prefix answer 4");
+    });
+  });
+
   it.each([
     { name: "legacy folding", runWorkFoldingEnabled: false },
     { name: "run-work folding", runWorkFoldingEnabled: true },

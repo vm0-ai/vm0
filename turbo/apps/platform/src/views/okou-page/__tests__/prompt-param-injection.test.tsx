@@ -119,6 +119,7 @@ describe("prompt query parameter injection", () => {
       const id = new URL(request.url).searchParams.get("file_id");
       return HttpResponse.json({
         url: `https://resolved.example/${id ?? "missing"}`,
+        publicUrl: `https://resolved.example/${id ?? "missing"}`,
       });
     });
     const params = new URLSearchParams(DESKTOP_HANDOFF_PARAMS);
@@ -207,6 +208,7 @@ describe("prompt query parameter injection", () => {
       const id = new URL(request.url).searchParams.get("file_id");
       return HttpResponse.json({
         url: `https://resolved.example/${id ?? "missing"}`,
+        publicUrl: `https://resolved.example/${id ?? "missing"}`,
       });
     });
     mockChatLifecycle(context);
@@ -257,6 +259,7 @@ describe("prompt query parameter injection", () => {
       const id = new URL(request.url).searchParams.get("file_id");
       return HttpResponse.json({
         url: `https://resolved.example/${id ?? "missing"}`,
+        publicUrl: `https://resolved.example/${id ?? "missing"}`,
       });
     });
     mockChatLifecycle(context, {
