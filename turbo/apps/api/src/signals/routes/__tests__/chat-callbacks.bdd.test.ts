@@ -1862,7 +1862,7 @@ describe("CHAT-02: completed chat callback", () => {
         const payload = pushPayload(call) as Record<string, unknown>;
         return payload.body === truncatedSummary;
       }),
-    ).toBe(false);
+    ).toBeFalsy();
   });
 
   it("leaves the thread untitled when the title completion is token-limited", async () => {
@@ -1892,7 +1892,9 @@ describe("CHAT-02: completed chat callback", () => {
     expect(titleRequests).toBe(1);
     // A truncated title used to be persisted verbatim. It must now be dropped
     // so the next round can retry rather than pinning a half-written title.
-    expect(await readThreadTitleFromEvents(actor, run.threadId)).toBeNull();
+    await expect(
+      readThreadTitleFromEvents(actor, run.threadId),
+    ).resolves.toBeNull();
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await waitForRunStatus(actor, run.runId, "cancelled");
