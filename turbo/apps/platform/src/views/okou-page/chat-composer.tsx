@@ -7,7 +7,6 @@ import type {
   ReactNode,
 } from "react";
 import type { DesktopProduct } from "@okouai/api-contracts/contracts/client-headers";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   useGet,
   useSet,
@@ -221,10 +220,10 @@ import {
   userModelPreference$,
 } from "../../signals/external/user-model-preference.ts";
 import {
+  chatRunWorkFoldingEnabled$,
   codexFastModeEnabled$,
   composerVoiceInputShortcutEnabled$,
   customConnectorMcpEnabled$,
-  featureSwitch$,
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -697,8 +696,7 @@ function PendingItemsStripHeader({
 
 function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
-  const runWorkFoldingEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+  const runWorkFoldingEnabled = useGet(chatRunWorkFoldingEnabled$);
   const pendingEvents =
     useLastResolved(signals.queue.pendingEvents$) ??
     ([] satisfies readonly ComposerPendingEvent[]);

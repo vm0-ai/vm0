@@ -119,6 +119,10 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
+export const chatRunWorkFoldingEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatRunWorkFolding] ?? false;
+});
+
 export const customConnectorMcpEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
 });
