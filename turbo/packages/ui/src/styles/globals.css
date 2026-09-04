@@ -135,7 +135,7 @@
   /* ===================================
    * Brand Tint / Brand Text
    *
-   * The Amber scale is no longer mirrored between themes, so a raw stop like
+   * The brand scale is no longer mirrored between themes, so a raw stop like
    * `primary-100` is a pale tint in light and still a pale tint in dark, where
    * it would blow out. These two are theme-aware: reach for them wherever the
    * brand appears as a wash behind text or as text itself, and keep the raw
@@ -416,7 +416,7 @@
 
     --radius: 0.5rem;
 
-    /* The four tokens the Amber scale introduced, mapped onto this palette so
+    /* The four tokens the `newUi` palette introduced, mapped onto this one so
        every call site that switched to them renders identically with the
        switch off. `--brand-text` is simply the brand stop here, because the
        orange ramp mirrors between themes and needs no theme-aware indirection. */
@@ -559,7 +559,7 @@
   }
 
   /* ===================================
-   * Neutral / Amber, behind the `newUi` switch
+   * Neutral / Cobalt, behind the `newUi` switch
    *
    * Both selectors match the same <html> the blocks above do, and win on
    * specificity, so every `@theme` alias -- which is a lazy `hsl(var(--x))`
