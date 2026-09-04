@@ -41,6 +41,12 @@ to choose a refresh before continuing; it does not force the reload without
 user action, and an idle page does not discover the requirement until it makes
 a handled API request.
 
+The shared database Worker reports the same response to its connected tabs as
+a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
+that event through the same update dialog instead of reloading automatically.
+Other Worker-unavailable reasons continue to use the bounded automatic reload
+recovery and raise an error so the failure remains visible in Sentry.
+
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
 old controlled clients during rollout. The current service worker calls

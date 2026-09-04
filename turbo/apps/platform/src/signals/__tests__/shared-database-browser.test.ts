@@ -1,6 +1,9 @@
+import { screen } from "@testing-library/react";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { expect, vi } from "vitest";
 
+import { setupPage } from "../../__tests__/page-helper.ts";
 import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
@@ -46,6 +49,10 @@ class TestSharedWorkerPort implements SharedDatabasePortLike {
     if (this.listener === listener) {
       this.listener = null;
     }
+  }
+
+  receive(value: unknown): void {
+    this.listener?.(new MessageEvent("message", { data: value }));
   }
 }
 
@@ -158,6 +165,50 @@ test("Pass the page identity and Clerk deployment to the shared worker", async (
   });
 });
 
+test("Open the force-upgrade dialog when the worker requires an upgrade", async () => {
+  context.mocks.http.get("*/api/indicators", () => {
+    return Response.json(
+      { error: "Client update required" },
+      { status: CLIENT_FORCE_UPGRADE_STATUS },
+    );
+  });
+  await setupPage({ context, path: "/" });
+
+  await screen.findByRole("dialog", {
+    name: "Update required",
+  });
+  expect(
+    new URL(window.location.href).searchParams.has(
+      "okou-shared-database-reload",
+    ),
+  ).toBeFalsy();
+});
+
+test("Reload after an IndexedDB version change makes the worker unavailable", async () => {
+  const replace = vi.fn<(url: string) => void>();
+  const { workers } = installSharedWorkerMock();
+  setupBridge();
+  await vi.waitFor(() => {
+    expect(workers).toHaveLength(1);
+  });
+  const currentUrl = new URL("/chat", window.location.href);
+  vi.stubGlobal("location", {
+    href: currentUrl.toString(),
+    hostname: currentUrl.hostname,
+    origin: currentUrl.origin,
+    replace,
+  });
+
+  workers[0]!.port.receive({
+    type: "worker-unavailable",
+    reason: "indexeddb-version-changed",
+  });
+
+  await vi.waitFor(() => {
+    expect(replace).toHaveBeenCalledOnce();
+  });
+});
+
 test("Reload once after the shared-data service fails to load", async () => {
   mockNow(RELOAD_AT_MS, context.signal);
   const replace = vi.fn<(url: string) => void>();
@@ -176,13 +227,13 @@ test("Reload once after the shared-data service fails to load", async () => {
     origin: currentUrl.origin,
     replace,
   });
-  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(() => {
+    workers[0]!.fail();
+  }).toThrow(
+    "Shared database worker failed to load or its transport became unrecoverable",
+  );
 
-  workers[0]!.fail();
-
-  await vi.waitFor(() => {
-    expect(replace).toHaveBeenCalledOnce();
-  });
+  expect(replace).toHaveBeenCalledOnce();
   const recoveryUrl = new URL(replace.mock.calls[0]![0]);
   expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
     String(RELOAD_AT_MS),
@@ -190,7 +241,6 @@ test("Reload once after the shared-data service fails to load", async () => {
   expect(recoveryUrl.searchParams.get("threadId")).toBe("thread-1");
   expect(recoveryUrl.hash).toBe("#latest");
   expect(constructorCalls).toHaveLength(1);
-  expect(consoleError).toHaveBeenCalledOnce();
 });
 
 test("Stop reloading when the shared-data service repeatedly fails", async () => {
@@ -215,13 +265,13 @@ test("Stop reloading when the shared-data service repeatedly fails", async () =>
     origin: currentUrl.origin,
     replace,
   });
-  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(() => {
+    workers[0]!.fail();
+  }).toThrow(
+    "Shared database worker failed to load or its transport became unrecoverable",
+  );
 
-  workers[0]!.fail();
-
-  await vi.waitFor(() => {
-    expect(toastError).toHaveBeenCalledOnce();
-  });
+  expect(toastError).toHaveBeenCalledOnce();
   expect(replace).not.toHaveBeenCalled();
   expect(replaceState).toHaveBeenCalledOnce();
   const retryUrl = new URL(String(replaceState.mock.calls[0]![2]));
@@ -229,7 +279,6 @@ test("Stop reloading when the shared-data service repeatedly fails", async () =>
   expect(retryUrl.searchParams.get("threadId")).toBe("thread-1");
   expect(retryUrl.hash).toBe("#latest");
   expect(constructorCalls).toHaveLength(1);
-  expect(consoleError).toHaveBeenCalledOnce();
 });
 
 test("Reload again after the shared-data recovery window has elapsed", async () => {
@@ -251,13 +300,13 @@ test("Reload again after the shared-data recovery window has elapsed", async () 
     origin: currentUrl.origin,
     replace,
   });
-  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(() => {
+    workers[0]!.fail();
+  }).toThrow(
+    "Shared database worker failed to load or its transport became unrecoverable",
+  );
 
-  workers[0]!.fail();
-
-  await vi.waitFor(() => {
-    expect(replace).toHaveBeenCalledOnce();
-  });
+  expect(replace).toHaveBeenCalledOnce();
   const recoveryUrl = new URL(replace.mock.calls[0]![0]);
   expect(recoveryUrl.searchParams.get("okou-shared-database-reload")).toBe(
     String(RELOAD_AT_MS),
@@ -266,5 +315,4 @@ test("Reload again after the shared-data recovery window has elapsed", async () 
   expect(recoveryUrl.hash).toBe("#latest");
   expect(toastError).not.toHaveBeenCalled();
   expect(constructorCalls).toHaveLength(1);
-  expect(consoleError).toHaveBeenCalledOnce();
 });
