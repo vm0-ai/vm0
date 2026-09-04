@@ -39,6 +39,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -194,7 +195,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
@@ -228,7 +228,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
