@@ -56,6 +56,7 @@ async fn guest_projects_pi_blocks_with_canonical_sequences_and_run_id()
         &npx,
         r#"#!/bin/sh
 set -eu
+test "$*" = "--yes --no-audit --package=https://example.invalid/current-okou-cli.tgz okou __agent-loop"
 test -n "${OKOU_RUN_ID:-}"
 test -z "${OKOU_PI_LAUNCH_CONFIG:-}"
 test -n "${OKOU_PI_LAUNCH_PAYLOAD_FILE:-}"

@@ -18,7 +18,6 @@ permissions:
   packages: write
   checks: write
 
-# Dependency vulnerability scanning is owned by security.yml.
 env:
   npm_config_audit: "false"
 

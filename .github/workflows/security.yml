@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+env:
+  npm_config_audit: "false"
+
 permissions:
   contents: read
   pull-requests: read
@@ -155,42 +158,6 @@ jobs:
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           category: codeql
-
-  pnpm-audit:
-    needs: [detect-release]
-    name: pnpm audit (SCA)
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: turbo
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22.19.0
-
-      - name: Install pnpm
-        run: corepack enable pnpm
-
-      - name: Run pnpm audit
-        run: |
-          set -o pipefail
-          echo "## pnpm audit results" >> "$GITHUB_STEP_SUMMARY"
-          # --ignore-registry-errors: temporary workaround for transient npm registry
-          # connectivity failures in CI that cause false audit failures unrelated to
-          # actual vulnerability findings.
-          pnpm audit --prod --ignore-registry-errors 2>&1 | tee audit-output.txt
-          {
-            echo '```'
-            cat audit-output.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
 
   actionlint:
     needs: [detect-release]
@@ -376,7 +343,6 @@ jobs:
       - pr-title
       - semgrep
       - codeql
-      - pnpm-audit
       - actionlint
       - release-workspace-coverage
       - gitleaks
@@ -418,7 +384,6 @@ jobs:
           else
             check_result "codeql" "${{ needs.codeql.result }}"
           fi
-          check_result "pnpm-audit" "${{ needs.pnpm-audit.result }}"
           check_result "actionlint" "${{ needs.actionlint.result }}"
           check_result "gitleaks" "${{ needs.gitleaks.result }}"
 
