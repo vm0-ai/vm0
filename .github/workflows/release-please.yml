@@ -18,6 +18,10 @@ permissions:
   packages: write
   checks: write
 
+# Dependency vulnerability scanning is owned by security.yml.
+env:
+  npm_config_audit: "false"
+
 jobs:
   # A push to main can carry several merge-queue entries at once, so look at every
   # commit subject in the push rather than only the head commit. Without this the
