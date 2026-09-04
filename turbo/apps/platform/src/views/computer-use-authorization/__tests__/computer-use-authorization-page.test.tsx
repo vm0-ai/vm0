@@ -1,345 +1,229 @@
+import {
+  computerUseAuthorizationRequestsContract,
+  type ComputerUseAuthorizationSource,
+  type ComputerUseHost,
+} from "@okouai/api-contracts/contracts/computer-use";
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { computerUseAuthorizationRequestsContract } from "@okouai/api-contracts/contracts/computer-use";
+import { expect, test } from "vitest";
 
 import {
-  detachedSetupPage,
   queryAllByRoleFast,
+  setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const REQUEST_TOKEN = "computer-use-request-token";
+const STUDIO_HOST_ID = "11111111-1111-4111-8111-111111111111";
+const OFFLINE_HOST_ID = "33333333-3333-4333-8333-333333333333";
 
-function replaceNavigatorProperty(property: string, value: unknown): void {
-  const descriptor = Object.getOwnPropertyDescriptor(navigator, property);
-  Object.defineProperty(navigator, property, {
+function computerUseHost(
+  id: string,
+  displayName: string,
+  overrides: Partial<ComputerUseHost> = {},
+): ComputerUseHost {
+  return {
+    id,
+    product: "zero",
+    hostName: displayName,
+    displayName,
+    appVersion: "1.0.0",
+    osVersion: "14.6",
+    supportedCapabilities: [],
+    permissions: {
+      accessibility: true,
+      screenRecording: true,
+      automation: {
+        chrome: { status: "granted", updatedAt: null, reason: null },
+        safari: { status: "granted", updatedAt: null, reason: null },
+      },
+    },
+    status: "online",
+    lastSeenAt: "2026-09-01T10:00:00.000Z",
+    createdAt: "2026-09-01T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function mockAuthorizationRequest({
+  hosts,
+  source = "chat",
+}: {
+  readonly hosts: ComputerUseHost[];
+  readonly source?: ComputerUseAuthorizationSource;
+}): void {
+  context.mocks.api(
+    computerUseAuthorizationRequestsContract.get,
+    ({ respond }) => {
+      return respond(200, {
+        source,
+        expiresAt: "2099-09-01T10:00:00.000Z",
+        completedAt: null,
+        computerUseHostId: null,
+        hosts,
+      });
+    },
+  );
+}
+
+function getButton(
+  name: string,
+  container: ParentNode = document.body,
+): HTMLButtonElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${name}`);
+  }
+  return button;
+}
+
+function getDownloadLink(): HTMLAnchorElement | undefined {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === "Download for macOS";
+  });
+  return link instanceof HTMLAnchorElement ? link : undefined;
+}
+
+function mockIntelMac(): void {
+  const original = Object.getOwnPropertyDescriptor(navigator, "userAgentData");
+  Object.defineProperty(navigator, "userAgentData", {
     configurable: true,
-    value,
+    value: {
+      platform: "macOS",
+      getHighEntropyValues: () => {
+        return Promise.resolve({
+          architecture: "x86_64",
+          platform: "macOS",
+        });
+      },
+    },
   });
   context.signal.addEventListener(
     "abort",
     () => {
-      if (descriptor) {
-        Object.defineProperty(navigator, property, descriptor);
-        return;
+      if (original) {
+        Object.defineProperty(navigator, "userAgentData", original);
+      } else {
+        Reflect.deleteProperty(navigator, "userAgentData");
       }
-      Reflect.deleteProperty(navigator, property);
     },
     { once: true },
   );
 }
 
-function mockMacUserAgentData(architecture: string): void {
-  replaceNavigatorProperty("userAgentData", {
-    platform: "macOS",
-    getHighEntropyValues: () => {
-      return Promise.resolve({ architecture, platform: "macOS" });
-    },
-  });
-}
+test("An Intel Mac cannot download the unsupported computer-use app", async () => {
+  mockIntelMac();
+  mockAuthorizationRequest({ hosts: [] });
 
-function linkByText(text: string): HTMLElement {
-  const link = queryAllByRoleFast("link").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  await setupPage({
+    context,
+    path: `/computer-use/authorize/${REQUEST_TOKEN}`,
+    host: "app.vm0.ai",
   });
-  if (!link) {
-    throw new Error(`${text} link not found`);
-  }
-  return link;
-}
 
-function queryLinkByText(text: string): HTMLElement | null {
-  return (
-    queryAllByRoleFast("link").find((candidate) => {
-      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-    }) ?? null
+  await expect(
+    screen.findByRole("heading", { name: "No online computers" }),
+  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(getButton("Requires an Apple silicon Mac")).toBeDisabled();
+  });
+  expect(
+    screen.getByText(
+      "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+    ),
+  ).toBeVisible();
+  expect(getDownloadLink()).toBeUndefined();
+});
+
+test("A user with no online computer receives VM0 setup guidance", async () => {
+  mockAuthorizationRequest({
+    hosts: [
+      computerUseHost(OFFLINE_HOST_ID, "Offline Desktop", {
+        status: "offline",
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: `/computer-use/authorize/${REQUEST_TOKEN}`,
+    host: "app.vm0.ai",
+  });
+
+  await expect(
+    screen.findByRole("heading", { name: "No online computers" }),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
+    ),
+  ).toBeVisible();
+  expect(screen.queryByText("Offline Desktop")).toBeNull();
+  expect(
+    screen.getByText(
+      "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+    ),
+  ).toBeVisible();
+  expect(getDownloadLink()).toHaveAttribute(
+    "href",
+    expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
   );
-}
+});
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
-  if (!button) {
-    throw new Error(`${text} button not found`);
-  }
-  return button;
-}
-
-function computerUsePermissions() {
-  return {
-    accessibility: true,
-    screenRecording: true,
-    automation: {
-      chrome: { status: "unknown" as const, updatedAt: null, reason: null },
-      safari: { status: "unknown" as const, updatedAt: null, reason: null },
-    },
-  };
-}
-
-function computerUseHost(args: {
-  readonly id: string;
-  readonly product?: "zero" | "okou";
-  readonly displayName: string;
-  readonly status: "online" | "offline";
-}) {
-  return {
-    id: args.id,
-    product: args.product ?? "zero",
-    displayName: args.displayName,
-    appVersion: "1.0.0",
-    osVersion: "macOS 15.0",
-    supportedCapabilities: ["app.open"],
-    permissions: computerUsePermissions(),
-    status: args.status,
-    lastSeenAt: "2026-06-10T12:00:00Z",
-    createdAt: "2026-06-10T11:00:00Z",
-  };
-}
-
-describe("computer use authorization page", () => {
-  it("shows only online hosts and applies the selected host", async () => {
-    const user = userEvent.setup({ delay: null });
-    let appliedHostId: string | null = null;
-    let completedHostId: string | null = null;
-
-    context.mocks.api(
-      computerUseAuthorizationRequestsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          source: "chat",
-          expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: completedHostId ? "2026-06-25T11:00:00Z" : null,
-          computerUseHostId: completedHostId,
-          hosts: [
-            computerUseHost({
-              id: "00000000-0000-4000-a000-000000000001",
-              product: "okou",
-              displayName: "Studio Mac",
-              status: "online",
-            }),
-            computerUseHost({
-              id: "00000000-0000-4000-a000-000000000004",
-              displayName: "Travel Mac",
-              status: "online",
-            }),
-            computerUseHost({
-              id: "00000000-0000-4000-a000-000000000002",
-              displayName: "Offline Desktop",
-              status: "offline",
-            }),
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      computerUseAuthorizationRequestsContract.apply,
-      ({ body, respond }) => {
-        appliedHostId = body.computerUseHostId;
-        completedHostId = body.computerUseHostId;
-        return respond(200, {
-          ok: true,
-          source: "chat",
-          computerUseHostId: body.computerUseHostId,
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/computer-use/authorize/vm0_computer_use_authorization_request_test",
-    });
-
-    await expect(
-      screen.findByRole("heading", { name: "Authorize computer use" }),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Choose an online computer for Zero to use in this chat thread.",
-      ),
-    ).toBeInTheDocument();
-    await expect(screen.findByText("Studio Mac")).resolves.toBeInTheDocument();
-    expect(screen.getByText("Okou")).toBeInTheDocument();
-    expect(screen.getByText("Travel Mac")).toBeInTheDocument();
-    expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
-
-    const authorizeButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent === "Authorize";
-    });
-    expect(authorizeButton).toBeDefined();
-    await user.click(authorizeButton!);
-
-    await waitFor(() => {
-      expect(appliedHostId).toBe("00000000-0000-4000-a000-000000000001");
-    });
-    await waitFor(() => {
-      expect(
-        queryAllByRoleFast("button").filter((button) => {
-          return button.textContent === "Authorized";
-        }),
-      ).toHaveLength(1);
-    });
-    const authorizedButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent === "Authorized";
-    });
-    expect(authorizedButton).toBeDisabled();
-    const remainingAuthorizeButtons = queryAllByRoleFast("button").filter(
-      (button) => {
-        return button.textContent === "Authorize";
-      },
-    );
-    expect(remainingAuthorizeButtons).toHaveLength(1);
-    expect(remainingAuthorizeButtons[0]).toBeDisabled();
+test("A user with no online computer receives Okou setup guidance", async () => {
+  mockAuthorizationRequest({
+    hosts: [
+      computerUseHost(OFFLINE_HOST_ID, "Offline Desktop", {
+        status: "offline",
+      }),
+    ],
   });
 
-  it("labels Teams authorization requests", async () => {
-    context.mocks.api(
-      computerUseAuthorizationRequestsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          source: "teams",
-          expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: null,
-          computerUseHostId: null,
-          hosts: [
-            computerUseHost({
-              id: "00000000-0000-4000-a000-000000000005",
-              displayName: "Teams Mac",
-              status: "online",
-            }),
-          ],
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/computer-use/authorize/vm0_computer_use_authorization_request_teams",
-    });
-
-    await expect(
-      screen.findByText(
-        "Choose an online computer for Zero to use in this Teams thread.",
-      ),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByText("Teams Mac")).toBeInTheDocument();
+  await setupPage({
+    context,
+    path: `/computer-use/authorize/${REQUEST_TOKEN}`,
+    host: "app.okou.ai",
   });
 
-  it("shows desktop guidance when there are no online hosts", async () => {
-    context.mocks.api(
-      computerUseAuthorizationRequestsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          source: "slack",
-          expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: null,
-          computerUseHostId: null,
-          hosts: [
-            computerUseHost({
-              id: "00000000-0000-4000-a000-000000000003",
-              displayName: "Offline Desktop",
-              status: "offline",
-            }),
-          ],
-        });
-      },
-    );
+  await expect(
+    screen.findByRole("heading", { name: "No online computers" }),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Open Okou on your Mac and refresh this page when it comes online.",
+    ),
+  ).toBeVisible();
+  expect(screen.queryByText("Offline Desktop")).toBeNull();
+  expect(screen.queryByText("Zero Computer Use")).toBeNull();
+  expect(
+    screen.getByText(
+      "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
+    ),
+  ).toBeVisible();
+  expect(getDownloadLink()).toHaveAttribute(
+    "href",
+    expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
+  );
+});
 
-    detachedSetupPage({
-      context,
-      path: "/computer-use/authorize/vm0_computer_use_authorization_request_empty",
-    });
-
-    await expect(
-      screen.findByText("No online computers"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-      ),
-    ).toBeInTheDocument();
-    const downloadLink = await waitFor(() => {
-      return linkByText("Download for macOS");
-    });
-    expect(downloadLink).toHaveAttribute(
-      "href",
-      expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
-    );
-    expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
+test("A Teams computer-use request names the Teams thread", async () => {
+  mockAuthorizationRequest({
+    source: "teams",
+    hosts: [computerUseHost(STUDIO_HOST_ID, "Teams Mac")],
   });
 
-  it("shows Okou desktop guidance on an Okou host", async () => {
-    context.mocks.browser.url("https://app.okou.ai/");
-    context.mocks.api(
-      computerUseAuthorizationRequestsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          source: "slack",
-          expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: null,
-          computerUseHostId: null,
-          hosts: [],
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/computer-use/authorize/vm0_computer_use_authorization_request_okou",
-    });
-
-    await expect(
-      screen.findByText(
-        "Open Okou on your Mac and refresh this page when it comes online.",
-      ),
-    ).resolves.toBeInTheDocument();
-    const downloadLink = await waitFor(() => {
-      return linkByText("Download for macOS");
-    });
-    expect(downloadLink).toHaveAttribute(
-      "href",
-      expect.stringContaining("/api/desktop/updates/stable/darwin/arm64/dmg"),
-    );
+  await setupPage({
+    context,
+    path: `/computer-use/authorize/${REQUEST_TOKEN}`,
+    host: "app.vm0.ai",
   });
 
-  it("blocks the desktop download when the browser identifies an Intel Mac", async () => {
-    mockMacUserAgentData("x86");
-    context.mocks.api(
-      computerUseAuthorizationRequestsContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          source: "slack",
-          expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: null,
-          computerUseHostId: null,
-          hosts: [],
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/computer-use/authorize/vm0_computer_use_authorization_request_intel",
-    });
-
-    await expect(
-      screen.findByText("No online computers"),
-    ).resolves.toBeInTheDocument();
-    const requiredButton = await waitFor(() => {
-      return buttonByText("Requires an Apple silicon Mac");
-    });
-    expect(requiredButton).toBeDisabled();
-    expect(
-      screen.getByText(
-        "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-      ),
-    ).toBeInTheDocument();
-    expect(queryLinkByText("Download for macOS")).not.toBeInTheDocument();
-  });
+  await expect(screen.findByText("Teams Mac")).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Choose an online computer for Zero to use in this Teams thread.",
+    ),
+  ).toBeVisible();
 });

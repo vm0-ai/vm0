@@ -654,7 +654,15 @@ export function clearMockedAuthOnAbort(signal: AbortSignal): void {
 }
 
 const clerkListeners: MockedClerkListener[] = [];
-function defaultClerkStatusOn(): void {}
+const defaultClerkStatusOn: BrowserClerk["on"] = (
+  event,
+  handler,
+  options,
+): void => {
+  if (event === "status" && options?.notify) {
+    handler(internalMockedClerkLoaded ? "ready" : "loading");
+  }
+};
 
 export function emitMockedClerkEvent(): void {
   const resources = { session: mockedClerk.session };
@@ -950,9 +958,12 @@ const defaultBuildUserProfileUrlImpl = () => {
   return "https://accounts.example.test/user";
 };
 
-interface MockedClerkLoadOptions {
+export interface MockedClerkLoadOptions {
+  afterSignOutUrl?: string;
   isSatellite?: boolean;
+  satelliteAutoSync?: boolean;
   signInUrl?: string;
+  signUpUrl?: string;
   touchSession?: boolean;
 }
 
@@ -1059,6 +1070,9 @@ export const mockedClerk = {
   get loaded() {
     return internalMockedClerkLoaded;
   },
+  get status() {
+    return internalMockedClerkLoaded ? "ready" : "loading";
+  },
   get user() {
     return internalMockedUser;
   },
@@ -1070,6 +1084,9 @@ export const mockedClerk = {
       return undefined;
     }
     if (internalMockedClerkSessionSignedOut) {
+      return null;
+    }
+    if (!internalMockedSession) {
       return null;
     }
     const recoverableSession = internalMockedClientSessions.find((session) => {
