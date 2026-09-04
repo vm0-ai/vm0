@@ -1,8 +1,10 @@
+import { HttpResponse, http } from "msw";
 import type { Capability } from "@okouai/api-contracts/contracts/capabilities";
 import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { goalsContract } from "@okouai/api-contracts/contracts/goals";
 
 import { mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import {
@@ -116,6 +118,27 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     threadId: sent.body.threadId,
     agentId: agent.agentId,
   };
+}
+
+/**
+ * Goal creation is the only fast-path caller on this route, but the OpenRouter
+ * endpoint is shared, so match the objective-brief system prompt rather than
+ * counting every completion request.
+ */
+function isObjectiveBriefRequest(body: Record<string, unknown>): boolean {
+  const messages = body.messages;
+  if (!Array.isArray(messages)) {
+    return false;
+  }
+  const system: unknown = messages[0];
+  const content =
+    typeof system === "object" && system !== null && "content" in system
+      ? system.content
+      : undefined;
+  return (
+    typeof content === "string" &&
+    content.includes("Rewrite the goal objective into a short objective brief")
+  );
 }
 
 async function createGoal(fixture: GoalApiFixture, objective = "ship goals") {
@@ -664,6 +687,87 @@ describe("agent goals", () => {
     expect(created.body).toStrictEqual({
       objective,
       objectiveBrief: objective,
+      status: "active",
+    });
+  });
+
+  it("pins the model, reasoning effort, and token budget of the objective brief completion", async () => {
+    const fixture = await seedGoalApiFixture();
+    mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
+
+    let briefRequestBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          if (isObjectiveBriefRequest(body)) {
+            briefRequestBody = body;
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Ship the token budget repair" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const created = await createGoal(
+      fixture,
+      "Make sure the reasoning token budgets are large enough everywhere",
+    );
+
+    expect(created.body).toStrictEqual({
+      objective:
+        "Make sure the reasoning token budgets are large enough everywhere",
+      objectiveBrief: "Ship the token budget repair",
+      status: "active",
+    });
+    // Reasoning tokens are drawn from the same budget as the answer, so a
+    // budget sized for a non-reasoning model starves the answer entirely.
+    expect(briefRequestBody).toMatchObject({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 768,
+      reasoning: { effort: "low" },
+    });
+  });
+
+  it("falls back to the objective when the brief completion is token-limited", async () => {
+    const fixture = await seedGoalApiFixture();
+    mockOptionalEnv("OPENROUTER_API_KEY", "goal-brief-key");
+
+    let briefRequests = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          if (isObjectiveBriefRequest(body)) {
+            briefRequests += 1;
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "length",
+                native_finish_reason: "MAX_TOKENS",
+                message: { content: "A truncated brief that must not" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const created = await createGoal(fixture, "ship thread goals");
+
+    expect(briefRequests).toBe(1);
+    expect(created.body).toStrictEqual({
+      objective: "ship thread goals",
+      objectiveBrief: "ship thread goals",
       status: "active",
     });
   });
