@@ -19,7 +19,6 @@ import {
   type FeatureSwitchContext,
 } from "@okouai/core/feature-switch";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { introVideoWorkflowInstruction } from "@okouai/core/intro-video-workflow";
 import { presentationTemplateSkillInstruction } from "@okouai/core/presentation-template-skill";
 import {
   agentDisplayNameForPublicBrand,
@@ -437,7 +436,11 @@ function buildAgentToolsPrompt(args: {
     ...(args.presentationTemplatesEnabled
       ? [`- ${presentationTemplateSkillInstruction()}`]
       : []),
-    ...(args.introVideoEnabled ? [`- ${introVideoWorkflowInstruction()}`] : []),
+    ...(args.introVideoEnabled
+      ? [
+          "- Click-driven intro-video camera moves: when a screen recording includes a synchronized same-stem `.clicks.json` sidecar, run `okou video camera --help` and follow its plan/review workflow.",
+        ]
+      : []),
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `okou scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
     ...(args.cloudBrowserEnabled === true
       ? [

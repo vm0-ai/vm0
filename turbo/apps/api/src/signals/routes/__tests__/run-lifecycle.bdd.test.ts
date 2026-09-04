@@ -1686,13 +1686,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
   });
 
-  it("adds the intro-video workflow to agent tools only while its rollout switch is on", async () => {
+  it("advertises intro-video camera tooling only while its rollout switch is on", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const workflowMarker = "Intro-video workflow:";
-    const cameraCommand =
-      "okou video camera --file <video> --events <events> --output <draft.mp4>";
+    const toolHint = "Click-driven intro-video camera moves:";
 
     const gatedOff = await api.createRun(actor, {
       agentId,
@@ -1702,9 +1700,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
     const gatedOffClaim = await api.claimRunnerJob(gatedOff.runId);
     expect(gatedOffClaim.appendSystemPrompt ?? "").toContain("# Agent Tools");
-    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(
-      workflowMarker,
-    );
+    expect(gatedOffClaim.appendSystemPrompt ?? "").not.toContain(toolHint);
 
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.IntroVideo]: true,
@@ -1718,11 +1714,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.heartbeatRunner(runnerGroup);
     const gatedOnClaim = await api.claimRunnerJob(gatedOn.runId);
     const appendSystemPrompt = gatedOnClaim.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain(workflowMarker);
-    expect(appendSystemPrompt).toContain(cameraCommand);
-    expect(appendSystemPrompt).toContain(
-      "okou presentation screenshot --input <deck> --out <dir>",
-    );
+    expect(appendSystemPrompt).toContain(toolHint);
+    expect(appendSystemPrompt).toContain("okou video camera --help");
   });
 
   it("advertises presentation screenshots only while their rollout switch is on", async () => {
