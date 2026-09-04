@@ -1,22 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { readGlobalCss } from "./global-css.ts";
+import { readCssRule, readGlobalCss } from "./global-css.ts";
 
 const globalCss = readGlobalCss();
-
-/** Returns the declaration body of the first rule introduced by `selector`. */
-function readRuleBody(selector: string): string {
-  const start = globalCss.indexOf(selector);
-  if (start === -1) {
-    throw new Error(`Unable to locate CSS rule for ${selector}`);
-  }
-  const open = globalCss.indexOf("{", start);
-  const close = globalCss.indexOf("}", open);
-  if (close === -1) {
-    throw new Error(`Unterminated CSS rule for ${selector}`);
-  }
-  return globalCss.slice(open + 1, close);
-}
 
 const CARD = "[data-new-ui] .zero-workspace-card";
 const FILL = `${CARD}.zero-workspace-bg::before`;
@@ -29,7 +15,7 @@ const FRAME = `${CARD}.zero-workspace-bg::after`;
 // bottom border with them.
 describe("new UI workspace card frame", () => {
   it("restates the border over content so flush children cannot bury it", () => {
-    const frame = readRuleBody(FRAME);
+    const frame = readCssRule(globalCss, FRAME);
 
     expect(frame).toMatch(/border:\s*0\.7px solid hsl\(var\(--border\)\);/);
     expect(frame).toMatch(
@@ -40,8 +26,7 @@ describe("new UI workspace card frame", () => {
   });
 
   it("repaints only the gutter the card's own padding already reserves", () => {
-    const card = readRuleBody(CARD);
-    const frame = readRuleBody(FRAME);
+    const frame = readCssRule(globalCss, FRAME);
 
     // Spread equal to the gap is what bounds the overpaint to the corner
     // triangles the radius cuts away; a larger spread would eat real content.
@@ -49,15 +34,17 @@ describe("new UI workspace card frame", () => {
       /box-shadow:\s*0 0 0 var\(--zero-workspace-card-gap\) hsl\(var\(--sidebar\)\);/,
     );
     expect(frame).toMatch(/inset:\s*var\(--zero-workspace-card-gap\);/);
-    expect(card).toMatch(/padding:\s*var\(--zero-workspace-card-gap\);/);
+    expect(readCssRule(globalCss, CARD)).toMatch(
+      /padding:\s*var\(--zero-workspace-card-gap\);/,
+    );
   });
 
   it("keeps the fill and the frame on one radius", () => {
-    expect(readRuleBody(CARD)).toMatch(
+    expect(readCssRule(globalCss, CARD)).toMatch(
       /--zero-workspace-card-radius:\s*\d+px;/,
     );
     for (const selector of [FILL, FRAME]) {
-      expect(readRuleBody(selector)).toMatch(
+      expect(readCssRule(globalCss, selector)).toMatch(
         /border-radius:\s*var\(--zero-workspace-card-radius\);/,
       );
     }
@@ -67,6 +54,6 @@ describe("new UI workspace card frame", () => {
   // survives where content is transparent -- so sharing the border between the
   // two made the top corners half again as heavy as the bottom ones.
   it("leaves the border to the frame alone so no edge is drawn twice", () => {
-    expect(readRuleBody(FILL)).not.toMatch(/border:/);
+    expect(readCssRule(globalCss, FILL)).not.toMatch(/border:\s/);
   });
 });
