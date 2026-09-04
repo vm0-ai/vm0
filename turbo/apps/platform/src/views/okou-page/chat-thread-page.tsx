@@ -3149,7 +3149,9 @@ function ChatThreadRenderedEventGroups({
     : (completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups);
   const thinkingIndicatorMode =
     useLastResolved(thread.thinkingIndicatorMode$) ?? null;
-  const currentRunGroupId = renderedGroups.at(-1)?.events.at(-1)?.runGroupId;
+  const currentRunGroupId = renderedActiveGroups
+    .at(-1)
+    ?.events.at(-1)?.runGroupId;
   const waitingIndicatorAssistantGroupId =
     assistantGroupIdForWaitingRunWorkIndicator(
       visibleGroups,
