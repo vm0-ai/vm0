@@ -54,6 +54,7 @@ export enum FeatureSwitchKey {
   ChatErrorRecovery = "chatErrorRecovery",
   BatchChatEventCatchUp = "batchChatEventCatchUp",
   ChatRunWorkFolding = "chatRunWorkFolding",
+  ProgressiveArtifactPreview = "progressiveArtifactPreview",
   ChatThinkingSpinner = "chatThinkingSpinner",
   MarkdownHexColorPreview = "markdownHexColorPreview",
   FollowUpOptimize = "followUpOptimize",
@@ -78,5 +79,6 @@ export enum FeatureSwitchKey {
   IosPwaStartupImages = "iosPwaStartupImages",
   GeistTypeface = "geistTypeface",
   SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
+  AvatarComposerV2 = "avatarComposerV2",
   NewUi = "newUi",
 }

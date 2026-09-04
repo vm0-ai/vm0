@@ -690,6 +690,7 @@ describe("chat-run-finished workflow automations", () => {
     "fires a %s-run automation when the terminal run pauses the goal",
     { timeout: 30_000 },
     async (terminalStatus) => {
+      expect.hasAssertions();
       const fixture = await setupChatAutomationFixture();
       const run = await startWatchedChatRun(
         fixture,
@@ -726,6 +727,7 @@ describe("chat-run-finished workflow automations", () => {
     "fires the completed-run automation when continuation launch failure pauses the goal",
     { timeout: 60_000 },
     async () => {
+      expect.hasAssertions();
       const fixture = await setupChatAutomationFixture();
       const firstRun = await startWatchedChatRun(
         fixture,

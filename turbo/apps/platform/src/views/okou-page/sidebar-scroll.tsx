@@ -75,8 +75,12 @@ function LegacyOverlayScrollArea({
       >
         <div className={contentClassName}>{children}</div>
       </div>
+      {/* The thumb hugs the viewport's edge instead of floating in the middle
+          of the gutter. Beside the workspace card that gutter is only four
+          pixels wide, and anything further in overlaps the trailing menu
+          button on the row it is scrolling past. */}
       <div
-        className={`absolute right-1 top-0 bottom-0 w-[6px] pointer-events-none opacity-0 transition-opacity duration-150 ${
+        className={`absolute right-px top-0 bottom-0 w-[6px] pointer-events-none opacity-0 transition-opacity duration-150 ${
           thumbStyleValue.visible
             ? "group-hover/sidebar-scroll:opacity-100"
             : ""
@@ -129,8 +133,11 @@ function BaseUiOverlayScrollArea({
           {children}
         </ScrollArea.Content>
       </ScrollArea.Viewport>
+      {/* The track stays wide enough to grab; `justify-end` keeps the thumb
+          itself against the viewport's edge, clear of the trailing menu button
+          on the rows beside the workspace card. */}
       <ScrollArea.Scrollbar
-        className="m-px flex w-3 justify-center opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100 data-scrolling:duration-0"
+        className="m-px flex w-3 justify-end opacity-0 transition-opacity duration-150 data-hovering:opacity-100 data-scrolling:opacity-100 data-scrolling:duration-0"
         data-testid="sidebar-scrollbar"
       >
         <ScrollArea.Thumb

@@ -277,6 +277,9 @@ test("A presentation video request does not invent editing direction, opening, o
     "Create a polished intro video from the attached source.",
   );
   expect(submittedPrompt).not.toContain("Editing direction:");
+  expect(submittedPrompt).not.toContain("<intro_video_workflow>");
+  expect(submittedPrompt).not.toContain("okou presentation screenshot");
+  expect(submittedPrompt).not.toContain("<user_request>");
   await waitFor(() => {
     expect(dialog).not.toBeInTheDocument();
   });
@@ -389,6 +392,9 @@ test("A desktop recording video request does not invent an opening or ending", a
     "Create a polished intro video from the attached source.",
   );
   expect(submittedPrompt).toContain("- Source: demo.mp4");
+  expect(submittedPrompt).not.toContain("<intro_video_workflow>");
+  expect(submittedPrompt).not.toContain("okou video camera");
+  expect(submittedPrompt).not.toContain("<user_request>");
   await waitFor(() => {
     expect(dialog).not.toBeInTheDocument();
   });

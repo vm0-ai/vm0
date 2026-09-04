@@ -365,14 +365,14 @@ async function completeAutomaticOAuthCallback(
     (async () => {
       if (!args.state.codeVerifier) {
         throw new CustomConnectorAutomaticOAuthError(
-          "binding-drift",
+          { kind: "binding-drift", reason: "binding-drift" },
           "Automatic OAuth state is missing its PKCE verifier",
         );
       }
       const clientMetadata = okouMcpOAuthClientMetadata(args.request);
       if (args.state.redirectUri !== okouOAuthRedirectUri(args.request)) {
         throw new CustomConnectorAutomaticOAuthError(
-          "binding-drift",
+          { kind: "binding-drift", reason: "binding-drift" },
           "Automatic OAuth callback changed",
         );
       }

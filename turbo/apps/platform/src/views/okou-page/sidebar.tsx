@@ -540,7 +540,7 @@ function LabeledRailLink({
         className={`max-w-full truncate px-0.5 text-[9px] font-medium leading-[14px] ${
           isActive
             ? "zero-nav-copy text-sidebar-foreground"
-            : "zero-nav-copy-muted text-sidebar-foreground/60"
+            : "zero-nav-copy-muted text-sidebar-foreground/60 new-ui:text-sidebar-foreground/70"
         }`}
       >
         {caption}
@@ -723,8 +723,22 @@ function ThreeColumnSearchDialogContainer() {
   );
 }
 
+/** Inset the chat list column keeps on its own, away from the workspace card. */
+const CHAT_LIST_INSET = "px-3";
+
+/* Under the new shell the workspace card's gutter runs down the right of this
+   column, painted in the sidebar colour, so it already reads as part of the
+   column. A full inset on this side stacks on top of it and the rows end up
+   twice as far from the card's border as from the rail, which is the gap that
+   reads as too wide. Spending the gutter's eight pixels here restores the
+   match. The overlay scrollbar hugs the column edge for the same reason: with
+   only four pixels left it would otherwise sit over the row's trailing menu
+   button rather than beside it. */
+const CHAT_LIST_INSET_BESIDE_CARD = "pl-3 pr-1";
+
 function ChatListColumn() {
   const newUiEnabled = useGet(featureSwitch$)[FeatureSwitchKey.NewUi] ?? false;
+  const inset = newUiEnabled ? CHAT_LIST_INSET_BESIDE_CARD : CHAT_LIST_INSET;
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const navigate = useSet(detachedNavigateTo$);
   const openThreeColumnSearch = useSet(openThreeColumnSearchDialog$);
@@ -754,7 +768,7 @@ function ChatListColumn() {
         !newUiEnabled && "border-r-[0.7px] border-sidebar-border",
       )}
     >
-      <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
+      <div className={cn("flex shrink-0 items-center gap-1 pb-2 pt-3", inset)}>
         <span className="zero-nav-copy flex-1 pl-2 text-[15px] font-semibold text-sidebar-foreground">
           {t(($) => {
             return $.appShell.sidebar.chat;
@@ -803,19 +817,19 @@ function ChatListColumn() {
         </TooltipProvider>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-1">
-        <div className="px-3">
+        <div className={inset}>
           <PinnedAgentListSection layout="horizontal" />
         </div>
         <ChatThreadsSection
           scrollSignals={threeColumnSidebarChatThreadScrollSignals}
-          contentClassName="px-3"
+          contentClassName={inset}
           showMarkAllRead
         />
       </div>
       {/* Collapses to nothing when SidebarUpgradeCard renders null, so the
           thread list reaches the column bottom instead of clipping its last
           row above a reserved strip. */}
-      <div className="px-3 pb-3 empty:hidden">
+      <div className={cn("pb-3 empty:hidden", inset)}>
         <SidebarUpgradeCard />
       </div>
     </aside>

@@ -125,7 +125,7 @@ describe("Custom connector OAuth public-brand callbacks", () => {
       ).resolves.toMatchObject({
         custom_oauth_state: {
           auth_mode: "oauth",
-          context_format: "legacy",
+          context_format: "canonical",
           context_valid: true,
         },
       });

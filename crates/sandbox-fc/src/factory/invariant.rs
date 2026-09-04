@@ -80,6 +80,7 @@ impl InvariantConfig {
             balloon: BalloonConfig {
                 amount_mib: 0,
                 deflate_on_oom: true,
+                free_page_reporting: true,
                 stats_polling_interval_s: 5,
             },
             prewarm_script: PREWARM_SCRIPT,
@@ -188,6 +189,26 @@ mod tests {
             expected_fields.len(),
             "unexpected Firecracker boot config section"
         );
+        assert_eq!(obj["balloon"]["free_page_reporting"], true);
+        assert!(obj["balloon"].get("free_page_hinting").is_none());
+    }
+
+    #[test]
+    fn balloon_reporting_change_changes_config_hash() {
+        let invariant = InvariantConfig::new();
+        let config = canonical_snapshot_boot_config(&invariant);
+        let original =
+            config_hash_for(&config, invariant.tap_mac, invariant.prewarm_script).unwrap();
+        let mut reporting_disabled = config.clone();
+        reporting_disabled.balloon.free_page_reporting = false;
+        let changed = config_hash_for(
+            &reporting_disabled,
+            invariant.tap_mac,
+            invariant.prewarm_script,
+        )
+        .unwrap();
+
+        assert_ne!(original, changed);
     }
 
     #[test]

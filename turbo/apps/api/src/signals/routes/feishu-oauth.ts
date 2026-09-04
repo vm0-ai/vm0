@@ -165,18 +165,6 @@ function legacyOAuthRedirectUri(target: "app" | undefined): string {
     : feishuOAuthCallbackUrl();
 }
 
-function isFeishuAppCallbackRedirectUri(
-  redirectUri: string,
-  publicBrand: PublicBrand,
-): boolean {
-  return (
-    redirectUri === feishuOAuthAppCallbackUrl(publicBrand) ||
-    // A pre-#31030 API persisted the VM0 URI for Okou connector state. Remove
-    // under #31061 after its old-API rollback gate and 15-minute TTL close.
-    redirectUri === legacyFeishuOAuthAppCallbackUrl()
-  );
-}
-
 function callbackRedirectResponse(
   url: string,
   responseMode: "json" | undefined,
@@ -686,10 +674,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: state.orgId,
       userId: state.userId,
       connectorId,
-      // A pre-#31030 API signed this state without redirectUri. Remove under
-      // #31061 after its old-API rollback gate and 15-minute TTL close.
-      redirectUri:
-        state.redirectUri ?? legacyOAuthRedirectUri(query.callbackTarget),
+      redirectUri: state.redirectUri,
       publicBrand: state.publicBrand,
       account,
       feishuContext: {
@@ -981,10 +966,8 @@ const completeCustomFeishuOAuth$ = command(
       return jsonErrorResponse("Invalid or expired connect state");
     }
     if (
-      isFeishuAppCallbackRedirectUri(
-        preview.state.redirectUri,
-        preview.state.publicBrand,
-      ) &&
+      preview.state.redirectUri ===
+        feishuOAuthAppCallbackUrl(preview.state.publicBrand) &&
       query.responseMode !== "json"
     ) {
       return redirectResponse(appCallbackUrl(query, preview.state.publicBrand));
