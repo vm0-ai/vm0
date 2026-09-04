@@ -6,7 +6,10 @@ import {
   resolveAvatarSvgConfig,
   resolveAvatarUrl,
 } from "../../views/okou-page/avatar-utils.ts";
-import { avatarSvgLayerUrls } from "../../views/okou-page/avatar-svg-utils.ts";
+import {
+  avatarSvgLayerUrls,
+  isLegacyAvatarSvgConfig,
+} from "../../views/okou-page/avatar-svg-utils.ts";
 import { serializeAgentMention } from "./composer-agent-suggestion-domain.ts";
 import { AGENT_MENTION_NODE_NAME } from "./user-message-document-codec.ts";
 
@@ -80,8 +83,10 @@ function renderAgentMentionAvatar(
   if (svgConfig) {
     const urls = avatarSvgLayerUrls(svgConfig);
     const layers = document.createElement("span");
-    layers.className = "absolute inset-0 scale-[1.25]";
-    for (const src of [urls.head, urls.face, urls.hair]) {
+    layers.className = isLegacyAvatarSvgConfig(svgConfig)
+      ? "absolute inset-0 scale-[1.25]"
+      : "absolute inset-0";
+    for (const src of urls) {
       const image = document.createElement("img");
       image.alt = "";
       image.src = src;

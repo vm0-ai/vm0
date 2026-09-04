@@ -50,8 +50,8 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         await this.events.databaseReconnected();
         return;
       }
-      if (message.type === "reload-required") {
-        this.events.reloadRequired();
+      if (message.type === "worker-unavailable") {
+        this.events.workerUnavailable(message.reason);
         return;
       }
       if (message.type === "reload-computed") {

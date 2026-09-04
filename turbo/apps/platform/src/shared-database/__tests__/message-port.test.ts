@@ -122,7 +122,7 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     databaseReconnected: vi.fn<() => void>(),
-    reloadRequired: vi.fn<() => void>(),
+    workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
     statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
 }

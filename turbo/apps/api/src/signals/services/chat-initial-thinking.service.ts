@@ -16,7 +16,7 @@ import {
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { generateText } from "../external/openrouter";
+import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
@@ -39,7 +39,6 @@ import {
 
 const log = logger("api:chat-initial-thinking");
 
-const FAST_CHAT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
 const THINKING_CONTEXT_MESSAGE_CAP = 8;
 const THINKING_CONTEXT_CHAR_CAP = 700;
@@ -201,7 +200,7 @@ async function generateInitialThinkingText(args: {
     .join("\n\n");
 
   const text = await generateText(
-    FAST_CHAT_MODEL,
+    FAST_PATH_MODEL,
     [
       {
         role: "system",

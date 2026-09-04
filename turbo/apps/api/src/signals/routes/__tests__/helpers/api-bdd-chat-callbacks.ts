@@ -309,7 +309,12 @@ export function createChatCallbacksApi(context: TestContext) {
             await request.json(),
           );
           return HttpResponse.json({
-            choices: [{ message: { content: await handler(body) } }],
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: await handler(body) },
+              },
+            ],
           });
         }),
       );
