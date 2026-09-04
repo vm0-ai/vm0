@@ -115,6 +115,16 @@ interface HistoricalLaunchSnapshotStorageRow {
   readonly xmin: string;
 }
 
+interface CanonicalAgentFixture {
+  readonly agentId: string;
+  readonly sessionId: string;
+  readonly suffix: string;
+}
+
+interface CanonicalAgentRunFixture extends CanonicalAgentFixture {
+  readonly runId: string;
+}
+
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return undefined;
@@ -259,14 +269,9 @@ async function seedAgentRun(
   );
 }
 
-async function seedCanonicalAgentRun(
+async function seedCanonicalAgentAndSession(
   client: Client,
-  fixture: {
-    readonly agentId: string;
-    readonly runId: string;
-    readonly sessionId: string;
-    readonly suffix: string;
-  },
+  fixture: CanonicalAgentFixture,
 ): Promise<void> {
   await client.query(
     `
@@ -293,6 +298,13 @@ async function seedCanonicalAgentRun(
       fixture.agentId,
     ],
   );
+}
+
+async function seedCanonicalAgentRun(
+  client: Client,
+  fixture: CanonicalAgentRunFixture,
+): Promise<void> {
+  await seedCanonicalAgentAndSession(client, fixture);
   await client.query(
     `
       INSERT INTO "agent_runs" (
@@ -317,31 +329,7 @@ async function seedHistoricalLaunchSnapshotMatrix(
     sessionId: "00000000-0000-4000-8000-000000106802",
     suffix: "v3-upgrade",
   } as const;
-  await client.query(
-    `
-      INSERT INTO "agents" ("id", "org_id", "owner", "name")
-      VALUES ($1, $2, $3, $4)
-    `,
-    [
-      fixture.agentId,
-      `launch-snapshot-${fixture.suffix}-org`,
-      `launch-snapshot-${fixture.suffix}-user`,
-      `launch snapshot ${fixture.suffix}`,
-    ],
-  );
-  await client.query(
-    `
-      INSERT INTO "agent_sessions" (
-        "id", "user_id", "org_id", "agent_id"
-      ) VALUES ($1, $2, $3, $4)
-    `,
-    [
-      fixture.sessionId,
-      `launch-snapshot-${fixture.suffix}-user`,
-      `launch-snapshot-${fixture.suffix}-org`,
-      fixture.agentId,
-    ],
-  );
+  await seedCanonicalAgentAndSession(client, fixture);
   for (const row of historicalLaunchSnapshotRows) {
     await client.query(
       `
