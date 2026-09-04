@@ -1,6 +1,6 @@
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
@@ -43,13 +43,20 @@ function buttonIn(container: ParentNode, name: string): HTMLElement {
   return button;
 }
 
-function linkIn(container: ParentNode, name: string): HTMLElement {
-  const link = queryAllByRoleFast("link", container).find((candidate) => {
+function findLinkIn(
+  container: ParentNode,
+  name: string,
+): HTMLElement | undefined {
+  return queryAllByRoleFast("link", container).find((candidate) => {
     return (
       candidate.getAttribute("aria-label") === name ||
       candidate.textContent?.replace(/\s+/gu, " ").trim() === name
     );
   });
+}
+
+function linkIn(container: ParentNode, name: string): HTMLElement {
+  const link = findLinkIn(container, name);
   if (!link) {
     throw new Error(`Link ${name} was not available`);
   }
@@ -72,9 +79,7 @@ test("Hide the activity-log action outside debug mode", async () => {
     throw new Error("Assistant response group was not available");
   }
 
-  expect(
-    within(responseGroup).queryByRole("link", { name: "View run logs" }),
-  ).not.toBeInTheDocument();
+  expect(findLinkIn(responseGroup, "View run logs")).toBeUndefined();
 });
 
 test("Inspect or copy an assistant response from history", async () => {
