@@ -6384,7 +6384,7 @@ describe("CHAT-02: model-first provider policies", () => {
         orgId,
         userId: actor.userId,
       });
-      expect(candidate, name).toEqual(
+      expect(candidate).toStrictEqual(
         admitted ? expect.objectContaining({ sourceRunId: run.runId }) : null,
       );
       if (admitted && candidate) {
@@ -6449,7 +6449,6 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
       await expect(
         readPiMemoryStage1CandidateFixture({ orgId, userId: actor.userId }),
-        name,
       ).resolves.toBeNull();
     }
   }, 90_000);
