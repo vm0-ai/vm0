@@ -448,15 +448,6 @@ export function projectUserMessage(
       hasTextContent = true;
       continue;
     }
-    if (part.type === "voice") {
-      flushInlinePrompt();
-      if (part.transcript.length > 0) {
-        promptBlocks.push(part.transcript);
-        displayBlocks.push(part.transcript);
-      }
-      hasTextContent ||= part.transcript.trim().length > 0;
-      continue;
-    }
     if (part.type === "file") {
       flushInlinePrompt();
       promptBlocks.push(userMessageFilePrompt(part));

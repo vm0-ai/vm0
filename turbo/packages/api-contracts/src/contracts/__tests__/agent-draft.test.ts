@@ -26,6 +26,7 @@ describe("agent draft contract", () => {
         version: 1 as const,
         parts: [{ type: "text" as const, text: "Resume agent work" }],
       },
+      draftVoice: null,
       draftAttachments: null,
     };
 

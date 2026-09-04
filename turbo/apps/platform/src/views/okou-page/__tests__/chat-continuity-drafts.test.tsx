@@ -1,7 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
-import { chatEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import {
+  chatEventsContract,
+  type ChatThreadDraft,
+} from "@okouai/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
@@ -246,13 +249,15 @@ test("Restore a rich saved draft when a chat opens", async () => {
 
 test("Restore an unfinished voice draft when a chat opens", async () => {
   const thread = continuityThread(6, 1, "Voice draft conversation");
-  const draft = continuityDraft([
-    {
-      type: "voice",
+  const draft: ChatThreadDraft = {
+    draftUserMessage: null,
+    draftVoice: {
+      version: 1,
       id: "a7000000-0000-4000-a000-000000000601",
       transcript: "Raw launch notes captured before navigation",
     },
-  ]);
+    draftAttachments: null,
+  };
   const workspace = await installContinuityWorkspace(context, {
     caseId: 6,
     threads: [thread],
