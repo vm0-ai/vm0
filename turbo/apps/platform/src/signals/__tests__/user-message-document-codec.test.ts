@@ -14,6 +14,8 @@ import { createDraftSignals } from "../okou-page/chat-draft.ts";
 import { createWorkflowComposerSignals } from "../okou-page/tiptap-workflow-composer.ts";
 import type { OpenTemplatePickerDialogOptions } from "../okou-page/chat-composer.ts";
 import {
+  createEditorDocumentSnapshot,
+  draftToEditorDoc,
   editorDocToMessageDocument,
   messageDocumentToDisplayText,
   messageDocumentToEditorDoc,
@@ -253,28 +255,52 @@ describe("user message document codec", () => {
     });
   });
 
-  it("persists voice drafts and projects their raw transcript into prompts", () => {
-    const voiceDraft: UserMessageDocument = {
-      version: 1,
-      parts: [
+  it("persists voice drafts outside user message documents", () => {
+    const editorDocument = workflowComposerDocument({
+      type: "doc",
+      content: [
         {
-          type: "voice",
-          id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
-          transcript: "um ship Friday no Monday",
+          type: "paragraph",
+          content: [{ type: "text", text: "Keep this message" }],
+        },
+        {
+          type: "voiceDraft",
+          attrs: {
+            id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+            transcript: "um ship Friday no Monday",
+            status: "failed",
+            visible: true,
+          },
         },
       ],
-    };
+    });
+    const draft = createEditorDocumentSnapshot(editorDocument).toDraft();
 
-    expect(messageDocumentToPrompt(voiceDraft)).toBe(
-      "um ship Friday no Monday",
+    expect(draft).toStrictEqual({
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Keep this message" }],
+      },
+      draftVoice: {
+        version: 1,
+        id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+        transcript: "um ship Friday no Monday",
+      },
+    });
+    expect(messageDocumentToPrompt(draft?.userMessage)).toBe(
+      "Keep this message",
     );
-    expect(messageDocumentToDisplayText(voiceDraft)).toBe(
-      "um ship Friday no Monday",
+    expect(messageDocumentToDisplayText(draft?.userMessage)).toBe(
+      "Keep this message",
     );
-    const restored = messageDocumentToEditorDoc(voiceDraft);
+    const restored = draftToEditorDoc(draft?.userMessage, draft?.draftVoice);
     expect(restored).toStrictEqual({
       type: "doc",
       content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Keep this message" }],
+        },
         {
           type: "voiceDraft",
           attrs: {
@@ -291,8 +317,10 @@ describe("user message document codec", () => {
       throw new Error("Expected the voice draft to restore");
     }
     expect(
-      editorDocToMessageDocument(workflowComposerDocument(restored)),
-    ).toStrictEqual(voiceDraft);
+      createEditorDocumentSnapshot(
+        workflowComposerDocument(restored),
+      ).toDraft(),
+    ).toStrictEqual(draft);
   });
 
   it("excludes non-content parts from prompt and display text", () => {

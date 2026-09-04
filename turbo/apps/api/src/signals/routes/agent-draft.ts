@@ -41,6 +41,7 @@ const getAgentDraftInner$ = computed(async (get) => {
   const [draft] = await get(db$)
     .select({
       draftUserMessage: agentDrafts.draftUserMessage,
+      draftVoice: agentDrafts.draftVoice,
       draftAttachments: agentDrafts.draftAttachments,
     })
     .from(agentDrafts)
@@ -57,6 +58,7 @@ const getAgentDraftInner$ = computed(async (get) => {
     status: 200 as const,
     body: {
       draftUserMessage: draft?.draftUserMessage ?? null,
+      draftVoice: draft?.draftVoice ?? null,
       draftAttachments: draft?.draftAttachments ?? null,
     },
   };
@@ -87,6 +89,7 @@ const patchAgentDraftInner$ = command(
 
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
     const draftUserMessage = bodyResult.data.draftUserMessage;
+    const draftVoice = bodyResult.data.draftVoice ?? null;
     const writeDb = set(writeDb$);
     const updatedAt = nowDate();
     await persistAgentDraft(writeDb, {
@@ -94,6 +97,7 @@ const patchAgentDraftInner$ = command(
       orgId: auth.orgId,
       agentId: params.id,
       draftUserMessage,
+      draftVoice,
       draftAttachments,
       updatedAt,
     });

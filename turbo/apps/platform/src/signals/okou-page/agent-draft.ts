@@ -5,6 +5,7 @@ import {
   agentDraftResponseSchema,
 } from "@okouai/api-contracts/contracts/agent-draft";
 import type {
+  DraftVoice,
   PersistedAttachment,
   UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
@@ -23,7 +24,7 @@ import {
   type DraftPersistencePayload,
 } from "./draft-persistence.ts";
 import {
-  messageDocumentToEditorDoc,
+  draftToEditorDoc,
   messageDocumentToPrompt,
 } from "./user-message-document-codec.ts";
 
@@ -43,6 +44,7 @@ export interface EnsuredAgentDraft extends AgentDraftEntry {
 interface RestoredAgentDraftState {
   readonly content: string;
   readonly userMessage: UserMessageDocument | null;
+  readonly draftVoice: DraftVoice | null;
   readonly attachments: RestorableAttachment[];
 }
 
@@ -78,23 +80,25 @@ function userMessageAgentDraftAttachments(
 
 function userMessageAgentDraftState(args: {
   readonly draftUserMessage?: UserMessageDocument | null;
+  readonly draftVoice?: DraftVoice | null;
   readonly draftAttachments: PersistedAttachment[] | null;
 }): RestoredAgentDraftState | null {
-  const document = args.draftUserMessage;
-  if (!document || messageDocumentToEditorDoc(document) === null) {
+  const document = args.draftUserMessage ?? null;
+  const draftVoice = args.draftVoice ?? null;
+  if (draftToEditorDoc(document, draftVoice) === null) {
     return null;
   }
-  const content = messageDocumentToPrompt(document);
+  const content = document ? messageDocumentToPrompt(document) : "";
   if (content === null) {
     return null;
   }
   return {
     content,
     userMessage: document,
-    attachments: userMessageAgentDraftAttachments(
-      document,
-      args.draftAttachments ?? [],
-    ),
+    draftVoice,
+    attachments: document
+      ? userMessageAgentDraftAttachments(document, args.draftAttachments ?? [])
+      : [],
   };
 }
 
@@ -109,6 +113,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           params: { id: agentId },
           body: {
             draftUserMessage: payload.userMessage,
+            ...(payload.draftVoice ? { draftVoice: payload.draftVoice } : {}),
             draftAttachments: payload.attachments,
           },
           fetchOptions: { signal },
@@ -168,7 +173,11 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
     set(draftSyncReset$);
-    await set(patchDraft$, { userMessage: null, attachments: null }, signal);
+    await set(
+      patchDraft$,
+      { userMessage: null, draftVoice: null, attachments: null },
+      signal,
+    );
   });
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };
@@ -251,6 +260,7 @@ export const loadAgentDraft$ = command(
     const hasServerDraft =
       restoredDraft.content.length > 0 ||
       restoredDraft.userMessage !== null ||
+      restoredDraft.draftVoice !== null ||
       restoredDraft.attachments.length > 0;
     if (!hasServerDraft) {
       return;
@@ -261,6 +271,7 @@ export const loadAgentDraft$ = command(
       {
         content: restoredDraft.content,
         userMessage: restoredDraft.userMessage,
+        draftVoice: restoredDraft.draftVoice,
         generationTemplate: undefined,
         attachments: restoredDraft.attachments.map(createRestoredAttachment),
       },

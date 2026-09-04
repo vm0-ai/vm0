@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import {
+  draftVoiceSchema,
   persistedAttachmentSchema,
   userMessageInputDocumentSchema,
 } from "./chat-threads";
@@ -12,6 +13,7 @@ const c = initContract();
 export const agentDraftResponseSchema = z
   .object({
     draftUserMessage: userMessageInputDocumentSchema.nullable(),
+    draftVoice: draftVoiceSchema.nullable().optional(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
@@ -19,6 +21,7 @@ export const agentDraftResponseSchema = z
 export const agentDraftRequestSchema = z
   .object({
     draftUserMessage: userMessageInputDocumentSchema.nullable(),
+    draftVoice: draftVoiceSchema.nullable().optional(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   })
   .superRefine(requireUserMessageForDraftAttachments);

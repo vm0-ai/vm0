@@ -1404,14 +1404,11 @@ describe("chat lifecycle", () => {
     expect(screen.getByLabelText("Send")).toBeDisabled();
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftUserMessage: {
+        draftUserMessage: null,
+        draftVoice: {
           version: 1,
-          parts: [
-            expect.objectContaining({
-              type: "voice",
-              transcript: rawTranscript,
-            }),
-          ],
+          id: expect.any(String),
+          transcript: rawTranscript,
         },
         draftAttachments: null,
       });
@@ -1543,14 +1540,11 @@ describe("chat lifecycle", () => {
     releaseFirstRequest.resolve(undefined);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftUserMessage: {
+        draftUserMessage: null,
+        draftVoice: {
           version: 1,
-          parts: [
-            expect.objectContaining({
-              type: "voice",
-              transcript: rawTranscript,
-            }),
-          ],
+          id: expect.any(String),
+          transcript: rawTranscript,
         },
         draftAttachments: null,
       });
@@ -1583,15 +1577,11 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, { threadId });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftUserMessage: {
+        draftUserMessage: null,
+        draftVoice: {
           version: 1,
-          parts: [
-            {
-              type: "voice",
-              id: "15874914-6ca6-41eb-ad09-ac64bf0784ea",
-              transcript: rawTranscript,
-            },
-          ],
+          id: "15874914-6ca6-41eb-ad09-ac64bf0784ea",
+          transcript: rawTranscript,
         },
         draftAttachments: null,
       });

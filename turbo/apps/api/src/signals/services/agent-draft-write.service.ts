@@ -1,6 +1,7 @@
 import type {
   AgentDraftAttachments,
   AgentDraftUserMessage,
+  AgentDraftVoice,
 } from "@okouai/db/jsonb-contracts/agent-draft";
 import { agentDrafts } from "@okouai/db/schema/agent-draft";
 import { and, eq } from "drizzle-orm";
@@ -16,6 +17,7 @@ export interface AgentDraftWrite {
   readonly orgId: string;
   readonly agentId: string;
   readonly draftUserMessage: AgentDraftUserMessage | null;
+  readonly draftVoice: AgentDraftVoice | null;
   readonly draftAttachments: AgentDraftAttachments | null;
   readonly updatedAt: Date;
 }
@@ -31,6 +33,7 @@ export async function persistAgentDraft(
   );
   if (
     !draft.draftUserMessage &&
+    !draft.draftVoice &&
     !(draft.draftAttachments && draft.draftAttachments.length > 0)
   ) {
     await db.delete(agentDrafts).where(keyPredicate);
@@ -39,6 +42,7 @@ export async function persistAgentDraft(
 
   const update = {
     draftUserMessage: draft.draftUserMessage,
+    draftVoice: draft.draftVoice,
     draftAttachments: draft.draftAttachments,
     updatedAt: draft.updatedAt,
   };

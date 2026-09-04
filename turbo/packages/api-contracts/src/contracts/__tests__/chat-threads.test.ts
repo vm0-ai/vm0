@@ -186,10 +186,43 @@ describe("chat message response contract", () => {
         version: 1 as const,
         parts: [{ type: "text" as const, text: "Resume the draft" }],
       },
+      draftVoice: null,
       draftAttachments: null,
     };
 
     expect(chatThreadDraftSchema.parse(response)).toStrictEqual(response);
+  });
+
+  it("keeps voice drafts outside user message documents", () => {
+    const voicePart = {
+      type: "voice",
+      id: "15874914-6ca6-41eb-ad09-ac64bf0784ea",
+      transcript: "unfinished transcript",
+    };
+
+    expect(
+      userMessageInputDocumentSchema.safeParse({
+        version: 1,
+        parts: [voicePart],
+      }).success,
+    ).toBe(false);
+    expect(
+      userMessageDocumentSchema.safeParse({
+        version: 1,
+        parts: [voicePart],
+      }).success,
+    ).toBe(false);
+    expect(
+      chatThreadByIdContract.patch.body.safeParse({
+        draftUserMessage: null,
+        draftVoice: {
+          version: 1,
+          id: voicePart.id,
+          transcript: voicePart.transcript,
+        },
+        draftAttachments: null,
+      }).success,
+    ).toBe(true);
   });
 
   it("requires userMessage for non-empty thread drafts", () => {

@@ -2440,62 +2440,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     );
   }, 90_000);
 
-  it("projects a sent voice draft into the raw runner prompt and persisted message", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const clientEventId = randomUUID();
-    const voicePart = {
-      type: "voice" as const,
-      id: randomUUID(),
-      transcript: "um ship Friday no Monday",
-    };
-    const userMessage = {
-      version: 1 as const,
-      parts: [voicePart],
-    } satisfies UserMessageInputDocument;
-    await api.heartbeatRunner(runnerGroup);
-    const sent = await sendChatRun(actor, {
-      agentId,
-      prompt: "client prompt must not replace the raw voice transcript",
-      userMessage,
-      clientEventId,
-    });
-    await flushWaitUntilForTest();
-
-    const run = await api.readRun(actor, sent.runId);
-    expect(run.status).toBe("pending");
-    expect(run.prompt).toBe(voicePart.transcript);
-    const claimed = await claimChatRun(runnerGroup, sent.runId);
-    expect(claimed.claim.prompt).toBe(voicePart.transcript);
-
-    const messages = await waitForThreadMessages(
-      actor,
-      sent.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.revokesEventId === clientEventId &&
-            message.runId === sent.runId
-          );
-        });
-      },
-    );
-    const persisted = userMessages(messages.events).find(
-      (message): message is PromptMessage => {
-        return (
-          message.eventType === "input.prompt" &&
-          message.revokesEventId === clientEventId &&
-          message.runId === sent.runId
-        );
-      },
-    );
-    expect(persisted?.userMessage?.version).toBe(1);
-    expect(persisted?.userMessage?.parts).toContainEqual(voicePart);
-
-    await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
-  }, 90_000);
-
   it("rejects unauthenticated, unknown-agent, and foreign private-agent sends", async () => {
     const unauthenticated = await chat.requestSendEvent(
       null,
