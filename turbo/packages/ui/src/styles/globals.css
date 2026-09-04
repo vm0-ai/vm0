@@ -606,7 +606,7 @@
     /* Dialog scrim. Deliberately NOT theme-aware: --black inverts to #FFFFFF
        in dark, which would lighten the backdrop instead of dimming it. The
        dark theme reuses this value and only raises the alpha. */
-    --overlay: var(--gray-950); /* gray-950 - Ink */
+    --overlay: 40 4.3% 13.5%; /* #242321 - Ink */
 
     /* ===================================
      * Semantic Colors (Light Theme)

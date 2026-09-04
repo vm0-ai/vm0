@@ -407,6 +407,21 @@ describe("new UI neutral gray palette", () => {
       ).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it("keeps the dialog overlay on Ink when theme-aware grays invert", () => {
+    const lightProperties = readCustomProperties(
+      readRuleBody(globalCss, ":root[data-new-ui]"),
+    );
+    const darkProperties = new Map(lightProperties);
+    for (const [name, value] of readCustomProperties(
+      readRuleBody(globalCss, ".dark[data-new-ui],"),
+    )) {
+      darkProperties.set(name, value);
+    }
+
+    expect(rgbToHex(color(lightProperties, "--overlay"))).toBe("#242321");
+    expect(rgbToHex(color(darkProperties, "--overlay"))).toBe("#242321");
+  });
 });
 
 // The rail caption and the two composer placeholders draw their color through a
