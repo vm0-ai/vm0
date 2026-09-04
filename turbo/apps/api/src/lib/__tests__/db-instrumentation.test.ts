@@ -168,34 +168,79 @@ function expectConnectionAcquisition(span: ReadableSpan): void {
     span,
     CONNECTION_LOOKUP_DURATION_ATTRIBUTE,
   );
-  if (lookupDuration !== undefined) {
-    expect(lookupDuration).toBeGreaterThanOrEqual(0);
-    expect(lookupDuration).toBeLessThanOrEqual(socketConnectDuration);
-  }
-
   const attemptCount = numericAttribute(
     span,
     CONNECTION_ATTEMPT_COUNT_ATTRIBUTE,
   );
-  if (attemptCount !== undefined) {
-    expect(Number.isInteger(attemptCount)).toBeTruthy();
-    expect(attemptCount).toBeGreaterThan(0);
-  }
-
-  for (const name of [
+  const failedAttemptCount = numericAttribute(
+    span,
     CONNECTION_ATTEMPT_FAILED_COUNT_ATTRIBUTE,
+  );
+  const timedOutAttemptCount = numericAttribute(
+    span,
     CONNECTION_ATTEMPT_TIMEOUT_COUNT_ATTRIBUTE,
-  ]) {
-    const count = numericAttribute(span, name);
-    if (count !== undefined) {
-      expect(Number.isInteger(count)).toBeTruthy();
-      expect(count).toBeGreaterThan(0);
-      expect(attemptCount).toBeDefined();
-      if (attemptCount !== undefined) {
-        expect(count).toBeLessThanOrEqual(attemptCount);
-      }
-    }
-  }
+  );
+
+  const optionalTelemetryObservation = {
+    lookupDuration: {
+      nonNegativeWhenPresent:
+        lookupDuration === undefined || lookupDuration >= 0,
+      noGreaterThanSocketConnectWhenPresent:
+        lookupDuration === undefined || lookupDuration <= socketConnectDuration,
+    },
+    attemptCount: {
+      integerWhenPresent:
+        attemptCount === undefined || Number.isInteger(attemptCount),
+      positiveWhenPresent: attemptCount === undefined || attemptCount > 0,
+    },
+    failedAttemptCount: {
+      integerWhenPresent:
+        failedAttemptCount === undefined ||
+        Number.isInteger(failedAttemptCount),
+      positiveWhenPresent:
+        failedAttemptCount === undefined || failedAttemptCount > 0,
+      attemptCountPresentWhenPresent:
+        failedAttemptCount === undefined || attemptCount !== undefined,
+      noGreaterThanAttemptCountWhenPresent:
+        failedAttemptCount === undefined ||
+        (attemptCount !== undefined && failedAttemptCount <= attemptCount),
+    },
+    timedOutAttemptCount: {
+      integerWhenPresent:
+        timedOutAttemptCount === undefined ||
+        Number.isInteger(timedOutAttemptCount),
+      positiveWhenPresent:
+        timedOutAttemptCount === undefined || timedOutAttemptCount > 0,
+      attemptCountPresentWhenPresent:
+        timedOutAttemptCount === undefined || attemptCount !== undefined,
+      noGreaterThanAttemptCountWhenPresent:
+        timedOutAttemptCount === undefined ||
+        (attemptCount !== undefined && timedOutAttemptCount <= attemptCount),
+    },
+  };
+
+  expect(optionalTelemetryObservation).toStrictEqual({
+    lookupDuration: {
+      nonNegativeWhenPresent: true,
+      noGreaterThanSocketConnectWhenPresent: true,
+    },
+    attemptCount: {
+      integerWhenPresent: true,
+      positiveWhenPresent: true,
+    },
+    failedAttemptCount: {
+      integerWhenPresent: true,
+      positiveWhenPresent: true,
+      attemptCountPresentWhenPresent: true,
+      noGreaterThanAttemptCountWhenPresent: true,
+    },
+    timedOutAttemptCount: {
+      integerWhenPresent: true,
+      positiveWhenPresent: true,
+      attemptCountPresentWhenPresent: true,
+      noGreaterThanAttemptCountWhenPresent: true,
+    },
+  });
 }
 
 function expectNoConnectionAcquisition(span: ReadableSpan): void {
@@ -276,7 +321,11 @@ describe("instrumentPgPool", () => {
 
   beforeAll(() => {
     const contextManager = new AsyncLocalStorageContextManager().enable();
-    expect(context.setGlobalContextManager(contextManager)).toBeTruthy();
+    if (!context.setGlobalContextManager(contextManager)) {
+      throw new Error(
+        "Failed to install the global context manager for database instrumentation tests",
+      );
+    }
   });
 
   beforeEach(() => {

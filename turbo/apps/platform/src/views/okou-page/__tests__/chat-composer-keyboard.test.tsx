@@ -330,6 +330,36 @@ test("Treat whitespace as an empty message", async () => {
   expect(sentPrompts).toHaveLength(0);
 });
 
+test("Hide the placeholder after adding an empty line", async () => {
+  const user = userEvent.setup({ delay: null });
+  const sentPrompts: string[] = [];
+  installComposerChat(sentPrompts, "enter");
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+  });
+
+  const editor = await loadNewChatComposer();
+  const composer = editor.closest(".zero-composer");
+  if (!(composer instanceof HTMLElement)) {
+    throw new Error("Composer surface not found");
+  }
+  const send = await findFastControl("button", "Send", composer);
+  expect(within(composer).getByText(COMPOSER_PLACEHOLDER)).toBeVisible();
+  expect(send).toBeDisabled();
+
+  await user.click(editor);
+  await user.keyboard("{Shift>}{Enter}{/Shift}");
+
+  expect(draftLines(editor)).toStrictEqual(["", ""]);
+  await waitFor(() => {
+    expect(within(composer).queryByText(COMPOSER_PLACEHOLDER)).toBeNull();
+  });
+  expect(send).toBeDisabled();
+  expect(sentPrompts).toHaveLength(0);
+});
+
 test("Edit individual lines in a multiline draft", async () => {
   const user = userEvent.setup({ delay: null });
   const sentPrompts: string[] = [];
