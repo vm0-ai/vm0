@@ -46,34 +46,44 @@ function matchesSelector(tagName, attributes, selector) {
     : actualValue === expectedValue;
 }
 
-function applyHandler({ attributes, handler, innerContent = "" }) {
+async function applyHandler({ attributes, handler, innerContent = "" }) {
   const state = {
     appendedContent: "",
     attributes,
     innerContent,
+    mutated: false,
+    prependedContent: "",
     removed: false,
   };
-  handler.element({
+  await handler.element({
     append(content) {
+      state.mutated = true;
       state.appendedContent += content;
     },
     getAttribute(name) {
       return state.attributes.get(name) ?? null;
     },
     remove() {
+      state.mutated = true;
       state.removed = true;
     },
+    prepend(content) {
+      state.mutated = true;
+      state.prependedContent = `${content}${state.prependedContent}`;
+    },
     setAttribute(name, value) {
+      state.mutated = true;
       state.attributes.set(name, value);
     },
     setInnerContent(content) {
+      state.mutated = true;
       state.innerContent = content;
     },
   });
   return state;
 }
 
-function rewritePairedTag(html, tagName, handler) {
+async function rewritePairedTag(html, tagName, handler) {
   const pattern =
     tagName === "html"
       ? /<html([^>]*)>([\s\S]*?)<\/html>/iu
@@ -82,40 +92,104 @@ function rewritePairedTag(html, tagName, handler) {
         : tagName === "body"
           ? /<body([^>]*)>([\s\S]*?)<\/body>/iu
           : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
-  return html.replace(pattern, (_tag, attributeSource, innerContent) => {
-    const state = applyHandler({
-      attributes: parseAttributes(attributeSource),
-      handler,
-      innerContent,
-    });
-    if (state.removed) {
-      return "";
-    }
-    return `<${tagName}${serializeAttributes(state.attributes)}>${state.innerContent}${state.appendedContent}</${tagName}>`;
+  const match = pattern.exec(html);
+  if (!match || match.index === undefined) {
+    return html;
+  }
+  const attributeSource = match[1] ?? "";
+  const innerContent = match[2] ?? "";
+  const state = await applyHandler({
+    attributes: parseAttributes(attributeSource),
+    handler,
+    innerContent,
   });
+  if (!state.mutated) {
+    return html;
+  }
+  const replacement = state.removed
+    ? ""
+    : `<${tagName}${serializeAttributes(state.attributes)}>${state.prependedContent}${state.innerContent}${state.appendedContent}</${tagName}>`;
+  return `${html.slice(0, match.index)}${replacement}${html.slice(match.index + match[0].length)}`;
 }
 
-function rewriteVoidTag(html, tagName, selector, handler) {
+async function rewriteVoidTag(html, tagName, selector, handler) {
   const pattern =
     tagName === "meta"
       ? /<meta\b[^>]*>/giu
       : tagName === "link"
         ? /<link\b[^>]*>/giu
         : /<img\b[^>]*>/giu;
-  return html.replace(pattern, (tag) => {
+  let rewritten = "";
+  let offset = 0;
+  for (const match of html.matchAll(pattern)) {
+    const tag = match[0];
+    const index = match.index;
     const attributes = parseAttributes(tag);
     if (!matchesSelector(tagName, attributes, selector)) {
-      return tag;
+      continue;
     }
-    const state = applyHandler({ attributes, handler });
-    if (state.removed) {
-      return "";
+    const state = await applyHandler({ attributes, handler });
+    rewritten += html.slice(offset, index);
+    if (!state.mutated) {
+      rewritten += tag;
+    } else if (!state.removed) {
+      rewritten += `<${tagName}${serializeAttributes(state.attributes)} />`;
     }
-    return `<${tagName}${serializeAttributes(state.attributes)} />`;
-  });
+    offset = index + tag.length;
+  }
+  return offset === 0 ? html : `${rewritten}${html.slice(offset)}`;
 }
 
-function rewriteHtml(html, selector, handler) {
+async function rewriteElementById(html, id, handler) {
+  const openingPattern = /<([A-Za-z][A-Za-z0-9:-]*)\b[^>]*>/giu;
+  for (const openingMatch of html.matchAll(openingPattern)) {
+    if (parseAttributes(openingMatch[0]).get("id") !== id) {
+      continue;
+    }
+    const tagName = openingMatch[1];
+    const openingIndex = openingMatch.index;
+    if (!tagName || openingIndex === undefined) {
+      return html;
+    }
+    const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "giu");
+    tagPattern.lastIndex = openingIndex + openingMatch[0].length;
+    let depth = 1;
+    let closingMatch;
+    for (const candidate of html.matchAll(tagPattern)) {
+      if (candidate.index < tagPattern.lastIndex) {
+        continue;
+      }
+      if (candidate[0].startsWith("</")) {
+        depth -= 1;
+      } else if (!candidate[0].endsWith("/>")) {
+        depth += 1;
+      }
+      if (depth === 0) {
+        closingMatch = candidate;
+        break;
+      }
+    }
+    if (!closingMatch || closingMatch.index === undefined) {
+      return html;
+    }
+    const innerStart = openingIndex + openingMatch[0].length;
+    const state = await applyHandler({
+      attributes: parseAttributes(openingMatch[0]),
+      handler,
+      innerContent: html.slice(innerStart, closingMatch.index),
+    });
+    if (!state.mutated) {
+      return html;
+    }
+    const replacement = state.removed
+      ? ""
+      : `<${tagName}${serializeAttributes(state.attributes)}>${state.prependedContent}${state.innerContent}${state.appendedContent}</${tagName}>`;
+    return `${html.slice(0, openingIndex)}${replacement}${html.slice(closingMatch.index + closingMatch[0].length)}`;
+  }
+  return html;
+}
+
+async function rewriteHtml(html, selector, handler) {
   if (
     selector === "html" ||
     selector === "head" ||
@@ -132,6 +206,9 @@ function rewriteHtml(html, selector, handler) {
   }
   if (selector === "img") {
     return rewriteVoidTag(html, "img", selector, handler);
+  }
+  if (selector.startsWith("#")) {
+    return rewriteElementById(html, selector.slice(1), handler);
   }
   throw new Error(`Unsupported test HTMLRewriter selector: ${selector}`);
 }
@@ -150,7 +227,7 @@ globalThis.HTMLRewriter = class HTMLRewriter {
       async start(controller) {
         let html = await response.text();
         for (const { handler, selector } of handlers) {
-          html = rewriteHtml(html, selector, handler);
+          html = await rewriteHtml(html, selector, handler);
         }
         controller.enqueue(new TextEncoder().encode(html));
         controller.close();
@@ -308,6 +385,18 @@ function clerkEdgeSessionJson(html) {
   ];
   assert.equal(matches.length, 1);
   return JSON.parse(matches[0][1]);
+}
+
+function appBootstrapJson(html, path) {
+  for (const match of html.matchAll(
+    /<script\b[^>]*data-vm0-api-bootstrap=""[^>]*>([\s\S]*?)<\/script>/giu,
+  )) {
+    const attributes = parseAttributes(match[0]);
+    if (attributes.get("data-path") === path) {
+      return JSON.parse(match[1]);
+    }
+  }
+  throw new Error(`App bootstrap script is unavailable for ${path}`);
 }
 
 async function responseSnapshot(targetWorker, url, env) {
@@ -547,9 +636,16 @@ const edgeDebugBaseline = await responseSnapshot(
 assert.doesNotMatch(edgeDebugBaseline.body, /vm0-clerk-edge-session/u);
 assertNoClerkSecrets(edgeDebugBaseline);
 
+const retiredDebugFlag = await responseSnapshot(
+  guardedEdgeWorker,
+  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  edgeDebugEnvironment,
+);
+assert.deepEqual(retiredDebugFlag, edgeDebugBaseline);
+
 const duplicateFlag = await responseSnapshot(
   guardedEdgeWorker,
-  `${edgeDebugUrl}?__clerk_edge_debug=1&__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1&__bootstrap=1`,
   edgeDebugEnvironment,
 );
 assert.deepEqual(duplicateFlag, edgeDebugBaseline);
@@ -572,7 +668,7 @@ for (const ineligibleOrigin of [
   );
   const flagged = await responseSnapshot(
     guardedEdgeWorker,
-    `${ineligibleUrl}?__clerk_edge_debug=1`,
+    `${ineligibleUrl}?__bootstrap=1`,
     ineligibleEnvironment,
   );
   assert.deepEqual(flagged, baseline);
@@ -581,13 +677,18 @@ for (const ineligibleOrigin of [
 
 const missingConfig = await responseSnapshot(
   guardedEdgeWorker,
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   {
     CLERK_EDGE_DEBUG_AUTHORIZED_PARTY: edgeDebugOrigin,
     PUBLIC_BRAND: "okou",
   },
 );
-assert.deepEqual(missingConfig, edgeDebugBaseline);
+assert.equal(missingConfig.body, edgeDebugBaseline.body);
+assert.equal(missingConfig.status, edgeDebugBaseline.status);
+assert.equal(
+  new Headers(missingConfig.headers).get("Cache-Control"),
+  "private, no-store",
+);
 assert.equal(unexpectedClerkClientFactoryCalls, 0);
 
 function clerkClientReturning(requestState) {
@@ -606,7 +707,7 @@ const anonymous = await responseSnapshot(
       isAuthenticated: false,
     }),
   ),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 
@@ -621,7 +722,7 @@ const handshake = await responseSnapshot(
       isAuthenticated: false,
     }),
   ),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 
@@ -638,7 +739,7 @@ const refresh = await responseSnapshot(
       },
     }),
   ),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 
@@ -648,7 +749,7 @@ const thrown = await responseSnapshot(
       return Promise.reject(new Error("Clerk network failure"));
     },
   })),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 
@@ -656,7 +757,7 @@ const constructorThrown = await responseSnapshot(
   workerModule.createWorker(embeddedShell, () => {
     throw new Error("Clerk SDK failure");
   }),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 
@@ -666,7 +767,7 @@ const timedOut = await responseSnapshot(
       return new Promise(() => {});
     },
   })),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 
@@ -678,7 +779,12 @@ for (const unchanged of [
   constructorThrown,
   timedOut,
 ]) {
-  assert.deepEqual(unchanged, edgeDebugBaseline);
+  assert.equal(unchanged.body, edgeDebugBaseline.body);
+  assert.equal(unchanged.status, edgeDebugBaseline.status);
+  assert.equal(
+    new Headers(unchanged.headers).get("Cache-Control"),
+    "private, no-store",
+  );
   assertNoClerkSecrets(unchanged);
   assert.equal(new Headers(unchanged.headers).get("Location"), null);
   assert.equal(new Headers(unchanged.headers).get("Set-Cookie"), null);
@@ -686,6 +792,9 @@ for (const unchanged of [
 
 const currentUserId = "user_current</script><script>alert(1)</script>";
 const currentOrgId = "org_current";
+const emptyBootstrapFetcher = () => {
+  return Promise.resolve(Response.json({ responses: [] }));
+};
 const authenticatedWorker = workerModule.createWorker(
   embeddedShell,
   ({ publishableKey, secretKey, telemetry }) => {
@@ -699,7 +808,7 @@ const authenticatedWorker = workerModule.createWorker(
     return {
       authenticateRequest(request, options) {
         if (
-          request.url !== `${edgeDebugUrl}?__clerk_edge_debug=1` ||
+          request.url !== `${edgeDebugUrl}?__bootstrap=1` ||
           options.acceptsToken !== "session_token" ||
           options.authorizedParties.length !== 1 ||
           options.authorizedParties[0] !== edgeDebugOrigin
@@ -722,10 +831,11 @@ const authenticatedWorker = workerModule.createWorker(
       },
     };
   },
+  emptyBootstrapFetcher,
 );
 const authenticated = await responseSnapshot(
   authenticatedWorker,
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 assert.equal(authenticated.status, 200);
@@ -770,7 +880,7 @@ for (const [productionOrigin, publicBrand] of [
         authenticateRequest(request, options) {
           assert.equal(
             request.url,
-            `${productionEdgeUrl}?__clerk_edge_debug=1`,
+            `${productionEdgeUrl}?__bootstrap=1`,
           );
           assert.equal(options.acceptsToken, "session_token");
           assert.deepEqual(options.authorizedParties, [productionOrigin]);
@@ -787,6 +897,7 @@ for (const [productionOrigin, publicBrand] of [
         },
       };
     },
+    emptyBootstrapFetcher,
   );
   const productionBaseline = await responseSnapshot(
     productionEdgeWorker,
@@ -798,7 +909,7 @@ for (const [productionOrigin, publicBrand] of [
 
   const productionAuthenticated = await responseSnapshot(
     productionEdgeWorker,
-    `${productionEdgeUrl}?__clerk_edge_debug=1`,
+    `${productionEdgeUrl}?__bootstrap=1`,
     productionEdgeEnvironment,
   );
   assert.equal(clerkClientFactoryCalls, 1);
@@ -823,8 +934,9 @@ const authenticatedWithoutOrganization = await responseSnapshot(
         return { userId: "user_without_organization", orgId: null };
       },
     }),
+    emptyBootstrapFetcher,
   ),
-  `${edgeDebugUrl}?__clerk_edge_debug=1`,
+  `${edgeDebugUrl}?__bootstrap=1`,
   edgeDebugEnvironment,
 );
 assert.deepEqual(clerkEdgeSessionJson(authenticatedWithoutOrganization.body), {
@@ -836,6 +948,71 @@ assert.equal(
   "private, no-store",
 );
 assertNoClerkSecrets(authenticatedWithoutOrganization);
+
+const bootstrapPagePath =
+  "/agents/agent-1/chat?__bootstrap=1&x-vercel-protection-bypass=query-secret&keep=value";
+let observedBootstrapRequest = null;
+const bootstrapWorker = workerModule.createWorker(
+  embeddedShell,
+  clerkClientReturning({
+    headers: new Headers(),
+    isAuthenticated: true,
+    toAuth() {
+      return { userId: "user_bootstrap", orgId: "org_bootstrap" };
+    },
+  }),
+  (input, init) => {
+    observedBootstrapRequest = {
+      headers: new Headers(init?.headers),
+      url: new URL(input),
+    };
+    return Promise.resolve(
+      Response.json({
+        responses: [
+          {
+            method: "GET",
+            path: "/api/feature-switches",
+            contentType: "application/json",
+            body: {
+              switches: { escaped: "</script><script>alert(1)</script>" },
+              effectiveSwitches: {},
+            },
+          },
+        ],
+      }),
+    );
+  },
+);
+const bootstrapped = await responseSnapshot(
+  bootstrapWorker,
+  `${edgeDebugOrigin}${bootstrapPagePath}`,
+  edgeDebugEnvironment,
+);
+assert.equal(observedBootstrapRequest?.url.origin, previewOrigin);
+assert.equal(observedBootstrapRequest?.url.pathname, "/api/bootstrap");
+assert.equal(
+  observedBootstrapRequest?.url.searchParams.get("path"),
+  bootstrapPagePath,
+);
+assert.equal(observedBootstrapRequest?.headers.get("Origin"), edgeDebugOrigin);
+assert.equal(
+  observedBootstrapRequest?.headers.get("Cookie"),
+  "__session=jwt-cookie-must-not-render; __clerk_db_jwt=dev-browser-jwt-must-not-render",
+);
+assert.equal(
+  observedBootstrapRequest?.headers.get("x-vercel-protection-bypass"),
+  "query-secret",
+);
+assert.doesNotMatch(bootstrapped.body, /id="app-bootstrap-skeleton"/u);
+assert.deepEqual(appBootstrapJson(bootstrapped.body, "/api/feature-switches"), {
+  switches: { escaped: "</script><script>alert(1)</script>" },
+  effectiveSwitches: {},
+});
+assert.doesNotMatch(bootstrapped.body, /<script>alert\(1\)<\/script>/u);
+assert.ok(
+  bootstrapped.body.indexOf("data-vm0-api-bootstrap") <
+    bootstrapped.body.indexOf('id="root"'),
+);
 
 const embeddedServiceWorker = await embeddedWorker.fetch(
   new Request("https://pr-25304-app-okou-app-preview.vm0.workers.dev/sw.js"),

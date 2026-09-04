@@ -3,12 +3,10 @@ import { command, computed, state } from "ccstate";
 import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { replayChatThreadEvents } from "@okouai/core/chat-thread-event-replay";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 import { delay } from "signal-timers";
 
-import {
-  derivePlatformServiceOrigin,
-  resolvePlatformEnvironment,
-} from "../lib/platform-host.ts";
+import { resolvePlatformEnvironment } from "../lib/platform-host.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import { now } from "../lib/time.ts";

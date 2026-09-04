@@ -6,6 +6,7 @@ import { agentCustomConnectorsContract } from "@okouai/api-contracts/contracts/a
 import {
   agentsByIdContract,
   agentsMainContract,
+  type AgentResponse,
   type AgentVisibility,
 } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
@@ -411,13 +412,17 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 201 as const, body: agentResponse(agent, publicBrand) };
 });
 
-const listAgentsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const agents = await get(
-    agentList(auth.orgId, auth.userId, get(publicBrand$)),
-  );
-  return { status: 200 as const, body: [...agents] };
-});
+export const agentListResponse$ = computed(
+  async (
+    get,
+  ): Promise<{ readonly status: 200; readonly body: AgentResponse[] }> => {
+    const auth = get(organizationAuthContext$);
+    const agents = await get(
+      agentList(auth.orgId, auth.userId, get(publicBrand$)),
+    );
+    return { status: 200 as const, body: [...agents] };
+  },
+);
 
 const getAgentInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -895,7 +900,7 @@ export const agentsRoutes: readonly RouteEntry[] = [
   },
   {
     route: agentsMainContract.list,
-    handler: authRoute(agentReadAuth, listAgentsInner$),
+    handler: authRoute(agentReadAuth, agentListResponse$),
   },
   {
     route: agentsByIdContract.get,

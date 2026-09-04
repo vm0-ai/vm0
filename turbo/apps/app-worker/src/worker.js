@@ -1,14 +1,12 @@
 import { createClerkClient } from "@clerk/backend";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 
 const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
-const PREVIEW_APP_HOSTNAME_PATTERNS = [
-  /^(staging|pr-[0-9]+)-app\.omby\.ai$/u,
-  /^(staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u,
-];
 const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
+const APP_BOOTSTRAP_API_PATH = "/api/bootstrap";
 const APP_ASSET_REQUEST_HEADER_NAMES = [
   "Accept",
   "If-Modified-Since",
@@ -21,7 +19,7 @@ const PRODUCTION_API_ORIGINS = new Map([
   ["app.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const CLERK_EDGE_SESSION_QUERY_PARAMETER = "__clerk_edge_debug";
+const APP_BOOTSTRAP_QUERY_PARAMETER = "__bootstrap";
 const CLERK_EDGE_SESSION_TIMEOUT_MS = 1000;
 const CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN =
   /^pr-[1-9][0-9]*-app-okou-app-preview\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev$/u;
@@ -85,18 +83,11 @@ function appMetadata(hostname, configuredPublicBrand) {
 }
 
 function apiOrigin(requestUrl) {
-  const productionApiOrigin = PRODUCTION_API_ORIGINS.get(requestUrl.hostname);
-  if (productionApiOrigin) {
-    return productionApiOrigin;
+  const origin = derivePlatformServiceOrigin(requestUrl.origin, "api");
+  if (origin === requestUrl.origin) {
+    throw new Error("App API origin is unavailable");
   }
-
-  for (const pattern of PREVIEW_APP_HOSTNAME_PATTERNS) {
-    const previewApp = pattern.exec(requestUrl.hostname);
-    if (previewApp) {
-      return `https://${previewApp[1]}-api.vm6.ai`;
-    }
-  }
-  throw new Error("Shared-thread API origin is unavailable");
+  return origin;
 }
 
 function setMetaContent(content) {
@@ -211,9 +202,91 @@ function serializeClerkEdgeSession(session) {
     .replaceAll("\u2029", "\\u2029");
 }
 
+function escapeHtmlAttribute(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function appBootstrapRequestHeaders(request, requestUrl) {
+  const headers = new Headers({
+    Accept: "application/json",
+    Origin: requestUrl.origin,
+  });
+  const cookie = request.headers.get("Cookie");
+  if (cookie !== null) {
+    headers.set("Cookie", cookie);
+  }
+  const bypass =
+    requestUrl.searchParams.get(VERCEL_PROTECTION_BYPASS) ??
+    request.headers.get(VERCEL_PROTECTION_BYPASS);
+  if (bypass !== null) {
+    headers.set(VERCEL_PROTECTION_BYPASS, bypass);
+  }
+  return headers;
+}
+
+function parseAppBootstrap(value) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !Array.isArray(value.responses)
+  ) {
+    return null;
+  }
+  for (const entry of value.responses) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      entry.method !== "GET" ||
+      typeof entry.path !== "string" ||
+      !entry.path.startsWith("/api/") ||
+      entry.contentType !== "application/json" ||
+      !Object.hasOwn(entry, "body")
+    ) {
+      return null;
+    }
+  }
+  return value.responses;
+}
+
+async function fetchAppBootstrap(request, requestUrl, fetcher) {
+  const url = new URL(APP_BOOTSTRAP_API_PATH, apiOrigin(requestUrl));
+  url.searchParams.set("path", `${requestUrl.pathname}${requestUrl.search}`);
+
+  let response;
+  try {
+    response = await fetcher(url, {
+      headers: appBootstrapRequestHeaders(request, requestUrl),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) {
+    return null;
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  return parseAppBootstrap(body);
+}
+
+function appBootstrapScript(entry) {
+  const method = escapeHtmlAttribute(entry.method);
+  const path = escapeHtmlAttribute(entry.path);
+  const contentType = escapeHtmlAttribute(entry.contentType);
+  return `<script type="application/json" data-vm0-api-bootstrap="" data-method="${method}" data-path="${path}" data-content-type="${contentType}">${serializeClerkEdgeSession(entry.body)}</script>`;
+}
+
 function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
   const debugFlags = requestUrl.searchParams.getAll(
-    CLERK_EDGE_SESSION_QUERY_PARAMETER,
+    APP_BOOTSTRAP_QUERY_PARAMETER,
   );
   if (
     requestUrl.protocol !== "https:" ||
@@ -297,7 +370,15 @@ async function clerkEdgeSession(
   }
 }
 
-function rewriteAppPage(response, metadata, edgeSession) {
+function rewriteAppPage(
+  response,
+  metadata,
+  edgeSessionPromise,
+  request,
+  requestUrl,
+  bootstrapFetcher,
+) {
+  const bootstrapState = { available: false };
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on("title", {
@@ -351,20 +432,43 @@ function rewriteAppPage(response, metadata, edgeSession) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
-  if (edgeSession !== null) {
-    rewriter.on("body", {
-      element(element) {
-        element.append(
-          `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
-          { html: true },
-        );
-      },
-    });
+  if (edgeSessionPromise !== null) {
+    rewriter
+      .on("body", {
+        async element(element) {
+          const edgeSession = await edgeSessionPromise;
+          if (edgeSession === null) {
+            return;
+          }
+          const bootstrap = await fetchAppBootstrap(
+            request,
+            requestUrl,
+            bootstrapFetcher,
+          );
+          if (bootstrap !== null && bootstrap.length > 0) {
+            bootstrapState.available = true;
+            element.prepend(bootstrap.map(appBootstrapScript).join(""), {
+              html: true,
+            });
+          }
+          element.append(
+            `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
+            { html: true },
+          );
+        },
+      })
+      .on("#app-bootstrap-skeleton", {
+        element(element) {
+          if (bootstrapState.available) {
+            element.remove();
+          }
+        },
+      });
   }
   const rewrittenResponse = rewriter.transform(response);
   return noIndexResponse(
     rewrittenResponse,
-    edgeSession === null
+    edgeSessionPromise === null
       ? "public, max-age=0, must-revalidate"
       : "private, no-store",
   );
@@ -636,6 +740,7 @@ async function handleRequest(
   requestUrl,
   embeddedShell,
   clerkClientFactory,
+  bootstrapFetcher,
 ) {
   if (
     (request.method === "GET" || request.method === "HEAD") &&
@@ -658,7 +763,7 @@ async function handleRequest(
         return gatewayResponse(503);
       }
       indexHtml = await assetResponse.text();
-      origin = apiOrigin(requestUrl, indexHtml);
+      origin = apiOrigin(requestUrl);
     } catch {
       return gatewayResponse(503);
     }
@@ -738,15 +843,23 @@ async function handleRequest(
     return assetResponse;
   }
   const authorizedParty = clerkEdgeSessionAuthorizedParty(requestUrl, env);
-  const edgeSession = authorizedParty
-    ? await clerkEdgeSession(request, env, authorizedParty, clerkClientFactory)
+  const edgeSessionPromise = authorizedParty
+    ? clerkEdgeSession(request, env, authorizedParty, clerkClientFactory)
     : null;
-  return rewriteAppPage(assetResponse, metadata, edgeSession);
+  return rewriteAppPage(
+    assetResponse,
+    metadata,
+    edgeSessionPromise,
+    request,
+    requestUrl,
+    bootstrapFetcher,
+  );
 }
 
 export function createWorker(
   embeddedShell,
   clerkClientFactory = createClerkClient,
+  bootstrapFetcher = fetch,
 ) {
   return {
     async fetch(request, env) {
@@ -757,6 +870,7 @@ export function createWorker(
         requestUrl,
         embeddedShell,
         clerkClientFactory,
+        bootstrapFetcher,
       );
       return withAppHeaders(response, requestUrl);
     },
