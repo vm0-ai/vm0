@@ -211,6 +211,121 @@ test("Review goal continuations as one work history", async () => {
   );
 });
 
+const WAITING_GOAL_GROUP_ID = "e0000000-0000-4000-a000-000000000214";
+
+async function renderWaitingGoalContinuation(currentRunGroupId: string) {
+  installRunChat({
+    chatEvents: [
+      promptEvent({
+        id: "waiting-goal-trigger",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Keep checking the release",
+        model: "gpt-5.6-sol",
+        createdAt: createdAt(0),
+      }),
+      assistantEvent({
+        id: "waiting-goal-trigger-work",
+        runId: RUN_A,
+        seqId: 2,
+        text: "Started checking the release",
+        createdAt: createdAt(0, 20),
+      }),
+      completedEvent({
+        id: "waiting-goal-trigger-complete",
+        runId: RUN_A,
+        seqId: 3,
+        createdAt: createdAt(0, 21),
+      }),
+      goalContinuationEvent({
+        id: "waiting-goal-first-continuation",
+        runId: RUN_B,
+        runGroupId: WAITING_GOAL_GROUP_ID,
+        seqId: 4,
+        brief: "Continue checking the release",
+        model: "gpt-5.6-sol",
+        createdAt: createdAt(1),
+      }),
+      inRunGroup(
+        assistantEvent({
+          id: "waiting-goal-latest-answer",
+          runId: RUN_B,
+          seqId: 5,
+          text: "The latest release gate passed",
+          createdAt: createdAt(1, 20),
+        }),
+        WAITING_GOAL_GROUP_ID,
+      ),
+      inRunGroup(
+        completedEvent({
+          id: "waiting-goal-first-complete",
+          runId: RUN_B,
+          seqId: 6,
+          createdAt: createdAt(1, 21),
+        }),
+        WAITING_GOAL_GROUP_ID,
+      ),
+      goalContinuationEvent({
+        id: "waiting-goal-current-continuation",
+        runId: RUN_C,
+        runGroupId: currentRunGroupId,
+        seqId: 7,
+        brief: "Continue checking the release",
+        model: "gpt-5.6-sol",
+        createdAt: createdAt(2),
+      }),
+    ],
+    activeRunIds: [RUN_C],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  const latestAnswer = await screen.findByText(
+    "The latest release gate passed",
+  );
+  const previousAssistantGroup = latestAnswer.closest<HTMLElement>(
+    '[data-role="assistant"]',
+  );
+  const thinkingIndicator = document.querySelector<HTMLElement>(
+    "[data-thinking-indicator]",
+  );
+  if (!previousAssistantGroup || !thinkingIndicator) {
+    throw new Error("Expected the active goal in an assistant response");
+  }
+
+  return { previousAssistantGroup, thinkingIndicator };
+}
+
+test("Keep a waiting goal continuation in its existing assistant group", async () => {
+  const { previousAssistantGroup, thinkingIndicator } =
+    await renderWaitingGoalContinuation(WAITING_GOAL_GROUP_ID);
+
+  expect(previousAssistantGroup).toContainElement(thinkingIndicator);
+  expect(
+    queryAllByRoleFast("link").filter((link) => {
+      return link.getAttribute("aria-label") === "View agent profile";
+    }),
+  ).toHaveLength(1);
+  expect(screen.getByText(/^Working for /u)).toBeVisible();
+});
+
+test("Keep a waiting different goal in a separate assistant group", async () => {
+  const { previousAssistantGroup, thinkingIndicator } =
+    await renderWaitingGoalContinuation("e0000000-0000-4000-a000-000000000215");
+
+  expect(previousAssistantGroup).not.toContainElement(thinkingIndicator);
+  expect(
+    queryAllByRoleFast("link").filter((link) => {
+      return link.getAttribute("aria-label") === "View agent profile";
+    }),
+  ).toHaveLength(2);
+});
+
 test("Keep a cancelled goal continuation beside its latest answer", async () => {
   const goalGroupId = "e0000000-0000-4000-a000-000000000212";
   installRunChat({
