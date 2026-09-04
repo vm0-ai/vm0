@@ -204,6 +204,10 @@ export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
 export const CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE =
   "This run reached its execution time limit.";
 
+// Existing runner/sandbox and commit-addressed CLI rollout fallback:
+// pre-execution_timeout senders may wrap the canonical text with `execution: `.
+// Remove after old instances drain, their queue, two-hour execution, and
+// finalization windows close, and the rollback floor is compatible; see #31713.
 const AGENT_EXECUTION_TIMEOUT_RUN_ERROR =
   /^(?:execution: )?Agent execution timed out after [1-9]\d* seconds$/u;
 
