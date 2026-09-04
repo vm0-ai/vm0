@@ -250,23 +250,25 @@ describe("zero settings tab", () => {
     expect(uniqueSrcs.size).toBe(24);
   });
 
-  it("keeps the avatar option tray height stable across steps", async () => {
+  it("keeps the avatar option tray stable with tightly packed rows", async () => {
     prepareAgentProfile();
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
     click(await findCreateCustomAvatarButton());
 
     const faceOption = await screen.findByLabelText("Round");
-    const optionTray = faceOption.parentElement;
-    if (!optionTray) {
+    const optionGrid = faceOption.parentElement;
+    const optionTray = optionGrid?.parentElement;
+    if (!optionGrid || !optionTray) {
       throw new Error("Avatar option tray not found");
     }
     expect(optionTray).toHaveClass("h-48");
+    expect(optionGrid).toHaveClass("min-h-full", "content-center", "gap-3");
 
     for (const optionLabel of ["High bun", "Neutral smile", "Gold", "Blue"]) {
       click(screen.getByLabelText("Next step"));
       const option = await screen.findByLabelText(optionLabel);
-      expect(option.parentElement).toBe(optionTray);
+      expect(option.parentElement).toBe(optionGrid);
       expect(optionTray).toHaveClass("h-48");
     }
   });

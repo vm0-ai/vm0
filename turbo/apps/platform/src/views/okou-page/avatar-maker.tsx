@@ -401,15 +401,17 @@ function AvatarMakerDialogBody({
           </p>
         </div>
         <StepNavigator />
-        <div className="flex h-48 w-full flex-wrap justify-center gap-3 overflow-y-auto px-1 py-1">
-          <StepOptions
-            step={step}
-            config={config}
-            justPicked={justPicked}
-            selectOption={(selection) => {
-              detach(selectOption(selection, pageSignal), Reason.DomCallback);
-            }}
-          />
+        <div className="h-48 w-full overflow-y-auto px-1 py-1">
+          <div className="flex min-h-full flex-wrap content-center justify-center gap-3">
+            <StepOptions
+              step={step}
+              config={config}
+              justPicked={justPicked}
+              selectOption={(selection) => {
+                detach(selectOption(selection, pageSignal), Reason.DomCallback);
+              }}
+            />
+          </div>
         </div>
       </div>
 
