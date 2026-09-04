@@ -2,7 +2,7 @@ import { Axiom } from "@axiomhq/js";
 import type { HttpMethod } from "@okouai/api-contracts/contracts/trpc-contract";
 
 import { logger } from "../signals/log.ts";
-import { detach, onRejection, Reason } from "../signals/utils.ts";
+import { onRejection } from "../signals/utils.ts";
 import { resolvePlatformClientTelemetryConfig } from "./platform-host.ts";
 import { nowDate } from "./time.ts";
 
@@ -158,13 +158,11 @@ export function startClientTelemetryMeasurement(): ClientTelemetryMeasurement {
   };
 }
 
-async function ingestClientTelemetry(
+function ingestClientTelemetry(
   measurement: ClientTelemetryMeasurement,
   operation: ClientTelemetryOperation,
   outcome: ClientTelemetryOutcome,
-): Promise<void> {
-  // Keep telemetry failures outside the measured operation's control flow.
-  await Promise.resolve();
+): void {
   const config = resolvePlatformClientTelemetryConfig();
   if (!config.token) {
     return;
@@ -204,11 +202,7 @@ export function recordClientTelemetry(
   operation: ClientTelemetryOperation,
   outcome: ClientTelemetryOutcome,
 ): void {
-  detach(
-    ingestClientTelemetry(measurement, operation, outcome),
-    Reason.Daemon,
-    "Axiom client telemetry ingest",
-  );
+  ingestClientTelemetry(measurement, operation, outcome);
 }
 
 export async function observeClientOperation<TResult>(

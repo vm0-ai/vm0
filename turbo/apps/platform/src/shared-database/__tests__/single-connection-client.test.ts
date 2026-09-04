@@ -2,7 +2,6 @@ import { expect, test, vi } from "vitest";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
 import {
-  clearAllDetached,
   createChildAbortController,
   createDeferredPromise,
 } from "../../signals/utils.ts";
@@ -265,7 +264,6 @@ test("Does not report preview shared worker queries", async () => {
   const { bridge, bridges, owner } = await createRegisteredBridge();
 
   await expect(bridge.query(query(), owner.signal)).resolves.toStrictEqual([]);
-  await clearAllDetached();
 
   expect(bridges[0]?.queryCalls).toBe(1);
   expect(axiomTelemetry.ingest).not.toHaveBeenCalled();
@@ -276,7 +274,6 @@ test("Does not report shared worker queries without a token", async () => {
   const { bridge, bridges, owner } = await createRegisteredBridge();
 
   await expect(bridge.query(query(), owner.signal)).resolves.toStrictEqual([]);
-  await clearAllDetached();
 
   expect(bridges[0]?.queryCalls).toBe(1);
   expect(axiomTelemetry.ingest).not.toHaveBeenCalled();
