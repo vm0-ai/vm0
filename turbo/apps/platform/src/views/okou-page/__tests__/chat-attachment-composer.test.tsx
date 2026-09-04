@@ -185,6 +185,7 @@ test("Dragging from an image preview onto its backdrop keeps it open", async () 
   const dialog = await screen.findByRole("dialog", {
     name: "photo.png preview",
   });
+  expect(dialog).not.toHaveClass("zero-pwa-fixed-cover");
   const panel = screen.getByTestId("attachment-lightbox-panel");
   const backdrop = screen.getByTestId("attachment-lightbox-backdrop");
 

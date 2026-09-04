@@ -1435,7 +1435,7 @@ function ArtifactPreviewDialogContent({
         showCloseButton={false}
         overlayClassName="zero-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
         className={cn(
-          "zero-pwa-fixed-cover fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
+          "fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
           fullscreen ? "p-0" : "p-6",
         )}
         aria-label={t(

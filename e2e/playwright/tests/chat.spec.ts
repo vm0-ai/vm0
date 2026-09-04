@@ -22,6 +22,12 @@ test("mobile pages assign the bottom safe area to content and controls", async (
   await page.setViewportSize(MOBILE_VIEWPORT);
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  const agentId = /\/agents\/([^/]+)\/chat/.exec(
+    new URL(page.url()).pathname,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Expected the home route to resolve an agent id");
+  }
   const tagline = page.getByTestId("chat-tagline");
   await expect(tagline).toBeVisible({ timeout: 20_000 });
 
@@ -111,6 +117,55 @@ test("mobile pages assign the bottom safe area to content and controls", async (
       });
     })
     .toBe(Math.max(CONNECTORS_BOTTOM_GAP_PX, MOBILE_SAFE_BOTTOM_PX));
+
+  await page.goto(new URL(`/agents/${agentId}`, appUrl).href);
+  const detailSectionPicker = page.getByRole("combobox");
+  await expect(detailSectionPicker).toBeVisible({ timeout: 20_000 });
+  await detailSectionPicker.click();
+  await page.getByRole("option", { name: "Instructions" }).click();
+  const instructionsEditor = page.locator(
+    '[contenteditable="true"][aria-label="Instructions editor"]',
+  );
+  await expect(instructionsEditor).toBeVisible();
+  await page.evaluate((safeBottom) => {
+    document.documentElement.style.setProperty("--sab", `${safeBottom}px`);
+  }, MOBILE_SAFE_BOTTOM_PX);
+  await instructionsEditor.press("End");
+  await instructionsEditor.press("x");
+  const unsavedBar = page.getByTestId("unsaved-bar");
+  await expect(unsavedBar).toBeVisible();
+  const unsavedBarBox = await unsavedBar.boundingBox();
+  if (!unsavedBarBox) {
+    throw new Error("Expected visible unsaved bar safe-area geometry");
+  }
+  expect(unsavedBarBox.y + unsavedBarBox.height).toBeLessThanOrEqual(
+    MOBILE_VIEWPORT.height - MOBILE_SAFE_BOTTOM_PX,
+  );
+  await unsavedBar.getByTestId("discard-button").click();
+
+  await page.goto(
+    new URL("/browsers/00000000-0000-4000-a000-000000000000", appUrl).href,
+  );
+  const browserSessionPage = page.getByTestId("browser-session-page");
+  await expect(browserSessionPage).toBeVisible({ timeout: 20_000 });
+  await page.evaluate((safeBottom) => {
+    document.documentElement.style.setProperty("--sab", `${safeBottom}px`);
+  }, MOBILE_SAFE_BOTTOM_PX);
+  const browserSessionPageBox = await browserSessionPage.boundingBox();
+  if (!browserSessionPageBox) {
+    throw new Error("Expected visible browser session safe-area geometry");
+  }
+  expect(browserSessionPageBox.y + browserSessionPageBox.height).toBeCloseTo(
+    MOBILE_VIEWPORT.height,
+    0,
+  );
+  await expect
+    .poll(async () => {
+      return browserSessionPage.evaluate((element) => {
+        return Number.parseFloat(getComputedStyle(element).paddingBottom);
+      });
+    })
+    .toBe(MOBILE_SAFE_BOTTOM_PX);
 });
 
 test("send a message through the deployed runner", async ({ page }) => {

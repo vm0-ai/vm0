@@ -20,7 +20,7 @@ export function UnsavedBar({
   saveLabel = "Save",
 }: UnsavedBarProps) {
   const bar = (
-    <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4">
+    <div className="zero-app fixed bottom-[max(1.5rem,var(--sab))] left-0 right-0 z-40 flex justify-center px-4">
       <div
         data-testid="unsaved-bar"
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"

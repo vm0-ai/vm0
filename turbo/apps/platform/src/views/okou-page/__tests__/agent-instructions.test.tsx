@@ -109,6 +109,9 @@ test("A user can format and save agent instructions", async () => {
   expect(editor.querySelector("h2")).toHaveTextContent("Launch risks");
 
   const unsavedBar = await screen.findByTestId("unsaved-bar");
+  expect(unsavedBar.parentElement).toHaveClass(
+    "bottom-[max(1.5rem,var(--sab))]",
+  );
   click(within(unsavedBar).getByTestId("save-button"));
 
   await waitFor(() => {
