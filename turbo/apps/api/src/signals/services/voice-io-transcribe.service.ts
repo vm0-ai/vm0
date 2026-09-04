@@ -19,7 +19,7 @@ import { settle } from "../utils";
 
 const MAX_CONCURRENT_VOICE_TRANSCRIPTIONS = 3;
 
-export interface VoiceDraftTranscriptionInput {
+interface VoiceDraftTranscriptionInput {
   readonly files: readonly File[];
   readonly lastAssistantMessage?: string;
 }

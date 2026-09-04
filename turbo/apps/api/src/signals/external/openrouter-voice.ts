@@ -14,7 +14,7 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
 const OPENROUTER_VOICE_RESPONSE_MAX_BYTES = 1024 * 1024;
 const OPENROUTER_VOICE_MAX_TOKENS = 65_536;
 
-export const OPENROUTER_VOICE_MODEL = "google/gemini-3.6-flash";
+const OPENROUTER_VOICE_MODEL = "google/gemini-3.6-flash";
 
 const TRANSCRIPTION_SYSTEM_PROMPT = [
   "You are a transcription engine, not a conversational assistant.",
@@ -77,9 +77,7 @@ const polishedResponseSchema = z
 export type OpenRouterVoiceTranscript = z.infer<
   typeof transcriptResponseSchema
 >;
-export type OpenRouterPolishedTranscript = z.infer<
-  typeof polishedResponseSchema
->;
+type OpenRouterPolishedTranscript = z.infer<typeof polishedResponseSchema>;
 
 export interface OpenRouterVoiceAudio {
   readonly data: string;
