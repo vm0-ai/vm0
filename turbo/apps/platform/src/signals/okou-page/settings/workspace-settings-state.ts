@@ -200,8 +200,29 @@ export const billingMigrationTargetTier$ = computed((get) => {
       : null;
 });
 
+/**
+ * True while the plans sub-page is a standalone upgrade flow launched from
+ * outside Settings: the sidebar upgrade card, a chat upgrade action, or a
+ * `?billingView=plans` deep link. Such a flow owns the whole Settings surface,
+ * so dismissing it returns to the screen that launched it instead of leaving
+ * the billing tab open underneath.
+ */
+const internalBillingPlansStandalone$ = state(false);
+
+export const billingPlansStandalone$ = computed((get) => {
+  return get(internalBillingPlansStandalone$);
+});
+
+export const setBillingPlansStandalone$ = command(({ set }, value: boolean) => {
+  set(internalBillingPlansStandalone$, value);
+});
+
 export const setBillingSubPage$ = command(({ set }, value: boolean) => {
   set(internalBillingSubPage$, value ? "plans" : null);
+  if (!value) {
+    // Leaving the plans sub-page ends the standalone upgrade flow it belonged to.
+    set(internalBillingPlansStandalone$, false);
+  }
 });
 
 export const openBillingMigrationSubPage$ = command(
