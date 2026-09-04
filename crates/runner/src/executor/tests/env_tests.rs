@@ -1536,15 +1536,17 @@ fn pi_execution_context_rejects_invalid_legacy_shared_model_fields_before_sandbo
         );
     }
 
-    let mut context = pi_context_for_test();
-    context.pi_model_config.as_mut().unwrap()["catalogModel"] = json!("");
+    for (case, catalog_model) in [("empty", json!("")), ("null", json!(null))] {
+        let mut context = pi_context_for_test();
+        context.pi_model_config.as_mut().unwrap()["catalogModel"] = catalog_model;
 
-    let error = validate_context_for_test(&context).unwrap_err();
+        let error = validate_context_for_test(&context).unwrap_err();
 
-    assert!(
-        error.contains("Pi model config catalogModel must not be empty"),
-        "empty catalogModel produced unexpected error: {error}"
-    );
+        assert!(
+            error.contains("Pi model config catalogModel is invalid"),
+            "{case} catalogModel produced unexpected error: {error}"
+        );
+    }
 }
 
 #[test]
@@ -1584,6 +1586,14 @@ fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
             {
                 let mut config = pi_model_config_v2_for_test("openai-responses");
                 config["catalogModel"] = json!("");
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!(null);
                 config
             },
             "Pi model config catalogModel is invalid",
