@@ -21,9 +21,14 @@ import {
   not,
   type SQL,
 } from "drizzle-orm";
-import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { stripMarkdown } from "../../lib/strip-markdown";
 import { waitUntil } from "../context/wait-until";
+import {
+  FAST_PATH_MODEL,
+  generateText,
+  isLlmConfigured,
+} from "../external/openrouter";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
@@ -46,9 +51,6 @@ import {
 } from "./canonical-chat-event-read.service";
 
 const log = logger("api:zero:chat-title");
-const OPENROUTER_CHAT_COMPLETIONS_URL =
-  "https://openrouter.ai/api/v1/chat/completions";
-const FAST_CHAT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
@@ -133,14 +135,6 @@ interface ChatTitleInput {
   readonly priorRounds?: readonly ChatCompletionContextMessage[];
 }
 
-interface OpenRouterResponse {
-  readonly choices: readonly {
-    readonly message: {
-      readonly content: string;
-    };
-  }[];
-}
-
 interface ChatMessageForGeneration {
   readonly role: "system" | "user" | "assistant";
   readonly content: string;
@@ -153,10 +147,6 @@ interface ChatCompletionContextRow {
 }
 
 type SelectDb = Pick<Db, "select">;
-
-function isChatTitleGenerationConfigured(): boolean {
-  return Boolean(optionalEnv("OPENROUTER_API_KEY"));
-}
 
 function completedConversationContextMessageCondition(db: SelectDb) {
   return and(
@@ -199,58 +189,19 @@ function chatCompletionContextMessage(
   return row.content === null ? [] : [{ role, content: row.content }];
 }
 
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^[-*_]{3,}\s*$/gm, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^["'](.+)["']$/, "$1")
-    .trim();
-}
-
-async function generateText(
+async function generateFastPathText(
   messages: readonly ChatMessageForGeneration[],
   maxTokens = 30,
   options?: {
     readonly stripMarkdown?: boolean;
   },
 ): Promise<string | null> {
-  const apiKey = optionalEnv("OPENROUTER_API_KEY");
-  if (!apiKey) {
+  const content = await generateText(FAST_PATH_MODEL, messages, maxTokens, {
+    temperature: 0.3,
+  });
+  if (content === null) {
     return null;
   }
-
-  const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: FAST_CHAT_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!response.ok) {
-    const text = (await tapError(response.text())) ?? "unknown error";
-    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
-  }
-
-  const data = (await response.json()) as OpenRouterResponse;
-  const rawContent = data.choices[0]?.message.content;
-  if (rawContent === undefined) {
-    throw new Error("OpenRouter returned empty content");
-  }
-  const content = rawContent.trim();
-  if (!content) {
-    throw new Error("OpenRouter returned empty content");
-  }
-
   return options?.stripMarkdown === false ? content : stripMarkdown(content);
 }
 
@@ -273,7 +224,7 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
     `Most recent user message:\n${input.currentUserMessage.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
   );
 
-  return generateText([
+  return generateFastPathText([
     {
       role: "system",
       content:
@@ -296,7 +247,7 @@ export async function generateSharedThreadTitle(
       return `${message.role}: ${message.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
     })
     .join("\n");
-  const title = await generateText([
+  const title = await generateFastPathText([
     {
       role: "system",
       content:
@@ -454,7 +405,7 @@ export function scheduleChatThreadTitleGeneration(args: {
   readonly prompt: string;
   readonly includePriorRounds: boolean;
 }): void {
-  if (!isChatTitleGenerationConfigured() || args.prompt.trim().length === 0) {
+  if (!isLlmConfigured() || args.prompt.trim().length === 0) {
     return;
   }
   waitUntil(generateAndPersistChatThreadTitle(args));
@@ -464,7 +415,7 @@ export function generateChatNotificationSummary(
   prompt: string,
   resultText: string,
 ): Promise<string | null> {
-  return generateText(
+  return generateFastPathText(
     [
       {
         role: "system",
@@ -534,7 +485,7 @@ async function generateRecommendedFollowups(
     })
     .join("\n\n");
 
-  const text = await generateText(
+  const text = await generateFastPathText(
     [
       {
         role: "system",

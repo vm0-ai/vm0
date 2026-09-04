@@ -13960,7 +13960,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     });
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
     expect(thinkingRequestBody).toMatchObject({
-      model: "google/gemini-3.1-flash-lite-preview",
+      model: "google/gemini-3.1-flash-lite",
       max_tokens: 160,
       reasoning: { effort: "none" },
     });
@@ -14058,6 +14058,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
             return HttpResponse.json({
               choices: [
                 {
+                  finish_reason: "stop",
                   message: {
                     content: JSON.stringify([
                       { prompt: "Summarize the migration steps", kind: "talk" },
@@ -14070,11 +14071,21 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           if (systemContent.includes("Generate a short, descriptive title")) {
             titleRequests += 1;
             return HttpResponse.json({
-              choices: [{ message: { content: "**Migration Plan**" } }],
+              choices: [
+                {
+                  finish_reason: "stop",
+                  message: { content: "**Migration Plan**" },
+                },
+              ],
             });
           }
           return HttpResponse.json({
-            choices: [{ message: { content: "Generated summary" } }],
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Generated summary" },
+              },
+            ],
           });
         },
       ),
@@ -14228,6 +14239,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           return HttpResponse.json({
             choices: [
               {
+                finish_reason: "stop",
                 message: {
                   content: systemContent.includes("concise follow-up prompts")
                     ? JSON.stringify([
