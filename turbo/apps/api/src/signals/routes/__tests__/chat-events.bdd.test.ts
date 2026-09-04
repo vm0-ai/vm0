@@ -505,7 +505,9 @@ const openRouterBodySchema = z.object({
   model: z.string(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
   max_tokens: z.number().optional(),
-  reasoning: z.object({ effort: z.literal("none") }).optional(),
+  reasoning: z.object({
+    effort: z.enum(["none", "minimal", "low", "medium", "high"]),
+  }),
 });
 
 async function entitledChatActor(
@@ -14182,7 +14184,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     });
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
     expect(thinkingRequestBody).toMatchObject({
-      model: "google/gemini-3.1-flash-lite",
+      model: "google/gemini-3.8-flash",
       max_tokens: 160,
       reasoning: { effort: "none" },
     });
