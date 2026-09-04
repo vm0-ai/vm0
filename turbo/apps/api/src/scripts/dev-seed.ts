@@ -709,6 +709,13 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_video_seconds", videoUsd(1), 60],
   ]),
 
+  // HeyGen Starfish TTS costs $0.000667 per second, approximately $0.04 per
+  // generated minute. Intro Video uses only voices returned for this engine.
+  // https://developers.heygen.com/docs/pricing
+  ...usageGroup("audio", "heygen-starfish-tts", [
+    ["output_audio_seconds", usd(0.04), 60],
+  ]),
+
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute raw provider cost = 15 credits/minute.
   ...usageGroup("audio", "gpt-4o-mini-tts", [
