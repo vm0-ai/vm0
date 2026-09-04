@@ -3,6 +3,31 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
+
+_STATIC_ITERABLE_WRAPPER_CALLS = {
+    "frozenset",
+    "iter",
+    "list",
+    "reversed",
+    "set",
+    "sorted",
+    "tuple",
+}
+_MAPPING_PAIR_LENGTH = 2
+
+
+@dataclass(frozen=True)
+class _StaticIterableOutcomes:
+    ordered: tuple[ast.AST | None, ...]
+
+    @property
+    def nodes(self) -> tuple[ast.AST, ...]:
+        return tuple(node for node in self.ordered if node is not None)
+
+    @property
+    def may_be_empty(self) -> bool:
+        return any(node is None for node in self.ordered)
 
 
 def _target_requires_unpacking(node: ast.AST | None) -> bool:
@@ -46,20 +71,26 @@ def _argument_annotations(args: ast.arguments) -> list[ast.expr]:
 
 def _static_first_call_argument_nodes(args: list[ast.expr]) -> list[ast.AST]:
     """Return static nodes that can occupy a call's first positional argument."""
+    return list(_static_first_call_argument_outcomes(args).nodes)
+
+
+def _static_first_call_argument_outcomes(args: list[ast.expr]) -> _StaticIterableOutcomes:
+    return _static_ordered_sequence_first_outcomes(args)
+
+
+def _deduplicate_static_nodes(nodes: list[ast.AST]) -> list[ast.AST]:
     result: list[ast.AST] = []
-    for argument in args:
-        if isinstance(argument, ast.Starred):
-            outcomes, has_unknown_expansion = _static_iterable_first_outcomes(argument.value)
-            result.extend(outcome for outcome in outcomes if outcome is not None)
-            if has_unknown_expansion or any(outcome is None for outcome in outcomes):
-                continue
-            break
-        result.append(argument)
-        break
+    seen_node_ids: set[int] = set()
+    for node in nodes:
+        node_id = id(node)
+        if node_id in seen_node_ids:
+            continue
+        seen_node_ids.add(node_id)
+        result.append(node)
     return result
 
 
-def _deduplicate_static_argument_outcomes(
+def _deduplicate_ordered_outcomes(
     outcomes: list[ast.AST | None],
 ) -> list[ast.AST | None]:
     result: list[ast.AST | None] = []
@@ -79,57 +110,383 @@ def _deduplicate_static_argument_outcomes(
     return result
 
 
-def _static_iterable_first_outcomes(node: ast.AST) -> tuple[list[ast.AST | None], bool]:
-    """Return ordered first-node/empty outcomes and whether a first outcome is unknown.
+def _static_outcomes(
+    nodes: list[ast.AST] | tuple[ast.AST, ...], *, may_be_empty: bool
+) -> _StaticIterableOutcomes:
+    ordered: list[ast.AST | None] = [*_deduplicate_static_nodes(list(nodes))]
+    if may_be_empty:
+        ordered.append(None)
+    return _StaticIterableOutcomes(tuple(ordered))
 
-    ``None`` represents a statically empty expansion. The unknown flag remains separate because
-    the linter conservatively treats a dynamic expansion before a fixed first node as a possible
-    empty call prefix.
-    """
+
+def _merge_static_alternatives(
+    outcomes: list[_StaticIterableOutcomes],
+) -> _StaticIterableOutcomes:
+    return _StaticIterableOutcomes(
+        tuple(
+            _deduplicate_ordered_outcomes(
+                [node for outcome in outcomes for node in outcome.ordered]
+            )
+        )
+    )
+
+
+def _static_iterable_first_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
+    """Return static first nodes and whether the iterable may be empty."""
     if isinstance(node, ast.NamedExpr):
         return _static_iterable_first_outcomes(node.value)
     if isinstance(node, ast.IfExp):
-        body_outcomes, body_has_unknown_expansion = _static_iterable_first_outcomes(node.body)
-        orelse_outcomes, orelse_has_unknown_expansion = _static_iterable_first_outcomes(node.orelse)
-        return _deduplicate_static_argument_outcomes(
-            [*body_outcomes, *orelse_outcomes]
-        ), body_has_unknown_expansion or orelse_has_unknown_expansion
-    if isinstance(node, ast.BoolOp):
-        alternative_outcomes: list[ast.AST | None] = []
-        has_unknown_expansion = False
-        for value in node.values:
-            value_outcomes, value_has_unknown_expansion = _static_iterable_first_outcomes(value)
-            alternative_outcomes.extend(value_outcomes)
-            has_unknown_expansion = has_unknown_expansion or value_has_unknown_expansion
-        return (
-            _deduplicate_static_argument_outcomes(alternative_outcomes),
-            has_unknown_expansion,
+        return _merge_static_alternatives(
+            [
+                _static_iterable_first_outcomes(node.body),
+                _static_iterable_first_outcomes(node.orelse),
+            ]
         )
+    if isinstance(node, ast.BoolOp):
+        return _merge_static_alternatives(
+            [_static_iterable_first_outcomes(value) for value in node.values]
+        )
+    if isinstance(node, ast.Dict | ast.DictComp):
+        return _static_mapping_first_key_outcomes(node)
+    if isinstance(node, ast.Set):
+        return _static_set_outcomes(node)
+    if isinstance(node, ast.SetComp):
+        return _static_outcomes((node.elt,), may_be_empty=True)
+    if isinstance(node, ast.Call):
+        if _is_static_mapping_expression(node):
+            return _static_mapping_first_key_outcomes(node)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "keys"
+            and not node.args
+            and not node.keywords
+        ):
+            return _static_mapping_first_key_outcomes(node.func.value)
     if not isinstance(node, ast.List | ast.Tuple):
-        return [], True
+        return _static_outcomes((), may_be_empty=True)
+    return _static_ordered_sequence_first_outcomes(node.elts)
+
+
+def _static_ordered_sequence_first_outcomes(
+    elements: list[ast.expr],
+) -> _StaticIterableOutcomes:
     outcomes: list[ast.AST | None] = [None]
-    has_unknown_expansion = False
-    for element in node.elts:
+    for element in elements:
         if not any(outcome is None for outcome in outcomes):
             break
         if isinstance(element, ast.Starred):
-            element_outcomes, element_has_unknown_expansion = _static_iterable_first_outcomes(
-                element.value
-            )
+            element_outcomes = _static_iterable_first_outcomes(element.value).ordered
         else:
-            element_outcomes = [element]
-            element_has_unknown_expansion = False
+            element_outcomes = (element,)
         next_outcomes: list[ast.AST | None] = []
         for outcome in outcomes:
             if outcome is None:
                 next_outcomes.extend(element_outcomes)
             else:
                 next_outcomes.append(outcome)
-        if element_has_unknown_expansion:
-            next_outcomes.extend(outcomes)
-        outcomes = _deduplicate_static_argument_outcomes(next_outcomes)
-        has_unknown_expansion = has_unknown_expansion or element_has_unknown_expansion
-    return outcomes, has_unknown_expansion
+        outcomes = _deduplicate_ordered_outcomes(next_outcomes)
+    return _StaticIterableOutcomes(tuple(outcomes))
+
+
+def _static_set_outcomes(node: ast.Set) -> _StaticIterableOutcomes:
+    result: list[ast.AST] = []
+    may_be_empty = True
+    for element in node.elts:
+        if isinstance(element, ast.Starred):
+            outcomes = _static_iterable_element_outcomes(element.value)
+        else:
+            outcomes = _static_outcomes((element,), may_be_empty=False)
+        result.extend(outcomes.nodes)
+        may_be_empty = may_be_empty and outcomes.may_be_empty
+    return _static_outcomes(result, may_be_empty=may_be_empty)
+
+
+def _static_iterable_element_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
+    """Return statically visible iterable elements without imposing an order."""
+    if isinstance(node, ast.NamedExpr):
+        return _static_iterable_element_outcomes(node.value)
+    if isinstance(node, ast.IfExp):
+        return _merge_static_alternatives(
+            [
+                _static_iterable_element_outcomes(node.body),
+                _static_iterable_element_outcomes(node.orelse),
+            ]
+        )
+    if isinstance(node, ast.BoolOp):
+        return _merge_static_alternatives(
+            [_static_iterable_element_outcomes(value) for value in node.values]
+        )
+    if isinstance(node, ast.Dict | ast.DictComp):
+        return _static_mapping_key_outcomes(node)
+    if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
+        return _static_outcomes((node.elt,), may_be_empty=True)
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        result: list[ast.AST] = []
+        may_be_empty = True
+        for element in node.elts:
+            if isinstance(element, ast.Starred):
+                outcomes = _static_iterable_element_outcomes(element.value)
+            else:
+                outcomes = _static_outcomes((element,), may_be_empty=False)
+            result.extend(outcomes.nodes)
+            may_be_empty = may_be_empty and outcomes.may_be_empty
+        return _static_outcomes(result, may_be_empty=may_be_empty)
+    if isinstance(node, ast.Call):
+        if _is_static_mapping_expression(node):
+            return _static_mapping_key_outcomes(node)
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "keys"
+            and not node.args
+            and not node.keywords
+        ):
+            return _static_mapping_key_outcomes(node.func.value)
+        if isinstance(node.func, ast.Name) and node.func.id in _STATIC_ITERABLE_WRAPPER_CALLS:
+            argument_outcomes = _static_first_call_argument_outcomes(node.args)
+            element_outcomes = [
+                _static_iterable_element_outcomes(argument) for argument in argument_outcomes.nodes
+            ]
+            return _static_outcomes(
+                [item for outcome in element_outcomes for item in outcome.nodes],
+                may_be_empty=argument_outcomes.may_be_empty
+                or any(outcome.may_be_empty for outcome in element_outcomes),
+            )
+    return _static_outcomes((), may_be_empty=True)
+
+
+def _static_mapping_first_key_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
+    if isinstance(node, ast.NamedExpr):
+        return _static_mapping_first_key_outcomes(node.value)
+    if isinstance(node, ast.IfExp):
+        return _merge_static_alternatives(
+            [
+                _static_mapping_first_key_outcomes(node.body),
+                _static_mapping_first_key_outcomes(node.orelse),
+            ]
+        )
+    if isinstance(node, ast.BoolOp):
+        return _merge_static_alternatives(
+            [_static_mapping_first_key_outcomes(value) for value in node.values]
+        )
+    if isinstance(node, ast.Dict):
+        outcomes: list[ast.AST | None] = [None]
+        for key, value in zip(node.keys, node.values, strict=True):
+            if not any(outcome is None for outcome in outcomes):
+                break
+            if key is None:
+                key_outcomes = _static_mapping_first_key_outcomes(value).ordered
+            else:
+                key_outcomes = (key,)
+            next_outcomes: list[ast.AST | None] = []
+            for outcome in outcomes:
+                if outcome is None:
+                    next_outcomes.extend(key_outcomes)
+                else:
+                    next_outcomes.append(outcome)
+            outcomes = _deduplicate_ordered_outcomes(next_outcomes)
+        return _StaticIterableOutcomes(tuple(outcomes))
+    if isinstance(node, ast.DictComp):
+        return _static_outcomes((node.key,), may_be_empty=True)
+    if not isinstance(node, ast.Call):
+        return _static_outcomes((), may_be_empty=True)
+    if isinstance(node.func, ast.Attribute) and _is_mapping_copy_call(node):
+        return _static_mapping_first_key_outcomes(node.func.value)
+    if _is_dict_fromkeys_call(node):
+        return _static_fromkeys_outcomes(node, include_all=False)
+    if _is_dict_constructor_call(node):
+        return _static_dict_constructor_outcomes(node, include_all=False)
+    return _static_outcomes((), may_be_empty=True)
+
+
+def _static_mapping_key_outcomes(node: ast.AST) -> _StaticIterableOutcomes:
+    if isinstance(node, ast.NamedExpr):
+        return _static_mapping_key_outcomes(node.value)
+    if isinstance(node, ast.IfExp):
+        return _merge_static_alternatives(
+            [
+                _static_mapping_key_outcomes(node.body),
+                _static_mapping_key_outcomes(node.orelse),
+            ]
+        )
+    if isinstance(node, ast.BoolOp):
+        return _merge_static_alternatives(
+            [_static_mapping_key_outcomes(value) for value in node.values]
+        )
+    if isinstance(node, ast.Dict):
+        result: list[ast.AST] = []
+        may_be_empty = True
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is None:
+                outcomes = _static_mapping_key_outcomes(value)
+            else:
+                outcomes = _static_outcomes((key,), may_be_empty=False)
+            result.extend(outcomes.nodes)
+            may_be_empty = may_be_empty and outcomes.may_be_empty
+        return _static_outcomes(result, may_be_empty=may_be_empty)
+    if isinstance(node, ast.DictComp):
+        return _static_outcomes((node.key,), may_be_empty=True)
+    if not isinstance(node, ast.Call):
+        return _static_outcomes((), may_be_empty=True)
+    if isinstance(node.func, ast.Attribute) and _is_mapping_copy_call(node):
+        return _static_mapping_key_outcomes(node.func.value)
+    if _is_dict_fromkeys_call(node):
+        return _static_fromkeys_outcomes(node, include_all=True)
+    if _is_dict_constructor_call(node):
+        return _static_dict_constructor_outcomes(node, include_all=True)
+    return _static_outcomes((), may_be_empty=True)
+
+
+def _static_fromkeys_outcomes(node: ast.Call, *, include_all: bool) -> _StaticIterableOutcomes:
+    argument_outcomes = _static_first_call_argument_outcomes(node.args)
+    key_outcomes = [
+        (
+            _static_iterable_element_outcomes(argument)
+            if include_all
+            else _static_iterable_first_outcomes(argument)
+        )
+        for argument in argument_outcomes.nodes
+    ]
+    return _static_outcomes(
+        [key for outcome in key_outcomes for key in outcome.nodes],
+        may_be_empty=argument_outcomes.may_be_empty
+        or any(outcome.may_be_empty for outcome in key_outcomes),
+    )
+
+
+def _static_dict_constructor_outcomes(
+    node: ast.Call, *, include_all: bool
+) -> _StaticIterableOutcomes:
+    argument_outcomes = _static_first_call_argument_outcomes(node.args)
+    input_outcomes = [
+        _static_mapping_input_key_outcomes(argument, include_all=include_all)
+        for argument in argument_outcomes.nodes
+    ]
+    positional_may_be_empty = argument_outcomes.may_be_empty or any(
+        outcome.may_be_empty for outcome in input_outcomes
+    )
+    keyword_outcomes = _static_mapping_keyword_outcomes(node.keywords, include_all=include_all)
+    nodes = [key for outcome in input_outcomes for key in outcome.nodes]
+    if include_all or positional_may_be_empty:
+        nodes.extend(keyword_outcomes.nodes)
+    return _static_outcomes(
+        nodes,
+        may_be_empty=positional_may_be_empty and keyword_outcomes.may_be_empty,
+    )
+
+
+def _static_mapping_input_key_outcomes(
+    node: ast.AST, *, include_all: bool
+) -> _StaticIterableOutcomes:
+    if isinstance(node, ast.NamedExpr):
+        return _static_mapping_input_key_outcomes(node.value, include_all=include_all)
+    if isinstance(node, ast.IfExp):
+        return _merge_static_alternatives(
+            [
+                _static_mapping_input_key_outcomes(node.body, include_all=include_all),
+                _static_mapping_input_key_outcomes(node.orelse, include_all=include_all),
+            ]
+        )
+    if isinstance(node, ast.BoolOp):
+        return _merge_static_alternatives(
+            [
+                _static_mapping_input_key_outcomes(value, include_all=include_all)
+                for value in node.values
+            ]
+        )
+    if _is_static_mapping_expression(node):
+        if include_all:
+            return _static_mapping_key_outcomes(node)
+        return _static_mapping_first_key_outcomes(node)
+    entry_outcomes = (
+        _static_iterable_element_outcomes(node)
+        if include_all
+        else _static_iterable_first_outcomes(node)
+    )
+    return _static_outcomes(
+        [key for entry in entry_outcomes.nodes for key in _static_pair_key_nodes(entry)],
+        may_be_empty=entry_outcomes.may_be_empty,
+    )
+
+
+def _static_pair_key_nodes(node: ast.AST) -> list[ast.AST]:
+    if isinstance(node, ast.NamedExpr):
+        return _static_pair_key_nodes(node.value)
+    if isinstance(node, ast.IfExp):
+        return _deduplicate_static_nodes(
+            [*_static_pair_key_nodes(node.body), *_static_pair_key_nodes(node.orelse)]
+        )
+    if isinstance(node, ast.BoolOp):
+        return _deduplicate_static_nodes(
+            [key for value in node.values for key in _static_pair_key_nodes(value)]
+        )
+    if not isinstance(node, ast.List | ast.Tuple) or len(node.elts) != _MAPPING_PAIR_LENGTH:
+        return []
+    return [node.elts[0]]
+
+
+def _static_mapping_keyword_outcomes(
+    keywords: list[ast.keyword], *, include_all: bool
+) -> _StaticIterableOutcomes:
+    result: list[ast.AST] = []
+    may_be_empty = True
+    for keyword in keywords:
+        if not include_all and not may_be_empty:
+            break
+        if keyword.arg is None:
+            outcomes = (
+                _static_mapping_key_outcomes(keyword.value)
+                if include_all
+                else _static_mapping_first_key_outcomes(keyword.value)
+            )
+        else:
+            outcomes = _static_outcomes((keyword,), may_be_empty=False)
+        result.extend(outcomes.nodes)
+        if include_all:
+            may_be_empty = may_be_empty and outcomes.may_be_empty
+        else:
+            may_be_empty = outcomes.may_be_empty
+    return _static_outcomes(result, may_be_empty=may_be_empty)
+
+
+def _is_dict_constructor_call(node: ast.Call) -> bool:
+    return isinstance(node.func, ast.Name) and node.func.id == "dict"
+
+
+def _is_dict_fromkeys_call(node: ast.Call) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "dict"
+        and node.func.attr == "fromkeys"
+    )
+
+
+def _is_mapping_copy_call(node: ast.Call) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "copy"
+        and not node.args
+        and not node.keywords
+    )
+
+
+def _is_static_mapping_expression(node: ast.AST) -> bool:
+    if isinstance(node, ast.NamedExpr):
+        return _is_static_mapping_expression(node.value)
+    if isinstance(node, ast.IfExp):
+        return _is_static_mapping_expression(node.body) and _is_static_mapping_expression(
+            node.orelse
+        )
+    if isinstance(node, ast.BoolOp):
+        return all(_is_static_mapping_expression(value) for value in node.values)
+    return isinstance(node, ast.Dict | ast.DictComp) or (
+        isinstance(node, ast.Call)
+        and (
+            _is_dict_constructor_call(node)
+            or _is_dict_fromkeys_call(node)
+            or _is_mapping_copy_call(node)
+        )
+    )
 
 
 def _type_params(node: ast.AST) -> list[ast.AST]:
