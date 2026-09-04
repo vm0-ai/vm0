@@ -401,6 +401,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ProgressiveArtifactPreview]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Publish coherent website and HTML presentation previews while the agent continues improving them.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThinkingSpinner]: {
     maintainer: "yuma@vm0.ai",
     description:
