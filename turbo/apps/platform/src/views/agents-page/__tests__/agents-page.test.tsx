@@ -1,0 +1,257 @@
+import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
+import { chatThreadsContract } from "@okouai/api-contracts/contracts/chat-threads";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+
+import {
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000011";
+const PRIVATE_AGENT_ID = "c0000000-0000-4000-a000-000000000012";
+
+function agent(
+  agentId: string,
+  options: {
+    readonly description?: string;
+    readonly displayName?: string | null;
+    readonly ownerId?: string;
+    readonly visibility?: "private" | "public";
+  },
+): AgentResponse {
+  return {
+    agentId,
+    ownerId: options.ownerId ?? "test-user-123",
+    description: options.description ?? null,
+    displayName: options.displayName ?? null,
+    sound: null,
+    avatarUrl: null,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: options.visibility ?? "public",
+  };
+}
+
+function visibilityTab(name: "Private" | "Public"): HTMLElement {
+  const control = queryAllByRoleFast("radio").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!control) {
+    throw new Error(`${name} visibility tab not found`);
+  }
+  return control;
+}
+
+async function waitForVisibilityTabs(): Promise<void> {
+  await waitFor(() => {
+    expect(visibilityTab("Public")).toBeInTheDocument();
+    expect(visibilityTab("Private")).toBeInTheDocument();
+  });
+}
+
+function queryAgentCard(agentId: string): HTMLAnchorElement | undefined {
+  return queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("href") === `/agents/${agentId}`;
+  }) as HTMLAnchorElement | undefined;
+}
+
+function agentCard(agentId: string): HTMLAnchorElement {
+  const card = queryAgentCard(agentId);
+  if (!card) {
+    throw new Error(`${agentId} agent card not found`);
+  }
+  return card;
+}
+
+function configureAgentList(
+  targetContext: typeof context,
+  agents: readonly AgentResponse[],
+): void {
+  targetContext.mocks.data.agents([...agents]);
+  targetContext.mocks.data.onboardingStatus({
+    defaultAgentId: agents[0]?.agentId ?? null,
+  });
+}
+
+test("The Agents document title uses the Okou brand on a trusted host", async () => {
+  const agents = [
+    agent(RESEARCH_AGENT_ID, {
+      displayName: "Research Agent",
+      visibility: "public",
+    }),
+  ];
+  configureAgentList(context, agents);
+
+  await setupPage({
+    context,
+    host: "app.okou.ai",
+    path: "/agents",
+  });
+  await screen.findByRole("heading", { name: "Agents" });
+  expect(document.title).toBe("Agents | Okou");
+});
+
+test("The Agents document title rejects a look-alike Okou host", async () => {
+  configureAgentList(context, [
+    agent(RESEARCH_AGENT_ID, {
+      displayName: "Research Agent",
+      visibility: "public",
+    }),
+  ]);
+
+  await setupPage({
+    context,
+    host: "okou.ai.evil.example",
+    path: "/agents",
+  });
+  await screen.findByRole("heading", { name: "Agents" });
+  expect(document.title).toBe("Agents | VM0");
+});
+
+test("The Private tab explains when no private agents exist", async () => {
+  configureAgentList(context, [
+    agent(RESEARCH_AGENT_ID, {
+      displayName: "Research Agent",
+      visibility: "public",
+    }),
+  ]);
+  await setupPage({ context, path: "/agents" });
+  await waitForVisibilityTabs();
+
+  click(visibilityTab("Private"));
+
+  await expect(
+    screen.findByText("No private agents yet"),
+  ).resolves.toBeInTheDocument();
+});
+
+test("Unread indicators recover after realtime reconnects", async () => {
+  let showUnread = false;
+  const refreshed = context.mocks.deferred<void>();
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    if (showUnread && !refreshed.settled()) {
+      refreshed.resolve(undefined);
+    }
+    return respond(200, {
+      agents: showUnread
+        ? {
+            [PRIVATE_AGENT_ID]: "unread",
+            [RESEARCH_AGENT_ID]: "unread",
+          }
+        : {},
+      threads: {},
+    });
+  });
+  configureAgentList(context, [
+    agent(RESEARCH_AGENT_ID, {
+      displayName: "Research Agent",
+      visibility: "public",
+    }),
+    agent(PRIVATE_AGENT_ID, {
+      displayName: "Private Ops",
+      visibility: "private",
+    }),
+  ]);
+  await setupPage({ context, path: "/agents" });
+  await waitForVisibilityTabs();
+
+  click(visibilityTab("Private"));
+
+  await screen.findByText("Private Ops");
+  const privateCard = agentCard(PRIVATE_AGENT_ID);
+  expect(
+    within(privateCard).queryByLabelText("Unread"),
+  ).not.toBeInTheDocument();
+
+  showUnread = true;
+  context.mocks.ably.triggerReconnect();
+  await refreshed.promise;
+
+  await waitFor(() => {
+    expect(
+      within(agentCard(PRIVATE_AGENT_ID)).getByLabelText("Unread"),
+    ).toBeVisible();
+  });
+
+  click(visibilityTab("Public"));
+
+  await waitFor(() => {
+    expect(agentCard(RESEARCH_AGENT_ID)).toBeVisible();
+  });
+  expect(
+    within(agentCard(RESEARCH_AGENT_ID)).getByLabelText("Unread"),
+  ).toBeVisible();
+});
+
+test("Agent visibility tabs show the appropriate agents and public creator", async () => {
+  const user = userEvent.setup({ delay: null });
+  context.mocks.data.orgMembers({
+    members: [
+      {
+        userId: "alice",
+        email: "alice@example.com",
+        firstName: "Alice",
+        lastName: "Admin",
+        imageUrl: "https://example.com/alice.png",
+        role: "admin",
+        joinedAt: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        userId: "bob",
+        email: "bob@example.com",
+        firstName: "Bob",
+        lastName: "Builder",
+        imageUrl: "https://example.com/bob.png",
+        role: "member",
+        joinedAt: "2026-08-02T00:00:00.000Z",
+      },
+    ],
+  });
+  configureAgentList(context, [
+    agent(RESEARCH_AGENT_ID, {
+      description: "Finds and summarizes evidence",
+      displayName: "Research Agent",
+      ownerId: "alice",
+      visibility: "public",
+    }),
+    agent(PRIVATE_AGENT_ID, {
+      description: "Runs private operations",
+      displayName: "Private Ops",
+      ownerId: "bob",
+      visibility: "private",
+    }),
+  ]);
+  await setupPage({ context, path: "/agents" });
+  await waitForVisibilityTabs();
+
+  click(visibilityTab("Private"));
+
+  await waitFor(() => {
+    expect(agentCard(PRIVATE_AGENT_ID)).toBeVisible();
+  });
+  expect(queryAgentCard(RESEARCH_AGENT_ID)).toBeUndefined();
+  expect(document.body).not.toHaveTextContent("Bob Builder");
+
+  click(visibilityTab("Public"));
+
+  await waitFor(() => {
+    expect(agentCard(RESEARCH_AGENT_ID)).toBeVisible();
+  });
+  const researchAgent = within(agentCard(RESEARCH_AGENT_ID)).getByText(
+    "Research Agent",
+  );
+  expect(queryAgentCard(PRIVATE_AGENT_ID)).toBeUndefined();
+
+  await user.hover(researchAgent);
+
+  await expect(
+    screen.findByText("Created by Alice Admin"),
+  ).resolves.toBeInTheDocument();
+});

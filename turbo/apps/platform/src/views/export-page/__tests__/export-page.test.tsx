@@ -1,101 +1,119 @@
-import { screen, waitFor } from "@testing-library/react";
 import { userExportContract } from "@okouai/api-contracts/contracts/user-export";
-import { describe, expect, it } from "vitest";
+import { screen } from "@testing-library/react";
+import { expect, test } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
+import {
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const NOW = Date.parse("2026-09-01T00:00:00.000Z");
 
-describe("export page", () => {
-  it("shows the export contents and a localized cooldown error", async () => {
-    mockNow(context.signal);
-    context.mocks.api(userExportContract.get, ({ respond }) => {
-      return respond(200, {
-        job: {
-          id: "00000000-0000-4000-8000-000000000001",
-          status: "completed",
-          createdAt: isoFromNowMs(-60 * 60 * 1000),
-          completedAt: isoFromNowMs(0),
-          expiresAt: isoFromNowMs(36 * 60 * 60 * 1000),
-          downloadUrl: "https://example.com/export.zip",
-          error: null,
-        },
-        canExport: true,
-        nextExportAt: null,
-      });
+function mockCompletedExport(canExport: boolean): void {
+  context.mocks.api(userExportContract.get, ({ respond }) => {
+    return respond(200, {
+      job: {
+        id: "11111111-1111-4111-8111-111111111111",
+        status: "completed",
+        createdAt: "2026-08-31T23:00:00.000Z",
+        completedAt: "2026-09-01T00:00:00.000Z",
+        expiresAt: "2026-09-02T12:00:00.000Z",
+        downloadUrl: "https://downloads.example/export.zip",
+        error: null,
+      },
+      canExport,
+      nextExportAt: canExport ? null : "2026-09-02T00:00:00.000Z",
     });
-    context.mocks.api(userExportContract.post, ({ respond }) => {
-      return respond(429, {
-        error: {
-          code: "TOO_MANY_REQUESTS",
-          message: "Export cooldown active",
-        },
-      });
-    });
+  });
+}
 
-    detachedSetupPage({ context, path: "/export" });
+function getButton(name: string): HTMLButtonElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found: ${name}`);
+  }
+  return button;
+}
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { level: 1, name: "Export data" }),
-      ).toBeInTheDocument();
-      expect(document.title).toBe("Export data | VM0");
-    });
-    expect(
-      screen.getByText("Workflow SKILL.md instructions and files"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("The download link expires in 1d 12h."),
-    ).toBeInTheDocument();
+function getDownloadLink(name: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Download link not found: ${name}`);
+  }
+  return link;
+}
 
-    click(screen.getByText("Export again"));
+test("A completed export localizes app copy while keeping English metadata", async () => {
+  mockNow(NOW, context.signal);
+  mockCompletedExport(false);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("You can export once every 24 hours."),
-      ).toBeInTheDocument();
+  await setupPage({
+    context,
+    path: "/export",
+    host: "app.vm0.ai",
+    locale: "pt-BR",
+  });
+
+  await expect(
+    screen.findByRole("heading", { name: "Exportar dados" }),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText("Instruções e arquivos SKILL.md dos fluxos de trabalho"),
+  ).toBeVisible();
+  expect(screen.getByText("Arquivos de memória")).toBeVisible();
+  expect(
+    screen.getByText("O link para download expira em 1 dia 12 h."),
+  ).toBeVisible();
+  expect(getDownloadLink("Baixar exportação")).toHaveAttribute(
+    "href",
+    "https://downloads.example/export.zip",
+  );
+  expect(document.title).toBe("Export data | VM0");
+});
+
+test("A completed export shows its contents, expiry, and cooldown", async () => {
+  let exportAttempts = 0;
+  mockNow(NOW, context.signal);
+  mockCompletedExport(true);
+  context.mocks.api(userExportContract.post, ({ respond }) => {
+    exportAttempts += 1;
+    return respond(429, {
+      error: {
+        code: "TOO_MANY_REQUESTS",
+        message: "Export cooldown is active",
+      },
     });
   });
 
-  it("shows export controls in Brazilian Portuguese", async () => {
-    document.documentElement.lang = "pt-BR";
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-    mockNow(context.signal);
-    context.mocks.api(userExportContract.get, ({ respond }) => {
-      return respond(200, {
-        job: {
-          id: "00000000-0000-4000-8000-000000000001",
-          status: "completed",
-          createdAt: isoFromNowMs(-60 * 60 * 1000),
-          completedAt: isoFromNowMs(0),
-          expiresAt: isoFromNowMs(36 * 60 * 60 * 1000),
-          downloadUrl: "https://example.com/export.zip",
-          error: null,
-        },
-        canExport: true,
-        nextExportAt: null,
-      });
-    });
+  await setupPage({ context, path: "/export", host: "app.vm0.ai" });
 
-    detachedSetupPage({ context, path: "/export" });
+  await expect(
+    screen.findByRole("heading", { name: "Export data" }),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText("Workflow SKILL.md instructions and files"),
+  ).toBeVisible();
+  expect(screen.getByText("Memory files")).toBeVisible();
+  expect(
+    screen.getByText("The download link expires in 1d 12h."),
+  ).toBeVisible();
+  expect(getDownloadLink("Download export")).toHaveAttribute(
+    "href",
+    "https://downloads.example/export.zip",
+  );
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", {
-          level: 1,
-          name: "Exportar dados",
-        }),
-      ).toBeInTheDocument();
-      expect(document.title).toBe("Export data | VM0");
-    });
-    expect(
-      screen.getByText("Instruções e arquivos SKILL.md dos fluxos de trabalho"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("O link para download expira em 1 dia 12 h."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Baixar exportação")).toBeInTheDocument();
-  });
+  click(getButton("Export again"));
+
+  await expect(
+    screen.findByText("You can export once every 24 hours."),
+  ).resolves.toBeVisible();
+  expect(exportAttempts).toBe(1);
 });

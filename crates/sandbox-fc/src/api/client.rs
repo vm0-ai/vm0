@@ -424,11 +424,13 @@ impl ApiClient {
         &self,
         amount_mib: u32,
         deflate_on_oom: bool,
+        free_page_reporting: bool,
         stats_polling_interval_s: u32,
     ) -> Result<(), ApiError> {
         self.configure_balloon_payload(&BalloonConfig {
             amount_mib,
             deflate_on_oom,
+            free_page_reporting,
             stats_polling_interval_s,
         })
         .await
