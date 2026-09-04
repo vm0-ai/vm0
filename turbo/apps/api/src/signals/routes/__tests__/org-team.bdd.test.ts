@@ -500,6 +500,13 @@ describe("ORG-02: membership admin matrix", () => {
       context.mocks.clerk.organizations.getOrganizationMembershipList,
     ).toHaveBeenCalledTimes(2);
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledOnce();
+    const [providerWaitMs, providerDelayOptions] =
+      context.mocks.signalTimers.delay.mock.calls[0] ?? [];
+    expect(providerWaitMs).toBeGreaterThanOrEqual(1000);
+    expect(providerWaitMs).toBeLessThanOrEqual(1250);
+    expect(providerDelayOptions).toMatchObject({
+      signal: expect.any(AbortSignal),
+    });
 
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockReset();
     context.mocks.signalTimers.delay.mockClear();
@@ -541,7 +548,7 @@ describe("ORG-02: membership admin matrix", () => {
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry Clerk 4xx reads", async () => {
+  it("does not retry Clerk 4xx or malformed read failures", async () => {
     const admin = api.user();
     api.mockClerkOrg(admin);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
@@ -551,6 +558,20 @@ describe("ORG-02: membership admin matrix", () => {
     const response = await api.requestListMembers(admin, [500]);
 
     expect(response.status).toBe(500);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledOnce();
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+
+    api.mockClerkOrg(admin);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      { status: 521 },
+    );
+
+    const malformed = await api.requestListMembers(admin, [500]);
+
+    expect(malformed.status).toBe(500);
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
     ).toHaveBeenCalledOnce();
