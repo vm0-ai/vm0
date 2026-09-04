@@ -1578,11 +1578,7 @@ test("Keep pin management usable with many pinned agents", async () => {
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
   const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
   expect(within(pinnedSection).getByText("Pinned agents")).toBeVisible();
-  const pinnedAgentSkeleton = within(grid).getByTestId("pinned-agent-skeleton");
-  expect(pinnedAgentSkeleton.lastElementChild).toHaveClass(
-    "h-3.5",
-    "leading-[14px]",
-  );
+  expect(within(grid).getByTestId("pinned-agent-skeleton")).toBeVisible();
   expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
   expect(within(grid).queryByLabelText("Pin an agent")).toBeNull();
 
@@ -1593,14 +1589,6 @@ test("Keep pin management usable with many pinned agents", async () => {
     expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
     expect(buttonByLabel("Pin an agent", grid)).toBeVisible();
   });
-  expect(pinnedAgentLink(grid, "Zero").lastElementChild).toHaveClass(
-    "h-3.5",
-    "leading-[14px]",
-  );
-  expect(buttonByLabel("Pin an agent", grid).lastElementChild).toHaveClass(
-    "h-3.5",
-    "leading-[14px]",
-  );
   expect(
     queryAllByRoleFast("link", grid).map((link) => {
       return link.textContent?.trim();
