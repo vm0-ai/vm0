@@ -127,7 +127,6 @@ async function setup(
 
 interface CreatedAutomation {
   readonly automationId: string;
-  readonly threadId: string;
   readonly nextRunAt: string | null;
 }
 
@@ -144,12 +143,9 @@ async function createDueLoopAutomation(
     }),
     [201],
   );
-  if (!created.body.chatThreadId) {
-    throw new Error("Expected the automation to bind a chat thread");
-  }
+  expect(created.body.chatThreadId).toBeNull();
   return {
     automationId: created.body.id,
-    threadId: created.body.chatThreadId,
     nextRunAt: created.body.nextRunAt,
   };
 }
@@ -166,7 +162,7 @@ async function disableAutomation(automationId: string): Promise<void> {
 
 async function executeDueWorkflowAutomations(
   automationId: string,
-): Promise<void> {
+): Promise<string> {
   const response = await accept(
     workflowAutomationExecutionClient().execute({
       body: { automation_id: automationId },
@@ -174,6 +170,11 @@ async function executeDueWorkflowAutomations(
     [200],
   );
   expect(response.body.success).toBeTruthy();
+  const automation = await wf.readAutomation(automationId);
+  if (!automation.chatThreadId) {
+    throw new Error("Expected execution to bind a chat thread");
+  }
+  return automation.chatThreadId;
 }
 
 interface WorkflowRunMessage {
@@ -294,11 +295,9 @@ describe("okou workflow automation scheduler", () => {
     const selected = await createDueLoopAutomation(scenario, 3600);
     const unselected = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations(selected.automationId);
+    const threadId = await executeDueWorkflowAutomations(selected.automationId);
 
-    await expect(workflowRunMessages(selected.threadId)).resolves.toHaveLength(
-      1,
-    );
+    await expect(workflowRunMessages(threadId)).resolves.toHaveLength(1);
     const untouched = await wf.readAutomation(unselected.automationId);
     expect(untouched.lastRunAt).toBeNull();
     expect(untouched.nextRunAt).toBe(unselected.nextRunAt);
@@ -309,18 +308,39 @@ describe("okou workflow automation scheduler", () => {
   it("inherits the chat thread computer-use grant for automation runs", async () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 3600);
+    const seed = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (!seed.body.chatThreadId) {
+      throw new Error("Expected the event automation to bind a chat thread");
+    }
+    const threadId = seed.body.chatThreadId;
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: seed.body.id },
+      }),
+      [204],
+    );
     const host = await computerUseApi.startComputerUseHost(scenario.actor, {
       hostName: "Automation Desktop",
     });
     await chatFilesApi.updateThreadComputerUseHost(
       scenario.actor,
-      automation.threadId,
+      threadId,
       host.hostId,
     );
 
-    await executeDueWorkflowAutomations(automation.automationId);
+    await expect(
+      executeDueWorkflowAutomations(automation.automationId),
+    ).resolves.toBe(threadId);
 
-    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const run = await onlyWorkflowRunMessage(threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     await computerUseApi.requestCreateComputerUseWriteCommand(
@@ -338,9 +358,11 @@ describe("okou workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations(automation.automationId);
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
 
-    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const run = await onlyWorkflowRunMessage(threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     const denied = await computerUseApi.requestCreateComputerUseWriteCommand(
@@ -383,9 +405,11 @@ describe("okou workflow automation scheduler", () => {
 
     const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowAutomations(automation.automationId);
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
 
-    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const run = await onlyWorkflowRunMessage(threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     expect(claim.networkPolicies?.gmail?.allow ?? []).toContain(
@@ -398,9 +422,11 @@ describe("okou workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowAutomations(automation.automationId);
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
 
-    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const run = await onlyWorkflowRunMessage(threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     const environment = claim.environment ?? {};
@@ -424,15 +450,13 @@ describe("okou workflow automation scheduler", () => {
       }),
       [201],
     );
-    const threadId = created.body.chatThreadId;
-    if (!threadId || !created.body.nextRunAt) {
-      throw new Error(
-        "Expected a thread-bound cron automation with a next run",
-      );
+    expect(created.body.chatThreadId).toBeNull();
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a cron automation with a next run");
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations(created.body.id);
+    const threadId = await executeDueWorkflowAutomations(created.body.id);
 
     const run = await onlyWorkflowRunMessage(threadId);
     expect(run.runGroupId).toBeUndefined();
@@ -468,13 +492,13 @@ describe("okou workflow automation scheduler", () => {
       }),
       [201],
     );
-    const threadId = created.body.chatThreadId;
-    if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound one-time automation");
+    expect(created.body.chatThreadId).toBeNull();
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a one-time automation with a next run");
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations(created.body.id);
+    const threadId = await executeDueWorkflowAutomations(created.body.id);
 
     const onceRun = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
@@ -513,9 +537,11 @@ describe("okou workflow automation scheduler", () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowAutomations(automation.automationId);
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
 
-    await expect(onlyWorkflowDisplayText(automation.threadId)).resolves.toBe(
+    await expect(onlyWorkflowDisplayText(threadId)).resolves.toBe(
       "The next recurring run started.",
     );
     await disableAutomation(automation.automationId);
@@ -555,9 +581,9 @@ describe("okou workflow automation scheduler", () => {
       }),
       [201],
     );
-    const threadId = created.body.chatThreadId;
-    if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound loop automation");
+    expect(created.body.chatThreadId).toBeNull();
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a loop automation with a next run");
     }
 
     // The agent owner flips the agent private, hiding it from the member.
@@ -573,7 +599,13 @@ describe("okou workflow automation scheduler", () => {
       [200],
     );
 
-    await executeDueWorkflowAutomations(created.body.id);
+    const execution = await accept(
+      workflowAutomationExecutionClient().execute({
+        body: { automation_id: created.body.id },
+      }),
+      [200],
+    );
+    expect(execution.body.success).toBeTruthy();
 
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
@@ -594,8 +626,7 @@ describe("okou workflow automation scheduler", () => {
     expect(read.enabled).toBeTruthy();
     expect(read.nextRunAt).toBe(created.body.nextRunAt);
     expect(read.lastRunAt).toBeNull();
-    const messages = await workflowRunMessages(threadId);
-    expect(messages).toHaveLength(0);
+    expect(read.chatThreadId).toBeNull();
 
     await disableAutomation(created.body.id);
     mocks.clerk.session(scenario.userId, scenario.orgId);
@@ -617,13 +648,13 @@ describe("okou workflow automation scheduler", () => {
       }),
       [201],
     );
-    const threadId = created.body.chatThreadId;
-    if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound cron automation");
+    expect(created.body.chatThreadId).toBeNull();
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a cron automation with a next run");
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowAutomations(created.body.id);
+    const threadId = await executeDueWorkflowAutomations(created.body.id);
     const run = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
@@ -663,9 +694,11 @@ describe("okou workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowAutomations(automation.automationId);
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
     const before = now();
-    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const run = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
@@ -706,9 +739,16 @@ describe("okou workflow automation scheduler", () => {
     const scenario = await setup();
     const first = await createDueLoopAutomation(scenario, 60);
     const second = await createDueLoopAutomation(scenario, 120);
-    expect(second.threadId).toBe(first.threadId);
+    const firstThreadId = await executeDueWorkflowAutomations(
+      first.automationId,
+    );
+    await expect(wf.readAutomation(second.automationId)).resolves.toMatchObject(
+      {
+        chatThreadId: firstThreadId,
+      },
+    );
 
-    await chatFilesApi.deleteThread(scenario.actor, first.threadId);
+    await chatFilesApi.deleteThread(scenario.actor, firstThreadId);
     await expect(wf.readAutomation(first.automationId)).resolves.toMatchObject({
       enabled: false,
       nextRunAt: null,
@@ -724,7 +764,10 @@ describe("okou workflow automation scheduler", () => {
 
     // The workflow remains reusable after deleting its automation thread.
     const replacement = await createDueLoopAutomation(scenario, 300);
-    expect(replacement.threadId).not.toBe(first.threadId);
+    const replacementThreadId = await executeDueWorkflowAutomations(
+      replacement.automationId,
+    );
+    expect(replacementThreadId).not.toBe(firstThreadId);
     await disableAutomation(replacement.automationId);
   });
 
@@ -733,6 +776,7 @@ describe("okou workflow automation scheduler", () => {
     const automation = await createDueLoopAutomation(scenario, 300);
     const base = now();
     const seenRunIds = new Set<string>();
+    const threadIds = new Set<string>();
 
     // Three fire + failed-completion cycles through scoped execution, runner,
     // and sandbox completion surfaces auto-disable the automation.
@@ -740,8 +784,11 @@ describe("okou workflow automation scheduler", () => {
       if (failure > 1) {
         mockNow(base + (failure - 1) * 320_000);
       }
-      await executeDueWorkflowAutomations(automation.automationId);
-      const messages = await workflowRunMessages(automation.threadId);
+      const currentThreadId = await executeDueWorkflowAutomations(
+        automation.automationId,
+      );
+      threadIds.add(currentThreadId);
+      const messages = await workflowRunMessages(currentThreadId);
       const nextRun = messages.find((message) => {
         return !seenRunIds.has(message.runId);
       });
@@ -758,6 +805,7 @@ describe("okou workflow automation scheduler", () => {
           .not.toBeNull();
       }
     }
+    expect(threadIds.size).toBe(1);
 
     await expect
       .poll(async () => {
@@ -772,8 +820,10 @@ describe("okou workflow automation scheduler", () => {
     const scenario = await setup();
     const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowAutomations(automation.automationId);
-    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const threadId = await executeDueWorkflowAutomations(
+      automation.automationId,
+    );
+    const run = await onlyWorkflowRunMessage(threadId);
     expect(run).toMatchObject({
       workflowId: scenario.workflowId,
       workflowName: WORKFLOW_NAME,
@@ -791,7 +841,7 @@ describe("okou workflow automation scheduler", () => {
       [404],
     );
 
-    const historicalRuns = await workflowRunMessages(automation.threadId);
+    const historicalRuns = await workflowRunMessages(threadId);
     expect(historicalRuns).toStrictEqual([
       {
         runId: run.runId,

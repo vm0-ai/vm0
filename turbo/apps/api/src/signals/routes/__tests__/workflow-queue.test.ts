@@ -165,7 +165,7 @@ interface WebhookAutomation {
 
 interface ScheduleAutomation {
   readonly automationId: string;
-  readonly threadId: string;
+  readonly threadId: string | null;
 }
 
 async function createWebhookAutomation(
@@ -211,9 +211,6 @@ async function createScheduleAutomation(
     }),
     [201],
   );
-  if (!created.body.chatThreadId) {
-    throw new Error("Expected a thread-bound schedule automation");
-  }
   return {
     automationId: created.body.id,
     threadId: created.body.chatThreadId,
@@ -1934,8 +1931,9 @@ describe("workflow queue", () => {
       }),
       [201],
     );
-    if (!created.body.chatThreadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound loop automation");
+    expect(created.body.chatThreadId).toBeNull();
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a loop automation with a next run");
     }
     await accept(
       modelProvidersByTypeClient().delete({
@@ -1951,8 +1949,11 @@ describe("workflow queue", () => {
 
     const automation = await wf.readAutomation(created.body.id);
     expect(automation.nextRunAt).not.toBeNull();
+    if (!automation.chatThreadId) {
+      throw new Error("Expected execution to bind the schedule chat thread");
+    }
     await expect(
-      pendingAutomationEvents(created.body.chatThreadId),
+      pendingAutomationEvents(automation.chatThreadId),
     ).resolves.toHaveLength(0);
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
@@ -1962,9 +1963,9 @@ describe("workflow queue", () => {
     }
     mockNow(Date.parse(automation.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations(created.body.id);
-    await expect(
-      workflowRunIds(created.body.chatThreadId),
-    ).resolves.toHaveLength(1);
+    await expect(workflowRunIds(automation.chatThreadId)).resolves.toHaveLength(
+      1,
+    );
   });
 
   it("drains a queued one-time event through the canonical session", async () => {
@@ -2321,6 +2322,7 @@ describe("workflow queue", () => {
   it("queues manual Run now behind an unclaimed user message on an idle thread", async () => {
     const scenario = await setup();
     const automation = await createScheduleAutomation(scenario);
+    expect(automation.threadId).toBeNull();
     const first = await accept(
       automationsClient().run({
         headers: authHeaders(),
@@ -2331,13 +2333,14 @@ describe("workflow queue", () => {
     if (!first.body.runId) {
       throw new Error("Expected the first manual run to start");
     }
+    const threadId = first.body.chatThreadId;
 
     const userMessage = await accept(
       chatEventsClient().send({
         headers: authHeaders(),
         body: {
           agentId: scenario.agentId,
-          threadId: automation.threadId,
+          threadId,
           prompt: "queued user message before manual Run now",
           userMessage: {
             version: 1,
@@ -2371,13 +2374,13 @@ describe("workflow queue", () => {
     );
     expect(manual.body).toStrictEqual({
       runId: null,
-      chatThreadId: automation.threadId,
+      chatThreadId: threadId,
     });
 
-    await expect(
-      pendingWorkflowAutomationIds(automation.threadId),
-    ).resolves.toStrictEqual([automation.automationId]);
-    const messages = await wf.readThreadEvents(automation.threadId);
+    await expect(pendingWorkflowAutomationIds(threadId)).resolves.toStrictEqual(
+      [automation.automationId],
+    );
+    const messages = await wf.readThreadEvents(threadId);
     const claimedUserMessage = messages.find((message) => {
       return (
         chatEventDisplayText(message) ===
@@ -2393,6 +2396,7 @@ describe("workflow queue", () => {
   it("keeps each explicit schedule Run now as a distinct queued event", async () => {
     const scenario = await setup();
     const automation = await createScheduleAutomation(scenario);
+    expect(automation.threadId).toBeNull();
 
     const first = await accept(
       automationsClient().run({
@@ -2402,6 +2406,7 @@ describe("workflow queue", () => {
       [201],
     );
     expect(first.body.runId).toStrictEqual(expect.any(String));
+    const threadId = first.body.chatThreadId;
 
     for (let index = 0; index < 2; index++) {
       const queued = await accept(
@@ -2414,11 +2419,8 @@ describe("workflow queue", () => {
       expect(queued.body.runId).toBeNull();
     }
 
-    await expect(
-      pendingWorkflowAutomationIds(automation.threadId),
-    ).resolves.toStrictEqual([
-      automation.automationId,
-      automation.automationId,
-    ]);
+    await expect(pendingWorkflowAutomationIds(threadId)).resolves.toStrictEqual(
+      [automation.automationId, automation.automationId],
+    );
   });
 });

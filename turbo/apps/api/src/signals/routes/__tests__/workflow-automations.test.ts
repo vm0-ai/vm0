@@ -726,7 +726,7 @@ describe("okou workflow automations", () => {
     return connector.id;
   }
 
-  it("creates a cron automation and eagerly binds a chat thread", async () => {
+  it("creates a cron automation without binding a chat thread", async () => {
     const { workflowId } = await setupFixture();
 
     context.mocks.ably.publish.mockClear();
@@ -754,13 +754,10 @@ describe("okou workflow automations", () => {
         timezone: "UTC",
       },
     });
-    expect(created.body.chatThreadId).toBeTruthy();
+    expect(created.body.chatThreadId).toBeNull();
     expect(created.body.nextRunAt).toBeTruthy();
     expect(created.body.kind).toBe("schedule");
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadAutomationsChanged:${created.body.chatThreadId}`,
-      null,
-    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
     if (created.body.kind !== "schedule") {
       throw new Error("Expected a schedule automation");
     }
@@ -769,6 +766,25 @@ describe("okou workflow automations", () => {
 
   it("lists thread-bound workflow automations", async () => {
     const { workflowId } = await setupFixture();
+    const seed = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (!seed.body.chatThreadId) {
+      throw new Error("Expected the event automation to bind a chat thread");
+    }
+    const threadId = seed.body.chatThreadId;
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: seed.body.id },
+      }),
+      [204],
+    );
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -791,10 +807,7 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    const threadId = created.body.chatThreadId;
-    if (!threadId) {
-      throw new Error("Expected the workflow automation to bind a chat thread");
-    }
+    expect(created.body.chatThreadId).toBe(threadId);
     expect(second.body.chatThreadId).toBe(threadId);
 
     const listed = await accept(
@@ -895,6 +908,25 @@ describe("okou workflow automations", () => {
 
   it("stores automation chat threads at the workflow-user level", async () => {
     const { workflowId } = await setupFixture();
+    const seed = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (!seed.body.chatThreadId) {
+      throw new Error("Expected the event automation to bind a chat thread");
+    }
+    const threadId = seed.body.chatThreadId;
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: seed.body.id },
+      }),
+      [204],
+    );
     const first = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -914,7 +946,8 @@ describe("okou workflow automations", () => {
 
     // Both automations share the workflow-user thread, and both are listed on
     // the workflow.
-    expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
+    expect(first.body.chatThreadId).toBe(threadId);
+    expect(second.body.chatThreadId).toBe(threadId);
     const listed = await accept(
       automationsClient().list({
         headers: authHeaders(),
@@ -927,7 +960,7 @@ describe("okou workflow automations", () => {
       listed.body.map((automation) => {
         return automation.chatThreadId;
       }),
-    ).toStrictEqual([first.body.chatThreadId, first.body.chatThreadId]);
+    ).toStrictEqual([threadId, threadId]);
   });
 
   it("creates and updates one-time schedules from local atTime and timezone", async () => {
@@ -4671,9 +4704,7 @@ describe("okou workflow automations", () => {
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
-        body: {
-          schedule: { type: "loop", intervalSeconds: 3600 },
-        },
+        body: { kind: "event", eventType: "webhook-received" },
       }),
       [201],
     );
@@ -4700,7 +4731,7 @@ describe("okou workflow automations", () => {
     );
   });
 
-  it("runs a one-time automation immediately in its bound chat thread", async () => {
+  it("lazily binds a chat thread when a one-time automation runs now", async () => {
     const requestedAt = Date.UTC(2026, 7, 1, 12, 34, 56);
     mockNow(requestedAt);
     const runnerGroup = runs.configureRunnerGroup();
@@ -4719,10 +4750,7 @@ describe("okou workflow automations", () => {
       }),
       [201],
     );
-    const threadId = created.body.chatThreadId;
-    if (!threadId) {
-      throw new Error("Expected automation creation to bind a chat thread");
-    }
+    expect(created.body.chatThreadId).toBeNull();
 
     const run = await accept(
       automationsClient().run({
@@ -4732,7 +4760,7 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    expect(run.body.chatThreadId).toBe(threadId);
+    const threadId = run.body.chatThreadId;
     if (!run.body.runId) {
       throw new Error("Expected an idle manual automation run to start");
     }
@@ -4797,6 +4825,7 @@ describe("okou workflow automations", () => {
     expect(claim.appendSystemPrompt).not.toContain("# Current context");
 
     const automation = await wf.readAutomation(created.body.id);
+    expect(automation.chatThreadId).toBe(threadId);
     expect(typeof automation.lastRunAt).toBe("string");
     expect(automation.nextRunAt).toBe(created.body.nextRunAt);
 
