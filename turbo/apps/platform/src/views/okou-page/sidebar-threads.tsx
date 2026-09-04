@@ -988,8 +988,10 @@ function consumePointerFocus(viewport: HTMLElement) {
 
 function ChatThreadsContent({
   scrollSignals,
+  contentClassName,
 }: {
   scrollSignals: SidebarChatThreadScrollSignals;
+  contentClassName: string;
 }) {
   const collapsed = useGet(sessionListCollapsed$);
 
@@ -997,7 +999,12 @@ function ChatThreadsContent({
     return null;
   }
 
-  return <ExpandedChatThreadsContent scrollSignals={scrollSignals} />;
+  return (
+    <ExpandedChatThreadsContent
+      scrollSignals={scrollSignals}
+      contentClassName={contentClassName}
+    />
+  );
 }
 
 function AgentChatThreadsContent({
@@ -1040,8 +1047,10 @@ function AgentChatThreadsContent({
 
 function ExpandedChatThreadsContent({
   scrollSignals,
+  contentClassName,
 }: {
   scrollSignals: SidebarChatThreadScrollSignals;
+  contentClassName: string;
 }) {
   const { t } = useTranslation();
   const agentScope = useGet(currentChatAgentScope$);
@@ -1104,6 +1113,7 @@ function ExpandedChatThreadsContent({
     <OverlayScrollArea
       scrollSignals={scrollSignals}
       className="mt-1 min-h-0 flex-1"
+      contentClassName={contentClassName}
       aria-label={t(($) => {
         return $.chat.sidebar.chatThreads;
       })}
@@ -1135,20 +1145,27 @@ function ExpandedChatThreadsContent({
 }
 export function ChatThreadsSection({
   scrollSignals,
+  contentClassName,
   showMarkAllRead = false,
 }: {
   scrollSignals: SidebarChatThreadScrollSignals;
+  contentClassName: string;
   showMarkAllRead?: boolean;
 }) {
   const agentScope = useGet(currentChatAgentScope$);
 
   return (
     <div className="mt-4 flex flex-col min-h-0 flex-1">
-      <ChatThreadsTitle
-        key={agentScope ?? "no-agent"}
-        showMarkAllRead={showMarkAllRead}
+      <div className={contentClassName}>
+        <ChatThreadsTitle
+          key={agentScope ?? "no-agent"}
+          showMarkAllRead={showMarkAllRead}
+        />
+      </div>
+      <ChatThreadsContent
+        scrollSignals={scrollSignals}
+        contentClassName={contentClassName}
       />
-      <ChatThreadsContent scrollSignals={scrollSignals} />
     </div>
   );
 }
