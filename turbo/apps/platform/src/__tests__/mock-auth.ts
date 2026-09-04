@@ -999,7 +999,10 @@ function defaultBuildAuthUrl(
   if (internalMockedClerkLoadOptions.isSatellite) {
     redirectUrl.searchParams.set("__clerk_synced", "false");
   }
-  authUrl.searchParams.set("redirect_url", redirectUrl.toString());
+  // Clerk serializes redirect options into the auth route's fragment.
+  const authHashParams = new URLSearchParams();
+  authHashParams.set("redirect_url", redirectUrl.toString());
+  authUrl.hash = `/?${authHashParams.toString()}`;
   return authUrl.toString();
 }
 

@@ -27,6 +27,13 @@ function withClerkSatelliteSync(url: string): string {
   return destination.toString();
 }
 
+function clerkAuthFragment(url: URL): URL {
+  if (!url.hash.startsWith("#/")) {
+    throw new Error("Expected Clerk auth state in the URL fragment");
+  }
+  return new URL(url.hash.slice(1), url.origin);
+}
+
 function currentSignInResource() {
   return mockedClerk.client.signIn;
 }
@@ -80,7 +87,7 @@ test("A presentation-onboarding deep link survives sign-in", async () => {
     expect(location.pathname).toBe("/sign-in");
   });
   const current = new URL(location.href);
-  expect(current.searchParams.get("redirect_url")).toBe(
+  expect(clerkAuthFragment(current).searchParams.get("redirect_url")).toBe(
     PRESENTATION_ONBOARDING_URL,
   );
 });
@@ -110,7 +117,7 @@ test("An Okou sign-in route waits for Clerk before moving to the primary app", a
   });
   const destination = new URL(location.href);
   expect(destination.pathname).toBe("/sign-in");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  expect(clerkAuthFragment(destination).searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
   expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith({
@@ -132,10 +139,11 @@ test("An Okou stateful sign-in route moves authentication to the primary app", a
   });
   const destination = new URL(location.href);
   expect(destination.pathname).toBe("/sign-in");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  const authFragment = clerkAuthFragment(destination);
+  expect(authFragment.searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
-  expect(destination.hash).toBe("#/identifier");
+  expect(authFragment.pathname).toBe("/identifier");
 });
 
 test("An Okou sign-up route moves registration to the primary app", async () => {
@@ -152,7 +160,7 @@ test("An Okou sign-up route moves registration to the primary app", async () => 
   });
   const destination = new URL(location.href);
   expect(destination.pathname).toBe("/sign-up");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  expect(clerkAuthFragment(destination).searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
   expect(mockedClerk.redirectToSignUp).toHaveBeenCalledWith({
@@ -174,10 +182,11 @@ test("An Okou stateful sign-up route moves registration to the primary app", asy
   });
   const destination = new URL(location.href);
   expect(destination.pathname).toBe("/sign-up");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  const authFragment = clerkAuthFragment(destination);
+  expect(authFragment.searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
-  expect(destination.hash).toBe("#/profile");
+  expect(authFragment.pathname).toBe("/profile");
 });
 
 test("Okou sign-up attribution survives the move to the primary app", async () => {
@@ -199,7 +208,8 @@ test("Okou sign-up attribution survives the move to the primary app", async () =
     "hero",
     "footer",
   ]);
-  const redirectUrl = destination.searchParams.get("redirect_url");
+  const redirectUrl =
+    clerkAuthFragment(destination).searchParams.get("redirect_url");
   if (!redirectUrl) {
     throw new Error("Expected Clerk to retain the completion destination");
   }
@@ -233,10 +243,12 @@ test("An Okou OAuth callback keeps its state on the primary app", async () => {
   expect(destination.pathname).toBe("/sign-in/sso-callback");
   expect(destination.searchParams.get("code")).toBe("oauth-code");
   expect(destination.searchParams.get("state")).toBe("oauth-state");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  const authFragment = clerkAuthFragment(destination);
+  expect(authFragment.searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
-  expect(destination.hash).toBe("#/callback?attempt=1");
+  expect(authFragment.pathname).toBe("/callback");
+  expect(authFragment.searchParams.get("attempt")).toBe("1");
 });
 
 test("An Okou session task keeps its state on the primary app", async () => {
@@ -256,10 +268,12 @@ test("An Okou session task keeps its state on the primary app", async () => {
   const destination = new URL(location.href);
   expect(destination.pathname).toBe("/sign-up/tasks/choose-organization");
   expect(destination.searchParams.get("session_id")).toBe("session-test");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  const authFragment = clerkAuthFragment(destination);
+  expect(authFragment.searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
-  expect(destination.hash).toBe("#/tasks/choose-organization?attempt=1");
+  expect(authFragment.pathname).toBe("/tasks/choose-organization");
+  expect(authFragment.searchParams.get("attempt")).toBe("1");
 });
 
 test("An Okou sign-in ticket is redeemed by the primary app", async () => {
@@ -279,7 +293,7 @@ test("An Okou sign-in ticket is redeemed by the primary app", async () => {
   const destination = new URL(location.href);
   expect(destination.pathname).toBe("/sign-in-token");
   expect(destination.searchParams.get("token")).toBe("clerk-ticket");
-  expect(destination.searchParams.get("redirect_url")).toBe(
+  expect(clerkAuthFragment(destination).searchParams.get("redirect_url")).toBe(
     withClerkSatelliteSync(returnUrl),
   );
   expect(mockedClerk.clientSignInCreate).not.toHaveBeenCalled();
@@ -410,7 +424,9 @@ test("Okou uses primary authentication with satellite context", async () => {
     expect(location.origin).toBe("https://app.vm0.ai");
     expect(location.pathname).toBe("/sign-in");
   });
-  const redirect = new URL(location.href).searchParams.get("redirect_url");
+  const redirect = clerkAuthFragment(new URL(location.href)).searchParams.get(
+    "redirect_url",
+  );
   expect(redirect).toBe(
     "https://app.okou.ai/agents?utm_source=okou-launch&__clerk_synced=false",
   );
@@ -440,7 +456,9 @@ test("Registered Okou subdomains use primary authentication with satellite conte
     expect(location.origin).toBe("https://app.vm0.ai");
     expect(location.pathname).toBe("/sign-in");
   });
-  const redirect = new URL(location.href).searchParams.get("redirect_url");
+  const redirect = clerkAuthFragment(new URL(location.href)).searchParams.get(
+    "redirect_url",
+  );
   expect(redirect).toBe(
     "https://team.app.okou.ai/agents?utm_source=okou-launch&__clerk_synced=false",
   );

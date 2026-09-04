@@ -198,6 +198,37 @@ interface SatelliteAuthRouteNavigation {
   readonly preservesRouteState: boolean;
 }
 
+function mergeClerkAuthHash(clerkHash: string, routeHash: string): string {
+  if (!routeHash) {
+    return clerkHash;
+  }
+
+  const clerkHashQueryIndex = clerkHash.indexOf("?");
+  if (clerkHashQueryIndex === -1) {
+    return routeHash;
+  }
+
+  const clerkHashParams = new URLSearchParams(
+    clerkHash.slice(clerkHashQueryIndex + 1),
+  );
+  const routeHashQueryIndex = routeHash.indexOf("?");
+  const routeHashPath =
+    routeHashQueryIndex === -1
+      ? routeHash
+      : routeHash.slice(0, routeHashQueryIndex);
+  const routeHashParams = new URLSearchParams(
+    routeHashQueryIndex === -1 ? "" : routeHash.slice(routeHashQueryIndex + 1),
+  );
+  for (const [key, value] of clerkHashParams) {
+    routeHashParams.set(key, value);
+  }
+
+  const routeHashSearch = routeHashParams.toString();
+  return routeHashSearch
+    ? `${routeHashPath}?${routeHashSearch}`
+    : routeHashPath;
+}
+
 function resolveSatelliteAuthRouteNavigation(
   mode: "sign-in" | "sign-up",
 ): SatelliteAuthRouteNavigation | null {
@@ -481,7 +512,7 @@ export const navigateSatelliteAuthRoute$ = command(
     for (const [key, value] of routeState) {
       authUrl.searchParams.append(key, value);
     }
-    authUrl.hash = location.hash;
+    authUrl.hash = mergeClerkAuthHash(authUrl.hash, location.hash);
 
     await clerk.navigate(authUrl.toString());
     signal.throwIfAborted();

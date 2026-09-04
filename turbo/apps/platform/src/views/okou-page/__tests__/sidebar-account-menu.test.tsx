@@ -1459,7 +1459,7 @@ test("Sign out from the account menu", async () => {
       expect.objectContaining({
         sessionId: "test-session-id",
         redirectUrl: expect.stringMatching(
-          /(?=.*\/sign-in\?)(?=.*redirect_url=)(?=.*__clerk_synced%3Dfalse)/,
+          /(?=.*\/sign-in#\/\?)(?=.*redirect_url=)(?=.*__clerk_synced%3Dfalse)/,
         ),
       }),
     );
