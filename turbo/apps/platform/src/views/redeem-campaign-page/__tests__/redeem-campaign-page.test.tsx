@@ -1,121 +1,153 @@
-import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { screen } from "@testing-library/react";
+import { expect, test } from "vitest";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const CHECKOUT_URL = "https://checkout.stripe.com/c/pay/campaign-session";
 
-function usePortugueseLocale(): void {
-  document.documentElement.lang = "pt-BR";
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      document.documentElement.lang = "en-US";
-    },
-    { once: true },
-  );
+function getLink(name: string): HTMLAnchorElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.textContent?.trim() === name;
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Link not found: ${name}`);
+  }
+  return link;
 }
 
-describe("redeem campaign page", () => {
-  it("renders Portuguese app copy with English document metadata", async () => {
-    usePortugueseLocale();
-    const checkoutUrl = "https://checkout.stripe.com/test/session-pt-br";
-    context.mocks.data.redeemResponse({ status: "ready", checkoutUrl });
-
-    detachedSetupPage({ context, path: "/redeem/ZERO100" });
-
-    await expect(
-      screen.findByText("Resgatar seus créditos"),
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Complete a finalização da compra para adicionar esses créditos ao saldo de Default Org/u,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Resgatar créditos")).toHaveAttribute(
-      "href",
-      checkoutUrl,
-    );
-    expect(document.title).toBe("Claim your credits | VM0");
+test("A billing outage shows a temporary redemption error", async () => {
+  context.mocks.data.redeemResponse({
+    status: "error",
+    reason: "billing_unavailable",
   });
 
-  it("lets a user redeem a ready campaign through Stripe checkout", async () => {
-    const checkoutUrl = "https://checkout.stripe.com/test/session-ready";
-    context.mocks.data.redeemResponse({ status: "ready", checkoutUrl });
-
-    detachedSetupPage({ context, path: "/redeem/ZERO100" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Claim your credits")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(/Complete checkout to add these credits to Default Org/),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Redeem credits")).toHaveAttribute(
-      "href",
-      checkoutUrl,
-    );
+  await setupPage({
+    context,
+    path: "/redeem/summer-credits",
+    host: "app.vm0.ai",
   });
 
-  it("shows the processing post-redemption state", async () => {
-    context.mocks.data.redeemResponse({ status: "processing" });
+  await expect(
+    screen.findByText("Billing is temporarily unavailable"),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Our payment system isn't available right now. Please try again in a few minutes.",
+    ),
+  ).toBeVisible();
+  expect(
+    queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.trim() === "Redeem credits";
+    }),
+  ).toBeUndefined();
+});
 
-    detachedSetupPage({ context, path: "/redeem/ZERO100" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Payment received")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(/applying your credits to Default Org/),
-    ).toBeInTheDocument();
+test("A non-admin cannot redeem workspace campaign credits", async () => {
+  context.mocks.data.redeemResponse({
+    status: "error",
+    reason: "admin_required",
   });
 
-  it("shows the Stripe success return state without waiting for the API", async () => {
-    context.mocks.data.redeemResponse({
-      status: "error",
-      reason: "campaign_misconfigured",
-    });
-
-    detachedSetupPage({ context, path: "/redeem/ZERO100?stripe=success" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Payment successful")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(/Your credits are on the way to Default Org/),
-    ).toBeInTheDocument();
+  await setupPage({
+    context,
+    path: "/redeem/summer-credits",
+    host: "app.vm0.ai",
   });
 
-  it("shows the admin-required campaign error state", async () => {
-    context.mocks.data.redeemResponse({
-      status: "error",
-      reason: "admin_required",
-    });
+  await expect(
+    screen.findByText("Admin access required"),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Only organization admins can redeem campaign credits for Default Org. Ask an admin in your org to open the link instead.",
+    ),
+  ).toBeVisible();
+  expect(
+    queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.trim() === "Redeem credits";
+    }),
+  ).toBeUndefined();
+});
 
-    detachedSetupPage({ context, path: "/redeem/ZERO100" });
+test("A processing redemption confirms payment", async () => {
+  context.mocks.data.redeemResponse({ status: "processing" });
 
-    await waitFor(() => {
-      expect(screen.getByText("Admin access required")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText(/redeem campaign credits for Default Org/),
-    ).toBeInTheDocument();
+  await setupPage({
+    context,
+    path: "/redeem/summer-credits",
+    host: "app.vm0.ai",
   });
 
-  it("shows the billing-unavailable campaign error state", async () => {
-    context.mocks.data.redeemResponse({
-      status: "error",
-      reason: "billing_unavailable",
-    });
+  await expect(screen.findByText("Payment received")).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "We're applying your credits to Default Org now. This usually takes a few seconds — refresh in a moment to see the updated balance.",
+    ),
+  ).toBeVisible();
+});
 
-    detachedSetupPage({ context, path: "/redeem/ZERO100" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Billing is temporarily unavailable"),
-      ).toBeInTheDocument();
-    });
+test("A ready credit campaign localizes app copy while keeping English metadata", async () => {
+  context.mocks.data.redeemResponse({
+    status: "ready",
+    checkoutUrl: CHECKOUT_URL,
   });
+
+  await setupPage({
+    context,
+    path: "/redeem/summer-credits",
+    host: "app.vm0.ai",
+    locale: "pt-BR",
+  });
+
+  await expect(
+    screen.findByText("Resgatar seus créditos"),
+  ).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Complete a finalização da compra para adicionar esses créditos ao saldo de Default Org.",
+    ),
+  ).toBeVisible();
+  expect(getLink("Resgatar créditos")).toHaveAttribute("href", CHECKOUT_URL);
+  expect(document.title).toBe("Claim your credits | VM0");
+});
+
+test("A ready credit campaign links to checkout", async () => {
+  context.mocks.data.redeemResponse({
+    status: "ready",
+    checkoutUrl: CHECKOUT_URL,
+  });
+
+  await setupPage({
+    context,
+    path: "/redeem/summer-credits",
+    host: "app.vm0.ai",
+  });
+
+  await expect(screen.findByText("Claim your credits")).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Complete checkout to add these credits to Default Org's balance.",
+    ),
+  ).toBeVisible();
+  expect(getLink("Redeem credits")).toHaveAttribute("href", CHECKOUT_URL);
+});
+
+test("A Stripe success return confirms credits immediately", async () => {
+  await setupPage({
+    context,
+    path: "/redeem/summer-credits?stripe=success",
+    host: "app.vm0.ai",
+  });
+
+  await expect(screen.findByText("Payment successful")).resolves.toBeVisible();
+  expect(
+    screen.getByText(
+      "Your credits are on the way to Default Org. Open the dashboard to see your new balance.",
+    ),
+  ).toBeVisible();
 });
