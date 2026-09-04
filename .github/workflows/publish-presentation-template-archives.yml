@@ -27,10 +27,10 @@ jobs:
     outputs:
       source_commit: ${{ steps.source.outputs.commit }}
     steps:
-      - name: Check out latest vm0 main
+      - name: Check out dispatched vm0 commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Create read token for Template-artifact
@@ -78,10 +78,16 @@ jobs:
           mkdir -p "$release_dir"
           cp .github/scripts/publish-presentation-template-archives.mjs "$release_dir/"
           cp .github/scripts/presentation-template-release.json "$release_dir/"
+          cp -R .github/scripts/presentation-template-release "$release_dir/"
           cd "$release_dir"
           npm init --yes >/dev/null
           npm install --ignore-scripts --no-fund tar@7.5.22
           printf 'path=%s\n' "$release_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Test release tooling
+        env:
+          PRESENTATION_TEMPLATE_RELEASE_TOOL: ${{ steps.tooling.outputs.path }}/publish-presentation-template-archives.mjs
+        run: node --test .github/scripts/__tests__/publish-presentation-template-archives.test.mjs
 
       - name: Build deterministic archives
         env:
@@ -130,10 +136,10 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
     steps:
-      - name: Check out latest vm0 main
+      - name: Check out dispatched vm0 commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -149,6 +155,7 @@ jobs:
           mkdir -p "$release_dir"
           cp .github/scripts/publish-presentation-template-archives.mjs "$release_dir/"
           cp .github/scripts/presentation-template-release.json "$release_dir/"
+          cp -R .github/scripts/presentation-template-release "$release_dir/"
           cd "$release_dir"
           npm init --yes >/dev/null
           npm install --ignore-scripts --no-fund \
