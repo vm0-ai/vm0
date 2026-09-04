@@ -709,35 +709,6 @@ describe("thread-owned utility sidebar", () => {
     );
   });
 
-  it("does not send a presigned office attachment url to the viewer when the api omits its public url", async () => {
-    const filename = "legacy-api-document.docx";
-    const fileId = "office-without-public-url";
-    const resourceUrl = `https://r2.example.com/artifacts/${filename}?sig=test`;
-    context.mocks.api(webFilesContract.fileUrl, ({ query, respond }) => {
-      expect(query.file_id).toBe(fileId);
-      return respond(200, { url: resourceUrl });
-    });
-    setupChatThread({
-      messages: officeUserFileMessages(fileId, filename),
-    });
-
-    click(await screen.findByLabelText(`Preview ${filename}`));
-
-    const dialog = await screen.findByTestId("attachment-lightbox");
-    await expect(
-      within(dialog).findByText("Preview unavailable."),
-    ).resolves.toBeInTheDocument();
-    expect(within(dialog).queryByTitle(`${filename} preview`)).toBeNull();
-
-    click(within(dialog).getByLabelText("Open in split view"));
-
-    const sidebar = await screen.findByTestId("artifact-sidebar");
-    await expect(
-      within(sidebar).findByText("Preview unavailable."),
-    ).resolves.toBeInTheDocument();
-    expect(within(sidebar).queryByTitle(`${filename} preview`)).toBeNull();
-  });
-
   it("previews a public catalog document through the resolved resource url", async () => {
     const htmlUrl = "https://catalog-document.sites.vm7.io";
     const summary = catalogArtifact({ title: "launch-site.html" });

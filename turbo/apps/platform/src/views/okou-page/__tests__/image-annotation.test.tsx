@@ -91,7 +91,7 @@ function mockDraftWithImage(
 ): void {
   // A restored attachment revalidates its file before a send can use it.
   context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
-    return respond(200, { url: FILE_URL });
+    return respond(200, { url: FILE_URL, publicUrl: FILE_URL });
   });
   context.mocks.api(agentDraftContract.patch, ({ body, respond }) => {
     savedDrafts.push({
