@@ -8,8 +8,8 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import type { ComposerSlashWorkflow } from "../../signals/okou-page/workflow-composer-domain.ts";
 
-function slashWorkflowOptionId(workflowName: string): string {
-  return `slash-workflow-option-${workflowName}`;
+function slashWorkflowOptionId(workflowId: string): string {
+  return `slash-workflow-option-${workflowId}`;
 }
 
 const COMPOSER_SUGGESTION_COLLISION_GAP = 12;
@@ -45,9 +45,7 @@ export function scrollSlashWorkflowIntoView(
   }
 
   window.requestAnimationFrame(() => {
-    const option = document.getElementById(
-      slashWorkflowOptionId(workflow.name),
-    );
+    const option = document.getElementById(slashWorkflowOptionId(workflow.id));
     if (option && typeof option.scrollIntoView === "function") {
       option.scrollIntoView({ block: "nearest" });
     }
@@ -106,8 +104,8 @@ export function SlashWorkflowMenu({
             const matchEnd = matchStart + query.length;
             return (
               <button
-                id={slashWorkflowOptionId(workflow.name)}
-                key={workflow.name}
+                id={slashWorkflowOptionId(workflow.id)}
+                key={workflow.id}
                 type="button"
                 className={cn(
                   "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",

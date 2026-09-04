@@ -88,7 +88,7 @@ test("Lab groups every feature by rollout stage with a switch", async () => {
     within(released).getByText(FeatureSwitchKey.NotionWorkflowAutomations),
   ).toBeVisible();
   expect(within(beta).getByText(FeatureSwitchKey.Banking)).toBeVisible();
-  expect(within(beta).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
+  expect(within(alpha).getByText(FeatureSwitchKey.IntroVideo)).toBeVisible();
   expect(
     within(alpha).getByText(FeatureSwitchKey.AhrefsConnector),
   ).toBeVisible();

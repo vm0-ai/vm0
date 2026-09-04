@@ -453,19 +453,17 @@ test("Explain model availability by plan and provider", async () => {
     name: "Choose a plan",
   });
   expect(planDialog).toBeVisible();
+  // The composer opened the upgrade flow, so dismissing it returns to the
+  // composer instead of leaving the Settings billing tab open underneath.
   click(buttonNamed("Close", planDialog));
   await waitFor(() => {
     expect(
       screen.queryByRole("dialog", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
   });
-  const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
-  click(buttonNamed("Close", settingsDialog));
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Settings" }),
-    ).not.toBeInTheDocument();
-  });
+  expect(
+    screen.queryByRole("dialog", { name: "Settings" }),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByRole("combobox", { name: "DeepSeek V4 Flash" }),
   ).toBeVisible();

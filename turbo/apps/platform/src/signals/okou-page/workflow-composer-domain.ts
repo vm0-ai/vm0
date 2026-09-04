@@ -27,6 +27,7 @@ export interface SlashWorkflowRange {
 }
 
 export interface ComposerSlashWorkflow {
+  readonly id: string;
   readonly name: string;
   readonly displayName: string | null;
   readonly description: string | null;
@@ -79,11 +80,15 @@ export function buildComposerSlashWorkflows({
 
   return workflows
     .filter((workflow) => {
-      return workflow.agentId === agentId;
+      return (
+        workflow.agentId === agentId &&
+        (workflow.shadowedBy === null || workflow.shadowedBy === undefined)
+      );
     })
     .map((workflow) => {
       const name = workflow.name;
       return {
+        id: workflow.id,
         name,
         displayName: workflow.displayName,
         description: workflow.description,

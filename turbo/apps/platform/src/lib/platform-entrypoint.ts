@@ -1,27 +1,23 @@
 import "./preview-bypass-cookie-bootstrap.ts";
 import "./accept-browser.ts";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { browserUpgradeForUserAgent } from "./browser-support.ts";
 import { initGoogleAds } from "./google-ads.ts";
-import { scheduleIOSPWAStartupImages } from "./ios-pwa-startup-image.ts";
 import { initSentry } from "./sentry.ts";
 import { captureFirstSkeletonPaint, initPostHog } from "./posthog.ts";
 import { initPlausible } from "./plausible.ts";
 import { setupVisualViewportKeyboardState } from "./visual-viewport-keyboard.ts";
 import "../polyfill.ts";
 import { createRoot } from "react-dom/client";
-import { createStore, type Store } from "ccstate";
+import { createStore } from "ccstate";
 import { bootstrap$ } from "../signals/bootstrap.ts";
 import { resolveAssistantNameForHostname } from "../signals/branding.ts";
-import { featureSwitch$ } from "../signals/external/feature-switch.ts";
 import { detach, Reason, resetSignal } from "../signals/utils.ts";
 import { setupRouter } from "../views/main.tsx";
 import { renderUnsupportedBrowserPage } from "../views/unsupported-browser-page.tsx";
 
 // (no-op Platform release marker refreshed again on 2026-07-31)
 
-function startApplication(): Store {
-  const store = createStore();
+function startApplication(): void {
   const resetRootSignal$ = resetSignal();
   const resetViewportSettleSignal$ = resetSignal();
 
@@ -31,6 +27,7 @@ function startApplication(): Store {
   captureFirstSkeletonPaint();
 
   async function main() {
+    const store = createStore();
     const rootSignal = store.set(resetRootSignal$);
     window.addEventListener(
       "pagehide",
@@ -78,15 +75,12 @@ function startApplication(): Store {
   }
 
   detach(main(), Reason.Entrance, "main");
-  return store;
 }
 
 export function startPlatformEntrypoint(): void {
   window.__appBootstrapModuleReady = performance.now();
   const browserUpgrade = browserUpgradeForUserAgent(navigator.userAgent);
-  let store: Store;
   if (browserUpgrade) {
-    store = createStore();
     const rootElement = document.getElementById("root");
     if (!rootElement) {
       throw new Error("can't find root el to render unsupported browser page");
@@ -97,10 +91,7 @@ export function startPlatformEntrypoint(): void {
       browserUpgrade,
     );
   } else {
-    store = startApplication();
+    startApplication();
   }
   initGoogleAds();
-  scheduleIOSPWAStartupImages(
-    store.get(featureSwitch$)[FeatureSwitchKey.IosPwaStartupImages],
-  );
 }

@@ -724,7 +724,6 @@ export function httpConnector(
     authMode,
     ...(authMode === "oauth"
       ? {
-          oauthSetup: "custom",
           oauthConfig: {
             providerAdapter: args.providerAdapter ?? "standard",
             clientId: "client-id",

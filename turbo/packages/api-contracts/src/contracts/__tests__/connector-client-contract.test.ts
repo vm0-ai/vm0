@@ -261,12 +261,12 @@ describe("custom connector response contracts", () => {
 
     expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
 
-    expect(
+    expect(() => {
       customConnectorResponseSchema.parse({
         ...payload,
         oauthSetup: "custom",
-      }),
-    ).toStrictEqual(payload);
+      });
+    }).toThrow();
   });
 
   it("parses top-level Automatic MCP authentication", () => {
@@ -442,13 +442,6 @@ describe("connector client request contracts", () => {
         prefixTemplates: ["https://api.example.test"],
       });
     }).toThrow();
-    expect(
-      createCustomConnectorBodySchema.parse({
-        ...manualDefinition,
-        authMode: "manual",
-        oauthSetup: "custom",
-      }),
-    ).toStrictEqual({ ...manualDefinition, authMode: "manual" });
   });
 
   it("accepts canonical connector check requests", () => {

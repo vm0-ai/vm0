@@ -177,6 +177,53 @@ test("A user opens avatar customization from an agent", async () => {
   expect(within(dialog).getByText("Face")).toBeVisible();
 });
 
+test("A member cannot customize another user's public agent avatar", async () => {
+  context.mocks.data.org({
+    id: "org_default",
+    name: "Default Org",
+    role: "member",
+  });
+  await setupTeamPage({
+    context,
+    path: `/agents/${RESEARCH_AGENT_ID}?tab=profile`,
+    agents: [
+      agentFixture(RESEARCH_AGENT_ID, "Research Agent", {
+        ownerId: "agent-owner",
+      }),
+    ],
+  });
+
+  await screen.findByRole("heading", { name: "Research Agent" });
+  expect(screen.queryByLabelText("Customize avatar")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Create custom avatar"),
+  ).not.toBeInTheDocument();
+});
+
+test("An org admin cannot customize another user's private agent avatar", async () => {
+  context.mocks.data.org({
+    id: "org_default",
+    name: "Default Org",
+    role: "admin",
+  });
+  await setupTeamPage({
+    context,
+    path: `/agents/${RESEARCH_AGENT_ID}?tab=profile`,
+    agents: [
+      agentFixture(RESEARCH_AGENT_ID, "Private Agent", {
+        ownerId: "agent-owner",
+        visibility: "private",
+      }),
+    ],
+  });
+
+  await screen.findByRole("heading", { name: "Private Agent" });
+  expect(screen.queryByLabelText("Customize avatar")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Create custom avatar"),
+  ).not.toBeInTheDocument();
+});
+
 test("A user starts a chat from an agent's detail page", async () => {
   await setupTeamPage({
     context,
