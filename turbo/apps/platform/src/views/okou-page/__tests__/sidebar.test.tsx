@@ -4020,7 +4020,7 @@ describe("zero sidebar", () => {
     ).toMatchObject({ selectedImageModel: null });
   });
 
-  it("keeps skeletons when pinned agent previews have not been cached", async () => {
+  it("keeps a stable skeleton and hides Pin without cached previews", async () => {
     const pinnedAgentIds = prepareOverflowingPinnedAgents();
     const preferencesGate = deferPinnedAgentPreferences(
       context,
@@ -4034,15 +4034,17 @@ describe("zero sidebar", () => {
 
     const grid = await screen.findByTestId("pinned-agents-grid");
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
+      1,
     );
     expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
+    expect(within(grid).queryByLabelText("Pin an agent")).toBeNull();
 
     preferencesGate.resolve();
 
     await waitFor(() => {
       expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
       expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+      expect(within(grid).getByLabelText("Pin an agent")).toBeInTheDocument();
     });
   });
 
@@ -4167,7 +4169,7 @@ describe("zero sidebar", () => {
 
     const grid = await screen.findByTestId("pinned-agents-grid");
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
+      1,
     );
     expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
 
@@ -4219,7 +4221,7 @@ describe("zero sidebar", () => {
 
     const grid = await screen.findByTestId("pinned-agents-grid");
     expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(
-      4,
+      1,
     );
     expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
 
