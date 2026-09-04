@@ -12,6 +12,7 @@ import {
   clerkLocalizationForLocale,
   clerkLocalizations$,
 } from "../../i18n/clerk-localization.ts";
+import { OKOU_LOCALE_COOKIE_NAME } from "../../i18n/locale-fallback.ts";
 import frFRCommonUrl from "../../i18n/locales/fr-FR/common.json?url";
 import {
   CHAT_ATTACHMENT_HEADINGS,
@@ -242,8 +243,40 @@ describe("bootstrap locale", () => {
     ).toBe("Language");
   });
 
-  it("starts in English regardless of the browser language", async () => {
-    context.mocks.browser.language("ja-JP");
+  it("uses the shared Okou locale cookie ahead of browser languages", async () => {
+    context.mocks.browser.url("https://app.okou.ai/error");
+    context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v1.fr-FR`);
+    context.mocks.browser.languages(["ja-JP"]);
+
+    await setupPage({ context, path: "/error", withoutRender: true });
+
+    expect(context.store.get(locale$)).toBe("fr-FR");
+  });
+
+  it("uses the first supported browser language family on Okou", async () => {
+    context.mocks.browser.url("https://app.okou.ai/error");
+    context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v1.unsupported`);
+    context.mocks.browser.languages(["zh-CN", "de-AT", "ja-JP"]);
+
+    await setupPage({ context, path: "/error", withoutRender: true });
+
+    expect(context.store.get(locale$)).toBe("de-DE");
+  });
+
+  it("uses English when no Okou locale hint is supported", async () => {
+    context.mocks.browser.url("https://app.okou.ai/error");
+    context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v0.fr-FR`);
+    context.mocks.browser.languages(["zh-CN", "ar-SA"]);
+
+    await setupPage({ context, path: "/error", withoutRender: true });
+
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+  });
+
+  it("keeps cookie and browser locale hints isolated from VM0", async () => {
+    context.mocks.browser.url("https://app.vm0.ai/error");
+    context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v1.fr-FR`);
+    context.mocks.browser.languages(["ja-JP"]);
 
     await setupPage({ context, path: "/error", withoutRender: true });
 

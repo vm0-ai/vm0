@@ -430,6 +430,10 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
+        vi.spyOn(navigator, "languages", "get").mockReturnValue([language]);
+      },
+      languages: (languages: readonly string[]): void => {
+        vi.spyOn(navigator, "languages", "get").mockReturnValue([...languages]);
       },
       visibilityState: (visibilityState: DocumentVisibilityState): void => {
         const descriptor = defineWindowProperty(

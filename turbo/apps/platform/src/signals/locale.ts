@@ -9,6 +9,7 @@ import {
   loadI18nLanguageResources,
   loadInitialLocaleResources,
 } from "../i18n/index.ts";
+import { resolveInitialLocaleFallbackFromBrowser } from "../i18n/locale-fallback.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import { clerk$ } from "./auth.ts";
 import {
@@ -29,7 +30,7 @@ export const availableLocalePreferences$ = computed(async (get) => {
 
 export const initLocale$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    const requestedLocale = DEFAULT_LOCALE;
+    const requestedLocale = resolveInitialLocaleFallbackFromBrowser();
     const [initial, clerkLocalization] = await Promise.all([
       loadInitialLocaleResources(requestedLocale, signal),
       set(loadClerkLocalization$, requestedLocale, signal),
@@ -77,7 +78,8 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
-    const preferredLocale = preferences.locale ?? DEFAULT_LOCALE;
+    const preferredLocale =
+      preferences.locale ?? resolveInitialLocaleFallbackFromBrowser();
     const locale = supportedLocales.includes(preferredLocale)
       ? preferredLocale
       : DEFAULT_LOCALE;

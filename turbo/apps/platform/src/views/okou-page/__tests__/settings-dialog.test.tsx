@@ -15,6 +15,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { OKOU_LOCALE_COOKIE_NAME } from "../../../i18n/locale-fallback.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { openSettingsDialogAt$ } from "../../../signals/okou-page/settings/settings-dialog.ts";
 import { billingStatus } from "./chat-composer-test-helpers.ts";
@@ -181,10 +182,11 @@ describe("settings dialog", () => {
     ).toHaveLength(10);
   });
 
-  it("defaults to English instead of the browser language before user selection", async () => {
+  it("persists the browser fallback when the workspace has no preference", async () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
-    context.mocks.browser.language("id-ID");
+    context.mocks.browser.url("https://app.okou.ai/?settings=preference");
+    context.mocks.browser.languages(["id-ID"]);
     context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(serverLocale));
     });
@@ -199,36 +201,26 @@ describe("settings dialog", () => {
     await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
-      name: "Language",
+      name: "Bahasa",
     });
-    await waitFor(() => {
-      expect(submittedLocales).toContain("en-US");
-      expect(languageSelect).toHaveTextContent("English");
-      expect(languageSelect).toBeEnabled();
-      expect(document.documentElement.lang).toBe("en-US");
-    });
-
-    click(languageSelect);
-    click(screen.getByRole("option", { name: "Bahasa Indonesia" }));
-
     await waitFor(() => {
       expect(submittedLocales).toContain("id-ID");
-      expect(
-        screen.getByRole("combobox", { name: "Bahasa" }),
-      ).toHaveTextContent("Bahasa Indonesia");
+      expect(languageSelect).toHaveTextContent("Bahasa Indonesia");
+      expect(languageSelect).toBeEnabled();
       expect(document.documentElement.lang).toBe("id-ID");
     });
 
-    click(screen.getByRole("combobox", { name: "Bahasa" }));
+    click(languageSelect);
     click(screen.getByRole("option", { name: "English" }));
     await waitFor(() => {
       expect(document.documentElement.lang).toBe("en-US");
     });
   });
 
-  it("uses English when the workspace has no server preference", async () => {
+  it("keeps the VM0 workspace fallback in English", async () => {
     const submittedLocales: UserLocale[] = [];
-    document.documentElement.lang = "id-ID";
+    context.mocks.browser.url("https://app.vm0.ai/?settings=preference");
+    context.mocks.browser.languages(["id-ID"]);
     context.mocks.api(userPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null));
     });
@@ -437,15 +429,10 @@ describe("settings dialog", () => {
     });
   });
 
-  it("uses the workspace server preference after English startup", async () => {
-    document.documentElement.lang = "en-US";
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        document.documentElement.lang = "en-US";
-      },
-      { once: true },
-    );
+  it("uses the workspace preference ahead of locale fallback hints", async () => {
+    context.mocks.browser.url("https://app.okou.ai/?settings=preference");
+    context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v1.fr-FR`);
+    context.mocks.browser.languages(["de-DE"]);
     context.mocks.data.userPreferences(createPreferences("id-ID"));
 
     await openDialog("admin", "preference");

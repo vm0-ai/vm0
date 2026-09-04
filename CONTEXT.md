@@ -159,6 +159,24 @@ A server-side upload to the same conversion action using the same transaction
 ID when browser delivery may be missed.
 _Avoid_: Separate conversion, duplicate conversion
 
+# Locale Selection Context
+
+This context separates the authoritative workspace setting from hints used only
+before a workspace preference exists.
+
+## Language
+
+**Workspace locale preference**:
+The authoritative app locale stored for one user in one workspace. When it is
+present and supported by the current client, it overrides every locale hint.
+_Avoid_: Browser locale, site locale
+
+**Locale fallback hint**:
+A non-authoritative initial app locale derived from the shared Okou site cookie,
+then the browser language list. It is used only when the workspace locale
+preference is absent.
+_Avoid_: Workspace preference, forced locale
+
 # Chat Image Annotation Context
 
 This context separates an uploaded image, its editable annotation structure,
