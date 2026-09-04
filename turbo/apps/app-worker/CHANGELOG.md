@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/vm0-ai/vm0/compare/app-worker-v1.3.0...app-worker-v1.3.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **app:** use the Okou website social image ([#31618](https://github.com/vm0-ai/vm0/issues/31618)) ([cc67cd2](https://github.com/vm0-ai/vm0/commit/cc67cd23f1e66ae3fe63d35be005384acda23d50))
+
 ## [1.3.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.2.0...app-worker-v1.3.0) (2026-09-04)
 
 
