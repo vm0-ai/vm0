@@ -206,6 +206,21 @@ export class ClerkRateLimitError extends Error implements ClerkRateLimit {
 const CLERK_READ_MAX_ATTEMPTS = 3;
 const CLERK_READ_MAX_TOTAL_DELAY_MS = 15_000;
 const CLERK_READ_MAX_JITTER_MS = 250;
+const CLERK_READ_PROVIDER_UNAVAILABLE_DELAY_MS = 1000;
+
+export interface ClerkReadUnavailable {
+  readonly providerStatus: number;
+}
+
+class ClerkReadUnavailableError extends Error implements ClerkReadUnavailable {
+  constructor(
+    readonly providerStatus: number,
+    cause: unknown,
+  ) {
+    super("Clerk read is temporarily unavailable", { cause });
+    this.name = "ClerkReadUnavailableError";
+  }
+}
 
 export interface ClerkReadContext {
   readonly remainingDelayMs: () => number;
@@ -240,7 +255,58 @@ export function clerkRateLimit(error: unknown): ClerkRateLimit | null {
   };
 }
 
-/** Apply the shared 429 policy inside a Clerk external read adapter. */
+export function clerkReadUnavailable(
+  error: unknown,
+): ClerkReadUnavailable | null {
+  return error instanceof ClerkReadUnavailableError ? error : null;
+}
+
+interface ClerkRateLimitRetry {
+  readonly kind: "rate_limit";
+  readonly delayMs: number;
+}
+
+interface ClerkProviderUnavailableRetry {
+  readonly kind: "provider_unavailable";
+  readonly delayMs: number;
+  readonly providerStatus: number;
+}
+
+type ClerkReadRetry = ClerkRateLimitRetry | ClerkProviderUnavailableRetry;
+
+function clerkReadRetry(error: unknown): ClerkReadRetry | null {
+  const rateLimit = clerkRateLimit(error);
+  if (rateLimit) {
+    return {
+      kind: "rate_limit",
+      delayMs: rateLimit.retryAfterSeconds * 1000,
+    };
+  }
+
+  if (
+    !isClerkAPIResponseError(error) ||
+    !Number.isInteger(error.status) ||
+    error.status < 500 ||
+    error.status > 599
+  ) {
+    return null;
+  }
+
+  return {
+    kind: "provider_unavailable",
+    delayMs: CLERK_READ_PROVIDER_UNAVAILABLE_DELAY_MS,
+    providerStatus: error.status,
+  };
+}
+
+function throwTerminalClerkRead(error: unknown, retry: ClerkReadRetry): never {
+  if (retry.kind === "provider_unavailable") {
+    throw new ClerkReadUnavailableError(retry.providerStatus, error);
+  }
+  throw error;
+}
+
+/** Apply the shared transient-failure policy inside a Clerk read adapter. */
 export async function retryClerkRead<T>(
   read: () => Promise<T>,
   context: ClerkReadContext = createClerkReadContext(),
@@ -254,25 +320,27 @@ export async function retryClerkRead<T>(
       return result.value;
     }
 
-    const rateLimit = clerkRateLimit(result.error);
-    if (!rateLimit || attempt >= CLERK_READ_MAX_ATTEMPTS) {
+    const retry = clerkReadRetry(result.error);
+    if (!retry) {
       throw result.error;
     }
+    if (attempt >= CLERK_READ_MAX_ATTEMPTS) {
+      throwTerminalClerkRead(result.error, retry);
+    }
 
-    const retryAfterMs = rateLimit.retryAfterSeconds * 1000;
     const remainingDelayMs = Math.min(
       CLERK_READ_MAX_TOTAL_DELAY_MS - totalDelayMs,
       context.remainingDelayMs(),
     );
-    if (retryAfterMs > remainingDelayMs) {
-      throw result.error;
+    if (retry.delayMs > remainingDelayMs) {
+      throwTerminalClerkRead(result.error, retry);
     }
     const jitterBudgetMs = Math.min(
       CLERK_READ_MAX_JITTER_MS,
-      remainingDelayMs - retryAfterMs,
+      remainingDelayMs - retry.delayMs,
     );
     const jitterMs = Math.floor(Math.random() * (jitterBudgetMs + 1));
-    const waitMs = retryAfterMs + jitterMs;
+    const waitMs = retry.delayMs + jitterMs;
     await delay(waitMs, { signal });
     totalDelayMs += waitMs;
   }
@@ -402,21 +470,6 @@ const clerkClient = singleton((): ClerkClient => {
 export const clerk$: Computed<ClerkClient> = computed((): ClerkClient => {
   return clerkClient();
 });
-
-export type OrganizationMembershipList =
-  ClerkPaginated<ClerkOrganizationMembership>;
-
-export function membershipsByUserId(
-  userId: string,
-  limit = 100,
-): Computed<Promise<OrganizationMembershipList>> {
-  return computed((get) => {
-    return get(clerk$).users.getOrganizationMembershipList({
-      userId,
-      limit,
-    });
-  });
-}
 
 /**
  * Clerk's `RequestState` is a wide union whose members disagree about what
