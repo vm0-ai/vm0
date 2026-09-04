@@ -7878,9 +7878,11 @@ function PagedGroupPrimaryActions({
   onCopy: () => void;
 }) {
   const { t } = useTranslation();
+  const showActivityLogs =
+    useGet(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false;
   return (
     <div className="flex items-center gap-1" data-testid="chat-event-actions">
-      {firstRunId && (
+      {showActivityLogs && firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>

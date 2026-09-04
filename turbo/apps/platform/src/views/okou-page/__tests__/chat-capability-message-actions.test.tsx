@@ -1,5 +1,6 @@
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import {
@@ -55,6 +56,27 @@ function linkIn(container: ParentNode, name: string): HTMLElement {
   return link;
 }
 
+test("Hide the activity-log action outside debug mode", async () => {
+  installCapabilityChat({
+    events: completedConversation(RESPONSE_TEXT),
+  });
+
+  await setupPage({ context, path: RUN_PATH });
+
+  await readyChat();
+  const response = await screen.findByText(RESPONSE_TEXT);
+  const responseGroup = response.closest<HTMLElement>(
+    '[data-role="assistant"]',
+  );
+  if (!responseGroup) {
+    throw new Error("Assistant response group was not available");
+  }
+
+  expect(
+    within(responseGroup).queryByRole("link", { name: "View run logs" }),
+  ).not.toBeInTheDocument();
+});
+
 test("Inspect or copy an assistant response from history", async () => {
   const clipboard = context.mocks.browser.clipboardWriteText();
   installCapabilityChat({
@@ -82,7 +104,11 @@ test("Inspect or copy an assistant response from history", async () => {
     });
   });
 
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
 
   await readyChat();
   const response = await screen.findByText(RESPONSE_TEXT);
