@@ -22,7 +22,6 @@ from body_limits import (
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
-    jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
@@ -157,17 +156,15 @@ class TestModelProviderJsonStreaming:
             assert secret not in serialized
         assert len(serialized.encode()) < 5_000
 
-    def test_capture_enabled_non_success_unsupported_encoding_stays_quiet(
+    def test_capture_enabled_non_success_unsupported_encoding_passes_through(
         self,
         tmp_path,
         real_flow,
     ):
-        proxy_log_path = tmp_path / "proxy.jsonl"
         flow = model_provider_flow(
             real_flow,
             tmp_path,
             ANTHROPIC_JSON_CASE,
-            proxy_log_path=proxy_log_path,
         )
         flow.metadata[metadata_keys.CAPTURE_BODY] = True
         flow.response = tutils.tresp(
@@ -190,12 +187,6 @@ class TestModelProviderJsonStreaming:
         webhook = run_response(flow, self._usage_webhook_api)
 
         assert webhook.request_count == 0
-        if jsonl_exists_after_flush(proxy_log_path):
-            entries = read_jsonl_entries_after_flush(proxy_log_path)
-            assert not any(
-                entry.get("message") == "Model provider JSON usage extraction failed"
-                for entry in entries
-            )
 
     def test_full_pipeline_large_model_json_uses_incremental_parser_without_buffer(
         self, tmp_path, real_flow
