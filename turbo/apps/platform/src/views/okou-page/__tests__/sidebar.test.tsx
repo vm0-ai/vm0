@@ -58,10 +58,7 @@ import {
 import { pathname, search } from "../../../signals/location.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { setChatPageImageModelSelection$ } from "../../../signals/okou-page/chat-page.ts";
-import {
-  CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  getChatThreadVirtualListScrollMargin,
-} from "../../../signals/okou-page/sidebar-state.ts";
+import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/okou-page/sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
@@ -1956,9 +1953,6 @@ describe("zero sidebar", () => {
     });
 
     const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
-    const virtualList = within(sidebar()).getByTestId(
-      "sidebar-chat-threads-virtual-list",
-    );
     const currentRow = threadLinkByTitle("Release plan").closest(
       '[data-testid="sidebar-chat-thread-virtual-row"]',
     );
@@ -1966,31 +1960,10 @@ describe("zero sidebar", () => {
       throw new Error("Release plan virtual row not found");
     }
     const currentIndex = Number(currentRow.dataset.index);
-    const scrollMargin = getChatThreadVirtualListScrollMargin(
-      scrollArea,
-      virtualList,
-    );
 
     expect(scrollArea.scrollTop).toBe(
-      scrollMargin + currentIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+      currentIndex * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
     );
-  });
-
-  it("computes the virtual chat list margin relative to the scroll viewport", () => {
-    const scrollViewport = document.createElement("div");
-    const virtualList = document.createElement("div");
-    Object.defineProperty(scrollViewport, "offsetTop", {
-      configurable: true,
-      value: 8,
-    });
-    Object.defineProperty(virtualList, "offsetTop", {
-      configurable: true,
-      value: 88,
-    });
-
-    expect(
-      getChatThreadVirtualListScrollMargin(scrollViewport, virtualList),
-    ).toBe(80);
   });
 
   it("cancels and confirms deleting a regular chat from the sidebar", async () => {

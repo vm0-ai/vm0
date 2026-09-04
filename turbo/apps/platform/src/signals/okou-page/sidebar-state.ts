@@ -296,36 +296,9 @@ export const cachePinnedAgentGridRowsRef$ = onRef(
 );
 
 // ---------------------------------------------------------------------------
-// Chat thread virtual list geometry (RecentChatSection)
+// Chat thread virtual list layout (RecentChatSection)
 // ---------------------------------------------------------------------------
 export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 export const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 export type ChatThreadVirtualListScrollAlign = "top" | "bottom";
-
-function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
-  return rect.top !== 0 || rect.left !== 0;
-}
-
-export function getChatThreadVirtualListScrollMargin(
-  scrollViewport: HTMLElement | null,
-  virtualListElement: HTMLElement | null,
-): number {
-  if (!scrollViewport || !virtualListElement) {
-    return 0;
-  }
-
-  const viewportRect = scrollViewport.getBoundingClientRect();
-  const virtualListRect = virtualListElement.getBoundingClientRect();
-  if (
-    hasUsableLayoutPosition(viewportRect) ||
-    hasUsableLayoutPosition(virtualListRect)
-  ) {
-    return Math.max(
-      0,
-      scrollViewport.scrollTop + virtualListRect.top - viewportRect.top,
-    );
-  }
-
-  return Math.max(0, virtualListElement.offsetTop - scrollViewport.offsetTop);
-}
