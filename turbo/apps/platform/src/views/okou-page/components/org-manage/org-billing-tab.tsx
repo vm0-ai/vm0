@@ -99,7 +99,10 @@ import {
 } from "../../../../signals/okou-page/settings/workspace-settings-state.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
-import { openSettingsUsagePackUpgrade$ } from "../../../../signals/okou-page/settings/settings-dialog.ts";
+import {
+  dismissBillingPlans$,
+  openSettingsUsagePackUpgrade$,
+} from "../../../../signals/okou-page/settings/settings-dialog.ts";
 import {
   UsagePackMigrationPage,
   UsagePackMigrationDialogs,
@@ -2805,6 +2808,7 @@ export function OrgBillingTab() {
   const setBillingSubPage = useSet(setBillingSubPage$);
   const openMigrationPage = useSet(openBillingMigrationSubPage$);
   const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
+  const dismissPlans = useSet(dismissBillingPlans$);
   const closeBillingSubPage = () => {
     return setBillingSubPage(false);
   };
@@ -2922,7 +2926,7 @@ export function OrgBillingTab() {
         onSelectMigration={openMigrationPage}
         scheduledChange={scheduledChange}
         periodEnd={periodEnd}
-        onBack={closeBillingSubPage}
+        onBack={dismissPlans}
         onRestore={handleRestore}
         paidConcurrency={paidConcurrency}
       />
@@ -3100,7 +3104,7 @@ export function OrgBillingTab() {
           migrationOpen={migrationOpen}
           migrationTargetTier={migrationTargetTier}
           onMigrationBack={closeMigrationSubPage}
-          onClose={closeBillingSubPage}
+          onClose={dismissPlans}
           onReplaceCancellationWithPro={replaceCancellationWithPro}
           onSelectMigration={openMigrationPage}
         />
