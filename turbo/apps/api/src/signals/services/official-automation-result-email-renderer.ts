@@ -225,27 +225,13 @@ function officialAutomationResultEmailHtml(
       ? `<td width="36" height="36" align="center" valign="middle" style="width:36px;height:36px;line-height:0;mso-line-height-rule:exactly"><img src="${OKOU_AUTOMATION_EMAIL_AVATAR_URL}" width="36" height="36" alt="" role="presentation" style="display:block;width:36px;height:36px;border:0;border-radius:50%;outline:none;text-decoration:none"></td>`
       : '<td width="32" height="32" align="center" valign="middle" bgcolor="#ed4e01" style="width:32px;height:32px;border-radius:9px;color:#ffffff;font-size:14px;font-weight:700;line-height:32px;mso-line-height-rule:exactly">0</td>';
   const automationArticle = publicBrand === "okou" ? "an" : "a";
-  // During the API rollout and rollback window, persisted outbox rows from
-  // the previous callback still carry the account-level confirmation URL in
-  // manageUrl. Remove after those API targets and rows drain; tracked by
-  // #30592. Until then, preserve their old footer instead of mislabelling a
-  // global unsubscribe as automation management.
-  const legacyManageUrl = new URL(props.manageUrl).pathname.endsWith(
-    "/email/unsubscribe",
-  );
-  const footer = legacyManageUrl
-    ? `Sent by ${automationArticle} ${escapeHtml(
-        presentation.assistantName,
-      )} automation &middot; <a href="${escapeHtml(
-        props.manageUrl,
-      )}" style="${FOOTER_LINK_STYLE}">Manage email preferences</a>`
-    : `Sent by ${automationArticle} ${escapeHtml(
-        presentation.assistantName,
-      )} automation &middot; <a href="${escapeHtml(
-        props.manageUrl,
-      )}" style="${FOOTER_LINK_STYLE}">Manage</a> &middot; <a href="${escapeHtml(
-        unsubscribeUrl,
-      )}" style="${FOOTER_LINK_STYLE}">Unsubscribe</a>`;
+  const footer = `Sent by ${automationArticle} ${escapeHtml(
+    presentation.assistantName,
+  )} automation &middot; <a href="${escapeHtml(
+    props.manageUrl,
+  )}" style="${FOOTER_LINK_STYLE}">Manage</a> &middot; <a href="${escapeHtml(
+    unsubscribeUrl,
+  )}" style="${FOOTER_LINK_STYLE}">Unsubscribe</a>`;
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escapeHtml(
     props.title,
