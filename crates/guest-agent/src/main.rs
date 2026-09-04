@@ -1552,7 +1552,13 @@ mod tests {
             .enable_all()
             .build()
             .unwrap()
-            .block_on(complete_execution_after_cli_failure_inner(200, 1));
+            .block_on(complete_execution_after_cli_failure_inner(
+                200,
+                1,
+                1,
+                "You've hit your usage limit.",
+                FailureReason::UsageLimit,
+            ));
     }
 
     #[test]
@@ -1562,7 +1568,29 @@ mod tests {
             .enable_all()
             .build()
             .unwrap()
-            .block_on(complete_execution_after_cli_failure_inner(500, 3));
+            .block_on(complete_execution_after_cli_failure_inner(
+                500,
+                3,
+                1,
+                "You've hit your usage limit.",
+                FailureReason::UsageLimit,
+            ));
+    }
+
+    #[test]
+    fn complete_execution_reports_timeout_reason_with_recovery_checkpoint() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_after_cli_failure_inner(
+                200,
+                1,
+                AGENT_EXECUTION_TIMEOUT_EXIT_CODE,
+                "execution: Agent execution timed out after 7200 seconds",
+                FailureReason::ExecutionTimeout,
+            ));
     }
 
     #[test]
@@ -1957,6 +1985,9 @@ mod tests {
     async fn complete_execution_after_cli_failure_inner(
         completion_status: u16,
         expected_completion_calls: usize,
+        failure_exit_code: i32,
+        failure_message: &str,
+        failure_reason: FailureReason,
     ) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
@@ -2010,7 +2041,15 @@ mod tests {
             when.method(POST)
                 .path("/api/webhooks/agent/complete")
                 .json_body_includes(
-                    r#"{"exitCode":1,"failureReason":"usage_limit","error":"You've hit your usage limit.","checkpoint":{"cliAgentSessionId":"recovery-session-from-main"}}"#,
+                    serde_json::json!({
+                        "exitCode": failure_exit_code,
+                        "failureReason": failure_reason.as_str(),
+                        "error": failure_message,
+                        "checkpoint": {
+                            "cliAgentSessionId": "recovery-session-from-main"
+                        }
+                    })
+                    .to_string(),
                 );
             then.status(completion_status)
                 .header("Content-Type", "application/json")
@@ -2029,18 +2068,17 @@ mod tests {
         let telemetry =
             Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
-        let failure_message = "You've hit your usage limit.";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
             AgentFramework::ClaudeCode,
             PromptMetadata::from_prompt("plain prompt"),
         )
-        .with_cli_exit_code(1)
-        .with_failure_reason(FailureReason::UsageLimit)
+        .with_cli_exit_code(failure_exit_code)
+        .with_failure_reason(failure_reason)
         .with_session_history_status(SessionHistoryStatus::Present);
         let exit_code = complete_execution(
-            1,
-            1,
+            failure_exit_code,
+            failure_exit_code,
             Duration::ZERO,
             CompletionState {
                 last_event_sequence: None,
@@ -2055,7 +2093,7 @@ mod tests {
         .await;
         telemetry.shutdown().await;
 
-        assert_eq!(exit_code, 1);
+        assert_eq!(exit_code, failure_exit_code);
         assert_eq!(
             std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap(),
             failure_message

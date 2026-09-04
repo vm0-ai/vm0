@@ -1677,6 +1677,30 @@ fn cli_termination_is_attached_without_changing_failure_reason() {
 }
 
 #[test]
+fn execution_timeout_termination_sets_authoritative_failure_reason() {
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliExecutionError,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(124)
+    .with_failure_reason(FailureReason::ProviderOverloaded);
+    let termination = CliTerminationDiagnostic::new(CliTerminationReason::ExecutionTimeout);
+
+    let with_termination = with_cli_termination(diagnostic, Some(termination));
+
+    assert_eq!(
+        with_termination.failure_class,
+        FailureClass::CliExecutionError
+    );
+    assert_eq!(
+        with_termination.failure_reason,
+        Some(FailureReason::ExecutionTimeout)
+    );
+    assert_eq!(with_termination.cli_termination, Some(termination));
+}
+
+#[test]
 fn cli_observed_exit_is_attached_without_changing_failure_reason() {
     let diagnostic = FailureDiagnostic::new(
         FailureClass::CliNonzero,

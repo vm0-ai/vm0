@@ -709,6 +709,8 @@ impl FailureClass {
 pub enum FailureReason {
     /// The session history exceeded the checkpoint size limit.
     SessionHistoryLimit,
+    /// The run reached its execution time limit.
+    ExecutionTimeout,
     /// The provider account has insufficient credits.
     InsufficientCredits,
     /// The configured API key is invalid.
@@ -749,6 +751,7 @@ impl FailureReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::SessionHistoryLimit => "session_history_limit",
+            Self::ExecutionTimeout => "execution_timeout",
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
@@ -775,6 +778,7 @@ impl From<FailureReason>
     fn from(reason: FailureReason) -> Self {
         match reason {
             FailureReason::SessionHistoryLimit => Self::SessionHistoryLimit,
+            FailureReason::ExecutionTimeout => Self::ExecutionTimeout,
             FailureReason::InsufficientCredits => Self::InsufficientCredits,
             FailureReason::InvalidApiKey => Self::InvalidApiKey,
             FailureReason::InvalidCredentials => Self::InvalidCredentials,
@@ -1460,6 +1464,7 @@ mod tests {
     fn failure_reason_maps_exhaustively_to_the_public_completion_contract() {
         for (reason, expected) in [
             (FailureReason::SessionHistoryLimit, "session_history_limit"),
+            (FailureReason::ExecutionTimeout, "execution_timeout"),
             (FailureReason::InsufficientCredits, "insufficient_credits"),
             (FailureReason::InvalidApiKey, "invalid_api_key"),
             (FailureReason::InvalidCredentials, "invalid_credentials"),
