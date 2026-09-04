@@ -263,6 +263,28 @@ describe("bootstrap locale", () => {
     expect(context.store.get(locale$)).toBe("de-DE");
   });
 
+  it("falls back to English when initial locale resources fail", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    context.mocks.browser.url("https://app.okou.ai/error");
+    context.mocks.browser.languages(["fr-FR"]);
+    context.mocks.http.get(frFRCommonUrl, () => {
+      return new HttpResponse(null, { status: 503 });
+    });
+
+    await setupPage({ context, path: "/error", withoutRender: true });
+
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[E][Locale]",
+      `Failed to initialize fr-FR; falling back to ${DEFAULT_LOCALE}`,
+      expect.any(Error),
+    );
+  });
+
   it("uses English when no Okou locale hint is supported", async () => {
     context.mocks.browser.url("https://app.okou.ai/error");
     context.mocks.browser.cookie(`${OKOU_LOCALE_COOKIE_NAME}=v0.fr-FR`);
