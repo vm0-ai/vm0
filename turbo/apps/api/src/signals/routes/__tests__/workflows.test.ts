@@ -15,7 +15,6 @@ import {
   type WorkflowUpdateRequest,
 } from "@okouai/api-contracts/contracts/workflows";
 import { chatThreadConnectorSelectionContract } from "@okouai/api-contracts/contracts/chat-threads";
-import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import {
   getCustomSkillStorageName,
@@ -53,13 +52,6 @@ import {
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createFixtureTracker, createRouteMocks } from "./helpers/route-test";
-import {
-  seedBuiltinThreadConnectorSelection,
-  seedConnectorStorageRow,
-  setBuiltinOAuthScopeFacts,
-  setConnectorAccountState,
-  setConnectorDefaultState,
-} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { chatThreadRoutes } from "../chat-threads";
 import { workflowAutomationsRoutes } from "../workflow-automations";
@@ -77,11 +69,6 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 type StaffFixture =
   | {
-      readonly kind: "connector";
-      readonly actor: ApiTestUser;
-      readonly connectorSlug: ConnectorSlug;
-    }
-  | {
       readonly kind: "workflow";
       readonly actor: ApiTestUser;
       readonly workflowId: string;
@@ -94,13 +81,6 @@ type StaffFixture =
 
 async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
   switch (fixture.kind) {
-    case "connector": {
-      await connectorApi.disconnectSingleBuiltinConnectorAccount(
-        fixture.actor,
-        fixture.connectorSlug,
-      );
-      return;
-    }
     case "workflow": {
       await miscApi.deleteWorkflow(fixture.actor, fixture.workflowId, [204]);
       return;
@@ -333,71 +313,6 @@ async function enableWorkflowRuns(actor: ApiTestUser): Promise<void> {
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   api.configureRunnerGroup();
-}
-
-async function connectManualGrant(
-  actor: ApiTestUser,
-  connectorSlug: ConnectorSlug,
-  authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
-  values: Parameters<typeof connectorApi.connectManualGrant>[3],
-) {
-  const connector = await connectorApi.connectManualGrant(
-    actor,
-    connectorSlug,
-    authMethod,
-    values,
-  );
-  if (actor.orgId === STAFF_ORG_ID) {
-    await registerStaffFixture({
-      kind: "connector",
-      actor,
-      connectorSlug,
-    });
-  }
-  return connector;
-}
-
-async function connectGmailAccount(
-  actor: ApiTestUser,
-  agentId: string,
-  args: {
-    readonly accessToken: string;
-    readonly email: string;
-    readonly subject: string;
-    readonly account?: { readonly intent: "add"; readonly displayName: string };
-  },
-) {
-  mockGmailConnectorOAuth({
-    accessToken: args.accessToken,
-    email: args.email,
-    subject: args.subject,
-  });
-  const start = await connectorApi.startOauth(
-    actor,
-    "gmail",
-    "oauth",
-    agentId,
-    args.account,
-  );
-  const state = new URL(start.authorizationUrl).searchParams.get("state");
-  if (!state) {
-    throw new Error("Expected Gmail OAuth state");
-  }
-  await connectorApi.completeOauthCallback("gmail", {
-    code: `gmail-readiness-${randomUUID()}`,
-    state,
-  });
-  const accounts = await connectorApi.listBuiltinConnectorAccounts(
-    actor,
-    "gmail",
-  );
-  const account = accounts.find((candidate) => {
-    return candidate.externalEmail === args.email;
-  });
-  if (!account) {
-    throw new Error(`Expected Gmail account ${args.email}`);
-  }
-  return account;
 }
 
 async function connectGoogleCalendarAccount(

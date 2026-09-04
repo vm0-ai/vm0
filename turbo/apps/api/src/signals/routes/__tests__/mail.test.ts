@@ -620,7 +620,7 @@ describe("POST /api/mail/drafts/link", () => {
           gmailDraftId: GMAIL_DRAFT_ID,
         },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("Failed to read Gmail draft (HTTP 403)");
 
     expect(gmail.draftReadCount).toBe(1);
     await expect(
