@@ -1241,10 +1241,7 @@ test("Show localized actionable Automatic MCP OAuth failures", async () => {
 
   click(
     await waitFor(() => {
-      return getConnectorAction(
-        "button",
-        "Conectar Restricted Automatic MCP",
-      );
+      return getConnectorAction("button", "Conectar Restricted Automatic MCP");
     }),
   );
 
