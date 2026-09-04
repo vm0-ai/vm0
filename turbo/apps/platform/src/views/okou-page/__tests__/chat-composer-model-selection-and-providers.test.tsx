@@ -2021,6 +2021,13 @@ describe("chat composer models", () => {
         defaultProviderType: "built-in",
         credentialScope: "org",
       }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000705",
+        model: "gpt-6-astra",
+        modelLabel: "GPT 6 Astra",
+        defaultProviderType: "built-in",
+        credentialScope: "org",
+      }),
     ]);
     mockAgent();
 
@@ -2040,6 +2047,9 @@ describe("chat composer models", () => {
     expect(luna).not.toHaveTextContent("Pro");
     expect(
       screen.getByRole("option", { name: /GPT 5\.6 Sol.*Pro/u }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /GPT 6 Astra.*Pro/u }),
     ).toBeInTheDocument();
 
     await user.click(

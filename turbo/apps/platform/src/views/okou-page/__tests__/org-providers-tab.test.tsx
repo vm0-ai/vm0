@@ -955,6 +955,26 @@ describe("organization model providers settings", () => {
     ).toHaveTextContent("GPT 5.6 Sol");
   });
 
+  it("adds a workspace GPT 6 Astra Codex subscription model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    await openProvidersTab();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "GPT 6 Astra" }));
+    click(screen.getByRole("radio", { name: /Codex subscription/u }));
+    click(buttonByText("Add model", dialog));
+
+    const codexRow = await screen.findByTestId(
+      "org-model-policy-row-gpt-6-astra",
+    );
+    expect(within(codexRow).getByText("GPT 6 Astra")).toBeInTheDocument();
+    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
+  });
+
   it("opens the plan chooser for a limited-free-1 default Pro model", async () => {
     mockAdminOrg();
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
