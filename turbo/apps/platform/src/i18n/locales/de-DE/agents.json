@@ -36,6 +36,8 @@
     },
     "create": "Benutzerdefinierten Avatar erstellen",
     "description": "Wählen Sie einen Stil oder klicken Sie auf „Mischen“, um eine Überraschung zu erleben.",
+    "editDescription": "Passen Sie einzelne Details an oder mischen Sie für einen neuen Look.",
+    "editTitle": "Avatar bearbeiten",
     "intensity": {
       "chill": "Entspannt",
       "hyped": "Begeistert",
