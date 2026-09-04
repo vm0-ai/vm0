@@ -42,11 +42,6 @@ fn operation_error_exposes_operation_and_reason() {
 }
 
 #[test]
-fn terminal_guest_rejection_preserves_guest_display_label() {
-    assert_eq!(SandboxOperationReason::GuestRejected.to_string(), "guest");
-}
-
-#[test]
 fn operation_timeout_exposes_bounded_request_context() {
     let err = SandboxError::OperationTimeout {
         operation: SandboxOperation::WriteFile,

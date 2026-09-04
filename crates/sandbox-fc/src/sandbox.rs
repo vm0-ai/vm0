@@ -728,15 +728,6 @@ impl FirecrackerSandbox {
         if backend_crashed {
             return Self::backend_crashed_error(operation);
         }
-        if operation == SandboxOperation::WriteFile
-            && vsock_host::is_write_file_guest_rejection(&error)
-        {
-            return SandboxError::Operation {
-                operation,
-                reason: SandboxOperationReason::GuestRejected,
-                message: error.to_string(),
-            };
-        }
         if let Some(timeout) = error
             .get_ref()
             .and_then(|source| source.downcast_ref::<vsock_host::RequestTimeoutError>())

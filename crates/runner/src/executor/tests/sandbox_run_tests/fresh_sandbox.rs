@@ -1288,15 +1288,13 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
 }
 
 #[tokio::test]
-async fn execute_inner_continues_when_connector_account_context_guest_rejects_write() {
+async fn execute_inner_stops_when_connector_account_context_write_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_private_write_file_result(Err(SandboxError::Operation {
-        operation: SandboxOperation::WriteFile,
-        reason: SandboxOperationReason::GuestRejected,
-        message: "connector account context write rejected".into(),
-    }));
+    overrides.push_private_write_file_result(Err(sandbox_write_file_error(
+        "connector account context write failed",
+    )));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let context = minimal_context();
 
@@ -1305,31 +1303,20 @@ async fn execute_inner_continues_when_connector_account_context_guest_rejects_wr
             .await
             .unwrap();
 
-    assert_eq!(exit_code, 0);
-    assert!(error_msg.is_none());
+    assert_eq!(exit_code, 1);
+    assert!(
+        error_msg
+            .expect("connector account context write failure should fail the run")
+            .contains("connector account context write failed")
+    );
     let private_writes = overrides.private_write_file_calls();
-    assert_eq!(private_writes.len(), 2);
+    assert_eq!(private_writes.len(), 1);
     assert!(overrides.private_write_files_calls().is_empty());
     assert_eq!(
         private_writes[0].path,
         guest_connector_account_context_file_path(context.run_id).unwrap()
     );
-    let expected_run_payload_file = guest_run_payload_file_path(context.run_id).unwrap();
-    assert_eq!(private_writes[1].path, expected_run_payload_file);
-    let start_calls = overrides.start_agent_process_calls();
-    assert_eq!(start_calls.len(), 1);
-    let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
-    let user_env_key = guest_contracts::env::CANONICAL_USER_ENV_FILE_ENV;
-    assert!(
-        !start_env.contains_key(user_env_key),
-        "absent user environment must not emit {user_env_key}"
-    );
-    assert_eq!(
-        start_env
-            .get(guest_contracts::env::CANONICAL_RUN_PAYLOAD_FILE_ENV)
-            .map(String::as_str),
-        Some(expected_run_payload_file.as_str())
-    );
+    assert!(overrides.start_agent_process_calls().is_empty());
 }
 
 #[tokio::test]

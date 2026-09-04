@@ -28,7 +28,6 @@ use crate::{
         WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT,
         write_private_files_with_small_limits,
     },
-    is_write_file_guest_rejection,
     operation_tracker::NormalOperationReadiness,
 };
 
@@ -200,7 +199,6 @@ async fn write_private_files_guest_failure_releases_tracker_and_connection_reuse
 
     let error = write_task.await.unwrap().unwrap_err();
     assert!(error.to_string().contains("permission denied"));
-    assert!(is_write_file_guest_rejection(&error));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
@@ -378,7 +376,6 @@ async fn write_files_error_response_releases_tracker() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("guest write failed"));
-    assert!(is_write_file_guest_rejection(&err));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
@@ -829,7 +826,6 @@ async fn write_file_guest_failure_releases_tracker() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("permission denied"));
-    assert!(is_write_file_guest_rejection(&err));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
@@ -881,7 +877,6 @@ async fn write_file_unexpected_response_keeps_tracker_fail_closed() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-    assert!(!is_write_file_guest_rejection(&err));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
@@ -1748,7 +1743,6 @@ async fn write_file_connection_close_after_request_marks_tracker_not_parkable() 
     drop(guest);
     let err = write_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
-    assert!(!is_write_file_guest_rejection(&err));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable

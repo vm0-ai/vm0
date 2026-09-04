@@ -14,7 +14,7 @@ use sandbox::{
 };
 use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
-use super::super::env::{guest_connector_account_context_file_path, guest_run_payload_file_path};
+use super::super::env::guest_connector_account_context_file_path;
 use super::super::telemetry::{
     RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_api_startup_boundaries,
     record_reuse_result,
@@ -1855,7 +1855,6 @@ async fn assert_reused_private_write_timeout_telemetry(
 async fn assert_reused_connector_account_context_failure(
     error: SandboxError,
     expected_outcome: Option<&str>,
-    should_continue: bool,
 ) {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -1872,7 +1871,6 @@ async fn assert_reused_connector_account_context_failure(
     let context = minimal_context();
     let expected_connector_context_path =
         guest_connector_account_context_file_path(context.run_id).unwrap();
-    let expected_run_payload_path = guest_run_payload_file_path(context.run_id).unwrap();
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, telemetry) = execute_job_reuse_with_hooks(
@@ -1906,56 +1904,39 @@ async fn assert_reused_connector_account_context_failure(
         Some("connector account context unavailable"),
     );
 
-    if should_continue {
-        assert!(outcome.failure.is_none());
-        assert_has_action(&telemetry, "runner_agent_start_process");
-        let start_calls = overrides.start_agent_process_calls();
-        assert_eq!(start_calls.len(), 1);
-        assert!(
-            start_calls[0].env.iter().all(|(key, _)| {
-                key != guest_contracts::env::CONNECTOR_ACCOUNT_CONTEXT_FILE_ENV
-            })
-        );
-        let private_writes = overrides.private_write_file_calls();
-        assert_eq!(private_writes.len(), 2);
-        assert_eq!(private_writes[0].path, expected_connector_context_path);
-        assert_eq!(private_writes[1].path, expected_run_payload_path);
-    } else {
-        assert!(outcome.sandbox.is_some());
-        let failure = outcome
-            .failure
-            .expect("connector context failure should stop the run");
-        assert_eq!(failure.error, expected_failure);
-        assert_eq!(
-            outcome.sandbox_reuse_disposition,
-            SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
-        );
-        assert_lacks_action(&telemetry, "runner_required_private_files_write");
-        assert_lacks_action(&telemetry, "runner_agent_start_process");
-        assert!(overrides.start_agent_process_calls().is_empty());
-        let private_writes = overrides.private_write_file_calls();
-        assert_eq!(private_writes.len(), 1);
-        assert_eq!(private_writes[0].path, expected_connector_context_path);
-    }
+    assert!(outcome.sandbox.is_some());
+    let failure = outcome
+        .failure
+        .expect("connector context failure should stop the run");
+    assert_eq!(failure.error, expected_failure);
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ExecutionUncertain)
+    );
+    assert_lacks_action(&telemetry, "runner_required_private_files_write");
+    assert_lacks_action(&telemetry, "runner_agent_start_process");
+    assert!(overrides.start_agent_process_calls().is_empty());
+    let private_writes = overrides.private_write_file_calls();
+    assert_eq!(private_writes.len(), 1);
+    assert_eq!(private_writes[0].path, expected_connector_context_path);
     assert!(overrides.private_write_files_calls().is_empty());
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_guest_rejection_continues() {
+async fn reused_connector_account_context_guest_failure_stops() {
     assert_reused_connector_account_context_failure(
         SandboxError::Operation {
             operation: SandboxOperation::WriteFile,
-            reason: SandboxOperationReason::GuestRejected,
+            reason: SandboxOperationReason::Guest,
             message: "permission denied".into(),
         },
         None,
-        true,
     )
     .await;
 }
 
 #[tokio::test]
-async fn reused_connector_account_context_before_frame_timeout_continues() {
+async fn reused_connector_account_context_before_frame_timeout_stops() {
     assert_reused_connector_account_context_failure(
         SandboxError::OperationTimeout {
             operation: SandboxOperation::WriteFile,
@@ -1963,7 +1944,6 @@ async fn reused_connector_account_context_before_frame_timeout_continues() {
             timeout_ms: 60_000,
         },
         Some("before_frame_write"),
-        true,
     )
     .await;
 }
@@ -1977,7 +1957,6 @@ async fn reused_connector_account_context_frame_write_timeout_stops() {
             timeout_ms: 60_000,
         },
         Some("frame_write"),
-        false,
     )
     .await;
 }
@@ -1991,21 +1970,6 @@ async fn reused_connector_account_context_terminal_response_timeout_stops() {
             timeout_ms: 60_000,
         },
         Some("await_terminal_response"),
-        false,
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn reused_connector_account_context_unclassified_guest_failure_stops() {
-    assert_reused_connector_account_context_failure(
-        SandboxError::Operation {
-            operation: SandboxOperation::WriteFile,
-            reason: SandboxOperationReason::Guest,
-            message: "connection closed".into(),
-        },
-        None,
-        false,
     )
     .await;
 }
@@ -2019,7 +1983,6 @@ async fn reused_connector_account_context_backend_crash_stops() {
             message: "firecracker process crashed".into(),
         },
         None,
-        false,
     )
     .await;
 }

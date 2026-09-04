@@ -2234,38 +2234,6 @@ fn operation_error_classifies_non_timeout_as_guest() {
     assert_operation_error(err, SandboxOperation::Exec, SandboxOperationReason::Guest);
 }
 
-#[tokio::test]
-async fn write_private_file_classifies_terminal_guest_rejection() {
-    let sandbox = test_sandbox_with_state(SandboxState::Running);
-    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
-
-    let write = sandbox.write_private_file("/tmp/private.json", b"secret");
-    let reject = async {
-        let request = read_vsock_message(&mut guest).await;
-        assert_eq!(request.msg_type, vsock_proto::MSG_WRITE_FILE);
-        let (path, content, sudo, append, private) =
-            vsock_proto::decode_write_file(&request.payload).unwrap();
-        assert_eq!(path, "/tmp/private.json");
-        assert_eq!(content, b"secret");
-        assert!(!sudo);
-        assert!(!append);
-        assert!(private);
-
-        let payload = vsock_proto::encode_write_file_result(false, "permission denied");
-        let response =
-            vsock_proto::encode(vsock_proto::MSG_WRITE_FILE_RESULT, request.seq, &payload).unwrap();
-        guest.write_all(&response).await.unwrap();
-    };
-    let (result, ()) = tokio::join!(write, reject);
-    let error = result.unwrap_err();
-
-    assert_operation_error(
-        error,
-        SandboxOperation::WriteFile,
-        SandboxOperationReason::GuestRejected,
-    );
-}
-
 #[test]
 fn invalid_exec_env_key_returns_operation_error() {
     let err =
@@ -2487,11 +2455,7 @@ async fn start_agent_process_maps_to_agent_role_and_control_sink() {
 
 #[test]
 fn operation_error_preserves_file_operation_context_for_guest_failures() {
-    for operation in [
-        SandboxOperation::ReadFile,
-        SandboxOperation::CopyFile,
-        SandboxOperation::WriteFile,
-    ] {
+    for operation in [SandboxOperation::ReadFile, SandboxOperation::CopyFile] {
         let timeout = FirecrackerSandbox::operation_error(
             operation,
             io::Error::new(io::ErrorKind::TimedOut, "operation timed out"),

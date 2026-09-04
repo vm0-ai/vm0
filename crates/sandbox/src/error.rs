@@ -160,12 +160,6 @@ impl fmt::Display for SandboxOperation {
 pub enum SandboxOperationReason {
     /// The guest-side operation or IPC call returned an error.
     Guest,
-    /// The guest returned a valid terminal rejection for the operation.
-    ///
-    /// The operation lifecycle completed and the guest connection remains
-    /// reusable. Connection, decoding, and unclassified IPC failures do not
-    /// use this reason.
-    GuestRejected,
     /// The backend process crashed while the operation was in flight.
     BackendCrashed,
     /// The operation timed out.
@@ -199,7 +193,6 @@ impl fmt::Display for SandboxOperationReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Guest => f.write_str("guest"),
-            Self::GuestRejected => f.write_str("guest"),
             Self::BackendCrashed => f.write_str("backend crashed"),
             Self::Timeout => f.write_str("timeout"),
             Self::Other => f.write_str("other"),
