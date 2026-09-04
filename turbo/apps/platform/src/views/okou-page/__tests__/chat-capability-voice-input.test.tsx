@@ -1,10 +1,10 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -290,6 +290,62 @@ test("Enter voice-draft recording only after the microphone starts", async () =>
   expect(
     document.querySelector("[data-voice-level-waveform]"),
   ).toBeInTheDocument();
+});
+
+test("Keep a silent voice draft recording until the user stops it", async () => {
+  let recorderStops = 0;
+  context.mocks.browser.voiceInput({
+    rms: 0,
+    onRecorderStop() {
+      recorderStops += 1;
+    },
+  });
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  vi.useFakeTimers();
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      vi.useRealTimers();
+    },
+    { once: true },
+  );
+
+  click(voiceInput);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(40);
+  });
+
+  expect(queryButton("Stop recording")).toBeEnabled();
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
+  });
+
+  const stop = queryButton("Stop recording");
+  if (!stop) {
+    throw new Error(
+      "Expected the voice draft to keep recording through silence",
+    );
+  }
+  expect(stop).toBeEnabled();
+  expect(recorderStops).toBe(0);
+
+  click(stop);
+  await act(async () => {
+    await vi.runOnlyPendingTimersAsync();
+  });
+
+  expect(recorderStops).toBe(1);
+  expect(queryButton("Voice input")).toBeEnabled();
 });
 
 test("Show recent voice levels at the end of the waveform", async () => {
