@@ -34,16 +34,6 @@ export function OfficeDocumentPreview({
     );
   }
 
-  if (attachmentUrls.shareUrl === null) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-        {t(($) => {
-          return $.artifacts.preview.genericUnavailable;
-        })}
-      </div>
-    );
-  }
-
   // The Office viewer fetches the document server-side, so it needs the
   // durable public URL rather than the browser-scoped presigned resource URL.
   return (

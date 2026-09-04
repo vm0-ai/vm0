@@ -1932,6 +1932,73 @@ describe("chat lifecycle", () => {
     expect(transcriptionCalls).toBe(1);
   });
 
+  it("keeps a voice draft recording after extended silence", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e2000000-0000-4000-a000-000000000030";
+    const silenceSegmentRequested = context.mocks.deferred<void>();
+    const continuedSilenceObserved = context.mocks.deferred<void>();
+    let sampleCount = 0;
+    let continuedSilenceStartedAt: number | null = null;
+    let transcriptionCalls = 0;
+    let polishCalls = 0;
+    context.mocks.browser.voiceInput({
+      rms: () => {
+        sampleCount += 1;
+        if (sampleCount <= 2) {
+          return 0.1;
+        }
+        if (silenceSegmentRequested.settled()) {
+          continuedSilenceStartedAt ??= performance.now();
+          if (performance.now() - continuedSilenceStartedAt >= 100) {
+            continuedSilenceObserved.resolve(undefined);
+          }
+        }
+        return 0;
+      },
+    });
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: true, count: 0, limit: null });
+    });
+    context.mocks.http.post("*/api/voice-io/stt", () => {
+      transcriptionCalls += 1;
+      silenceSegmentRequested.resolve(undefined);
+      return new Response(JSON.stringify({ text: "Extended voice draft" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
+      polishCalls += 1;
+      return respond(200, { text: "Extended voice draft." });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+    });
+
+    const composer = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER);
+    });
+    await user.click(await screen.findByLabelText("Voice input"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await continuedSilenceObserved.promise;
+    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    expect(transcriptionCalls).toBe(1);
+    expect(polishCalls).toBe(0);
+
+    await user.click(screen.getByLabelText("Stop recording"));
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("Extended voice draft.");
+      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    });
+    expect(polishCalls).toBe(1);
+  });
+
   it("appends a delayed voice input segment to the current composer text", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000010";
