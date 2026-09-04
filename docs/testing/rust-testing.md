@@ -6,21 +6,26 @@ Rust crates live in `crates/` and use `cargo test` for testing. The same princip
 
 ## Running Tests
 
+Use the `local` profile for routine local validation. It retains source locations in backtraces
+while omitting full debug information and incremental artifacts to reduce resource and disk use.
+Omit `--profile local` when full debug information or incremental compilation is more useful.
+
 ```bash
 # All crates
-cargo test --manifest-path crates/Cargo.toml
+cargo test --manifest-path crates/Cargo.toml --profile local
 
 # Specific crate
-cargo test --manifest-path crates/Cargo.toml -p guest-agent
+cargo test --manifest-path crates/Cargo.toml --profile local -p guest-agent
 
 # Specific test by name
-cargo test --manifest-path crates/Cargo.toml -p runner config::tests::load_full_config
+cargo test --manifest-path crates/Cargo.toml --profile local -p runner config::tests::load_full_config
 
 # With output (for debugging)
-cargo test --manifest-path crates/Cargo.toml -- --nocapture
+cargo test --manifest-path crates/Cargo.toml --profile local -- --nocapture
 ```
 
-Pre-commit hooks run `cargo-clippy` and `cargo-fmt` on staged Rust files.
+Pre-commit hooks run `cargo fmt`, `cargo clippy --profile local`, and
+`cargo doc --profile local` on staged Rust files.
 
 ## Test Organization
 
