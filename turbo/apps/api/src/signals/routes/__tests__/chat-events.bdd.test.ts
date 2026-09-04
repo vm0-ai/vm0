@@ -505,9 +505,9 @@ const openRouterBodySchema = z.object({
   model: z.string(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
   max_tokens: z.number().optional(),
-  reasoning: z.object({
-    effort: z.enum(["none", "minimal", "low", "medium", "high"]),
-  }),
+  reasoning: z
+    .object({ effort: z.enum(["none", "minimal", "low", "medium", "high"]) })
+    .optional(),
 });
 
 async function entitledChatActor(
@@ -14271,6 +14271,8 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
     let upstreamAuthorization: string | null = null;
     let titleRequests = 0;
+    let titleRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
+    let followupRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -14279,6 +14281,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
           if (systemContent.includes("concise follow-up prompts")) {
+            followupRequestBody = payload;
             return HttpResponse.json({
               choices: [
                 {
@@ -14294,6 +14297,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           }
           if (systemContent.includes("Generate a short, descriptive title")) {
             titleRequests += 1;
+            titleRequestBody = payload;
             return HttpResponse.json({
               choices: [
                 {
@@ -14320,6 +14324,10 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     await waitForThreadTitle(actor, first.threadId, "Migration Plan");
     expect(titleRequests).toBe(1);
     expect(upstreamAuthorization).toBe("Bearer title-key");
+    expect(titleRequestBody).toMatchObject({
+      model: "google/gemini-3.8-flash",
+      reasoning: { effort: "low" },
+    });
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -14348,6 +14356,11 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       throw new Error("Expected a recommended follow-ups message");
     }
     expect(recommender.eventType).toBe("output.followups");
+    expect(followupRequestBody).toMatchObject({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 400,
+      reasoning: { effort: "low" },
+    });
     const futureFollowups = resolveChatEventRecommendedFollowups(recommender);
     expect(futureFollowups.length).toBeGreaterThan(0);
     const futureFollowupContent = recommender.content;
