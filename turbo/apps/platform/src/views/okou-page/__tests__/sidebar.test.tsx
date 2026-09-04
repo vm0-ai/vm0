@@ -1578,7 +1578,7 @@ test("Keep pin management usable with many pinned agents", async () => {
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
   const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
   expect(within(pinnedSection).getByText("Pinned agents")).toBeVisible();
-  expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(1);
+  expect(within(grid).getByTestId("pinned-agent-skeleton")).toBeVisible();
   expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
   expect(within(grid).queryByLabelText("Pin an agent")).toBeNull();
 
