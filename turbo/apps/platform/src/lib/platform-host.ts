@@ -222,9 +222,9 @@ export function resolvePlatformClientTelemetryConfig(): PlatformClientTelemetryC
   return {
     environment,
     token:
-      environment === "development"
-        ? null
-        : optionalBuildValue(import.meta.env.VITE_AXIOM_CLIENT_TELEMETRY_TOKEN),
+      environment === "production"
+        ? optionalBuildValue(import.meta.env.VITE_AXIOM_CLIENT_TELEMETRY_TOKEN)
+        : null,
   };
 }
 
