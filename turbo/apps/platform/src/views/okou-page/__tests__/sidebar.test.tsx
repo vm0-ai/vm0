@@ -944,8 +944,6 @@ test("Combine agent, chat-title, and message results in the conversation picker"
             runId: null,
           },
           matchedRanges: [{ start: 11, end: 17 }],
-          contextBefore: [],
-          contextAfter: [],
         };
       }),
       hasMore: false,
@@ -2772,8 +2770,6 @@ test("Search and open workflows and artifacts from the shell", async () => {
                   runId: null,
                 },
                 matchedRanges: [{ start: 12, end: 18 }],
-                contextBefore: [],
-                contextAfter: [],
               },
             ]
           : [],
@@ -3089,8 +3085,6 @@ test("Search workspace chats and messages", async () => {
                   runId: null,
                 },
                 matchedRanges: [{ start: 11, end: 17 }],
-                contextBefore: [],
-                contextAfter: [],
               },
             ]
           : [],

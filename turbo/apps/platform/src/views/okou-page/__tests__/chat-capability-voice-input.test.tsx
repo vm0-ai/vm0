@@ -191,6 +191,63 @@ test("Polish a voice draft into the user's current selection", async () => {
   expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
 });
 
+test("Enter voice-draft recording only after the microphone starts", async () => {
+  const microphoneReady = context.mocks.deferred<void>();
+  context.mocks.browser.voiceInput({
+    getUserMediaReady: microphoneReady.promise,
+    rms: 0,
+  });
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  click(await readyVoiceInput());
+
+  await expect(findButton("Starting voice input")).resolves.toBeDisabled();
+  expect(
+    document.querySelector("[data-voice-level-waveform]"),
+  ).not.toBeInTheDocument();
+
+  microphoneReady.resolve(undefined);
+
+  await activeVoiceDraftStopButton();
+  expect(
+    document.querySelector("[data-voice-level-waveform]"),
+  ).toBeInTheDocument();
+});
+
+test("Show recent voice levels at the end of the waveform", async () => {
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.VoiceDraft]: true },
+  });
+
+  click(await readyVoiceInput());
+  await activeVoiceDraftStopButton();
+
+  const waveform = document.querySelector("[data-voice-level-waveform]");
+  if (!(waveform instanceof HTMLElement)) {
+    throw new Error("Voice level waveform not found");
+  }
+
+  await waitFor(() => {
+    const bars = Array.from(waveform.children);
+    expect(bars).toHaveLength(32);
+    expect(bars[0]).toHaveStyle({ height: "4px" });
+    expect(bars.at(-1)).toHaveStyle({ height: "16px" });
+  });
+});
+
 test("Let the user retry or remove a voice draft when polishing fails", async () => {
   let polishAttempts = 0;
   context.mocks.browser.voiceInput({ rms: 0.12 });
