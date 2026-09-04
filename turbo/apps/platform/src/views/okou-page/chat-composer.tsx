@@ -7784,7 +7784,10 @@ function ComposerConnectorAccessRow({
   readonly ariaLabel: string;
 }) {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors">
+    <div
+      role="listitem"
+      className="flex h-10 shrink-0 items-center gap-2 px-3 py-2 hover:bg-state-hover transition-colors"
+    >
       {actions ? (
         <span className="order-2 flex shrink-0 items-center gap-2">
           {actions}
@@ -8343,7 +8346,7 @@ function composerConnectorPopoverContentClass(enabled: boolean): string {
   return cn(
     "w-72 p-0",
     enabled
-      ? "group/connector-popover pointer-events-none relative h-[min(25rem,var(--available-height))] overflow-visible border-0 bg-transparent"
+      ? "group/connector-popover pointer-events-none relative overflow-visible border-0 bg-transparent"
       : "max-h-[var(--available-height)] overflow-hidden rounded-lg",
   );
 }
@@ -8359,7 +8362,12 @@ function composerConnectorPopoverSurfaceClass(enabled: boolean): string {
 function composerConnectorPopoverContentStyle(
   enabled: boolean,
 ): CSSProperties | undefined {
-  return enabled ? { boxShadow: "none" } : undefined;
+  return enabled
+    ? {
+        boxShadow: "none",
+        height: "min(25rem, var(--available-height))",
+      }
+    : undefined;
 }
 
 function ConnectorsPopoverButton({
@@ -8564,6 +8572,9 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
+        aria-label={t(($) => {
+          return $.chat.connectors.title;
+        })}
         collisionAvoidance={composerConnectorCollisionAvoidance(
           stableConnectorPopoverLayoutEnabled,
         )}
@@ -8615,7 +8626,13 @@ function ConnectorsPopoverButton({
                     })}
                   </div>
                 ) : (
-                  <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
+                  <div
+                    role="list"
+                    aria-label={t(($) => {
+                      return $.chat.connectors.title;
+                    })}
+                    className="flex max-h-64 min-h-0 flex-col overflow-y-auto"
+                  >
                     {visibleConnectors.map((item) => {
                       if (item.kind === "custom") {
                         const connector = item.connector;

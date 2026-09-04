@@ -1,6 +1,6 @@
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -25,6 +25,7 @@ import {
   permissionDetail,
   SCOUT_AGENT_ID,
 } from "./chat-composer-connectors-test-helpers.ts";
+import { mockConnectorPopoverLayout } from "./chat-composer-connector-popover-layout-test-helpers.ts";
 import {
   context,
   findFastControl,
@@ -117,8 +118,49 @@ function createAuthWindow(): Window {
   return authWindow;
 }
 
-test("Keep searchable connector menu geometry stable while filtering", async () => {
+function popoverSide(
+  popover: HTMLElement,
+  trigger: HTMLElement,
+): "bottom" | "overlapping" | "top" {
+  const popoverRect = popover.getBoundingClientRect();
+  const triggerRect = trigger.getBoundingClientRect();
+  if (popoverRect.bottom <= triggerRect.top) {
+    return "top";
+  }
+  if (popoverRect.top >= triggerRect.bottom) {
+    return "bottom";
+  }
+  return "overlapping";
+}
+
+async function filterConnectorMenu(
+  user: ReturnType<typeof userEvent.setup>,
+  searchInput: HTMLElement,
+  notifyResize: () => void,
+): Promise<void> {
+  await user.type(searchInput, "gmail");
+  await waitFor(() => {
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    expect(screen.getByText("Gmail")).toBeInTheDocument();
+  });
+  act(notifyResize);
+}
+
+async function clearConnectorFilter(
+  user: ReturnType<typeof userEvent.setup>,
+  notifyResize: () => void,
+): Promise<void> {
+  await user.keyboard("{Control>}a{/Control}{Backspace}");
+  await expect(screen.findByText("GitHub")).resolves.toBeVisible();
+  act(notifyResize);
+}
+
+test("Keep searchable connector menu above while filtering on desktop", async () => {
   const user = userEvent.setup({ delay: null });
+  const layout = mockConnectorPopoverLayout({
+    viewport: { width: 1000, height: 520 },
+    trigger: { x: 320, y: 320, width: 32, height: 32 },
+  });
   installComposerConnectorFixture({
     catalog: searchableConnectorCatalog(),
     builtinAuthorizations: { [SCOUT_AGENT_ID]: [GITHUB_SLUG] },
@@ -133,59 +175,78 @@ test("Keep searchable connector menu geometry stable while filtering", async () 
   });
 
   await loadComposer();
+  const trigger = await findFastControl("button", "Connectors");
   await openConnectors(user);
   const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
-  const popoverContent = searchInput.closest('[data-slot="popover-content"]');
-  if (!(popoverContent instanceof HTMLElement)) {
-    throw new Error("Expected the connector popover content");
-  }
-  await waitFor(() => {
-    expect(popoverContent).toHaveAttribute("data-side", "top");
+  const popover = await screen.findByRole("dialog", { name: "Connectors" });
+  const connectorList = await screen.findByRole("list", {
+    name: "Connectors",
   });
-  expect(popoverContent).toHaveClass(
-    "h-[min(25rem,var(--available-height))]",
-    "pointer-events-none",
-    "relative",
-  );
-  expect(popoverContent).toHaveStyle({ boxShadow: "none" });
-  const popoverSurface = popoverContent.firstElementChild;
-  expect(popoverSurface).toHaveClass(
-    "absolute",
-    "max-h-full",
-    "pointer-events-auto",
-  );
-
-  const githubAccess = await screen.findByLabelText("Remove GitHub");
-  const connectorList =
-    githubAccess.closest("label")?.parentElement?.parentElement;
-  if (!(connectorList instanceof HTMLElement)) {
-    throw new Error("Expected the scrollable connector list");
-  }
-  expect(connectorList).toHaveClass("max-h-64", "min-h-0", "overflow-y-auto");
-  const initialSide = popoverContent.dataset.side;
-
-  await user.type(searchInput, "gmail");
+  const expandedListHeight = connectorList.clientHeight;
   await waitFor(() => {
-    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
-    expect(screen.getByText("Gmail")).toBeInTheDocument();
-    expect(popoverContent.dataset.side).toBe(initialSide);
-    expect(popoverContent).toHaveClass(
-      "h-[min(25rem,var(--available-height))]",
-    );
+    expect(popoverSide(popover, trigger)).toBe("top");
+  });
+  expect(connectorList.scrollHeight).toBeGreaterThan(
+    connectorList.clientHeight,
+  );
+
+  await filterConnectorMenu(user, searchInput, layout.notifyResize);
+  await waitFor(() => {
+    expect(popoverSide(popover, trigger)).toBe("top");
+    expect(connectorList.clientHeight).toBeLessThan(expandedListHeight);
+    expect(connectorList.scrollHeight).toBe(connectorList.clientHeight);
     expect(screen.getByText("Add connectors")).toBeInTheDocument();
   });
 
-  await user.keyboard("{Control>}a{/Control}{Backspace}");
+  await clearConnectorFilter(user, layout.notifyResize);
   await waitFor(() => {
-    expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(popoverContent.dataset.side).toBe(initialSide);
-    expect(popoverContent).toHaveClass(
-      "h-[min(25rem,var(--available-height))]",
+    expect(popoverSide(popover, trigger)).toBe("top");
+    expect(connectorList.scrollHeight).toBeGreaterThan(
+      connectorList.clientHeight,
     );
   });
 });
 
-test("Keep the default connector menu layout when placement is disabled", async () => {
+test("Keep collision-selected connector menu below while filtering on mobile", async () => {
+  const user = userEvent.setup({ delay: null });
+  const layout = mockConnectorPopoverLayout({
+    viewport: { width: 390, height: 700 },
+    trigger: { x: 24, y: 220, width: 32, height: 32 },
+  });
+  installComposerConnectorFixture({
+    catalog: searchableConnectorCatalog(),
+    builtinAuthorizations: { [SCOUT_AGENT_ID]: [GITHUB_SLUG] },
+  });
+
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: true,
+    },
+  });
+
+  await loadComposer();
+  const trigger = await findFastControl("button", "Connectors");
+  await openConnectors(user);
+  const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
+  const popover = await screen.findByRole("dialog", { name: "Connectors" });
+  await waitFor(() => {
+    expect(popoverSide(popover, trigger)).toBe("bottom");
+  });
+
+  await filterConnectorMenu(user, searchInput, layout.notifyResize);
+  await waitFor(() => {
+    expect(popoverSide(popover, trigger)).toBe("bottom");
+  });
+
+  await clearConnectorFilter(user, layout.notifyResize);
+  await waitFor(() => {
+    expect(popoverSide(popover, trigger)).toBe("bottom");
+  });
+});
+
+test("Keep connector filtering usable when stable placement is disabled", async () => {
   const user = userEvent.setup({ delay: null });
   installComposerConnectorFixture({
     catalog: searchableConnectorCatalog(),
@@ -197,26 +258,12 @@ test("Keep the default connector menu layout when placement is disabled", async 
   await loadComposer();
   await openConnectors(user);
   const searchInput = await screen.findByPlaceholderText(/Find connectors/u);
-  const popoverContent = searchInput.closest('[data-slot="popover-content"]');
-  if (!(popoverContent instanceof HTMLElement)) {
-    throw new Error("Expected the connector popover content");
-  }
-  expect(popoverContent).not.toHaveClass(
-    "h-[min(25rem,var(--available-height))]",
-    "pointer-events-none",
-  );
-  expect(popoverContent.firstElementChild).toHaveClass(
-    "min-h-0",
-    "overflow-hidden",
-  );
-  expect(popoverContent.firstElementChild).not.toHaveClass("absolute");
-  const githubAccess = await screen.findByLabelText("Remove GitHub");
-  const connectorList =
-    githubAccess.closest("label")?.parentElement?.parentElement;
-  if (!(connectorList instanceof HTMLElement)) {
-    throw new Error("Expected the connector list");
-  }
-  expect(connectorList).toHaveClass("max-h-64");
+  await user.type(searchInput, "gmail");
+  await waitFor(() => {
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    expect(screen.getByText("Gmail")).toBeVisible();
+    expect(screen.getByText("Add connectors")).toBeVisible();
+  });
 });
 
 test("Configure connector permissions from the composer", async () => {
