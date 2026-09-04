@@ -1647,18 +1647,40 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
         run: |
           set -euo pipefail
 
           : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
+          : "${CLERK_PUBLISHABLE_KEY:?production Clerk publishable key is required}"
+          : "${CLERK_SECRET_KEY:?production Clerk secret key is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
           : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+          case "$CLERK_PUBLISHABLE_KEY" in
+            pk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live publishable key" >&2; exit 1 ;;
+          esac
+          case "$CLERK_SECRET_KEY" in
+            sk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live secret key" >&2; exit 1 ;;
+          esac
+
+          umask 077
+          worker_secrets="$(mktemp)"
+          trap 'rm -f "$worker_secrets"' EXIT
+          jq -n '{
+            CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
+            CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
+          }' > "$worker_secrets"
+          unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY
 
           cd turbo
           pnpm --filter @okouai/app-worker exec wrangler deploy \
             --env production \
+            --secrets-file "$worker_secrets" \
             --message "app artifact ${ARTIFACT_SHA}"
           cd ..
 
@@ -1688,66 +1710,6 @@ jobs:
               exit 1
             fi
           done
-
-      - name: Retire App Worker diagnostic domains
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
-
-          retire_custom_domain() {
-            local hostname="$1"
-            local domain_id
-            local domain_record
-            local domain_response
-
-            domain_response="$(
-              curl -fsS --get \
-                --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-                --data-urlencode "hostname=${hostname}" \
-                "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"
-            )"
-            domain_record="$(
-              jq -cr --arg hostname "$hostname" '
-                if .success != true then
-                  error("Cloudflare domain lookup failed")
-                else
-                  [.result[] | select(.hostname == $hostname)]
-                  | if length == 0 then null
-                    elif length == 1 then .[0]
-                    else error("Cloudflare returned duplicate Worker domains")
-                    end
-                end
-              ' <<<"$domain_response"
-            )"
-            if [[ "$domain_record" == "null" ]]; then
-              echo "Worker custom domain is already retired: ${hostname}"
-              return
-            fi
-            if [[ "$(jq -r '.service' <<<"$domain_record")" != "okou-app-production" ]]; then
-              echo "Refusing to detach ${hostname} from another Worker" >&2
-              exit 1
-            fi
-            domain_id="$(jq -er '.id | select(type == "string")' <<<"$domain_record")"
-            if [[ ! "$domain_id" =~ ^[0-9a-f]{32}$ ]]; then
-              echo "Invalid Worker custom domain ID for ${hostname}" >&2
-              exit 1
-            fi
-
-            curl -fsS \
-              --request DELETE \
-              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains/${domain_id}" \
-              | jq -e '.success == true' >/dev/null
-            echo "Retired Worker custom domain: ${hostname}"
-          }
-
-          retire_custom_domain "app-worker.okou.ai"
-          retire_custom_domain "app-worker.vm0.ai"
 
       - name: Finish GitHub Deployment
         if: always()

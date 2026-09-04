@@ -57,7 +57,7 @@ async function generateRunSummary(
       },
     ],
     80,
-    { temperature: 0.3 },
+    { reasoning: { effort: "low" }, temperature: 0.3 },
   );
   return content === null ? null : stripMarkdown(content);
 }

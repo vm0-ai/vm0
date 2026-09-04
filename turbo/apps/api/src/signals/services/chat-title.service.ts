@@ -207,6 +207,7 @@ async function generateFastPathText(
   },
 ): Promise<string | null> {
   const content = await generateText(FAST_PATH_MODEL, messages, maxTokens, {
+    reasoning: { effort: "low" },
     temperature: 0.3,
   });
   if (content === null) {
@@ -508,7 +509,7 @@ async function generateRecommendedFollowups(
         content: `Recent conversation:\n${context}`,
       },
     ],
-    260,
+    400,
     { stripMarkdown: false },
   );
 

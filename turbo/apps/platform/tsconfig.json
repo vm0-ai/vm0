@@ -20,6 +20,7 @@
       "ably": ["../../node_modules/.pnpm/node_modules/ably/ably.d.ts"]
     },
 
+    "stableTypeOrdering": true,
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

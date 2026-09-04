@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { zstdDecompressSync } from "node:zlib";
 
 import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
@@ -44,6 +45,7 @@ import { mailContract } from "@okouai/api-contracts/contracts/mail";
 import { triggerSourceSchema } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderFirewall,
+  MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
   type SupportedRunModel,
 } from "@okouai/api-contracts/contracts/model-providers";
@@ -505,7 +507,9 @@ const openRouterBodySchema = z.object({
   model: z.string(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
   max_tokens: z.number().optional(),
-  reasoning: z.object({ effort: z.literal("none") }).optional(),
+  reasoning: z
+    .object({ effort: z.enum(["none", "minimal", "low", "medium", "high"]) })
+    .optional(),
 });
 
 async function entitledChatActor(
@@ -648,6 +652,13 @@ async function expectTerraApiFollowUpUsage(
     cacheRead: 0,
     cacheCreation: 0,
   });
+}
+
+async function expectNoVm0ModelUsage(runId: string): Promise<void> {
+  // Operational usage rows have no production run-scoped read API. This
+  // test-only observation is required to prove the subscription no-charge
+  // invariant rather than infer it from the public run status.
+  await expect(readRunUsageEventsFixture(runId)).resolves.toStrictEqual([]);
 }
 
 async function createTerraUsagePricingResolution(): Promise<
@@ -5131,6 +5142,15 @@ function piResponsesToolSse(args: {
       return `data: ${JSON.stringify(event)}\n\n`;
     })
     .join("");
+}
+
+async function readCodexRequestJson(request: Request): Promise<unknown> {
+  const bytes = Buffer.from(await request.arrayBuffer());
+  const body =
+    request.headers.get("content-encoding") === "zstd"
+      ? zstdDecompressSync(bytes)
+      : bytes;
+  return JSON.parse(body.toString("utf8")) as unknown;
 }
 
 interface PiCheckpointS3Command {
@@ -12186,7 +12206,509 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 
-  it("pins switched Codex accounts without rotating the thread session", async () => {
+  it("hands native subscription Terra tools to a generation-2 Sandbox without VM0 billing", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const firewall = createFirewallApi(context);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+
+    const externalAccountId = "chat-codex-pi-subscription-account";
+    const refreshToken = "rt_pi_subscription_fixture_high_entropy";
+    const oauth = mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: externalAccountId,
+      refreshToken,
+      accessTokenExpiresAt: Math.floor(now() / 1000) - 60,
+      refreshedAccessTokenExpiresAt: Math.floor(now() / 1000) + 7200,
+      workspaceName: "Pi Subscription Account",
+    });
+    const started = await authDevice.requestCodexStart(
+      actor,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (started.status !== 200) {
+      throw new Error("Expected subscription auth to start");
+    }
+    const completed = await authDevice.requestCodexComplete(
+      actor,
+      started.body.sessionToken,
+      [200],
+    );
+    if (!("status" in completed.body) || completed.body.status !== "complete") {
+      throw new Error("Expected subscription auth to complete");
+    }
+    const accountSourceId = completed.body.provider.id;
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-terra",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+    mockPiResourceArchiveDownloads();
+    const checkpointObjects = mockPiCheckpointObjectStore();
+    const providerRequests: {
+      readonly accountMatches: boolean;
+      readonly authorizationIsReal: boolean;
+      readonly body: unknown;
+    }[] = [];
+    server.use(
+      http.post(
+        "https://chatgpt.com/backend-api/codex/responses",
+        async ({ request }) => {
+          const authorization = request.headers.get("authorization");
+          const body = await readCodexRequestJson(request);
+          providerRequests.push({
+            accountMatches:
+              request.headers.get("chatgpt-account-id") === externalAccountId,
+            authorizationIsReal:
+              authorization?.startsWith("Bearer ") === true &&
+              authorization !==
+                `Bearer ${MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN}`,
+            body,
+          });
+          const responseBody = piResponsesContentSse({
+            blocks:
+              providerRequests.length === 1
+                ? [
+                    {
+                      type: "toolCall",
+                      callId: "call_subscription_tool",
+                      name: "bash",
+                      arguments: {
+                        command: `npx --yes --package="\${CLI_PKG_URL}" okou --help`,
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      type: "text",
+                      text: "Subscription API-first continuation complete",
+                    },
+                  ],
+            sequence: providerRequests.length,
+          });
+          return new HttpResponse(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode(responseBody));
+                controller.close();
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "use the Okou CLI through native subscription Terra",
+      model: "gpt-5.6-terra",
+    });
+    await expect
+      .poll(() => {
+        return providerRequests.length;
+      })
+      .toBe(1);
+    const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`;
+    const sessionKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/session.jsonl`;
+    await expect
+      .poll(() => {
+        return checkpointObjects.has(manifestKey);
+      })
+      .toBe(true);
+    await flushWaitUntilForTest();
+
+    expect(providerRequests).toHaveLength(1);
+    expect(providerRequests[0]).toMatchObject({
+      accountMatches: true,
+      authorizationIsReal: true,
+      body: {
+        model: "gpt-5.6-terra",
+        stream: true,
+      },
+    });
+    expect(providerRequests[0]?.body).not.toHaveProperty("service_tier");
+    expect(oauth.oauthToken).toHaveLength(2);
+    expect(oauth.oauthToken[1]?.get("grant_type")).toBe("refresh_token");
+    await expectNoVm0ModelUsage(run.runId);
+
+    await api.heartbeatRunner(runnerGroup);
+    const legacyClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(legacyClaim.body);
+    await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    const claim = await api.claimRunnerJob(run.runId, {
+      capabilities: { piModelConfigGenerations: [1, 2] },
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    expect(claim).toMatchObject({
+      cliAgentType: "pi",
+      piSessionId: run.threadId,
+      piModelConfig: {
+        schemaVersion: 2,
+        dialect: "openai-codex-responses",
+        transport: "sse",
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        model: "gpt-5.6-terra",
+        thinkingLevel: "low",
+        credentialBindings: [
+          {
+            kind: "access-token",
+            environment: "CHATGPT_ACCESS_TOKEN",
+            secretName: "CHATGPT_ACCESS_TOKEN",
+          },
+          {
+            kind: "account-id",
+            environment: "CHATGPT_ACCOUNT_ID",
+            secretName: "CHATGPT_ACCOUNT_ID",
+          },
+        ],
+      },
+    });
+    expect(claimEnvironment(claim)).toMatchObject({
+      CHATGPT_ACCESS_TOKEN:
+        MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
+      CHATGPT_ACCOUNT_ID: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID,
+    });
+    expect(
+      claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toMatchObject({ sourceId: accountSourceId });
+    expect(claim.secretConnectorMetadataMap?.CHATGPT_ACCOUNT_ID).toMatchObject({
+      sourceId: accountSourceId,
+    });
+    expect(JSON.stringify(claim)).not.toContain(externalAccountId);
+    expect(JSON.stringify(claim)).not.toContain(refreshToken);
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected subscription claim credentials");
+    }
+    const sandboxCredential = await firewall.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.CHATGPT_ACCESS_TOKEN }}`,
+          "ChatGPT-Account-ID": `\${{ secrets.CHATGPT_ACCOUNT_ID }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (sandboxCredential.status !== 200) {
+      throw new Error("Expected exact subscription firewall credentials");
+    }
+    expect(sandboxCredential.body.headers["ChatGPT-Account-ID"]).toBe(
+      externalAccountId,
+    );
+    expect(oauth.oauthToken).toHaveLength(2);
+
+    const h1Bytes = checkpointObjects.get(sessionKey);
+    if (!h1Bytes) {
+      throw new Error("Expected native Codex pending-tool session");
+    }
+    const h1 = h1Bytes.toString("utf8");
+    expect(h1).not.toContain(externalAccountId);
+    expect(h1).not.toContain(refreshToken);
+    expect(h1).not.toContain(
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
+    );
+    const h2Session = MemoryPiSession.fromJsonl(h1);
+    const pendingAssistant = [...h2Session.buildSessionContext().messages]
+      .reverse()
+      .find((message) => {
+        return message.role === "assistant";
+      });
+    const pendingTool =
+      pendingAssistant?.role === "assistant"
+        ? pendingAssistant.content.find((content) => {
+            return content.type === "toolCall";
+          })
+        : undefined;
+    if (!pendingTool || pendingTool.type !== "toolCall") {
+      throw new Error("Expected native Codex tool call in H1");
+    }
+    h2Session.appendMessage({
+      role: "toolResult",
+      toolCallId: pendingTool.id,
+      toolName: pendingTool.name,
+      content: [{ type: "text", text: "Okou CLI help output" }],
+      details: {},
+      isError: false,
+      timestamp: 2,
+    });
+    h2Session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Subscription Sandbox complete" }],
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      model: "gpt-5.6-terra",
+      usage: {
+        input: 5,
+        output: 3,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 8,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: 3,
+    });
+    const h2 = h2Session.toJsonl();
+    const h2Hash = createHash("sha256").update(h2).digest("hex");
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: h2Hash,
+        rawSize: Buffer.byteLength(h2),
+        encodedSize: Buffer.byteLength(h2),
+        encoding: "identity",
+      },
+      sandboxHeaders,
+      [200],
+    );
+    checkpointObjects.set(
+      `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
+      Buffer.from(h2, "utf8"),
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        checkpoint: {
+          cliAgentType: "pi",
+          cliAgentSessionId: run.threadId,
+          cliAgentSessionHistoryHash: h2Hash,
+        },
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(providerRequests).toHaveLength(1);
+    await expectNoVm0ModelUsage(run.runId);
+
+    const firstSession = await readThreadSessionConversation(
+      context,
+      run.threadId,
+    );
+    const continued = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue on the same subscription account",
+      model: "gpt-5.6-terra",
+    });
+    await waitForRunStatus(actor, continued.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(providerRequests).toHaveLength(2);
+    expect(providerRequests[1]).toMatchObject({
+      accountMatches: true,
+      authorizationIsReal: true,
+      body: {
+        model: "gpt-5.6-terra",
+        stream: true,
+      },
+    });
+    expect(JSON.stringify(providerRequests[1]?.body)).toContain(
+      "Okou CLI help output",
+    );
+    expect(
+      eventBackedContents(
+        (await chat.listThreadEvents(actor, run.threadId)).events,
+        continued.runId,
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        content: "Subscription API-first continuation complete",
+      }),
+    );
+    await expect(
+      readThreadSessionConversation(context, run.threadId),
+    ).resolves.toMatchObject({
+      agent_session_id: firstSession.agent_session_id,
+    });
+    await expectNoVm0ModelUsage(continued.runId);
+  }, 90_000);
+
+  it.each([
+    {
+      name: "reconnect-required refresh",
+      failureReason: "reconnect_required" as const,
+      errorCode: "PI_API_MODEL_CREDENTIAL_INVALID",
+      expired: true,
+      providerCalls: 0,
+    },
+    {
+      name: "subscription usage limit",
+      failureReason: "usage_limit" as const,
+      errorCode: "PI_API_MODEL_FAILED",
+      expired: false,
+      providerCalls: 1,
+    },
+  ])(
+    "classifies a $name without replay, billing, or private diagnostics",
+    async (scenario) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const privateMarker = `private-${scenario.failureReason}-diagnostic`;
+      const externalAccountId = `chat-${scenario.failureReason}-account`;
+      const refreshToken = `rt_${scenario.failureReason}_high_entropy`;
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      const oauth = mockCodexDeviceAuthProvider({
+        tokenScope: "personal",
+        accountId: externalAccountId,
+        refreshToken,
+        accessTokenExpiresAt: scenario.expired
+          ? Math.floor(now() / 1000) - 60
+          : Math.floor(now() / 1000) + 7200,
+        workspaceName: "Pi Failure Account",
+      });
+      const started = await authDevice.requestCodexStart(
+        actor,
+        "personal",
+        [200],
+        { mode: "add" },
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected subscription auth to start");
+      }
+      const completed = await authDevice.requestCodexComplete(
+        actor,
+        started.body.sessionToken,
+        [200],
+      );
+      if (
+        !("status" in completed.body) ||
+        completed.body.status !== "complete"
+      ) {
+        throw new Error("Expected subscription auth to complete");
+      }
+      let refreshAttempts = 0;
+      if (scenario.failureReason === "reconnect_required") {
+        server.use(
+          http.post("https://auth.openai.com/oauth/token", () => {
+            refreshAttempts += 1;
+            return HttpResponse.json(
+              {
+                error: {
+                  code: "refresh_token_invalidated",
+                  message: privateMarker,
+                },
+              },
+              { status: 401 },
+            );
+          }),
+        );
+      }
+
+      await chatCallbacks.updateOrgModelPolicies(actor, [
+        {
+          model: "gpt-5.6-terra",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+          modelProviderId: null,
+        },
+      ]);
+      mockPiResourceArchiveDownloads();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      let modelCalls = 0;
+      server.use(
+        http.post("https://chatgpt.com/backend-api/codex/responses", () => {
+          modelCalls += 1;
+          return HttpResponse.json(
+            {
+              error: {
+                code: "usage_limit_reached",
+                message: privateMarker,
+              },
+            },
+            { status: 429 },
+          );
+        }),
+      );
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: `classify ${scenario.failureReason}`,
+        model: "gpt-5.6-terra",
+      });
+      await waitForRunStatus(actor, run.runId, "failed", 10_000);
+      await flushWaitUntilForTest();
+
+      const failed = await api.readRun(actor, run.runId);
+      expect(failed).toMatchObject({
+        status: "failed",
+        error: expect.stringContaining(`[${scenario.errorCode}]`),
+      });
+      expect(modelCalls).toBe(scenario.providerCalls);
+      expect(refreshAttempts).toBe(scenario.expired ? 1 : 0);
+      expect(oauth.oauthToken).toHaveLength(1);
+      const events = (await chat.listThreadEvents(actor, run.threadId)).events;
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          eventType: "run.failed",
+          runId: run.runId,
+          failureReason: scenario.failureReason,
+        }),
+      );
+      const publicState = JSON.stringify({
+        failed,
+        events,
+        checkpointObjects: [...checkpointObjects.entries()].map(
+          ([key, value]) => {
+            return [key, value.toString("utf8")];
+          },
+        ),
+      });
+      expect(publicState).not.toContain(privateMarker);
+      expect(publicState).not.toContain(externalAccountId);
+      expect(publicState).not.toContain(refreshToken);
+      expect(
+        checkpointObjects.has(
+          `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}/manifest.json`,
+        ),
+      ).toBeFalsy();
+      await expectNoVm0ModelUsage(run.runId);
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2] },
+      });
+      expectApiError(claim.body);
+    },
+    90_000,
+  );
+
+  it("rotates switched Codex accounts and resumes the captured account", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     const firewall = createFirewallApi(context);
@@ -12315,9 +12837,7 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "continue with account B",
     });
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
-      `bdd-cli-${first.runId}`,
-    );
+    expect(secondClaim.claim.resumeSession).toBeNull();
     expect(
       secondClaim.claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
     ).toMatchObject({ sourceId: accountBId });
@@ -12348,7 +12868,26 @@ describe("CHAT-02: run-level model overrides", () => {
       firstResolved.body.headers.Authorization,
     );
 
-    await cancelChatRun(actor, second.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+    await flushWaitUntilForTest();
+
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue again with account B",
+    });
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${second.runId}`,
+    );
+    expect(
+      thirdClaim.claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toMatchObject({ sourceId: accountBId });
+
+    await cancelChatRun(actor, third.runId);
     await authDeviceSupport.deletePersonalModelProvider(
       actor,
       "codex-oauth-token",
@@ -14182,7 +14721,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     });
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
     expect(thinkingRequestBody).toMatchObject({
-      model: "google/gemini-3.1-flash-lite",
+      model: "google/gemini-3.8-flash",
       max_tokens: 160,
       reasoning: { effort: "none" },
     });
@@ -14269,6 +14808,8 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
     let upstreamAuthorization: string | null = null;
     let titleRequests = 0;
+    let titleRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
+    let followupRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -14277,6 +14818,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           const payload = openRouterBodySchema.parse(await request.json());
           const systemContent = payload.messages[0]?.content ?? "";
           if (systemContent.includes("concise follow-up prompts")) {
+            followupRequestBody = payload;
             return HttpResponse.json({
               choices: [
                 {
@@ -14292,6 +14834,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
           }
           if (systemContent.includes("Generate a short, descriptive title")) {
             titleRequests += 1;
+            titleRequestBody = payload;
             return HttpResponse.json({
               choices: [
                 {
@@ -14318,6 +14861,10 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     await waitForThreadTitle(actor, first.threadId, "Migration Plan");
     expect(titleRequests).toBe(1);
     expect(upstreamAuthorization).toBe("Bearer title-key");
+    expect(titleRequestBody).toMatchObject({
+      model: "google/gemini-3.8-flash",
+      reasoning: { effort: "low" },
+    });
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -14346,6 +14893,11 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       throw new Error("Expected a recommended follow-ups message");
     }
     expect(recommender.eventType).toBe("output.followups");
+    expect(followupRequestBody).toMatchObject({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 400,
+      reasoning: { effort: "low" },
+    });
     const futureFollowups = resolveChatEventRecommendedFollowups(recommender);
     expect(futureFollowups.length).toBeGreaterThan(0);
     const futureFollowupContent = recommender.content;

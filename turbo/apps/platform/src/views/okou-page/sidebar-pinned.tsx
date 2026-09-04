@@ -58,14 +58,19 @@ import {
   type AgentRowMenuAction,
 } from "./sidebar-agent-row-actions.tsx";
 
+const pinnedAgentGridCardFrameClassName =
+  "flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5";
+
 function PinnedAgentGridSkeletonCard() {
   return (
     <div
       aria-hidden="true"
       data-testid="pinned-agent-skeleton"
-      className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5"
+      className={pinnedAgentGridCardFrameClassName}
     >
-      <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+      <span className="flex h-9 w-9 shrink-0">
+        <Skeleton className="h-full w-full rounded-full" />
+      </span>
       <Skeleton className="h-[13.75px] w-10" />
     </div>
   );
@@ -316,7 +321,7 @@ function PinnedAgentGridCard({
         );
         endDrag();
       }}
-      className={`group relative flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
+      className={`group relative ${pinnedAgentGridCardFrameClassName} no-underline transition-colors duration-200 ${
         isPrimarySelected
           ? "bg-state-selected text-sidebar-foreground"
           : "text-sidebar-foreground hover:bg-state-hover"
@@ -340,11 +345,15 @@ function PinnedAgentGridCard({
           className="pointer-events-none absolute inset-0.5 rounded-lg border border-dashed border-[hsl(var(--gray-400))] bg-state-hover"
         />
       )}
-      <span className={`relative ${isDragging ? "opacity-0" : ""}`}>
+      <span
+        className={`relative flex h-9 w-9 shrink-0 ${
+          isDragging ? "opacity-0" : ""
+        }`}
+      >
         <AgentAvatarImg
           name={agent.agentId}
           alt=""
-          className="h-9 w-9 rounded-full object-cover object-top"
+          className="block h-full w-full rounded-full object-cover object-top"
         />
         {hasUnread && (
           <span className="absolute -right-0.5 -top-0.5 flex">
@@ -469,14 +478,10 @@ export function PinnedAgentListSection({
 
   if (layout === "horizontal") {
     const horizontalPinnedAgents =
-      displayedPinnedAgentsLoadable.state === "loading"
-        ? null
-        : displayedPinnedAgents;
+      pinnedAgentsLoadable.state === "loading" ? null : displayedPinnedAgents;
     const pinnedAgentCards =
       horizontalPinnedAgents === null
-        ? Array.from({ length: 4 }, (_, index) => {
-            return <PinnedAgentGridSkeletonCard key={index} />;
-          })
+        ? [<PinnedAgentGridSkeletonCard key="loading" />]
         : horizontalPinnedAgents.map((agent) => {
             const isPrimarySelected =
               isChatRoute(activeRoute) && selectedAgentId === agent.agentId;
@@ -519,25 +524,27 @@ export function PinnedAgentListSection({
           data-testid="pinned-agents-grid"
         >
           {pinnedAgentCards.slice(0, 4)}
-          <button
-            type="button"
-            onClick={() => {
-              openPinAgentDialog();
-            }}
-            aria-label={t(($) => {
-              return $.sidebar.pinAgent;
-            })}
-            className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={18} />
-            </span>
-            <span className="zero-nav-copy-muted text-[11px] leading-tight">
-              {t(($) => {
-                return $.sidebar.addPin;
+          {horizontalPinnedAgents !== null && (
+            <button
+              type="button"
+              onClick={() => {
+                openPinAgentDialog();
+              }}
+              aria-label={t(($) => {
+                return $.sidebar.pinAgent;
               })}
-            </span>
-          </button>
+              className="flex w-full min-w-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
+                <Plus size={18} />
+              </span>
+              <span className="zero-nav-copy-muted text-[11px] leading-tight">
+                {t(($) => {
+                  return $.sidebar.addPin;
+                })}
+              </span>
+            </button>
+          )}
           {pinnedAgentCards.slice(4)}
         </div>
       </div>

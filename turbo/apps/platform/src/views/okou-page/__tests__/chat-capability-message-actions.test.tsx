@@ -1,4 +1,5 @@
 import { logsByIdContract } from "@okouai/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -42,18 +43,44 @@ function buttonIn(container: ParentNode, name: string): HTMLElement {
   return button;
 }
 
-function linkIn(container: ParentNode, name: string): HTMLElement {
-  const link = queryAllByRoleFast("link", container).find((candidate) => {
+function findLink(
+  container: ParentNode,
+  name: string,
+): HTMLElement | undefined {
+  return queryAllByRoleFast("link", container).find((candidate) => {
     return (
       candidate.getAttribute("aria-label") === name ||
       candidate.textContent?.replace(/\s+/gu, " ").trim() === name
     );
   });
+}
+
+function linkIn(container: ParentNode, name: string): HTMLElement {
+  const link = findLink(container, name);
   if (!link) {
     throw new Error(`Link ${name} was not available`);
   }
   return link;
 }
+
+test("Hide the activity-log action outside debug mode", async () => {
+  installCapabilityChat({
+    events: completedConversation(RESPONSE_TEXT),
+  });
+
+  await setupPage({ context, path: RUN_PATH });
+
+  await readyChat();
+  const response = await screen.findByText(RESPONSE_TEXT);
+  const responseGroup = response.closest<HTMLElement>(
+    '[data-role="assistant"]',
+  );
+  if (!responseGroup) {
+    throw new Error("Assistant response group was not available");
+  }
+
+  expect(findLink(responseGroup, "View run logs")).toBeUndefined();
+});
 
 test("Inspect or copy an assistant response from history", async () => {
   const clipboard = context.mocks.browser.clipboardWriteText();
@@ -82,7 +109,11 @@ test("Inspect or copy an assistant response from history", async () => {
     });
   });
 
-  await setupPage({ context, path: RUN_PATH });
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
 
   await readyChat();
   const response = await screen.findByText(RESPONSE_TEXT);
