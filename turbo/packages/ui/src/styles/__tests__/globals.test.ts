@@ -193,10 +193,14 @@ describe("interaction state ladder", () => {
   // A translucent layer replaces an opaque fill instead of sitting on it, so
   // every surface that carries one needs a pre-mixed pair derived from the
   // same alphas.
-  it.each(["card", "input", "secondary", "primary", "destructive"])(
-    "derives %s's hover from the shared state alphas",
-    (surface) => {
-      expect(globalCss).toContain(`--color-${surface}-hover: color-mix(`);
-    },
-  );
+  it.each([
+    "card",
+    "input",
+    "secondary",
+    "primary",
+    "destructive",
+    "interrupt",
+  ])("derives %s's hover from the shared state alphas", (surface) => {
+    expect(globalCss).toContain(`--color-${surface}-hover: color-mix(`);
+  });
 });

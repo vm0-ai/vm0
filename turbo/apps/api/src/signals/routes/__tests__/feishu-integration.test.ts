@@ -458,6 +458,7 @@ function legacyFeishuAppOAuthState(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly publicBrand: PublicBrand;
+  readonly redirectUri: string;
 }): string {
   const encodedPayload = Buffer.from(
     JSON.stringify({
@@ -2522,6 +2523,7 @@ describe("Feishu integration", () => {
           orgId: requireValue(member.orgId, "Expected an organization"),
           userId: member.userId,
           publicBrand: "vm0",
+          redirectUri: `${FEISHU_CALLBACK_ORIGIN}/api/integrations/feishu/oauth/callback`,
         }),
       })}`,
     );
@@ -2766,68 +2768,6 @@ describe("Feishu integration", () => {
       expect(oauthTokenRedirectUris).toStrictEqual([appCallbackUrl]);
     },
   );
-
-  it("keeps a legacy Okou signed state on its original VM0 redirect URI", async () => {
-    mockEnv("APP_URL", "https://app.vm0.ai");
-    mockEnv("OKOU_API_BACKEND_URL", "https://api.vm0.ai");
-    mockEnv("OKOU_WEB_URL", "https://www.vm0.ai");
-    mockEnv("FEISHU_CALLBACK_BASE_URL", "https://api.vm0.ai");
-
-    const fixture = await setupFeishuRunFixture({ publicBrand: "okou" });
-    const legacyConnectUrl = new URL(
-      feishuOauthContract.connect.path,
-      "https://api.vm0.ai",
-    );
-    legacyConnectUrl.searchParams.set(
-      "state",
-      legacyFeishuAppOAuthState({
-        installationId: fixture.installationId,
-        orgId: requireValue(fixture.actor.orgId, "Expected an organization"),
-        userId: fixture.actor.userId,
-        publicBrand: "okou",
-      }),
-    );
-    legacyConnectUrl.searchParams.set("callbackTarget", "app");
-
-    const oauthApp = createAppWithRoutes({
-      signal: context.signal,
-      routes: feishuOauthRoutes,
-    });
-    const response = await oauthApp.request(legacyConnectUrl);
-    expect(response.status).toBe(307);
-    const authorizationUrl = new URL(response.headers.get("location") ?? "");
-    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      "https://app.vm0.ai/connectors/feishu/callback",
-    );
-    const connectorState = requireValue(
-      authorizationUrl.searchParams.get("state"),
-      "Expected persisted legacy Okou connector state",
-    );
-    expect(connectorState).toMatch(/^okou\.[0-9a-f]{64}$/u);
-
-    const handoffResponse = await oauthApp.request(
-      `${feishuOauthContract.callback.path}?${new URLSearchParams({
-        code: "legacy-okou-feishu-code",
-        state: connectorState,
-      })}`,
-    );
-    expect(handoffResponse.status).toBe(307);
-    const handoffUrl = new URL(handoffResponse.headers.get("location") ?? "");
-    expect(handoffUrl.origin).toBe("https://app.okou.ai");
-    expect(handoffUrl.pathname).toBe("/connectors/feishu/callback");
-
-    const completionUrl = await completeFeishuAuthorization(
-      authorizationUrl,
-      "ou_oauth_user",
-      { intent: "add" },
-    );
-    expect(completionUrl.toString()).toBe(
-      `https://applink.feishu.cn/client/bot/open?appId=${fixture.appId}`,
-    );
-    expect(oauthTokenRedirectUris).toStrictEqual([
-      "https://app.vm0.ai/connectors/feishu/callback",
-    ]);
-  });
 
   it("uses the persisted installation brand for Feishu message-link OAuth", async () => {
     mockEnv("APP_URL", "https://app.vm0.ai");

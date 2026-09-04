@@ -4,7 +4,10 @@ import type {
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
-import type { SharedDatabaseConnectionStatus } from "./protocol.ts";
+import type {
+  SharedDatabaseConnectionStatus,
+  SharedDatabaseWorkerUnavailableReason,
+} from "./protocol.ts";
 
 export interface SharedDatabaseBridge {
   registerTab(signal: AbortSignal): Promise<void>;
@@ -22,7 +25,9 @@ export interface SharedDatabaseBridgeEvents {
     dataKey: SharedDatabaseDataKey,
   ) => void | Promise<void>;
   readonly databaseReconnected: () => void | Promise<void>;
-  readonly reloadRequired: () => void;
+  readonly workerUnavailable: (
+    reason: SharedDatabaseWorkerUnavailableReason,
+  ) => void;
   readonly computedReloaded: (computedKey: ComputedKey) => void;
   readonly chatThreadReadCursorUpdated: (payload: unknown) => void;
   readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;

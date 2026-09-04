@@ -41,6 +41,12 @@ to choose a refresh before continuing; it does not force the reload without
 user action, and an idle page does not discover the requirement until it makes
 a handled API request.
 
+The shared database Worker reports the same response to its connected tabs as
+a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
+that event through the same update dialog instead of reloading automatically.
+Other Worker-unavailable reasons continue to use the bounded automatic reload
+recovery and raise an error so the failure remains visible in Sentry.
+
 The platform app also registers a service worker. Service-worker code is a
 browser-resident deployable surface, so changes to its behavior must account for
 old controlled clients during rollout. The current service worker calls
@@ -165,8 +171,8 @@ Use **sandbox** for provider-neutral runner lifecycle, ownership, status,
 network-policy, and operator concepts. Use **VM** only for concrete
 Firecracker/KVM implementation details such as the Firecracker `/vm` API, VM
 pause and resume, snapshots, vCPUs, VMGenID, KVM, and Firecracker processes.
-The VM0 brand, established environment-variable namespace, and fixed paths are
-not lifecycle terminology and remain unchanged.
+Product brand names, the established environment-variable namespace, and fixed
+paths are not lifecycle terminology and remain unchanged.
 
 Each runner version's `status.json` is a host-local persisted cross-version
 boundary. Current runner maintenance commands can inspect status files written

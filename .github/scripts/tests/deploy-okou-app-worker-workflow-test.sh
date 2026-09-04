@@ -11,6 +11,8 @@ python3 - \
   "${repo_root}/.github/scripts/verify-okou-production-domains.sh" \
   "${repo_root}/turbo/apps/app-worker/wrangler.jsonc" <<'PY'
 from pathlib import Path
+import os
+import subprocess
 import sys
 
 import yaml
@@ -81,6 +83,9 @@ verify_assets_step = find_step(
 )
 sentry_step = find_step(worker_release_job, "Upload App source maps to Sentry")
 deploy_step = find_step(worker_release_job, "Deploy App Worker production")
+retire_domains_step = find_step(
+    worker_release_job, "Retire App Worker diagnostic domains"
+)
 start_step = find_step(worker_release_job, "Start GitHub Deployment")
 finish_step = find_step(worker_release_job, "Finish GitHub Deployment")
 
@@ -128,8 +133,6 @@ deploy_source = require_fragments(
         '--message "app artifact ${ARTIFACT_SHA}"',
         '"https://app.vm0.ai|https://api.vm0.ai"',
         '"https://app.okou.ai|https://api.okou.ai"',
-        '"https://app-worker.vm0.ai|https://api.vm0.ai"',
-        '"https://app-worker.okou.ai|https://api.okou.ai"',
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -141,6 +144,76 @@ if deploy_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
+retire_domains_source = require_fragments(
+    retire_domains_step,
+    [
+        'retire_custom_domain "app-worker.okou.ai"',
+        'retire_custom_domain "app-worker.vm0.ai"',
+        "/workers/domains",
+        '--data-urlencode "hostname=${hostname}"',
+        ".service",
+        '"okou-app-production"',
+        '^[0-9a-f]{32}$',
+        "--request DELETE",
+        ".success == true",
+    ],
+)
+if retire_domains_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
+    "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
+):
+    raise RuntimeError("domain retirement must use the Worker token")
+if retire_domains_source.count("--request DELETE") != 1:
+    raise RuntimeError("domain retirement must use one guarded deletion path")
+
+idempotency_probe_source = r'''
+curl() {
+  local args=" $* "
+  case "$args" in
+    *" --request DELETE "*)
+      if [[ "$args" != *"/workers/domains/0123456789abcdef0123456789abcdef"* ]]; then
+        echo "unexpected Worker domain deletion: $args" >&2
+        return 99
+      fi
+      printf '%s\n' '{"success":true}'
+      ;;
+    *" hostname=app-worker.okou.ai "*)
+      printf '%s\n' '{"success":true,"result":[]}'
+      ;;
+    *" hostname=app-worker.vm0.ai "*)
+      printf '%s\n' '{"success":true,"result":[{"hostname":"app-worker.vm0.ai","service":"okou-app-production","id":"0123456789abcdef0123456789abcdef"}]}'
+      ;;
+    *)
+      echo "unexpected Cloudflare request: $args" >&2
+      return 99
+      ;;
+  esac
+}
+''' + retire_domains_source
+idempotency_probe = subprocess.run(
+    ["bash", "-c", idempotency_probe_source],
+    check=False,
+    capture_output=True,
+    text=True,
+    env={
+        **os.environ,
+        "CLOUDFLARE_ACCOUNT_ID": "test-account",
+        "CLOUDFLARE_API_TOKEN": "test-token",
+    },
+)
+if idempotency_probe.returncode != 0:
+    raise RuntimeError(
+        "domain retirement must tolerate a partially completed retry:\n"
+        f"{idempotency_probe.stderr}"
+    )
+expected_idempotency_output = (
+    "Worker custom domain is already retired: app-worker.okou.ai\n"
+    "Retired Worker custom domain: app-worker.vm0.ai\n"
+)
+if idempotency_probe.stdout != expected_idempotency_output:
+    raise RuntimeError(
+        "domain retirement produced unexpected retry output:\n"
+        f"{idempotency_probe.stdout}"
+    )
 if start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if finish_step.get("with", {}).get("status") != "${{ job.status }}":
@@ -152,6 +225,7 @@ if not (
     < steps.index(verify_assets_step)
     < steps.index(sentry_step)
     < steps.index(deploy_step)
+    < steps.index(retire_domains_step)
     < steps.index(finish_step)
 ):
     raise RuntimeError("Worker artifact verification must precede deployment reporting")
@@ -184,9 +258,6 @@ for fragment in (
     '"zone_name": "okou.ai"',
     '"pattern": "app.vm0.ai/*"',
     '"zone_name": "vm0.ai"',
-    '"pattern": "app-worker.okou.ai"',
-    '"pattern": "app-worker.vm0.ai"',
-    '"custom_domain": true',
 ):
     if fragment not in worker_config_source:
         raise RuntimeError(f"production Worker config is missing: {fragment}")

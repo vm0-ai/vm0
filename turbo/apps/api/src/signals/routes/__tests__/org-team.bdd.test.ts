@@ -40,10 +40,12 @@ const DEFAULT_AGENT_AVATAR_URL =
 
 class ClerkApiResponseTestError extends Error {
   static readonly kind = "ClerkAPIResponseError";
-  readonly status = 429;
 
-  constructor(readonly retryAfter: number) {
-    super("Clerk Backend API rate limit exceeded");
+  constructor(
+    readonly retryAfter: number,
+    readonly status = 429,
+  ) {
+    super(`Clerk Backend API request failed with status ${status}`);
   }
 }
 
@@ -427,6 +429,29 @@ describe("ORG-01: org update and delete error matrix", () => {
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
   });
+
+  it("does not retry Clerk mutation failures", async () => {
+    const admin = api.user();
+    const baseSlug = slug("bdd-r5-org-mutation");
+    api.acceptAgentStorageWrites();
+    await onboardAdmin(admin, { slug: baseSlug, name: "BDD R5 Org" });
+    context.mocks.clerk.organizations.updateOrganization.mockClear();
+    context.mocks.clerk.organizations.updateOrganization.mockRejectedValue(
+      new ClerkApiResponseTestError(1, 521),
+    );
+
+    const response = await api.requestUpdateOrg(
+      admin,
+      { name: "Unavailable Rename" },
+      [500],
+    );
+
+    expect(response.status).toBe(500);
+    expect(
+      context.mocks.clerk.organizations.updateOrganization,
+    ).toHaveBeenCalledOnce();
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+  });
 });
 
 describe("ORG-02: membership admin matrix", () => {
@@ -455,6 +480,54 @@ describe("ORG-02: membership admin matrix", () => {
     ).toHaveBeenCalledTimes(2);
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
 
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.signalTimers.delay.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(1, 521))
+      .mockResolvedValue({
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: admin.userId },
+            createdAt: now(),
+          },
+        ],
+      });
+
+    const recoveredUnavailable = await api.requestListMembers(admin, [200]);
+    expect(recoveredUnavailable.body.members).toHaveLength(1);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledOnce();
+    const [providerWaitMs, providerDelayOptions] =
+      context.mocks.signalTimers.delay.mock.calls[0] ?? [];
+    expect(providerWaitMs).toBeGreaterThanOrEqual(1000);
+    expect(providerWaitMs).toBeLessThanOrEqual(1250);
+    expect(providerDelayOptions).toMatchObject({
+      signal: expect.any(AbortSignal),
+    });
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockReset();
+    context.mocks.signalTimers.delay.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1, 521),
+    );
+
+    const unavailable = await api.requestListMembers(admin, [500]);
+    expect(unavailable.status).toBe(500);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledTimes(3);
+    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "ClerkReadUnavailableError",
+        message: "Clerk read is temporarily unavailable",
+        providerStatus: 521,
+      }),
+    );
+
     api.mockClerkOrg(admin);
     context.mocks.signalTimers.delay.mockClear();
     const requests = api.mockClerkMembershipRequestHandlers(orgId, {
@@ -473,6 +546,36 @@ describe("ORG-02: membership admin matrix", () => {
     expect(exhausted.headers.get("Cache-Control")).toBe("no-store");
     expect(requests.listCalls()).toBe(3);
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry Clerk 4xx or malformed read failures", async () => {
+    const admin = api.user();
+    api.mockClerkOrg(admin);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      new ClerkApiResponseTestError(1, 404),
+    );
+
+    const response = await api.requestListMembers(admin, [500]);
+
+    expect(response.status).toBe(500);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledOnce();
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+
+    api.mockClerkOrg(admin);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
+      { status: 521 },
+    );
+
+    const malformed = await api.requestListMembers(admin, [500]);
+
+    expect(malformed.status).toBe(500);
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).toHaveBeenCalledOnce();
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
   });
 
   it("stops sibling Clerk work when a directory read is exhausted", async () => {
