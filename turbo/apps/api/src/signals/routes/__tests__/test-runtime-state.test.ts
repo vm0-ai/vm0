@@ -6,12 +6,16 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { mockNow, withMockNowForTest } from "../../../lib/time";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { setRunModelProviderFixture } from "../../../test-fixtures/agent-runs";
-import { holdBuiltInModelRouteLockFixture } from "../../../test-fixtures/built-in-model-runtime-route";
+import {
+  holdBuiltInModelRouteLockFixture,
+  withBuiltInModelRuntimeRouteCandidateUnavailableForTest,
+} from "../../../test-fixtures/built-in-model-runtime-route";
 import {
   deleteVm0BuiltInCandidateCooldownFixture,
   resolveVm0BuiltInModelRouteFixture,
@@ -81,6 +85,54 @@ describe("POST /api/test/runtime-state/action", () => {
 
     await expect(first.release()).resolves.toBeUndefined();
     await expect(second.release()).resolves.toBeUndefined();
+  });
+
+  it("scopes unavailable built-in model candidates to one async flow", async () => {
+    const selectedModel = "deepseek-v4-flash";
+    await seedVm0BuiltInModelCandidateKeys(context, selectedModel);
+    const primary = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      selectedModel,
+    );
+    if (!primary || primary.provider_type === "openrouter-codex") {
+      throw new Error("Expected a primary DeepSeek route");
+    }
+
+    const scopedRouteResolved = createDeferredPromise<void>(context.signal);
+    const releaseScopedRoute = createDeferredPromise<void>(context.signal);
+    const scopedResolution =
+      withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
+        {
+          selectedModel,
+          providerType: primary.provider_type,
+          upstreamModel: primary.upstream_model,
+        },
+        async () => {
+          const route = await resolveVm0BuiltInModelRouteFixture(
+            context,
+            selectedModel,
+          );
+          scopedRouteResolved.resolve(undefined);
+          await releaseScopedRoute.promise;
+          return route;
+        },
+      );
+
+    await scopedRouteResolved.promise;
+    const unscopedRoute = await resolveVm0BuiltInModelRouteFixture(
+      context,
+      selectedModel,
+    );
+    releaseScopedRoute.resolve(undefined);
+    const scopedRoute = await scopedResolution;
+
+    expect(unscopedRoute).toMatchObject({
+      provider_type: primary.provider_type,
+      upstream_model: primary.upstream_model,
+    });
+    expect(scopedRoute).toMatchObject({
+      provider_type: "openrouter-codex",
+    });
   });
 
   it.each(["deepseek-v4-flash", "deepseek-v4-pro"] as const)(
