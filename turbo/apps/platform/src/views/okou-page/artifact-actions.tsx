@@ -172,8 +172,8 @@ export function ArtifactShareButton({
       return $.artifacts.actions.share;
     });
   if (shareUrl === null) {
-    // No address a recipient could open. Offering the action anyway would hand
-    // out a link that only works for the person who copied it.
+    // The share address is still being resolved. Offering the action now would
+    // hand out nothing, so wait until the resolution settles.
     return null;
   }
   return (
