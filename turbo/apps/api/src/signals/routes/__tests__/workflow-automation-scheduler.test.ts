@@ -766,44 +766,60 @@ describe("okou workflow automation scheduler", () => {
     const automation = await createDueLoopAutomation(scenario, 300);
     const base = now();
     const seenRunIds = new Set<string>();
-    const threadIds = new Set<string>();
 
     // Three fire + failed-completion cycles through scoped execution, runner,
     // and sandbox completion surfaces auto-disable the automation.
-    for (let failure = 1; failure <= 3; failure += 1) {
-      if (failure > 1) {
-        mockNow(base + (failure - 1) * 320_000);
-      }
+    const fireAndFailNextRun = async (): Promise<string> => {
       const currentThreadId = await executeDueWorkflowAutomations(
         automation.automationId,
       );
-      threadIds.add(currentThreadId);
       const messages = await workflowRunMessages(currentThreadId);
       const nextRun = messages.find((message) => {
         return !seenRunIds.has(message.runId);
       });
       if (!nextRun) {
-        throw new Error(`Expected fire #${failure} to post a run message`);
+        throw new Error("Expected the next fire to post a run message");
       }
       seenRunIds.add(nextRun.runId);
       await completeRunThroughSandbox(scenario, nextRun.runId, 1);
-      if (failure < 3) {
-        await expect
-          .poll(async () => {
-            return (await wf.readAutomation(automation.automationId)).nextRunAt;
-          })
-          .not.toBeNull();
-      }
-    }
-    expect(threadIds.size).toBe(1);
+      return currentThreadId;
+    };
+    const readFailureState = async () => {
+      const read = await wf.readAutomation(automation.automationId);
+      return {
+        enabled: read.enabled,
+        nextRunAt: read.nextRunAt,
+        nextRunAtIsFuture:
+          read.nextRunAt !== null && Date.parse(read.nextRunAt) > now(),
+      };
+    };
 
-    await expect
-      .poll(async () => {
-        return (await wf.readAutomation(automation.automationId)).enabled;
-      })
-      .toBeFalsy();
-    const read = await wf.readAutomation(automation.automationId);
-    expect(read.nextRunAt).toBeNull();
+    const firstThreadId = await fireAndFailNextRun();
+    await expect.poll(readFailureState).toStrictEqual({
+      enabled: true,
+      nextRunAt: expect.any(String),
+      nextRunAtIsFuture: true,
+    });
+
+    mockNow(base + 320_000);
+    const secondThreadId = await fireAndFailNextRun();
+    await expect.poll(readFailureState).toStrictEqual({
+      enabled: true,
+      nextRunAt: expect.any(String),
+      nextRunAtIsFuture: true,
+    });
+
+    mockNow(base + 640_000);
+    const thirdThreadId = await fireAndFailNextRun();
+
+    expect(new Set([firstThreadId, secondThreadId, thirdThreadId]).size).toBe(
+      1,
+    );
+    await expect.poll(readFailureState).toStrictEqual({
+      enabled: false,
+      nextRunAt: null,
+      nextRunAtIsFuture: false,
+    });
   });
 
   it("preserves run messages when workflow deletion removes automation provenance", async () => {
