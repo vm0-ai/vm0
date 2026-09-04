@@ -12,6 +12,7 @@ if [[ ! -f "$package_path" ]]; then
   exit 1
 fi
 package_path="$(cd "$(dirname "$package_path")" && pwd -P)/$(basename "$package_path")"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -35,7 +36,10 @@ run_cli() {
   local stdout_file="$2"
   local stderr_file="$3"
   shift 3
-  PATH="$clean_path" npm_config_audit=false "$node_path" "$npx_path" \
+  PATH="$clean_path" \
+    npm_config_audit=false \
+    npm_config_cache="$tmp_dir/npm-cache" \
+    "$node_path" "$npx_path" \
     --yes --package="$package_path" "$entrypoint" "$@" \
     >"$stdout_file" 2>"$stderr_file"
 }
@@ -65,6 +69,15 @@ assert_clean_success() {
     exit 1
   fi
 }
+
+assert_clean_success \
+  node \
+  image-resize \
+  "$script_dir/smoke-okou-cli-image-resize.mjs"
+grep -Fxq \
+  "Smoke-tested packaged Pi image resize worker and fallback" \
+  "$tmp_dir/image-resize.stdout"
+cat "$tmp_dir/image-resize.stdout"
 
 assert_unsupported_entrypoint() {
   local entrypoint="$1"

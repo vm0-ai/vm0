@@ -284,7 +284,7 @@ mod tests {
         ));
         let mut spawned = spawn_agent_executable_with_pipes(
             executable,
-            &[("VM0_TEST_VALUE", "direct-env")],
+            &[("OKOU_TEST_VALUE", "direct-env")],
             test_containment(5),
         )
         .unwrap();

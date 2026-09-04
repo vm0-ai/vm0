@@ -261,10 +261,11 @@ function mockChatThreadSnapshot(
     return [];
   },
   targetContext = context,
-): void {
+): { readonly responseReturned: Promise<void> } {
+  const responseReturned = targetContext.mocks.deferred<void>();
   targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
-    return respond(200, {
+    const response = respond(200, {
       chatThreads: snapshotThreads.map((thread, index) => {
         return {
           id: thread.id,
@@ -288,6 +289,8 @@ function mockChatThreadSnapshot(
       latestEventId: null,
       latestSeqId: null,
     });
+    responseReturned.resolve();
+    return response;
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
@@ -302,6 +305,7 @@ function mockChatThreadSnapshot(
       ),
     });
   });
+  return { responseReturned: responseReturned.promise };
 }
 
 function mockUnreadAgents(
@@ -544,10 +548,11 @@ function mockSidebarThreadStory(
   targetContext = context,
 ): {
   threads: SidebarThread[];
+  snapshotResponseReturned: Promise<void>;
 } {
   let threads = [...firstPageThreads];
 
-  mockChatThreadSnapshot(
+  const { responseReturned: snapshotResponseReturned } = mockChatThreadSnapshot(
     () => {
       return [...threads, ...extraThreads];
     },
@@ -605,7 +610,7 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads };
+  return { threads, snapshotResponseReturned };
 }
 
 test("Browse a long sidebar chat history", async () => {
@@ -696,6 +701,11 @@ test("Drag the sidebar scrollbar when enabled", async () => {
 
   const scrollbar = await screen.findByTestId("sidebar-scrollbar");
   const thumb = await screen.findByTestId("sidebar-scrollbar-thumb");
+  // The thumb sits against the viewport's edge rather than centred in the
+  // track. Beside the workspace card the chat list keeps only four pixels of
+  // right inset, and a centred thumb lands on the trailing menu button of the
+  // row it is scrolling past.
+  expect(scrollbar).toHaveClass("justify-end");
   scrollbar.style.paddingBlockStart = "0px";
   scrollbar.style.paddingBlockEnd = "0px";
   thumb.style.marginBlockStart = "0px";
@@ -799,6 +809,11 @@ test("Collapse and expand Manage navigation", async () => {
   }
 
   expect(scrollWrapper).toHaveClass("group/sidebar-scroll");
+  // The track hugs the viewport's edge for the same reason the Base UI thumb
+  // does: beside the workspace card the chat list keeps only four pixels of
+  // right inset, and anything further in overlaps the row's trailing menu
+  // button.
+  expect(scrollbarTrack).toHaveClass("right-px");
   expect(scrollbarTrack).toHaveClass(
     "opacity-0",
     "transition-opacity",
@@ -1389,7 +1404,7 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponseReturned = context.mocks.deferred<void>();
   const indicatorRequestStarted = context.mocks.deferred<void>();
 
-  mockSidebarThreadStory([
+  const { snapshotResponseReturned } = mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
@@ -1411,7 +1426,10 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   });
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-  await indicatorRequestStarted.promise;
+  await Promise.all([
+    snapshotResponseReturned,
+    indicatorRequestStarted.promise,
+  ]);
 
   await waitFor(() => {
     expect(
@@ -1522,12 +1540,16 @@ test("Keep pin management usable with many pinned agents", async () => {
   const pinnedSection = await screen.findByTestId("pinned-agents-horizontal");
   const grid = within(pinnedSection).getByTestId("pinned-agents-grid");
   expect(within(pinnedSection).getByText("Pinned agents")).toBeVisible();
-  expect(buttonByLabel("Pin an agent", grid)).toBeVisible();
+  expect(within(grid).getAllByTestId("pinned-agent-skeleton")).toHaveLength(1);
+  expect(within(grid).queryByTestId("pinned-agent-card")).toBeNull();
+  expect(within(grid).queryByLabelText("Pin an agent")).toBeNull();
 
   preferencesGate.resolve();
 
   await waitFor(() => {
-    expect(pinnedAgentLink(grid, "Billing Agent")).toBeVisible();
+    expect(within(grid).queryByTestId("pinned-agent-skeleton")).toBeNull();
+    expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
+    expect(buttonByLabel("Pin an agent", grid)).toBeVisible();
   });
   expect(
     queryAllByRoleFast("link", grid).map((link) => {
@@ -1623,6 +1645,51 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
   await waitFor(() => {
     expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
   });
+});
+
+// The new shell parks the workspace card's eight-pixel gutter, painted in the
+// sidebar colour, immediately right of this column. Keeping the full inset here
+// as well stacks the two, so the rows sit twice as far from the card's border
+// as from the rail.
+test("Spend the workspace card's gutter out of the chat list's right inset", async () => {
+  prepareDefaultAgent();
+  mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.NewUi]: true,
+    },
+  });
+
+  await waitFor(() => {
+    return within(sidebar()).getByText("Chats with Zero");
+  });
+
+  const pinnedContent = within(sidebar()).getByTestId(
+    "pinned-agents-horizontal",
+  ).parentElement;
+  const threadContent =
+    within(sidebar()).getByText("Chats with Zero").parentElement?.parentElement;
+  const header = sidebar().firstElementChild;
+  const footer = sidebar().lastElementChild;
+  if (
+    !(pinnedContent instanceof HTMLElement) ||
+    !(threadContent instanceof HTMLElement) ||
+    !(header instanceof HTMLElement) ||
+    !(footer instanceof HTMLElement)
+  ) {
+    throw new Error("Chat list column frame not found");
+  }
+
+  // The rail on the other side supplies no such gutter, so the left inset is
+  // unchanged and the two edges only read alike once the right one hands its
+  // eight pixels to the card.
+  for (const element of [header, pinnedContent, threadContent, footer]) {
+    expect(element).toHaveClass("pl-3", "pr-1");
+    expect(element).not.toHaveClass("px-3");
+  }
 });
 
 test("Route New chat to the current agent and Chat to the default agent", async () => {

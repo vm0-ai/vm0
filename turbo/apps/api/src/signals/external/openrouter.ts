@@ -12,7 +12,7 @@ const OPENROUTER_ERROR_RESPONSE_MAX_BYTES = 64 * 1024;
  * short, latency-sensitive calls that are not user-selectable, so they share a
  * single model rather than one constant per service.
  */
-export const FAST_PATH_MODEL = "google/gemini-3.1-flash-lite";
+export const FAST_PATH_MODEL = "google/gemini-3.8-flash";
 
 export interface OpenRouterTextPart {
   readonly type: "text";

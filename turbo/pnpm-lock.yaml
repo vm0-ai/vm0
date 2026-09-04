@@ -88,6 +88,9 @@ patchedDependencies:
   '@earendil-works/pi-ai@0.84.1':
     hash: e48c1a8d19be960cf1c6537b1321d466cfbf235897b6b7935c4b80c464e4496e
     path: patches/@earendil-works__pi-ai@0.84.1.patch
+  '@earendil-works/pi-coding-agent@0.84.1':
+    hash: 370d127fc0fe07e83cb02a268bacca9e657803d556da65be8c0e43e5cb980289
+    path: patches/@earendil-works__pi-coding-agent@0.84.1.patch
 
 importers:
 
@@ -353,6 +356,9 @@ importers:
 
   apps/cli:
     devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.84.1
+        version: 0.84.1(patch_hash=370d127fc0fe07e83cb02a268bacca9e657803d556da65be8c0e43e5cb980289)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -1099,7 +1105,7 @@ importers:
         version: 0.84.1(patch_hash=e48c1a8d19be960cf1c6537b1321d466cfbf235897b6b7935c4b80c464e4496e)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.1
-        version: 0.84.1(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
+        version: 0.84.1(patch_hash=370d127fc0fe07e83cb02a268bacca9e657803d556da65be8c0e43e5cb980289)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@okouai/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
@@ -11047,7 +11053,7 @@ snapshots:
     dependencies:
       '@earendil-works/pi-protocol': 0.84.2
 
-  '@earendil-works/pi-coding-agent@0.84.1(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)':
+  '@earendil-works/pi-coding-agent@0.84.1(patch_hash=370d127fc0fe07e83cb02a268bacca9e657803d556da65be8c0e43e5cb980289)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.84.1(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)
       '@earendil-works/pi-ai': 0.84.1(patch_hash=e48c1a8d19be960cf1c6537b1321d466cfbf235897b6b7935c4b80c464e4496e)(@modelcontextprotocol/sdk@1.30.0)(ws@8.21.1)(zod@4.3.6)

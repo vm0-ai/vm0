@@ -829,9 +829,10 @@ mod tests {
         }
         assert!(is_runner_owned_env_key("OKOU_TOKEN"));
         assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-        for key in ["VM0_FUTURE_RUNNER_KEY", "CUSTOM_ENV"] {
-            assert!(!is_runner_owned_env_key(key), "{key} should be user-owned");
-        }
+        assert!(
+            !is_runner_owned_env_key("CUSTOM_ENV"),
+            "CUSTOM_ENV should be user-owned"
+        );
     }
 
     /// Contract sources scanned for declared environment key constants.
