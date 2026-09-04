@@ -1647,18 +1647,40 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
         run: |
           set -euo pipefail
 
           : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
+          : "${CLERK_PUBLISHABLE_KEY:?production Clerk publishable key is required}"
+          : "${CLERK_SECRET_KEY:?production Clerk secret key is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
           : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+          case "$CLERK_PUBLISHABLE_KEY" in
+            pk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live publishable key" >&2; exit 1 ;;
+          esac
+          case "$CLERK_SECRET_KEY" in
+            sk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live secret key" >&2; exit 1 ;;
+          esac
+
+          umask 077
+          worker_secrets="$(mktemp)"
+          trap 'rm -f "$worker_secrets"' EXIT
+          jq -n '{
+            CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
+            CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
+          }' > "$worker_secrets"
+          unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY
 
           cd turbo
           pnpm --filter @okouai/app-worker exec wrangler deploy \
             --env production \
+            --secrets-file "$worker_secrets" \
             --message "app artifact ${ARTIFACT_SHA}"
           cd ..
 
