@@ -8,7 +8,7 @@ import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { apiClient$ } from "../api-client.ts";
 import { oauthBaseForNavigation$ } from "../fetch.ts";
 import { searchParams$ } from "../route.ts";
-import { createDeferredPromise, onRef, setLoop } from "../utils.ts";
+import { createDeferredPromise, setLoop } from "../utils.ts";
 import {
   parseTelegramPostMessage,
   type TelegramAuthResult,
@@ -47,6 +47,36 @@ export const reloadTelegramConnectLinkStatus$ = command(({ set }) => {
     return prev + 1;
   });
 });
+
+export const pollTelegramConnectDomainStatus$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const parsed = parseTelegramConnectParams(get(searchParams$));
+    if (!parsed.ok || parsed.params.connectSignature) {
+      return;
+    }
+
+    let first = true;
+    await setLoop(
+      async (loopSignal) => {
+        if (first) {
+          first = false;
+        } else {
+          set(reloadTelegramConnectLinkStatus$);
+        }
+
+        const status = await get(telegramConnectLinkStatus$);
+        loopSignal.throwIfAborted();
+        return (
+          status === null ||
+          status.linked ||
+          status.installation?.domainConfigured !== false
+        );
+      },
+      3000,
+      signal,
+    );
+  },
+);
 
 function requestTelegramAuth(
   telegramBotId: string,
@@ -124,40 +154,10 @@ export const connectTelegramAccount$ = command(
       },
     });
 
+    window.location.assign(
+      `tg://resolve?domain=${result.body.botUsername.replace(/^@/, "")}`,
+    );
+
     return result.body;
   },
-);
-
-const openTelegramOnRef$ = command(
-  (_ctx, element: HTMLElement, _signal: AbortSignal) => {
-    const href = element.dataset.telegramHref;
-    if (!href) {
-      return;
-    }
-    window.location.assign(href);
-  },
-);
-
-export const telegramAutoOpenRef$ = onRef(openTelegramOnRef$);
-
-const pollTelegramDomainStatusOnRef$ = command(
-  async ({ set }, _element: HTMLElement, signal: AbortSignal) => {
-    let first = true;
-    await setLoop(
-      () => {
-        if (first) {
-          first = false;
-          return false;
-        }
-        set(reloadTelegramConnectLinkStatus$);
-        return false;
-      },
-      3000,
-      signal,
-    );
-  },
-);
-
-export const telegramDomainStatusPollerRef$ = onRef(
-  pollTelegramDomainStatusOnRef$,
 );

@@ -26,8 +26,8 @@ import {
 } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
-  detachedSetupPage as baseDetachedSetupPage,
   queryAllByRoleFast,
+  setupPage as baseSetupPage,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
 import {
@@ -37,10 +37,10 @@ import {
 } from "./chat-event-test-helpers.ts";
 export const context = testContext();
 
-export function detachedSetupPage(
-  options: Parameters<typeof baseDetachedSetupPage>[0],
-): void {
-  baseDetachedSetupPage(options);
+export function setupPage(
+  options: Parameters<typeof baseSetupPage>[0],
+): Promise<void> {
+  return baseSetupPage(options);
 }
 
 export const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -124,6 +124,7 @@ interface TestServiceWorkerRegistration {
 }
 
 interface TestServiceWorkerContainer {
+  readonly addEventListener: ServiceWorkerContainer["addEventListener"];
   readonly register: () => Promise<TestServiceWorkerRegistration>;
 }
 
@@ -180,7 +181,6 @@ export function parseChatClipboardPayload(html: string): {
 }
 
 export function mockPushBrowserSupport(): PushBrowserMock {
-  vi.stubEnv("VITE_VAPID_PUBLIC_KEY_PREVIEW", "AQIDBA");
   vi.stubGlobal("PushManager", class TestPushManager {});
   let notificationPermission: NotificationPermission = "default";
   vi.stubGlobal("Notification", {
@@ -224,6 +224,7 @@ export function mockPushBrowserSupport(): PushBrowserMock {
   Object.defineProperty(navigator, "serviceWorker", {
     configurable: true,
     value: {
+      addEventListener: vi.fn<ServiceWorkerContainer["addEventListener"]>(),
       register,
     } satisfies TestServiceWorkerContainer,
   });
@@ -411,6 +412,7 @@ export function mockKeyboardNavigationThreads({
                 },
               ]
             : [],
+          params.threadId,
         ),
       ).filter((row) => {
         return row.seqId > query.sinceSeqId;
@@ -596,7 +598,10 @@ export function mockServerQueuedThreadStories(): void {
     chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
       const rows = mockChatEventRows(
-        normalizeMockChatEvents(byId.get(params.threadId)?.messages ?? []),
+        normalizeMockChatEvents(
+          byId.get(params.threadId)?.messages ?? [],
+          params.threadId,
+        ),
       ).filter((row) => {
         return row.seqId > query.sinceSeqId;
       });
@@ -662,7 +667,7 @@ export async function openAutomationSidebarWithWorkflowAutomation(
     return respond(200, { runs: [] });
   });
 
-  detachedSetupPage({
+  await setupPage({
     context,
     path: `/chats/${AUTOMATION_THREAD_ID}`,
   });

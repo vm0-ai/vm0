@@ -41,10 +41,13 @@ cat >"${test_root}/turbo/apps/cli/dist/package.json" <<'EOF'
   "version": "1.0.0",
   "private": true,
   "bin": { "okou": "okou.js" },
-  "files": ["*.js", "migrations/*.sql"]
+  "files": ["*.js", "*.wasm", "migrations/*.sql"]
 }
 EOF
 printf '#!/usr/bin/env node\n' >"${test_root}/turbo/apps/cli/dist/okou.js"
+printf 'worker\n' \
+  >"${test_root}/turbo/apps/cli/dist/image-resize-worker.js"
+printf 'wasm\n' >"${test_root}/turbo/apps/cli/dist/photon_rs_bg.wasm"
 printf 'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY);\n' \
   >"${test_root}/turbo/apps/cli/dist/migrations/001_initial.sql"
 
@@ -122,6 +125,7 @@ jq -e '
   and .private == true
   and ((.bin | keys) == ["okou"])
   and .bin.okou == "okou.js"
+  and (.files | index("*.wasm") != null)
 ' <<<"$package_json" >/dev/null
 
 echo "deploy-cli-local tests passed"

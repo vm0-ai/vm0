@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { onDomEventFn, onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Chat navigation search query
@@ -253,79 +252,9 @@ export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
-// Pinned agent grid rows (three-column sidebar) — persisted in localStorage
-// ---------------------------------------------------------------------------
-export const PINNED_AGENT_GRID_COLUMNS = 5;
-
-const { get$: pinnedAgentGridRowsRaw$, set$: setPinnedAgentGridRowsRaw$ } =
-  localStorageSignals("pinnedAgentGridRows");
-export const pinnedAgentGridRows$ = computed((get) => {
-  const rows = Number(get(pinnedAgentGridRowsRaw$));
-  return Number.isSafeInteger(rows) && rows > 0 ? rows : 1;
-});
-const cachePinnedAgentGridRowsFromElement$ = command(
-  ({ get, set }, element: HTMLDivElement) => {
-    const rows = Math.max(
-      1,
-      Math.ceil(element.childElementCount / PINNED_AGENT_GRID_COLUMNS),
-    );
-    const next = String(rows);
-    if (get(pinnedAgentGridRowsRaw$) === next) {
-      return;
-    }
-    set(setPinnedAgentGridRowsRaw$, next);
-  },
-);
-export const cachePinnedAgentGridRowsRef$ = onRef(
-  command(({ set }, element: HTMLDivElement, signal: AbortSignal) => {
-    set(cachePinnedAgentGridRowsFromElement$, element);
-    const observer = new MutationObserver(
-      onDomEventFn(() => {
-        set(cachePinnedAgentGridRowsFromElement$, element);
-      }),
-    );
-    observer.observe(element, { childList: true });
-    signal.addEventListener(
-      "abort",
-      () => {
-        observer.disconnect();
-      },
-      { once: true },
-    );
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// Chat thread virtual list geometry (RecentChatSection)
+// Chat thread virtual list layout (RecentChatSection)
 // ---------------------------------------------------------------------------
 export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
 export const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 export type ChatThreadVirtualListScrollAlign = "top" | "bottom";
-
-function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
-  return rect.top !== 0 || rect.left !== 0;
-}
-
-export function getChatThreadVirtualListScrollMargin(
-  scrollViewport: HTMLElement | null,
-  virtualListElement: HTMLElement | null,
-): number {
-  if (!scrollViewport || !virtualListElement) {
-    return 0;
-  }
-
-  const viewportRect = scrollViewport.getBoundingClientRect();
-  const virtualListRect = virtualListElement.getBoundingClientRect();
-  if (
-    hasUsableLayoutPosition(viewportRect) ||
-    hasUsableLayoutPosition(virtualListRect)
-  ) {
-    return Math.max(
-      0,
-      scrollViewport.scrollTop + virtualListRect.top - viewportRect.top,
-    );
-  }
-
-  return Math.max(0, virtualListElement.offsetTop - scrollViewport.offsetTop);
-}

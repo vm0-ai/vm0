@@ -538,7 +538,7 @@ export const failBuiltInGenerationJob$ = command(
       readonly error: BuiltInGenerationError;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const writeDb = set(writeDb$);
     const [job] = await writeDb
       .update(builtInGenerationJobs)
@@ -568,8 +568,11 @@ export const failBuiltInGenerationJob$ = command(
         completedAt: builtInGenerationJobs.completedAt,
       });
     signal.throwIfAborted();
-    if (job) {
-      await publishJobSafely(job);
+    if (!job) {
+      return false;
     }
+    await publishJobSafely(job);
+    signal.throwIfAborted();
+    return true;
   },
 );

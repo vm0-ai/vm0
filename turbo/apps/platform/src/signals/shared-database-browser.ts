@@ -1,4 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
@@ -12,10 +13,8 @@ import {
 import { resolveConfiguredProductionPrimaryAppDomain } from "../lib/clerk-instance-config.ts";
 import { CLERK_PRIMARY_APP_DOMAIN_PARAM } from "../lib/clerk-primary-app-domain-param.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
-import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
-import { sentryLogContext } from "../lib/sentry-config.ts";
 import type {
   SharedDatabaseBridge,
   SharedDatabaseBridgeEvents,
@@ -25,6 +24,7 @@ import type {
   SharedDatabaseIdentity,
 } from "../shared-database/data-key.ts";
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
+import type { SharedDatabaseWorkerUnavailableReason } from "../shared-database/protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-connection-client.ts";
 import { clerk$ } from "./auth.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
@@ -35,6 +35,7 @@ import {
   syncAllActiveChatEvents$,
 } from "./chat-page/chat-event-signal-registry.ts";
 import { syncEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
+import { reportForceUpgradeRequired } from "./force-upgrade.ts";
 import { logger } from "./log.ts";
 import {
   installSharedDatabaseBridge$,
@@ -49,7 +50,7 @@ import { createDeferredPromise, onRejection } from "./utils.ts";
 
 const SHARED_DATABASE_RELOAD_MARKER = "okou-shared-database-reload";
 const SHARED_DATABASE_RELOAD_WINDOW_MS = 60_000;
-const L = logger("SharedDatabaseBrowser");
+const L = logger("SharedWorkerBridge");
 
 export interface SharedDatabaseBridgeHost {
   createBridge(
@@ -60,7 +61,9 @@ export interface SharedDatabaseBridgeHost {
   ): SharedDatabaseBridge;
 }
 
-function handleSharedDatabaseReloadRequired(): void {
+function handleSharedDatabaseReloadRequired(
+  reason: SharedDatabaseWorkerUnavailableReason,
+): void {
   const url = new URL(location.href);
   const reloadAtMs = now();
   const reloadMarker = url.searchParams.get(SHARED_DATABASE_RELOAD_MARKER);
@@ -81,7 +84,27 @@ function handleSharedDatabaseReloadRequired(): void {
   }
 
   url.searchParams.set(SHARED_DATABASE_RELOAD_MARKER, String(reloadAtMs));
+  L.debug("Reloading app", { reason });
   location.replace(url.toString());
+}
+
+function handleSharedDatabaseWorkerUnavailable(
+  reason: SharedDatabaseWorkerUnavailableReason,
+): void {
+  if (reason === "force-upgrade-required") {
+    reportForceUpgradeRequired();
+    return;
+  }
+
+  handleSharedDatabaseReloadRequired(reason);
+  if (reason === "indexeddb-version-changed") {
+    throw new Error(
+      "Shared database worker is unavailable after an IndexedDB version change",
+    );
+  }
+  throw new Error(
+    "Shared database worker failed to load or its transport became unrecoverable",
+  );
 }
 
 function createBrowserSharedDatabaseBridge(
@@ -122,7 +145,11 @@ function createBrowserSharedDatabaseBridge(
     name: `okou_${identity.userId}_${identity.orgId}${diagnosticsEnabled ? "_diagnostics" : ""}`,
     type: "module",
   });
-  const portBridge = new MessagePortSharedDatabaseBridge(worker.port, events);
+  const portBridge = new MessagePortSharedDatabaseBridge(
+    worker.port,
+    events,
+    signal,
+  );
   let failureHandled = false;
   worker.addEventListener(
     "error",
@@ -132,22 +159,12 @@ function createBrowserSharedDatabaseBridge(
       }
       failureHandled = true;
       const workerError: unknown = event.error;
-      L.error(
-        "Shared database worker failed to load",
-        workerError instanceof Error ? workerError : event.message,
-        sentryLogContext({
-          tags: {
-            runtime: "shared-worker",
-            worker: "shared-database",
-          },
-        }),
-      );
       portBridge.fail(
         workerError instanceof Error
           ? workerError
           : new Error("Shared database worker failed to load"),
       );
-      events.reloadRequired();
+      events.workerUnavailable("worker-load-or-transport-failure");
     },
     { signal },
   );
@@ -231,8 +248,8 @@ export const prepareSharedDatabaseBridge$ = command(
         databaseReconnected: async () => {
           await set(syncSharedDatabaseReconnect$, signal);
         },
-        reloadRequired: () => {
-          handleSharedDatabaseReloadRequired();
+        workerUnavailable: (reason) => {
+          handleSharedDatabaseWorkerUnavailable(reason);
         },
         computedReloaded: (computedKey) => {
           set(reloadComputedFromWorker$, computedKey);

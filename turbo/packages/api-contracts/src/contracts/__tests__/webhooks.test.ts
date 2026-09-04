@@ -281,6 +281,7 @@ describe("agent completion failure reasons", () => {
   it("accepts known reasons, future tokens, and omission", () => {
     expect(knownRunFailureReasonSchema.options).toStrictEqual([
       "session_history_limit",
+      "execution_timeout",
       "insufficient_credits",
       "invalid_api_key",
       "invalid_credentials",

@@ -1630,6 +1630,26 @@ describe("CHAT-02: completed chat callback", () => {
       "These are quick replies, not task briefs.",
     );
     expect(followupSystemPrompts[0]).toContain(
+      "Usefulness is a hard requirement and takes priority",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "asks the assistant to take a concrete next action",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "makes or requests a decision, selection, constraint, or adjustment",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "asks a substantive question whose answer reduces uncertainty or changes the next step",
+    );
+    expect(followupSystemPrompts[0]).toContain(
+      "Never output a pure acknowledgement, thanks, praise, sympathy, status reaction, or conversation closer.",
+    );
+    expect(followupSystemPrompts[0]).toContain('"知道了"');
+    expect(followupSystemPrompts[0]).toContain(
+      "silently validate every suggestion",
+    );
+    expect(followupSystemPrompts[0]).toContain("Never pad with social filler.");
+    expect(followupSystemPrompts[0]).toContain(
       "Match the user's language and conversational tone.",
     );
     expect(followupSystemPrompts[0]).toContain(
@@ -4796,6 +4816,17 @@ describe("CHAT-02: failed chat callbacks", () => {
           "Claude Sonnet 5 is overloaded. Please wait a few minutes and try again, or switch to another model.",
         failureReason: "provider_overloaded",
         selectedModel: "claude-sonnet-5",
+      },
+      {
+        prompt: "round eleven",
+        error: "execution: Agent execution timed out after 7200 seconds",
+        expectedError: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+      },
+      {
+        prompt: "round twelve",
+        error: "Contradictory runner failure",
+        expectedError: CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE,
+        failureReason: "execution_timeout",
       },
     ];
 

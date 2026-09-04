@@ -11,6 +11,7 @@ interface SetupRawAppOptions {
 
 interface SetupAppOptions extends SetupRawAppOptions {
   readonly baseUrl?: string;
+  readonly rethrowErrors?: boolean;
   readonly usagePricingResolution?: UsagePricingResolution;
 }
 
@@ -19,6 +20,7 @@ export function setupApp({
   context,
   routes,
   signal,
+  rethrowErrors,
   usagePricingResolution,
 }: SetupAppOptions) {
   return setupAppWithRoutes({
@@ -26,6 +28,7 @@ export function setupApp({
     context,
     routes,
     signal,
+    rethrowErrors,
     usagePricingResolution,
   });
 }

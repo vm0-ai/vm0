@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -70,6 +71,21 @@ printf '192.0.2.1 STREAM success.invalid\n'
     assert!(!result.output_truncated);
     assert!(result.diagnostic.is_empty());
     finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn guest_dns_readiness_worker_failure_closes_connection() {
+    let (_directory, program) = create_program(
+        r#"
+printf '192.0.2.1 STREAM success.invalid\n'
+"#,
+    );
+    let (handle, mut host_stream) = start_guest_connection_with_dns_readiness_program(program);
+
+    host_stream.shutdown(Shutdown::Read).unwrap();
+    send_request(&mut host_stream, 312, 1_100, "success.invalid");
+
+    join_guest_connection(handle);
 }
 
 #[test]

@@ -25,7 +25,7 @@ export async function createAgent(
   params: CreateAgentParams,
   signal: AbortSignal,
 ): Promise<AgentResponse> {
-  // Step 1: Create agent (compose). The API assigns a random preset avatar
+  // Step 1: Create agent (compose). The API assigns a random composer avatar
   // when none is provided.
   const agentsClient = createClient(agentsMainContract);
   const createResult = await accept(

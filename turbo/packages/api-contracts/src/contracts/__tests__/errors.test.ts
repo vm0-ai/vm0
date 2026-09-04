@@ -34,6 +34,7 @@ describe("formatRunErrorForExternalSurface", () => {
   it.each([
     "Agent execution timed out after 7200 seconds",
     "Agent execution timed out after 1 seconds",
+    "execution: Agent execution timed out after 7200 seconds",
   ])("shows controlled execution timeout errors safely: %s", (error) => {
     expect(
       formatRunErrorForExternalSurface({
@@ -44,6 +45,16 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isAgentExecutionTimeoutRunError(error)).toBe(true);
     expect(isActionableRunError(error)).toBe(true);
     expect(isGenericRunErrorForDisplay(error)).toBe(false);
+  });
+
+  it("uses the structured timeout reason instead of untrusted error text", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: "Contradictory runner failure",
+        failureReason: "execution_timeout",
+      }),
+    ).toBe(CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE);
   });
 
   it("keeps the canonical execution timeout message stable", () => {
@@ -64,6 +75,8 @@ describe("formatRunErrorForExternalSurface", () => {
     "Agent execution timed out after 7200 milliseconds",
     "Agent execution timed out after 7200 seconds while finalizing",
     "Sandbox execution timed out after 7200 seconds",
+    "Execution: Agent execution timed out after 7200 seconds",
+    "execution:  Agent execution timed out after 7200 seconds",
   ])("keeps unrelated execution timeout text generic: %s", (error) => {
     expect(
       formatRunErrorForExternalSurface({

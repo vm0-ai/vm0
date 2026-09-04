@@ -20,6 +20,7 @@ interface TestAppWithRoutesOptions {
 
 interface SetupAppWithRoutesOptions extends TestAppWithRoutesOptions {
   readonly baseUrl?: string;
+  readonly rethrowErrors?: boolean;
   readonly usagePricingResolution?: UsagePricingResolution;
 }
 
@@ -62,6 +63,7 @@ function createAppFetcher(
   context: TestContext,
   routes: readonly RouteEntry[],
   signal?: AbortSignal,
+  rethrowErrors?: boolean,
   usagePricingResolution?: UsagePricingResolution,
 ): ApiFetcher {
   const app = createAppWithRoutes({
@@ -69,6 +71,11 @@ function createAppFetcher(
     routes,
     usagePricingResolution,
   });
+  if (rethrowErrors) {
+    app.onError((error) => {
+      throw error;
+    });
+  }
 
   return (args) => {
     return requestApp(app, args);
@@ -104,9 +111,16 @@ export function setupAppWithRoutes({
   context,
   routes,
   signal,
+  rethrowErrors,
   usagePricingResolution,
 }: SetupAppWithRoutesOptions) {
-  const app = createAppFetcher(context, routes, signal, usagePricingResolution);
+  const app = createAppFetcher(
+    context,
+    routes,
+    signal,
+    rethrowErrors,
+    usagePricingResolution,
+  );
 
   return <TContract extends AppRouter>(
     contract: TContract,

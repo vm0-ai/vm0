@@ -18,6 +18,9 @@ permissions:
   packages: write
   checks: write
 
+env:
+  npm_config_audit: "false"
+
 jobs:
   # A push to main can carry several merge-queue entries at once, so look at every
   # commit subject in the push rather than only the head commit. Without this the
@@ -1474,8 +1477,8 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # The Worker owns the live App routes and direct canary domains. App releases
-  # must wait for the canonical build artifact and API production lifecycle.
+  # The Worker owns the live App routes. App releases must wait for the
+  # canonical build artifact and API production lifecycle.
   promote-app-worker-production:
     needs: [release-please, builds-complete, promote-api-production]
     if: >-
@@ -1643,26 +1646,46 @@ jobs:
       - name: Deploy App Worker production
         env:
           ARTIFACT_SHA: ${{ steps.build-commit.outputs.sha }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
         run: |
           set -euo pipefail
 
           : "${ARTIFACT_SHA:?resolved app build commit SHA is required}"
+          : "${CLERK_PUBLISHABLE_KEY:?production Clerk publishable key is required}"
+          : "${CLERK_SECRET_KEY:?production Clerk secret key is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
           : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+          case "$CLERK_PUBLISHABLE_KEY" in
+            pk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live publishable key" >&2; exit 1 ;;
+          esac
+          case "$CLERK_SECRET_KEY" in
+            sk_live_*) ;;
+            *) echo "App Worker production requires a Clerk live secret key" >&2; exit 1 ;;
+          esac
+
+          umask 077
+          worker_secrets="$(mktemp)"
+          trap 'rm -f "$worker_secrets"' EXIT
+          jq -n '{
+            CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY,
+            CLERK_SECRET_KEY: env.CLERK_SECRET_KEY
+          }' > "$worker_secrets"
+          unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY
 
           cd turbo
           pnpm --filter @okouai/app-worker exec wrangler deploy \
             --env production \
+            --secrets-file "$worker_secrets" \
             --message "app artifact ${ARTIFACT_SHA}"
           cd ..
 
           for mapping in \
             "https://app.vm0.ai|https://api.vm0.ai" \
-            "https://app.okou.ai|https://api.okou.ai" \
-            "https://app-worker.vm0.ai|https://api.vm0.ai" \
-            "https://app-worker.okou.ai|https://api.okou.ai"; do
+            "https://app.okou.ai|https://api.okou.ai"; do
             IFS='|' read -r app_origin api_origin <<< "$mapping"
             cors_result="$(
               curl -fsS \
@@ -1707,10 +1730,6 @@ jobs:
             echo "### Live"
             echo "- https://app.okou.ai"
             echo "- https://app.vm0.ai"
-            echo
-            echo "### Direct canaries"
-            echo "- https://app-worker.okou.ai"
-            echo "- https://app-worker.vm0.ai"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Calculate duration

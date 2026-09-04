@@ -1,14 +1,12 @@
 import { createClerkClient } from "@clerk/backend";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 
 const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
   /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
-const PREVIEW_APP_HOSTNAME_PATTERNS = [
-  /^(staging|pr-[0-9]+)-app\.omby\.ai$/u,
-  /^(staging|pr-[0-9]+)-app-okou-app-preview\.vm0\.workers\.dev$/u,
-];
 const APP_ASSET_PATH_PREFIX = "/okou-app/assets/";
+const APP_BOOTSTRAP_API_PATH = "/api/bootstrap";
 const APP_ASSET_REQUEST_HEADER_NAMES = [
   "Accept",
   "If-Modified-Since",
@@ -18,14 +16,12 @@ const APP_ASSET_REQUEST_HEADER_NAMES = [
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
 const PRODUCTION_API_ORIGINS = new Map([
   ["app.okou.ai", "https://api.okou.ai"],
-  ["app-worker.okou.ai", "https://api.okou.ai"],
   ["app.vm0.ai", "https://api.vm0.ai"],
-  ["app-worker.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const CLERK_EDGE_DEBUG_QUERY_PARAMETER = "__clerk_edge_debug";
-const CLERK_EDGE_DEBUG_TIMEOUT_MS = 1000;
-const CLERK_EDGE_DEBUG_PREVIEW_HOSTNAME_PATTERN =
+const APP_BOOTSTRAP_QUERY_PARAMETER = "__bootstrap";
+const CLERK_EDGE_SESSION_TIMEOUT_MS = 1000;
+const CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN =
   /^pr-[1-9][0-9]*-app-okou-app-preview\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev$/u;
 const SECURITY_HEADERS = {
   "Permissions-Policy":
@@ -52,6 +48,7 @@ const VM0_APP_METADATA = {
     "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
   documentTitle: "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
   openGraphTitle: "VM0 - Your Trustworthy AI Teammate",
+  socialImagePath: "web/og-image.png",
   staticAssetsOrigin: "https://static.vm0.io",
   twitterDescription:
     "VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
@@ -65,6 +62,7 @@ const OKOU_APP_METADATA = {
   documentTitle:
     "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
   openGraphTitle: "Okou - Your Trustworthy AI Teammate",
+  socialImagePath: "web/okou-og-image-373c892e.png",
   staticAssetsOrigin: "https://static.okou.io",
   twitterDescription:
     "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
@@ -87,18 +85,11 @@ function appMetadata(hostname, configuredPublicBrand) {
 }
 
 function apiOrigin(requestUrl) {
-  const productionApiOrigin = PRODUCTION_API_ORIGINS.get(requestUrl.hostname);
-  if (productionApiOrigin) {
-    return productionApiOrigin;
+  const origin = derivePlatformServiceOrigin(requestUrl.origin, "api");
+  if (origin === requestUrl.origin) {
+    throw new Error("App API origin is unavailable");
   }
-
-  for (const pattern of PREVIEW_APP_HOSTNAME_PATTERNS) {
-    const previewApp = pattern.exec(requestUrl.hostname);
-    if (previewApp) {
-      return `https://${previewApp[1]}-api.vm6.ai`;
-    }
-  }
-  throw new Error("Shared-thread API origin is unavailable");
+  return origin;
 }
 
 function setMetaContent(content) {
@@ -213,20 +204,105 @@ function serializeClerkEdgeSession(session) {
     .replaceAll("\u2029", "\\u2029");
 }
 
-function isClerkEdgeDebugRequest(requestUrl, env) {
-  const debugFlags = requestUrl.searchParams.getAll(
-    CLERK_EDGE_DEBUG_QUERY_PARAMETER,
-  );
-  return (
-    requestUrl.protocol === "https:" &&
-    debugFlags.length === 1 &&
-    debugFlags[0] === "1" &&
-    CLERK_EDGE_DEBUG_PREVIEW_HOSTNAME_PATTERN.test(requestUrl.hostname) &&
-    env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
-  );
+function appBootstrapRequestHeaders(request, requestUrl) {
+  const headers = new Headers({
+    Accept: "application/json",
+    Origin: requestUrl.origin,
+  });
+  const cookie = request.headers.get("Cookie");
+  if (cookie !== null) {
+    headers.set("Cookie", cookie);
+  }
+  const bypass =
+    requestUrl.searchParams.get(VERCEL_PROTECTION_BYPASS) ??
+    request.headers.get(VERCEL_PROTECTION_BYPASS);
+  if (bypass !== null) {
+    headers.set(VERCEL_PROTECTION_BYPASS, bypass);
+  }
+  return headers;
 }
 
-async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
+function parseAppBootstrap(value) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !Array.isArray(value.responses)
+  ) {
+    return null;
+  }
+  for (const entry of value.responses) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      entry.method !== "GET" ||
+      typeof entry.path !== "string" ||
+      !entry.path.startsWith("/api/") ||
+      entry.contentType !== "application/json" ||
+      !Object.hasOwn(entry, "body")
+    ) {
+      return null;
+    }
+  }
+  return value.responses;
+}
+
+async function fetchAppBootstrap(request, requestUrl, fetcher) {
+  const url = new URL(APP_BOOTSTRAP_API_PATH, apiOrigin(requestUrl));
+  url.searchParams.set("path", `${requestUrl.pathname}${requestUrl.search}`);
+
+  let response;
+  try {
+    response = await fetcher(url, {
+      headers: appBootstrapRequestHeaders(request, requestUrl),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) {
+    return null;
+  }
+
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  return parseAppBootstrap(body);
+}
+
+function appBootstrapScript(entry) {
+  const path = encodeURIComponent(entry.path);
+  return `<script type="application/json" data-vm0-api-bootstrap="" data-method="GET" data-path="${path}" data-content-type="application/json">${serializeClerkEdgeSession(entry.body)}</script>`;
+}
+
+function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
+  const debugFlags = requestUrl.searchParams.getAll(
+    APP_BOOTSTRAP_QUERY_PARAMETER,
+  );
+  if (
+    requestUrl.protocol !== "https:" ||
+    debugFlags.length !== 1 ||
+    debugFlags[0] !== "1"
+  ) {
+    return null;
+  }
+  if (PRODUCTION_API_ORIGINS.has(requestUrl.hostname)) {
+    return requestUrl.origin;
+  }
+  return CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN.test(
+    requestUrl.hostname,
+  ) && env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
+    ? requestUrl.origin
+    : null;
+}
+
+async function clerkEdgeSession(
+  request,
+  env,
+  authorizedParty,
+  clerkClientFactory,
+) {
   let timeoutId;
   try {
     const publishableKey = env.CLERK_PUBLISHABLE_KEY;
@@ -243,7 +319,7 @@ async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
     const timeout = new Promise((resolve) => {
       timeoutId = globalThis.setTimeout(() => {
         resolve(null);
-      }, CLERK_EDGE_DEBUG_TIMEOUT_MS);
+      }, CLERK_EDGE_SESSION_TIMEOUT_MS);
     });
     const authentication = Promise.resolve().then(() => {
       const clerk = clerkClientFactory({
@@ -253,11 +329,11 @@ async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
       });
       return clerk.authenticateRequest(request, {
         acceptsToken: "session_token",
-        authorizedParties: [env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY],
+        authorizedParties: [authorizedParty],
       });
     });
     const requestState = await Promise.race([authentication, timeout]);
-    // Browser mutations are outside this observation-only diagnostic branch.
+    // App shell session bootstrap must not forward Clerk browser mutations.
     if (
       requestState === null ||
       !requestState.isAuthenticated ||
@@ -286,7 +362,15 @@ async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
   }
 }
 
-function rewriteAppPage(response, metadata, edgeSession) {
+function rewriteAppPage(
+  response,
+  metadata,
+  edgeSessionPromise,
+  request,
+  requestUrl,
+  bootstrapFetcher,
+) {
+  const bootstrapState = { available: false };
   const rewriter = new HTMLRewriter()
     .on("html", setBrandContext(metadata.brandName))
     .on("title", {
@@ -306,7 +390,7 @@ function rewriteAppPage(response, metadata, edgeSession) {
     .on('meta[property="og:description"]', setMetaContent(metadata.description))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on(
       'meta[property="og:image:alt"]',
@@ -322,7 +406,7 @@ function rewriteAppPage(response, metadata, edgeSession) {
     )
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on("head", {
       element(element) {
@@ -340,20 +424,43 @@ function rewriteAppPage(response, metadata, edgeSession) {
       },
     });
   addStaticAssetHandlers(rewriter, metadata);
-  if (edgeSession !== null) {
-    rewriter.on("body", {
-      element(element) {
-        element.append(
-          `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
-          { html: true },
-        );
-      },
-    });
+  if (edgeSessionPromise !== null) {
+    rewriter
+      .on("body", {
+        async element(element) {
+          const edgeSession = await edgeSessionPromise;
+          if (edgeSession === null) {
+            return;
+          }
+          const bootstrap = await fetchAppBootstrap(
+            request,
+            requestUrl,
+            bootstrapFetcher,
+          );
+          if (bootstrap !== null && bootstrap.length > 0) {
+            bootstrapState.available = true;
+            element.prepend(bootstrap.map(appBootstrapScript).join(""), {
+              html: true,
+            });
+          }
+          element.append(
+            `<script type="application/json" id="vm0-clerk-edge-session">${serializeClerkEdgeSession(edgeSession)}</script>`,
+            { html: true },
+          );
+        },
+      })
+      .on("#app-bootstrap-skeleton", {
+        element(element) {
+          if (bootstrapState.available) {
+            element.remove();
+          }
+        },
+      });
   }
   const rewrittenResponse = rewriter.transform(response);
   return noIndexResponse(
     rewrittenResponse,
-    edgeSession === null
+    edgeSessionPromise === null
       ? "public, max-age=0, must-revalidate"
       : "private, no-store",
   );
@@ -399,14 +506,14 @@ function rewriteFound(response, title, canonicalUrl, metadata) {
     .on('meta[property="og:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
     .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on("head", {
       element(element) {
@@ -625,6 +732,7 @@ async function handleRequest(
   requestUrl,
   embeddedShell,
   clerkClientFactory,
+  bootstrapFetcher,
 ) {
   if (
     (request.method === "GET" || request.method === "HEAD") &&
@@ -647,7 +755,7 @@ async function handleRequest(
         return gatewayResponse(503);
       }
       indexHtml = await assetResponse.text();
-      origin = apiOrigin(requestUrl, indexHtml);
+      origin = apiOrigin(requestUrl);
     } catch {
       return gatewayResponse(503);
     }
@@ -726,15 +834,24 @@ async function handleRequest(
   ) {
     return assetResponse;
   }
-  const edgeSession = isClerkEdgeDebugRequest(requestUrl, env)
-    ? await clerkEdgeSession(request, env, requestUrl, clerkClientFactory)
+  const authorizedParty = clerkEdgeSessionAuthorizedParty(requestUrl, env);
+  const edgeSessionPromise = authorizedParty
+    ? clerkEdgeSession(request, env, authorizedParty, clerkClientFactory)
     : null;
-  return rewriteAppPage(assetResponse, metadata, edgeSession);
+  return rewriteAppPage(
+    assetResponse,
+    metadata,
+    edgeSessionPromise,
+    request,
+    requestUrl,
+    bootstrapFetcher,
+  );
 }
 
 export function createWorker(
   embeddedShell,
   clerkClientFactory = createClerkClient,
+  bootstrapFetcher = fetch,
 ) {
   return {
     async fetch(request, env) {
@@ -745,6 +862,7 @@ export function createWorker(
         requestUrl,
         embeddedShell,
         clerkClientFactory,
+        bootstrapFetcher,
       );
       return withAppHeaders(response, requestUrl);
     },

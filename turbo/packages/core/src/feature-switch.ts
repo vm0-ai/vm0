@@ -318,13 +318,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.DesktopScreenRecording]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable Okou Desktop screen recording: native capture, click track, and delivery back into the intro video workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.IosPwaStartupImages]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -341,6 +334,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     // extension is baked into the public artifact URL, so widen only after real
     // downloads confirm the detection agrees with the requested format.
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AvatarComposerV2]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Use the background-free avatar composer for new agents and avatar customization.",
+    enabled: true,
   },
   [FeatureSwitchKey.ChatTranslation]: {
     maintainer: "yuma@vm0.ai",
@@ -392,6 +391,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show live elapsed work status and fold prior assistant output during active and completed chat runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ProgressiveArtifactPreview]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Publish coherent website and HTML presentation previews while the agent continues improving them.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -479,8 +485,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Enable multiple credential accounts per built-in or custom connector.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ComposerConnectorPopoverPlacement]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the composer connector popover collision frame stable while filtering so placement does not flip.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabledEmailHashes: ["9fd4ee92"], // fnv1a("bingjie@vm0.ai")
   },
   [FeatureSwitchKey.FeishuIntegration]: {
     maintainer: "linghan@vm0.ai",

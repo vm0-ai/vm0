@@ -44,7 +44,7 @@ import { SharedDatabaseMessagePortServer } from "./message-port-server.ts";
 import {
   forwardChatThreadReadCursorUpdated$,
   registerConnection$,
-  reloadConnections$,
+  reportWorkerUnavailableForConnections$,
   type WorkerBroadcastMessage,
 } from "./worker-context.ts";
 import {
@@ -134,8 +134,8 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.chatThreadReadCursorUpdated(event.payload);
         return;
       }
-      if (event.type === "reload-required") {
-        this.events.reloadRequired();
+      if (event.type === "worker-unavailable") {
+        this.events.workerUnavailable(event.reason);
         return;
       }
       this.events.statusChanged(event.status);
@@ -274,7 +274,10 @@ export const setupSharedWorkerTestBootstrap$ = command(
           clerk: options.clerk,
           oauthApiBaseUrl: resolveOAuthApiBase(),
           onForceUpgrade: () => {
-            options.workerStore.set(reloadConnections$);
+            options.workerStore.set(
+              reportWorkerUnavailableForConnections$,
+              "force-upgrade-required",
+            );
           },
         },
         signal,
@@ -292,7 +295,7 @@ export const setupSharedWorkerTestBootstrap$ = command(
     let directBridge: DirectSharedDatabaseBridge | null = null;
     let directRealtimeForwardingInstalled = false;
     const host: SharedDatabaseBridgeHost = {
-      createBridge: (_identity, events, _connectionSignal) => {
+      createBridge: (_identity, events, connectionSignal) => {
         let bridge: SharedDatabaseBridge;
         if (options.transport === "message-port") {
           const channel = new MessageChannel();
@@ -301,7 +304,11 @@ export const setupSharedWorkerTestBootstrap$ = command(
             channel.port1,
             signal,
           );
-          bridge = new MessagePortSharedDatabaseBridge(channel.port2, events);
+          bridge = new MessagePortSharedDatabaseBridge(
+            channel.port2,
+            events,
+            connectionSignal,
+          );
         } else {
           if (!directRealtimeForwardingInstalled) {
             subscribeChatDatabaseEvents((message) => {

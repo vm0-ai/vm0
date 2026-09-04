@@ -516,6 +516,7 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
     Ok(vec![
         "npx".to_string(),
         "--yes".to_string(),
+        "--no-audit".to_string(),
         format!("--package={package_url}"),
         "okou".to_string(),
         "__agent-loop".to_string(),

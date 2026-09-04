@@ -867,6 +867,9 @@ pub mod webhooks {
                 /// Session history exceeded its size limit.
                 #[serde(rename = "session_history_limit")]
                 SessionHistoryLimit,
+                /// The run reached its execution time limit.
+                #[serde(rename = "execution_timeout")]
+                ExecutionTimeout,
                 /// The provider account lacks credits.
                 #[serde(rename = "insufficient_credits")]
                 InsufficientCredits,

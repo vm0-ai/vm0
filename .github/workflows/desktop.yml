@@ -40,6 +40,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  npm_config_audit: "false"
+
 jobs:
   detect-desktop-version:
     runs-on: ubuntu-latest

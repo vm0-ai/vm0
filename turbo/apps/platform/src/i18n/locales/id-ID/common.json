@@ -2676,6 +2676,18 @@
         "continueToProvider": "Lanjutkan ke penyedia untuk mengotorisasi akses.",
         "continueWithAutomatic": "Lanjutkan selagi Okou memeriksa cara server MCP ini melakukan autentikasi.",
         "description": "Rahasia Anda dienkripsi saat disimpan dan disisipkan ke permintaan keluar oleh firewall. Rahasia ini tidak pernah diekspos ke agen sebagai variabel lingkungan.",
+        "errors": {
+          "authenticationResponseInvalid": "Server MCP mengembalikan respons autentikasi yang tidak didukung. Periksa endpoint MCP dan konfigurasi autentikasinya, atau hubungi administrator server.",
+          "authorizationUnsupported": "Penyedia OAuth tidak mendukung persyaratan otorisasi yang digunakan oleh autentikasi Otomatis. Gunakan OAuth Kustom hanya jika Anda sudah memiliki kredensial klien yang kompatibel, atau hubungi dukungan Okou.",
+          "bindingChanged": "Otoritas OAuth MCP atau pendaftaran klien telah berubah. Hubungkan kembali akun konektor lalu coba lagi.",
+          "clientRegistrationConflict": "Klien OAuth otomatis yang ada tidak dapat meminta izin yang diperlukan selama masih digunakan oleh akun yang terhubung. Putuskan akun tersebut lalu hubungkan kembali, atau gunakan OAuth Kustom dengan kredensial klien terdaftar.",
+          "clientRegistrationInvalid": "Penyedia OAuth mengembalikan detail pendaftaran klien yang tidak valid. Hubungi administrator server, atau gunakan OAuth Kustom jika Anda sudah memiliki kredensial klien terdaftar yang valid.",
+          "clientRegistrationRejected": "Penyedia OAuth menolak pendaftaran klien otomatis dan mungkin membatasi klien MCP atau metadata pendaftaran yang didukung. Gunakan klien MCP yang didukung penyedia, OAuth Kustom hanya jika Anda sudah memiliki kredensial klien terdaftar, atau hubungi dukungan Okou.",
+          "clientRegistrationUnavailable": "Penyedia OAuth tidak menawarkan metode pendaftaran klien otomatis yang didukung. Gunakan OAuth Kustom jika Anda sudah memiliki kredensial klien terdaftar, atau hubungi dukungan Okou.",
+          "discoveryInvalid": "Metadata discovery OAuth server MCP tidak lengkap atau tidak konsisten. Perbaiki metadata yang dipublikasikan jika Anda mengelola server, atau hubungi administrator server.",
+          "providerUnavailable": "Penyedia OAuth MCP untuk sementara tidak tersedia atau sedang membatasi permintaan. Coba lagi nanti dan periksa ketersediaan penyedia.",
+          "unsafeUrl": "Server MCP memublikasikan URL OAuth yang bukan endpoint HTTPS publik. Perbaiki URL OAuth yang dipublikasikan server sebelum mencoba lagi."
+        },
         "save": "Simpan",
         "saving": "Menyimpan…",
         "title": "Hubungkan {{connector}}"
@@ -5080,7 +5092,7 @@
       },
       "chat": {
         "cloudBrowser": {
-          "description": "Izinkan agen menggunakan browser cloud di chat baru",
+          "description": "Aktifkan browser cloud secara default di chat baru. Anda tetap bisa mengubahnya di chat mana pun.",
           "title": "Browser cloud"
         },
         "description": "Pilih default untuk chat baru dan cara pesan dikirim.",

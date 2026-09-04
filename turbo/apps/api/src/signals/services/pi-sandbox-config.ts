@@ -1,4 +1,8 @@
-import type { PiModelConfigLegacy as PiModelConfig } from "@okouai/api-contracts/contracts/runners";
+import {
+  PI_MODEL_CONFIG_CURRENT_GENERATION,
+  type PiModelConfig,
+  type PiModelConfigLegacy,
+} from "@okouai/api-contracts/contracts/runners";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import {
   getModelProviderPiEndpoint,
@@ -30,11 +34,65 @@ function normalizedBaseUrl(url: string): string {
 
 interface PiRuntimeContract {
   readonly api: "openai-responses";
-  readonly thinkingLevel?: PiModelConfig["thinkingLevel"];
-  readonly serviceTier?: PiModelConfig["serviceTier"];
+  readonly thinkingLevel?: PiModelConfigLegacy["thinkingLevel"];
+  readonly serviceTier?: PiModelConfigLegacy["serviceTier"];
 }
 
 type PiCatalogProvider = "deepseek" | "openai";
+
+const STANDARD_TERRA_API_KEY_PI_ROUTES = {
+  "openai-api-key": {
+    productProviderType: "openai-api-key",
+    provider: "openai",
+    model: "gpt-5.6-terra",
+    endpoint: getModelProviderPiEndpoint("openai-api-key", "openai-responses"),
+    credentialSecretName: "OPENAI_API_KEY",
+  },
+  "openrouter-codex": {
+    productProviderType: "openrouter-codex",
+    provider: "openrouter",
+    model: "openai/gpt-5.6-terra",
+    endpoint: getModelProviderPiEndpoint(
+      "openrouter-codex",
+      "openai-responses",
+    ),
+    credentialSecretName: "OPENROUTER_API_KEY",
+  },
+  "vercel-ai-gateway-codex": {
+    productProviderType: "vercel-ai-gateway-codex",
+    provider: "openai",
+    catalogModel: "gpt-5.6-terra",
+    model: "openai/gpt-5.6-terra",
+    endpoint: getModelProviderPiEndpoint(
+      "vercel-ai-gateway-codex",
+      "openai-responses",
+    ),
+    credentialSecretName: "VERCEL_AI_GATEWAY_API_KEY",
+  },
+} as const;
+
+type StandardTerraApiKeyPiProviderType =
+  keyof typeof STANDARD_TERRA_API_KEY_PI_ROUTES;
+
+export function isStandardTerraApiKeyPiProviderType(
+  value: string | null | undefined,
+): value is StandardTerraApiKeyPiProviderType {
+  return (
+    value !== null &&
+    value !== undefined &&
+    Object.hasOwn(STANDARD_TERRA_API_KEY_PI_ROUTES, value)
+  );
+}
+
+function standardTerraApiKeyPiRoute(
+  value: string | null | undefined,
+):
+  | (typeof STANDARD_TERRA_API_KEY_PI_ROUTES)[StandardTerraApiKeyPiProviderType]
+  | null {
+  return isStandardTerraApiKeyPiProviderType(value)
+    ? STANDARD_TERRA_API_KEY_PI_ROUTES[value]
+    : null;
+}
 
 function piCatalogProvider(
   selectedModel: string | null | undefined,
@@ -112,7 +170,10 @@ export function shouldUsePiExecution(args: {
     isFeatureEnabled(FeatureSwitchKey.CodexFastMode, args.featureSwitchContext);
   const isPiModelProvider =
     isBuiltInModelProviderType(args.modelProviderType) ||
-    args.modelProviderType === "custom-openai-responses";
+    args.modelProviderType === "custom-openai-responses" ||
+    (args.modelProviderType === "codex-oauth-token" && isStandardTerra) ||
+    (standardTerraApiKeyPiRoute(args.modelProviderType) !== null &&
+      isStandardTerra);
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
@@ -128,7 +189,61 @@ interface PiModelProviderConfigInput {
   readonly environment: Record<string, string>;
   readonly selectedModel: string | null;
   readonly inlineFirewall?: boolean;
-  readonly credentialHeader?: PiModelConfig["credentialHeader"];
+  readonly credentialHeader?: PiModelConfigLegacy["credentialHeader"];
+}
+
+function resolveCodexSubscriptionPiModelConfig(
+  provider: PiModelProviderConfigInput,
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
+  if (
+    provider.type !== "codex-oauth-token" ||
+    provider.selectedModel !== "gpt-5.6-terra" ||
+    codexServiceTier !== undefined ||
+    provider.inlineFirewall === true
+  ) {
+    return null;
+  }
+  const endpoint = getModelProviderPiEndpoint(
+    "codex-oauth-token",
+    "openai-codex-responses",
+  );
+  if (!endpoint) {
+    return null;
+  }
+  const config = {
+    schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION,
+    dialect: "openai-codex-responses",
+    transport: "sse",
+    provider: "openai-codex",
+    baseUrl: endpoint.baseUrl,
+    model: "gpt-5.6-terra",
+    thinkingLevel: "low",
+    credentialBindings: [
+      {
+        kind: "access-token",
+        environment: "CHATGPT_ACCESS_TOKEN",
+        secretName: "CHATGPT_ACCESS_TOKEN",
+      },
+      {
+        kind: "account-id",
+        environment: "CHATGPT_ACCOUNT_ID",
+        secretName: "CHATGPT_ACCOUNT_ID",
+      },
+    ],
+  } satisfies PiModelConfig;
+  return isPiAgentModelSupported({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: "sandbox-access-token-placeholder",
+    accountId: "sandbox-account-id-placeholder",
+    dialect: config.dialect,
+    transport: config.transport,
+    thinkingLevel: config.thinkingLevel,
+  })
+    ? config
+    : null;
 }
 
 function resolveCustomGatewayPiModelConfig(
@@ -177,6 +292,68 @@ function resolveCustomGatewayPiModelConfig(
     : null;
 }
 
+function resolveStandardTerraApiKeyPiModelConfig(
+  provider: PiModelProviderConfigInput,
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
+  const route = standardTerraApiKeyPiRoute(provider.type);
+  if (
+    !route ||
+    provider.selectedModel !== "gpt-5.6-terra" ||
+    codexServiceTier !== undefined ||
+    provider.inlineFirewall === true ||
+    provider.credentialHeader !== undefined ||
+    (provider.concreteType !== undefined &&
+      provider.concreteType !== route.productProviderType) ||
+    !route.endpoint ||
+    getSecretNameForType(route.productProviderType) !==
+      route.credentialSecretName ||
+    provider.environment.OPENAI_MODEL !== route.model ||
+    !provider.environment.OPENAI_API_KEY?.trim()
+  ) {
+    return null;
+  }
+  const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
+  if (
+    configuredBaseUrl &&
+    normalizedBaseUrl(configuredBaseUrl) !==
+      normalizedBaseUrl(route.endpoint.baseUrl)
+  ) {
+    return null;
+  }
+  const config = {
+    schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION,
+    dialect: "openai-responses",
+    transport: "sse",
+    provider: route.provider,
+    baseUrl: route.endpoint.baseUrl,
+    model: route.model,
+    ...(route.productProviderType === "vercel-ai-gateway-codex"
+      ? { catalogModel: route.catalogModel }
+      : {}),
+    thinkingLevel: "low",
+    credentialBindings: [
+      {
+        kind: "api-key",
+        environment: "OPENAI_API_KEY",
+        secretName: route.credentialSecretName,
+      },
+    ],
+  } satisfies PiModelConfig;
+  return isPiAgentModelSupported({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    ...(config.catalogModel ? { catalogModel: config.catalogModel } : {}),
+    apiKey: "sandbox-secret",
+    dialect: config.dialect,
+    transport: config.transport,
+    thinkingLevel: config.thinkingLevel,
+  })
+    ? config
+    : null;
+}
+
 export function resolvePiSandboxModelConfig(
   provider: PiModelProviderConfigInput | null,
   codexServiceTier: "fast" | undefined = undefined,
@@ -184,8 +361,14 @@ export function resolvePiSandboxModelConfig(
   if (!provider || !provider.selectedModel) {
     return null;
   }
+  if (provider.type === "codex-oauth-token") {
+    return resolveCodexSubscriptionPiModelConfig(provider, codexServiceTier);
+  }
   if (provider.type === "custom-openai-responses") {
     return resolveCustomGatewayPiModelConfig(provider, codexServiceTier);
+  }
+  if (isStandardTerraApiKeyPiProviderType(provider.type)) {
+    return resolveStandardTerraApiKeyPiModelConfig(provider, codexServiceTier);
   }
   if (provider.inlineFirewall) {
     return null;

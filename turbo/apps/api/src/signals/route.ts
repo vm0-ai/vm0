@@ -1,4 +1,5 @@
 import { authMeRoutes } from "./routes/auth-me";
+import { appBootstrapRoutes } from "./routes/app-bootstrap";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
@@ -197,6 +198,7 @@ import { webFileUrlRoutes } from "./routes/web-file-url";
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
   ...buildInfoRoutes,
+  ...appBootstrapRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,

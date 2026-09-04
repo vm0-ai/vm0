@@ -316,15 +316,15 @@ fn execution_context_validation_ignores_runner_owned_user_env_before_sandbox() {
 }
 
 #[test]
-fn execution_context_validation_checks_arbitrary_vm0_user_env_before_sandbox() {
-    let secret = "ordinary\0vm0-secret";
-    let ctx = context_with_env(HashMap::from([("VM0_PROMPT".into(), secret.into())]));
+fn execution_context_validation_checks_arbitrary_user_env_before_sandbox() {
+    let secret = "ordinary\0user-secret";
+    let ctx = context_with_env(HashMap::from([("CUSTOM_PROMPT".into(), secret.into())]));
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
     assert!(error.contains("user environment"));
     assert!(error.contains("NUL byte"));
-    assert!(error.contains("VM0_PROMPT"));
+    assert!(error.contains("CUSTOM_PROMPT"));
     assert!(!error.contains(secret));
 }
 
@@ -503,7 +503,6 @@ fn build_env_json_required_keys() {
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
     );
-    assert!(!env.contains_key("VM0_PROMPT"));
     // Guest-agent needs these to post /complete with full metadata when
     // checkpoint lands before sandbox teardown.
     assert_eq!(
@@ -601,9 +600,6 @@ fn build_env_json_claude_code_gets_only_claude_framework_env() {
     );
 
     assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
-    assert!(!env.contains_key("VM0_TOOLS"));
-    assert!(!env.contains_key("VM0_SETTINGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert_eq!(payload.disallowed_tools, "CronCreate,CronDelete");
     assert_eq!(payload.tools, "Bash,Edit");
@@ -615,9 +611,6 @@ fn build_env_json_claude_code_gets_only_claude_framework_env() {
 fn build_env_json_codex_gets_only_codex_framework_env() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
-    ctx.tools = Some(vec!["Bash".into(), "Edit".into()]);
-    ctx.settings = Some(r#"{"hooks":{}}"#.into());
 
     let env = build_env_for_test_with_host_env(
         &ctx,
@@ -632,9 +625,6 @@ fn build_env_json_codex_gets_only_codex_framework_env() {
     assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
     assert!(!env.contains_key("USE_MOCK_CLAUDE"));
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
-    assert!(!env.contains_key("VM0_TOOLS"));
-    assert!(!env.contains_key("VM0_SETTINGS"));
 }
 
 #[test]
@@ -657,9 +647,6 @@ fn build_env_json_unknown_framework_preserves_claude_compatible_env() {
 
     assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "custom-agent");
     assert_eq!(env.get("USE_MOCK_CLAUDE").unwrap(), "true");
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
-    assert!(!env.contains_key("VM0_TOOLS"));
-    assert!(!env.contains_key("VM0_SETTINGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert_eq!(payload.disallowed_tools, "CronCreate");
     assert_eq!(payload.tools, "Bash");
@@ -675,7 +662,7 @@ fn platform_environment_claim_filters_reserved_keys_and_applies_trusted_last() {
         ("DUPLICATE".into(), "untrusted".into()),
         ("OKOU_TOKEN".into(), "untrusted-token".into()),
         ("OKOU_FUTURE_PLATFORM_KEY".into(), "untrusted".into()),
-        ("VM0_FUTURE_RUNNER_KEY".into(), "untrusted".into()),
+        ("CUSTOM_USER_KEY".into(), "untrusted".into()),
         (
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV.into(),
             "untrusted-bypass".into(),
@@ -696,7 +683,7 @@ fn platform_environment_claim_filters_reserved_keys_and_applies_trusted_last() {
         HashMap::from([
             ("CUSTOM_ENV".into(), "kept".into()),
             ("DUPLICATE".into(), "trusted".into()),
-            ("VM0_FUTURE_RUNNER_KEY".into(), "untrusted".into()),
+            ("CUSTOM_USER_KEY".into(), "untrusted".into()),
             ("OKOU_TOKEN".into(), "trusted-token".into()),
             ("OKOU_PLATFORM_ONLY".into(), "trusted-platform".into()),
             (
@@ -760,7 +747,7 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
     }
     assert!(is_runner_owned_env_key("OKOU_TOKEN"));
     assert!(is_runner_owned_env_key("OKOU_UNRELATED"));
-    assert!(!is_runner_owned_env_key("VM0_FUTURE_RUNNER_KEY"));
+    assert!(!is_runner_owned_env_key("CUSTOM_ENV"));
 }
 
 #[test]
@@ -800,7 +787,6 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     let env = build_env_for_test(&ctx, "http://localhost");
     let payload = build_run_payload_for_run(&ctx).unwrap();
 
-    assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     assert_eq!(payload.append_system_prompt, "Use terse answers.");
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_RESUME_SESSION_ID_ENV)
@@ -846,8 +832,6 @@ fn build_env_json_with_single_artifact() {
         )],
     });
 
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
     let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
@@ -875,8 +859,6 @@ fn build_env_json_with_artifact_missing_root_policy() {
         artifacts: vec![artifact],
     });
 
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
     let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
@@ -912,8 +894,6 @@ fn build_env_json_with_two_artifacts() {
         ],
     });
 
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.artifacts;
     let parsed: Vec<RunArtifact> = serde_json::from_str(raw).unwrap();
@@ -934,8 +914,6 @@ fn build_env_json_empty_artifacts_emits_no_env_var() {
         artifacts: vec![],
     });
 
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.artifacts.is_empty());
 }
@@ -946,8 +924,6 @@ fn build_env_json_with_secrets() {
     // Raw delimiters in secret values must survive base64 transport.
     ctx.secret_values = Some(vec!["secret1".into(), "secret,with\nnewline".into()]);
 
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_SECRET_VALUES"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let val = &payload.secret_values;
 
@@ -991,7 +967,7 @@ fn build_env_json_user_vars_cannot_override_system() {
     let mut ctx = minimal_context();
     // vars are expanded into environment at compose time, so test via environment
     ctx.environment = Some(HashMap::from([
-        ("VM0_PROMPT".into(), "overridden".into()),
+        ("CUSTOM_PROMPT".into(), "overridden".into()),
         ("CUSTOM".into(), "value".into()),
     ]));
 
@@ -1000,11 +976,11 @@ fn build_env_json_user_vars_cannot_override_system() {
     let user_env = build_user_env_json(&ctx);
     // The private run payload remains authoritative while the same diagnostic
     // label remains visible as an ordinary user environment key.
-    assert!(!env.contains_key("VM0_PROMPT"));
+    assert!(!env.contains_key("CUSTOM_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
     assert!(!env.contains_key("CUSTOM"));
     assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
-    assert_eq!(user_env.get("VM0_PROMPT").unwrap(), "overridden");
+    assert_eq!(user_env.get("CUSTOM_PROMPT").unwrap(), "overridden");
 }
 
 #[tokio::test]
@@ -1118,9 +1094,7 @@ fn build_env_json_empty_secrets_still_has_sandbox_token() {
     let mut ctx = minimal_context();
     ctx.secret_values = Some(vec![]);
 
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_SECRET_VALUES"));
-    // VM0_SECRET_VALUES payload always includes the sandbox token for masking.
+    // The private run payload always includes the sandbox token for masking.
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let val = &payload.secret_values;
     use base64::Engine as _;
@@ -1134,25 +1108,8 @@ fn build_env_json_empty_secrets_still_has_sandbox_token() {
 fn build_env_json_with_append_system_prompt() {
     let mut ctx = minimal_context();
     ctx.append_system_prompt = Some("Your name is Aria.".into());
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert_eq!(payload.append_system_prompt, "Your name is Aria.");
-}
-
-#[test]
-fn build_env_json_without_append_system_prompt() {
-    let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
-}
-
-#[test]
-fn build_env_json_empty_append_system_prompt_omitted() {
-    let mut ctx = minimal_context();
-    ctx.append_system_prompt = Some("".into());
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
 }
 
 #[test]
@@ -1240,6 +1197,11 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["futureFirstTurnField"] =
         json!("first-turn");
     ctx.pi_launch_config.as_mut().unwrap()["apiFirstTurn"]["sandboxEventSequenceStart"] = json!(4);
+    ctx.pi_model_config.as_mut().unwrap()["catalogModel"] = json!("deepseek-v4-flash");
+    ctx.pi_model_config.as_mut().unwrap()["credentialHeader"] = json!({
+        "name": "X-Api-Key",
+        "valueTemplate": "Bearer {{secret}}"
+    });
     ctx.pi_model_config.as_mut().unwrap()["futureModelField"] = json!("model-root");
     let sandbox_id = SandboxId::new_v4().to_string();
     let payload = validate_execution_context_before_sandbox(
@@ -1265,6 +1227,12 @@ fn pi_execution_context_preserves_additive_fields_in_run_payload() {
     assert_eq!(model["provider"], "deepseek");
     assert_eq!(model["apiKeyEnv"], "OPENAI_API_KEY");
     assert_eq!(model["credentialSecretName"], "DEEPSEEK_API_KEY");
+    assert_eq!(model["catalogModel"], "deepseek-v4-flash");
+    assert_eq!(model["credentialHeader"]["name"], "X-Api-Key");
+    assert_eq!(
+        model["credentialHeader"]["valueTemplate"],
+        "Bearer {{secret}}"
+    );
     assert_eq!(model["futureModelField"], "model-root");
 }
 
@@ -1424,6 +1392,121 @@ fn pi_execution_context_rejects_invalid_model_fields_before_sandbox() {
 }
 
 #[test]
+fn pi_execution_context_rejects_invalid_legacy_shared_model_fields_before_sandbox() {
+    let invalid_headers = [
+        (
+            "non-object",
+            json!(null),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "missing name",
+            json!({ "valueTemplate": "Bearer {{secret}}" }),
+            "Pi legacy model config is invalid",
+        ),
+        (
+            "missing value template",
+            json!({ "name": "X-Api-Key" }),
+            "Pi legacy model config is invalid",
+        ),
+        (
+            "invalid name",
+            json!({
+                "name": "1-Api-Key",
+                "valueTemplate": "Bearer {{secret}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "oversized name",
+            json!({
+                "name": "A".repeat(129),
+                "valueTemplate": "Bearer {{secret}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "missing placeholder",
+            json!({ "name": "X-Api-Key", "valueTemplate": "Bearer token" }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "repeated placeholder",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "{{secret}} {{secret}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "other template reference",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "{{secret}} {{future}}"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "carriage return",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "Bearer {{secret}}\rSuffix"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "line feed",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "Bearer {{secret}}\nSuffix"
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "oversized template",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": format!("{}{{{{secret}}}}", "😀".repeat(508))
+            }),
+            "Pi model config credentialHeader",
+        ),
+        (
+            "unknown nested field",
+            json!({
+                "name": "X-Api-Key",
+                "valueTemplate": "Bearer {{secret}}",
+                "futureField": true
+            }),
+            "Pi model config credentialHeader",
+        ),
+    ];
+
+    for (case, header, expected) in invalid_headers {
+        let mut context = pi_context_for_test();
+        context.pi_model_config.as_mut().unwrap()["credentialHeader"] = header;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains(expected),
+            "{case} produced unexpected error: {error}"
+        );
+    }
+
+    for (case, catalog_model) in [("empty", json!("")), ("null", json!(null))] {
+        let mut context = pi_context_for_test();
+        context.pi_model_config.as_mut().unwrap()["catalogModel"] = catalog_model;
+
+        let error = validate_context_for_test(&context).unwrap_err();
+
+        assert!(
+            error.contains("Pi model config catalogModel is invalid"),
+            "{case} catalogModel produced unexpected error: {error}"
+        );
+    }
+}
+
+#[test]
 fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
     for dialect in ["openai-responses", "openai-codex-responses"] {
         let mut context = pi_context_for_test();
@@ -1440,6 +1523,54 @@ fn pi_execution_context_accepts_and_preserves_both_v2_dialects() {
 #[test]
 fn pi_execution_context_rejects_invalid_or_future_v2_routes() {
     let invalid_configs = [
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["baseUrl"] = json!("not a URL");
+                config
+            },
+            "Pi model config baseUrl is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["model"] = json!("");
+                config
+            },
+            "Pi model config model is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["model"] = json!("😀".repeat(257));
+                config
+            },
+            "Pi model config model is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!("");
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!(null);
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
+        (
+            {
+                let mut config = pi_model_config_v2_for_test("openai-responses");
+                config["catalogModel"] = json!("😀".repeat(257));
+                config
+            },
+            "Pi model config catalogModel is invalid",
+        ),
         (
             {
                 let mut config = pi_model_config_v2_for_test("openai-codex-responses");
@@ -1569,7 +1700,7 @@ fn build_env_json_user_timezone_not_override_environment() {
 fn user_env_cannot_override_canonical_or_private_payload() {
     let mut ctx = minimal_context();
     ctx.environment = Some(HashMap::from([
-        ("VM0_PROMPT".into(), "hacked".into()),
+        ("CUSTOM_PROMPT".into(), "hacked".into()),
         ("CUSTOM_API_TOKEN".into(), "user-token".into()),
         ("CUSTOM_ENV".into(), "kept".into()),
     ]));
@@ -1579,7 +1710,7 @@ fn user_env_cannot_override_canonical_or_private_payload() {
     let user_env = build_user_env_json(&ctx);
     // Arbitrary user keys stay isolated from canonical bootstrap and the
     // private run payload while remaining visible as ordinary user env.
-    assert!(!env.contains_key("VM0_PROMPT"));
+    assert!(!env.contains_key("CUSTOM_PROMPT"));
     assert_eq!(payload.prompt, "test prompt");
     assert_eq!(
         env.get(guest_contracts::env::CANONICAL_API_TOKEN_ENV)
@@ -1589,7 +1720,7 @@ fn user_env_cannot_override_canonical_or_private_payload() {
     assert!(!env.contains_key("CUSTOM_API_TOKEN"));
     assert!(!env.contains_key("CUSTOM_ENV"));
     assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
-    assert_eq!(user_env.get("VM0_PROMPT").unwrap(), "hacked");
+    assert_eq!(user_env.get("CUSTOM_PROMPT").unwrap(), "hacked");
     assert_eq!(user_env.get("CUSTOM_API_TOKEN").unwrap(), "user-token");
     assert!(!user_env.contains_key(guest_contracts::env::CANONICAL_API_TOKEN_ENV));
 }
@@ -1740,8 +1871,6 @@ fn execution_context_deserializes_without_firewalls() {
 fn build_env_json_with_disallowed_tools() {
     let mut ctx = minimal_context();
     ctx.disallowed_tools = Some(vec!["CronCreate".into(), "CronDelete".into()]);
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert_eq!(payload.disallowed_tools, "CronCreate,CronDelete");
 }
@@ -1750,8 +1879,6 @@ fn build_env_json_with_disallowed_tools() {
 fn build_env_json_empty_disallowed_tools_omitted() {
     let mut ctx = minimal_context();
     ctx.disallowed_tools = Some(vec![]);
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.disallowed_tools.is_empty());
 }
@@ -1759,8 +1886,6 @@ fn build_env_json_empty_disallowed_tools_omitted() {
 #[test]
 fn build_env_json_no_disallowed_tools() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.disallowed_tools.is_empty());
 }
@@ -1769,8 +1894,6 @@ fn build_env_json_no_disallowed_tools() {
 fn build_env_json_with_tools() {
     let mut ctx = minimal_context();
     ctx.tools = Some(vec!["Bash".into(), "Edit".into()]);
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert_eq!(payload.tools, "Bash,Edit");
 }
@@ -1779,8 +1902,6 @@ fn build_env_json_with_tools() {
 fn build_env_json_empty_tools_omitted() {
     let mut ctx = minimal_context();
     ctx.tools = Some(vec![]);
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.tools.is_empty());
 }
@@ -1788,8 +1909,6 @@ fn build_env_json_empty_tools_omitted() {
 #[test]
 fn build_env_json_no_tools() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.tools.is_empty());
 }
@@ -1847,9 +1966,6 @@ fn build_env_json_codex_ignores_claude_tool_lists() {
     ctx.cli_agent_type = "codex".into();
     ctx.disallowed_tools = Some(vec!["".into()]);
     ctx.tools = Some(vec!["Bash,Read".into()]);
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
-    assert!(!env.contains_key("VM0_TOOLS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.disallowed_tools.is_empty());
     assert!(payload.tools.is_empty());
@@ -1859,8 +1975,6 @@ fn build_env_json_codex_ignores_claude_tool_lists() {
 fn build_env_json_with_settings() {
     let mut ctx = minimal_context();
     ctx.settings = Some(r#"{"hooks":{}}"#.into());
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_SETTINGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert_eq!(payload.settings, r#"{"hooks":{}}"#);
 }
@@ -1869,8 +1983,6 @@ fn build_env_json_with_settings() {
 fn build_env_json_empty_settings_omitted() {
     let mut ctx = minimal_context();
     ctx.settings = Some("".into());
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_SETTINGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.settings.is_empty());
 }
@@ -1878,8 +1990,6 @@ fn build_env_json_empty_settings_omitted() {
 #[test]
 fn build_env_json_no_settings() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_SETTINGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.settings.is_empty());
 }
@@ -1891,8 +2001,6 @@ fn build_env_json_with_feature_flags() {
     flags.insert("computerUse".into(), true);
     flags.insert("audioOutput".into(), false);
     ctx.feature_flags = Some(flags);
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let raw = &payload.feature_flags;
     let parsed: HashMap<String, bool> = serde_json::from_str(raw).unwrap();
@@ -1904,8 +2012,6 @@ fn build_env_json_with_feature_flags() {
 fn build_env_json_empty_feature_flags_omitted() {
     let mut ctx = minimal_context();
     ctx.feature_flags = Some(HashMap::new());
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.feature_flags.is_empty());
 }
@@ -1913,8 +2019,6 @@ fn build_env_json_empty_feature_flags_omitted() {
 #[test]
 fn build_env_json_no_feature_flags() {
     let ctx = minimal_context();
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     assert!(payload.feature_flags.is_empty());
 }
@@ -1933,8 +2037,6 @@ async fn build_env_json_with_memory_as_artifact() {
             "https://example.com/memory.tar.gz",
         )],
     });
-    let env = build_env_for_test(&ctx, "http://localhost");
-    assert!(!env.contains_key("VM0_ARTIFACTS"));
     let payload = build_run_payload_for_run(&ctx).unwrap();
     let artifacts = &payload.artifacts;
     assert!(artifacts.contains("\"memory\""));

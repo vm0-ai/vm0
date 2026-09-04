@@ -1,5 +1,6 @@
 import { delay } from "signal-timers";
 
+import { observeClientOperation } from "../lib/client-telemetry.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
@@ -16,7 +17,10 @@ import type {
   SharedDatabaseQueryResult,
 } from "./data-key.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
-import { SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME } from "./protocol.ts";
+import {
+  SHARED_DATABASE_CLIENT_NOT_CONNECTED_ERROR_NAME,
+  type SharedDatabaseWorkerUnavailableReason,
+} from "./protocol.ts";
 
 const DEFAULT_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -68,7 +72,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
   private connectionController: AbortController | null = null;
   private ownerSignal: AbortSignal | null = null;
   private preparation: Promise<void> | null = null;
-  private reloadRequested = false;
+  private workerUnavailable = false;
 
   constructor(
     private readonly options: SingleConnectionSharedDatabaseBridgeOptions,
@@ -77,8 +81,8 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
       options.controlRequestTimeoutMs ?? DEFAULT_CONTROL_REQUEST_TIMEOUT_MS;
     this.connectionEvents = {
       ...options.events,
-      reloadRequired: () => {
-        this.requestReloadNow();
+      workerUnavailable: (reason) => {
+        this.reportWorkerUnavailable(reason);
       },
     };
   }
@@ -91,7 +95,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     if (this.preparation) {
       return this.preparation;
     }
-    if (this.reloadRequested) {
+    if (this.workerUnavailable) {
       return this.waitForReload(signal);
     }
     const preparation = this.prepareTransport(signal);
@@ -111,9 +115,19 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     signal: AbortSignal,
   ): Promise<SharedDatabaseQueryResult<TKey>> {
     const bridge = this.requireBridge();
-    return await this.runWithReload(() => {
-      return bridge.query(query, signal);
-    }, signal);
+    return await observeClientOperation(
+      {
+        event_name: "shared_database.query",
+        // Dataset kind and consistency are the complete low-cardinality query
+        // shape; cursor and entity identifiers are intentionally omitted.
+        template: `${query.dataKey.kind}.${query.consistency}`,
+      },
+      async () => {
+        return await this.runWithReload(() => {
+          return bridge.query(query, signal);
+        }, signal);
+      },
+    );
   }
 
   async getComputed<TKey extends ComputedKey>(
@@ -163,7 +177,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
     signal: AbortSignal,
   ): Promise<T> {
     signal.throwIfAborted();
-    if (this.reloadRequested) {
+    if (this.workerUnavailable) {
       return await this.waitForReload(signal);
     }
     const work = (async (): Promise<T> => {
@@ -177,7 +191,7 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
       ),
       signal,
     );
-    if (this.reloadRequested) {
+    if (this.workerUnavailable) {
       return await this.waitForReload(signal);
     }
     if (result.ok) {
@@ -190,14 +204,16 @@ export class SingleConnectionSharedDatabaseBridge implements SharedDatabaseBridg
   }
 
   private requestReload(signal: AbortSignal): Promise<never> {
-    this.requestReloadNow();
+    this.reportWorkerUnavailable("worker-load-or-transport-failure");
     return this.waitForReload(signal);
   }
 
-  private requestReloadNow(): void {
-    if (!this.reloadRequested) {
-      this.reloadRequested = true;
-      this.options.events.reloadRequired();
+  private reportWorkerUnavailable(
+    reason: SharedDatabaseWorkerUnavailableReason,
+  ): void {
+    if (!this.workerUnavailable) {
+      this.workerUnavailable = true;
+      this.options.events.workerUnavailable(reason);
     }
   }
 

@@ -2,6 +2,7 @@ use std::fmt;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use tokio::io::AsyncReadExt;
 use tokio::runtime::{Handle, RuntimeFlavor};
 
 use crate::paths::SnapshotOutputPaths;
@@ -116,9 +117,8 @@ pub async fn validate_snapshot_output(
         }
     }
 
-    match tokio::fs::read(&marker).await {
-        Ok(content) if content == SNAPSHOT_COMPLETE_MARKER_CONTENT => {}
-        Ok(_) => return Ok(SnapshotOutputValidation::InvalidCompleteMarker(marker)),
+    let file = match tokio::fs::File::open(&marker).await {
+        Ok(file) => file,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             return Ok(SnapshotOutputValidation::MissingFile(marker));
         }
@@ -129,6 +129,18 @@ pub async fn validate_snapshot_output(
                 e,
             ));
         }
+    };
+    let read_limit = SNAPSHOT_COMPLETE_MARKER_CONTENT.len() + 1;
+    let mut content = Vec::with_capacity(read_limit);
+    if let Err(e) = file.take(read_limit as u64).read_to_end(&mut content).await {
+        return Err(io_error_with_path(
+            "read snapshot complete marker",
+            &marker,
+            e,
+        ));
+    }
+    if content != SNAPSHOT_COMPLETE_MARKER_CONTENT {
+        return Ok(SnapshotOutputValidation::InvalidCompleteMarker(marker));
     }
 
     for artifact in output.required_artifacts() {
@@ -708,6 +720,25 @@ mod tests {
                 .await
                 .expect("validate complete snapshot"),
             SnapshotOutputValidation::Complete
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_snapshot_output_rejects_marker_with_trailing_content() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        let mut marker = SNAPSHOT_COMPLETE_MARKER_CONTENT.to_vec();
+        marker.push(b'x');
+        tokio::fs::write(output.complete_marker(), marker)
+            .await
+            .expect("write marker with trailing content");
+
+        assert_eq!(
+            validate_snapshot_output(&output)
+                .await
+                .expect("validate marker with trailing content"),
+            SnapshotOutputValidation::InvalidCompleteMarker(output.complete_marker())
         );
     }
 

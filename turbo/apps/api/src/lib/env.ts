@@ -154,14 +154,6 @@ const SCHEMA = {
   MICROSOFT_TEAMS_BOT_APP_ID: z.string().min(1).optional(),
   MICROSOFT_TEAMS_BOT_APP_PASSWORD: z.string().min(1).optional(),
   MICROSOFT_TEAMS_APP_TENANT_ID: z.string().min(1).optional(),
-  // Gemini via Vertex AI (Vercel OIDC -> GCP Workload Identity Federation).
-  // Production should use the GCP_* vars; dev/test may use GEMINI_API_KEY.
-  GCP_PROJECT_ID: z.string().min(1).optional(),
-  GCP_PROJECT_NUMBER: z.string().min(1).optional(),
-  GCP_SERVICE_ACCOUNT_EMAIL: z.string().min(1).optional(),
-  GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
-  GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
-  GEMINI_API_KEY: z.string().min(1).optional(),
   CONCURRENT_RUN_LIMIT_CAP: z.coerce.number().int().min(0).optional(),
   PI_MEMORY_STAGE1_IDLE_DELAY_MS: z.coerce
     .number()

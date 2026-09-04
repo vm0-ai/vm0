@@ -148,7 +148,6 @@ interface ComposerWorkflowSignals extends ComposerWorkflowEditorSignals {
 interface ComposerDraftSignals {
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
-  readonly setAgentInstructions$: DraftSignals["setAgentInstructions$"];
   readonly attachments$: Computed<ChatAttachment[]>;
   readonly attachmentUploadsReady$: Computed<boolean>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
@@ -541,7 +540,10 @@ function createComposerVoiceInputSignals(
             );
             await set(draft.save$, signal);
           }),
-          quota.limit === null,
+          {
+            autoSegment: quota.limit === null,
+            autoStopOnSilence: false,
+          },
           {
             started: () => {
               voiceDraftId = set(workflowComposer.voiceDraft.start$);
@@ -578,7 +580,10 @@ function createComposerVoiceInputSignals(
           set(workflowComposer.appendText$, text);
           await set(draft.save$, signal);
         }),
-        quota.limit === null,
+        {
+          autoSegment: quota.limit === null,
+          autoStopOnSilence: true,
+        },
         undefined,
         signal,
       );
@@ -670,7 +675,6 @@ export function createComposerSignals(
     draft: {
       seed$: draft.seed$,
       setDraftInput$: draft.setInput$,
-      setAgentInstructions$: draft.setAgentInstructions$,
       attachments$: draft.attachments$,
       attachmentUploadsReady$: draft.attachmentUploadsReady$,
       uploadAttachment$: draft.uploadAttachment$,
@@ -973,21 +977,11 @@ function createComposerSubmissionSignals(
             return false;
           }
           const videoRunOptions = await set(readVideoRunOptions$, signal);
-          const agentInstructions = get(draft.agentInstructions$)?.trim();
-          const prompt = agentInstructions
-            ? [
-                agentInstructions,
-                "",
-                "<user_request>",
-                visiblePrompt,
-                "</user_request>",
-              ].join("\n")
-            : visiblePrompt;
           return await set(
             options.submitMessage$,
             action,
             {
-              prompt,
+              prompt: visiblePrompt,
               generationTemplate: get(draft.generationTemplate$),
               editorDocument: submission.editorDocument,
               videoRunOptions,

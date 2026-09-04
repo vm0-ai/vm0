@@ -4,7 +4,6 @@ import { createDeferredPromise, onRef } from "../utils.ts";
 import {
   CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  getChatThreadVirtualListScrollMargin,
   type ChatThreadVirtualListScrollAlign,
 } from "../okou-page/sidebar-state.ts";
 import {
@@ -51,10 +50,6 @@ export interface SidebarChatThreadScrollSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly setVirtualListElement$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   readonly scrollToThread$: Command<
     Promise<boolean>,
     [string | ScrollToThreadRequest, AbortSignal]
@@ -92,16 +87,12 @@ function createSidebarChatThreadDomSignals() {
   const internalScrollViewport$ = state<HTMLElement | null>(null);
   const internalScrollMetrics$ =
     state<SidebarChatThreadScrollMetrics>(emptyScrollMetrics());
-  const internalVirtualListElement$ = state<HTMLElement | null>(null);
 
   const scrollViewport$ = computed((get) => {
     return get(internalScrollViewport$);
   });
   const scrollMetrics$ = computed((get) => {
     return get(internalScrollMetrics$);
-  });
-  const virtualListElement$ = computed((get) => {
-    return get(internalVirtualListElement$);
   });
   const isScrolled$ = computed((get) => {
     return get(internalScrollMetrics$).scrollTop > 0;
@@ -145,39 +136,13 @@ function createSidebarChatThreadDomSignals() {
     },
   );
 
-  const bindVirtualListElement$ = command(({ set }, element: HTMLElement) => {
-    set(internalVirtualListElement$, element);
-  });
-  const clearVirtualListElement$ = command(
-    ({ get, set }, element: HTMLElement) => {
-      if (get(internalVirtualListElement$) !== element) {
-        return;
-      }
-      set(internalVirtualListElement$, null);
-    },
-  );
-  const setVirtualListElement$ = onRef(
-    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
-      set(bindVirtualListElement$, element);
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(clearVirtualListElement$, element);
-        },
-        { once: true },
-      );
-    }),
-  );
-
   return {
     isScrolled$,
     thumbStyle$,
     scrollViewport$,
     scrollMetrics$,
-    virtualListElement$,
     setScrollViewport$,
     setScrollMetrics$,
-    setVirtualListElement$,
   };
 }
 
@@ -187,18 +152,15 @@ type SidebarChatThreadDomSignals = ReturnType<
 
 function getFixedVirtualRange({
   itemCount,
-  scrollMargin,
   scrollTop,
   viewportHeight,
 }: {
   itemCount: number;
-  scrollMargin: number;
   scrollTop: number;
   viewportHeight: number;
 }) {
-  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
   const requestedFirstVisibleIndex = Math.floor(
-    localScrollTop / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+    Math.max(0, scrollTop) / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   );
   const visibleCount = Math.max(
     1,
@@ -243,11 +205,6 @@ function createSidebarChatThreadWindowSignal(
     const chatThreads = await get(chatThreads$);
     const scrollViewport = get(dom.scrollViewport$);
     const scrollMetrics = get(dom.scrollMetrics$);
-    const virtualListElement = get(dom.virtualListElement$);
-    const scrollMargin = getChatThreadVirtualListScrollMargin(
-      scrollViewport,
-      virtualListElement,
-    );
     const measuredViewportHeight =
       scrollMetrics.clientHeight || scrollViewport?.clientHeight;
     const viewportHeight =
@@ -255,7 +212,6 @@ function createSidebarChatThreadWindowSignal(
     const scrollTop = scrollViewport?.scrollTop ?? scrollMetrics.scrollTop;
     const { startIndex, endIndex } = getFixedVirtualRange({
       itemCount: chatThreads.length,
-      scrollMargin,
       scrollTop,
       viewportHeight,
     });
@@ -295,21 +251,16 @@ function createScrollVirtualListToIndexCommand(
       }
 
       const scrollViewport = get(dom.scrollViewport$);
-      const virtualListElement = get(dom.virtualListElement$);
-      if (!scrollViewport || !virtualListElement) {
+      if (!scrollViewport) {
         return false;
       }
 
       const currentMetrics = get(dom.scrollMetrics$);
-      const scrollMargin = getChatThreadVirtualListScrollMargin(
-        scrollViewport,
-        virtualListElement,
-      );
       const viewportHeight =
         currentMetrics.clientHeight ||
         scrollViewport.clientHeight ||
         CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-      const rowTop = scrollMargin + index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
+      const rowTop = index * CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
       const rowBottom = rowTop + CHAT_THREAD_VIRTUAL_ROW_HEIGHT;
       const viewportTop = scrollViewport.scrollTop;
       const viewportBottom = viewportTop + viewportHeight;
@@ -388,7 +339,6 @@ function createSidebarChatThreadScrollSignals(): SidebarChatThreadScrollSignals 
     window$: createSidebarChatThreadWindowSignal(dom),
     setScrollMetrics$: dom.setScrollMetrics$,
     setScrollViewport$: dom.setScrollViewport$,
-    setVirtualListElement$: dom.setVirtualListElement$,
     scrollToThread$,
     scrollCurrentChatThreadOnRef$,
   };

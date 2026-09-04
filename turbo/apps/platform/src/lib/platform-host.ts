@@ -1,9 +1,11 @@
 import { staticUrlForPublicBrand } from "@okouai/core/public-brand";
+import {
+  isPlatformProductionHostname,
+  okouAppWorkerPreviewJobRef,
+} from "@okouai/core/platform-service-origin";
 
 type PlatformEnvironment = "development" | "preview" | "production";
 type PlatformPublicBrand = "vm0" | "okou";
-
-export type PlatformService = "api" | "www" | "app" | "platform";
 
 export interface PlatformServiceStatusConfig {
   readonly issuesUrl: string;
@@ -28,21 +30,21 @@ interface PlatformRuntimeConfig {
   readonly vapidPublicKey: string | null;
 }
 
-const PRODUCTION_DOMAIN = "vm0.ai";
+export interface PlatformClientTelemetryConfig {
+  readonly environment: PlatformEnvironment;
+  readonly token: string | null;
+}
+
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
 const OKOU_PREVIEW_DOMAIN = "omby.ai";
-const OKOU_APP_WORKER_PREVIEW_HOST_PATTERN =
-  /^((?:staging|pr-[0-9]+))-app-okou-app-preview\.vm0\.workers\.dev$/u;
 const OKOU_ROOT_DOMAINS = [
   OKOU_PRODUCTION_DOMAIN,
   OKOU_PREVIEW_DOMAIN,
 ] as const;
-const PREVIEW_API_DOMAIN = "vm6.ai";
 const OFFICE_DOCUMENT_VIEWER_BASE_URL =
   "https://view.officeapps.live.com/op/embed.aspx";
 const PRODUCTION_HOSTED_SITE_DOMAINS = ["sites.vm0.io", "okou.app"] as const;
 const PREVIEW_HOSTED_SITE_DOMAINS = ["sites.vm7.io"] as const;
-const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 const PRODUCTION_SERVICE_STATUS_ISSUES_URL =
   "https://api.instatus.com/issues?locale=en&secretToBypassPrivacy=02c0ef5a&host=status.okou.ai";
 const PRODUCTION_SERVICE_STATUS_PAGE_BASE_URL = "https://status.okou.ai";
@@ -64,13 +66,6 @@ export function isOkouHostname(hostname: string): boolean {
     OKOU_ROOT_DOMAINS.some((domain) => {
       return isDomainOrSubdomain(normalizedHostname, domain);
     }) || okouAppWorkerPreviewJobRef(normalizedHostname) !== null
-  );
-}
-
-export function okouAppWorkerPreviewJobRef(hostname: string): string | null {
-  return (
-    OKOU_APP_WORKER_PREVIEW_HOST_PATTERN.exec(hostname.toLowerCase())?.[1] ??
-    null
   );
 }
 
@@ -96,93 +91,6 @@ function resolvePlatformPublicBrand(
   return isOkouHostname(hostname) ? "okou" : "vm0";
 }
 
-export function isOkouProductionHostname(hostname: string): boolean {
-  const normalizedHostname = hostname.toLowerCase();
-  return isDomainOrSubdomain(normalizedHostname, OKOU_PRODUCTION_DOMAIN);
-}
-
-function isProductionHostname(hostname: string): boolean {
-  return (
-    hostname === PRODUCTION_DOMAIN ||
-    hostname.endsWith(`.${PRODUCTION_DOMAIN}`) ||
-    isOkouProductionHostname(hostname)
-  );
-}
-
-export function rewritePlatformHostname(
-  hostname: string,
-  target: PlatformService,
-): string {
-  const labels = hostname.split(".");
-  const serviceLabelIndex = labels.length - 3;
-  if (serviceLabelIndex < 0) {
-    return hostname;
-  }
-
-  const serviceLabel = labels[serviceLabelIndex];
-  if (!serviceLabel) {
-    return hostname;
-  }
-
-  if ((PLATFORM_SERVICE_LABELS as readonly string[]).includes(serviceLabel)) {
-    labels[serviceLabelIndex] = target;
-    return labels.join(".");
-  }
-
-  for (const label of PLATFORM_SERVICE_LABELS) {
-    const suffix = `-${label}`;
-    if (serviceLabel.endsWith(suffix)) {
-      labels[serviceLabelIndex] =
-        `${serviceLabel.slice(0, -label.length)}${target}`;
-      return labels.join(".");
-    }
-  }
-
-  return hostname;
-}
-
-function rewritePreviewServiceHostname(
-  hostname: string,
-  target: PlatformService,
-): string {
-  const workerPreviewJobRef = okouAppWorkerPreviewJobRef(hostname);
-  if (workerPreviewJobRef) {
-    if (target === "app") {
-      return hostname;
-    }
-    const targetDomain =
-      target === "api" ? PREVIEW_API_DOMAIN : OKOU_PREVIEW_DOMAIN;
-    return `${workerPreviewJobRef}-${target}.${targetDomain}`;
-  }
-
-  const rewrittenHostname = rewritePlatformHostname(hostname, target);
-  const okouPreviewSuffix = `.${OKOU_PREVIEW_DOMAIN}`;
-  if (target !== "api" || !rewrittenHostname.endsWith(okouPreviewSuffix)) {
-    return rewrittenHostname;
-  }
-  return `${rewrittenHostname.slice(0, -okouPreviewSuffix.length)}.${PREVIEW_API_DOMAIN}`;
-}
-
-export function derivePlatformServiceOrigin(
-  currentOrigin: string,
-  target: PlatformService,
-): string {
-  const url = new URL(currentOrigin);
-
-  // Production frontends may be served by more than one provider-specific
-  // hostname. Okou keeps its API identity while web and auth services remain
-  // canonical on vm0.ai.
-  const productionDomain =
-    target === "api" && isOkouProductionHostname(url.hostname)
-      ? OKOU_PRODUCTION_DOMAIN
-      : PRODUCTION_DOMAIN;
-  url.hostname = isProductionHostname(url.hostname)
-    ? `${target}.${productionDomain}`
-    : rewritePreviewServiceHostname(url.hostname, target);
-
-  return url.origin;
-}
-
 export function resolvePlatformEnvironment(): PlatformEnvironment {
   const hostname = browserHostname();
   if (!hostname) {
@@ -193,7 +101,7 @@ export function resolvePlatformEnvironment(): PlatformEnvironment {
     return "development";
   }
 
-  return isProductionHostname(hostname) ? "production" : "preview";
+  return isPlatformProductionHostname(hostname) ? "production" : "preview";
 }
 
 function optionalBuildValue(value: unknown): string | null {
@@ -212,8 +120,20 @@ function requiredBuildValue(value: unknown, name: string): string {
   return normalized;
 }
 
-export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
+export function resolvePlatformClientTelemetryConfig(): PlatformClientTelemetryConfig {
   const environment = resolvePlatformEnvironment();
+  return {
+    environment,
+    token:
+      environment === "production"
+        ? optionalBuildValue(import.meta.env.VITE_AXIOM_CLIENT_TELEMETRY_TOKEN)
+        : null,
+  };
+}
+
+export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
+  const clientTelemetryConfig = resolvePlatformClientTelemetryConfig();
+  const { environment } = clientTelemetryConfig;
   const publicBrand = resolvePlatformPublicBrand(browserHostname());
   const publicStaticAssetsBaseUrl = staticUrlForPublicBrand(
     "https://static.vm0.io",

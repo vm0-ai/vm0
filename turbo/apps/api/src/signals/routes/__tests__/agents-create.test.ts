@@ -4,6 +4,11 @@ import {
   agentsByIdContract,
   agentsMainContract,
 } from "@okouai/api-contracts/contracts/agents";
+import {
+  AVATAR_PRESET_COUNT,
+  parseAvatarComposerUrl,
+} from "@okouai/core/agent-avatar";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -17,6 +22,7 @@ import {
 } from "./helpers/api-bdd-auth-org";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createRouteMocks } from "./helpers/route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { agentsRoutes } from "../agents";
 
 const context = testContext();
@@ -138,9 +144,11 @@ describe("POST /api/agents", () => {
     expect(response.body.agentId).toStrictEqual(expect.any(String));
   });
 
-  it("assigns a preset avatar when the request omits one", async () => {
+  it("assigns a composer avatar when its switch is enabled", async () => {
     const fixture = agentsFixture("avatar");
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.AvatarComposerV2]: true,
+    });
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
 
@@ -152,7 +160,29 @@ describe("POST /api/agents", () => {
       [201],
     );
 
-    expect(response.body.avatarUrl).toMatch(/^preset:[0-4]$/);
+    expect(parseAvatarComposerUrl(response.body.avatarUrl)).not.toBeNull();
+  });
+
+  it("assigns a legacy preset when the composer switch is disabled", async () => {
+    const fixture = agentsFixture("legacy-avatar");
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.AvatarComposerV2]: false,
+    });
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Rollback Agent" },
+      }),
+      [201],
+    );
+
+    expect(response.body.avatarUrl).toMatch(/^preset:[0-4]$/u);
+    expect(
+      Number(response.body.avatarUrl?.slice("preset:".length)),
+    ).toBeLessThan(AVATAR_PRESET_COUNT);
   });
 
   it("returns 409 when the public agent limit has been reached", async () => {

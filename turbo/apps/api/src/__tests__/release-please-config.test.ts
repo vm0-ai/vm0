@@ -174,8 +174,6 @@ describe("release-please API deployment graph", () => {
     );
     expect(promoteAppWorkerProductionJob).toContain("app.okou.ai");
     expect(promoteAppWorkerProductionJob).toContain("app.vm0.ai");
-    expect(promoteAppWorkerProductionJob).toContain("app-worker.okou.ai");
-    expect(promoteAppWorkerProductionJob).toContain("app-worker.vm0.ai");
     expect(updateRollbackDashboardJob).toContain(
       "needs.release-please.outputs.app_deploy_required != 'true'",
     );

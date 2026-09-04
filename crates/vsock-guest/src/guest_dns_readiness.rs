@@ -2,9 +2,9 @@ use std::io;
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -15,16 +15,14 @@ use vsock_proto::{
 
 use crate::drain::{BoundedDrainResult, DrainCancellation, drain_bounded_cancellable};
 use crate::error::to_io_error;
-use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::quiesce::OperationGuard;
 use crate::user::apply_command_identity;
 use crate::wait::{
     WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
 };
-use crate::worker_ownership::{
-    ShutdownConnectionOnDrop, SingleActiveAdmission, SingleActivePermit,
-};
+pub(crate) use crate::worker_ownership::LazyConnectionWorkerSubmitError as GuestDnsReadinessSubmitError;
+use crate::worker_ownership::{LazyConnectionWorker, SingleActivePermit};
 use crate::writer::GuestWriter;
 
 const PRODUCTION_PROGRAM: &str = "/usr/bin/getent";
@@ -58,12 +56,6 @@ impl GuestDnsReadinessProgram {
     }
 }
 
-pub(crate) enum GuestDnsReadinessSubmitError {
-    Busy,
-    Disconnected,
-    Start(io::Error),
-}
-
 struct GuestDnsReadinessRequest {
     seq: u32,
     timeout_ms: u32,
@@ -73,16 +65,7 @@ struct GuestDnsReadinessRequest {
 }
 
 pub(crate) struct GuestDnsReadinessWorker {
-    state: Mutex<GuestDnsReadinessWorkerState>,
-    writer: GuestWriter,
-    program: GuestDnsReadinessProgram,
-    admission: SingleActiveAdmission,
-    connection_cancel: Arc<AtomicBool>,
-}
-
-struct GuestDnsReadinessWorkerState {
-    sender: Option<SyncSender<GuestDnsReadinessRequest>>,
-    handle: Option<JoinHandle<()>>,
+    inner: LazyConnectionWorker<GuestDnsReadinessRequest, GuestDnsReadinessProgram>,
 }
 
 impl GuestDnsReadinessWorker {
@@ -92,19 +75,19 @@ impl GuestDnsReadinessWorker {
         program: GuestDnsReadinessProgram,
     ) -> Self {
         Self {
-            state: Mutex::new(GuestDnsReadinessWorkerState {
-                sender: None,
-                handle: None,
-            }),
-            writer,
-            program,
-            admission: SingleActiveAdmission::new(),
-            connection_cancel,
+            inner: LazyConnectionWorker::new(
+                writer,
+                connection_cancel,
+                program,
+                handle_request,
+                THREAD_WORKER,
+                "guest DNS readiness worker",
+            ),
         }
     }
 
     pub(crate) fn try_admit(&self) -> Option<SingleActivePermit> {
-        self.admission.try_acquire()
+        self.inner.try_admit()
     }
 
     pub(crate) fn submit(
@@ -115,65 +98,14 @@ impl GuestDnsReadinessWorker {
         operation_guard: OperationGuard,
         admission: SingleActivePermit,
     ) -> Result<(), GuestDnsReadinessSubmitError> {
-        let sender = self.sender()?;
-        let request = GuestDnsReadinessRequest {
-            seq,
-            timeout_ms,
-            hostname: hostname.to_owned(),
-            operation_guard,
-            admission,
-        };
-        match sender.try_send(request) {
-            Ok(()) => Ok(()),
-            Err(TrySendError::Full(_)) => Err(GuestDnsReadinessSubmitError::Busy),
-            Err(TrySendError::Disconnected(_)) => Err(GuestDnsReadinessSubmitError::Disconnected),
-        }
-    }
-
-    fn sender(&self) -> Result<SyncSender<GuestDnsReadinessRequest>, GuestDnsReadinessSubmitError> {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(sender) = &state.sender {
-            return Ok(sender.clone());
-        }
-
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let writer = self.writer.clone();
-        let worker_cancel = Arc::clone(&self.connection_cancel);
-        let program = self.program.clone();
-        let handle = thread::Builder::new()
-            .name(THREAD_WORKER.to_string())
-            .spawn(move || {
-                let _shutdown_on_exit = ShutdownConnectionOnDrop::new(writer.clone());
-                while let Ok(request) = receiver.recv() {
-                    if let Err(error) = handle_request(request, &writer, &worker_cancel, &program) {
-                        log(
-                            "ERROR",
-                            &format!("guest DNS readiness worker failed: {error}"),
-                        );
-                        break;
-                    }
-                }
+        self.inner
+            .try_submit_with(move || GuestDnsReadinessRequest {
+                seq,
+                timeout_ms,
+                hostname: hostname.to_owned(),
+                operation_guard,
+                admission,
             })
-            .map_err(GuestDnsReadinessSubmitError::Start)?;
-        state.sender = Some(sender.clone());
-        state.handle = Some(handle);
-        Ok(sender)
-    }
-}
-
-impl Drop for GuestDnsReadinessWorker {
-    fn drop(&mut self) {
-        self.connection_cancel.store(true, Ordering::Release);
-        let state = self
-            .state
-            .get_mut()
-            .unwrap_or_else(|error| error.into_inner());
-        drop(state.sender.take());
-        if let Some(handle) = state.handle.take()
-            && handle.join().is_err()
-        {
-            log("ERROR", "guest DNS readiness worker panicked");
-        }
     }
 }
 

@@ -1,5 +1,95 @@
 # Changelog
 
+## [1.545.0](https://github.com/vm0-ai/vm0/compare/api-v1.544.0...api-v1.545.0) (2026-09-04)
+
+
+### Features
+
+* add gpt-6 astra support ([#31558](https://github.com/vm0-ai/vm0/issues/31558)) ([004ea48](https://github.com/vm0-ai/vm0/commit/004ea48590eba7c66af3a9b156e3daba7411793b))
+* **app:** bootstrap first api responses in the app shell ([#31665](https://github.com/vm0-ai/vm0/issues/31665)) ([21e3a85](https://github.com/vm0-ai/vm0/commit/21e3a858cddd1489337cd47dc010dd93fee7cc6d))
+* **pi:** activate Terra API-key routes ([#31717](https://github.com/vm0-ai/vm0/issues/31717)) ([9539c77](https://github.com/vm0-ai/vm0/commit/9539c777bf68f926cb29efc6a6e06e79f3bc1310))
+
+
+### Bug Fixes
+
+* **api:** classify Fal image generation failures ([#31690](https://github.com/vm0-ai/vm0/issues/31690)) ([0faf86b](https://github.com/vm0-ai/vm0/commit/0faf86b5bbd09d2b3480261936e8b3712d443181))
+* **api:** give reasoning-enabled fast-path calls enough token budget ([#31715](https://github.com/vm0-ai/vm0/issues/31715)) ([4dbd97e](https://github.com/vm0-ai/vm0/commit/4dbd97e443a2999e13c4cbf9af31f6454b3dbac7))
+* **chat:** preserve structured runner timeout recovery ([#31711](https://github.com/vm0-ai/vm0/issues/31711)) ([1a6f7d2](https://github.com/vm0-ai/vm0/commit/1a6f7d27e30421af781efa7ac3025e46e39286dd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.402.0
+    * @okouai/core bumped to 8.621.0
+    * @okouai/db bumped to 1.240.5
+    * @okouai/pi-agent-runtime bumped to 1.16.1
+
+## [1.544.0](https://github.com/vm0-ai/vm0/compare/api-v1.543.0...api-v1.544.0) (2026-09-04)
+
+
+### Features
+
+* add avatar composer v2 ([#31526](https://github.com/vm0-ai/vm0/issues/31526)) ([0812c8b](https://github.com/vm0-ai/vm0/commit/0812c8bfb4c4d8a8e416717573a3d5a6609347f8))
+* add progressive artifact preview switch ([#31682](https://github.com/vm0-ai/vm0/issues/31682)) ([8aa24e8](https://github.com/vm0-ai/vm0/commit/8aa24e8b2decb7545ff6bc44c7575bbeac19c188))
+* **core:** roll out connector accounts to all users ([#31608](https://github.com/vm0-ai/vm0/issues/31608)) ([aca7cf7](https://github.com/vm0-ai/vm0/commit/aca7cf7ea9e6a36a37cfedbfcd987394f977add5))
+* **pi:** activate ChatGPT subscription Terra route ([#31586](https://github.com/vm0-ai/vm0/issues/31586)) ([722c869](https://github.com/vm0-ai/vm0/commit/722c869fe1f737b69c5197dee6aa1c005dd594d8))
+* **registry:** pull current presentation templates ([#31614](https://github.com/vm0-ai/vm0/issues/31614)) ([0d9edac](https://github.com/vm0-ai/vm0/commit/0d9edacec1340f700362a7353564bab015c40cf6))
+
+
+### Bug Fixes
+
+* **api:** defer schedule automation threads ([#31601](https://github.com/vm0-ai/vm0/issues/31601)) ([21b99b0](https://github.com/vm0-ai/vm0/commit/21b99b0f115c21ab451c8f200f60c6998ef1c4d5))
+* **api:** require useful recommended follow-ups ([#31611](https://github.com/vm0-ai/vm0/issues/31611)) ([753a510](https://github.com/vm0-ai/vm0/commit/753a510101be913734b267c423d4dac55431a3c9))
+* **api:** retry transient clerk read failures ([#31615](https://github.com/vm0-ai/vm0/issues/31615)) ([9645a0d](https://github.com/vm0-ai/vm0/commit/9645a0d5e3242386bac9d4d2a4093818a6c155af))
+* **api:** set limited-free onboarding credits to 1,000 ([#31622](https://github.com/vm0-ai/vm0/issues/31622)) ([29fd38d](https://github.com/vm0-ai/vm0/commit/29fd38d7d108fda3b27d058433c0f62f808da419))
+* **ci:** repair app worker production promotion ([#31672](https://github.com/vm0-ai/vm0/issues/31672)) ([29317b9](https://github.com/vm0-ai/vm0/commit/29317b9ac9ccd4d72c2fc4da0a465e234acef032))
+* **email:** use workflow display name as result subject ([#31578](https://github.com/vm0-ai/vm0/issues/31578)) ([3af69be](https://github.com/vm0-ai/vm0/commit/3af69be89f11ea6fac27cc52330f567439312bea))
+* keep intro video guidance out of user prompts ([#31673](https://github.com/vm0-ai/vm0/issues/31673)) ([40a2a9d](https://github.com/vm0-ai/vm0/commit/40a2a9d5a99d27eef49fcab8547af52bd43055e0))
+* localize automatic mcp oauth errors ([#31626](https://github.com/vm0-ai/vm0/issues/31626)) ([4420f93](https://github.com/vm0-ai/vm0/commit/4420f93d5ba7aba8c54ab46e0d5305674fb2588a))
+
+
+### Refactoring
+
+* **api:** consolidate openrouter fast-path callers onto the shared helper ([#31653](https://github.com/vm0-ai/vm0/issues/31653)) ([9611380](https://github.com/vm0-ai/vm0/commit/961138077f417c43ce1f23c43cc494b46c8fa3cd)), closes [#31619](https://github.com/vm0-ai/vm0/issues/31619)
+* **api:** remove rollout oauth state fallbacks ([#31609](https://github.com/vm0-ai/vm0/issues/31609)) ([df9f44c](https://github.com/vm0-ai/vm0/commit/df9f44c98af3fa1e063f81bb4902642446b986df))
+* **api:** switch custom oauth state discriminator ([#31547](https://github.com/vm0-ai/vm0/issues/31547)) ([f0cbf9d](https://github.com/vm0-ai/vm0/commit/f0cbf9d82d296bb6cb306c2e6b8942d014ee89af))
+
+
+### Performance Improvements
+
+* **api:** switch the fast-path llm to gemini-3.8-flash with pinned reasoning effort ([#31698](https://github.com/vm0-ai/vm0/issues/31698)) ([a849749](https://github.com/vm0-ai/vm0/commit/a849749df5c93d55c9da477359189d0e316aac97)), closes [#31694](https://github.com/vm0-ai/vm0/issues/31694)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.401.0
+    * @okouai/core bumped to 8.620.0
+    * @okouai/db bumped to 1.240.4
+    * @okouai/pi-agent-runtime bumped to 1.16.0
+
+## [1.543.0](https://github.com/vm0-ai/vm0/compare/api-v1.542.1...api-v1.543.0) (2026-09-04)
+
+
+### Features
+
+* **app:** enable production clerk edge sessions ([#31636](https://github.com/vm0-ai/vm0/issues/31636)) ([367559e](https://github.com/vm0-ai/vm0/commit/367559efb7c8ffeb8d1b9b7bfdd0e2d32b76095c))
+
+## [1.542.1](https://github.com/vm0-ai/vm0/compare/api-v1.542.0...api-v1.542.1) (2026-09-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.400.1
+    * @okouai/core bumped to 8.619.1
+    * @okouai/db bumped to 1.240.3
+    * @okouai/pi-agent-runtime bumped to 1.15.7
+
 ## [1.542.0](https://github.com/vm0-ai/vm0/compare/api-v1.541.1...api-v1.542.0) (2026-09-03)
 
 

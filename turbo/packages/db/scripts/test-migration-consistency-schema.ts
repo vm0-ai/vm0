@@ -53,6 +53,7 @@ import { validateAgentRunMetadataStage2Preflight } from "./test-agent-run-metada
 import {
   validateAgentRunLaunchSnapshotMigration,
   validateAgentRunLaunchSnapshotSchema,
+  validateAgentRunLaunchSnapshotV3Migration,
 } from "./test-agent-run-launch-snapshot";
 import { validateAgentRunOfficialWorkflowProvenanceSchema } from "./test-agent-run-official-workflow-provenance";
 import {
@@ -3774,13 +3775,11 @@ async function validateCustomConnectorOauthModeConstraints(
     manualConnectorId: "72000000-0000-4000-8000-000000000001",
     oauthConnectorId: "72000000-0000-4000-8000-000000000002",
     invalidOauthConnectorId: "72000000-0000-4000-8000-000000000003",
-    invalidCustomConnectorId: "72000000-0000-4000-8000-000000000004",
     automaticConnectorId: "72000000-0000-4000-8000-000000000005",
     automaticAccountId: "72000000-0000-4000-8000-000000000006",
     dcrRegistrationId: "72000000-0000-4000-8000-000000000007",
     otherAutomaticConnectorId: "72000000-0000-4000-8000-000000000008",
     otherAutomaticAccountId: "72000000-0000-4000-8000-000000000009",
-    legacyOauthConnectorId: "72000000-0000-4000-8000-000000000010",
   } as const;
   const insertConnector = `
     INSERT INTO "org_custom_connectors" (
@@ -3838,36 +3837,6 @@ async function validateCustomConnectorOauthModeConstraints(
       'none'
     )
   `;
-  const insertLegacyAutomaticConnector = `
-    INSERT INTO "org_custom_connectors" (
-      "id",
-      "org_id",
-      "slug",
-      "display_name",
-      "fields",
-      "header_injections",
-      "query_injections",
-      "auth_mode",
-      "oauth_setup",
-      "mcp_endpoint",
-      "mcp_transport",
-      "created_by"
-    )
-    VALUES (
-      $1,
-      $2,
-      $3,
-      $4,
-      '[]'::jsonb,
-      '[]'::jsonb,
-      '[]'::jsonb,
-      'automatic',
-      'automatic',
-      'https://mcp.example.test',
-      'streamable-http',
-      $5
-    )
-  `;
   const insertAutomaticConnector = `
     INSERT INTO "org_custom_connectors" (
       "id",
@@ -3896,38 +3865,19 @@ async function validateCustomConnectorOauthModeConstraints(
       $5
     )
   `;
-  const insertCustomConnectorWithoutConfig = `
-    INSERT INTO "org_custom_connectors" (
-      "id",
-      "org_id",
-      "slug",
-      "display_name",
-      "prefix_templates",
-      "fields",
-      "header_injections",
-      "query_injections",
-      "auth_mode",
-      "oauth_setup",
-      "created_by"
-    )
-    VALUES (
-      $1,
-      $2,
-      $3,
-      $4,
-      '["https://api.example.test/"]'::jsonb,
-      '[]'::jsonb,
-      '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
-      '[]'::jsonb,
-      'oauth',
-      'custom',
-      $5
-    )
-  `;
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
   try {
+    const retiredDefinitionColumn = await client.query<{ count: string }>(`
+      SELECT count(*)::text AS "count"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" = 'oauth_setup'
+    `);
+    assert.equal(retiredDefinitionColumn.rows[0]?.count, "0");
+
     await client.query(insertConnector, [
       fixture.manualConnectorId,
       fixture.orgId,
@@ -3951,31 +3901,8 @@ async function validateCustomConnectorOauthModeConstraints(
       fixture.orgId,
     ]);
     await client.query("COMMIT");
-    await client.query(
-      `
-        UPDATE "org_custom_connectors"
-        SET "oauth_setup" = 'custom'
-        WHERE "id" = $1
-      `,
-      [fixture.oauthConnectorId],
-    );
 
-    await client.query("BEGIN");
-    await client.query(insertConnector, [
-      fixture.legacyOauthConnectorId,
-      fixture.orgId,
-      "_migration_legacy_oauth",
-      "Migration Legacy OAuth Connector",
-      "oauth",
-      fixture.createdBy,
-    ]);
-    await client.query(insertOauthConfig, [
-      fixture.legacyOauthConnectorId,
-      fixture.orgId,
-    ]);
-    await client.query("COMMIT");
-
-    await client.query(insertLegacyAutomaticConnector, [
+    await client.query(insertAutomaticConnector, [
       fixture.automaticConnectorId,
       fixture.orgId,
       "_migration_automatic_oauth",
@@ -3989,44 +3916,6 @@ async function validateCustomConnectorOauthModeConstraints(
       "Migration Other Automatic OAuth Connector",
       fixture.createdBy,
     ]);
-    const automaticWriterOverlap = await client.query<{
-      id: string;
-      oauthSetup: string | null;
-    }>(
-      `
-        SELECT "id", "oauth_setup" AS "oauthSetup"
-        FROM "org_custom_connectors"
-        WHERE "id" IN ($1, $2)
-        ORDER BY "id"
-      `,
-      [fixture.automaticConnectorId, fixture.otherAutomaticConnectorId],
-    );
-    assert.deepEqual(automaticWriterOverlap.rows, [
-      { id: fixture.automaticConnectorId, oauthSetup: "automatic" },
-      { id: fixture.otherAutomaticConnectorId, oauthSetup: null },
-    ]);
-
-    await expectDatabaseError(client, {
-      code: "23514",
-      query: `
-        INSERT INTO "org_custom_connectors" (
-          "id", "org_id", "slug", "display_name", "fields",
-          "header_injections", "query_injections", "auth_mode",
-          "oauth_setup", "mcp_endpoint", "mcp_transport", "created_by"
-        ) VALUES (
-          $1, $2, '_migration_legacy_automatic',
-          'Migration Legacy Automatic Connector', '[]'::jsonb,
-          '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb,
-          '[]'::jsonb, 'oauth', 'automatic',
-          'https://mcp.example.test', 'streamable-http', $3
-        )
-      `,
-      values: [
-        fixture.invalidOauthConnectorId,
-        fixture.orgId,
-        fixture.createdBy,
-      ],
-    });
 
     await expectDeferredDatabaseError(client, {
       code: "23514",
@@ -4062,7 +3951,7 @@ async function validateCustomConnectorOauthModeConstraints(
         {
           query: `
             UPDATE "org_custom_connectors"
-            SET "auth_mode" = 'manual', "oauth_setup" = NULL
+            SET "auth_mode" = 'manual'
             WHERE "id" = $1
           `,
           values: [fixture.oauthConnectorId],
@@ -4083,58 +3972,6 @@ async function validateCustomConnectorOauthModeConstraints(
       ],
     });
 
-    // The API version preceding #30487 does not include oauth_setup in this
-    // update. Its exact statement sequence must remain legal after migration.
-    await client.query("BEGIN");
-    await client.query(
-      `
-        UPDATE "org_custom_connectors"
-        SET "auth_mode" = 'manual'
-        WHERE "id" = $1
-      `,
-      [fixture.legacyOauthConnectorId],
-    );
-    await client.query(
-      `
-        DELETE FROM "org_custom_connector_oauth_configs"
-        WHERE "connector_id" = $1
-      `,
-      [fixture.legacyOauthConnectorId],
-    );
-    await client.query("COMMIT");
-    const legacyTransition = await client.query<{
-      authMode: string;
-      oauthSetup: string | null;
-    }>(
-      `
-        SELECT
-          "auth_mode" AS "authMode",
-          "oauth_setup" AS "oauthSetup"
-        FROM "org_custom_connectors"
-        WHERE "id" = $1
-      `,
-      [fixture.legacyOauthConnectorId],
-    );
-    assert.deepEqual(legacyTransition.rows, [
-      { authMode: "manual", oauthSetup: null },
-    ]);
-
-    await expectDeferredDatabaseError(client, {
-      code: "23514",
-      messageIncludes: "custom connector OAuth mode and config do not match",
-      statements: [
-        {
-          query: insertCustomConnectorWithoutConfig,
-          values: [
-            fixture.invalidCustomConnectorId,
-            fixture.orgId,
-            "_migration_invalid_custom_oauth",
-            "Migration Invalid Custom OAuth Connector",
-            fixture.createdBy,
-          ],
-        },
-      ],
-    });
     await expectDeferredDatabaseError(client, {
       code: "23514",
       messageIncludes: "custom connector OAuth mode and config do not match",
@@ -4329,14 +4166,13 @@ async function validateCustomConnectorOauthModeConstraints(
     await client.query(
       `
         DELETE FROM "org_custom_connectors"
-        WHERE "id" IN ($1, $2, $3, $4, $5)
+        WHERE "id" IN ($1, $2, $3, $4)
       `,
       [
         fixture.manualConnectorId,
         fixture.oauthConnectorId,
         fixture.automaticConnectorId,
         fixture.otherAutomaticConnectorId,
-        fixture.legacyOauthConnectorId,
       ],
     );
     const deletedRegistration = await client.query(
@@ -4352,7 +4188,7 @@ async function validateCustomConnectorOauthModeConstraints(
   }
 
   console.log(
-    "   ✅ OAuth and Automatic modes, old-writer transitions, bindings, and cascades preserve strict ownership\n",
+    "   ✅ OAuth and Automatic modes, bindings, and cascades preserve strict ownership\n",
   );
 }
 
@@ -11327,6 +11163,7 @@ async function main(): Promise<void> {
     await validateAgentRunMetadataStage2Final();
     await validateAgentRunMetadataStage2Runner();
     await validateAgentRunLaunchSnapshotMigration();
+    await validateAgentRunLaunchSnapshotV3Migration();
     await validateOfficialAutomationResultEmailMigration();
     await validateFeishuConnectorOwnershipCleanup();
     await validateConnectorAccountExpansion();

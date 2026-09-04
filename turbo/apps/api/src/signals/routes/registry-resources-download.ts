@@ -293,6 +293,94 @@ function archiveFilename(id: string): string {
   return `${id.replace(/[^a-zA-Z0-9._-]/g, "-")}.tar.gz`;
 }
 
+const downloadPresentationTemplateInner$ = computed(async (get) => {
+  const query = get(
+    queryOf(registryResourceDownloadContract.downloadPresentationTemplate),
+  );
+  const entry = findPresentationRunbookResource(query.id);
+  if (!entry || !entry.source.archive) {
+    return notFound(`Presentation template "${query.id}" was not found`);
+  }
+
+  const anchor = resolvePrivateRegistryResourceArchive(
+    query.id,
+    entry.source.archive.sha256,
+    entry.source.archive.sha256,
+  );
+  if (!anchor) {
+    return notFound(`Presentation template "${query.id}" was not found`);
+  }
+
+  const db = get(db$);
+  const [storage] = await db
+    .select({
+      id: storages.id,
+      headVersionId: storages.headVersionId,
+    })
+    .from(storageVersions)
+    .innerJoin(
+      storages,
+      and(
+        eq(storages.id, storageVersions.storageId),
+        eq(storages.name, anchor.storageName),
+      ),
+    )
+    .where(eq(storageVersions.id, anchor.versionId))
+    .limit(1);
+
+  if (!storage?.headVersionId) {
+    return notFound(`Current archive for "${query.id}" was not found`);
+  }
+
+  const [version] = await db
+    .select({
+      versionId: storageVersions.id,
+      s3Key: storageVersions.s3Key,
+      fileCount: storageVersions.fileCount,
+      size: storageVersions.size,
+    })
+    .from(storageVersions)
+    .where(
+      and(
+        eq(storageVersions.storageId, storage.id),
+        eq(storageVersions.id, storage.headVersionId),
+      ),
+    )
+    .limit(1);
+
+  if (!version) {
+    return notFound(`Current archive for "${query.id}" was not found`);
+  }
+
+  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+  if (!bucket) {
+    return storageServiceNotConfigured();
+  }
+
+  const url = await get(
+    generatePresignedGetUrl(
+      bucket,
+      `${version.s3Key}/archive.tar.gz`,
+      DOWNLOAD_URL_TTL_SECONDS,
+      archiveFilename(query.id),
+      true,
+    ),
+  );
+
+  return {
+    status: 200 as const,
+    body: {
+      url,
+      id: entry.id,
+      type: entry.source.archive.type,
+      expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+      versionId: version.versionId,
+      fileCount: version.fileCount,
+      size: Number(version.size),
+    },
+  };
+});
+
 const downloadRegistryResourceInner$ = computed(async (get) => {
   const query = get(queryOf(registryResourceDownloadContract.download));
   const entry = findRegistryResource(query.id);
@@ -362,6 +450,13 @@ const downloadRegistryResourceInner$ = computed(async (get) => {
 });
 
 export const registryResourceDownloadRoutes: readonly RouteEntry[] = [
+  {
+    route: registryResourceDownloadContract.downloadPresentationTemplate,
+    handler: authRoute(
+      { requiredCapability: "file:read" },
+      downloadPresentationTemplateInner$,
+    ),
+  },
   {
     route: registryResourceDownloadContract.download,
     handler: authRoute(
