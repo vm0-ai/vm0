@@ -1,12 +1,66 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
+import { z } from "zod";
 import { onboardingStatus$ } from "./onboarding.ts";
 import { defaultAgentId$, sortedAgents$, subagents$ } from "../agent.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { unreadAgentIds$ } from "../chat-page/chat-thread-indicators-from-worker.ts";
+import { clerk$, currentOrgInfo$, currentUserInfo$ } from "../auth.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
+import { bestEffort, jsonParseOr } from "../utils.ts";
 import {
   updateUserPreference$,
   userPreferences$,
 } from "./settings/user-preferences.ts";
+
+const PINNED_AGENT_PREVIEW_CACHE_VERSION = 1;
+const MAX_CACHED_PINNED_AGENT_PREVIEWS = 100;
+const pinnedAgentPreviewCacheSchema = z
+  .object({
+    version: z.literal(PINNED_AGENT_PREVIEW_CACHE_VERSION),
+    userId: z.string().min(1),
+    orgId: z.string().min(1),
+    defaultAgentId: z.string().nullable(),
+    agents: z
+      .array(
+        z
+          .object({
+            agentId: z.string().min(1),
+            displayName: z.string().nullable(),
+            avatarUrl: z.string().nullable(),
+          })
+          .strict(),
+      )
+      .max(MAX_CACHED_PINNED_AGENT_PREVIEWS),
+  })
+  .strict();
+
+export interface PinnedAgentPreview {
+  readonly agentId: string;
+  readonly displayName: string | null;
+  readonly avatarUrl: string | null;
+}
+
+export interface PinnedAgentPreviewSnapshot {
+  readonly defaultAgentId: string | null;
+  readonly agents: readonly PinnedAgentPreview[];
+}
+
+const {
+  get$: pinnedAgentPreviewCacheRaw$,
+  set$: setPinnedAgentPreviewCacheRaw$,
+} = localStorageSignals("vm0:pinned-agent-preview-cache:v1");
+const pinnedAgentPreviewCacheSyncGeneration$ = state(0);
+
+const parsedPinnedAgentPreviewCache$ = computed((get) => {
+  const raw = get(pinnedAgentPreviewCacheRaw$);
+  if (raw === null) {
+    return null;
+  }
+  const parsed = pinnedAgentPreviewCacheSchema.safeParse(
+    jsonParseOr<unknown>(raw, null),
+  );
+  return parsed.success ? parsed.data : null;
+});
 
 /**
  * Pinned agent IDs fetched from user preferences API.
@@ -53,6 +107,78 @@ export const pinnedAgents$ = computed(async (get) => {
     });
 });
 
+/**
+ * Last authoritative pinned-agent presentation for the active user and org.
+ * This cache intentionally excludes unread state and unread-only agents.
+ */
+export const cachedPinnedAgentPreviewSnapshot$ = computed(async (get) => {
+  const cached = get(parsedPinnedAgentPreviewCache$);
+  if (cached === null) {
+    return null;
+  }
+  const [user, organization] = await Promise.all([
+    get(currentUserInfo$),
+    get(currentOrgInfo$),
+  ]);
+  if (user?.id !== cached.userId || organization?.id !== cached.orgId) {
+    return null;
+  }
+  return {
+    defaultAgentId: cached.defaultAgentId,
+    agents: cached.agents,
+  } satisfies PinnedAgentPreviewSnapshot;
+});
+
+const persistPinnedAgentPreviewCache$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const generation = get(pinnedAgentPreviewCacheSyncGeneration$) + 1;
+    set(pinnedAgentPreviewCacheSyncGeneration$, generation);
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const userId = clerk.user?.id;
+    const orgId = clerk.organization?.id;
+    if (!userId || !orgId) {
+      return;
+    }
+
+    const [agents, defaultAgentId] = await Promise.all([
+      get(pinnedAgents$),
+      get(defaultAgentId$),
+    ]);
+    signal.throwIfAborted();
+    if (
+      get(pinnedAgentPreviewCacheSyncGeneration$) !== generation ||
+      clerk.user?.id !== userId ||
+      clerk.organization?.id !== orgId
+    ) {
+      return;
+    }
+    const serialized = JSON.stringify({
+      version: PINNED_AGENT_PREVIEW_CACHE_VERSION,
+      userId,
+      orgId,
+      defaultAgentId,
+      agents: agents.slice(0, MAX_CACHED_PINNED_AGENT_PREVIEWS).map((agent) => {
+        return {
+          agentId: agent.agentId,
+          displayName: agent.displayName ?? null,
+          avatarUrl: agent.avatarUrl ?? null,
+        };
+      }),
+    });
+    if (get(pinnedAgentPreviewCacheRaw$) !== serialized) {
+      set(setPinnedAgentPreviewCacheRaw$, serialized);
+    }
+  },
+);
+
+/** Refresh the local preview cache without making cache failures user-facing. */
+export const syncPinnedAgentPreviewCache$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await bestEffort(set(persistPinnedAgentPreviewCache$, signal), signal);
+  },
+);
+
 export const displayedPinnedAgents$ = computed(async (get) => {
   const pinnedAgents = await get(pinnedAgents$);
   const unreadAgentIds = await get(unreadAgentIds$);
@@ -95,6 +221,8 @@ export const setAgentPinned$ = command(
     }
 
     await set(updateUserPreference$, { pinnedAgentIds: [...next] }, signal);
+    signal.throwIfAborted();
+    await set(syncPinnedAgentPreviewCache$, signal);
   },
 );
 
@@ -131,6 +259,8 @@ export const movePinnedAgent$ = command(
     next.splice(from, 1);
     next.splice(to, 0, agentId);
     await set(updateUserPreference$, { pinnedAgentIds: next }, signal);
+    signal.throwIfAborted();
+    await set(syncPinnedAgentPreviewCache$, signal);
   },
 );
 

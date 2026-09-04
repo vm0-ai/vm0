@@ -6,6 +6,7 @@ import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 import { reloadAgents$ } from "../../agent.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { syncPinnedAgentPreviewCache$ } from "../pinned-agents.ts";
 
 // ---------------------------------------------------------------------------
 // Delete agent
@@ -36,5 +37,6 @@ export const deleteAgent$ = command(
     // caller navigates away, so reloading it would refetch a deleted agent and
     // surface an "Agent not found" error toast on top of the success toast.
     set(reloadAgents$);
+    await set(syncPinnedAgentPreviewCache$, signal);
   },
 );

@@ -11,6 +11,9 @@ import { setupBillingRealtime$ } from "./okou-page/billing.ts";
 import { subscribePresentationTemplatesChanged$ } from "./okou-page/presentation-template-library.ts";
 import { subscribeCustomConnectorListChanged$ } from "./okou-page/settings/custom-connectors.ts";
 import { bridgeConnected$ } from "./shared-database-bridge-state.ts";
+import { syncPinnedAgentPreviewCache$ } from "./okou-page/pinned-agents.ts";
+import { isOnboardingGuardedPath } from "./okou-page/onboard-guard.ts";
+import { pathname$ } from "./route.ts";
 
 const runAppRealtimeDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -63,8 +66,16 @@ export const setupAuthenticatedBootstrapData$ = command(
     if (!clerk.user || !clerk.organization) {
       return;
     }
+    // Pinned agents depend on onboarding status. Keep exempt bootstrap routes
+    // from expanding the onboarding guard's one-time request boundary.
+    const pinnedAgentPreviewCacheSync = isOnboardingGuardedPath(get(pathname$))
+      ? set(syncPinnedAgentPreviewCache$, signal)
+      : Promise.resolve();
     await get(bridgeConnected$);
     signal.throwIfAborted();
-    await set(subscribeEventDrivenChatThreads$, signal);
+    await Promise.all([
+      pinnedAgentPreviewCacheSync,
+      set(subscribeEventDrivenChatThreads$, signal),
+    ]);
   },
 );

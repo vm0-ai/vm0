@@ -1977,23 +1977,48 @@ html:has(.zero-dialog-overlay)
 /* Workspace card: the routed page is a white sheet laid over the shell's grey
    rather than a white half of the window. The gap runs on all four sides, so
    the chat column's surface continues around the sheet and reads as one frame.
-   Padding insets the content and `inset` insets the paint by the same amount,
-   which is why the sheet needs no clipping: nothing lays out in the gutter, and
-   only the corner triangles could ever escape the radius.
+   Padding insets the content and `inset` insets the paint by the same amount.
+
+   The fill sits on `::before` at `z-index: -1`, so it paints behind content.
+   That is only enough while the corner triangles stay transparent, and a page
+   whose last child is flush with the content box and carries its own opaque
+   background -- the chat composer footer, for one -- squares them off again
+   and hides the border along that edge with them.
+
+   So the two jobs are split. `::before` keeps the fill behind content and
+   nothing else; `::after` owns the border and repaints the gutter over
+   content. The ring spreads by exactly the gap, which is the only region
+   padding already reserves, so it can only ever cover the triangles the radius
+   cuts away. Clipping the card would do the same job and take every popover
+   that has to escape it with it.
+
+   The border belongs to one pseudo-element only. While both drew it, the two
+   0.7px strokes stacked wherever content was transparent and the top corners
+   came out half again as heavy as the bottom ones, which sit over the footer.
 
    Desktop only. Below the sidebar breakpoint the columns are gone and a frame
    would just spend width the page does not have. */
 @media (min-width: 48rem) {
   [data-new-ui] .zero-workspace-card {
     --zero-workspace-card-gap: 8px;
+    --zero-workspace-card-radius: 12px;
     background-color: hsl(var(--sidebar));
     padding: var(--zero-workspace-card-gap);
   }
 
   [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
     inset: var(--zero-workspace-card-gap);
+    border-radius: var(--zero-workspace-card-radius);
+  }
+
+  [data-new-ui] .zero-workspace-card.zero-workspace-bg::after {
+    content: "";
+    position: absolute;
+    inset: var(--zero-workspace-card-gap);
     border: 0.7px solid hsl(var(--border));
-    border-radius: 12px;
+    border-radius: var(--zero-workspace-card-radius);
+    box-shadow: 0 0 0 var(--zero-workspace-card-gap) hsl(var(--sidebar));
+    pointer-events: none;
   }
 }
 

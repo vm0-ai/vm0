@@ -4,6 +4,7 @@ import { apiClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
 import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
+import { syncPinnedAgentPreviewCache$ } from "../pinned-agents.ts";
 
 // ---------------------------------------------------------------------------
 // Settings: update agent metadata (displayName, sound)
@@ -41,5 +42,6 @@ export const updateAgentSettings$ = command(
     set(reloadAgentDetail$);
     set(reloadAgents$);
     set(reloadAgentById$);
+    await set(syncPinnedAgentPreviewCache$, signal);
   },
 );
