@@ -8,7 +8,7 @@ index 3078895bedba898ce26c439b6123425834ca2586..2ad6a42c60d6277dd0ab49c3e972eaa4
          try {
 -            photonModule = await import("@silvia-odwyer/photon-node");
 +            const imported = await import("@silvia-odwyer/photon-node");
-+            photonModule = imported.default ?? imported;
++            photonModule = imported.default;
              return photonModule;
          }
          catch {

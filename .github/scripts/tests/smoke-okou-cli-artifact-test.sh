@@ -16,12 +16,6 @@ tar -czf "$package_path" -C "${tmp_dir}/fixture" package
 cat >"${fixture_bin}/node" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-
-if [[ "${1:-}" == */smoke-okou-cli-image-resize.mjs ]]; then
-  echo "Smoke-tested packaged Pi image resize worker and fallback"
-  exit 0
-fi
-
 exec "$@"
 EOF
 
@@ -48,6 +42,9 @@ if [[ "${EMIT_UNEXPECTED_STDERR:-false}" == "true" &&
 fi
 
 case "$entrypoint:$*" in
+  node:*smoke-okou-cli-image-resize.mjs)
+    echo "Smoke-tested packaged Pi image resize worker and fallback"
+    ;;
   "okou:--help")
     printf 'Usage: okou\nOkou CLI\n'
     ;;

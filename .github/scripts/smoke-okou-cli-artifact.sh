@@ -26,11 +26,6 @@ mkdir -p "$clean_bin"
 ln -s "$node_path" "$clean_bin/node"
 clean_path="${clean_bin}:/usr/bin:/bin"
 
-tar -xzf "$package_path" -C "$tmp_dir"
-"$node_path" \
-  "$script_dir/smoke-okou-cli-image-resize.mjs" \
-  "$tmp_dir/package"
-
 if PATH="$clean_path" command -v zero >/dev/null 2>&1; then
   echo "Clean CLI smoke environment unexpectedly contains zero" >&2
   exit 1
@@ -41,7 +36,10 @@ run_cli() {
   local stdout_file="$2"
   local stderr_file="$3"
   shift 3
-  PATH="$clean_path" npm_config_audit=false "$node_path" "$npx_path" \
+  PATH="$clean_path" \
+    npm_config_audit=false \
+    npm_config_cache="$tmp_dir/npm-cache" \
+    "$node_path" "$npx_path" \
     --yes --package="$package_path" "$entrypoint" "$@" \
     >"$stdout_file" 2>"$stderr_file"
 }
@@ -71,6 +69,15 @@ assert_clean_success() {
     exit 1
   fi
 }
+
+assert_clean_success \
+  node \
+  image-resize \
+  "$script_dir/smoke-okou-cli-image-resize.mjs"
+grep -Fxq \
+  "Smoke-tested packaged Pi image resize worker and fallback" \
+  "$tmp_dir/image-resize.stdout"
+cat "$tmp_dir/image-resize.stdout"
 
 assert_unsupported_entrypoint() {
   local entrypoint="$1"

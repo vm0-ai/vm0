@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
+import { existsSync, realpathSync } from "node:fs";
 import { appendFile, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 
-const packageDirectory = process.argv[2];
-assert(packageDirectory, "CLI package directory is required");
+function resolvePackageDirectory() {
+  const explicitDirectory = process.argv[2];
+  if (explicitDirectory) {
+    return explicitDirectory;
+  }
+
+  const okouExecutable = process.env.PATH?.split(delimiter)
+    .map((directory) => join(directory, "okou"))
+    .find((path) => existsSync(path));
+  assert(okouExecutable, "npx environment is missing the okou executable");
+  return dirname(realpathSync(okouExecutable));
+}
+
+const packageDirectory = resolvePackageDirectory();
 
 const timeout = setTimeout(() => {
   throw new Error("Packaged image resize smoke test timed out");
