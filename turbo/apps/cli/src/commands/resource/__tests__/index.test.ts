@@ -201,12 +201,6 @@ describe("okou resource pull command", () => {
           );
           return HttpResponse.json({
             url: downloadUrl,
-            id,
-            type: "tar.gz",
-            expiresInSeconds: 900,
-            versionId,
-            fileCount: 1,
-            size: 6054,
           });
         },
       ),

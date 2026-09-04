@@ -16,12 +16,6 @@ export const registryResourceDownloadContract = c.router({
     responses: {
       200: z.object({
         url: z.url(),
-        id: z.string(),
-        type: z.literal("tar.gz"),
-        expiresInSeconds: z.number().int().positive(),
-        versionId: z.string(),
-        fileCount: z.number().int().nonnegative(),
-        size: z.number().nonnegative(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
