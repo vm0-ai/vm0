@@ -86,6 +86,11 @@ export interface VoiceRecordingLifecycle {
   readonly fail: () => Promise<void>;
 }
 
+interface VoiceRecordingOptions {
+  readonly autoSegment: boolean;
+  readonly autoStopOnSilence: boolean;
+}
+
 interface VoiceRecordingCompletion {
   readonly finish: () => Promise<void>;
   readonly fail: () => Promise<void>;
@@ -842,6 +847,7 @@ interface VoiceSegmentSessionOptions {
   readonly initialRecorder: MediaRecorder;
   readonly stream: MediaStream;
   readonly autoSegment: boolean;
+  readonly autoStopOnSilence: boolean;
   readonly onSegmentTranscribed: VoiceSegmentTranscribedCallback;
   readonly transcribeBlob: (
     input: TranscribeAudioBlobInput,
@@ -1112,11 +1118,13 @@ function createVoiceSegmentSession(
         if (options.autoSegment && currentSegmentHasVoice) {
           transcriber.enqueueBackgroundSegment("silence", true, true);
         }
-        silenceTimer.start();
+        if (options.autoStopOnSilence) {
+          silenceTimer.start();
+        }
       }
     },
     startSilenceTimeout(): void {
-      if (!currentSegmentHasVoice) {
+      if (options.autoStopOnSilence && !currentSegmentHasVoice) {
         silenceTimer.start();
       }
     },
@@ -1134,7 +1142,7 @@ export const startRecording$ = command(
   async (
     { get, set },
     onSegmentTranscribed: VoiceSegmentTranscribedCallback,
-    autoSegment: boolean,
+    options: VoiceRecordingOptions,
     lifecycle: VoiceRecordingLifecycle | undefined,
     parentSignal: AbortSignal,
   ) => {
@@ -1146,6 +1154,7 @@ export const startRecording$ = command(
       return;
     }
 
+    const { autoSegment, autoStopOnSilence } = options;
     const signal = set(prepareRecordingLifecycle$, parentSignal, lifecycle);
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
@@ -1165,6 +1174,7 @@ export const startRecording$ = command(
           initialRecorder: recorder,
           stream,
           autoSegment,
+          autoStopOnSilence,
           onSegmentTranscribed,
           transcribeBlob: (input, uploadSignal) => {
             return set(transcribeAudioBlob$, input, uploadSignal);
@@ -1254,16 +1264,13 @@ export const startRecording$ = command(
     set(internalAudioActivityMonitor$, audioActivityMonitor);
     set(internalVoiceActivityAvailable$, audioActivityMonitor !== null);
     set(internalVoiceActivityCoversRecording$, voiceActivityReliable);
-    if (voiceActivityReliable) {
+    if (voiceActivityReliable && autoStopOnSilence) {
       silenceStop = createDeferredPromise<void>(signal);
       recordingSession.startSilenceTimeout();
-    } else {
-      return;
+      await silenceStop.promise;
+      signal.throwIfAborted();
+      await set(stopAndTranscribe$, signal);
     }
-
-    await silenceStop.promise;
-    signal.throwIfAborted();
-    await set(stopAndTranscribe$, signal);
   },
 );
 
