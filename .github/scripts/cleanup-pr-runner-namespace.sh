@@ -34,6 +34,17 @@ if [ "$JOB_REF" != "pr-${PR_NUMBER}" ]; then
   exit 2
 fi
 
+if ! pr_state=$(gh api --method GET \
+  "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+  --jq '.state' 2>&1); then
+  echo "failed to resolve current state for PR #${PR_NUMBER}: ${pr_state}" >&2
+  exit 1
+fi
+if [ "$pr_state" != "closed" ]; then
+  echo "refusing to clean runner resources for PR #${PR_NUMBER} in state ${pr_state}" >&2
+  exit 1
+fi
+
 # The outer barrier normally drains every owner before lock acquisition. This
 # second stabilized discovery runs while the host lock is held and aborts
 # instead of waiting if approval raced with that first barrier. Aborting lets
@@ -44,7 +55,7 @@ RUNNER_OWNER_ASSERT_IDLE=true \
 
 exec ansible-playbook \
   -i "${METAL_HOSTS}," \
-  "${REPO_ROOT}/ansible/playbooks/cleanup-turbo-runner.yml" \
+  "${REPO_ROOT}/ansible/playbooks/cleanup-pr-runner.yml" \
   -e "ansible_user=${METAL_USER}" \
   -e "job_ref=${JOB_REF}" \
   -v

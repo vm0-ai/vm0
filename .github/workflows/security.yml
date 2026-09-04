@@ -252,7 +252,8 @@ jobs:
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-release-please-workspace-coverage.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
-            .github/scripts/cleanup-turbo-runner-namespace.sh \
+            .github/scripts/cleanup-pr-runner-namespace.sh \
+            .github/scripts/discover-runner-pr-namespaces.sh \
             .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
@@ -287,6 +288,7 @@ jobs:
             .github/scripts/tests/deploy-desktop-workflow-test.sh \
             .github/scripts/tests/deploy-cli-local-test.sh \
             .github/scripts/tests/deploy-okou-app-worker-workflow-test.sh \
+            .github/scripts/tests/discover-runner-pr-namespaces-test.sh \
             .github/scripts/tests/publish-okou-app-assets-test.sh \
             .github/scripts/tests/verify-okou-app-assets-test.sh \
             .github/scripts/tests/verify-okou-app-runtime-test.sh \
