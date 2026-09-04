@@ -22,7 +22,6 @@ import {
 import { browserContract } from "@okouai/api-contracts/contracts/browser";
 import {
   agentsByIdContract,
-  agentsMainContract,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
@@ -519,23 +518,6 @@ function agentRowByName(container: HTMLElement, name: string): HTMLElement {
   return row;
 }
 
-function openAgentRowMenu(container: HTMLElement, name: string): void {
-  click(
-    within(agentRowByName(container, name)).getByLabelText("Open agent menu"),
-  );
-}
-
-function agentRowActionRootForMenuTrigger(trigger: HTMLElement): HTMLElement {
-  let current = trigger.parentElement;
-  while (current instanceof HTMLElement) {
-    if (current.style.getPropertyValue("--agent-row-trigger-opacity")) {
-      return current;
-    }
-    current = current.parentElement;
-  }
-  throw new Error("Agent row action root not found");
-}
-
 function openThreadMenu(title: string): void {
   click(
     within(threadRowByTitle(title)).getByTestId("chat-thread-menu-trigger"),
@@ -861,7 +843,7 @@ test("Collapse and expand Manage navigation", async () => {
   expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
 });
 
-test("Combine agent, chat-title, and message results in the conversation picker", async () => {
+test("Combine chat-title and message results in workspace search", async () => {
   mockMobileLayout();
   prepareAgents();
   context.mocks.data.agents([
@@ -955,11 +937,20 @@ test("Combine agent, chat-title, and message results in the conversation picker"
   await waitFor(() => {
     expect(mobileSidebar()).toBeInTheDocument();
   });
-  click(within(mobileSidebar()).getByLabelText("Open a conversation"));
+  fireEvent.keyDown(document.body, {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
+  });
 
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
   await fill(
-    within(dialog).getByPlaceholderText("Search agents and chats..."),
+    within(dialog).getByPlaceholderText(
+      "Search chats, messages, workflows, and artifacts...",
+    ),
     "deploy",
   );
 
@@ -974,10 +965,7 @@ test("Combine agent, chat-title, and message results in the conversation picker"
 
   await waitFor(() => {
     expect(within(dialog).queryByText("Searching...")).not.toBeInTheDocument();
-    expect(within(dialog).getAllByText("Deployment notes")).toHaveLength(22);
-    expect(
-      within(dialog).queryByText("Deployment archive"),
-    ).not.toBeInTheDocument();
+    expect(within(dialog).getByText("28 results")).toBeInTheDocument();
   });
   const [highlighted] = within(dialog).getAllByText("deploy");
   if (!highlighted) {
@@ -986,16 +974,14 @@ test("Combine agent, chat-title, and message results in the conversation picker"
   expect(highlighted).toHaveClass("text-foreground");
 
   const results = within(dialog).getAllByRole("option");
-  expect(results).toHaveLength(25);
-  expect(results[0]).toHaveTextContent("Deploy alpha");
-  expect(results[1]).toHaveTextContent("Deploy beta");
-  expect(results[2]).toHaveTextContent("Deployment notes");
-  expect(results[3]).toHaveTextContent("Deployment follow-up");
-  expect(results[4]).toHaveTextContent(
+  expect(results).toHaveLength(28);
+  expect(results[0]).toHaveTextContent("Deployment notes");
+  expect(results[1]).toHaveTextContent("Deployment follow-up");
+  expect(results[2]).toHaveTextContent("Deployment archive");
+  expect(results[3]).toHaveTextContent(
     "Production deploy 1 finished successfully",
   );
-  expect(within(dialog).queryByText("Deploy gamma")).not.toBeInTheDocument();
-  expect(within(dialog).queryByText("Planning deploy")).not.toBeInTheDocument();
+  expect(within(dialog).queryByText("Deploy alpha")).not.toBeInTheDocument();
   const messageResult = highlighted.closest('[role="option"]');
   if (!(messageResult instanceof HTMLElement)) {
     throw new Error("Message search result not found");
@@ -1004,7 +990,9 @@ test("Combine agent, chat-title, and message results in the conversation picker"
 
   await waitFor(() => {
     expect(
-      screen.queryByRole("dialog", { name: "Talk to" }),
+      screen.queryByRole("dialog", {
+        name: "Search chats, messages, workflows, and artifacts...",
+      }),
     ).not.toBeInTheDocument();
     expect(document.title).toBe("Deployment notes | VM0");
   });
@@ -1219,7 +1207,7 @@ test("Filter the chat list to unread conversations", async () => {
   });
 });
 
-test("Find conversations by title in the agent picker", async () => {
+test("Find conversations by title in workspace search", async () => {
   prepareAgents();
   const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
   const researchThread = createThread(RESEARCH_THREAD_ID, "Research kickoff", {
@@ -1251,30 +1239,18 @@ test("Find conversations by title in the agent picker", async () => {
   });
 
   fireEvent.keyDown(document.body, {
-    key: "a",
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
     shiftKey: true,
   });
 
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-  expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
-  expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
-  const search = within(dialog).getByPlaceholderText(
-    "Search agents and chats...",
-  );
-
-  await waitFor(() => {
-    expect(within(dialog).getByText("Incident notes")).toBeInTheDocument();
-    expect(within(dialog).getByText("Support escalation")).toBeInTheDocument();
-    expect(
-      within(agentRowByName(dialog, "Incident notes")).getByLabelText("Unread"),
-    ).toBeInTheDocument();
-    expect(
-      within(agentRowByName(dialog, "Support escalation")).getByLabelText(
-        "Running",
-      ),
-    ).toBeInTheDocument();
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
   });
+  const search = within(dialog).getByPlaceholderText(
+    "Search chats, messages, workflows, and artifacts...",
+  );
 
   await fill(search, "research");
 
@@ -1286,11 +1262,20 @@ test("Find conversations by title in the agent picker", async () => {
   });
 
   await fill(search, "support");
+  await waitFor(() => {
+    expect(
+      within(agentRowByName(dialog, "Support escalation")).getByLabelText(
+        "Running",
+      ),
+    ).toBeInTheDocument();
+  });
   click(within(dialog).getByText("Support escalation"));
 
   await waitFor(() => {
     expect(
-      screen.queryByRole("dialog", { name: "Talk to" }),
+      screen.queryByRole("dialog", {
+        name: "Search chats, messages, workflows, and artifacts...",
+      }),
     ).not.toBeInTheDocument();
     expect(document.title).toBe("Support escalation | VM0");
   });
@@ -1353,9 +1338,10 @@ test("Hide and show the chat list without losing workspace search", async () => 
   const composer = mountedComposer();
   composer.focus();
   const searchEvent = new KeyboardEvent("keydown", {
-    key: "k",
-    code: "KeyK",
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
+    shiftKey: true,
     bubbles: true,
     cancelable: true,
   });
@@ -1678,17 +1664,14 @@ test("Route New chat to the current agent and Chat to the default agent", async 
   });
 });
 
-test("Localize agent navigation and Talk to", async () => {
+test("Localize mobile agent navigation", async () => {
   mockMobileLayout();
   prepareAgents();
-  context.mocks.data.userPreferences({
-    locale: "pt-BR",
-    supportedLocales: ["en-US", "pt-BR"],
-  });
 
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    locale: "pt-BR",
   });
 
   const nav = await waitFor(() => {
@@ -1697,16 +1680,8 @@ test("Localize agent navigation and Talk to", async () => {
     return drawer;
   });
 
-  const openConversation = within(nav).getByLabelText("Abrir uma conversa");
-  expect(openConversation).toBeInTheDocument();
-  click(openConversation);
-
-  const dialog = await screen.findByRole("dialog", {
-    name: "Conversar com",
-  });
-  expect(within(dialog).getByLabelText("Fechar")).toBeInTheDocument();
-  expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
-  expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+  expect(within(nav).getByText("Fixados")).toBeInTheDocument();
+  expect(within(nav).getByText("Zero")).toBeInTheDocument();
 });
 
 test("Localize shell navigation and shortcut help", async () => {
@@ -1720,14 +1695,11 @@ test("Localize shell navigation and shortcut help", async () => {
       chatThreadId: EXISTING_THREAD_ID,
     }),
   ]);
-  context.mocks.data.userPreferences({
-    locale: "pt-BR",
-    supportedLocales: ["en-US", "pt-BR"],
-  });
 
   await setupSidebarPage({
     context,
     path: `/chats/${EXISTING_THREAD_ID}`,
+    locale: "pt-BR",
   });
 
   const rail = await screen.findByTestId("labeled-nav-rail");
@@ -2200,8 +2172,13 @@ test("Navigate pinned agents from the mobile sidebar", async () => {
   });
 });
 
-test("Open and use the agent picker with the keyboard", async () => {
+test("Open and use workspace search with the keyboard", async () => {
   prepareAgents();
+  mockSidebarThreadStory([
+    createThread(INCIDENT_THREAD_ID, "Support escalation", {
+      agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
+    }),
+  ]);
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
@@ -2210,23 +2187,23 @@ test("Open and use the agent picker with the keyboard", async () => {
   });
 
   fireEvent.keyDown(document.body, {
-    key: "a",
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
     shiftKey: true,
   });
 
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
   const search = within(dialog).getByPlaceholderText(
-    "Search agents and chats...",
+    "Search chats, messages, workflows, and artifacts...",
   );
 
   await fill(search, "support");
 
   await waitFor(() => {
-    expect(
-      within(dialog).queryByText("Research Agent"),
-    ).not.toBeInTheDocument();
-    expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support escalation")).toBeInTheDocument();
   });
 
   fireEvent.keyDown(search, { key: "ArrowDown" });
@@ -2234,18 +2211,24 @@ test("Open and use the agent picker with the keyboard", async () => {
 
   await waitFor(() => {
     expect(
-      screen.queryByRole("dialog", { name: "Talk to" }),
+      screen.queryByRole("dialog", {
+        name: "Search chats, messages, workflows, and artifacts...",
+      }),
     ).not.toBeInTheDocument();
-    expect(
-      within(sidebar()).getByText("Chats with Support Agent"),
-    ).toBeInTheDocument();
+    expect(document.title).toBe("Support escalation | VM0");
   });
 });
 
-test("Open keyboard-shortcut help without stacking dialogs", async () => {
+test("Show current shortcuts without stacking help over workspace search", async () => {
   prepareAgents();
 
-  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+    },
+  });
 
   await waitFor(() => {
     expect(sidebar()).toBeInTheDocument();
@@ -2259,6 +2242,8 @@ test("Open keyboard-shortcut help without stacking dialogs", async () => {
   expect(
     within(shortcutDialog).getByText("Show shortcuts"),
   ).toBeInTheDocument();
+  expect(within(shortcutDialog).getByText("Search workspace")).toBeVisible();
+  expect(within(shortcutDialog).getByText("Voice input")).toBeVisible();
   click(within(shortcutDialog).getByLabelText("Close keyboard shortcuts"));
   await waitFor(() => {
     expect(
@@ -2267,13 +2252,15 @@ test("Open keyboard-shortcut help without stacking dialogs", async () => {
   });
 
   fireEvent.keyDown(document.body, {
-    key: "a",
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
     shiftKey: true,
   });
 
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-  expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search chats, messages, workflows, and artifacts...",
+  });
 
   fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
 
@@ -2283,36 +2270,7 @@ test("Open keyboard-shortcut help without stacking dialogs", async () => {
   expect(screen.getAllByRole("dialog")).toStrictEqual([dialog]);
 });
 
-test("Open the agent picker with cached agents while refresh is pending", async () => {
-  mockMobileLayout();
-  const team = prepareAgents();
-  const releaseRefresh = context.mocks.deferred<void>();
-  let initialTeamServed = false;
-  context.mocks.api(agentsMainContract.list, async ({ respond }) => {
-    if (initialTeamServed) {
-      await releaseRefresh.promise;
-    }
-    initialTeamServed = true;
-    return respond(200, team);
-  });
-
-  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
-
-  const sidebar = await waitFor(() => {
-    const currentSidebar = mobileSidebar();
-    expect(pinnedAgentLink(currentSidebar, "Zero")).toBeInTheDocument();
-    return currentSidebar;
-  });
-
-  click(within(sidebar).getByLabelText("Open a conversation"));
-
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-  await expect(
-    within(dialog).findByText("Research Agent"),
-  ).resolves.toBeInTheDocument();
-});
-
-test("Open workspace search from the focused composer", async () => {
+test("Open workspace search once from a focused composer shortcut", async () => {
   prepareAgents();
 
   await setupSidebarPage({
@@ -2323,10 +2281,29 @@ test("Open workspace search from the focused composer", async () => {
   await screen.findByPlaceholderText(PLACEHOLDER);
   const composer = mountedComposer();
   composer.focus();
-  const event = new KeyboardEvent("keydown", {
-    key: "k",
-    code: "KeyK",
+  const repeatedEvent = new KeyboardEvent("keydown", {
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
+    shiftKey: true,
+    repeat: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(repeatedEvent);
+
+  expect(repeatedEvent.defaultPrevented).toBeFalsy();
+  expect(
+    screen.queryByRole("dialog", {
+      name: "Search chats, messages, workflows, and artifacts...",
+    }),
+  ).not.toBeInTheDocument();
+
+  const event = new KeyboardEvent("keydown", {
+    key: "f",
+    code: "KeyF",
+    ctrlKey: true,
+    shiftKey: true,
     bubbles: true,
     cancelable: true,
   });
@@ -2354,9 +2331,10 @@ test("Open workspace search from a mobile viewport", async () => {
   expect(screen.queryByTestId("chat-list-column")).not.toBeInTheDocument();
 
   fireEvent.keyDown(document.body, {
-    key: "k",
-    code: "KeyK",
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
+    shiftKey: true,
   });
 
   const dialog = await screen.findByRole("dialog", {
@@ -2928,9 +2906,10 @@ test("Search and open workflows and artifacts from the shell", async () => {
   });
 
   const searchEvent = new KeyboardEvent("keydown", {
-    key: "k",
-    code: "KeyK",
+    key: "f",
+    code: "KeyF",
     ctrlKey: true,
+    shiftKey: true,
     bubbles: true,
     cancelable: true,
   });
@@ -2953,8 +2932,7 @@ test("Search and open workflows and artifacts from the shell", async () => {
   });
 });
 
-test("Search, pin, and open an agent from the conversation picker", async () => {
-  mockMobileLayout();
+test("Search, pin, and open an agent from the pin manager", async () => {
   prepareAgents();
   const researchThread = createThread(RESEARCH_THREAD_ID, "Research kickoff", {
     agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
@@ -2966,17 +2944,15 @@ test("Search, pin, and open an agent from the conversation picker", async () => 
 
   await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-  const initialSidebar = await waitFor(() => {
-    return mobileSidebar();
-  });
-  click(within(initialSidebar).getByLabelText("Open a conversation"));
+  const grid = await screen.findByTestId("pinned-agents-grid");
+  click(screen.getByLabelText("Pin an agent"));
 
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+  const dialog = await screen.findByRole("dialog", { name: "Pin an agent" });
   expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
   expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
 
   await fill(
-    within(dialog).getByPlaceholderText("Search agents and chats..."),
+    within(dialog).getByPlaceholderText("Search agents..."),
     "support",
   );
 
@@ -2987,10 +2963,7 @@ test("Search, pin, and open an agent from the conversation picker", async () => 
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
-  await fill(
-    within(dialog).getByPlaceholderText("Search agents and chats..."),
-    "ops",
-  );
+  await fill(within(dialog).getByPlaceholderText("Search agents..."), "ops");
 
   await waitFor(() => {
     expect(within(dialog).getByText("No results found")).toBeInTheDocument();
@@ -3003,58 +2976,29 @@ test("Search, pin, and open an agent from the conversation picker", async () => 
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
   });
 
-  openAgentRowMenu(dialog, "Research Agent");
-  click(menuItemByText("Pin to sidebar"));
+  const researchRow = commandItemByText(dialog, "Research Agent");
+  click(buttonByText("Pin", researchRow));
 
   await waitFor(() => {
     expect(
-      within(agentRowByName(dialog, "Research Agent")).getByLabelText(
-        "Open agent menu",
-      ),
+      buttonByText("Unpin", commandItemByText(dialog, "Research Agent")),
     ).toBeInTheDocument();
-    expect(
-      within(initialSidebar).getByText("Research Agent"),
-    ).toBeInTheDocument();
+    expect(pinnedAgentNames(grid)).toContain("Research Agent");
   });
 
-  openAgentRowMenu(dialog, "Research Agent");
-  click(menuItemByText("Unpin"));
-
+  click(within(dialog).getByLabelText("Close"));
   await waitFor(() => {
     expect(
-      within(initialSidebar).queryByText("Research Agent"),
+      screen.queryByRole("dialog", { name: "Pin an agent" }),
     ).not.toBeInTheDocument();
   });
-
-  openAgentRowMenu(dialog, "Research Agent");
-  click(menuItemByText("Pin to sidebar"));
+  click(pinnedAgentLink(grid, "Research Agent"));
 
   await waitFor(() => {
     expect(
-      within(agentRowByName(dialog, "Research Agent")).getByLabelText(
-        "Open agent menu",
-      ),
+      within(sidebar()).getByText("Chats with Research Agent"),
     ).toBeInTheDocument();
-    expect(
-      within(initialSidebar).getByText("Research Agent"),
-    ).toBeInTheDocument();
-  });
-
-  click(within(dialog).getByRole("option", { name: /Research Agent/ }));
-
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("dialog", { name: "Talk to" }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(initialSidebar).getByText("Chats with Research Agent"),
-    ).toBeInTheDocument();
-    expect(
-      within(initialSidebar).getByText("Research kickoff"),
-    ).toBeInTheDocument();
-    expect(
-      within(initialSidebar).queryByText("New chat"),
-    ).not.toBeInTheDocument();
+    expect(within(sidebar()).getByText("Research kickoff")).toBeInTheDocument();
   });
 });
 
@@ -3106,9 +3050,6 @@ test("Search workspace chats and messages", async () => {
   const dialog = await screen.findByRole("dialog", {
     name: "Search chats, messages, workflows, and artifacts...",
   });
-  expect(
-    screen.queryByRole("dialog", { name: "Talk to" }),
-  ).not.toBeInTheDocument();
   await fill(
     within(dialog).getByPlaceholderText(
       "Search chats, messages, workflows, and artifacts...",
@@ -3167,7 +3108,7 @@ test("Search workspace chats and messages", async () => {
   });
 });
 
-test("Show agent unread status and contextual actions", async () => {
+test("Show unread agents and contextual actions in the pinned section", async () => {
   mockMobileLayout();
   prepareAgents();
   context.mocks.data.userPreferences({
@@ -3219,45 +3160,6 @@ test("Show agent unread status and contextual actions", async () => {
   expect(menuItemByText("Unpin")).toBeInTheDocument();
   fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
 
-  click(within(nav).getByLabelText("Open a conversation"));
-  const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-  const researchDialogRow = agentRowByName(dialog, "Research Agent");
-  const supportDialogRow = agentRowByName(dialog, "Support Agent");
-  expect(
-    within(researchDialogRow).queryByLabelText("Reorder Research Agent"),
-  ).not.toBeInTheDocument();
-  const researchDialogUnread =
-    within(researchDialogRow).getByLabelText("Unread");
-  const supportDialogUnread = within(supportDialogRow).getByLabelText("Unread");
-  expect(researchDialogUnread).toBeInTheDocument();
-  expect(researchDialogUnread).toBeVisible();
-  expect(supportDialogUnread).toBeInTheDocument();
-  expect(supportDialogUnread).toBeVisible();
-  expect(
-    within(supportDialogRow).queryByLabelText("Pin to sidebar"),
-  ).not.toBeInTheDocument();
-
-  const supportMenuTrigger =
-    within(supportDialogRow).getByLabelText("Open agent menu");
-  const supportActionRoot =
-    agentRowActionRootForMenuTrigger(supportMenuTrigger);
-  fireEvent.pointerEnter(supportActionRoot);
-  expect(supportDialogUnread).not.toBeVisible();
-  fireEvent.pointerLeave(supportActionRoot);
-  expect(supportDialogUnread).toBeVisible();
-
-  click(supportMenuTrigger);
-  expect(supportDialogUnread).not.toBeVisible();
-  expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
-  click(supportMenuTrigger);
-  await waitFor(() => {
-    expect(screen.queryByText("Pin to sidebar")).not.toBeInTheDocument();
-  });
-  fireEvent.pointerLeave(supportActionRoot);
-  await waitFor(() => {
-    expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
-  });
-
   unreadAgentIds = [SUPPORT_AGENT_ID];
   changeChatThreadReadCursor({
     agentId: RESEARCH_AGENT_ID,
@@ -3270,13 +3172,6 @@ test("Show agent unread status and contextual actions", async () => {
     expect(
       within(supportSidebarRow).getByLabelText("Unread"),
     ).toBeInTheDocument();
-    expect(
-      within(researchDialogRow).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(supportDialogRow).getByLabelText("Unread"),
-    ).toBeInTheDocument();
-    expect(within(supportDialogRow).getByLabelText("Unread")).toBeVisible();
   });
 });
 
@@ -3536,7 +3431,10 @@ test("Show the three-column chat navigation and actions", async () => {
   const threadNewChat = within(chatThreadsTitle.parentElement).getByLabelText(
     "New chat",
   );
-  expect(searchButton).toHaveAttribute("aria-keyshortcuts", "Meta+K Control+K");
+  expect(searchButton).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Meta+Shift+F Control+Shift+F",
+  );
   expect(headerNewChat.querySelector(".lucide-square-pen")).toBeInTheDocument();
   expect(threadNewChat.querySelector(".lucide-plus")).toBeInTheDocument();
   expect(

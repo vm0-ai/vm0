@@ -1,13 +1,14 @@
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import {
+  assistantEvent,
   context,
   findButton,
   installRunChat,
@@ -136,7 +137,61 @@ test("Add voice transcription to the current message draft", async () => {
   await expect(findButton("Voice input")).resolves.toBeEnabled();
 });
 
-test("Polish a voice draft into the user's current selection", async () => {
+test("Toggle voice input from the focused composer shortcut", async () => {
+  context.mocks.browser.voiceInput({ rms: 0.12 });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/stt", () => {
+    return HttpResponse.json({ text: "Shortcut voice note" });
+  });
+  installRunChat();
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerVoiceInputShortcut]: true,
+    },
+  });
+
+  const voiceInput = await readyVoiceInput();
+  expect(voiceInput).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Meta+Shift+E Control+Shift+E",
+  );
+  const composer = currentComposer();
+  composer.focus();
+
+  const startEvent = new KeyboardEvent("keydown", {
+    key: "e",
+    code: "KeyE",
+    ctrlKey: true,
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  composer.dispatchEvent(startEvent);
+
+  expect(startEvent.defaultPrevented).toBeTruthy();
+  const stopRecording = await activeVoiceStopButton();
+  expect(stopRecording).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Meta+Shift+E Control+Shift+E",
+  );
+
+  fireEvent.keyDown(currentComposer(), {
+    key: "e",
+    code: "KeyE",
+    ctrlKey: true,
+    shiftKey: true,
+  });
+
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe("Shortcut voice note");
+  });
+  await expect(findButton("Voice input")).resolves.toBeEnabled();
+});
+
+test("Polish a voice draft using the latest assistant reply", async () => {
   const polishStarted = context.mocks.deferred<void>();
   const polishReady = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({ rms: 0.12 });
@@ -147,12 +202,28 @@ test("Polish a voice draft into the user's current selection", async () => {
   context.mocks.api(voiceIoPolishContract.post, async ({ body, respond }) => {
     expect(body).toStrictEqual({
       text: "um send the launch update tomorrow",
+      lastAssistantMessage: "Use LaunchPad for the rollout.",
     });
     polishStarted.resolve(undefined);
     await polishReady.promise;
     return respond(200, { text: "Send the launch update tomorrow." });
   });
-  installRunChat();
+  installRunChat({
+    chatEvents: [
+      assistantEvent({
+        id: "earlier-assistant-reply",
+        runId: "run-voice-context",
+        seqId: 1,
+        text: "Use the earlier project name.",
+      }),
+      assistantEvent({
+        id: "latest-assistant-reply",
+        runId: "run-voice-context",
+        seqId: 2,
+        text: "Use LaunchPad for the rollout.",
+      }),
+    ],
+  });
 
   await setupPage({
     context,

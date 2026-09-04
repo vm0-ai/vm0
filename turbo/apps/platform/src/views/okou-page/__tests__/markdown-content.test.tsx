@@ -138,14 +138,18 @@ test("A complete HEX color has a preview in a plain assistant response", async (
   expect(markdownFrameFor(preview)).toHaveTextContent(source);
 });
 
-test("Rich Markdown previews colors without decorating links or code", async () => {
+test("Preview exact inline HEX code without decorating linked or partial code", async () => {
   const chat = createMarkdownChatFixture(context);
   const source = [
     "**Brand #112233**",
     "",
-    "[`#445566`](https://example.com/palette) and `#778899`",
+    "[`#445566`](https://example.com/palette) and `#778899` and `color: #AABBCC`",
     "",
     "Incomplete #AABB and embedded shade#DDEEFFtail",
+    "",
+    "```css",
+    "#123456",
+    "```",
   ].join("\n");
   const rows = completedMessageRows(chat, source);
   chat.install({
@@ -164,16 +168,19 @@ test("Rich Markdown previews colors without decorating links or code", async () 
   const brand = await screen.findByText("Brand #112233");
   const frame = markdownFrameFor(brand);
   await waitFor(() => {
-    expect(colorPreviews(frame)).toHaveLength(1);
+    expect(colorPreviews(frame)).toHaveLength(2);
   });
-  expect(colorPreviews(frame)[0]).toHaveAttribute(
-    "data-markdown-color-preview",
-    "#112233",
-  );
+  expect(
+    colorPreviews(frame).map((preview) => {
+      return preview.dataset.markdownColorPreview;
+    }),
+  ).toStrictEqual(["#112233", "#778899"]);
   expect(frame).toHaveTextContent("#445566");
   expect(frame).toHaveTextContent("#778899");
+  expect(frame).toHaveTextContent("color: #AABBCC");
   expect(frame).toHaveTextContent("#AABB");
   expect(frame).toHaveTextContent("shade#DDEEFFtail");
+  expect(frame).toHaveTextContent("#123456");
 });
 
 test("HEX colors remain undecorated when previews are unavailable", async () => {
