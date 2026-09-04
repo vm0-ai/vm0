@@ -765,7 +765,7 @@ describe("okou workflow automations", () => {
   });
 
   it("lists thread-bound workflow automations", async () => {
-    const { workflowId } = await setupFixture();
+    const { workflowId } = await setupFixture("team");
     const seed = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -907,7 +907,7 @@ describe("okou workflow automations", () => {
   });
 
   it("stores automation chat threads at the workflow-user level", async () => {
-    const { workflowId } = await setupFixture();
+    const { workflowId } = await setupFixture("team");
     const seed = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -4699,7 +4699,7 @@ describe("okou workflow automations", () => {
   });
 
   it("keeps the bound chat thread when an automation is deleted", async () => {
-    const { workflowId } = await setupFixture();
+    const { workflowId } = await setupFixture("team");
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
