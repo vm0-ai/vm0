@@ -36,11 +36,17 @@
     },
     "create": "Benutzerdefinierten Avatar erstellen",
     "description": "Wählen Sie einen Stil oder klicken Sie auf „Mischen“, um eine Überraschung zu erleben.",
+    "intensity": {
+      "chill": "Entspannt",
+      "hyped": "Begeistert",
+      "normal": "Normal"
+    },
     "nextStep": "Nächster Schritt",
     "previousStep": "Vorheriger Schritt",
     "randomize": "Avatar zufällig auswählen",
     "shuffleHint": "Mischen Sie – probieren Sie einen zufälligen Look!",
     "steps": {
+      "angle": "Winkel",
       "color": "Farbe",
       "face": "Gesicht",
       "hair": "Haar",

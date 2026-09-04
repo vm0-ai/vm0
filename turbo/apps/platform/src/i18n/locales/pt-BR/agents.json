@@ -36,11 +36,17 @@
     },
     "create": "Criar avatar personalizado",
     "description": "Escolha um estilo ou embaralhe para ter uma surpresa.",
+    "intensity": {
+      "chill": "Tranquilo",
+      "hyped": "Animado",
+      "normal": "Normal"
+    },
     "nextStep": "Próxima etapa",
     "previousStep": "Etapa anterior",
     "randomize": "Gerar avatar aleatório",
     "shuffleHint": "Embaralhe e experimente um visual aleatório!",
     "steps": {
+      "angle": "Ângulo",
       "color": "Cor",
       "face": "Rosto",
       "hair": "Cabelo",

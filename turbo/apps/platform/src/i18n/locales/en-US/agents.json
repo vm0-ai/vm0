@@ -36,11 +36,17 @@
     },
     "create": "Create custom avatar",
     "description": "Pick a style or hit shuffle for a surprise.",
+    "intensity": {
+      "chill": "Chill",
+      "hyped": "Hyped",
+      "normal": "Normal"
+    },
     "nextStep": "Next step",
     "previousStep": "Previous step",
     "randomize": "Randomize avatar",
     "shuffleHint": "Shuffle — try a random look!",
     "steps": {
+      "angle": "Angle",
       "color": "Color",
       "face": "Face",
       "hair": "Hair",

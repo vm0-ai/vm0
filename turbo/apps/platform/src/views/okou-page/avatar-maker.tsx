@@ -15,6 +15,7 @@ import {
 } from "@okouai/ui";
 import { Wand, ChevronLeft, ChevronRight, Dices } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   AVATAR_COMPOSER_EXPRESSIONS,
   AVATAR_COMPOSER_FACE_SHAPES,
@@ -23,8 +24,14 @@ import {
   AVATAR_COMPOSER_SKIN_TONES,
   isAvatarComposerCombinationCompatible,
   updateAvatarComposerConfig,
+  type AvatarComposerSelection,
 } from "@okouai/core/agent-avatar";
-import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
+import {
+  isLegacyAvatarSvgConfig,
+  type AvatarSvgConfig,
+  type LegacyAvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
   bestEffort,
@@ -34,11 +41,13 @@ import {
 } from "../../signals/utils.ts";
 import {
   type AvatarMakerSelection,
+  type ComposerStep,
+  type LegacyStep,
   type Step,
-  AVATAR_MAKER_STEPS,
   avatarMakerOpen$,
   avatarMakerConfig$,
   avatarMakerStep$,
+  avatarMakerSteps$,
   avatarMakerStepIdx$,
   avatarMakerJustPicked$,
   avatarMakerShowSparkles$,
@@ -118,31 +127,37 @@ function Sparkles({ active }: { active: boolean }) {
   );
 }
 
-function avatarMakerSelections(step: Step): readonly AvatarMakerSelection[] {
+type ComposerAvatarMakerSelection = {
+  readonly mode: "composer";
+} & AvatarComposerSelection;
+
+function avatarMakerSelections(
+  step: ComposerStep,
+): readonly ComposerAvatarMakerSelection[] {
   switch (step) {
     case "face": {
       return AVATAR_COMPOSER_FACE_SHAPES.map((value) => {
-        return { field: "face", value };
+        return { mode: "composer", field: "face", value };
       });
     }
     case "hair": {
       return AVATAR_COMPOSER_HAIR_STYLES.map((value) => {
-        return { field: "hair", value };
+        return { mode: "composer", field: "hair", value };
       });
     }
     case "expression": {
       return AVATAR_COMPOSER_EXPRESSIONS.map((value) => {
-        return { field: "expression", value };
+        return { mode: "composer", field: "expression", value };
       });
     }
     case "skin": {
       return AVATAR_COMPOSER_SKIN_TONES.map((value) => {
-        return { field: "skin", value };
+        return { mode: "composer", field: "skin", value };
       });
     }
     case "hairColor": {
       return AVATAR_COMPOSER_HAIR_COLORS.map((value) => {
-        return { field: "hairColor", value };
+        return { mode: "composer", field: "hairColor", value };
       });
     }
   }
@@ -153,13 +168,13 @@ function avatarOptionLabel(value: string): string {
   return `${label.slice(0, 1).toLocaleUpperCase()}${label.slice(1)}`;
 }
 
-function StepOptions({
+function ComposerStepOptions({
   step,
   config,
   justPicked,
   selectOption,
 }: {
-  step: Step;
+  step: ComposerStep;
   config: AvatarSvgConfig;
   justPicked: string | null;
   selectOption: (selection: AvatarMakerSelection) => void;
@@ -194,6 +209,165 @@ function StepOptions({
       </button>
     );
   });
+}
+
+function legacyStepLabel(step: LegacyStep, t: TFunction<"agents">): string {
+  switch (step) {
+    case "rotation": {
+      return t(($) => {
+        return $.avatar.steps.angle;
+      });
+    }
+    case "skin": {
+      return t(($) => {
+        return $.avatar.steps.skin;
+      });
+    }
+    case "hairStyle": {
+      return t(($) => {
+        return $.avatar.steps.hair;
+      });
+    }
+    case "hairColor": {
+      return t(($) => {
+        return $.avatar.steps.color;
+      });
+    }
+    case "expression": {
+      return t(($) => {
+        return $.avatar.steps.face;
+      });
+    }
+    case "intensity": {
+      return t(($) => {
+        return $.avatar.steps.mood;
+      });
+    }
+  }
+}
+
+function LegacyStepOptions({
+  step,
+  config,
+  justPicked,
+  selectOption,
+}: {
+  step: LegacyStep;
+  config: LegacyAvatarSvgConfig;
+  justPicked: string | null;
+  selectOption: (selection: AvatarMakerSelection) => void;
+}) {
+  const { t } = useTranslation("agents");
+  if (step === "intensity") {
+    const labels = {
+      d: t(($) => {
+        return $.avatar.intensity.chill;
+      }),
+      m: t(($) => {
+        return $.avatar.intensity.normal;
+      }),
+      h: t(($) => {
+        return $.avatar.intensity.hyped;
+      }),
+    };
+    return (["d", "m", "h"] as const).map((value, index) => {
+      const preview = { ...config, intensity: value };
+      return (
+        <button
+          key={value}
+          type="button"
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-full transition-all hover:scale-110",
+            justPicked === `intensity-${value}` &&
+              "scale-110 ring-2 ring-primary ring-offset-2",
+          )}
+          style={{
+            animation: `avatar-option-appear 0.2s ease-out ${index * 0.05}s both`,
+          }}
+          onClick={() => {
+            selectOption({ mode: "legacy", field: "intensity", value });
+          }}
+          aria-label={labels[value]}
+        >
+          <AvatarSvgPreview config={preview} size={56} />
+          <span className="text-[10px] text-muted-foreground">
+            {labels[value]}
+          </span>
+        </button>
+      );
+    });
+  }
+
+  const start = step === "skin" ? 0 : 1;
+  return Array.from({ length: 5 }, (_, index) => {
+    const value = index + start;
+    const preview: LegacyAvatarSvgConfig = { ...config, [step]: value };
+    return (
+      <button
+        key={value}
+        type="button"
+        className={cn(
+          "rounded-full transition-all hover:scale-110",
+          justPicked === `${step}-${value}` &&
+            "scale-110 ring-2 ring-primary ring-offset-2",
+        )}
+        style={{
+          animation: `avatar-option-appear 0.2s ease-out ${index * 0.05}s both`,
+        }}
+        onClick={() => {
+          selectOption({ mode: "legacy", field: step, value });
+        }}
+        aria-label={`${legacyStepLabel(step, t)} ${index + 1}`}
+      >
+        <AvatarSvgPreview config={preview} size={56} />
+      </button>
+    );
+  });
+}
+
+function isComposerStep(step: Step): step is ComposerStep {
+  return (
+    step === "face" ||
+    step === "hair" ||
+    step === "expression" ||
+    step === "skin" ||
+    step === "hairColor"
+  );
+}
+
+function isLegacyStep(step: Step): step is LegacyStep {
+  return step !== "face" && step !== "hair";
+}
+
+function StepOptions({
+  step,
+  config,
+  justPicked,
+  selectOption,
+}: {
+  step: Step;
+  config: ResolvedAvatarSvgConfig;
+  justPicked: string | null;
+  selectOption: (selection: AvatarMakerSelection) => void;
+}) {
+  if (isLegacyAvatarSvgConfig(config)) {
+    return isLegacyStep(step) ? (
+      <LegacyStepOptions
+        step={step}
+        config={config}
+        justPicked={justPicked}
+        selectOption={selectOption}
+      />
+    ) : null;
+  }
+  return isComposerStep(step) ? (
+    <ComposerStepOptions
+      step={step}
+      config={config}
+      justPicked={justPicked}
+      selectOption={selectOption}
+    />
+  ) : null;
 }
 
 function AvatarPreviewWithShuffle() {
@@ -253,10 +427,13 @@ function AvatarPreviewWithShuffle() {
 
 function StepNavigator() {
   const { t } = useTranslation("agents");
+  const config = useGet(avatarMakerConfig$);
   const step = useGet(avatarMakerStep$);
+  const steps = useGet(avatarMakerSteps$);
   const stepIdx = useGet(avatarMakerStepIdx$);
   const goBack = useSet(goBackStep$);
   const goForward = useSet(goForwardStep$);
+  const legacy = isLegacyAvatarSvgConfig(config);
   const stepLabels: Record<Step, string> = {
     face: t(($) => {
       return $.avatar.steps.face;
@@ -265,7 +442,7 @@ function StepNavigator() {
       return $.avatar.steps.hair;
     }),
     expression: t(($) => {
-      return $.avatar.steps.mood;
+      return legacy ? $.avatar.steps.face : $.avatar.steps.mood;
     }),
     skin: t(($) => {
       return $.avatar.steps.skin;
@@ -273,12 +450,21 @@ function StepNavigator() {
     hairColor: t(($) => {
       return $.avatar.steps.color;
     }),
+    rotation: t(($) => {
+      return $.avatar.steps.angle;
+    }),
+    hairStyle: t(($) => {
+      return $.avatar.steps.hair;
+    }),
+    intensity: t(($) => {
+      return $.avatar.steps.mood;
+    }),
   };
 
   return (
     <>
       <div className="flex items-center gap-1">
-        {AVATAR_MAKER_STEPS.map((stepKey, i) => {
+        {steps.map((stepKey, i) => {
           return (
             <div
               key={stepKey}
@@ -320,7 +506,7 @@ function StepNavigator() {
           type="button"
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
-            stepIdx === AVATAR_MAKER_STEPS.length - 1 && "invisible",
+            stepIdx === steps.length - 1 && "invisible",
           )}
           onClick={goForward}
           aria-label={t(($) => {
@@ -337,7 +523,7 @@ function StepNavigator() {
 function AvatarMakerDialogBody({
   onConfirm,
 }: {
-  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
 }) {
   const { t } = useTranslation("agents");
   const config = useGet(avatarMakerConfig$);
@@ -437,7 +623,7 @@ function AvatarMakerDialogBody({
 }
 
 interface AvatarMakerProps {
-  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  onConfirm: (config: ResolvedAvatarSvgConfig) => Promise<void>;
   /** Custom trigger element. Receives `openMaker` as `onClick`. When omitted, the default wand button is rendered. */
   trigger?: (openMaker: () => void) => React.ReactNode;
 }

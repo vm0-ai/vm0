@@ -1,8 +1,19 @@
+import type { Locator } from "@playwright/test";
+
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
+
+async function visibleBox(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error("Expected visible element geometry");
+  }
+  return box;
+}
 
 test("create a new agent and verify it appears in the list", async ({
   page,
@@ -34,4 +45,72 @@ test("create a new agent and verify it appears in the list", async ({
   await expect(page.getByText(agentName, { exact: true })).toBeVisible({
     timeout: 20_000,
   });
+});
+
+test("avatar composer keeps a stable dialog and compact option rows", async ({
+  page,
+}) => {
+  await page.goto(`${appUrl}/agents`);
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible({
+    timeout: 20_000,
+  });
+
+  await page.getByRole("radio", { name: "Private", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^(New agent|Create agent)$/ })
+    .first()
+    .click();
+  const createDialog = page.getByRole("dialog", {
+    name: "Create a new agent",
+  });
+  await createDialog.getByRole("button", { name: "Customize avatar" }).click();
+
+  const composer = page.getByRole("dialog", {
+    name: "Give your agent a face",
+  });
+  const initialBox = await visibleBox(composer);
+  const expectStableDialog = async () => {
+    const currentBox = await visibleBox(composer);
+    expect(Math.abs(currentBox.width - initialBox.width)).toBeLessThanOrEqual(
+      1,
+    );
+    expect(Math.abs(currentBox.height - initialBox.height)).toBeLessThanOrEqual(
+      1,
+    );
+  };
+
+  await expect(composer.getByText("Face", { exact: true })).toBeVisible();
+  await expect(composer.getByRole("button", { name: "Oval" })).toBeVisible();
+  await expectStableDialog();
+
+  await composer.getByRole("button", { name: "Next step" }).click();
+  await expect(composer.getByText("Hair", { exact: true })).toBeVisible();
+  const firstRow = await visibleBox(
+    composer.getByRole("button", { name: "High bun" }),
+  );
+  const secondRow = await visibleBox(
+    composer.getByRole("button", { name: "Triple bun" }),
+  );
+  const rowGap = secondRow.y - firstRow.y - firstRow.height;
+  expect(rowGap).toBeGreaterThanOrEqual(0);
+  expect(rowGap).toBeLessThanOrEqual(16);
+  await expectStableDialog();
+
+  await composer.getByRole("button", { name: "Next step" }).click();
+  await expect(composer.getByText("Mood", { exact: true })).toBeVisible();
+  const lastExpression = composer.getByRole("button", {
+    name: "Stubble smile",
+  });
+  await lastExpression.scrollIntoViewIfNeeded();
+  await expect(lastExpression).toBeInViewport();
+  await expectStableDialog();
+
+  await composer.getByRole("button", { name: "Next step" }).click();
+  await expect(composer.getByText("Skin", { exact: true })).toBeVisible();
+  await expectStableDialog();
+
+  await composer.getByRole("button", { name: "Next step" }).click();
+  await expect(composer.getByText("Color", { exact: true })).toBeVisible();
+  await expectStableDialog();
+  await composer.getByRole("button", { name: "Cancel" }).click();
 });

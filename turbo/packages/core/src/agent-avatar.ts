@@ -3,7 +3,9 @@ export const AVATAR_PRESET_PREFIX = "preset:";
 export const AVATAR_COMPOSER_ASSET_VERSION = "v31-contained-hair-fill-20260830";
 /**
  * The query string stores the selected layers. The base SVG is a transparent
- * fallback so clients that do not compose layers still show a valid avatar.
+ * canonical image for generic renderers that do not compose those layers.
+ * Persisted composer URLs keep this directly displayable representation for
+ * their lifetime; it is not a temporary rollout compatibility branch.
  */
 export const AVATAR_COMPOSER_BASE_URL = `https://static.vm0.io/platform/views/zero-page/assets/avatar-svg-v2/${AVATAR_COMPOSER_ASSET_VERSION}/avatar.svg`;
 
@@ -118,6 +120,11 @@ export function agentAvatarUrlForDefaultAgent(args: {
 
 /** Number of legacy built-in preset avatars kept for existing agent data. */
 export const AVATAR_PRESET_COUNT = 5;
+
+/** Return a random legacy preset for the avatar-composer kill switch. */
+export function randomPresetAvatar(): string {
+  return `${AVATAR_PRESET_PREFIX}${Math.floor(Math.random() * AVATAR_PRESET_COUNT)}`;
+}
 
 function oneOf<const Item>(items: readonly Item[]): Item {
   const item = items[Math.floor(Math.random() * items.length)];

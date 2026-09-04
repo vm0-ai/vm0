@@ -1,11 +1,16 @@
 import { command, computed, state } from "ccstate";
 import {
   randomAvatarSvgConfig,
+  randomLegacyAvatarSvgConfig,
   serializeAvatarSvgConfig,
 } from "../../views/okou-page/avatar-svg-utils.ts";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 
-function randomSvgAvatarUrl(): string {
-  return serializeAvatarSvgConfig(randomAvatarSvgConfig());
+function randomSvgAvatarUrl(composerEnabled = true): string {
+  return serializeAvatarSvgConfig(
+    composerEnabled ? randomAvatarSvgConfig() : randomLegacyAvatarSvgConfig(),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -64,8 +69,13 @@ export const setJobsAvatarUrl$ = command(({ set }, url: string) => {
 
 // -- Create a fresh dialog draft --------------------------------------------
 
-export const resetJobsDialog$ = command(({ set }) => {
+export const resetJobsDialog$ = command(({ get, set }) => {
   set(internalNewName$, "");
   set(internalVisibility$, "private");
-  set(internalAvatarUrl$, randomSvgAvatarUrl());
+  set(
+    internalAvatarUrl$,
+    randomSvgAvatarUrl(
+      get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2] ?? false,
+    ),
+  );
 });

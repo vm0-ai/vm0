@@ -10,6 +10,7 @@ import {
   AVATAR_PRESET_COUNT,
   DEFAULT_AGENT_AVATAR_URL,
 } from "@okouai/core/agent-avatar";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
@@ -250,33 +251,80 @@ describe("zero settings tab", () => {
     expect(uniqueSrcs.size).toBe(24);
   });
 
-  it("keeps the avatar option tray stable with tightly packed rows", async () => {
+  it("keeps every composer step and its edge options usable in one open dialog", async () => {
     prepareAgentProfile();
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=profile`,
+      featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    });
 
     click(await findCreateCustomAvatarButton());
 
-    const faceOption = await screen.findByLabelText("Round");
-    const optionGrid = faceOption.parentElement;
-    const optionTray = optionGrid?.parentElement;
-    if (!optionGrid || !optionTray) {
-      throw new Error("Avatar option tray not found");
-    }
-    expect(optionTray).toHaveClass("h-48");
-    expect(optionGrid).toHaveClass("min-h-full", "content-center", "gap-3");
+    const dialog = await screen.findByRole("dialog", {
+      name: "Give your agent a face",
+    });
+    const steps = [
+      { label: "Face", first: "Round", last: "Oval" },
+      { label: "Hair", first: "High bun", last: "Ribbon updo" },
+      {
+        label: "Mood",
+        first: "Neutral smile",
+        last: "Stubble smile",
+      },
+      { label: "Skin", first: "Gold", last: "Brown" },
+      { label: "Color", first: "Blue", last: "Brown" },
+    ] as const;
 
-    for (const optionLabel of ["High bun", "Neutral smile", "Gold", "Blue"]) {
-      click(screen.getByLabelText("Next step"));
-      const option = await screen.findByLabelText(optionLabel);
-      expect(option.parentElement).toBe(optionGrid);
-      expect(optionTray).toHaveClass("h-48");
+    for (const [index, step] of steps.entries()) {
+      expect(dialog).toBeVisible();
+      expect(screen.getByText(step.label)).toBeVisible();
+      expect(screen.getByLabelText(step.first)).toBeVisible();
+      expect(screen.getByLabelText(step.last)).toBeVisible();
+      expect(screen.getByText("Use this avatar")).toBeVisible();
+      if (index + 1 < steps.length) {
+        click(screen.getByLabelText("Next step"));
+      }
     }
+  });
+
+  it("keeps the legacy avatar editor available when the switch is disabled", async () => {
+    prepareAgentProfile();
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=profile`,
+      featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: false },
+    });
+
+    click(await findCreateCustomAvatarButton());
+
+    await waitFor(() => {
+      expect(screen.getByText("Angle")).toBeVisible();
+      expect(screen.getByLabelText("Angle 1")).toBeVisible();
+      expect(screen.queryByLabelText("Round")).not.toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Randomize avatar"));
+    click(screen.getByText("Use this avatar"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Profile saved")).toBeInTheDocument();
+    });
+    const avatarLabel = await screen.findByText("Avatar", { selector: "p" });
+    const avatarRow = avatarLabel.parentElement?.parentElement;
+    if (!avatarRow) {
+      throw new Error("Avatar profile row not found");
+    }
+    expect(renderedAvatarSvgLayerSrcs(avatarRow)).toHaveLength(3);
   });
 
   it("creates and saves a custom avatar from the profile page", async () => {
     prepareAgentProfile();
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=profile`,
+      featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
+    });
 
     click(await findCreateCustomAvatarButton());
 
