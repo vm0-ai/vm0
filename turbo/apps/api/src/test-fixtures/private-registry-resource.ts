@@ -20,6 +20,8 @@ interface PrivateRegistryResourceVersionFixture {
  * production API surface.
  */
 export async function seedPrivateRegistryResourceVersionFixture(args: {
+  readonly storageId?: string;
+  readonly headVersionId?: string;
   readonly storageName: string;
   readonly versionId: string;
   readonly s3Key: string;
@@ -32,6 +34,7 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
   const [storage] = await db
     .insert(storages)
     .values({
+      ...(args.storageId ? { id: args.storageId } : {}),
       orgId: `org_registry_fixture_${fixtureId}`,
       userId: `user_registry_fixture_${fixtureId}`,
       name: args.storageName,
@@ -55,8 +58,19 @@ export async function seedPrivateRegistryResourceVersionFixture(args: {
     createdBy: "private-registry-resource-fixture",
   });
 
+  if (args.headVersionId) {
+    await db
+      .update(storages)
+      .set({ headVersionId: args.headVersionId })
+      .where(eq(storages.id, storage.id));
+  }
+
   return {
     cleanup: async () => {
+      await db
+        .update(storages)
+        .set({ headVersionId: null })
+        .where(eq(storages.id, storage.id));
       await db
         .delete(storageVersions)
         .where(

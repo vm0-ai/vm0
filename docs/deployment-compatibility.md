@@ -130,6 +130,12 @@ When removing a backend response or request variant consumed by the CLI:
    supported external caller, can still use the old variant.
 4. Remove compatibility in a later backend release.
 
+Presentation runbook content is independent of the CLI release after the
+current-template download route is deployed. Current CLIs send only the
+resource id and receive the canonical storage HEAD; older CLIs keep using the
+existing digest-pinned route and its immutable archive. Publish new template
+HEADs only after the current-template route and CLI are in production.
+
 This drain is separate from runner binary drain: a current runner can execute an
 older CLI package retained by an older execution context. If the same cleanup
 raises the frontend compatibility floor, rolling the frontend below that floor
