@@ -1979,9 +1979,9 @@ html:has(.zero-dialog-overlay)
    dark card does not: it lands on a bright grey that reads as a white outline
    rather than as focus, which is what `--ring` means on every other control.
    Saturation, not lightness, does the work, so the ring stays quieter than the
-   full Amber stop. */
+   full Cobalt stop. */
 :where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
-  --zero-composer-ring: 38.8 38% 38%;
+  --zero-composer-ring: 222 38% 38%;
 }
 
 /* ===================================================================
@@ -2021,18 +2021,15 @@ html:has(.zero-dialog-overlay)
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* Markdown links move to the palette's Cobalt. */
+/* Markdown links read the brand tokens now that those carry Cobalt themselves.
+   They used to hardcode it, because Amber could not be a link colour, and the
+   dark pair below them never applied: `:where()` zeroes its own specificity, so
+   the light rule outweighed it. One theme-aware token settles both. */
 [data-new-ui] .wmde-markdown a {
-  color: hsl(222.6 64.4% 51.6%);
+  color: hsl(var(--brand-text));
 }
 [data-new-ui] .wmde-markdown a:hover {
-  color: hsl(222.2 57.3% 40.4%);
-}
-:where([data-theme="dark"][data-new-ui]) .wmde-markdown a {
-  color: hsl(220.5 100% 84.3%);
-}
-:where([data-theme="dark"][data-new-ui]) .wmde-markdown a:hover {
-  color: hsl(220.4 100% 90.4%);
+  color: hsl(var(--brand-text-hover));
 }
 
 /* Colour themes realigned to the new ramp's lightness steps. */
