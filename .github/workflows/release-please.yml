@@ -1712,7 +1712,7 @@ jobs:
                 "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/domains"
             )"
             domain_record="$(
-              jq -cer --arg hostname "$hostname" '
+              jq -cr --arg hostname "$hostname" '
                 if .success != true then
                   error("Cloudflare domain lookup failed")
                 else
