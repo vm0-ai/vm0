@@ -4739,38 +4739,23 @@ function ShimmerText({
   children,
   className,
   setRef,
-  visualChildren = children,
 }: {
   readonly ariaLabel?: string;
   readonly children: ReactNode;
   readonly className?: string;
   readonly setRef?: ServerThinkingLabel["setRef"];
-  readonly visualChildren?: ReactNode;
 }) {
   return (
-    <div
+    <p
+      ref={setRef}
       className={cn(
-        "zero-shimmer-text-shell h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
+        "zero-shimmer-text h-5 min-w-0 flex-1 truncate text-[0.8125rem] leading-5",
         className,
       )}
+      aria-label={ariaLabel}
     >
-      <p
-        ref={setRef}
-        className="zero-shimmer-text h-5 w-full truncate"
-        aria-label={ariaLabel}
-      >
-        {children}
-      </p>
-      <span className="zero-shimmer-window" aria-hidden>
-        <span className="zero-shimmer-highlight">{visualChildren}</span>
-      </span>
-      <span
-        className="zero-shimmer-window zero-shimmer-window-secondary"
-        aria-hidden
-      >
-        <span className="zero-shimmer-highlight">{visualChildren}</span>
-      </span>
-    </div>
+      {children}
+    </p>
   );
 }
 
@@ -4794,16 +4779,7 @@ function ThinkingLabel({
       return $.chat.run.queueEllipsis;
     });
     return (
-      <ShimmerText
-        visualChildren={
-          <>
-            {waitingIn}{" "}
-            <span className="underline underline-offset-2">
-              {queueEllipsis}
-            </span>
-          </>
-        }
-      >
+      <ShimmerText>
         {waitingIn}{" "}
         <button
           type="button"
