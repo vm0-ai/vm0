@@ -40,6 +40,9 @@ printf '%s\n' \
   '  throw new Error("Unexpected default Clerk client invocation");' \
   '}' \
   > "${clerk_stub_dir}/index.js"
+core_scope_dir="${tmp_dir}/node_modules/@okouai"
+mkdir -p "$core_scope_dir"
+ln -s "${repo_root}/turbo/packages/core" "${core_scope_dir}/core"
 cp "${repo_root}/turbo/apps/app-worker/src/worker.js" "${tmp_dir}/worker.mjs"
 
 node "${repo_root}/.github/scripts/tests/okou-app-worker-test.mjs" \

@@ -1,8 +1,7 @@
 import { toast } from "@okouai/ui/components/ui/sonner";
-import {
-  resolvePlatformOriginForTarget,
-  rewritePlatformHostname,
-} from "../../signals/api-base.ts";
+import { rewritePlatformHostname } from "@okouai/core/platform-service-origin";
+
+import { resolvePlatformOriginForTarget } from "../../signals/api-base.ts";
 import { isAllowedDevArtifactFetchUrl } from "../../lib/dev-artifact-fetch-url.ts";
 import { resolvePublicArtifactsBaseUrl } from "../../lib/platform-host.ts";
 import { i18n } from "../../i18n/index.ts";

@@ -1,4 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
@@ -12,7 +13,6 @@ import {
 import { resolveConfiguredProductionPrimaryAppDomain } from "../lib/clerk-instance-config.ts";
 import { CLERK_PRIMARY_APP_DOMAIN_PARAM } from "../lib/clerk-primary-app-domain-param.ts";
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
-import { derivePlatformServiceOrigin } from "../lib/platform-host.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import type {

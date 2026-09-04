@@ -334,6 +334,9 @@ importers:
       '@clerk/backend':
         specifier: ^3.13.1
         version: 3.13.1(react-dom@19.2.6(react@19.2.8))(react@19.2.8)
+      '@okouai/core':
+        specifier: workspace:*
+        version: link:../../packages/core
     devDependencies:
       '@okouai/eslint-config':
         specifier: workspace:*
