@@ -190,10 +190,12 @@ scripts under `scripts/`) resolve `typescript` to the `@typescript/typescript6`
 compatibility package, which ships the 6.0 API and a `tsc6` binary. Do not
 import from `@typescript/native`; it has no API until TypeScript 7.1.
 
-The API `core` and `tests` programs pass `--checkers ${TSC_CHECKERS:-1}`. The
-default of one checker fits a 2 vCPU / 4 GiB sandbox (peak RSS ≈ 3 GiB); CI
-sets `TSC_CHECKERS=4` on the type-check jobs. On macOS with a hard-linked pnpm
-store, run `tsc` with `--singleThreaded` until the next TypeScript 7 stable
-includes the parallel-loading realpath fix (typescript-go #4262).
+The API `core` and `tests` programs pass `--checkers $(node
+../../scripts/tsc-checkers.mjs)`: one checker per 4 GiB of RAM, capped by the
+CPU count and by 4, so a 2 vCPU / 4 GiB sandbox runs one checker (peak RSS
+≈ 3 GiB) and a 4 vCPU / 16 GiB CI runner runs four. Set `TSC_CHECKERS` to
+override it. On macOS with a hard-linked pnpm store, run `tsc` with
+`--singleThreaded` until the next TypeScript 7 stable includes the
+parallel-loading realpath fix (typescript-go #4262).
 
 Run one Vitest process at a time.

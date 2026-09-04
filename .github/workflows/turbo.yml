@@ -424,8 +424,6 @@ jobs:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      TSC_CHECKERS: "4"
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
@@ -445,8 +443,6 @@ jobs:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      TSC_CHECKERS: "4"
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260825
@@ -505,92 +501,6 @@ jobs:
       - name: Type Check (@okouai/app)
         working-directory: turbo
         run: pnpm --filter @okouai/app run check-types
-      # --- TEMPORARY (#31692 measurement, removed before review) ---------
-      - name: TS7 measurement - api checkers sweep
-        working-directory: turbo
-        shell: bash
-        run: |
-          set +e
-          cd apps/api
-          for mode in "--singleThreaded" "--checkers 1" "--checkers 2" "--checkers 4"; do
-            read -r -a mode_args <<< "$mode"
-            for cfg in core tests; do
-              extra_args=(--outDir "/tmp/ts7-sweep-$cfg")
-              [ "$cfg" = "tests" ] && extra_args=(--noEmit)
-              echo "::group::TS7 $cfg $mode"
-              node ../../scripts/measure-memory.mjs --label "ts7-$cfg-$mode" -- \
-                pnpm exec tsc -p "tsconfig.$cfg.json" "${extra_args[@]}" --tsBuildInfoFile "/tmp/ts7-sweep-$cfg.tsbuildinfo" "${mode_args[@]}" --extendedDiagnostics 2>&1 | grep -E "^(Files|Types|Instantiations|Memory used|Check time|Emit time|Total time)|measure-memory|error TS"
-              echo "::endgroup::"
-            done
-          done
-          rm -rf /tmp/ts7-sweep-*
-          exit 0
-      - name: TS7 measurement - api TypeScript 6 reference and declaration parity
-        working-directory: turbo
-        shell: bash
-        run: |
-          set +e
-          cd apps/api
-          export NODE_OPTIONS=--max-old-space-size=3072
-          for cfg in gateways core bootstrap; do
-            echo "::group::TS6 $cfg emit"
-            node ../../scripts/measure-memory.mjs --label "ts6-$cfg" -- \
-              pnpm exec tsc6 -p "tsconfig.$cfg.json" --outDir "/tmp/ts6-$cfg" --tsBuildInfoFile "/tmp/ts6-$cfg.tsbuildinfo" --extendedDiagnostics 2>&1 | grep -E "^(Files|Types|Instantiations|Memory used|Check time|Total time)|measure-memory|error TS"
-            echo "::endgroup::"
-          done
-          echo "::group::TS6 tests"
-          node ../../scripts/measure-memory.mjs --label "ts6-tests" -- \
-            pnpm exec tsc6 -p tsconfig.tests.json --noEmit --tsBuildInfoFile /tmp/ts6-tests.tsbuildinfo --extendedDiagnostics 2>&1 | grep -E "^(Files|Types|Instantiations|Memory used|Check time|Total time)|measure-memory|error TS"
-          echo "::endgroup::"
-          for cfg in gateways core bootstrap; do
-            if diff -r -q "/tmp/ts6-$cfg" ".typecheck/$cfg" >/dev/null; then
-              echo "PARITY $cfg: declaration output identical (6.0.3 vs 7.0.2)"
-            else
-              echo "PARITY $cfg: DIFFERENT"; diff -r "/tmp/ts6-$cfg" ".typecheck/$cfg" | head -80
-            fi
-          done
-          rm -rf /tmp/ts6-*
-          exit 0
-      - name: TS7 measurement - seeded error parity
-        working-directory: turbo
-        shell: bash
-        run: |
-          set +e
-          cd apps/api
-          printf 'export const seededCoreError: number = "not a number";\n' > src/signals/services/ts7-seed.service.ts
-          printf 'import { describe, it, expect } from "vitest";\ndescribe("ts7 seed", () => { it("seeded", () => { const n: string = 1; expect(n).toBe(1); }); });\n' > src/__tests__/ts7-seed.test.ts
-          for cfg in core tests; do
-            extra_args=(--outDir "/tmp/seed-$cfg")
-            [ "$cfg" = "tests" ] && extra_args=(--noEmit)
-            echo "::group::seeded $cfg"
-            pnpm exec tsc -p "tsconfig.$cfg.json" "${extra_args[@]}" --tsBuildInfoFile "/tmp/seed7-$cfg.tsbuildinfo" --checkers 4 2>&1 | grep -E "error TS" | sed 's/^/TS7 /'; echo "TS7 exit=${PIPESTATUS[0]}"
-            NODE_OPTIONS=--max-old-space-size=3072 pnpm exec tsc6 -p "tsconfig.$cfg.json" "${extra_args[@]}" --tsBuildInfoFile "/tmp/seed6-$cfg.tsbuildinfo" 2>&1 | grep -E "error TS" | sed 's/^/TS6 /'; echo "TS6 exit=${PIPESTATUS[0]}"
-            echo "::endgroup::"
-          done
-          rm -f src/signals/services/ts7-seed.service.ts src/__tests__/ts7-seed.test.ts
-          rm -rf /tmp/seed-* /tmp/seed6-* /tmp/seed7-*
-          exit 0
-      - name: TS7 measurement - platform sweep and TypeScript 6 reference
-        working-directory: turbo
-        shell: bash
-        run: |
-          set +e
-          cd apps/platform
-          for cfg in production tests; do
-            for mode in "--singleThreaded" "--checkers 2" "--checkers 4"; do
-              read -r -a mode_args <<< "$mode"
-              echo "::group::TS7 platform $cfg $mode"
-              node ../../scripts/measure-memory.mjs --label "ts7-platform-$cfg-$mode" -- \
-                pnpm exec tsc -p "tsconfig.$cfg.json" --noEmit "${mode_args[@]}" --extendedDiagnostics 2>&1 | grep -E "^(Files|Types|Memory used|Check time|Total time)|measure-memory|error TS"
-              echo "::endgroup::"
-            done
-            echo "::group::TS6 platform $cfg"
-            node ../../scripts/measure-memory.mjs --label "ts6-platform-$cfg" -- \
-              pnpm exec tsc6 -p "tsconfig.$cfg.json" --noEmit --extendedDiagnostics 2>&1 | grep -E "^(Files|Types|Memory used|Check time|Total time)|measure-memory|error TS"
-            echo "::endgroup::"
-          done
-          exit 0
-      # --- END TEMPORARY -------------------------------------------------
 
   lint-format:
     needs: [detect-turbo-ts-checks]

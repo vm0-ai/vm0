@@ -16,9 +16,9 @@
     "check-types:deps": "pnpm --filter @okouai/pi-agent-runtime run build",
     "check-types:boundaries": "node scripts/check-typecheck-boundaries.mjs",
     "check-types:gateways": "tsc -p tsconfig.gateways.json",
-    "check-types:core": "tsc -p tsconfig.core.json --checkers ${TSC_CHECKERS:-1}",
+    "check-types:core": "tsc -p tsconfig.core.json --checkers $(node ../../scripts/tsc-checkers.mjs)",
     "check-types:bootstrap": "tsc -p tsconfig.bootstrap.json",
-    "check-types:tests": "tsc -p tsconfig.tests.json --noEmit --checkers ${TSC_CHECKERS:-1}",
+    "check-types:tests": "tsc -p tsconfig.tests.json --noEmit --checkers $(node ../../scripts/tsc-checkers.mjs)",
     "check-types:bootstrap-wiring": "tsc -p tsconfig.bootstrap-wiring.json --noEmit"
   },
   "dependencies": {
