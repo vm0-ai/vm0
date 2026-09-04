@@ -646,6 +646,14 @@ function clearMockedAuth() {
   );
   mockedClerk.buildSignInUrl.mockReset();
   mockedClerk.buildSignInUrl.mockImplementation(defaultBuildSignInUrlImpl);
+  mockedClerk.buildSignUpUrl.mockReset();
+  mockedClerk.buildSignUpUrl.mockImplementation(defaultBuildSignUpUrlImpl);
+  mockedClerk.navigate.mockReset();
+  mockedClerk.navigate.mockImplementation(defaultNavigateImpl);
+  mockedClerk.redirectToSignIn.mockReset();
+  mockedClerk.redirectToSignIn.mockImplementation(defaultRedirectToSignInImpl);
+  mockedClerk.redirectToSignUp.mockReset();
+  mockedClerk.redirectToSignUp.mockImplementation(defaultRedirectToSignUpImpl);
   mockedClerk.initialize.mockReset();
 }
 
@@ -971,15 +979,17 @@ interface MockedSignInRedirectOptions {
   redirectUrl?: string | null;
 }
 
-const defaultBuildSignInUrlImpl = (
+function defaultBuildAuthUrl(
+  configuredUrl: string | undefined,
+  fallbackPath: "/sign-in" | "/sign-up",
   options?: MockedSignInRedirectOptions,
-): string => {
+): string {
   if (!internalMockedClerkLoaded) {
     return "";
   }
 
-  const signInUrl = new URL(
-    internalMockedClerkLoadOptions.signInUrl ?? "/sign-in",
+  const authUrl = new URL(
+    configuredUrl ?? fallbackPath,
     window.location.origin,
   );
   const redirectUrl = new URL(
@@ -989,8 +999,48 @@ const defaultBuildSignInUrlImpl = (
   if (internalMockedClerkLoadOptions.isSatellite) {
     redirectUrl.searchParams.set("__clerk_synced", "false");
   }
-  signInUrl.searchParams.set("redirect_url", redirectUrl.toString());
-  return signInUrl.toString();
+  // Clerk serializes redirect options into the auth route's fragment.
+  const authHashParams = new URLSearchParams();
+  authHashParams.set("redirect_url", redirectUrl.toString());
+  authUrl.hash = `/?${authHashParams.toString()}`;
+  return authUrl.toString();
+}
+
+const defaultBuildSignInUrlImpl = (
+  options?: MockedSignInRedirectOptions,
+): string => {
+  return defaultBuildAuthUrl(
+    internalMockedClerkLoadOptions.signInUrl,
+    "/sign-in",
+    options,
+  );
+};
+
+const defaultBuildSignUpUrlImpl = (
+  options?: MockedSignInRedirectOptions,
+): string => {
+  return defaultBuildAuthUrl(
+    internalMockedClerkLoadOptions.signUpUrl,
+    "/sign-up",
+    options,
+  );
+};
+
+const defaultNavigateImpl: BrowserClerk["navigate"] = (to) => {
+  replaceState(null, "", to);
+  return Promise.resolve();
+};
+
+const defaultRedirectToSignInImpl: BrowserClerk["redirectToSignIn"] = async (
+  options,
+): Promise<void> => {
+  await defaultNavigateImpl(defaultBuildSignInUrlImpl(options));
+};
+
+const defaultRedirectToSignUpImpl: BrowserClerk["redirectToSignUp"] = async (
+  options,
+): Promise<void> => {
+  await defaultNavigateImpl(defaultBuildSignUpUrlImpl(options));
 };
 
 const defaultLoadImpl = (options?: MockedClerkLoadOptions) => {
@@ -1220,9 +1270,18 @@ export const mockedClerk = {
       }
     };
   },
-  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(),
+  navigate: vi.fn<BrowserClerk["navigate"]>(defaultNavigateImpl),
+  redirectToSignIn: vi.fn<BrowserClerk["redirectToSignIn"]>(
+    defaultRedirectToSignInImpl,
+  ),
+  redirectToSignUp: vi.fn<BrowserClerk["redirectToSignUp"]>(
+    defaultRedirectToSignUpImpl,
+  ),
   buildSignInUrl: vi.fn<typeof defaultBuildSignInUrlImpl>(
     defaultBuildSignInUrlImpl,
+  ),
+  buildSignUpUrl: vi.fn<typeof defaultBuildSignUpUrlImpl>(
+    defaultBuildSignUpUrlImpl,
   ),
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.

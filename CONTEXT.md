@@ -177,6 +177,28 @@ A server-side upload to the same conversion action using the same transaction
 ID when browser delivery may be missed.
 _Avoid_: Separate conversion, duplicate conversion
 
+# Clerk Satellite Authentication Context
+
+This context separates the app that owns authentication from another app that
+shares the same Clerk instance and receives its session.
+
+## Language
+
+**Clerk primary app**:
+The app origin where sign-in and sign-up run and where the primary Clerk
+session is established.
+_Avoid_: Main brand, login tab
+
+**Clerk satellite app**:
+A registered app origin that shares the primary app's Clerk instance and
+receives synchronized session state.
+_Avoid_: Secondary login, separate Clerk instance
+
+**Satellite session sync**:
+The Clerk-owned navigation handshake that transfers the active primary-app
+session into the current satellite browser context.
+_Avoid_: Cookie copy, custom auth redirect
+
 # Chat Image Annotation Context
 
 This context separates an uploaded image, its editable annotation structure,
