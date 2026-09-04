@@ -32,7 +32,6 @@ import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 const context = testContext();
 const store = createStore();
 const mocks = createRouteMocks(context);
-const TEST_BUCKET = "test-user-artifacts";
 
 const HEYGEN_CREATE_URL = "https://api.heygen.com/v3/videos";
 const HEYGEN_VIDEO_ID = "heygen-video-123";
