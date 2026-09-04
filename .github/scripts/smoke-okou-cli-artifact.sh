@@ -16,6 +16,8 @@ package_path="$(cd "$(dirname "$package_path")" && pwd -P)/$(basename "$package_
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+readonly npm_advisory_retirement_notice="npm notice This endpoint is being retired. Use the bulk advisory endpoint instead. See the following docs for more info: https://api-docs.npmjs.com/#tag/Audit"
+
 node_path="$(command -v node)"
 npx_path="$(command -v npx)"
 clean_bin="${tmp_dir}/bin"
@@ -41,18 +43,24 @@ run_cli() {
 assert_clean_success() {
   local entrypoint="$1"
   local output_name="$2"
+  local stdout_file="$tmp_dir/${output_name}.stdout"
+  local stderr_file="$tmp_dir/${output_name}.stderr"
+  local unexpected_stderr_file="$tmp_dir/${output_name}.unexpected-stderr"
   shift 2
   if ! run_cli \
     "$entrypoint" \
-    "$tmp_dir/${output_name}.stdout" \
-    "$tmp_dir/${output_name}.stderr" \
+    "$stdout_file" \
+    "$stderr_file" \
     "$@"; then
-    cat "$tmp_dir/${output_name}.stderr" >&2
+    cat "$stderr_file" >&2
     echo "CLI smoke failed: $entrypoint $*" >&2
     exit 1
   fi
-  if [[ -s "$tmp_dir/${output_name}.stderr" ]]; then
-    cat "$tmp_dir/${output_name}.stderr" >&2
+  awk -v ignored_notice="$npm_advisory_retirement_notice" \
+    '$0 != ignored_notice' \
+    "$stderr_file" >"$unexpected_stderr_file"
+  if [[ -s "$unexpected_stderr_file" ]]; then
+    cat "$unexpected_stderr_file" >&2
     echo "CLI smoke emitted unexpected stderr: $entrypoint $*" >&2
     exit 1
   fi
