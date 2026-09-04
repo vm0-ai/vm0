@@ -1,5 +1,12 @@
 export const AVATAR_PRESET_PREFIX = "preset:";
 
+/**
+ * Part of every composer URL persisted against an agent, so rolling it makes
+ * `parseAvatarComposerUrl` reject every avatar saved until now and strand them
+ * on the base SVG. New or reworked layers go in beside the existing ones under
+ * this version instead; static.vm0.io is append-only, so a new path can never
+ * serve stale content anyway.
+ */
 export const AVATAR_COMPOSER_ASSET_VERSION = "v31-contained-hair-fill-20260830";
 /**
  * The query string stores the selected layers. The base SVG is a transparent
