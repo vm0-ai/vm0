@@ -253,6 +253,36 @@ const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";
+const STANDARD_TERRA_API_KEY_BDD_ROUTES = [
+  {
+    name: "OpenAI",
+    type: "openai-api-key",
+    endpoint: "https://api.openai.com/v1/responses",
+    baseUrl: "https://api.openai.com/v1",
+    secretName: "OPENAI_API_KEY",
+    piProvider: "openai",
+    runtimeModel: "gpt-5.6-terra",
+  },
+  {
+    name: "OpenRouter",
+    type: "openrouter-codex",
+    endpoint: "https://openrouter.ai/api/v1/responses",
+    baseUrl: "https://openrouter.ai/api/v1",
+    secretName: "OPENROUTER_API_KEY",
+    piProvider: "openrouter",
+    runtimeModel: "openai/gpt-5.6-terra",
+  },
+  {
+    name: "Vercel AI Gateway",
+    type: "vercel-ai-gateway-codex",
+    endpoint: "https://ai-gateway.vercel.sh/v1/responses",
+    baseUrl: "https://ai-gateway.vercel.sh/v1",
+    secretName: "VERCEL_AI_GATEWAY_API_KEY",
+    piProvider: "openai",
+    catalogModel: "gpt-5.6-terra",
+    runtimeModel: "openai/gpt-5.6-terra",
+  },
+] as const;
 const TERRA_USAGE_PRICING = [
   "tokens.input",
   "tokens.output",
@@ -2181,7 +2211,9 @@ async function upsertOrgModelProvider(
       | "deepseek"
       | "openai-api-key"
       | "openrouter-api-key"
+      | "openrouter-codex"
       | "vercel-ai-gateway"
+      | "vercel-ai-gateway-codex"
       | "built-in";
     readonly secret?: string;
   },
@@ -10954,11 +10986,6 @@ describe("CHAT-02: model-first provider policies", () => {
       model: "deepseek-v4-flash",
       providerType: "deepseek",
     },
-    {
-      name: "Terra",
-      model: "gpt-5.6-terra",
-      providerType: "openai-api-key",
-    },
   ] as const)(
     "keeps direct $name BYOK out of Pi execution",
     async ({ model, providerType }) => {
@@ -11007,6 +11034,382 @@ describe("CHAT-02: model-first provider policies", () => {
       await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
     },
     30_000,
+  );
+
+  it.each(STANDARD_TERRA_API_KEY_BDD_ROUTES)(
+    "runs $name API-key Terra through API-first and generation-2 Sandbox with exact credential continuity",
+    async (route) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const firewall = createFirewallApi(context);
+      const orgId = requireOrgId(actor);
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
+      const initialSecret = `${route.type}-initial-secret`;
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: route.type,
+        secret: initialSecret,
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: "gpt-5.6-terra",
+          isDefault: true,
+          defaultProviderType: route.type,
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      mockPiResourceArchiveDownloads();
+      const checkpointObjects = mockPiCheckpointObjectStore();
+      const providerRequests: {
+        readonly authorization: string | null;
+        readonly body: unknown;
+      }[] = [];
+      server.use(
+        http.post(route.endpoint, async ({ request }) => {
+          const sequence = providerRequests.length;
+          providerRequests.push({
+            authorization: request.headers.get("authorization"),
+            body: await request.json(),
+          });
+          const responseBody = piResponsesContentSse({
+            blocks:
+              sequence === 0
+                ? [
+                    {
+                      type: "toolCall",
+                      callId: `call_${route.type.replaceAll("-", "_")}`,
+                      name: "bash",
+                      arguments: { command: "okou --help" },
+                    },
+                  ]
+                : [
+                    {
+                      type: "text",
+                      text: `${route.name} API answer ${sequence}`,
+                    },
+                  ],
+            sequence,
+          });
+          return new HttpResponse(responseBody, {
+            headers: { "content-type": "text/event-stream" },
+          });
+        }),
+      );
+
+      const firstPrompt = `use ${route.name} Terra and hand off one tool`;
+      const first = await sendChatRun(actor, {
+        agentId,
+        prompt: firstPrompt,
+        model: "gpt-5.6-terra",
+      });
+      const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/manifest.json`;
+      const sessionKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${first.runId}/session.jsonl`;
+      await expect
+        .poll(() => {
+          return checkpointObjects.has(manifestKey);
+        })
+        .toBe(true);
+      await flushWaitUntilForTest();
+      expect(providerRequests).toStrictEqual([
+        {
+          authorization: `Bearer ${initialSecret}`,
+          body: expect.objectContaining({
+            model: route.runtimeModel,
+            store: false,
+            stream: true,
+          }),
+        },
+      ]);
+      expect(providerRequests[0]?.body).not.toHaveProperty(
+        "previous_response_id",
+      );
+      await expectNoVm0ModelUsage(first.runId);
+
+      await api.heartbeatRunner(runnerGroup);
+      const legacyClaim = await api.requestClaimRunnerJob(
+        true,
+        first.runId,
+        [404],
+      );
+      expectApiError(legacyClaim.body);
+      await expect(api.readRun(actor, first.runId)).resolves.toMatchObject({
+        status: "pending",
+      });
+      const claim = await api.claimRunnerJob(first.runId, {
+        capabilities: { piModelConfigGenerations: [1, 2] },
+      });
+      const sandboxHeaders = {
+        authorization: `Bearer ${claim.sandboxToken}`,
+      };
+      expect(claim.cliAgentType).toBe("pi");
+      expect(claim.piSessionId).toBe(first.threadId);
+      expect(claim.piModelConfig).toStrictEqual({
+        schemaVersion: 2,
+        dialect: "openai-responses",
+        transport: "sse",
+        provider: route.piProvider,
+        baseUrl: route.baseUrl,
+        model: route.runtimeModel,
+        ...(route.type === "vercel-ai-gateway-codex"
+          ? { catalogModel: route.catalogModel }
+          : {}),
+        thinkingLevel: "low",
+        credentialBindings: [
+          {
+            kind: "api-key",
+            environment: "OPENAI_API_KEY",
+            secretName: route.secretName,
+          },
+        ],
+      });
+      expect(claimEnvironment(claim)).toMatchObject({
+        OPENAI_API_KEY: modelProviderSecretPlaceholder(
+          route.type,
+          route.secretName,
+        ),
+        OPENAI_MODEL: route.runtimeModel,
+      });
+      expect(JSON.stringify(claim)).not.toContain(initialSecret);
+      if (!claim.encryptedSecrets) {
+        throw new Error("Expected API-key Terra claim credentials");
+      }
+      const sandboxCredential = await firewall.requestFirewallAuth(
+        sandboxHeaders,
+        {
+          encryptedSecrets: claim.encryptedSecrets,
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate(route.secretName)}`,
+          },
+          secretConnectorMap: claim.secretConnectorMap ?? undefined,
+          secretConnectorMetadataMap:
+            claim.secretConnectorMetadataMap ?? undefined,
+        },
+        [200],
+      );
+      if (sandboxCredential.status !== 200) {
+        throw new Error("Expected exact API-key Terra firewall credential");
+      }
+      expect(sandboxCredential.body.headers.Authorization).toBe(
+        `Bearer ${initialSecret}`,
+      );
+      expect(sandboxCredential.body.resolvedSecrets).toStrictEqual([
+        route.secretName,
+      ]);
+
+      const manifestBytes = checkpointObjects.get(manifestKey);
+      const h1Bytes = checkpointObjects.get(sessionKey);
+      if (!manifestBytes || !h1Bytes) {
+        throw new Error("Expected API-key Terra ownership-transfer artifacts");
+      }
+      const manifest = piApiFirstTurnManifestSchema.parse(
+        JSON.parse(manifestBytes.toString("utf8")),
+      );
+      const h2Session = MemoryPiSession.fromJsonl(h1Bytes.toString("utf8"));
+      const pendingAssistant = [...h2Session.buildSessionContext().messages]
+        .reverse()
+        .find((message) => {
+          return message.role === "assistant";
+        });
+      const pendingTool =
+        pendingAssistant?.role === "assistant"
+          ? pendingAssistant.content.find((content) => {
+              return content.type === "toolCall";
+            })
+          : undefined;
+      if (!pendingTool || pendingTool.type !== "toolCall") {
+        throw new Error("Expected API-key Terra tool call in H1");
+      }
+      const sandboxToolResult = `${route.name} sandbox tool output`;
+      const sandboxAnswer = `${route.name} Sandbox completion`;
+      h2Session.appendMessage({
+        role: "toolResult",
+        toolCallId: pendingTool.id,
+        toolName: pendingTool.name,
+        content: [{ type: "text", text: sandboxToolResult }],
+        details: {},
+        isError: false,
+        timestamp: 2,
+      });
+      h2Session.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: sandboxAnswer }],
+        api: "openai-responses",
+        provider: route.piProvider,
+        model: route.runtimeModel,
+        usage: {
+          input: 5,
+          output: 3,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 8,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        stopReason: "stop",
+        timestamp: 3,
+      });
+      const h2 = h2Session.toJsonl();
+      const h2Hash = createHash("sha256").update(h2).digest("hex");
+      await webhooks.requestAgentCheckpointPrepareHistory(
+        {
+          runId: first.runId,
+          hash: h2Hash,
+          rawSize: Buffer.byteLength(h2),
+          encodedSize: Buffer.byteLength(h2),
+          encoding: "identity",
+        },
+        sandboxHeaders,
+        [200],
+      );
+      checkpointObjects.set(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${h2Hash}.blob`,
+        Buffer.from(h2, "utf8"),
+      );
+      const sandboxEventSequenceStart = manifest.sandboxEventSequenceStart;
+      await webhooks.requestAgentEvents(
+        {
+          runId: first.runId,
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: sandboxEventSequenceStart,
+              message: {
+                content: [{ type: "text", text: sandboxAnswer }],
+              },
+            },
+            {
+              type: "result",
+              sequenceNumber: sandboxEventSequenceStart + 1,
+              result: sandboxAnswer,
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      );
+      await webhooks.requestAgentComplete(
+        {
+          runId: first.runId,
+          exitCode: 0,
+          lastEventSequence: sandboxEventSequenceStart + 1,
+          checkpoint: {
+            cliAgentType: "pi",
+            cliAgentSessionId: first.threadId,
+            cliAgentSessionHistoryHash: h2Hash,
+          },
+        },
+        sandboxHeaders,
+        [200],
+      );
+      await waitForRunStatus(actor, first.runId, "completed");
+      await flushWaitUntilForTest();
+      await expectNoVm0ModelUsage(first.runId);
+      const firstSession = await readThreadSessionConversation(
+        context,
+        first.threadId,
+      );
+
+      const followUpPrompt = `continue the same ${route.name} credential`;
+      const followUp = await sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: followUpPrompt,
+        model: "gpt-5.6-terra",
+      });
+      await waitForRunStatus(actor, followUp.runId, "completed");
+      await flushWaitUntilForTest();
+      expect(providerRequests).toHaveLength(2);
+      expect(providerRequests[1]).toMatchObject({
+        authorization: `Bearer ${initialSecret}`,
+        body: {
+          model: route.runtimeModel,
+          store: false,
+          stream: true,
+        },
+      });
+      expect(JSON.stringify(providerRequests[1]?.body)).toContain(
+        sandboxToolResult,
+      );
+      await expect(
+        readThreadSessionConversation(context, first.threadId),
+      ).resolves.toMatchObject({
+        agent_session_id: firstSession.agent_session_id,
+      });
+      await expectNoVm0ModelUsage(followUp.runId);
+
+      const rotatedSecret = `${route.type}-rotated-secret`;
+      const rotatedAt = now() + 1000;
+      const rotated = await withMockNowForTest(rotatedAt, async () => {
+        const updated = await upsertOrgModelProvider(actor, {
+          type: route.type,
+          secret: rotatedSecret,
+        });
+        expect(updated.providerId).toBe(providerId);
+        return await sendChatRun(actor, {
+          agentId,
+          threadId: first.threadId,
+          prompt: `continue after rotating the ${route.name} credential`,
+          model: "gpt-5.6-terra",
+        });
+      });
+      await waitForRunStatus(actor, rotated.runId, "completed");
+      await flushWaitUntilForTest();
+      expect(providerRequests).toHaveLength(3);
+      expect(providerRequests[2]).toMatchObject({
+        authorization: `Bearer ${rotatedSecret}`,
+        body: {
+          model: route.runtimeModel,
+          store: false,
+          stream: true,
+        },
+      });
+      const rotatedBody = JSON.stringify(providerRequests[2]?.body);
+      expect(occurrences(rotatedBody, firstPrompt)).toBe(1);
+      expect(occurrences(rotatedBody, sandboxAnswer)).toBe(1);
+      expect(occurrences(rotatedBody, followUpPrompt)).toBe(1);
+      expect(rotatedBody).not.toContain(sandboxToolResult);
+      await expect(
+        readThreadSessionConversation(context, first.threadId),
+      ).resolves.not.toMatchObject({
+        agent_session_id: firstSession.agent_session_id,
+      });
+      await expectNoVm0ModelUsage(rotated.runId);
+      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+        "Pi API first-turn outcome",
+        expect.objectContaining({
+          productProvider: route.type,
+          dialect: "openai-responses",
+          executionOwner: "api-first",
+          handoffOwner: "sandbox",
+          outcome: "ownership_transfer",
+        }),
+      );
+      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+        "Pi API first-turn outcome",
+        expect.objectContaining({
+          productProvider: route.type,
+          dialect: "openai-responses",
+          executionOwner: "sandbox",
+          outcome: "sandbox_completion",
+        }),
+      );
+      const piLogCalls = JSON.stringify([
+        ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.warn.mock.calls,
+      ]);
+      expect(piLogCalls).not.toContain(initialSecret);
+      expect(piLogCalls).not.toContain(rotatedSecret);
+    },
+    90_000,
   );
 
   it("reuses a Codex session across DeepSeek V4 model switches", async () => {

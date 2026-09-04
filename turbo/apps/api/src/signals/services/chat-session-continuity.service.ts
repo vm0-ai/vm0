@@ -9,6 +9,7 @@ import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
 import { conversations } from "@okouai/db/schema/conversation";
+import { modelProviders } from "@okouai/db/schema/model-provider";
 import {
   modelProviderConnections,
   modelProviderSurfaces,
@@ -21,6 +22,7 @@ import {
 } from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
 import { hasIncompatibleBuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
+import { isStandardTerraApiKeyPiProviderType } from "./pi-sandbox-config";
 
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
@@ -289,6 +291,68 @@ function customSurfaceRouteMayBeInUse(args: {
   );
 }
 
+function isStandardTerraApiKeyPiRoute(route: ChatThreadSessionRoute): boolean {
+  return (
+    route.cliAgentType === "pi" &&
+    route.selectedModel === "gpt-5.6-terra" &&
+    isStandardTerraApiKeyPiProviderType(route.modelProvider)
+  );
+}
+
+function standardTerraApiKeyPiRouteIdentityChanged(args: {
+  readonly previousRoute: ChatThreadSessionRoute;
+  readonly nextRoute: ChatThreadSessionRoute;
+}): boolean {
+  if (
+    !isStandardTerraApiKeyPiRoute(args.previousRoute) &&
+    !isStandardTerraApiKeyPiRoute(args.nextRoute)
+  ) {
+    return false;
+  }
+  return (
+    args.previousRoute.modelProvider !== args.nextRoute.modelProvider ||
+    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId ||
+    args.previousRoute.modelRuntimeProvider !==
+      args.nextRoute.modelRuntimeProvider ||
+    args.previousRoute.modelRuntimeModel !== args.nextRoute.modelRuntimeModel
+  );
+}
+
+async function standardTerraApiKeyPiRouteRevisionChanged(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly orgId: string;
+  readonly previousRoute: ChatThreadSessionRoute;
+  readonly nextRoute: ChatThreadSessionRoute;
+  readonly previousRunCreatedAt: Date | null;
+}): Promise<boolean> {
+  const productProvider = args.nextRoute.modelProvider;
+  if (
+    !isStandardTerraApiKeyPiRoute(args.previousRoute) ||
+    !isStandardTerraApiKeyPiRoute(args.nextRoute) ||
+    !isStandardTerraApiKeyPiProviderType(productProvider) ||
+    args.previousRoute.modelProvider !== args.nextRoute.modelProvider ||
+    args.previousRoute.modelProviderId === null ||
+    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId ||
+    args.previousRunCreatedAt === null
+  ) {
+    return false;
+  }
+  const [provider] = await args.db
+    .select({ updatedAt: modelProviders.updatedAt })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.id, args.previousRoute.modelProviderId),
+        eq(modelProviders.orgId, args.orgId),
+        eq(modelProviders.type, productProvider),
+      ),
+    )
+    .limit(1);
+  return (
+    provider !== undefined && provider.updatedAt > args.previousRunCreatedAt
+  );
+}
+
 function shouldRotateCanonicalSession(args: {
   readonly previousRoute: ChatThreadSessionRoute;
   readonly nextRoute: ChatThreadSessionRoute;
@@ -299,6 +363,12 @@ function shouldRotateCanonicalSession(args: {
       next: args.nextRoute,
     })
   ) {
+    return true;
+  }
+  if (standardTerraApiKeyPiRouteIdentityChanged(args)) {
+    // Public Responses state belongs to the exact product route and captured
+    // provider credential. Never cross that boundary with provider-private
+    // response, cache, or pending-tool state.
     return true;
   }
   const providerIdChanged =
@@ -346,7 +416,15 @@ async function shouldRotateResolvedSession(args: {
     nextModelProviderId: args.nextRoute.modelProviderId,
     previousRunCreatedAt: args.previousRunCreatedAt,
   });
-  return routeConfigurationChanged
+  const apiKeyRouteRevisionChanged =
+    await standardTerraApiKeyPiRouteRevisionChanged({
+      db: args.db,
+      orgId: args.orgId,
+      previousRoute: args.previousRoute,
+      nextRoute: args.nextRoute,
+      previousRunCreatedAt: args.previousRunCreatedAt,
+    });
+  return routeConfigurationChanged || apiKeyRouteRevisionChanged
     ? true
     : shouldRotateCanonicalSession({
         previousRoute: args.previousRoute,

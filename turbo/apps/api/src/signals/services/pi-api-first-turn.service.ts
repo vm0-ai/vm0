@@ -11,6 +11,7 @@ import {
   type StoredExecutionContext,
 } from "@okouai/api-contracts/contracts/runners";
 import type { RunFailureReasonToken } from "@okouai/api-contracts/contracts/run-failure-reasons";
+import { modelProviderTypeSchema } from "@okouai/api-contracts/contracts/model-providers";
 import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
@@ -637,6 +638,40 @@ type ApiFirstTurnExecutionContext =
 type ApiFirstTurnLaunchConfig =
   ApiFirstTurnExecutionContext["piLaunchConfig"]["apiFirstTurn"];
 
+function piApiFirstTurnOutcomeTelemetry(
+  executionContext: ApiFirstTurnExecutionContext,
+) {
+  const config = executionContext.piModelConfig;
+  const dialect =
+    "schemaVersion" in config
+      ? config.dialect
+      : (config.api ?? "openai-responses");
+  const providerTypes = new Set(
+    ("schemaVersion" in config ? config.credentialBindings : [])
+      .map((binding) => {
+        const providerType =
+          executionContext.secretConnectorMap?.[binding.secretName];
+        const metadata =
+          executionContext.secretConnectorMetadataMap?.[binding.secretName];
+        const parsed = modelProviderTypeSchema.safeParse(providerType);
+        return parsed.success &&
+          metadata?.sourceType === "model-provider" &&
+          metadata.metadataKey === parsed.data
+          ? parsed.data
+          : null;
+      })
+      .filter((providerType) => {
+        return providerType !== null;
+      }),
+  );
+  const [productProvider] = providerTypes;
+  return {
+    dialect,
+    executionOwner: "api-first" as const,
+    ...(providerTypes.size === 1 && productProvider ? { productProvider } : {}),
+  };
+}
+
 interface ApiFirstTurnCommitIdentity {
   readonly baseSessionId: string;
   readonly baseSessionSha256: string | null;
@@ -1084,6 +1119,7 @@ async function observeDiscardedProviderResult(
     await recordApiFirstTurnUsage(args, late.value);
     L.warn("Pi API first-turn outcome", {
       runId: args.activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
       outcome: "discarded_late_provider_result",
       reason: "aborted_execution",
       ownershipStage: ownership.stage,
@@ -1573,6 +1609,7 @@ const finalizeCompleteTurn$ = command(async function finalizeCompleteTurn(
     completeAgentRun$,
     {
       auth: prepared.auth,
+      executionOwner: "api-first",
       body: {
         runId: args.activation.runId,
         exitCode: 0,
@@ -1685,6 +1722,8 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
       );
       L.debug("Pi API first-turn outcome", {
         runId: args.activation.runId,
+        ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
+        handoffOwner: "sandbox",
         outcome: "ownership_transfer",
         reason: hasActiveInput
           ? transferMode === "settled-session-continuation"
@@ -1707,6 +1746,7 @@ const commitApiFirstTurn$ = command(async function commitApiFirstTurn(
     stopPreparedSandbox(args.activation, "completed");
     L.debug("Pi API first-turn outcome", {
       runId: args.activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
       outcome: "api_completion",
       reason: "settled_session",
       ownershipStage: "provider-may-have-started",
@@ -1805,11 +1845,12 @@ async function canonicalApiFirstTurnCancellationWon(
 }
 
 function logCanonicalApiFirstTurnCancellation(
-  runId: string,
+  args: ApiFirstTurnContext,
   ownership: PiApiFirstTurnOwnership,
 ): void {
   L.debug("Pi API first-turn outcome", {
-    runId,
+    runId: args.activation.runId,
+    ...piApiFirstTurnOutcomeTelemetry(args.activation.executionContext),
     outcome: "canonical_cancellation",
     reason:
       ownership.stage === "pre-provider"
@@ -1832,7 +1873,7 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
       args.activation.runId,
     );
     if (state?.status === "cancelled") {
-      logCanonicalApiFirstTurnCancellation(args.activation.runId, ownership);
+      logCanonicalApiFirstTurnCancellation(args, ownership);
       return undefined;
     }
     if (!state || (state.status !== "pending" && state.status !== "running")) {
@@ -1846,6 +1887,7 @@ const failApiFirstTurn$ = command(async function failApiFirstTurn(
           orgId: args.activation.orgId,
           runId: args.activation.runId,
         },
+        executionOwner: "api-first",
         body: {
           runId: args.activation.runId,
           exitCode: 1,
@@ -1913,6 +1955,8 @@ export const runPiApiFirstTurn$ = command(
       if (fallback.ok) {
         L.debug("Pi API first-turn outcome", {
           runId: activation.runId,
+          ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
+          handoffOwner: "sandbox",
           outcome:
             sandboxFirstReason === "active_input"
               ? "ownership_transfer"
@@ -1938,16 +1982,18 @@ export const runPiApiFirstTurn$ = command(
       ) {
         L.warn("Pi API first-turn outcome", {
           runId: activation.runId,
+          ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
           outcome: "discarded_late_provider_result",
           reason: "canonical_cancellation",
           ownershipStage: ownership.stage,
         });
       }
-      logCanonicalApiFirstTurnCancellation(activation.runId, ownership);
+      logCanonicalApiFirstTurnCancellation(context, ownership);
       return undefined;
     }
     L.warn("Pi API first-turn outcome", {
       runId: activation.runId,
+      ...piApiFirstTurnOutcomeTelemetry(activation.executionContext),
       outcome: "terminal_failure",
       reason: failure.code,
       ownershipStage: ownership.stage,
