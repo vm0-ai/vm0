@@ -696,6 +696,10 @@ test("Drag the sidebar scrollbar when enabled", async () => {
 
   const scrollbar = await screen.findByTestId("sidebar-scrollbar");
   const thumb = await screen.findByTestId("sidebar-scrollbar-thumb");
+  scrollbar.style.paddingBlockStart = "0px";
+  scrollbar.style.paddingBlockEnd = "0px";
+  thumb.style.marginBlockStart = "0px";
+  thumb.style.marginBlockEnd = "0px";
   Object.defineProperty(scrollbar, "offsetHeight", {
     configurable: true,
     value: 200,
