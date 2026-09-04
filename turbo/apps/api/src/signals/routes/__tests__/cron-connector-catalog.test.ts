@@ -6211,6 +6211,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
   });
 
   it("classifies unavailable and oversized objects before acceptance", async () => {
+    expect.hasAssertions();
     configureSource();
     context.mocks.s3.send.mockRejectedValue(
       new Error("private source credentials and URL must stay private"),
@@ -6893,6 +6894,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
   ])("rejects $name", async ({ expected, release }) => {
+    expect.hasAssertions();
     configureSource();
     const fixture = release();
     serveObjects(catalogObjects([fixture], fixture));

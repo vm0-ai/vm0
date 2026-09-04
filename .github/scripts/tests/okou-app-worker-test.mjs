@@ -333,6 +333,7 @@ function assertNoClerkSecrets(snapshot) {
     "jwt-cookie-must-not-render",
     "dev-browser-jwt-must-not-render",
     "sk_test_secret-must-not-render",
+    "sk_live_secret-must-not-render",
     "session-token-must-not-render",
     "sess_must-not-render",
     "claim-must-not-render",
@@ -406,6 +407,14 @@ assert.equal(htmlAttribute(vm0Page.html, "data-app-brand-name"), "VM0");
 assert.equal(metaContent(vm0Page.html, "name", "application-name"), "VM0");
 assert.equal(metaContent(vm0Page.html, "name", "description"), vm0Description);
 assert.equal(metaContent(vm0Page.html, "property", "og:site_name"), "VM0");
+assert.equal(
+  metaContent(vm0Page.html, "property", "og:image"),
+  "https://static.vm0.io/web/og-image.png",
+);
+assert.equal(
+  metaContent(vm0Page.html, "name", "twitter:image"),
+  "https://static.vm0.io/web/og-image.png",
+);
 assert.equal(metaContent(vm0Page.html, "name", "twitter:site"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "twitter:creator"), "@okou_ai");
 assert.equal(metaContent(vm0Page.html, "name", "robots"), "noindex, nofollow");
@@ -435,6 +444,14 @@ assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
 assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
 assert.equal(
+  metaContent(okouPage.html, "property", "og:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(
+  metaContent(okouPage.html, "name", "twitter:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(
   tagAttribute(okouPage.html, "link", "rel", "canonical", "href"),
   "https://app.okou.ai/",
 );
@@ -456,19 +473,6 @@ assert.equal(
 assertBootstrapAvatar(okouPage.html);
 assert.equal(clerkCoreScript(okouPage.html), expectedClerkCoreScript);
 assert.equal(clerkBootstrap(okouPage.html), expectedClerkBootstrap);
-
-for (const [origin, brandName] of [
-  ["https://app-worker.vm0.ai", "VM0"],
-  ["https://app-worker.okou.ai", "Okou"],
-]) {
-  const canaryPage = await requestAppPage(origin);
-  assert.equal(canaryPage.response.status, 200);
-  assert.equal(
-    htmlAttribute(canaryPage.html, "data-app-brand-name"),
-    brandName,
-  );
-  assert.equal(clerkBootstrap(canaryPage.html), expectedClerkBootstrap);
-}
 
 const okouPreview = await requestAppPage(
   "https://pr-25304-app-okou-app-preview.vm0.workers.dev",
@@ -567,10 +571,8 @@ const duplicateFlag = await responseSnapshot(
 assert.deepEqual(duplicateFlag, edgeDebugBaseline);
 
 for (const ineligibleOrigin of [
-  "https://app.okou.ai",
-  "https://app.vm0.ai",
-  "https://app-worker.okou.ai",
-  "https://app-worker.vm0.ai",
+  "http://app.okou.ai",
+  "https://app.okou.ai.evil.example",
   "https://pr-25304-app.omby.ai",
   "https://staging-app-okou-app-preview.vm0.workers.dev",
 ]) {
@@ -762,6 +764,71 @@ assert.deepEqual(Object.keys(clerkEdgeSessionJson(authenticated.body)).sort(), [
 ]);
 assertNoClerkSecrets(authenticated);
 
+for (const [productionOrigin, publicBrand] of [
+  ["https://app.okou.ai", "okou"],
+  ["https://app.vm0.ai", "vm0"],
+]) {
+  const productionEdgeUrl = `${productionOrigin}/settings/profile`;
+  const productionEdgeEnvironment = {
+    CLERK_PUBLISHABLE_KEY: productionClerkPublishableKey,
+    CLERK_SECRET_KEY: "sk_live_secret-must-not-render",
+    PUBLIC_BRAND: publicBrand,
+  };
+  let clerkClientFactoryCalls = 0;
+  const productionEdgeWorker = workerModule.createWorker(
+    embeddedShell,
+    ({ publishableKey, secretKey, telemetry }) => {
+      clerkClientFactoryCalls += 1;
+      assert.equal(publishableKey, productionClerkPublishableKey);
+      assert.equal(secretKey, "sk_live_secret-must-not-render");
+      assert.equal(telemetry?.disabled, true);
+      return {
+        authenticateRequest(request, options) {
+          assert.equal(
+            request.url,
+            `${productionEdgeUrl}?__clerk_edge_debug=1`,
+          );
+          assert.equal(options.acceptsToken, "session_token");
+          assert.deepEqual(options.authorizedParties, [productionOrigin]);
+          return Promise.resolve({
+            headers: new Headers(),
+            isAuthenticated: true,
+            toAuth() {
+              return {
+                orgId: "org_production",
+                userId: "user_production",
+              };
+            },
+          });
+        },
+      };
+    },
+  );
+  const productionBaseline = await responseSnapshot(
+    productionEdgeWorker,
+    productionEdgeUrl,
+    productionEdgeEnvironment,
+  );
+  assert.equal(clerkClientFactoryCalls, 0);
+  assert.doesNotMatch(productionBaseline.body, /vm0-clerk-edge-session/u);
+
+  const productionAuthenticated = await responseSnapshot(
+    productionEdgeWorker,
+    `${productionEdgeUrl}?__clerk_edge_debug=1`,
+    productionEdgeEnvironment,
+  );
+  assert.equal(clerkClientFactoryCalls, 1);
+  assert.deepEqual(clerkEdgeSessionJson(productionAuthenticated.body), {
+    userId: "user_production",
+    orgId: "org_production",
+  });
+  assert.equal(
+    new Headers(productionAuthenticated.headers).get("Cache-Control"),
+    "private, no-store",
+  );
+  assertNoClerkSecrets(productionAuthenticated);
+}
+
 const authenticatedWithoutOrganization = await responseSnapshot(
   workerModule.createWorker(
     embeddedShell,
@@ -945,6 +1012,14 @@ assert.equal(
   `https://app.okou.ai/share/threads/${sharedThreadId}`,
 );
 assert.equal(
+  metaContent(previewHtml, "property", "og:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(
+  metaContent(previewHtml, "name", "twitter:image"),
+  "https://static.okou.io/web/okou-og-image-373c892e.png",
+);
+assert.equal(
   tagAttribute(previewHtml, "link", "rel", "canonical", "href"),
   null,
 );
@@ -969,21 +1044,6 @@ assert.equal(
   null,
 );
 const productionHtml = await production.response.text();
-
-const canaryProduction = await requestSharedPage({
-  appOrigin: "https://app-worker.okou.ai",
-  metaResponse() {
-    return Response.json({
-      title: "Canary production conversation",
-      publicBrand: "okou",
-    });
-  },
-});
-assert.equal(canaryProduction.response.status, 200);
-assert.equal(
-  canaryProduction.observedUrl,
-  `https://api.okou.ai/api/shared-threads/${sharedThreadId}/meta`,
-);
 
 const vm0SharedOnOkouHost = await requestSharedPage({
   appOrigin: "https://app.okou.ai",

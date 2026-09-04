@@ -125,11 +125,22 @@ deploy_source = require_fragments(
     [
         "wrangler deploy",
         "--env production",
+        '--secrets-file "$worker_secrets"',
         '--message "app artifact ${ARTIFACT_SHA}"',
+        ': "${CLERK_PUBLISHABLE_KEY:?production Clerk publishable key is required}"',
+        ': "${CLERK_SECRET_KEY:?production Clerk secret key is required}"',
+        'case "$CLERK_PUBLISHABLE_KEY" in',
+        "pk_live_*",
+        'case "$CLERK_SECRET_KEY" in',
+        "sk_live_*",
+        "umask 077",
+        'worker_secrets="$(mktemp)"',
+        'trap \'rm -f "$worker_secrets"\' EXIT',
+        "CLERK_PUBLISHABLE_KEY: env.CLERK_PUBLISHABLE_KEY",
+        "CLERK_SECRET_KEY: env.CLERK_SECRET_KEY",
+        "unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY",
         '"https://app.vm0.ai|https://api.vm0.ai"',
         '"https://app.okou.ai|https://api.okou.ai"',
-        '"https://app-worker.vm0.ai|https://api.vm0.ai"',
-        '"https://app-worker.okou.ai|https://api.okou.ai"',
         "Access-Control-Request-Method: GET",
         "%header{access-control-allow-origin}",
         "%header{access-control-allow-credentials}",
@@ -137,10 +148,27 @@ deploy_source = require_fragments(
 )
 if deploy_source.count("wrangler deploy") != 1:
     raise RuntimeError("production Worker must deploy exactly once")
+if deploy_source.count('--secrets-file "$worker_secrets"') != 1:
+    raise RuntimeError("production Worker must bind Clerk keys exactly once")
+if "--var CLERK_SECRET_KEY" in deploy_source:
+    raise RuntimeError("production Worker must not expose the Clerk secret on the command line")
+secrets_file_index = deploy_source.index('worker_secrets="$(mktemp)"')
+unset_index = deploy_source.index("unset CLERK_PUBLISHABLE_KEY CLERK_SECRET_KEY")
+deploy_index = deploy_source.index("wrangler deploy")
+if not secrets_file_index < unset_index < deploy_index:
+    raise RuntimeError("production Clerk keys must be captured and unset before deployment")
 if deploy_step.get("env", {}).get("CLOUDFLARE_API_TOKEN") != (
     "${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}"
 ):
     raise RuntimeError("production Worker deployment must use the Worker token")
+if deploy_step.get("env", {}).get("CLERK_PUBLISHABLE_KEY") != (
+    "${{ vars.CLERK_PUBLISHABLE_KEY }}"
+):
+    raise RuntimeError("production Worker deployment must use the production Clerk key")
+if deploy_step.get("env", {}).get("CLERK_SECRET_KEY") != (
+    "${{ secrets.CLERK_SECRET_KEY }}"
+):
+    raise RuntimeError("production Worker deployment must use the production Clerk secret")
 if start_step.get("with", {}).get("env") != "app/production":
     raise RuntimeError("production Worker must own the canonical App deployment")
 if finish_step.get("with", {}).get("status") != "${{ job.status }}":
@@ -184,9 +212,6 @@ for fragment in (
     '"zone_name": "okou.ai"',
     '"pattern": "app.vm0.ai/*"',
     '"zone_name": "vm0.ai"',
-    '"pattern": "app-worker.okou.ai"',
-    '"pattern": "app-worker.vm0.ai"',
-    '"custom_domain": true',
 ):
     if fragment not in worker_config_source:
         raise RuntimeError(f"production Worker config is missing: {fragment}")

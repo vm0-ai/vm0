@@ -1,11 +1,38 @@
 import type { AppRoute } from "@okouai/api-contracts/contracts/trpc-contract";
+import { HttpResponse } from "msw";
+import { posthog } from "posthog-js/dist/module.slim";
 import { vi } from "vitest";
 
+import {
+  clearMockedAuthOnAbort,
+  emitMockedClerkEvent,
+  mockClerkLoaded,
+  mockClerkSessionSignedOut,
+  mockedClerk,
+  mockedClerkLoad,
+  mockOrganization,
+  mockUser,
+  type MockedClerkLoadOptions,
+} from "../../__tests__/mock-auth.ts";
+import {
+  clerkLocalizationFixtureForRequest,
+  type ClerkLocalizationLocale,
+} from "../../mocks/handlers/clerk-localizations.ts";
+import { mockClerkResource } from "../../test/mocks/clerk-resource.ts";
+import {
+  mockClerkWorker,
+  type ClerkWorkerMock,
+} from "../../test/mocks/clerk-worker.ts";
+import {
+  mockSentry,
+  type SentryMock,
+} from "../../test/mocks/sentry-behavior.ts";
 import {
   deferNextAblySubscribe,
   getAuthTokenHistory,
   hasChannelSubscription,
   hasChannelSubscriptionOnChannel,
+  hasSharedDatabaseSubscription,
   hasSubscription,
   hasSubscriptionOnChannel,
   rejectAblySubscribe,
@@ -63,6 +90,10 @@ interface BrowserOpenMock {
   openedWindow: Window | null;
 }
 
+interface BrowserUrlOptions {
+  readonly apiOriginMarker?: string | null;
+}
+
 interface BrowserScreenOptions {
   readonly height: number;
   readonly pixelRatio: number;
@@ -70,18 +101,29 @@ interface BrowserScreenOptions {
 }
 
 interface CanvasRender {
-  readonly avatar: {
-    readonly height: number;
-    readonly width: number;
-    readonly x: number;
-    readonly y: number;
-  };
   readonly background: string;
   readonly height: number;
   readonly width: number;
 }
 
+interface CanvasClipCircle {
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly endAngle: number;
+  readonly radius: number;
+  readonly startAngle: number;
+}
+
+interface CanvasImageDraw {
+  readonly height: number | undefined;
+  readonly width: number | undefined;
+  readonly x: number;
+  readonly y: number;
+}
+
 interface CanvasRenderingMock {
+  readonly clipCircles: CanvasClipCircle[];
+  readonly imageDraws: CanvasImageDraw[];
   readonly renders: CanvasRender[];
 }
 
@@ -146,7 +188,9 @@ interface BrowserMatchMediaMock {
   ) => void;
 }
 
-type BrowserElementRectResolver = (element: Element) => DOMRectInit | undefined;
+interface BrowserVisibilityStateMock {
+  readonly changeTo: (visibilityState: DocumentVisibilityState) => void;
+}
 
 interface ImageDimensionsMockValue {
   width: number;
@@ -165,6 +209,54 @@ interface MockWindow extends Window {
   close: () => void;
 }
 
+interface PostHogEvent {
+  readonly name: Parameters<typeof posthog.capture>[0];
+  readonly properties: Parameters<typeof posthog.capture>[1];
+  readonly options: Parameters<typeof posthog.capture>[2];
+}
+
+interface PostHogInitialization {
+  readonly key: Parameters<typeof posthog.init>[0];
+  readonly config: Parameters<typeof posthog.init>[1];
+}
+
+interface PostHogIdentification {
+  readonly distinctId: Parameters<typeof posthog.identify>[0];
+  readonly properties: Parameters<typeof posthog.identify>[1];
+  readonly propertiesOnce: Parameters<typeof posthog.identify>[2];
+}
+
+interface PostHogMock {
+  readonly events: PostHogEvent[];
+  readonly identifications: PostHogIdentification[];
+  readonly initializations: PostHogInitialization[];
+}
+
+interface ClerkResourceRequest {
+  readonly domain: string | undefined;
+  readonly publishableKey: string;
+}
+
+interface ClerkMock {
+  readonly loads: readonly (MockedClerkLoadOptions | undefined)[];
+  readonly localizationRequests: ClerkLocalizationLocale[];
+  readonly resourceRequests: ClerkResourceRequest[];
+  readonly worker: ClerkWorkerMock;
+  readonly loaded: (loaded: boolean) => void;
+  readonly localizationUnavailable: (locale: ClerkLocalizationLocale) => void;
+  readonly organization: (...args: Parameters<typeof mockOrganization>) => void;
+  readonly resourcePending: () => ReturnType<
+    typeof createDeferredPromise<void>
+  >;
+  readonly resourceUnavailable: (error?: Error) => void;
+  readonly runtimePending: () => ReturnType<typeof createDeferredPromise<void>>;
+  readonly stateChanged: () => void;
+  readonly sessionSignedOut: (
+    ...args: Parameters<typeof mockClerkSessionSignedOut>
+  ) => void;
+  readonly user: (...args: Parameters<typeof mockUser>) => void;
+}
+
 type OmitFirst<T extends readonly unknown[]> = T extends readonly [
   unknown,
   ...infer Rest,
@@ -174,6 +266,10 @@ type OmitFirst<T extends readonly unknown[]> = T extends readonly [
 
 export function createTestMocks(getSignal: () => AbortSignal) {
   let originalBrowserUrl: string | null = null;
+  let ownedApiOriginMarker: HTMLMetaElement | null = null;
+  let clerkMock: ClerkMock | null = null;
+  let postHogMock: PostHogMock | null = null;
+  let sentryMock: SentryMock | null = null;
   const signalContext: SignalContextLike = {
     get signal() {
       return getSignal();
@@ -280,10 +376,12 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
     },
     browser: {
-      url: (url: string): void => {
+      url: (url: string, options: BrowserUrlOptions = {}): void => {
         if (originalBrowserUrl === null) {
           originalBrowserUrl = window.location.href;
           restoreOnAbort(getSignal(), () => {
+            ownedApiOriginMarker?.remove();
+            ownedApiOriginMarker = null;
             if (originalBrowserUrl !== null) {
               window.location.href = originalBrowserUrl;
               originalBrowserUrl = null;
@@ -291,6 +389,19 @@ export function createTestMocks(getSignal: () => AbortSignal) {
           });
         }
         window.location.href = url;
+        ownedApiOriginMarker?.remove();
+        ownedApiOriginMarker = null;
+
+        const markerContent =
+          options.apiOriginMarker === undefined
+            ? productionApiOriginForUrl(url)
+            : options.apiOriginMarker;
+        if (markerContent !== null) {
+          ownedApiOriginMarker = document.createElement("meta");
+          ownedApiOriginMarker.name = "vm0-api-origin";
+          ownedApiOriginMarker.content = markerContent;
+          document.head.append(ownedApiOriginMarker);
+        }
       },
       open: (openedWindow: Window | null = null): BrowserOpenMock => {
         return mockWindowOpen(openedWindow);
@@ -305,9 +416,6 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         matches: boolean | ((query: string) => boolean),
       ): BrowserMatchMediaMock => {
         return mockMatchMedia(matches);
-      },
-      boundingClientRect: (resolve: BrowserElementRectResolver): void => {
-        mockBoundingClientRect(getSignal(), resolve);
       },
       standaloneDisplayMode: (enabled: boolean): void => {
         mockMatchMedia((query) => {
@@ -431,7 +539,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       language: (language: string): void => {
         vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
-      visibilityState: (visibilityState: DocumentVisibilityState): void => {
+      visibilityState: (
+        visibilityState: DocumentVisibilityState,
+      ): BrowserVisibilityStateMock => {
         const descriptor = defineWindowProperty(
           document,
           "visibilityState",
@@ -440,6 +550,16 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         restoreOnAbort(getSignal(), () => {
           restoreWindowProperty(document, "visibilityState", descriptor);
         });
+        return {
+          changeTo(nextVisibilityState): void {
+            defineWindowProperty(
+              document,
+              "visibilityState",
+              nextVisibilityState,
+            );
+            document.dispatchEvent(new Event("visibilitychange"));
+          },
+        };
       },
       cookie: (cookie: string): void => {
         vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);
@@ -475,6 +595,47 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       canvasRendering: (): CanvasRenderingMock => {
         return mockCanvasRendering(getSignal());
       },
+      noAnimations: (): void => {
+        const descriptor = defineWindowProperty(
+          HTMLElement.prototype,
+          "getAnimations",
+          () => {
+            return [];
+          },
+        );
+        restoreOnAbort(getSignal(), () => {
+          restoreWindowProperty(
+            HTMLElement.prototype,
+            "getAnimations",
+            descriptor,
+          );
+        });
+      },
+      indexedDbUnavailable: (): void => {
+        const open = vi
+          .spyOn(globalThis.indexedDB, "open")
+          .mockImplementation(() => {
+            throw new DOMException(
+              "IndexedDB is unavailable",
+              "InvalidStateError",
+            );
+          });
+        restoreOnAbort(getSignal(), () => {
+          open.mockRestore();
+        });
+      },
+    },
+    clerk: (): ClerkMock => {
+      clerkMock ??= mockClerk(getSignal(), mockHttp);
+      return clerkMock;
+    },
+    posthog: (): PostHogMock => {
+      postHogMock ??= mockPostHog(getSignal());
+      return postHogMock;
+    },
+    sentry: (): SentryMock => {
+      sentryMock ??= mockSentry(getSignal());
+      return sentryMock;
     },
     upload: {
       success: (...args: Parameters<typeof mockUploadSuccess>) => {
@@ -505,6 +666,7 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       rejectNextSubscribe: rejectNextAblySubscribe,
       hasChannelSubscription,
       hasChannelSubscriptionOnChannel,
+      hasSharedDatabaseSubscription,
       hasSubscription,
       hasSubscriptionOnChannel,
       getAuthTokenHistory,
@@ -516,6 +678,110 @@ export function createTestMocks(getSignal: () => AbortSignal) {
 }
 
 export type TestMocks = ReturnType<typeof createTestMocks>;
+
+function mockClerk(
+  signal: AbortSignal,
+  mockHttp: ReturnType<typeof createMockHttp>,
+): ClerkMock {
+  const localizationRequests: ClerkLocalizationLocale[] = [];
+  const unavailableLocalizations = new Set<ClerkLocalizationLocale>();
+  const resource = mockClerkResource(signal);
+  const worker = mockClerkWorker(signal);
+  const originalClerk = Reflect.get(globalThis, "Clerk");
+  const hadOriginalClerk = Reflect.has(globalThis, "Clerk");
+
+  server.use(
+    mockHttp.get(/\/clerk-localizations\/[^/]+\.json$/u, ({ request }) => {
+      const fixture = clerkLocalizationFixtureForRequest(request.url);
+      if (!fixture) {
+        return new HttpResponse(null, { status: 404 });
+      }
+      localizationRequests.push(fixture.locale);
+      if (unavailableLocalizations.has(fixture.locale)) {
+        return new HttpResponse(null, { status: 503 });
+      }
+      return HttpResponse.json(fixture.localization);
+    }),
+  );
+
+  clearMockedAuthOnAbort(signal);
+  restoreOnAbort(signal, () => {
+    if (hadOriginalClerk && originalClerk !== mockedClerk) {
+      Reflect.set(globalThis, "Clerk", originalClerk);
+    } else {
+      Reflect.deleteProperty(globalThis, "Clerk");
+    }
+  });
+
+  return {
+    get loads() {
+      return mockedClerkLoad.mock.calls.map(([options]) => {
+        return options;
+      });
+    },
+    localizationRequests,
+    resourceRequests: resource.requests,
+    worker,
+    loaded: mockClerkLoaded,
+    localizationUnavailable(locale): void {
+      unavailableLocalizations.add(locale);
+    },
+    organization: mockOrganization,
+    resourcePending() {
+      return resource.pending();
+    },
+    resourceUnavailable(
+      error = new Error("Clerk resource is unavailable"),
+    ): void {
+      resource.unavailable(error);
+    },
+    runtimePending() {
+      const deferred = createDeferredPromise<void>(signal);
+      mockedClerkLoad.mockReturnValue(deferred.promise);
+      return deferred;
+    },
+    sessionSignedOut: mockClerkSessionSignedOut,
+    stateChanged: emitMockedClerkEvent,
+    user: mockUser,
+  };
+}
+
+function mockPostHog(signal: AbortSignal): PostHogMock {
+  const events: PostHogEvent[] = [];
+  const identifications: PostHogIdentification[] = [];
+  const initializations: PostHogInitialization[] = [];
+  const capture = vi
+    .spyOn(posthog, "capture")
+    .mockImplementation((name, properties, options) => {
+      events.push({ name, properties, options });
+      return undefined;
+    });
+  const identify = vi
+    .spyOn(posthog, "identify")
+    .mockImplementation((distinctId, properties, propertiesOnce) => {
+      identifications.push({ distinctId, properties, propertiesOnce });
+    });
+  const init = vi.spyOn(posthog, "init").mockImplementation((key, config) => {
+    initializations.push({ key, config });
+    return posthog;
+  });
+  const register = vi.spyOn(posthog, "register").mockImplementation(() => {});
+  const reset = vi.spyOn(posthog, "reset").mockImplementation(() => {});
+  const unregister = vi
+    .spyOn(posthog, "unregister")
+    .mockImplementation(() => {});
+
+  restoreOnAbort(signal, () => {
+    capture.mockRestore();
+    identify.mockRestore();
+    init.mockRestore();
+    register.mockRestore();
+    reset.mockRestore();
+    unregister.mockRestore();
+  });
+
+  return { events, identifications, initializations };
+}
 
 function mockWindowOpen(openedWindow: Window | null): BrowserOpenMock {
   const calls: WindowOpenCall[] = [];
@@ -615,25 +881,6 @@ function mockMatchMedia(
       }
     },
   };
-}
-
-function mockBoundingClientRect(
-  signal: AbortSignal,
-  resolve: BrowserElementRectResolver,
-): void {
-  const getBoundingClientRect = Element.prototype.getBoundingClientRect;
-  const spy = vi
-    .spyOn(Element.prototype, "getBoundingClientRect")
-    .mockImplementation(function getMockBoundingClientRect(this: Element) {
-      const rect = resolve(this);
-      return rect === undefined
-        ? getBoundingClientRect.call(this)
-        : DOMRect.fromRect(rect);
-    });
-
-  restoreOnAbort(signal, () => {
-    spy.mockRestore();
-  });
 }
 
 function mockServiceWorker(signal: AbortSignal): BrowserServiceWorkerMock {
@@ -1116,28 +1363,54 @@ function mockScreen(signal: AbortSignal, options: BrowserScreenOptions): void {
 }
 
 function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
+  const clipCircles: CanvasClipCircle[] = [];
+  const imageDraws: CanvasImageDraw[] = [];
   const renders: CanvasRender[] = [];
-  let avatarHeight = 0;
-  let avatarWidth = 0;
-  let avatarX = 0;
-  let avatarY = 0;
   const context = {
     fillStyle: "",
     imageSmoothingEnabled: false,
     imageSmoothingQuality: "low",
+    arc(
+      centerX: number,
+      centerY: number,
+      radius: number,
+      startAngle: number,
+      endAngle: number,
+    ) {
+      clipCircles.push({
+        centerX,
+        centerY,
+        radius,
+        startAngle,
+        endAngle,
+      });
+    },
+    arcTo() {},
+    beginPath() {},
+    clip() {},
+    closePath() {},
     drawImage(
       _image: CanvasImageSource,
       x: number,
       y: number,
-      width: number,
-      height: number,
+      width?: number,
+      height?: number,
     ) {
-      avatarX = x;
-      avatarY = y;
-      avatarWidth = width;
-      avatarHeight = height;
+      imageDraws.push({ height, width, x, y });
     },
+    fill() {},
     fillRect() {},
+    fillText() {},
+    lineTo() {},
+    measureText() {
+      return { width: 80 } as TextMetrics;
+    },
+    moveTo() {},
+    restore() {},
+    roundRect() {},
+    save() {},
+    stroke() {},
+    strokeText() {},
   } as unknown as CanvasRenderingContext2D;
 
   const getContext = vi
@@ -1149,12 +1422,6 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
     .spyOn(HTMLCanvasElement.prototype, "toDataURL")
     .mockImplementation(function toDataURL(this: HTMLCanvasElement) {
       renders.push({
-        avatar: {
-          height: avatarHeight,
-          width: avatarWidth,
-          x: avatarX,
-          y: avatarY,
-        },
         background: String(context.fillStyle),
         height: this.height,
         width: this.width,
@@ -1163,13 +1430,19 @@ function mockCanvasRendering(signal: AbortSignal): CanvasRenderingMock {
         ? "data:image/png;base64,AAAA"
         : "data:image/png;base64,AAAB";
     });
+  const toBlob = vi
+    .spyOn(HTMLCanvasElement.prototype, "toBlob")
+    .mockImplementation((callback) => {
+      callback(new Blob(["mock canvas"], { type: "image/png" }));
+    });
 
   restoreOnAbort(signal, () => {
     getContext.mockRestore();
     toDataURL.mockRestore();
+    toBlob.mockRestore();
   });
 
-  return { renders };
+  return { clipCircles, imageDraws, renders };
 }
 
 function defineWindowProperty(
@@ -1199,4 +1472,15 @@ function restoreWindowProperty(
 
 function restoreOnAbort(signal: AbortSignal, restore: () => void): void {
   signal.addEventListener("abort", restore, { once: true });
+}
+
+function productionApiOriginForUrl(url: string): string | null {
+  const hostname = new URL(url, window.location.href).hostname;
+  if (hostname === "app.okou.ai") {
+    return "https://api.okou.ai";
+  }
+  if (hostname === "app.vm0.ai") {
+    return "https://api.vm0.ai";
+  }
+  return null;
 }

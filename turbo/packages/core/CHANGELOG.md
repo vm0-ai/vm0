@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.620.0](https://github.com/vm0-ai/vm0/compare/core-v8.619.1...core-v8.620.0) (2026-09-04)
+
+
+### Features
+
+* add avatar composer v2 ([#31526](https://github.com/vm0-ai/vm0/issues/31526)) ([0812c8b](https://github.com/vm0-ai/vm0/commit/0812c8bfb4c4d8a8e416717573a3d5a6609347f8))
+* add progressive artifact preview switch ([#31682](https://github.com/vm0-ai/vm0/issues/31682)) ([8aa24e8](https://github.com/vm0-ai/vm0/commit/8aa24e8b2decb7545ff6bc44c7575bbeac19c188))
+* **core:** roll out connector accounts to all users ([#31608](https://github.com/vm0-ai/vm0/issues/31608)) ([aca7cf7](https://github.com/vm0-ai/vm0/commit/aca7cf7ea9e6a36a37cfedbfcd987394f977add5))
+
+
+### Bug Fixes
+
+* **platform:** stabilize connector popover placement ([#31474](https://github.com/vm0-ai/vm0/issues/31474)) ([6e4b8a5](https://github.com/vm0-ai/vm0/commit/6e4b8a534911d1f74e6c10dc8c92454fc3c3df91))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.401.0
+
+## [8.619.1](https://github.com/vm0-ai/vm0/compare/core-v8.619.0...core-v8.619.1) (2026-09-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.400.1
+
 ## [8.619.0](https://github.com/vm0-ai/vm0/compare/core-v8.618.0...core-v8.619.0) (2026-09-03)
 
 

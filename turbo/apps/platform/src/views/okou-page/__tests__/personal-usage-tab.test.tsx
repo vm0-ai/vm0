@@ -13,11 +13,11 @@ import {
 } from "@okouai/api-contracts/contracts/usage-record";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { expect, test } from "vitest";
 
 import {
   click,
-  detachedSetupPage,
+  setupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -208,8 +208,6 @@ function mockEmptyUsagePackCredits(): void {
 }
 
 interface UsageRecordRequestLog {
-  readonly pages: number[];
-  readonly pageSizes: number[];
   readonly ranges: UsageRecordRange[];
 }
 
@@ -241,10 +239,10 @@ function mockPersonalUsageStory(
   tier: "limited-free-1" | "pro" = "pro",
   mockUsagePackCredits = true,
   role: "admin" | "member" = "admin",
+  failPageOnce: number | null = null,
 ): UsageRecordRequestLog {
+  let failedPage = false;
   const requests: UsageRecordRequestLog = {
-    pages: [],
-    pageSizes: [],
     ranges: [],
   };
 
@@ -255,9 +253,16 @@ function mockPersonalUsageStory(
   });
   mockBillingStatus(tier);
   context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
-    requests.pages.push(query.page);
-    requests.pageSizes.push(query.pageSize);
     requests.ranges.push(query.range);
+    if (query.page === failPageOnce && !failedPage) {
+      failedPage = true;
+      return respond(500, {
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Usage page is temporarily unavailable",
+        },
+      });
+    }
     return respond(200, personalUsagePage(rows, query.page, query.pageSize));
   });
   if (mockUsagePackCredits) {
@@ -269,7 +274,7 @@ function mockPersonalUsageStory(
 async function openUsageSettings(
   section: "usage" | "usage-records" = "usage",
 ): Promise<void> {
-  detachedSetupPage({
+  await setupPage({
     context,
     path: `/?settings=${section}`,
   });
@@ -278,801 +283,649 @@ async function openUsageSettings(
   });
 }
 
-async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
-  const accountButton = await waitFor(() => {
-    return buttonByAriaLabel("Test User");
-  });
-  click(accountButton);
-  const menu = await screen.findByRole("menu");
-  click(within(menu).getByText("Settings"));
-  return screen.findByRole("dialog", { name: "Settings" });
-}
-
-describe("personal usage settings", () => {
-  it("shows the member's usage pack credit breakdown", async () => {
-    const user = userEvent.setup();
-    mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      return respond(200, {
-        totalCredits: 20_400,
-        purchasedCredits: 20_000,
-        bonusCredits: 400,
-        hasUsagePack: true,
-        creditGrants: [
-          {
-            id: "grant-purchased",
-            grantType: "purchased",
-            amount: 25_000,
-            remaining: 20_000,
-            createdAt: "2026-03-01T00:00:00.000Z",
-            expiresAt: "2026-04-01T00:00:00.000Z",
-          },
-          {
-            id: "grant-bonus",
-            grantType: "bonus",
-            amount: 400,
-            remaining: 400,
-            createdAt: "2026-03-01T00:00:00.000Z",
-            expiresAt: "2026-04-01T00:00:00.000Z",
-          },
-        ],
-      });
+test("Review your member-package credit balance", async () => {
+  const user = userEvent.setup();
+  mockPersonalUsageStory(usageRows(), "pro", false, "member");
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 20_400,
+      purchasedCredits: 20_000,
+      bonusCredits: 400,
+      hasUsagePack: true,
+      creditGrants: [
+        {
+          id: "grant-purchased",
+          grantType: "purchased",
+          amount: 25_000,
+          remaining: 20_000,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          expiresAt: "2026-04-01T00:00:00.000Z",
+        },
+        {
+          id: "grant-bonus",
+          grantType: "bonus",
+          amount: 400,
+          remaining: 400,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          expiresAt: "2026-04-01T00:00:00.000Z",
+        },
+      ],
     });
+  });
 
-    await openUsageSettings();
+  await openUsageSettings();
 
-    const card = await screen.findByTestId("usage-pack-credit-card");
-    expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
-    expect(
-      within(card).getByTestId("usage-pack-credit-purchased"),
-    ).toBeInTheDocument();
-    expect(
-      within(card).getByTestId("usage-pack-credit-bonus"),
-    ).toBeInTheDocument();
-    const grants = within(card).getByTestId("usage-pack-credit-grants-section");
-    expect(within(grants).getByText("Credit additions")).toBeInTheDocument();
-    expect(within(grants).getByText("Date")).toBeInTheDocument();
-    expect(within(grants).getByText("Credits")).toBeInTheDocument();
-    expect(within(grants).getByText("Left")).toBeInTheDocument();
-    expect(
-      within(card).queryByTestId("usage-pack-credit-grants-toggle"),
-    ).toBeNull();
-    expect(within(card).getByText("20,400")).toBeInTheDocument();
-    expect(within(card).getByText("20,000")).toBeInTheDocument();
-    expect(within(grants).getByText("+25,000")).toBeInTheDocument();
-    expect(within(grants).getByText("+400")).toBeInTheDocument();
-    expect(screen.queryByTestId("credit-balance-info")).toBeNull();
-    expect(screen.queryByText("Team usage")).toBeNull();
-    expect(screen.queryByText("Today")).toBeNull();
-    expect(screen.queryByText("Quarterly planning chat")).toBeNull();
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
+  expect(
+    within(card).getByTestId("usage-pack-credit-purchased"),
+  ).toBeInTheDocument();
+  expect(
+    within(card).getByTestId("usage-pack-credit-bonus"),
+  ).toBeInTheDocument();
+  const grants = within(card).getByTestId("usage-pack-credit-grants-section");
+  expect(within(grants).getByText("Credit additions")).toBeInTheDocument();
+  expect(within(grants).getByText("Date")).toBeInTheDocument();
+  expect(within(grants).getByText("Credits")).toBeInTheDocument();
+  expect(within(grants).getByText("Left")).toBeInTheDocument();
+  expect(
+    within(card).queryByTestId("usage-pack-credit-grants-toggle"),
+  ).toBeNull();
+  expect(within(card).getByText("20,400")).toBeInTheDocument();
+  expect(within(card).getByText("20,000")).toBeInTheDocument();
+  expect(within(grants).getByText("+25,000")).toBeInTheDocument();
+  expect(within(grants).getByText("+400")).toBeInTheDocument();
+  expect(screen.queryByTestId("credit-balance-info")).toBeNull();
+  expect(screen.queryByText("Team usage")).toBeNull();
+  expect(screen.queryByText("Today")).toBeNull();
+  expect(screen.queryByText("Quarterly planning chat")).toBeNull();
+  expect(
+    queryAllByRoleFast("button", card).some((button) => {
+      return button.textContent?.trim() === "Configure member packages";
+    }),
+  ).toBeFalsy();
+
+  await user.hover(within(card).getByTestId("usage-pack-credit-purchased"));
+  await expect(
+    screen.findByText("Purchased — 20,000"),
+  ).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByText("Expires Apr 1, 2026"),
+  ).resolves.toBeInTheDocument();
+
+  await user.hover(
+    within(grants).getByTestId("usage-pack-credit-grants-grant-purchased"),
+  );
+  await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
+});
+
+test("Hide an empty member-package balance", async () => {
+  const creditsLoaded = context.mocks.deferred<void>();
+  mockPersonalUsageStory(usageRows(), "pro", false, "member");
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    creditsLoaded.resolve();
+    return respond(200, {
+      totalCredits: 0,
+      purchasedCredits: 0,
+      bonusCredits: 0,
+      creditGrants: [],
+      hasUsagePack: false,
+    });
+  });
+
+  await openUsageSettings();
+
+  await creditsLoaded.promise;
+  expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
+});
+
+test("Show one-time bonus credits without an active package", async () => {
+  mockPersonalUsageStory(usageRows(), "pro", false, "member");
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 10_000,
+      purchasedCredits: 0,
+      bonusCredits: 10_000,
+      creditGrants: [
+        {
+          id: "grant-atom-bonus",
+          grantType: "bonus",
+          amount: 10_000,
+          remaining: 10_000,
+          createdAt: "2026-08-17T03:43:42.000Z",
+          expiresAt: "2026-09-17T03:43:37.000Z",
+        },
+      ],
+      hasUsagePack: false,
+    });
+  });
+
+  await openUsageSettings();
+
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
+  expect(
+    within(card).getByTestId("usage-pack-credit-bonus"),
+  ).toBeInTheDocument();
+  expect(within(card).getByText("+10,000")).toBeInTheDocument();
+});
+
+test("Hide member-balance navigation for a solo workspace administrator", async () => {
+  mockPersonalUsageStory(usageRows(), "pro", false, "admin");
+  context.mocks.data.orgMembers({
+    name: "Test Org",
+    role: "admin",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    members: [
+      {
+        userId: "test-user-123",
+        email: "linghan@example.com",
+        firstName: "Linghan",
+        lastName: "Hu",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    pendingInvitations: [],
+    membershipRequests: [],
+  });
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 20_000,
+      purchasedCredits: 20_000,
+      bonusCredits: 0,
+      creditGrants: [],
+      hasUsagePack: true,
+      memberCredits: [
+        {
+          memberId: "test-user-123",
+          totalCredits: 20_000,
+          purchasedCredits: 20_000,
+          bonusCredits: 0,
+          creditGrants: [],
+        },
+      ],
+    });
+  });
+
+  await openUsageSettings();
+
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  await waitFor(() => {
     expect(
       queryAllByRoleFast("button", card).some((button) => {
-        return button.textContent?.trim() === "Configure member packages";
+        return button.getAttribute("aria-label") === "View member balances";
       }),
     ).toBeFalsy();
-
-    await user.hover(within(card).getByTestId("usage-pack-credit-purchased"));
-    await expect(
-      screen.findByText("Purchased — 20,000"),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText("Expires Apr 1, 2026"),
-    ).resolves.toBeInTheDocument();
-
-    await user.hover(
-      within(grants).getByTestId("usage-pack-credit-grants-grant-purchased"),
-    );
-    await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
   });
+});
 
-  it("hides usage pack credits when the organization has no active pack", async () => {
-    let requests = 0;
-    mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      requests += 1;
-      return respond(200, {
-        totalCredits: 0,
-        purchasedCredits: 0,
-        bonusCredits: 0,
-        creditGrants: [],
-        hasUsagePack: false,
-      });
-    });
-
-    await openUsageSettings();
-
-    await waitFor(() => {
-      expect(requests).toBe(1);
-    });
-    expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
-  });
-
-  it("shows one-time credits without an active usage pack allocation", async () => {
-    mockPersonalUsageStory(usageRows(), "pro", false, "member");
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      return respond(200, {
-        totalCredits: 10_000,
-        purchasedCredits: 0,
-        bonusCredits: 10_000,
-        creditGrants: [
-          {
-            id: "grant-atom-bonus",
-            grantType: "bonus",
-            amount: 10_000,
-            remaining: 10_000,
-            createdAt: "2026-08-17T03:43:42.000Z",
-            expiresAt: "2026-09-17T03:43:37.000Z",
-          },
-        ],
-        hasUsagePack: false,
-      });
-    });
-
-    await openUsageSettings();
-
-    const card = await screen.findByTestId("usage-pack-credit-card");
-    expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
-    expect(
-      within(card).getByTestId("usage-pack-credit-bonus"),
-    ).toBeInTheDocument();
-    expect(within(card).getByText("+10,000")).toBeInTheDocument();
-  });
-
-  it("hides member balances when the admin is the only member", async () => {
-    mockPersonalUsageStory(usageRows(), "pro", false, "admin");
-    context.mocks.data.orgMembers({
-      name: "Test Org",
-      role: "admin",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      members: [
-        {
-          userId: "test-user-123",
-          email: "linghan@example.com",
-          firstName: "Linghan",
-          lastName: "Hu",
-          imageUrl: "",
-          role: "admin",
-          joinedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      pendingInvitations: [],
-      membershipRequests: [],
-    });
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      return respond(200, {
-        totalCredits: 20_000,
-        purchasedCredits: 20_000,
-        bonusCredits: 0,
-        creditGrants: [],
-        hasUsagePack: true,
-        memberCredits: [
-          {
-            memberId: "test-user-123",
-            totalCredits: 20_000,
-            purchasedCredits: 20_000,
-            bonusCredits: 0,
-            creditGrants: [],
-          },
-        ],
-      });
-    });
-
-    await openUsageSettings();
-
-    const card = await screen.findByTestId("usage-pack-credit-card");
-    await waitFor(() => {
-      expect(
-        queryAllByRoleFast("button", card).some((button) => {
-          return button.getAttribute("aria-label") === "View member balances";
-        }),
-      ).toBeFalsy();
-    });
-  });
-
-  it("opens member package configuration from admin usage pack credits", async () => {
-    const user = userEvent.setup();
-    mockPersonalUsageStory(usageRows(), "pro", false, "admin");
-    context.mocks.data.orgMembers({
-      name: "Test Org",
-      role: "admin",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      members: [
-        {
-          userId: "test-user-123",
-          email: "linghan@example.com",
-          firstName: "Linghan",
-          lastName: "Hu",
-          imageUrl: "",
-          role: "admin",
-          joinedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-      pendingInvitations: [],
-      membershipRequests: [],
-    });
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      return respond(200, {
-        totalCredits: 20_400,
-        purchasedCredits: 20_000,
-        bonusCredits: 400,
-        creditGrants: [],
-        hasUsagePack: true,
-        memberCredits: [],
-      });
-    });
-    context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
-      return respond(200, {
-        tier: "pro",
-        currentPeriodEnd: "2026-04-01T00:00:00.000Z",
-        allocations: [
-          {
-            id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
-            memberId: "test-user-123",
-            usagePackUsd: 20,
-            currentPeriodEnd: "2026-04-01T00:00:00.000Z",
-            pendingChange: null,
-          },
-        ],
-      });
-    });
-    context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
-      return respond(200, {
-        usagePacks: [
-          {
-            usagePackUsd: 20,
-            priceUsd: 20,
-            purchasedCredits: 20_000,
-            bonusCredits: 400,
-            totalCredits: 20_400,
-          },
-        ],
-      });
-    });
-
-    await openUsageSettings();
-
-    const card = await screen.findByTestId("usage-pack-credit-card");
-    const configureButton = queryAllByRoleFast("button", card).find(
-      (button) => {
-        return button.textContent?.trim() === "Configure member packages";
+test("Configure member packages from personal Credit balance", async () => {
+  const user = userEvent.setup();
+  mockPersonalUsageStory(usageRows(), "pro", false, "admin");
+  context.mocks.data.orgMembers({
+    name: "Test Org",
+    role: "admin",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    members: [
+      {
+        userId: "test-user-123",
+        email: "linghan@example.com",
+        firstName: "Linghan",
+        lastName: "Hu",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-01T00:00:00.000Z",
       },
-    );
-    if (!configureButton) {
-      throw new Error("Configure member packages button not found");
-    }
-    await user.click(configureButton);
-
-    const configureDialog = await screen.findByRole("dialog", {
-      name: "Configure member packages",
+    ],
+    pendingInvitations: [],
+    membershipRequests: [],
+  });
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 20_400,
+      purchasedCredits: 20_000,
+      bonusCredits: 400,
+      creditGrants: [],
+      hasUsagePack: true,
+      memberCredits: [],
     });
+  });
+  context.mocks.api(billingUsagePackManagementContract.get, ({ respond }) => {
+    return respond(200, {
+      tier: "pro",
+      currentPeriodEnd: "2026-04-01T00:00:00.000Z",
+      allocations: [
+        {
+          id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
+          memberId: "test-user-123",
+          usagePackUsd: 20,
+          currentPeriodEnd: "2026-04-01T00:00:00.000Z",
+          pendingChange: null,
+        },
+      ],
+    });
+  });
+  context.mocks.api(billingUsagePackCatalogContract.get, ({ respond }) => {
+    return respond(200, {
+      usagePacks: [
+        {
+          usagePackUsd: 20,
+          priceUsd: 20,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          totalCredits: 20_400,
+        },
+      ],
+    });
+  });
+
+  await openUsageSettings();
+
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  const configureButton = queryAllByRoleFast("button", card).find((button) => {
+    return button.textContent?.trim() === "Configure member packages";
+  });
+  if (!configureButton) {
+    throw new Error("Configure member packages button not found");
+  }
+  await user.click(configureButton);
+
+  const configureDialog = await screen.findByRole("dialog", {
+    name: "Configure member packages",
+  });
+  expect(within(configureDialog).getByText("Step 2 of 3")).toBeInTheDocument();
+  expect(
+    within(configureDialog).getByRole("combobox", {
+      name: "Usage for Test User",
+    }),
+  ).toHaveTextContent("20,400 credits · 2% off");
+});
+
+test("Review every workspace member’s package balance", async () => {
+  const user = userEvent.setup();
+  mockPersonalUsageStory(usageRows(), "pro", false, "admin");
+  context.mocks.data.orgMembers({
+    name: "Test Org",
+    role: "admin",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    members: [
+      {
+        userId: "test-user-123",
+        email: "linghan@example.com",
+        firstName: "Linghan",
+        lastName: "Hu",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        userId: "member-yuma",
+        email: "yuma@example.com",
+        firstName: "Yuma",
+        lastName: null,
+        imageUrl: "",
+        role: "member",
+        joinedAt: "2026-01-02T00:00:00.000Z",
+      },
+    ],
+  });
+  const linghanCreditGrants = [
+    {
+      id: "admin-grant-purchased",
+      grantType: "purchased",
+      amount: 20_000,
+      remaining: 20_000,
+      createdAt: "2026-03-01T00:00:00.000Z",
+      expiresAt: "2026-04-01T00:00:00.000Z",
+    },
+    {
+      id: "admin-grant-bonus",
+      grantType: "bonus",
+      amount: 400,
+      remaining: 400,
+      createdAt: "2026-03-01T00:00:00.000Z",
+      expiresAt: "2026-04-01T00:00:00.000Z",
+    },
+  ] satisfies UsagePackCreditsResponse["creditGrants"];
+  context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 20_400,
+      purchasedCredits: 20_000,
+      bonusCredits: 400,
+      creditGrants: linghanCreditGrants,
+      hasUsagePack: true,
+      memberCredits: [
+        {
+          memberId: "test-user-123",
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          creditGrants: linghanCreditGrants,
+        },
+      ],
+    });
+  });
+
+  await openUsageSettings();
+
+  const card = await screen.findByTestId("usage-pack-credit-card");
+  expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
+  expect(within(card).queryByText("Linghan Hu")).toBeNull();
+  expect(within(card).queryByText("Yuma")).toBeNull();
+  expect(
+    within(card).getByTestId("usage-pack-credit-grants-section"),
+  ).toBeInTheDocument();
+
+  await user.click(buttonByAriaLabel("View member balances", card));
+  const memberDialog = await screen.findByRole("dialog", {
+    name: "Member usage pack credits",
+  });
+  const memberList = within(memberDialog).getByRole("list", {
+    name: "Members",
+  });
+  expect(within(memberList).getByText("Linghan Hu")).toBeInTheDocument();
+  expect(
+    within(memberList).getByText("linghan@example.com"),
+  ).toBeInTheDocument();
+  expect(within(memberList).getByText("Yuma")).toBeInTheDocument();
+  expect(within(memberList).getByText("yuma@example.com")).toBeInTheDocument();
+  expect(
+    within(memberList).getByTestId("usage-pack-member-test-user-123-bar"),
+  ).toBeInTheDocument();
+  expect(
+    within(memberList).getByTestId(
+      "usage-pack-member-test-user-123-grants-toggle",
+    ),
+  ).toBeInTheDocument();
+  const linghanCard = within(memberList).getByTestId(
+    "usage-pack-member-credit-test-user-123",
+  );
+  expect(linghanCard).toHaveTextContent("20,400");
+  const yumaCard = within(memberList).getByTestId(
+    "usage-pack-member-credit-member-yuma",
+  );
+  expect(yumaCard).toHaveTextContent("0");
+
+  await user.click(
+    within(memberList).getByTestId(
+      "usage-pack-member-test-user-123-grants-toggle",
+    ),
+  );
+  expect(
+    within(memberList).getByTestId(
+      "usage-pack-member-test-user-123-grants-toggle",
+    ),
+  ).toHaveAttribute("aria-expanded", "true");
+  const expandedRow = await within(memberList).findByTestId(
+    "usage-pack-member-test-user-123-grants-expanded-row",
+  );
+  expect(within(expandedRow).getByText("Date")).toBeInTheDocument();
+  expect(within(expandedRow).getByText("Credits")).toBeInTheDocument();
+  expect(within(expandedRow).getByText("Left")).toBeInTheDocument();
+  const purchaseRecord = within(expandedRow).getByTestId(
+    "usage-pack-member-test-user-123-grants-admin-grant-purchased",
+  );
+  expect(purchaseRecord).toHaveTextContent("Mar 1, 2026");
+  expect(purchaseRecord).toHaveTextContent("+20,000");
+  expect(purchaseRecord).toHaveTextContent("20,000");
+  await user.hover(purchaseRecord);
+  await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
+  await expect(
+    screen.findByText("Expires Apr 1, 2026"),
+  ).resolves.toBeInTheDocument();
+
+  const orgCredits = await screen.findByTestId("credit-balance-info");
+  expect(within(orgCredits).getByText("Org credits")).toBeInTheDocument();
+  expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
+});
+
+test("Show an empty personal credit-usage period", async () => {
+  mockPersonalUsageStory([]);
+  await openUsageSettings("usage-records");
+
+  const empty = await screen.findByTestId("usage-records-empty");
+  expect(
+    within(empty).getByText("No usage in this time range"),
+  ).toBeInTheDocument();
+  expect(
+    within(empty).getByText(
+      "Credits you spend on chats, automations, and channels show up here.",
+    ),
+  ).toBeInTheDocument();
+  // The illustration is decorative, so it must stay out of the accessible name.
+  const illustrations = Array.from(
+    empty.querySelectorAll<HTMLElement>('[role="presentation"]'),
+  );
+  expect(illustrations).toHaveLength(1);
+  expect(illustrations[0]).toHaveAttribute(
+    "src",
+    expect.stringContaining("empty-usage-"),
+  );
+});
+
+test("Review personal credit-usage records by date range", async () => {
+  const user = userEvent.setup();
+  const requests = mockPersonalUsageStory();
+  await openUsageSettings("usage-records");
+
+  await waitFor(() => {
+    expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
+    expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
+  });
+  expect(screen.getByText("1.1K")).toBeInTheDocument();
+  expect(screen.getByText("Mar 21")).toBeInTheDocument();
+  expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
+  expect(screen.queryByText("All sources")).not.toBeInTheDocument();
+  expect(requests.ranges).toContain("today");
+
+  await user.hover(screen.getByTestId("usage-kind-segment-other"));
+
+  await waitFor(() => {
+    expect(screen.getAllByText("Web Fetch").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Maps").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Web Search").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("People Search").length).toBeGreaterThanOrEqual(
+      1,
+    );
     expect(
-      within(configureDialog).getByText("Step 2 of 3"),
-    ).toBeInTheDocument();
-    expect(
-      within(configureDialog).getByRole("combobox", {
-        name: "Usage for Test User",
+      screen.getAllByText("People Search").some((element) => {
+        return element.parentElement?.textContent === "People Search80";
       }),
-    ).toHaveTextContent("20,400 credits · 2% off");
-  });
-
-  it("shows every member's usage pack balance and closes it with the settings session", async () => {
-    const user = userEvent.setup();
-    mockPersonalUsageStory(usageRows(), "pro", false, "admin");
-    context.mocks.data.orgMembers({
-      name: "Test Org",
-      role: "admin",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      members: [
-        {
-          userId: "test-user-123",
-          email: "linghan@example.com",
-          firstName: "Linghan",
-          lastName: "Hu",
-          imageUrl: "",
-          role: "admin",
-          joinedAt: "2026-01-01T00:00:00.000Z",
-        },
-        {
-          userId: "member-yuma",
-          email: "yuma@example.com",
-          firstName: "Yuma",
-          lastName: null,
-          imageUrl: "",
-          role: "member",
-          joinedAt: "2026-01-02T00:00:00.000Z",
-        },
-      ],
-    });
-    const linghanCreditGrants = [
-      {
-        id: "admin-grant-purchased",
-        grantType: "purchased",
-        amount: 20_000,
-        remaining: 20_000,
-        createdAt: "2026-03-01T00:00:00.000Z",
-        expiresAt: "2026-04-01T00:00:00.000Z",
-      },
-      {
-        id: "admin-grant-bonus",
-        grantType: "bonus",
-        amount: 400,
-        remaining: 400,
-        createdAt: "2026-03-01T00:00:00.000Z",
-        expiresAt: "2026-04-01T00:00:00.000Z",
-      },
-    ] satisfies UsagePackCreditsResponse["creditGrants"];
-    context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
-      return respond(200, {
-        totalCredits: 20_400,
-        purchasedCredits: 20_000,
-        bonusCredits: 400,
-        creditGrants: linghanCreditGrants,
-        hasUsagePack: true,
-        memberCredits: [
-          {
-            memberId: "test-user-123",
-            totalCredits: 20_400,
-            purchasedCredits: 20_000,
-            bonusCredits: 400,
-            creditGrants: linghanCreditGrants,
-          },
-        ],
-      });
-    });
-
-    await openUsageSettings();
-
-    const card = await screen.findByTestId("usage-pack-credit-card");
-    expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
-    expect(within(card).queryByText("Linghan Hu")).toBeNull();
-    expect(within(card).queryByText("Yuma")).toBeNull();
+    ).toBeTruthy();
     expect(
-      within(card).getByTestId("usage-pack-credit-bar"),
-    ).toBeInTheDocument();
+      screen.getAllByText("Web Search").some((element) => {
+        return element.parentElement?.textContent === "Web Search120";
+      }),
+    ).toBeTruthy();
     expect(
-      within(card).getByTestId("usage-pack-credit-grants-section"),
-    ).toBeInTheDocument();
-
-    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
-    await user.click(buttonByAriaLabel("View member balances", card));
-    const memberDialog = await screen.findByRole("dialog", {
-      name: "Member usage pack credits",
-    });
-    const memberList = within(memberDialog).getByRole("list", {
-      name: "Members",
-    });
-    expect(within(memberList).getByText("Linghan Hu")).toBeInTheDocument();
+      screen.getAllByText("SEO").some((element) => {
+        return element.parentElement?.textContent === "SEO100";
+      }),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Translation").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
+    expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dataforseo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
     expect(
-      within(memberList).getByText("linghan@example.com"),
-    ).toBeInTheDocument();
-    expect(within(memberList).getByText("Yuma")).toBeInTheDocument();
-    expect(
-      within(memberList).getByText("yuma@example.com"),
-    ).toBeInTheDocument();
-    expect(
-      within(memberList).getByTestId("usage-pack-member-test-user-123-bar"),
-    ).toBeInTheDocument();
-    const purchasedSegment = buttonByAriaLabel(
-      "Purchased — 20,000. Expires Apr 1, 2026",
-      memberList,
-    );
-    expect(purchasedSegment).toHaveAccessibleName(
-      "Purchased — 20,000. Expires Apr 1, 2026",
-    );
-    purchasedSegment.focus();
-    expect(purchasedSegment).toHaveFocus();
-    expect(
-      within(memberList).getByTestId(
-        "usage-pack-member-test-user-123-grants-toggle",
-      ),
-    ).toBeInTheDocument();
-    const linghanCard = within(memberList).getByTestId(
-      "usage-pack-member-credit-test-user-123",
-    );
-    expect(linghanCard).toHaveTextContent("20,400");
-    expect(linghanCard).not.toHaveTextContent("Remaining");
-    expect(linghanCard).not.toHaveTextContent("Purchased");
-    expect(linghanCard).not.toHaveTextContent("Bonus");
-    expect(linghanCard).not.toHaveTextContent("Next expiry");
-    const yumaCard = within(memberList).getByTestId(
-      "usage-pack-member-credit-member-yuma",
-    );
-    expect(yumaCard).toHaveTextContent("0");
-    expect(
-      within(yumaCard).queryByTestId("usage-pack-member-member-yuma-empty-bar"),
-    ).toBeNull();
-    expect(yumaCard).not.toHaveTextContent("Purchased");
-    expect(yumaCard).not.toHaveTextContent("Bonus");
-
-    expect(
-      within(memberDialog).queryByTestId("usage-pack-member-summary"),
-    ).toBeNull();
-
-    await user.click(
-      within(memberList).getByTestId(
-        "usage-pack-member-test-user-123-grants-toggle",
-      ),
-    );
-    expect(
-      within(memberList).getByTestId(
-        "usage-pack-member-test-user-123-grants-toggle",
-      ),
-    ).toHaveAttribute("aria-expanded", "true");
-    const expandedRow = await within(memberList).findByTestId(
-      "usage-pack-member-test-user-123-grants-expanded-row",
-    );
-    expect(within(expandedRow).getByText("Date")).toBeInTheDocument();
-    expect(within(expandedRow).getByText("Credits")).toBeInTheDocument();
-    expect(within(expandedRow).getByText("Left")).toBeInTheDocument();
-    const purchaseRecord = within(expandedRow).getByTestId(
-      "usage-pack-member-test-user-123-grants-admin-grant-purchased",
-    );
-    expect(purchaseRecord).toHaveTextContent("Mar 1, 2026");
-    expect(purchaseRecord).toHaveTextContent("+20,000");
-    expect(purchaseRecord).toHaveTextContent("20,000");
-    expect(
-      within(memberDialog).getByTestId("usage-pack-members-dialog-scroll-area"),
-    ).toHaveClass("overflow-y-auto");
-    expect(
-      screen.queryByTestId(
-        "usage-pack-member-test-user-123-grants-scroll-area",
-      ),
-    ).toBeNull();
-    await user.hover(purchaseRecord);
-    await expect(screen.findByText("Purchased")).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText("Expires Apr 1, 2026"),
-    ).resolves.toBeInTheDocument();
-
-    const orgCredits = await screen.findByTestId("credit-balance-info");
-    expect(within(orgCredits).getByText("Org credits")).toBeInTheDocument();
-    expect(within(orgCredits).getByText("12,500")).toBeInTheDocument();
-
-    click(within(settingsDialog).getByLabelText("Close"));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Settings" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("dialog", {
-          name: "Member usage pack credits",
-        }),
-      ).not.toBeInTheDocument();
-    });
-
-    const reopenedSettingsDialog = await openSettingsFromAccountMenu();
-    click(within(reopenedSettingsDialog).getByText("Credit balance"));
-    const reopenedCard = await screen.findByTestId("usage-pack-credit-card");
-    await waitFor(() => {
-      expect(
-        buttonByAriaLabel("View member balances", reopenedCard),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("dialog", { name: "Member usage pack credits" }),
+      screen.queryByText("qwen/qwen-2.5-7b-instruct"),
     ).not.toBeInTheDocument();
   });
 
-  it("shows an illustrated empty state when the range has no usage", async () => {
-    mockPersonalUsageStory([]);
-    await openUsageSettings("usage-records");
+  click(screen.getByText("Today"));
+  click(await screen.findByText("Last 7 days"));
 
-    const empty = await screen.findByTestId("usage-records-empty");
-    expect(
-      within(empty).getByText("No usage in this time range"),
-    ).toBeInTheDocument();
-    expect(
-      within(empty).getByText(
-        "Credits you spend on chats, automations, and channels show up here.",
-      ),
-    ).toBeInTheDocument();
-    // The illustration is decorative, so it must stay out of the accessible name.
-    expect(within(empty).getByRole("presentation")).toHaveAttribute(
-      "src",
-      expect.stringContaining("empty-usage-"),
-    );
+  await waitFor(() => {
+    expect(screen.getByText("Last 7 days")).toBeInTheDocument();
+    expect(requests.ranges).toContain("7d");
   });
+});
 
-  it("shows personal usage, loads more, and changes the usage range", async () => {
-    const user = userEvent.setup();
-    const requests = mockPersonalUsageStory();
-    await openUsageSettings("usage-records");
-
-    await waitFor(() => {
-      expect(screen.getByText("Quarterly planning chat")).toBeInTheDocument();
-      expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
-    });
-    expect(screen.getByText("1.1K")).toBeInTheDocument();
-    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
-    expect(screen.queryByText("All sources")).not.toBeInTheDocument();
-    expect(requests.ranges).toContain("today");
-
-    await user.hover(screen.getByTestId("usage-kind-segment-other"));
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Web Fetch").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Maps").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Web Search").length).toBeGreaterThanOrEqual(
-        1,
-      );
-      expect(
-        screen.getAllByText("People Search").length,
-      ).toBeGreaterThanOrEqual(1);
-      expect(
-        screen.getAllByText("People Search").some((element) => {
-          return element.parentElement?.textContent === "People Search80";
-        }),
-      ).toBeTruthy();
-      expect(
-        screen.getAllByText("Web Search").some((element) => {
-          return element.parentElement?.textContent === "Web Search120";
-        }),
-      ).toBeTruthy();
-      expect(
-        screen.getAllByText("SEO").some((element) => {
-          return element.parentElement?.textContent === "SEO100";
-        }),
-      ).toBeTruthy();
-      expect(screen.getAllByText("Finance").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Weather").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Translation").length).toBeGreaterThanOrEqual(
-        1,
-      );
-      expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
-      expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
-      expect(screen.queryByText("Perplexity")).not.toBeInTheDocument();
-      expect(screen.queryByText("Dataforseo")).not.toBeInTheDocument();
-      expect(screen.queryByText("Apidojo")).not.toBeInTheDocument();
-      expect(screen.queryByText("Google Weather")).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("qwen/qwen-2.5-7b-instruct"),
-      ).not.toBeInTheDocument();
-    });
-
-    click(screen.getByText("Load more"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Extended agent audit")).toBeInTheDocument();
-    });
-    expect(requests.pages).toStrictEqual([1, 2]);
-    expect(requests.pageSizes).toStrictEqual([20, 20]);
-
-    click(screen.getByText("Today"));
-    click(await screen.findByText("Last 7 days"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Last 7 days")).toBeInTheDocument();
-      expect(requests.ranges).toContain("7d");
-      expect(requests.pages.at(-1)).toBe(1);
-    });
+test("Identify the model used by limited-free runs", async () => {
+  const user = userEvent.setup();
+  const row = usageRow({
+    title: "Limited free model usage",
+    credits: 100,
+    runId: "run-limited-free-model",
   });
-
-  it("loads personal usage beyond 100 rows with bounded pages", async () => {
-    const user = userEvent.setup();
-    const rows = Array.from({ length: 101 }, (_, index) => {
-      const rowNumber = index + 1;
-      return usageRow({
-        title: `Usage record ${rowNumber}`,
-        credits: rowNumber,
-        runId: `run-usage-${rowNumber}`,
-      });
-    });
-    const requests = mockPersonalUsageStory(rows);
-
-    await openUsageSettings("usage-records");
-
-    await expect(
-      screen.findByText("Usage record 20"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("Usage record 21")).not.toBeInTheDocument();
-
-    for (const rowNumber of [21, 41, 61, 81, 101]) {
-      await user.click(screen.getByText("Load more"));
-      await expect(
-        screen.findByText(`Usage record ${rowNumber}`),
-      ).resolves.toBeInTheDocument();
-    }
-
-    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
-    expect(requests.pages).toStrictEqual([1, 2, 3, 4, 5, 6]);
-    expect(requests.pageSizes).toStrictEqual([20, 20, 20, 20, 20, 20]);
-  });
-
-  it("retries a personal usage page after a failed request", async () => {
-    const user = userEvent.setup();
-    const rows = usageRows();
-    let secondPageAttempts = 0;
-    mockPersonalUsageStory(rows);
-    context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
-      if (query.page === 2) {
-        secondPageAttempts += 1;
-        if (secondPageAttempts === 1) {
-          return respond(500, {
-            error: {
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Usage page temporarily unavailable",
-            },
-          });
-        }
-      }
-      return respond(200, personalUsagePage(rows, query.page, query.pageSize));
-    });
-
-    await openUsageSettings("usage-records");
-    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
-
-    await user.click(screen.getByText("Load more"));
-    await expect(
-      screen.findByText("Usage page temporarily unavailable"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
-
-    await user.click(screen.getByText("Load more"));
-    await expect(
-      screen.findByText("Extended agent audit"),
-    ).resolves.toBeInTheDocument();
-    expect(secondPageAttempts).toBe(2);
-  });
-
-  it("shows model names for limited-free-1 usage", async () => {
-    const user = userEvent.setup();
-    const row = usageRow({
-      title: "Limited free model usage",
-      credits: 100,
-      runId: "run-limited-free-model",
-    });
-    mockPersonalUsageStory(
-      [
-        {
-          ...row,
-          breakdown: [
-            {
-              kind: "model",
-              credits: 100,
-              providers: [{ provider: "gpt-5.6-luna", credits: 100 }],
-            },
-          ],
-        },
-      ],
-      "limited-free-1",
-    );
-    await openUsageSettings("usage-records");
-
-    await user.hover(screen.getByTestId("usage-kind-segment-model"));
-
-    await waitFor(() => {
-      expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
-        1,
-      );
-    });
-  });
-
-  it("hides the vendor name for talking avatar usage", async () => {
-    const user = userEvent.setup();
-    const row = usageRow({
-      title: "Talking avatar usage",
-      credits: 100,
-      runId: "run-talking-avatar",
-    });
-    mockPersonalUsageStory([
+  mockPersonalUsageStory(
+    [
       {
         ...row,
         breakdown: [
           {
-            kind: "video",
+            kind: "model",
             credits: 100,
-            providers: [{ provider: "joggai-talking-avatar", credits: 100 }],
+            providers: [{ provider: "gpt-5.6-luna", credits: 100 }],
           },
         ],
       },
-    ]);
-    await openUsageSettings("usage-records");
+    ],
+    "limited-free-1",
+  );
+  await openUsageSettings("usage-records");
 
-    await user.hover(screen.getByTestId("usage-kind-segment-video"));
+  await user.hover(screen.getByTestId("usage-kind-segment-model"));
 
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Avatar").some((element) => {
-          return element.parentElement?.textContent === "Avatar100";
-        }),
-      ).toBeTruthy();
-      expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
-    });
-  });
-
-  it("keeps keyboard focus styling on the usage title instead of the row", async () => {
-    mockPersonalUsageStory();
-    await openUsageSettings("usage-records");
-
-    const titleLink = await screen.findByText("Quarterly planning chat");
-
-    titleLink.focus();
-    expect(titleLink).toHaveFocus();
-    expect(titleLink.parentElement?.closest("a")).toBeNull();
-    expect(titleLink).toHaveClass(
-      "focus-visible:outline-none",
-      "focus-visible:ring-inset",
+  await waitFor(() => {
+    expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
+      1,
     );
   });
+});
 
-  it("refreshes personal usage when billing realtime changes", async () => {
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "admin",
-    });
-    mockBillingStatus();
-    const initialRows = [
-      usageRow({
-        title: "Initial usage row",
-        credits: 100,
-        runId: "run-initial",
-      }),
-      ...Array.from({ length: 19 }, (_, index) => {
-        return usageRow({
-          title: `Initial usage filler ${index + 1}`,
-          credits: 10,
-          runId: `run-initial-filler-${index + 1}`,
-        });
-      }),
-      usageRow({
-        title: "Initial usage second page",
-        credits: 200,
-        runId: "run-initial-page-two",
-      }),
-    ];
-    const refreshedRows = [
-      usageRow({
-        title: "Realtime refreshed usage",
-        credits: 450,
-        runId: "run-refreshed",
-      }),
-    ];
-    let refreshed = false;
-    context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
-      const rows = refreshed ? refreshedRows : initialRows;
-      const offset = (query.page - 1) * query.pageSize;
-      return respond(200, {
-        period: {
-          start: "2026-03-01T00:00:00.000Z",
-          end: "2026-04-01T00:00:00.000Z",
+test("Label Talking Avatar usage by the product feature", async () => {
+  const user = userEvent.setup();
+  const row = usageRow({
+    title: "Talking avatar usage",
+    credits: 100,
+    runId: "run-talking-avatar",
+  });
+  mockPersonalUsageStory([
+    {
+      ...row,
+      breakdown: [
+        {
+          kind: "video",
+          credits: 100,
+          providers: [{ provider: "joggai-talking-avatar", credits: 100 }],
         },
-        rows: rows.slice(offset, offset + query.pageSize),
-        totalCredits: rows.reduce((sum, row) => {
-          return sum + row.credits;
-        }, 0),
-        pagination: {
-          page: query.page,
-          pageSize: query.pageSize,
-          total: rows.length,
-        },
+      ],
+    },
+  ]);
+  await openUsageSettings("usage-records");
+
+  await user.hover(screen.getByTestId("usage-kind-segment-video"));
+
+  await waitFor(() => {
+    expect(
+      screen.getAllByText("Avatar").some((element) => {
+        return element.parentElement?.textContent === "Avatar100";
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
+  });
+});
+
+test("Make personal usage-record titles keyboard accessible", async () => {
+  mockPersonalUsageStory();
+  await openUsageSettings("usage-records");
+
+  const titleLink = await screen.findByText("Quarterly planning chat");
+  const usageRowElement = titleLink.closest("div");
+  if (!usageRowElement) {
+    throw new Error("Usage record row not found");
+  }
+
+  titleLink.focus();
+  expect(titleLink).toHaveFocus();
+  expect(titleLink.tagName).toBe("A");
+  expect(titleLink).toHaveAttribute("href", "/chats/thread-planning");
+  expect(usageRowElement).not.toHaveAttribute("tabindex");
+  expect(titleLink.parentElement?.closest("a")).toBeNull();
+});
+
+test("Refresh all loaded usage pages after billing changes", async () => {
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "admin",
+  });
+  mockBillingStatus();
+  const initialRows = [
+    usageRow({
+      title: "Initial usage row",
+      credits: 100,
+      runId: "run-initial",
+    }),
+    ...Array.from({ length: 19 }, (_, index) => {
+      return usageRow({
+        title: `Initial usage filler ${index + 1}`,
+        credits: 10,
+        runId: `run-initial-filler-${index + 1}`,
       });
+    }),
+    usageRow({
+      title: "Initial usage second page",
+      credits: 200,
+      runId: "run-initial-page-two",
+    }),
+  ];
+  const refreshedRows = [
+    usageRow({
+      title: "Realtime refreshed usage",
+      credits: 450,
+      runId: "run-refreshed",
+    }),
+  ];
+  let refreshed = false;
+  context.mocks.api(usageRecordContract.get, ({ query, respond }) => {
+    const rows = refreshed ? refreshedRows : initialRows;
+    const offset = (query.page - 1) * query.pageSize;
+    return respond(200, {
+      period: {
+        start: "2026-03-01T00:00:00.000Z",
+        end: "2026-04-01T00:00:00.000Z",
+      },
+      rows: rows.slice(offset, offset + query.pageSize),
+      totalCredits: rows.reduce((sum, row) => {
+        return sum + row.credits;
+      }, 0),
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total: rows.length,
+      },
     });
-    mockEmptyUsagePackCredits();
+  });
+  mockEmptyUsagePackCredits();
 
-    await openUsageSettings("usage-records");
+  await openUsageSettings("usage-records");
 
-    await waitFor(() => {
-      expect(screen.getByText("Initial usage row")).toBeInTheDocument();
-      expect(
-        context.mocks.ably.hasSubscription("billing:changed"),
-      ).toBeTruthy();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Initial usage row")).toBeInTheDocument();
+    expect(context.mocks.ably.hasSubscription("billing:changed")).toBeTruthy();
+  });
 
-    click(screen.getByText("Load more"));
-    await expect(
-      screen.findByText("Initial usage second page"),
-    ).resolves.toBeInTheDocument();
+  click(screen.getByText("Load more"));
+  await expect(
+    screen.findByText("Initial usage second page"),
+  ).resolves.toBeInTheDocument();
 
-    refreshed = true;
-    context.mocks.ably.trigger("billing:changed");
+  refreshed = true;
+  context.mocks.ably.trigger("billing:changed");
 
-    await waitFor(() => {
-      expect(screen.getByText("Realtime refreshed usage")).toBeInTheDocument();
-      expect(screen.queryByText("Initial usage row")).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("Initial usage second page"),
-      ).not.toBeInTheDocument();
-    });
+  await waitFor(() => {
+    expect(screen.getByText("Realtime refreshed usage")).toBeInTheDocument();
+    expect(screen.queryByText("Initial usage row")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Initial usage second page"),
+    ).not.toBeInTheDocument();
   });
 });

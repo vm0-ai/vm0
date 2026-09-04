@@ -256,12 +256,6 @@
           isDomainOrSubdomain(hostname, "app.okou.ai")
         ) {
           satelliteDomain = "app.okou.ai";
-        } else if (
-          production &&
-          !okouPrimary &&
-          isDomainOrSubdomain(hostname, "app-worker.okou.ai")
-        ) {
-          satelliteDomain = "app-worker.okou.ai";
         }
         var satellite = satelliteDomain !== null;
         var authOrigin = satellite

@@ -33,7 +33,6 @@ import { logger } from "../log.ts";
 import { pageAttachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
 import { publicAttachmentUrl } from "../../views/okou-page/attachment-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
-import { desktopRecordingAgentInstructions } from "./intro-video-agent-instructions.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -577,8 +576,6 @@ export interface DraftSignals {
   readInput$: Command<string, []>;
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
-  agentInstructions$: Computed<string | null>;
-  setAgentInstructions$: Command<void, [string | null]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
   takeRestoredUserMessage$: Command<UserMessageDocument | null, []>;
   takeRestoredDraftVoice$: Command<DraftVoice | null, []>;
@@ -890,7 +887,6 @@ function createPruneUnavailableAttachments(
 function createDraftLifecycleSignals({
   draftInput,
   draftDocument,
-  internalAgentInstructions$,
   internalGenerationTemplate$,
   internalAttachments$,
   internalDragOver$,
@@ -898,7 +894,6 @@ function createDraftLifecycleSignals({
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
-  internalAgentInstructions$: State<string | null>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
   internalAttachments$: State<ChatAttachment[]>;
   internalDragOver$: State<boolean>;
@@ -912,7 +907,6 @@ function createDraftLifecycleSignals({
     set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setRestoredDraftVoice$, null);
     set(draftDocument.setEditorDocument$, null);
-    set(internalAgentInstructions$, null);
     set(internalGenerationTemplate$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
@@ -933,7 +927,6 @@ function createDraftLifecycleSignals({
       set(draftDocument.setEditorDocument$, null);
       set(draftDocument.setRestoredUserMessage$, value.userMessage);
       set(draftDocument.setRestoredDraftVoice$, value.draftVoice);
-      set(internalAgentInstructions$, null);
       set(internalGenerationTemplate$, value.generationTemplate);
       set(internalAttachments$, value.attachments);
       set(draftInput.setInput$, value.content);
@@ -954,27 +947,11 @@ function createDraftLifecycleSignals({
 export function createDraftSignals(): DraftSignals {
   const draftInput = createDraftInputSignals();
   const draftDocument = createDraftDocumentSignals();
-  const internalAgentInstructions$ = state<string | null>(null);
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
   const internalAttachments$ = state<ChatAttachment[]>([]);
   const internalDragOver$ = state(false);
-
-  // Instructions set by a flow win; a draft that carries a desktop screen
-  // recording and its click track earns them from the attachments themselves,
-  // which is the only part of the draft the server gives back.
-  const agentInstructions$ = computed((get) => {
-    return (
-      get(internalAgentInstructions$) ??
-      desktopRecordingAgentInstructions(get(internalAttachments$))
-    );
-  });
-  const setAgentInstructions$ = command(
-    ({ set }, value: string | null): void => {
-      set(internalAgentInstructions$, value);
-    },
-  );
 
   const generationTemplate$ = computed((get) => {
     return get(internalGenerationTemplate$);
@@ -1060,7 +1037,6 @@ export function createDraftSignals(): DraftSignals {
   const { clear$, seed$ } = createDraftLifecycleSignals({
     draftInput,
     draftDocument,
-    internalAgentInstructions$,
     internalGenerationTemplate$,
     internalAttachments$,
     internalDragOver$,
@@ -1069,8 +1045,6 @@ export function createDraftSignals(): DraftSignals {
 
   return {
     ...draftInput,
-    agentInstructions$,
-    setAgentInstructions$,
     takeRestoredUserMessage$: draftDocument.takeRestoredUserMessage$,
     takeRestoredDraftVoice$: draftDocument.takeRestoredDraftVoice$,
     readEditorDocument$: draftDocument.readEditorDocument$,

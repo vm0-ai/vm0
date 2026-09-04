@@ -59,7 +59,7 @@ import {
   broadcastSharedDatabaseWorkerMessage$,
   forwardChatThreadReadCursorUpdated$,
   reloadComputedForConnections$,
-  reloadConnections$,
+  reportWorkerUnavailableForConnections$,
   requireConnectionSignal$,
   updateRealtimeStatusForConnections$,
   type ConnectionId,
@@ -408,7 +408,7 @@ export const bootstrapWorker$ = command(
         clerk: get(workerClerk$),
         oauthApiBaseUrl,
         onForceUpgrade: () => {
-          set(reloadConnections$);
+          set(reportWorkerUnavailableForConnections$, "force-upgrade-required");
         },
         ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },

@@ -518,7 +518,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
 
   it("replies to failed linked iMessage runs", async () => {
     const ap = createAgentPhoneBddApi(context);
-    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const { phone, runnerGroup, sends } = await entitledLinkedActor();
     const conversationId = uniqueConversationId();
 
     await ap.postAgentPhoneInboundMessage({

@@ -24,6 +24,9 @@ describe("FeatureSwitchKey", () => {
     expect(FeatureSwitchKey.RealAgentInPreview).toBe("_realAgentInPreview");
     expect(FeatureSwitchKey.TestOauthConnector).toBe("_testOauthConnector");
     expect(FeatureSwitchKey.ChatRunWorkFolding).toBe("chatRunWorkFolding");
+    expect(FeatureSwitchKey.ProgressiveArtifactPreview).toBe(
+      "progressiveArtifactPreview",
+    );
     expect(FeatureSwitchKey.MarkdownHexColorPreview).toBe(
       "markdownHexColorPreview",
     );
@@ -39,6 +42,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.GoogleFormsWorkflowAutomations, {}),
     ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ConnectorAccounts, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -184,6 +188,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
@@ -194,7 +201,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(true);
@@ -216,6 +222,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BatchChatEventCatchUp]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatRunWorkFolding]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.ChatThinkingSpinner]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.MarkdownHexColorPreview]).toBe(
       false,
@@ -228,7 +237,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.PersonalModelProviderAccounts]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ConnectorAccounts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PresentationTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.FollowUpOptimize]).toBe(false);
@@ -267,6 +275,24 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(otherStaffStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
+  });
+
+  it("should enable stable connector popover placement for Bingjie only", () => {
+    const bingjieStates = getAllFeatureStates({
+      email: "BINGJIE@VM0.AI",
+      orgId: "org_nonexistent",
+    });
+    expect(
+      bingjieStates[FeatureSwitchKey.ComposerConnectorPopoverPlacement],
+    ).toBe(true);
+
+    const otherStaffStates = getAllFeatureStates({
+      email: "ethan@vm0.ai",
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(
+      otherStaffStates[FeatureSwitchKey.ComposerConnectorPopoverPlacement],
+    ).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -309,12 +335,14 @@ describe("feature switch override filtering", () => {
     expect(filterFeatureSwitchOverrides(switches)).toStrictEqual(switches);
   });
 
-  it("ignores persisted overrides for removed switches", () => {
+  it("ignores removed Pi memory overrides while retaining the PiLoop control", () => {
     expect(
       filterFeatureSwitchOverrides({
-        zeroPeopleSearch: false,
+        piMemoryRecall: false,
+        piMemoryGeneration: false,
+        [FeatureSwitchKey.PiLoop]: true,
       }),
-    ).toStrictEqual({});
+    ).toStrictEqual({ [FeatureSwitchKey.PiLoop]: true });
   });
 });
 

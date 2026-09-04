@@ -584,6 +584,9 @@ describe("POST /api/zero/chat-threads", () => {
 
   it("rejects connector selections while connector accounts are disabled", async () => {
     const fixture = await seedAgent();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.ConnectorAccounts]: false,
+    });
     const connection = await connectorApi.connectManualGrant(
       fixture.actor,
       "openai",

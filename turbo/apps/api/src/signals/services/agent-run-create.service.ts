@@ -9,7 +9,8 @@ import {
   type PiMemoryRecallSelection,
   type PiLaunchConfig,
   type PiApiFirstTurnConfig,
-  type PiModelConfigLegacy as PiModelConfig,
+  type PiModelConfig,
+  type PiModelConfigLegacy,
   type ConnectorRuntimeTargetRegistration,
   PI_MEMORY_ROOT,
   piMemoryRecallSelectionSchema,
@@ -876,7 +877,9 @@ interface ResolvedModelProviderEnvironment {
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
-  readonly credentialHeader?: NonNullable<PiModelConfig["credentialHeader"]>;
+  readonly credentialHeader?: NonNullable<
+    PiModelConfigLegacy["credentialHeader"]
+  >;
 }
 
 type BuiltinRuntimeTargetRegistration = Extract<
@@ -2498,6 +2501,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly builtInModelRuntimeRoute?: BuiltInModelRuntimeRoute;
+  readonly piExecution: boolean;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
@@ -2706,10 +2710,11 @@ async function resolveExactPersonalModelProviderAccount(
   if (
     !args.modelProviderId ||
     args.modelProviderCredentialScope === "org" ||
-    !isFeatureEnabled(
-      FeatureSwitchKey.PersonalModelProviderAccounts,
-      args.featureSwitchContext,
-    )
+    (!args.piExecution &&
+      !isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        args.featureSwitchContext,
+      ))
   ) {
     return null;
   }
@@ -8620,6 +8625,7 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         builtInModelRuntimeRoute: args.builtInModelRuntimeRoute,
+        piExecution: args.piExecution,
         featureSwitchContext: options.featureSwitchContext,
       })
     : null;

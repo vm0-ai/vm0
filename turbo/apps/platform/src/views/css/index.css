@@ -204,89 +204,41 @@ body {
   }
 }
 
-/* Shimmer text effect for active/thinking states */
-@keyframes zero-shimmer-window {
+/* Shimmer text effect for active/thinking states.
+
+   The bright band lives in the label's own background gradient, so the only
+   thing that moves is the gradient's paint origin. Sweeping it instead with a
+   translated overlay needs the overlay and the text copy inside it to cancel
+   each other out on every frame, and the compositor rasterises each animated
+   layer against its own whole-device-pixel origin, so that cancellation drifts
+   by up to a pixel and the status text jitters sideways. Nothing here moves a
+   box that holds glyphs, so the text cannot shift.
+
+   `contain: paint` keeps the per-frame repaint inside the label. */
+@keyframes zero-shimmer {
   from {
-    transform: translate3d(-50%, 0, 0);
+    background-position: 100% center;
   }
   to {
-    transform: translate3d(283.333333%, 0, 0);
+    background-position: -100% center;
   }
-}
-@keyframes zero-shimmer-highlight {
-  from {
-    transform: translate3d(30%, 0, 0);
-  }
-  to {
-    transform: translate3d(-170%, 0, 0);
-  }
-}
-@keyframes zero-shimmer-highlight-secondary {
-  from {
-    transform: translate3d(230%, 0, 0);
-  }
-  to {
-    transform: translate3d(30%, 0, 0);
-  }
-}
-.zero-shimmer-text-shell {
-  position: relative;
-  contain: paint;
 }
 .zero-shimmer-text {
-  background-color: hsl(var(--muted-foreground) / 0.8);
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground) / 0.8) 0%,
+    hsl(var(--muted-foreground) / 0.8) 35%,
+    hsl(var(--foreground)) 48%,
+    hsl(var(--foreground)) 52%,
+    hsl(var(--muted-foreground) / 0.8) 65%,
+    hsl(var(--muted-foreground) / 0.8) 100%
+  );
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-}
-.zero-shimmer-window {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 60%;
-  overflow: hidden;
-  background-color: hsl(var(--background));
-  pointer-events: none;
-  user-select: none;
-  /* Map the old 35%-65% band from its 200%-wide gradient into one window. */
-  -webkit-mask-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    black 43.333333%,
-    black 56.666667%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    black 43.333333%,
-    black 56.666667%,
-    transparent 100%
-  );
-  animation: zero-shimmer-window 3.5s linear infinite;
-  will-change: transform;
-}
-.zero-shimmer-highlight {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  display: block;
-  width: 166.666667%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background-color: hsl(var(--foreground));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: zero-shimmer-highlight 3.5s linear infinite;
-  will-change: transform;
-}
-.zero-shimmer-window-secondary {
-  left: -200%;
-}
-.zero-shimmer-window-secondary .zero-shimmer-highlight {
-  animation-name: zero-shimmer-highlight-secondary;
+  contain: paint;
+  animation: zero-shimmer 3.5s linear infinite;
 }
 
 @keyframes zero-thinking-in {
@@ -1964,8 +1916,7 @@ details > summary {
    rendered inside the dialog keeps running. */
 html:has(.zero-dialog-overlay)
   :is(
-    .zero-shimmer-window,
-    .zero-shimmer-highlight,
+    .zero-shimmer-text,
     .zero-blocks span,
     .zero-thinking-spinner,
     .mic-starting-spinner,
@@ -1977,23 +1928,48 @@ html:has(.zero-dialog-overlay)
 /* Workspace card: the routed page is a white sheet laid over the shell's grey
    rather than a white half of the window. The gap runs on all four sides, so
    the chat column's surface continues around the sheet and reads as one frame.
-   Padding insets the content and `inset` insets the paint by the same amount,
-   which is why the sheet needs no clipping: nothing lays out in the gutter, and
-   only the corner triangles could ever escape the radius.
+   Padding insets the content and `inset` insets the paint by the same amount.
+
+   The fill sits on `::before` at `z-index: -1`, so it paints behind content.
+   That is only enough while the corner triangles stay transparent, and a page
+   whose last child is flush with the content box and carries its own opaque
+   background -- the chat composer footer, for one -- squares them off again
+   and hides the border along that edge with them.
+
+   So the two jobs are split. `::before` keeps the fill behind content and
+   nothing else; `::after` owns the border and repaints the gutter over
+   content. The ring spreads by exactly the gap, which is the only region
+   padding already reserves, so it can only ever cover the triangles the radius
+   cuts away. Clipping the card would do the same job and take every popover
+   that has to escape it with it.
+
+   The border belongs to one pseudo-element only. While both drew it, the two
+   0.7px strokes stacked wherever content was transparent and the top corners
+   came out half again as heavy as the bottom ones, which sit over the footer.
 
    Desktop only. Below the sidebar breakpoint the columns are gone and a frame
    would just spend width the page does not have. */
 @media (min-width: 48rem) {
   [data-new-ui] .zero-workspace-card {
     --zero-workspace-card-gap: 8px;
+    --zero-workspace-card-radius: 12px;
     background-color: hsl(var(--sidebar));
     padding: var(--zero-workspace-card-gap);
   }
 
   [data-new-ui] .zero-workspace-card.zero-workspace-bg::before {
     inset: var(--zero-workspace-card-gap);
+    border-radius: var(--zero-workspace-card-radius);
+  }
+
+  [data-new-ui] .zero-workspace-card.zero-workspace-bg::after {
+    content: "";
+    position: absolute;
+    inset: var(--zero-workspace-card-gap);
     border: 0.7px solid hsl(var(--border));
-    border-radius: 12px;
+    border-radius: var(--zero-workspace-card-radius);
+    box-shadow: 0 0 0 var(--zero-workspace-card-gap) hsl(var(--sidebar));
+    pointer-events: none;
   }
 }
 
@@ -2003,9 +1979,9 @@ html:has(.zero-dialog-overlay)
    dark card does not: it lands on a bright grey that reads as a white outline
    rather than as focus, which is what `--ring` means on every other control.
    Saturation, not lightness, does the work, so the ring stays quieter than the
-   full Amber stop. */
+   full Cobalt stop. */
 :where([data-theme="dark"][data-new-ui]) .zero-app .zero-composer {
-  --zero-composer-ring: 38.8 38% 38%;
+  --zero-composer-ring: 222 38% 38%;
 }
 
 /* ===================================================================
@@ -2045,18 +2021,15 @@ html:has(.zero-dialog-overlay)
   --zero-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* Markdown links move to the palette's Cobalt. */
+/* Markdown links read the brand tokens now that those carry Cobalt themselves.
+   They used to hardcode it, because Amber could not be a link colour, and the
+   dark pair below them never applied: `:where()` zeroes its own specificity, so
+   the light rule outweighed it. One theme-aware token settles both. */
 [data-new-ui] .wmde-markdown a {
-  color: hsl(222.6 64.4% 51.6%);
+  color: hsl(var(--brand-text));
 }
 [data-new-ui] .wmde-markdown a:hover {
-  color: hsl(222.2 57.3% 40.4%);
-}
-:where([data-theme="dark"][data-new-ui]) .wmde-markdown a {
-  color: hsl(220.5 100% 84.3%);
-}
-:where([data-theme="dark"][data-new-ui]) .wmde-markdown a:hover {
-  color: hsl(220.4 100% 90.4%);
+  color: hsl(var(--brand-text-hover));
 }
 
 /* Colour themes realigned to the new ramp's lightness steps. */

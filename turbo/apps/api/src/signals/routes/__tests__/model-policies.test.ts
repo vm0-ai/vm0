@@ -1211,7 +1211,7 @@ describe("GET/PUT /api/model-policies", () => {
     const outsideCatalog =
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL as unknown as VideoModelId;
 
-    await accept(
+    const response = await accept(
       preferenceClient.update({
         headers: authHeaders(),
         body: {
@@ -1222,6 +1222,13 @@ describe("GET/PUT /api/model-policies", () => {
       }),
       [400],
     );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: expect.stringMatching(/^selectedVideoModel: Invalid option:/),
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("stores, preserves, and clears a member image default", async () => {

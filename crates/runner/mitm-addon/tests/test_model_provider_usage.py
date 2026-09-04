@@ -85,6 +85,7 @@ class TestReportModelProviderUsage:
     @pytest.mark.parametrize(
         ("provider", "input_tokens", "expected_suffix"),
         [
+            ("gpt-6-astra", 272_001, ".long_context"),
             ("gpt-5.5", 272_000, ""),
             ("gpt-5.5", 272_001, ".long_context"),
             ("gpt-5.6-sol", 272_001, ".long_context"),

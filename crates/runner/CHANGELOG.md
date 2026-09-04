@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.184.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.15...runner-rs-v0.184.16) (2026-09-04)
+
+
+### Bug Fixes
+
+* **runner:** centralize gc serialization ([#31671](https://github.com/vm0-ai/vm0/issues/31671)) ([c3dbc79](https://github.com/vm0-ai/vm0/commit/c3dbc79ae6f3c5f11f359621efc4591bffa4c678))
+* **runner:** validate shared pi model constraints ([#31604](https://github.com/vm0-ai/vm0/issues/31604)) ([64eddf2](https://github.com/vm0-ai/vm0/commit/64eddf256934747393a2d98636560ca2fad45a6c))
+
+## [0.184.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.14...runner-rs-v0.184.15) (2026-09-04)
+
 ## [0.184.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.184.13...runner-rs-v0.184.14) (2026-09-03)
 
 

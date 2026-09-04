@@ -48,10 +48,10 @@ async fn real_firecracker_guests_receive_weighted_host_cpu_service() -> TestResu
     if !nix::unistd::getuid().is_root() {
         return Err(io::Error::new(io::ErrorKind::PermissionDenied, "test requires root").into());
     }
-    let firecracker = required_path("VM0_HOST_CPU_TEST_FIRECRACKER")?;
-    let kernel = required_path("VM0_HOST_CPU_TEST_KERNEL")?;
-    let rootfs = required_path("VM0_HOST_CPU_TEST_ROOTFS")?;
-    let base_dir = PathBuf::from(required_env("VM0_HOST_CPU_TEST_BASE_DIR")?);
+    let firecracker = required_path("OKOU_TEST_HOST_CPU_FIRECRACKER")?;
+    let kernel = required_path("OKOU_TEST_HOST_CPU_KERNEL")?;
+    let rootfs = required_path("OKOU_TEST_HOST_CPU_ROOTFS")?;
+    let base_dir = PathBuf::from(required_env("OKOU_TEST_HOST_CPU_BASE_DIR")?);
     fs::create_dir_all(&base_dir)?;
 
     let host_cpu_placement = Some(

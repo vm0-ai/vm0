@@ -18,14 +18,12 @@ const APP_ASSET_REQUEST_HEADER_NAMES = [
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai"];
 const PRODUCTION_API_ORIGINS = new Map([
   ["app.okou.ai", "https://api.okou.ai"],
-  ["app-worker.okou.ai", "https://api.okou.ai"],
   ["app.vm0.ai", "https://api.vm0.ai"],
-  ["app-worker.vm0.ai", "https://api.vm0.ai"],
 ]);
 const VERCEL_PROTECTION_BYPASS = "x-vercel-protection-bypass";
-const CLERK_EDGE_DEBUG_QUERY_PARAMETER = "__clerk_edge_debug";
-const CLERK_EDGE_DEBUG_TIMEOUT_MS = 1000;
-const CLERK_EDGE_DEBUG_PREVIEW_HOSTNAME_PATTERN =
+const CLERK_EDGE_SESSION_QUERY_PARAMETER = "__clerk_edge_debug";
+const CLERK_EDGE_SESSION_TIMEOUT_MS = 1000;
+const CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN =
   /^pr-[1-9][0-9]*-app-okou-app-preview\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.workers\.dev$/u;
 const SECURITY_HEADERS = {
   "Permissions-Policy":
@@ -52,6 +50,7 @@ const VM0_APP_METADATA = {
     "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.",
   documentTitle: "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
   openGraphTitle: "VM0 - Your Trustworthy AI Teammate",
+  socialImagePath: "web/og-image.png",
   staticAssetsOrigin: "https://static.vm0.io",
   twitterDescription:
     "VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
@@ -65,6 +64,7 @@ const OKOU_APP_METADATA = {
   documentTitle:
     "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
   openGraphTitle: "Okou - Your Trustworthy AI Teammate",
+  socialImagePath: "web/okou-og-image-373c892e.png",
   staticAssetsOrigin: "https://static.okou.io",
   twitterDescription:
     "Okou is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
@@ -213,20 +213,33 @@ function serializeClerkEdgeSession(session) {
     .replaceAll("\u2029", "\\u2029");
 }
 
-function isClerkEdgeDebugRequest(requestUrl, env) {
+function clerkEdgeSessionAuthorizedParty(requestUrl, env) {
   const debugFlags = requestUrl.searchParams.getAll(
-    CLERK_EDGE_DEBUG_QUERY_PARAMETER,
+    CLERK_EDGE_SESSION_QUERY_PARAMETER,
   );
-  return (
-    requestUrl.protocol === "https:" &&
-    debugFlags.length === 1 &&
-    debugFlags[0] === "1" &&
-    CLERK_EDGE_DEBUG_PREVIEW_HOSTNAME_PATTERN.test(requestUrl.hostname) &&
-    env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
-  );
+  if (
+    requestUrl.protocol !== "https:" ||
+    debugFlags.length !== 1 ||
+    debugFlags[0] !== "1"
+  ) {
+    return null;
+  }
+  if (PRODUCTION_API_ORIGINS.has(requestUrl.hostname)) {
+    return requestUrl.origin;
+  }
+  return CLERK_EDGE_SESSION_PREVIEW_HOSTNAME_PATTERN.test(
+    requestUrl.hostname,
+  ) && env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY === requestUrl.origin
+    ? requestUrl.origin
+    : null;
 }
 
-async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
+async function clerkEdgeSession(
+  request,
+  env,
+  authorizedParty,
+  clerkClientFactory,
+) {
   let timeoutId;
   try {
     const publishableKey = env.CLERK_PUBLISHABLE_KEY;
@@ -243,7 +256,7 @@ async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
     const timeout = new Promise((resolve) => {
       timeoutId = globalThis.setTimeout(() => {
         resolve(null);
-      }, CLERK_EDGE_DEBUG_TIMEOUT_MS);
+      }, CLERK_EDGE_SESSION_TIMEOUT_MS);
     });
     const authentication = Promise.resolve().then(() => {
       const clerk = clerkClientFactory({
@@ -253,11 +266,11 @@ async function clerkEdgeSession(request, env, requestUrl, clerkClientFactory) {
       });
       return clerk.authenticateRequest(request, {
         acceptsToken: "session_token",
-        authorizedParties: [env.CLERK_EDGE_DEBUG_AUTHORIZED_PARTY],
+        authorizedParties: [authorizedParty],
       });
     });
     const requestState = await Promise.race([authentication, timeout]);
-    // Browser mutations are outside this observation-only diagnostic branch.
+    // App shell session bootstrap must not forward Clerk browser mutations.
     if (
       requestState === null ||
       !requestState.isAuthenticated ||
@@ -306,7 +319,7 @@ function rewriteAppPage(response, metadata, edgeSession) {
     .on('meta[property="og:description"]', setMetaContent(metadata.description))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on(
       'meta[property="og:image:alt"]',
@@ -322,7 +335,7 @@ function rewriteAppPage(response, metadata, edgeSession) {
     )
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on("head", {
       element(element) {
@@ -399,14 +412,14 @@ function rewriteFound(response, title, canonicalUrl, metadata) {
     .on('meta[property="og:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[property="og:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on('meta[property="og:image:alt"]', setMetaContent(title))
     .on('meta[name="twitter:title"]', setMetaContent(title))
     .on('meta[name="twitter:description"]', setMetaContent(sharedDescription))
     .on(
       'meta[name="twitter:image"]',
-      setMetaContent(staticAssetUrl(metadata, "web/og-image.png")),
+      setMetaContent(staticAssetUrl(metadata, metadata.socialImagePath)),
     )
     .on("head", {
       element(element) {
@@ -726,8 +739,9 @@ async function handleRequest(
   ) {
     return assetResponse;
   }
-  const edgeSession = isClerkEdgeDebugRequest(requestUrl, env)
-    ? await clerkEdgeSession(request, env, requestUrl, clerkClientFactory)
+  const authorizedParty = clerkEdgeSessionAuthorizedParty(requestUrl, env);
+  const edgeSession = authorizedParty
+    ? await clerkEdgeSession(request, env, authorizedParty, clerkClientFactory)
     : null;
   return rewriteAppPage(assetResponse, metadata, edgeSession);
 }

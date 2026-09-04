@@ -58,6 +58,23 @@ safety, moderation, and ordinary fictional discussion.
 
 _Avoid_: 18+ content, adult content
 
+# Built-in Generation Failure Context
+
+This context distinguishes provider failures by the stage at which a built-in
+generation request is rejected or fails.
+
+## Language
+
+**Output safety block**:
+A terminal generation outcome where generated media is withheld because an
+output safety check rejected it.
+_Avoid_: Input safety rejection, generic generation failure
+
+**Input safety rejection**:
+A generation request rejected because its prompt or reference media fails an
+input safety check before an acceptable output is available.
+_Avoid_: Output safety block, provider outage
+
 # Pi Model Routing Context
 
 This context separates Pi's trusted model metadata from the endpoint and model
@@ -101,7 +118,7 @@ _Avoid_: Run finish, goal iteration finish
 
 # Billing Context
 
-The billing context decides whether a purchase can be reviewed and confirmed inside vm0 or must continue on a Stripe-hosted page.
+The billing context decides whether a purchase can be reviewed and confirmed inside Okou or must continue on a Stripe-hosted page.
 
 ## Language
 
@@ -119,20 +136,20 @@ _Avoid_: Checkout
 
 # Banking Context
 
-This context separates a user's provider-hosted bank connection consent from the narrower access delegated to a vm0 agent.
+This context separates a user's provider-hosted bank connection consent from the narrower access delegated to an Okou agent.
 
 ## Language
 
 **Mastercard Data Connect session**:
 The Mastercard-hosted flow where a user links a financial institution and consents to Mastercard Open Finance accessing selected bank data.
-_Avoid_: vm0 bank login, banking agent grant
+_Avoid_: Okou bank login, banking agent grant
 
 **Banking connection**:
-A reusable link between a vm0 user and bank accounts discovered through Mastercard Open Finance. It exists independently of any agent's access.
+A reusable link between an Okou user and bank accounts discovered through Mastercard Open Finance. It exists independently of any agent's access.
 _Avoid_: Banking agent grant, Data Connect session
 
 **Banking agent grant**:
-A vm0 authorization that lets one agent read selected connected accounts under explicit operations, duration, and automation rules.
+An Okou authorization that lets one agent read selected connected accounts under explicit operations, duration, and automation rules.
 _Avoid_: Bank consent, Mastercard connection
 
 **Banking access request**:

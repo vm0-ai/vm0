@@ -115,6 +115,13 @@ function usageGroup(
   });
 }
 
+const GPT_6_ASTRA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(10), 1_000_000],
+  ["tokens.cache_read", usd(1), 1_000_000],
+  ["tokens.cache_creation", usd(12.5), 1_000_000],
+  ["tokens.output", usd(50), 1_000_000],
+];
+
 const GPT_5_6_SOL_PRICING: readonly UsagePricingRow[] = [
   ["tokens.input", usd(5), 1_000_000],
   ["tokens.cache_read", usd(0.5), 1_000_000],
@@ -416,6 +423,13 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.0028), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
+  // GPT-6 Astra pricing retrieved 2026-09-04 from:
+  // https://platform.openai.com/docs/models/gpt-6-astra
+  ...usageGroup(
+    "model",
+    "gpt-6-astra",
+    withFastPricing(withLongContextPricing(GPT_6_ASTRA_PRICING, 2, 1.5)),
+  ),
   // OpenAI API pricing retrieved 2026-07-31 from:
   // https://developers.openai.com/api/docs/pricing
   ...usageGroup(

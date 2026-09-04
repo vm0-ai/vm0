@@ -4,21 +4,12 @@ import { toast } from "@okouai/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
-import {
-  clearMockedAuthOnAbort,
-  type MockedClientSession,
-  type MockedInvitation,
-  type MockedMembership,
-  mockedClerk,
-  mockOrganization,
-  mockUser,
-} from "./mock-auth";
+import { mockedClerk, type mockOrganization, type mockUser } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
   mockPushState,
   mockReplaceState,
-  pushState,
   setHash,
   setPathname,
   setSearch,
@@ -36,6 +27,12 @@ import {
   setupSharedWorkerTestBootstrap$,
   type SharedWorkerTestTransport,
 } from "../shared-database/test-bridge.ts";
+import {
+  DEFAULT_LOCALE,
+  SUPPORTED_LOCALES,
+  type SupportedLocale,
+} from "../i18n/resources.ts";
+import { initializeI18n } from "../i18n/index.ts";
 
 export const TEST_APP_VERSION = "0.540.0";
 
@@ -89,62 +86,135 @@ function ensureTestLocalStorage(): void {
   });
 }
 
-export interface SetupBootstrapOptions {
-  appVersion?: string;
-  context: TestContext;
-  path: string;
-  beforeBootstrap?: (signal: AbortSignal) => void;
-  user?: {
-    id: string;
-    fullName: string;
-    email?: string;
-    firstName?: string;
-    imageUrl?: string;
-    createdAt?: Date;
-    createOrganizationEnabled?: boolean;
-    createOrganizationsLimit?: number | null;
-    clientSessions?: MockedClientSession[];
-  } | null;
-  session?: { token: string } | null;
-  org?: {
-    activeOrg?: {
-      id: string;
-      name: string;
-      slug?: string;
-      imageUrl?: string;
-      hasImage?: boolean;
-    } | null;
-    memberships?: MockedMembership[];
-    pendingInvitations?: MockedInvitation[];
+type MockedUser = Exclude<Parameters<typeof mockUser>[0], null>;
+type MockedSession = Exclude<Parameters<typeof mockUser>[1], null>;
+type MockedOrganization = Parameters<typeof mockOrganization>[0];
+
+export type SetupPageAuth = null | {
+  readonly user: MockedUser;
+  readonly organization?: MockedOrganization;
+  readonly session?: MockedSession | null;
+};
+
+export interface SetupPageOptions {
+  readonly appVersion?: string;
+  readonly context: TestContext;
+  readonly path: string;
+  readonly host?: string;
+  readonly locale?: SupportedLocale;
+  readonly auth?: SetupPageAuth;
+  readonly debugLoggers?: string[];
+  readonly env?: PageEnvironment;
+  readonly cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  readonly featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  readonly preserveFeatureSwitchCache?: boolean;
+  readonly sharedWorkerAppVersion?: string;
+  readonly sharedWorkerTestTransport?: SharedWorkerTestTransport;
+}
+
+type EnvironmentValue = string | undefined;
+type PageEnvironment = Readonly<Record<string, EnvironmentValue>>;
+
+const originalEnvironmentBySignal = new WeakMap<
+  AbortSignal,
+  Map<string, EnvironmentValue>
+>();
+
+function applyPageEnvironment(
+  env: PageEnvironment | undefined,
+  signal: AbortSignal,
+): void {
+  if (!env) {
+    return;
+  }
+  let originals = originalEnvironmentBySignal.get(signal);
+  if (!originals) {
+    const originalValues = new Map<string, EnvironmentValue>();
+    originals = originalValues;
+    originalEnvironmentBySignal.set(signal, originalValues);
+    signal.addEventListener(
+      "abort",
+      () => {
+        for (const [key, value] of originalValues) {
+          vi.stubEnv(key, value);
+        }
+        originalEnvironmentBySignal.delete(signal);
+      },
+      { once: true },
+    );
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (!originals.has(key)) {
+      const current: unknown = import.meta.env[key];
+      originals.set(key, typeof current === "string" ? current : undefined);
+    }
+    vi.stubEnv(key, value);
+  }
+}
+
+const DEFAULT_USER: MockedUser = {
+  id: "test-user-123",
+  fullName: "Test User",
+};
+
+const DEFAULT_SESSION: MockedSession = { token: "test-token" };
+
+const DEFAULT_ORGANIZATION: MockedOrganization = {
+  activeOrg: { id: "org_default", name: "Default Org" },
+  memberships: [{ id: "org_default" }],
+};
+
+function initialPageUrl(path: string, host: string): URL {
+  const protocol = host === "localhost" ? "http" : "https";
+  return new URL(path, `${protocol}://${host}`);
+}
+
+function resolveAuth(options: SetupPageOptions): {
+  readonly organization: MockedOrganization;
+  readonly session: MockedSession | null;
+  readonly signedOut: boolean;
+  readonly user: MockedUser | null;
+} {
+  if (options.auth === null) {
+    return {
+      organization: { activeOrg: null, memberships: [] },
+      session: null,
+      signedOut: true,
+      user: null,
+    };
+  }
+
+  return {
+    organization: options.auth?.organization ?? DEFAULT_ORGANIZATION,
+    session:
+      options.auth?.session === undefined
+        ? DEFAULT_SESSION
+        : options.auth.session,
+    signedOut: false,
+    user: options.auth?.user ?? DEFAULT_USER,
   };
-  debugLoggers?: string[];
-  cachedFeatureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
-  afterSharedDatabaseWorkerRegistration?: () => Promise<void>;
-  sharedWorkerAppVersion?: string;
-  sharedWorkerTestTransport?: SharedWorkerTestTransport;
 }
 
-export interface SetupPageOptions extends SetupBootstrapOptions {
-  withoutRender?: boolean;
-}
-
-/**
- * Run the production bootstrap lifecycle. Signal tests omit `render`; page
- * tests provide the Router setup through `setupPage` below.
- */
-export async function setupBootstrap(
-  options: SetupBootstrapOptions,
-  render: () => void = () => {},
+async function setupPageAsync(
+  options: SetupPageOptions,
+  pageRendered: () => void,
 ): Promise<void> {
   ensureTestLocalStorage();
+  applyPageEnvironment(options.env, options.context.signal);
+  await initializeI18n(options.locale ?? DEFAULT_LOCALE);
   // setupPage exercises the shared MSW fixture data even when a test does not
   // customize a handler. Start the lazy mock lifecycle so abort resets any
   // fixture mutations made by the application during this test.
   void options.context.mocks;
-  options.beforeBootstrap?.(options.context.signal);
-  createPushStateMock(options.context.signal);
-  pushState({}, "", options.path);
+  if (options.locale) {
+    options.context.mocks.data.userPreferences({
+      locale: options.locale,
+      supportedLocales: [...SUPPORTED_LOCALES],
+    });
+  }
+  const initialUrl = initialPageUrl(options.path, options.host ?? "localhost");
+  options.context.mocks.browser.url(initialUrl.toString());
+  createPushStateMock(options.context.signal, initialUrl);
 
   if (options.debugLoggers) {
     options.context.store.set(
@@ -154,55 +224,40 @@ export async function setupBootstrap(
   }
 
   // Simulate browser state before app startup: clear any prior cache, then
-  // optionally seed it as if the user is returning with a populated cache.
+  // seed it as if the user is returning with a populated cache. Tests for a
+  // historical raw cache can preserve the browser state they installed.
   // Reading featureSwitch$ is synchronous, so the cache must be in place
-  // before bootstrap runs (especially for `detachedSetupPage`, which does
-  // not await the bootstrap-driven SWR refresh).
-  const defaultOrgId = "org_default";
-  const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
-  options.context.store.set(clearFeatureSwitchCacheForTest$);
+  // before bootstrap starts its SWR refresh.
+  const auth = resolveAuth(options);
+  const clerk = options.context.mocks.clerk();
+  const activeOrgId = auth.organization.activeOrg?.id ?? null;
   const featureSwitchOverrides = { ...options.featureSwitches };
   if (options.featureSwitches) {
     setMockFeatureSwitches(featureSwitchOverrides);
   }
-  const cachedFeatureSwitchOverrides = {
-    ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
-  };
-  const cachedFeatureSwitches = getAllFeatureStates({
-    orgId: activeOrgId,
-    overrides: cachedFeatureSwitchOverrides,
-  });
-  options.context.store.set(
-    setFeatureSwitchCacheForTest$,
-    cachedFeatureSwitches,
-  );
-  const testUser =
-    options.user !== undefined
-      ? options.user
-      : { id: "test-user-123", fullName: "Test User" };
-  mockUser(
-    testUser,
-    options.session ?? {
-      token: "test-token",
-    },
-  );
-
-  // Default active org so needsOrgSelection$ doesn't redirect to choose-organization.
-  // Tests that explicitly configure org state before calling setupPage can pass
-  // `org` to override this default (or call mockOrganization() before setupPage).
-  if (options.org) {
-    mockOrganization(options.org);
-  } else {
-    mockOrganization({
-      activeOrg: { id: defaultOrgId, name: "Default Org" },
-      memberships: [{ id: defaultOrgId }],
+  if (!options.preserveFeatureSwitchCache) {
+    options.context.store.set(clearFeatureSwitchCacheForTest$);
+    const cachedFeatureSwitchOverrides = {
+      ...(options.cachedFeatureSwitches ?? featureSwitchOverrides),
+    };
+    const cachedFeatureSwitches = getAllFeatureStates({
+      orgId: activeOrgId ?? undefined,
+      overrides: cachedFeatureSwitchOverrides,
     });
+    options.context.store.set(
+      setFeatureSwitchCacheForTest$,
+      cachedFeatureSwitches,
+    );
   }
-  if (testUser) {
+  clerk.sessionSignedOut(auth.signedOut);
+  clerk.user(auth.user, auth.session);
+  clerk.organization(auth.organization);
+  const user = auth.user;
+  if (user) {
     options.context.mocks.api(authContract.me, ({ respond }) => {
       return respond(200, {
-        userId: testUser.id,
-        email: testUser.email ?? "test@example.com",
+        userId: user.id,
+        email: user.email ?? "test@example.com",
         orgId: activeOrgId ?? null,
       });
     });
@@ -214,19 +269,13 @@ export async function setupBootstrap(
       clerk: Promise.resolve(mockedClerk),
       workerStore: options.context.workerStore,
       identity:
-        testUser && activeOrgId
-          ? { userId: testUser.id, orgId: activeOrgId }
+        auth.user && activeOrgId
+          ? { userId: auth.user.id, orgId: activeOrgId }
           : null,
       transport: options.sharedWorkerTestTransport ?? "direct",
-      ...(options.afterSharedDatabaseWorkerRegistration
-        ? {
-            afterRegistration: options.afterSharedDatabaseWorkerRegistration,
-          }
-        : {}),
     },
     options.context.signal,
   );
-  clearMockedAuthOnAbort(options.context.signal);
   options.context.signal.addEventListener(
     "abort",
     () => {
@@ -238,140 +287,165 @@ export async function setupBootstrap(
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
   // act" warnings are suppressed in setup.ts.
+  options.context.signal.throwIfAborted();
   const runtime = options.context.store.set(
     bootstrap$,
     options.appVersion ?? TEST_APP_VERSION,
-    render,
+    () => {
+      setupRouter(options.context.store, (element) => {
+        const { unmount } = render(element);
+        pageRendered();
+        options.context.signal.addEventListener("abort", unmount, {
+          once: true,
+        });
+      });
+    },
     options.context.signal,
   );
-  options.context.track(runtime.sharedDatabaseDaemon);
-  options.context.track(runtime.authenticatedRealtimeDaemon);
-  await runtime.ready;
+  detach(
+    runtime.sharedDatabaseDaemon,
+    Reason.Daemon,
+    "test shared database daemon",
+  );
+  detach(
+    runtime.authenticatedRealtimeDaemon,
+    Reason.Daemon,
+    "test authenticated realtime daemon",
+  );
+  detach(runtime.ready, Reason.Entrance, "test page readiness");
+}
+
+function waitForFirstPageContent(signal: AbortSignal): {
+  readonly pageRendered: () => void;
+  readonly ready: Promise<void>;
+} {
+  let pageHasRendered = false;
+  let skeletonHasMounted = false;
+  let settled = false;
+  let resolveReady = (): void => {};
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+
+  const observer = new MutationObserver(checkPageContent);
+
+  function settle(): void {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    observer.disconnect();
+    signal.removeEventListener("abort", settle);
+    resolveReady();
+  }
+
+  function checkPageContent(): void {
+    const skeleton = document.querySelector('[data-testid="app-skeleton"]');
+    skeletonHasMounted ||= skeleton !== null;
+    if (
+      pageHasRendered &&
+      (!skeletonHasMounted ||
+        skeleton === null ||
+        skeleton.getAttribute("aria-hidden") === "true")
+    ) {
+      settle();
+    }
+  }
+
+  observer.observe(document.body, {
+    attributeFilter: ["aria-hidden"],
+    attributes: true,
+    childList: true,
+    subtree: true,
+  });
+  signal.addEventListener("abort", settle, { once: true });
+  checkPageContent();
+
+  return {
+    pageRendered: () => {
+      pageHasRendered = true;
+      checkPageContent();
+    },
+    ready,
+  };
+}
+
+export interface StartedPage {
+  readonly ready: Promise<void>;
+}
+
+export async function startPage(
+  options: SetupPageOptions,
+): Promise<StartedPage> {
+  const content = waitForFirstPageContent(options.context.signal);
+  await setupPageAsync(options, content.pageRendered);
+  return { ready: content.ready };
 }
 
 export async function setupPage(options: SetupPageOptions): Promise<void> {
-  await setupBootstrap(options, () => {
-    setupRouter(options.context.store, (element) => {
-      if (options.withoutRender) {
-        return;
-      }
-      const { unmount } = render(element);
-      options.context.signal.addEventListener("abort", () => {
-        unmount();
-      });
-    });
-  });
-}
-
-/**
- * Fire-and-forget variant of `setupPage` for tests where the page setup
- * initiates a long-running polling loop that never resolves on its own
- * (e.g. an active run that stays in "pending" state during the test).
- *
- * Tests should use `detachedSetupPage` and pair it with `await waitFor(...)`
- * to assert the desired rendered state rather than awaiting setup completion.
- *
- * Note: because setup runs concurrently with the test body, teardown (signal
- * abort) may race with in-flight async operations. Ensure test assertions do
- * not depend on the setup promise having fully settled.
- */
-export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
-  detach(setupPage(options), Reason.Entrance, "test");
-}
-
-function waitForPageContent(signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let skeletonMounted = false;
-    const observer = new MutationObserver(checkPageContent);
-
-    function cleanup(): void {
-      observer.disconnect();
-      signal.removeEventListener("abort", handleAbort);
-    }
-
-    function handleAbort(): void {
-      cleanup();
-      reject(signal.reason);
-    }
-
-    function checkPageContent(): void {
-      const skeleton = document.querySelector('[data-testid="app-skeleton"]');
-      skeletonMounted ||= skeleton !== null;
-      if (
-        skeletonMounted &&
-        (skeleton === null || skeleton.getAttribute("aria-hidden") === "true")
-      ) {
-        cleanup();
-        resolve();
-      }
-    }
-
-    observer.observe(document.body, {
-      attributeFilter: ["aria-hidden"],
-      attributes: true,
-      childList: true,
-      subtree: true,
-    });
-    signal.addEventListener("abort", handleAbort, { once: true });
-    checkPageContent();
-  });
-}
-
-/**
- * Start the real page bootstrap and resolve when the loading surface gives
- * way to user-visible page content. Long-running page daemons stay detached.
- */
-export async function setupPageAndWaitForContent(
-  options: Parameters<typeof setupPage>[0],
-): Promise<void> {
-  const contentReady = waitForPageContent(options.context.signal);
-  detachedSetupPage(options);
-  await contentReady;
+  const page = await startPage(options);
+  await page.ready;
 }
 
 // Helper to create a browser history mock that updates mockLocation.
-function createPushStateMock(signal: AbortSignal) {
+function createPushStateMock(signal: AbortSignal, initialUrl: URL): void {
   interface HistoryEntry {
     readonly data: unknown;
     readonly url: URL;
   }
 
-  const entries: HistoryEntry[] = [];
-  let currentEntryIndex = -1;
+  const entries: HistoryEntry[] = [{ data: null, url: initialUrl }];
+  let currentEntryIndex = 0;
+  let currentUrl = initialUrl;
+  const replaceBrowserUrl = window.history.replaceState.bind(window.history);
 
   const resolveUrl = (url?: string | URL | null) => {
-    return new URL(url?.toString() ?? "/", "http://localhost");
+    return url === undefined || url === null
+      ? currentUrl
+      : new URL(url.toString(), currentUrl);
   };
 
   const updateLocation = (entry: HistoryEntry) => {
+    currentUrl = entry.url;
+    if (entry.url.origin === window.location.origin) {
+      replaceBrowserUrl(entry.data, "", entry.url);
+    } else {
+      window.location.href = entry.url.toString();
+    }
     setPathname(entry.url.pathname, signal);
     setSearch(entry.url.search, signal);
     setHash(entry.url.hash, signal);
   };
 
-  const fn = vi.fn<typeof window.history.pushState>(
-    (data: unknown, _unused: string, url?: string | URL | null) => {
-      const entry = { data, url: resolveUrl(url) };
-      entries.splice(currentEntryIndex + 1);
-      entries.push(entry);
-      currentEntryIndex = entries.length - 1;
-      updateLocation(entry);
-    },
-  );
+  updateLocation(entries[0]);
+
+  const fn = vi
+    .spyOn(window.history, "pushState")
+    .mockImplementation(
+      (data: unknown, _unused: string, url?: string | URL | null) => {
+        const entry = { data, url: resolveUrl(url) };
+        entries.splice(currentEntryIndex + 1);
+        entries.push(entry);
+        currentEntryIndex = entries.length - 1;
+        updateLocation(entry);
+      },
+    );
   mockPushState(fn, signal);
 
-  const replaceFn = vi.fn<typeof window.history.replaceState>(
-    (data: unknown, _unused: string, url?: string | URL | null) => {
-      const entry = { data, url: resolveUrl(url) };
-      if (currentEntryIndex === -1) {
-        entries.push(entry);
-        currentEntryIndex = 0;
-      } else {
-        entries[currentEntryIndex] = entry;
-      }
-      updateLocation(entry);
-    },
-  );
+  const replaceFn = vi
+    .spyOn(window.history, "replaceState")
+    .mockImplementation(
+      (data: unknown, _unused: string, url?: string | URL | null) => {
+        const entry = { data, url: resolveUrl(url) };
+        if (currentEntryIndex === -1) {
+          entries.push(entry);
+          currentEntryIndex = 0;
+        } else {
+          entries[currentEntryIndex] = entry;
+        }
+        updateLocation(entry);
+      },
+    );
   mockReplaceState(replaceFn, signal);
 
   vi.spyOn(window.history, "back").mockImplementation(() => {
@@ -386,7 +460,6 @@ function createPushStateMock(signal: AbortSignal) {
     updateLocation(entry);
     window.dispatchEvent(new PopStateEvent("popstate", { state: entry.data }));
   });
-  return fn;
 }
 
 /**
@@ -402,7 +475,11 @@ export async function fill(element: Element, value: string): Promise<void> {
       : (element.querySelector('[contenteditable="true"]') ?? element);
   await fastUser.click(editableElement);
   await fastUser.keyboard("{Control>}a{/Control}");
-  await fastUser.paste(value);
+  if (value) {
+    await fastUser.paste(value);
+  } else {
+    await fastUser.keyboard("{Backspace}");
+  }
 }
 
 /**
@@ -446,11 +523,13 @@ export function holdElementAnimations(element: Element): () => void {
  */
 type TextContentRole =
   | "button"
+  | "combobox"
   | "link"
   | "menuitem"
   | "menuitemcheckbox"
   | "menuitemradio"
   | "radio"
+  | "option"
   | "tab"
   | "cell"
   | "columnheader"
@@ -459,6 +538,7 @@ type TextContentRole =
 
 const ROLE_SELECTORS: Record<TextContentRole, string> = {
   button: 'button, [role="button"]',
+  combobox: 'select, [role="combobox"]',
   link: 'a[href], [role="link"]',
   menuitem: '[role="menuitem"]',
   menuitemcheckbox: '[role="menuitemcheckbox"]',
@@ -467,6 +547,7 @@ const ROLE_SELECTORS: Record<TextContentRole, string> = {
   // separate 1x1 input for form submission, so the role selector alone is
   // the visible control.
   radio: '[role="radio"]',
+  option: 'option, [role="option"]',
   tab: '[role="tab"]',
   cell: 'td, [role="cell"]',
   // Plain <th> inside <thead> has implicit role="columnheader"; a <th
