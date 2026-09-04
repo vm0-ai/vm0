@@ -57,6 +57,23 @@ safety, moderation, and ordinary fictional discussion.
 
 _Avoid_: 18+ content, adult content
 
+# Built-in Generation Failure Context
+
+This context distinguishes provider failures by the stage at which a built-in
+generation request is rejected or fails.
+
+## Language
+
+**Output safety block**:
+A terminal generation outcome where generated media is withheld because an
+output safety check rejected it.
+_Avoid_: Input safety rejection, generic generation failure
+
+**Input safety rejection**:
+A generation request rejected because its prompt or reference media fails an
+input safety check before an acceptable output is available.
+_Avoid_: Output safety block, provider outage
+
 # Pi Model Routing Context
 
 This context separates Pi's trusted model metadata from the endpoint and model
