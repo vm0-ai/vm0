@@ -240,30 +240,43 @@ export async function startVoiceDraftPcmCapture(
   const audioContext = new AudioContextConstructor({
     sampleRate: VOICE_DRAFT_PCM_SAMPLE_RATE,
   });
-  if (!audioContext.audioWorklet) {
-    await bestEffort(audioContext.close());
-    return null;
-  }
+  let closePromise: Promise<void> | undefined;
 
-  const moduleUrl = URL.createObjectURL(
-    new Blob([PCM_WORKLET_SOURCE], { type: "text/javascript" }),
-  );
-  const loaded = await settle(
-    withCleanup(audioContext.audioWorklet.addModule(moduleUrl), () => {
-      URL.revokeObjectURL(moduleUrl);
-    }),
-    signal,
-  );
-  if (!loaded.ok) {
-    L.warn("AudioWorklet PCM capture unavailable; using encoded fallback", {
-      error: loaded.error,
-    });
-    await bestEffort(audioContext.close());
-    return null;
-  }
+  const closeAudioContext = (): Promise<void> => {
+    closePromise ??= bestEffort(audioContext.close());
+    return closePromise;
+  };
 
   return await onRejection(
-    (async (): Promise<VoiceDraftPcmCapture> => {
+    (async (): Promise<VoiceDraftPcmCapture | null> => {
+      const audioWorklet = audioContext.audioWorklet;
+      if (!audioWorklet) {
+        await closeAudioContext();
+        return null;
+      }
+
+      const moduleUrl = URL.createObjectURL(
+        new Blob([PCM_WORKLET_SOURCE], { type: "text/javascript" }),
+      );
+      const loaded = await settle(
+        withCleanup(
+          (async () => {
+            await audioWorklet.addModule(moduleUrl);
+          })(),
+          () => {
+            URL.revokeObjectURL(moduleUrl);
+          },
+        ),
+        signal,
+      );
+      if (!loaded.ok) {
+        L.warn("AudioWorklet PCM capture unavailable; using encoded fallback", {
+          error: loaded.error,
+        });
+        await closeAudioContext();
+        return null;
+      }
+
       await audioContext.resume();
       signal.throwIfAborted();
       const source = audioContext.createMediaStreamSource(stream);
@@ -281,12 +294,6 @@ export async function startVoiceDraftPcmCapture(
       const batches: Float32Array[] = [];
       let sampleCount = 0;
       let stopped = false;
-      let closePromise: Promise<void> | undefined;
-
-      const closeAudioContext = (): Promise<void> => {
-        closePromise ??= bestEffort(audioContext.close());
-        return closePromise;
-      };
 
       worklet.port.addEventListener(
         "message",
@@ -342,7 +349,7 @@ export async function startVoiceDraftPcmCapture(
       };
     })(),
     async () => {
-      await bestEffort(audioContext.close());
+      await closeAudioContext();
     },
   );
 }

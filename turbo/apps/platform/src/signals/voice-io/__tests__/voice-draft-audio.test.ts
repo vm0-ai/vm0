@@ -1,3 +1,7 @@
+import { vi } from "vitest";
+
+import { testContext } from "../../__tests__/test-helpers";
+import { createChildAbortController, createDeferredPromise } from "../../utils";
 import {
   voiceDraftChunkRanges,
   type VoiceDraftPause,
@@ -5,9 +9,11 @@ import {
 import {
   decodeVoiceDraftPcmWav,
   encodeVoiceDraftPcmWav,
+  startVoiceDraftPcmCapture,
 } from "../voice-draft-pcm";
 
 const SAMPLE_RATE = 16_000;
+const context = testContext();
 
 function samples(seconds: number): number {
   return seconds * SAMPLE_RATE;
@@ -62,5 +68,47 @@ describe("voice draft PCM WAV", () => {
       expect.closeTo(0.25, 4),
       expect.closeTo(1, 4),
     ]);
+  });
+});
+
+describe("voice draft PCM capture", () => {
+  it("closes the AudioContext when startup is aborted", async () => {
+    const moduleLoad = createDeferredPromise<void>(context.signal);
+    const addModule = vi
+      .fn<AudioWorklet["addModule"]>()
+      .mockReturnValue(moduleLoad.promise);
+    const close = vi.fn<AudioContext["close"]>().mockResolvedValue(undefined);
+
+    class TestAudioContext {
+      readonly audioWorklet = { addModule };
+      readonly close = close;
+    }
+
+    vi.stubGlobal("AudioContext", TestAudioContext);
+    vi.stubGlobal("AudioWorkletNode", class TestAudioWorkletNode {});
+    const createObjectUrl = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:voice-draft-pcm-worklet");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL");
+    const startupController = createChildAbortController(context.signal);
+
+    const capture = startVoiceDraftPcmCapture(
+      {} as MediaStream,
+      startupController.signal,
+    );
+    await vi.waitFor(() => {
+      expect(addModule).toHaveBeenCalledOnce();
+    });
+
+    const abortError = new DOMException("Recording stopped", "AbortError");
+    startupController.abort(abortError);
+    moduleLoad.resolve(undefined);
+
+    await expect(capture).rejects.toBe(abortError);
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(revokeObjectUrl).toHaveBeenCalledWith(
+      "blob:voice-draft-pcm-worklet",
+    );
+    expect(close).toHaveBeenCalledOnce();
   });
 });
