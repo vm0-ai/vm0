@@ -670,6 +670,33 @@ test("Continue a run that reached its execution time limit", async () => {
   });
 });
 
+test("Continue a run classified by a structured execution timeout reason", async () => {
+  configureModelPolicies(["gpt-5.6-sol"]);
+  installRunChat({
+    selectedModel: "gpt-5.6-sol",
+    chatEvents: failedRunEvents(
+      "Contradictory runner failure",
+      "gpt-5.6-sol",
+      "execution_timeout",
+    ),
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+  });
+
+  await readyChat();
+  const recovery = await screen.findByRole("status");
+  expect(recovery).toHaveTextContent("Time limit reached");
+  expect(recovery).toHaveTextContent(
+    "This run reached its time limit. Continue to keep working.",
+  );
+  expect(within(recovery).queryByRole("combobox")).toBeNull();
+  expect(queryButton("Continue", recovery)).toBeVisible();
+});
+
 test("Preserve provider errors that have no guided recovery", async () => {
   const providerError =
     "Selected model capacity warning from a custom gateway; contact its operator.";

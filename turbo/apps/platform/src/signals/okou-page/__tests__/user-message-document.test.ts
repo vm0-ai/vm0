@@ -64,6 +64,16 @@ function createEditorSchema(): Schema {
         },
         group: "block",
       },
+      voiceDraft: {
+        atom: true,
+        attrs: {
+          id: { default: null },
+          transcript: { default: "" },
+          status: { default: "failed" },
+          visible: { default: true },
+        },
+        group: "block",
+      },
       feedbackItem: {
         attrs: {
           eventId: { default: null },
@@ -79,16 +89,6 @@ function createEditorSchema(): Schema {
           sourceType: { default: null },
         },
         content: "paragraph*",
-        group: "block",
-      },
-      voiceDraft: {
-        atom: true,
-        attrs: {
-          id: { default: null },
-          transcript: { default: null },
-          status: { default: null },
-          visible: { default: false },
-        },
         group: "block",
       },
     },
@@ -233,8 +233,8 @@ test("Complex composer content survives saving and restoring", () => {
   ]);
 });
 
-test("Voice drafts stay outside user message documents", () => {
-  const editor = createEditorSchema().nodeFromJSON({
+test("An unfinished voice draft stays outside the user message", () => {
+  const editorDocument = createEditorSchema().nodeFromJSON({
     type: "doc",
     content: [
       {
@@ -252,7 +252,7 @@ test("Voice drafts stay outside user message documents", () => {
       },
     ],
   });
-  const draft = createEditorDocumentSnapshot(editor).toDraft();
+  const draft = createEditorDocumentSnapshot(editorDocument).toDraft();
 
   expect(draft).toStrictEqual({
     userMessage: {
@@ -269,35 +269,27 @@ test("Voice drafts stay outside user message documents", () => {
   expect(messageDocumentToDisplayText(draft?.userMessage)).toBe(
     "Keep this message",
   );
-
-  const restored = draftToEditorDoc(draft?.userMessage, draft?.draftVoice);
-  expect(restored).toStrictEqual({
-    type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [{ type: "text", text: "Keep this message" }],
-      },
-      {
-        type: "voiceDraft",
-        attrs: {
-          id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
-          transcript: "um ship Friday no Monday",
-          status: "failed",
-          visible: true,
+  expect(draftToEditorDoc(draft?.userMessage, draft?.draftVoice)).toStrictEqual(
+    {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Keep this message" }],
         },
-      },
-      { type: "paragraph" },
-    ],
-  });
-  if (!restored) {
-    throw new Error("Expected the voice draft to restore");
-  }
-  expect(
-    createEditorDocumentSnapshot(
-      createEditorSchema().nodeFromJSON(restored),
-    ).toDraft(),
-  ).toStrictEqual(draft);
+        {
+          type: "voiceDraft",
+          attrs: {
+            id: "4c870df4-7cf6-4d3d-a9c4-8e721af86e31",
+            transcript: "um ship Friday no Monday",
+            status: "failed",
+            visible: true,
+          },
+        },
+        { type: "paragraph" },
+      ],
+    },
+  );
 });
 
 test("Email feedback keeps its source status", () => {

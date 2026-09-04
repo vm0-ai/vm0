@@ -40,6 +40,60 @@ interface PiRuntimeContract {
 
 type PiCatalogProvider = "deepseek" | "openai";
 
+const STANDARD_TERRA_API_KEY_PI_ROUTES = {
+  "openai-api-key": {
+    productProviderType: "openai-api-key",
+    provider: "openai",
+    model: "gpt-5.6-terra",
+    endpoint: getModelProviderPiEndpoint("openai-api-key", "openai-responses"),
+    credentialSecretName: "OPENAI_API_KEY",
+  },
+  "openrouter-codex": {
+    productProviderType: "openrouter-codex",
+    provider: "openrouter",
+    model: "openai/gpt-5.6-terra",
+    endpoint: getModelProviderPiEndpoint(
+      "openrouter-codex",
+      "openai-responses",
+    ),
+    credentialSecretName: "OPENROUTER_API_KEY",
+  },
+  "vercel-ai-gateway-codex": {
+    productProviderType: "vercel-ai-gateway-codex",
+    provider: "openai",
+    catalogModel: "gpt-5.6-terra",
+    model: "openai/gpt-5.6-terra",
+    endpoint: getModelProviderPiEndpoint(
+      "vercel-ai-gateway-codex",
+      "openai-responses",
+    ),
+    credentialSecretName: "VERCEL_AI_GATEWAY_API_KEY",
+  },
+} as const;
+
+type StandardTerraApiKeyPiProviderType =
+  keyof typeof STANDARD_TERRA_API_KEY_PI_ROUTES;
+
+export function isStandardTerraApiKeyPiProviderType(
+  value: string | null | undefined,
+): value is StandardTerraApiKeyPiProviderType {
+  return (
+    value !== null &&
+    value !== undefined &&
+    Object.hasOwn(STANDARD_TERRA_API_KEY_PI_ROUTES, value)
+  );
+}
+
+function standardTerraApiKeyPiRoute(
+  value: string | null | undefined,
+):
+  | (typeof STANDARD_TERRA_API_KEY_PI_ROUTES)[StandardTerraApiKeyPiProviderType]
+  | null {
+  return isStandardTerraApiKeyPiProviderType(value)
+    ? STANDARD_TERRA_API_KEY_PI_ROUTES[value]
+    : null;
+}
+
 function piCatalogProvider(
   selectedModel: string | null | undefined,
 ): PiCatalogProvider | null {
@@ -117,7 +171,9 @@ export function shouldUsePiExecution(args: {
   const isPiModelProvider =
     isBuiltInModelProviderType(args.modelProviderType) ||
     args.modelProviderType === "custom-openai-responses" ||
-    (args.modelProviderType === "codex-oauth-token" && isStandardTerra);
+    (args.modelProviderType === "codex-oauth-token" && isStandardTerra) ||
+    (standardTerraApiKeyPiRoute(args.modelProviderType) !== null &&
+      isStandardTerra);
   return (
     args.chatThreadId !== undefined &&
     isWebChatTriggerSource(args.triggerSource) &&
@@ -236,6 +292,68 @@ function resolveCustomGatewayPiModelConfig(
     : null;
 }
 
+function resolveStandardTerraApiKeyPiModelConfig(
+  provider: PiModelProviderConfigInput,
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
+  const route = standardTerraApiKeyPiRoute(provider.type);
+  if (
+    !route ||
+    provider.selectedModel !== "gpt-5.6-terra" ||
+    codexServiceTier !== undefined ||
+    provider.inlineFirewall === true ||
+    provider.credentialHeader !== undefined ||
+    (provider.concreteType !== undefined &&
+      provider.concreteType !== route.productProviderType) ||
+    !route.endpoint ||
+    getSecretNameForType(route.productProviderType) !==
+      route.credentialSecretName ||
+    provider.environment.OPENAI_MODEL !== route.model ||
+    !provider.environment.OPENAI_API_KEY?.trim()
+  ) {
+    return null;
+  }
+  const configuredBaseUrl = provider.environment.OPENAI_BASE_URL;
+  if (
+    configuredBaseUrl &&
+    normalizedBaseUrl(configuredBaseUrl) !==
+      normalizedBaseUrl(route.endpoint.baseUrl)
+  ) {
+    return null;
+  }
+  const config = {
+    schemaVersion: PI_MODEL_CONFIG_CURRENT_GENERATION,
+    dialect: "openai-responses",
+    transport: "sse",
+    provider: route.provider,
+    baseUrl: route.endpoint.baseUrl,
+    model: route.model,
+    ...(route.productProviderType === "vercel-ai-gateway-codex"
+      ? { catalogModel: route.catalogModel }
+      : {}),
+    thinkingLevel: "low",
+    credentialBindings: [
+      {
+        kind: "api-key",
+        environment: "OPENAI_API_KEY",
+        secretName: route.credentialSecretName,
+      },
+    ],
+  } satisfies PiModelConfig;
+  return isPiAgentModelSupported({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    ...(config.catalogModel ? { catalogModel: config.catalogModel } : {}),
+    apiKey: "sandbox-secret",
+    dialect: config.dialect,
+    transport: config.transport,
+    thinkingLevel: config.thinkingLevel,
+  })
+    ? config
+    : null;
+}
+
 export function resolvePiSandboxModelConfig(
   provider: PiModelProviderConfigInput | null,
   codexServiceTier: "fast" | undefined = undefined,
@@ -248,6 +366,9 @@ export function resolvePiSandboxModelConfig(
   }
   if (provider.type === "custom-openai-responses") {
     return resolveCustomGatewayPiModelConfig(provider, codexServiceTier);
+  }
+  if (isStandardTerraApiKeyPiProviderType(provider.type)) {
+    return resolveStandardTerraApiKeyPiModelConfig(provider, codexServiceTier);
   }
   if (provider.inlineFirewall) {
     return null;

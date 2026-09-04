@@ -10,6 +10,7 @@ import {
   assistantEvent,
   context,
   findButton,
+  findLink,
   installRunChat,
   queryButton,
   readyChat,
@@ -462,10 +463,14 @@ test("Let the user retry or remove a voice draft when transcription fails", asyn
 test("Make voice-input startup and silent cancellation clear", async () => {
   const microphoneReady = context.mocks.deferred<void>();
   const voiceActivityObserved = context.mocks.deferred<void>();
+  let audioContextCloseCount = 0;
   let transcriptionRequests = 0;
   const sends: CapturedVoiceSend[] = [];
   context.mocks.browser.voiceInput({
     getUserMediaReady: microphoneReady.promise,
+    onAudioContextClose() {
+      audioContextCloseCount += 1;
+    },
     rms: () => {
       if (!voiceActivityObserved.settled()) {
         voiceActivityObserved.resolve(undefined);
@@ -497,9 +502,95 @@ test("Make voice-input startup and silent cancellation clear", async () => {
   click(stopRecording);
 
   await expect(findButton("Voice input")).resolves.toBeEnabled();
+  await waitFor(() => {
+    expect(audioContextCloseCount).toBe(1);
+  });
   expect(normalizedComposerText()).toBe("");
   expect(transcriptionRequests).toBe(0);
   expect(sends).toHaveLength(0);
+});
+
+test("Close the voice audio context when recording stops during monitor startup", async () => {
+  const audioReady = context.mocks.deferred<void>();
+  let audioContextCloseCount = 0;
+  context.mocks.browser.voiceInput({
+    audioContextReady: audioReady.promise,
+    onAudioContextClose() {
+      audioContextCloseCount += 1;
+    },
+    rms: 0.12,
+  });
+  installAvailableVoiceQuota();
+  context.mocks.http.post("*/api/voice-io/stt", () => {
+    return HttpResponse.json({ text: "first words" });
+  });
+  installRunChat();
+
+  await setupPage({ context, path: RUN_PATH });
+
+  click(await readyVoiceInput());
+  click(await findButton("Stop recording"));
+
+  await waitFor(() => {
+    expect(audioContextCloseCount).toBe(1);
+  });
+  audioReady.resolve(undefined);
+
+  await waitFor(() => {
+    expect(normalizedComposerText()).toBe("first words");
+    expect(audioContextCloseCount).toBe(1);
+  });
+});
+
+test("Close the voice audio context when its activity monitor fails", async () => {
+  const audioReady = context.mocks.deferred<void>();
+  let audioContextCloseCount = 0;
+  context.mocks.browser.voiceInput({
+    audioContextReady: audioReady.promise,
+    onAudioContextClose() {
+      audioContextCloseCount += 1;
+    },
+    rms: 0.12,
+  });
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({ context, path: RUN_PATH });
+
+  click(await readyVoiceInput());
+  await expect(findButton("Stop recording")).resolves.toBeEnabled();
+
+  audioReady.reject(new Error("Audio activity monitor failed to start"));
+
+  await waitFor(() => {
+    expect(audioContextCloseCount).toBe(1);
+  });
+  await expect(findButton("Stop recording")).resolves.toBeEnabled();
+});
+
+test("Close the voice audio context when page navigation aborts recording", async () => {
+  let audioContextCloseCount = 0;
+  context.mocks.browser.voiceInput({
+    onAudioContextClose() {
+      audioContextCloseCount += 1;
+    },
+    rms: 0.12,
+  });
+  installAvailableVoiceQuota();
+  installRunChat();
+
+  await setupPage({ context, path: RUN_PATH });
+
+  click(await readyVoiceInput());
+  await activeVoiceStopButton();
+  click(await findLink("Agents"));
+
+  await expect(
+    screen.findByRole("heading", { name: "Agents" }),
+  ).resolves.toBeVisible();
+  await waitFor(() => {
+    expect(audioContextCloseCount).toBe(1);
+  });
 });
 
 test("Transcribe long voice dictation in ordered segments", async () => {

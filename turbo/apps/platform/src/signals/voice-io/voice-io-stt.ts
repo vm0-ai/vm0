@@ -300,6 +300,7 @@ interface AudioActivityMonitor {
   readonly cancelFrame: (handle: number) => void;
   frameId: number | null;
   stopped: boolean;
+  closePromise: Promise<void> | null;
 }
 
 type SttSegmentResult =
@@ -472,54 +473,82 @@ async function startAudioActivityMonitor(
   }
 
   const audioContext = new AudioContextConstructor();
-  if (
-    typeof audioContext.createMediaStreamSource !== "function" ||
-    typeof audioContext.createAnalyser !== "function"
-  ) {
-    await closeAudioContextQuietly(audioContext);
-    return null;
-  }
-
-  await audioContext.resume();
-  if (signal.aborted) {
-    await closeAudioContextQuietly(audioContext);
-    signal.throwIfAborted();
-  }
-
-  const source = audioContext.createMediaStreamSource(stream);
-  const analyser = audioContext.createAnalyser();
-  const requestFrame = window.requestAnimationFrame.bind(window);
-  analyser.fftSize = 1024;
-  source.connect(analyser);
-
-  const monitor: AudioActivityMonitor = {
-    audioContext,
-    source,
-    analyser,
-    samples: new Float32Array(analyser.fftSize),
-    tracker: createAudioActivityTracker(onActivity),
-    cancelFrame: window.cancelAnimationFrame.bind(window),
-    frameId: null,
-    stopped: false,
-  };
-
-  let nextLevelSampleAt = audioActivityNow() + VOICE_LEVEL_SAMPLE_INTERVAL_MS;
-  const update = () => {
-    if (monitor.stopped) {
+  let audioContextClosePromise: Promise<void> | null = null;
+  let monitor: AudioActivityMonitor | null = null;
+  let retainedByMonitor = false;
+  const stopOnAbort = () => {
+    if (monitor) {
+      stopAudioActivityMonitor(monitor);
       return;
     }
-    monitor.analyser.getFloatTimeDomainData(monitor.samples);
-    const level = monitor.tracker.handle(monitor.samples);
-    const currentTime = audioActivityNow();
-    if (currentTime >= nextLevelSampleAt) {
-      onLevelSample(level);
-      nextLevelSampleAt = currentTime + VOICE_LEVEL_SAMPLE_INTERVAL_MS;
-    }
-    monitor.frameId = requestFrame(update);
+    audioContextClosePromise ??= closeAudioContextQuietly(audioContext);
   };
+  signal.addEventListener("abort", stopOnAbort, { once: true });
+  return await withCleanup(
+    (async () => {
+      signal.throwIfAborted();
+      if (
+        typeof audioContext.createMediaStreamSource !== "function" ||
+        typeof audioContext.createAnalyser !== "function"
+      ) {
+        return null;
+      }
 
-  update();
-  return monitor;
+      await audioContext.resume();
+      signal.throwIfAborted();
+
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      const requestFrame = window.requestAnimationFrame.bind(window);
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+
+      const startedMonitor: AudioActivityMonitor = {
+        audioContext,
+        source,
+        analyser,
+        samples: new Float32Array(analyser.fftSize),
+        tracker: createAudioActivityTracker(onActivity),
+        cancelFrame: window.cancelAnimationFrame.bind(window),
+        frameId: null,
+        stopped: false,
+        closePromise: null,
+      };
+      monitor = startedMonitor;
+
+      let nextLevelSampleAt =
+        audioActivityNow() + VOICE_LEVEL_SAMPLE_INTERVAL_MS;
+      const update = () => {
+        if (startedMonitor.stopped) {
+          return;
+        }
+        startedMonitor.analyser.getFloatTimeDomainData(startedMonitor.samples);
+        const level = startedMonitor.tracker.handle(startedMonitor.samples);
+        const currentTime = audioActivityNow();
+        if (currentTime >= nextLevelSampleAt) {
+          onLevelSample(level);
+          nextLevelSampleAt = currentTime + VOICE_LEVEL_SAMPLE_INTERVAL_MS;
+        }
+        startedMonitor.frameId = requestFrame(update);
+      };
+
+      update();
+      retainedByMonitor = true;
+      return startedMonitor;
+    })(),
+    async () => {
+      if (retainedByMonitor) {
+        return;
+      }
+      signal.removeEventListener("abort", stopOnAbort);
+      if (monitor) {
+        await stopAudioActivityMonitorAndWait(monitor);
+        return;
+      }
+      audioContextClosePromise ??= closeAudioContextQuietly(audioContext);
+      await audioContextClosePromise;
+    },
+  );
 }
 
 function stopAudioActivityMonitor(monitor: AudioActivityMonitor): void {
@@ -535,6 +564,16 @@ function stopAudioActivityMonitor(monitor: AudioActivityMonitor): void {
   monitor.tracker.reset();
   monitor.source.disconnect();
   monitor.analyser.disconnect();
+  monitor.closePromise = closeAudioContextQuietly(monitor.audioContext);
+}
+
+async function stopAudioActivityMonitorAndWait(
+  monitor: AudioActivityMonitor,
+): Promise<void> {
+  stopAudioActivityMonitor(monitor);
+  if (monitor.closePromise) {
+    await monitor.closePromise;
+  }
 }
 
 function isAudioInputQuotaExceeded(failure: SttApiFailure): boolean {
@@ -1278,9 +1317,6 @@ export const startRecording$ = command(
 
         signal.addEventListener("abort", () => {
           session.cancel();
-          if (audioActivityMonitor) {
-            stopAudioActivityMonitor(audioActivityMonitor);
-          }
           stopAllTracks(stream);
           set(resetState$);
         });
@@ -1377,8 +1413,7 @@ export const stopAndTranscribe$ = command(
           const session = get(internalRecordingSession$);
           const audioActivityMonitor = get(internalAudioActivityMonitor$);
           if (audioActivityMonitor) {
-            stopAudioActivityMonitor(audioActivityMonitor);
-            await closeAudioContextQuietly(audioActivityMonitor.audioContext);
+            await stopAudioActivityMonitorAndWait(audioActivityMonitor);
             signal.throwIfAborted();
             set(internalAudioActivityMonitor$, null);
             set(internalSpeechDetected$, false);

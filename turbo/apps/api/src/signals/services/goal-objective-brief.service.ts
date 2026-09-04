@@ -27,7 +27,7 @@ export async function generateGoalObjectiveBrief(
           content: `Objective:\n${objective.slice(0, OBJECTIVE_CONTEXT_CHAR_CAP)}`,
         },
       ],
-      80,
+      768,
       { reasoning: { effort: "low" } },
     ),
     (error) => {

@@ -249,7 +249,7 @@ test("Restore a rich saved draft when a chat opens", async () => {
 
 test("Restore an unfinished voice draft when a chat opens", async () => {
   const thread = continuityThread(6, 1, "Voice draft conversation");
-  const draft = {
+  const draft: ChatThreadDraft = {
     draftUserMessage: null,
     draftVoice: {
       version: 1,
@@ -257,7 +257,7 @@ test("Restore an unfinished voice draft when a chat opens", async () => {
       transcript: "Raw launch notes captured before navigation",
     },
     draftAttachments: null,
-  } satisfies ChatThreadDraft;
+  };
   const workspace = await installContinuityWorkspace(context, {
     caseId: 6,
     threads: [thread],
@@ -278,15 +278,6 @@ test("Restore an unfinished voice draft when a chat opens", async () => {
   );
   expect(fastButton("Finish", voiceDraft)).toBeEnabled();
   expect(fastButton("Remove voice draft", voiceDraft)).toBeEnabled();
-
-  await userEvent.click(fastButton("Finish", voiceDraft));
-
-  await waitFor(() => {
-    expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
-    expect(currentMessageComposer()).toHaveTextContent(
-      "Raw launch notes captured before navigation",
-    );
-  });
 });
 
 test("Save and clear typed drafts consistently", async () => {

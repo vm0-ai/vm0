@@ -1,4 +1,4 @@
-import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { JSX, ReactNode } from "react";
 import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
@@ -11,9 +11,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
   connectTelegramAccount$,
-  telegramAutoOpenRef$,
   telegramConnectLinkStatus$,
-  telegramDomainStatusPollerRef$,
 } from "../../signals/okou-page/telegram-connect-signals.ts";
 import {
   parseTelegramConnectParams,
@@ -103,19 +101,6 @@ function InvalidState({ title, message }: { title: string; message: string }) {
   );
 }
 
-function TelegramAutoOpen({ href }: { href: string }) {
-  const telegramAutoOpenRef = useSet(telegramAutoOpenRef$);
-
-  return (
-    <span
-      key={href}
-      ref={telegramAutoOpenRef}
-      data-telegram-href={href}
-      hidden
-    />
-  );
-}
-
 function SuccessState({ botUsername }: { botUsername: string }) {
   const { t } = useTranslation();
   const telegramHref = `tg://resolve?domain=${botUsername.replace(/^@/, "")}`;
@@ -123,7 +108,6 @@ function SuccessState({ botUsername }: { botUsername: string }) {
 
   return (
     <PageShell>
-      <TelegramAutoOpen href={telegramHref} />
       <TelegramMark state="success" />
       <CenterText
         title={t(($) => {
@@ -224,18 +208,14 @@ function getTelegramConnectErrorMessage(error: unknown): string {
 
 function DomainStatusPolling() {
   const { t } = useTranslation();
-  const domainStatusPollerRef = useSet(telegramDomainStatusPollerRef$);
 
   return (
-    <>
-      <span ref={domainStatusPollerRef} hidden />
-      <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 size={13} className="animate-spin" />
-        {t(($) => {
-          return $.connectors.providerConnect.telegram.checkingDomain;
-        })}
-      </div>
-    </>
+    <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+      <Loader2 size={13} className="animate-spin" />
+      {t(($) => {
+        return $.connectors.providerConnect.telegram.checkingDomain;
+      })}
+    </div>
   );
 }
 
