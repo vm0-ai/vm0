@@ -131,6 +131,7 @@ import {
 } from "../../signals/external/feature-switch.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
+  captureChatWorkHistoryExpanded,
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
 } from "../../lib/posthog.ts";
@@ -3404,6 +3405,11 @@ function ChatThreadEventGroups({
                       hiddenGroups: completedWorkFold.hiddenGroups,
                       expanded: completedWorkExpanded,
                       onToggle: () => {
+                        if (!completedWorkExpanded) {
+                          captureChatWorkHistoryExpanded({
+                            workStatus: "completed",
+                          });
+                        }
                         onToggleCompletedWork(completedWorkFold.key);
                       },
                     }
@@ -3420,6 +3426,14 @@ function ChatThreadEventGroups({
                         runWorkSection.hiddenGroupsAfterAnchor,
                       expanded: runWorkExpanded,
                       onToggle: () => {
+                        if (!runWorkExpanded) {
+                          captureChatWorkHistoryExpanded({
+                            workStatus:
+                              runWorkSection.endTime === undefined
+                                ? "active"
+                                : "completed",
+                          });
+                        }
                         onToggleRunWork(runWorkSection.key);
                       },
                     }
