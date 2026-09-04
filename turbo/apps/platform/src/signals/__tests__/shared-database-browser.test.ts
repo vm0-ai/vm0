@@ -1,12 +1,11 @@
+import { screen } from "@testing-library/react";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@okouai/api-contracts/contracts/client-headers";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import { expect, vi } from "vitest";
 
+import { setupPage } from "../../__tests__/page-helper.ts";
 import { mockNow } from "../../lib/time.ts";
 import type { SharedDatabasePortLike } from "../../shared-database/bridge.ts";
-import {
-  forceUpgradeDialogOpen$,
-  listenForceUpgradeDialog$,
-} from "../force-upgrade.ts";
 import { setupSharedDatabaseBridge$ } from "../shared-database-browser.ts";
 import { detach, Reason } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
@@ -167,30 +166,22 @@ test("Pass the page identity and Clerk deployment to the shared worker", async (
 });
 
 test("Open the force-upgrade dialog when the worker requires an upgrade", async () => {
-  const replace = vi.fn<(url: string) => void>();
-  const { workers } = installSharedWorkerMock();
-  setupBridge();
-  await vi.waitFor(() => {
-    expect(workers).toHaveLength(1);
+  context.mocks.http.get("*/api/indicators", () => {
+    return Response.json(
+      { error: "Client update required" },
+      { status: CLIENT_FORCE_UPGRADE_STATUS },
+    );
   });
-  const currentUrl = new URL("/chat", window.location.href);
-  vi.stubGlobal("location", {
-    href: currentUrl.toString(),
-    hostname: currentUrl.hostname,
-    origin: currentUrl.origin,
-    replace,
-  });
-  context.store.set(listenForceUpgradeDialog$, context.signal);
+  await setupPage({ context, path: "/" });
 
-  workers[0]!.port.receive({
-    type: "worker-unavailable",
-    reason: "force-upgrade-required",
+  await screen.findByRole("dialog", {
+    name: "Update required",
   });
-
-  await vi.waitFor(() => {
-    expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
-  });
-  expect(replace).not.toHaveBeenCalled();
+  expect(
+    new URL(window.location.href).searchParams.has(
+      "okou-shared-database-reload",
+    ),
+  ).toBeFalsy();
 });
 
 test("Reload after an IndexedDB version change makes the worker unavailable", async () => {
