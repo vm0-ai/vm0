@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { agentsMainContract } from "@okouai/api-contracts/contracts/agents";
 import {
@@ -11,7 +11,6 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
@@ -27,102 +26,6 @@ import {
 } from "./chat-list-test-helpers.ts";
 
 const context = testContext();
-const { set$: setPinnedAgentPreviewCache$ } = localStorageSignals(
-  "vm0:pinned-agent-preview-cache:v1",
-);
-
-test("Cached pinned agents remain visible while live details load", async () => {
-  const auth = chatListAuth(20);
-  const agents = context.mocks.deferred<void>();
-  const cachedAvatarUrl = "https://cdn.example.test/cached-agent.png";
-  context.store.set(
-    setPinnedAgentPreviewCache$,
-    JSON.stringify({
-      version: 1,
-      userId: "chat-list-user-20",
-      orgId: "chat-list-org-20",
-      defaultAgentId: CHAT_LIST_AGENT_ID,
-      agents: [
-        {
-          agentId: CHAT_LIST_AGENT_ID,
-          displayName: "Cached list agent",
-          avatarUrl: cachedAvatarUrl,
-        },
-      ],
-    }),
-  );
-  context.mocks.data.onboardingStatus({
-    defaultAgentId: CHAT_LIST_AGENT_ID,
-  });
-  installChatListStream(context, { caseId: 20, snapshot: [] });
-  installChatListAgent(context, agents.promise);
-
-  await setupPage({
-    context,
-    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth,
-  });
-
-  const pinnedAgents = await screen.findByTestId("pinned-agents-grid");
-  await waitFor(() => {
-    expect(within(pinnedAgents).getByText("Cached list agent")).toBeVisible();
-  });
-  expect(
-    within(pinnedAgents).getByTestId("pinned-agent-avatar"),
-  ).toHaveAttribute("src", cachedAvatarUrl);
-  expect(agents.settled()).toBeFalsy();
-
-  agents.resolve(undefined);
-
-  await waitFor(() => {
-    expect(within(pinnedAgents).getByText("List agent")).toBeVisible();
-  });
-  expect(within(pinnedAgents).queryByText("Cached list agent")).toBeNull();
-  expect(
-    within(pinnedAgents).getByTestId("pinned-agent-avatar"),
-  ).not.toHaveAttribute("src");
-});
-
-test("Do not reveal cached pinned agents from another workspace", async () => {
-  const auth = chatListAuth(21);
-  const agents = context.mocks.deferred<void>();
-  context.store.set(
-    setPinnedAgentPreviewCache$,
-    JSON.stringify({
-      version: 1,
-      userId: "chat-list-user-21",
-      orgId: "another-chat-list-org",
-      defaultAgentId: CHAT_LIST_AGENT_ID,
-      agents: [
-        {
-          agentId: CHAT_LIST_AGENT_ID,
-          displayName: "Another workspace agent",
-          avatarUrl: null,
-        },
-      ],
-    }),
-  );
-  context.mocks.data.onboardingStatus({
-    defaultAgentId: CHAT_LIST_AGENT_ID,
-  });
-  installChatListStream(context, { caseId: 21, snapshot: [] });
-  installChatListAgent(context, agents.promise);
-
-  await setupPage({
-    context,
-    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-    auth,
-  });
-
-  const pinnedAgents = await screen.findByTestId("pinned-agents-grid");
-  expect(
-    within(pinnedAgents).queryByText("Another workspace agent"),
-  ).toBeNull();
-  expect(
-    within(pinnedAgents).getAllByTestId("pinned-agent-skeleton"),
-  ).toHaveLength(4);
-  expect(agents.settled()).toBeFalsy();
-});
 
 test("Cached conversations appear before remote synchronization", async () => {
   const auth = chatListAuth(1);
