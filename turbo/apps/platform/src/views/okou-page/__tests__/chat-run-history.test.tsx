@@ -580,6 +580,32 @@ test("Render progress or result actions, never both", async () => {
   ).toBeNull();
 });
 
+test("Do not render result actions while waiting for assistant output", async () => {
+  installRunChat({
+    activeRunIds: [RUN_A],
+    chatEvents: [
+      promptEvent({
+        id: "waiting-actions-user",
+        runId: RUN_A,
+        seqId: 1,
+        text: "Prepare a result",
+      }),
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+
+  await readyChat();
+  expect(document.querySelector("[data-thinking-indicator]")).toBeVisible();
+  expect(
+    document.querySelector('[data-testid="chat-event-actions"]'),
+  ).toBeNull();
+});
+
 test("Render result actions after a run completes", async () => {
   installRunChat({
     chatEvents: [

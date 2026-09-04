@@ -7757,7 +7757,9 @@ function PagedRunWorkAssistantContent({
     recommendedFollowupSource,
   );
   const mainActions =
-    runWorkSection !== undefined && visibleIndicatorMode === undefined ? (
+    runWorkSection !== undefined &&
+    (visibleIndicatorMode === undefined ||
+      visibleIndicatorMode === "finished") ? (
       <PagedGroupActions
         group={group}
         content={mainEvent?.content ?? ""}

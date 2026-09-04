@@ -135,6 +135,76 @@ test("Carry an artifact referenced only by history below the main result", async
   expect(viewAgentProfileLinks()).toHaveLength(1);
 });
 
+test("Keep completed result actions before recommended followups", async () => {
+  const reportUrl = artifactUrl("followup-report", "followup-report.pdf");
+  installRunChat({
+    chatEvents: [
+      promptEvent({
+        id: "followup-actions-user",
+        runId: RUN_ID,
+        seqId: 1,
+        text: "Prepare the followup report",
+      }),
+      assistantEvent({
+        id: "followup-actions-history",
+        runId: RUN_ID,
+        seqId: 2,
+        text: `Generated the supporting report.\n\n${reportUrl}`,
+      }),
+      assistantEvent({
+        id: "followup-actions-main",
+        runId: RUN_ID,
+        seqId: 3,
+        text: "The followup report is ready",
+      }),
+      completedEvent({
+        id: "followup-actions-complete",
+        runId: RUN_ID,
+        seqId: 4,
+      }),
+      {
+        id: "followup-actions-recommendations",
+        eventType: "output.followups",
+        role: "assistant",
+        content: null,
+        runId: RUN_ID,
+        seqId: 5,
+        createdAt: "2026-08-01T10:00:05.000Z",
+        followups: [{ prompt: "Summarize the report", kind: "talk" }],
+      },
+    ],
+  });
+
+  await setupPage({
+    context,
+    path: RUN_PATH,
+    featureSwitches: { [FeatureSwitchKey.ChatRunWorkFolding]: true },
+  });
+  await readyChat();
+
+  const main = screen.getByText("The followup report is ready");
+  const artifact = await findNamedLink(
+    "Open pdf preview for followup-report.pdf",
+  );
+  const mainMessage = main.closest<HTMLElement>("[data-chat-run-work-main]");
+  if (!mainMessage) {
+    throw new Error("Expected the result inside the main message region");
+  }
+  const actions = mainMessage.querySelector<HTMLElement>(
+    '[data-testid="chat-event-actions"]',
+  );
+  if (!actions) {
+    throw new Error("Expected the completed result action bar");
+  }
+  const keepGoing = await screen.findByRole("group", { name: "Keep going" });
+
+  expect(actions).toBeVisible();
+  expect(mainMessage).toContainElement(actions);
+  expect(mainMessage).not.toContainElement(keepGoing);
+  expect(assistantGroupFor(main)).toContainElement(keepGoing);
+  expectDocumentOrder(main, artifact, actions, keepGoing);
+});
+
 test("Subtract final artifacts after ordered URL deduplication", async () => {
   const appendixUrl = artifactUrl("appendix", "appendix.pdf");
   const repeatedUrl = artifactUrl("repeated", "repeated.pdf");
