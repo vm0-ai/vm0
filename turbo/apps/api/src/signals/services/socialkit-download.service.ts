@@ -50,6 +50,12 @@ import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { validateScrapeTargetUrl } from "./scrape-target-policy";
 
 const SOCIALKIT_API_BASE = "https://api.socialkit.dev";
+// Temporary preview-only provider fixture for staging E2E validation. This
+// branch is intentionally not mergeable and must be deleted after validation.
+const PREVIEW_MOCK_REQUEST_URL = "https://www.youtube.com/watch?v=okoumock001";
+const PREVIEW_MOCK_PROVIDER_JOB_ID = "fixture-audio-only-mp3";
+const PREVIEW_MOCK_START_URL = "https://cdn.vm0.io/artifacts/d857xuk07q.json";
+const PREVIEW_MOCK_STATUS_URL = "https://cdn.vm0.io/artifacts/vn9zxvn7yk.json";
 const SOCIALKIT_PROVIDER_TIMEOUT_MS = 240_000;
 const SOCIALKIT_DOWNLOAD_TIMEOUT_MS = 270_000;
 export const SOCIALKIT_RECONCILIATION_TIMEOUT_MS = 280_000;
@@ -321,21 +327,27 @@ async function startProviderJob(
   request: SocialKitDownloadRequest,
   signal: AbortSignal,
 ): Promise<string> {
+  const usePreviewMock =
+    env("ENV") === "preview" && request.url === PREVIEW_MOCK_REQUEST_URL;
   const result = await providerJson(
-    `${SOCIALKIT_API_BASE}/v2/${request.platform}/download`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-access-key": accessKey,
-      },
-      body: JSON.stringify({
-        url: request.url,
-        max_duration: request.maxDuration,
-        quality: request.quality,
-        format: request.format,
-      }),
-    },
+    usePreviewMock
+      ? PREVIEW_MOCK_START_URL
+      : `${SOCIALKIT_API_BASE}/v2/${request.platform}/download`,
+    usePreviewMock
+      ? { method: "GET" }
+      : {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-access-key": accessKey,
+          },
+          body: JSON.stringify({
+            url: request.url,
+            max_duration: request.maxDuration,
+            quality: request.quality,
+            format: request.format,
+          }),
+        },
     signal,
   );
   if (!result.response.ok) {
@@ -363,9 +375,16 @@ async function pollProviderJob(
   providerJobId: string,
   signal: AbortSignal,
 ): Promise<ProviderPollResult> {
+  const usePreviewMock =
+    env("ENV") === "preview" && providerJobId === PREVIEW_MOCK_PROVIDER_JOB_ID;
   const result = await providerJson(
-    `${SOCIALKIT_API_BASE}/v2/downloads/${encodeURIComponent(providerJobId)}`,
-    { method: "GET", headers: { "x-access-key": accessKey } },
+    usePreviewMock
+      ? PREVIEW_MOCK_STATUS_URL
+      : `${SOCIALKIT_API_BASE}/v2/downloads/${encodeURIComponent(providerJobId)}`,
+    {
+      method: "GET",
+      ...(usePreviewMock ? {} : { headers: { "x-access-key": accessKey } }),
+    },
     signal,
   );
   if (!result.response.ok) {
