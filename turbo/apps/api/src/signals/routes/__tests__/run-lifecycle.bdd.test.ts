@@ -14116,7 +14116,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
       [400],
     );
-    expectApiError(rejected.body);
+    expect(rejected.body).toStrictEqual({
+      error: {
+        message: `Invalid base URL "https://\${{ vars.JIRA_DOMAIN }}" in firewall "jira": host policy does not allow resolved host "attacker.example"`,
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("refreshes queued connector grants from the stored permission baseline", async () => {
