@@ -1001,7 +1001,7 @@ describe("okou workflow automations", () => {
       visibility: "private",
     });
 
-    await accept(
+    const response = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: hidden.workflowId },
@@ -1011,12 +1011,19 @@ describe("okou workflow automations", () => {
       }),
       [404],
     );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Workflow not found: ${hidden.workflowId}`,
+        code: "NOT_FOUND",
+      },
+    });
   });
 
   it("rejects an invalid cron expression and a past one-time schedule", async () => {
     const { workflowId } = await setupFixture();
 
-    await accept(
+    const invalidCron = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -1031,7 +1038,7 @@ describe("okou workflow automations", () => {
       [400],
     );
 
-    await accept(
+    const pastOnce = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -1045,6 +1052,19 @@ describe("okou workflow automations", () => {
       }),
       [400],
     );
+
+    expect(invalidCron.body).toStrictEqual({
+      error: {
+        message: "Invalid cron expression: not a cron",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(pastOnce.body).toStrictEqual({
+      error: {
+        message: "Schedule atTime must be in the future",
+        code: "BAD_REQUEST",
+      },
+    });
   });
 
   it("makes a loop automation due immediately when enabled", async () => {
@@ -4618,13 +4638,20 @@ describe("okou workflow automations", () => {
       [204],
     );
 
-    await accept(
+    const response = await accept(
       automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [404],
     );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Workflow automation not found",
+        code: "NOT_FOUND",
+      },
+    });
   });
 
   it("allows another org member to manage only their own automations", async () => {
@@ -4645,7 +4672,7 @@ describe("okou workflow automations", () => {
     const otherUserId = `user_${randomUUID()}`;
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
 
-    await accept(
+    const memberAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -4656,13 +4683,21 @@ describe("okou workflow automations", () => {
       [201],
     );
 
-    await accept(
+    const denied = await accept(
       automationsClient().delete({
         headers: authHeaders(),
         params: { id: ownerAutomation.body.id },
       }),
       [403],
     );
+
+    expect(memberAutomation.body.ownerUserId).toBe(otherUserId);
+    expect(denied.body).toStrictEqual({
+      error: {
+        message: "Only the automation owner can manage this automation",
+        code: "FORBIDDEN",
+      },
+    });
   });
 
   it("keeps the bound chat thread when an automation is deleted", async () => {
