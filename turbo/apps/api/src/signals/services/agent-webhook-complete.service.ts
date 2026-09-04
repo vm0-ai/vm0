@@ -59,6 +59,7 @@ import {
   admitPiMemoryStage1Candidate,
   type PiMemoryStage1Admission,
 } from "./pi-memory-stage1-candidate.service";
+import { isStandardTerraApiKeyPiProviderType } from "./pi-sandbox-config";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -69,6 +70,7 @@ interface CompleteAgentRunInput {
   readonly auth: SandboxAuth;
   readonly body: WebhookCompleteBody;
   readonly allowCheckpointlessSuccess?: boolean;
+  readonly executionOwner?: "api-first";
 }
 
 export interface TerminalSideEffectsInput {
@@ -166,6 +168,40 @@ type CompletionTransactionResult =
   | { readonly kind: "committed"; readonly commit: CompletionCommit };
 
 const L = logger("webhook:complete");
+
+function logStandardTerraApiKeyPiSandboxOutcome(
+  input: CompleteAgentRunInput,
+  commit: CompletionCommit,
+): void {
+  if (
+    input.executionOwner === "api-first" ||
+    commit.run.launchSnapshot?.framework !== "pi" ||
+    !isStandardTerraApiKeyPiProviderType(commit.run.modelProvider)
+  ) {
+    return;
+  }
+  const details = {
+    runId: input.body.runId,
+    productProvider: commit.run.modelProvider,
+    dialect: "openai-responses",
+    executionOwner: "sandbox",
+    outcome:
+      commit.responseStatus === "completed"
+        ? "sandbox_completion"
+        : "terminal_failure",
+    reason:
+      commit.transitionFailureReason ??
+      (commit.responseStatus === "completed"
+        ? "settled_session"
+        : "sandbox_failure"),
+    ownershipStage: "sandbox",
+  } as const;
+  if (commit.responseStatus === "completed") {
+    L.debug("Pi API first-turn outcome", details);
+    return;
+  }
+  L.warn("Pi API first-turn outcome", details);
+}
 
 function shouldSuppressKnownFailureLog(
   run: RunRecord,
@@ -945,6 +981,7 @@ export const completeAgentRun$ = command(
             : {}),
         },
       });
+      logStandardTerraApiKeyPiSandboxOutcome(input, commit);
       if (commit.responseStatus === "completed") {
         L.debug("Run completed successfully", { runId: input.body.runId });
       } else if (commit.transitionFailureKind === "missing-checkpoint") {

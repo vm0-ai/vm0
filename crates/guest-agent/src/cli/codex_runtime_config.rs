@@ -19,6 +19,7 @@ const MODEL_CATALOG_PREPARE_ACTION: &str = "codex_model_catalog_prepare";
 pub(super) fn default_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
     let bare = model.strip_prefix("openai/").unwrap_or(model);
     match bare {
+        "gpt-6-astra" => Some("max"),
         "gpt-5.6-sol" => Some("max"),
         "gpt-5.6-terra" => Some("low"),
         "gpt-5.6-luna" => Some("max"),
@@ -201,6 +202,8 @@ mod tests {
     #[test]
     fn default_reasoning_effort_matches_supported_models() {
         for (model, effort) in [
+            ("gpt-6-astra", "max"),
+            ("openai/gpt-6-astra", "max"),
             ("gpt-5.5", "xhigh"),
             ("openai/gpt-5.5", "xhigh"),
             ("gpt-5.6-sol", "max"),

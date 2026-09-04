@@ -136,6 +136,40 @@ export const RUN_ERROR_GUIDANCE: Record<
       "Run credit diagnostics first. Buy credits only when the current plan allows it; otherwise return the plan upgrade link.",
     cliHint: "okou doctor credit",
   },
+  GENERATION_OUTPUT_SAFETY_BLOCKED: {
+    title: "Generated image blocked",
+    guidance:
+      "Try again once. If it is blocked again, change the prompt or reference image before retrying.",
+  },
+  GENERATION_INPUT_SAFETY_REJECTED: {
+    title: "Image request blocked",
+    guidance:
+      "Change the prompt or reference image before trying again. Retrying the unchanged request is unlikely to help.",
+  },
+  GENERATION_INPUT_MEDIA_UNREACHABLE: {
+    title: "Input image unavailable",
+    guidance:
+      "Use a public URL that returns the image directly without authentication or a browser challenge, then try again.",
+  },
+  GENERATION_INPUT_MEDIA_INVALID: {
+    title: "Input image invalid",
+    guidance:
+      "Replace or re-encode the image in a supported format, then try again.",
+  },
+  GENERATION_INVALID_PARAMETERS: {
+    title: "Invalid image generation options",
+    guidance: "Correct the image generation parameters before trying again.",
+  },
+  GENERATION_PROVIDER_UNAVAILABLE: {
+    title: "Image provider unavailable",
+    guidance:
+      "The image generation provider is temporarily unavailable. Please try again shortly.",
+  },
+  GENERATION_FAILED: {
+    title: "Image generation failed",
+    guidance:
+      "Try again once. If it still fails, contact support with the time, model, and error code.",
+  },
   PRO_REQUIRED: {
     title: "Paid plan required",
     guidance: "Built-in video generation is unavailable on the current plan.",
