@@ -1141,15 +1141,54 @@ async function readThreadTitleFromEvents(
  * Checkpoint + exitCode-0 complete (completing without a checkpoint fails the
  * run).
  */
+interface ChatRunCompletionOptions {
+  readonly activeInputDeliveryIds?: readonly string[];
+  readonly cliAgentSessionId?: string;
+  readonly cliAgentType?: "claude-code" | "codex" | "pi";
+  readonly lastEventSequence?: number;
+  readonly sessionHistory?: string;
+  readonly usagePricingResolution?: UsagePricingFixture["resolution"];
+}
+
+function frameworkMatchingCompletionOptions(
+  threadId: string,
+  cliAgentType: "claude-code" | "codex" | "pi",
+): ChatRunCompletionOptions {
+  if (cliAgentType !== "pi") {
+    return { cliAgentType };
+  }
+  const session = MemoryPiSession.create({
+    cwd: "/home/user/workspace",
+    id: threadId,
+  });
+  session.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "BDD Pi completion checkpoint" }],
+    api: "openai-responses",
+    provider: "openai",
+    model: "bdd-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: 1,
+  });
+  return {
+    cliAgentType,
+    cliAgentSessionId: threadId,
+    sessionHistory: session.toJsonl(),
+  };
+}
+
 async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
-  options: {
-    readonly activeInputDeliveryIds?: readonly string[];
-    readonly cliAgentType?: "claude-code" | "codex" | "pi";
-    readonly lastEventSequence?: number;
-    readonly usagePricingResolution?: UsagePricingFixture["resolution"];
-  } = {},
+  options: ChatRunCompletionOptions = {},
 ): Promise<void> {
   const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
   if (stagedOutputEvents.length > 0) {
@@ -1159,15 +1198,30 @@ async function completeChatRunOk(
       [200],
     );
   }
-  const history = `bdd chat session history ${runId}`;
+  const history = options.sessionHistory ?? `bdd chat session history ${runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
+  if (options.sessionHistory !== undefined) {
+    const historyBytes = Buffer.from(history, "utf8");
+    context.sessionHistoryBlobs.set(historyHash, historyBytes);
+    await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId,
+        hash: historyHash,
+        rawSize: historyBytes.byteLength,
+        encodedSize: historyBytes.byteLength,
+        encoding: "identity",
+      },
+      sandboxHeaders,
+      [200],
+    );
+  }
   await webhooks.requestAgentComplete(
     {
       runId,
       exitCode: 0,
       checkpoint: {
         cliAgentType: options.cliAgentType ?? "claude-code",
-        cliAgentSessionId: `bdd-cli-${runId}`,
+        cliAgentSessionId: options.cliAgentSessionId ?? `bdd-cli-${runId}`,
         cliAgentSessionHistoryHash: historyHash,
       },
       ...(options.activeInputDeliveryIds === undefined
@@ -6376,9 +6430,15 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       const claimed = await claimChatRun(runnerGroup, run.runId);
       await setRunLaunchSnapshotFixture(run.runId, snapshot);
-      await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
-        cliAgentType: "pi",
-      });
+      const completionOptions = frameworkMatchingCompletionOptions(
+        run.threadId,
+        snapshot?.framework ?? "claude-code",
+      );
+      await completeChatRunOk(
+        run.runId,
+        claimed.sandboxHeaders,
+        completionOptions,
+      );
       await flushWaitUntilForTest();
       const candidate = await readPiMemoryStage1CandidateFixture({
         orgId,
@@ -6390,16 +6450,21 @@ describe("CHAT-02: model-first provider policies", () => {
       if (admitted && candidate) {
         expect(candidate.sourceHistoryHash).toBe(
           createHash("sha256")
-            .update(`bdd chat session history ${run.runId}`)
+            .update(
+              completionOptions.sessionHistory ??
+                `bdd chat session history ${run.runId}`,
+            )
             .digest("hex"),
         );
         expect(
           candidate.eligibleAt.getTime() -
             candidate.sourceCompletedAt.getTime(),
         ).toBe(60_000);
-        await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
-          cliAgentType: "pi",
-        });
+        await completeChatRunOk(
+          run.runId,
+          claimed.sandboxHeaders,
+          completionOptions,
+        );
         await flushWaitUntilForTest();
         await expect(
           readPiMemoryStage1CandidateFixture({
@@ -6419,7 +6484,6 @@ describe("CHAT-02: model-first provider policies", () => {
       ["failed status", {}, true],
       ["agent Stage 1 recursion", { triggerSource: "agent" as const }, false],
       ["agent Phase 2 recursion", { triggerSource: "agent" as const }, false],
-      ["missing chat identity", { chatThreadId: null }, false],
     ] as const;
     for (const [name, inputs, fails] of cases) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -6442,9 +6506,11 @@ describe("CHAT-02: model-first provider policies", () => {
           "expected failure",
         );
       } else {
-        await completeChatRunOk(run.runId, claimed.sandboxHeaders, {
-          cliAgentType: "pi",
-        });
+        await completeChatRunOk(
+          run.runId,
+          claimed.sandboxHeaders,
+          frameworkMatchingCompletionOptions(run.threadId, "pi"),
+        );
       }
       await flushWaitUntilForTest();
       await expect(
@@ -6472,6 +6538,8 @@ describe("CHAT-02: model-first provider policies", () => {
         generationEnabled: false,
       }),
     ).toBe("generation_disabled");
+    // Valid Pi H2 completion requires a Chat Thread, so this defensive
+    // admission-only prerequisite is covered directly at its service boundary.
     expect(
       piMemoryStage1AdmissionPrerequisiteSkipReasonFixture({
         chatThreadId: null,

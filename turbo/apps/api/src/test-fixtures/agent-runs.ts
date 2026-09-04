@@ -94,6 +94,9 @@ export async function setRunPiMemoryAdmissionInputsFixture(
     readonly chatThreadId?: string | null;
   },
 ): Promise<void> {
+  if (inputs.triggerSource === undefined && inputs.chatThreadId === undefined) {
+    return;
+  }
   const rows = await db()
     .update(agentRuns)
     .set({
