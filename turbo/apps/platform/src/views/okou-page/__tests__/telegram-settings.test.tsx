@@ -8,7 +8,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { getAction } from "./connector-integrations-test-helpers.ts";
 
 const context = testContext();
-const ZERO_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const PRIMARY_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function agent(agentId: string, displayName: string | null): AgentResponse {
   return {
@@ -29,7 +29,7 @@ test("An admin can set up a new Telegram bot", async () => {
   const clipboard = context.mocks.browser.clipboardWriteText();
   const creationReady = context.mocks.deferred<void>();
   context.mocks.data.agents([
-    agent(ZERO_AGENT_ID, null),
+    agent(PRIMARY_AGENT_ID, null),
     agent("c0000000-0000-4000-a000-000000000002", "Support"),
   ]);
   context.mocks.data.telegramIntegration({
@@ -46,14 +46,14 @@ test("An admin can set up a new Telegram bot", async () => {
     async ({ body, respond }) => {
       expect(body).toStrictEqual({
         botToken: "123:token",
-        defaultAgentId: ZERO_AGENT_ID,
+        defaultAgentId: PRIMARY_AGENT_ID,
       });
       await creationReady.promise;
       return respond(201, {
         id: "bot_registered",
         username: "registered_bot",
         avatarUrl: null,
-        agent: { id: ZERO_AGENT_ID, name: "Zero" },
+        agent: { id: PRIMARY_AGENT_ID, name: "Zero" },
         isOwner: true,
         isConnected: false,
         connectedUser: null,

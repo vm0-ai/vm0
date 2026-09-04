@@ -585,7 +585,10 @@ test("Continue online when local chat storage becomes unavailable", async () => 
   await vi.waitFor(() => {
     expect(
       events.filter((event) => {
-        return event.type === "reload-required";
+        return (
+          event.type === "worker-unavailable" &&
+          event.reason === "indexeddb-version-changed"
+        );
       }),
     ).toHaveLength(1);
   });

@@ -78,5 +78,6 @@ export enum FeatureSwitchKey {
   IosPwaStartupImages = "iosPwaStartupImages",
   GeistTypeface = "geistTypeface",
   SocialDownloadDetectedMediaType = "socialDownloadDetectedMediaType",
+  AvatarComposerV2 = "avatarComposerV2",
   NewUi = "newUi",
 }

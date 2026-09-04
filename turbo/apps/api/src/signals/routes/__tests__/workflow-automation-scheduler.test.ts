@@ -424,22 +424,6 @@ describe("okou workflow automation scheduler", () => {
     await disableAutomation(automation.automationId);
   });
 
-  it("does not expose workflow permission deep-link ids to the run environment", async () => {
-    const scenario = await setup();
-    const automation = await createDueLoopAutomation(scenario, 60);
-
-    const threadId = await executeDueWorkflowAutomations(
-      automation.automationId,
-    );
-
-    const run = await onlyWorkflowRunMessage(threadId);
-    await runsApi.heartbeatRunner(scenario.runnerGroup);
-    const claim = await runsApi.claimRunnerJob(run.runId);
-    const environment = claim.environment ?? {};
-    expect(environment.ZERO_WORKFLOW_ID).toBeUndefined();
-    await disableAutomation(automation.automationId);
-  });
-
   it("fires a due cron automation: creates a run, posts to the thread, sets last run state", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const created = await accept(

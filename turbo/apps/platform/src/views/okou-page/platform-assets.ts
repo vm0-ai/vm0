@@ -1,3 +1,4 @@
+import { AVATAR_COMPOSER_ASSET_VERSION } from "@okouai/core/agent-avatar";
 import {
   platformPublicStaticUrl,
   platformStaticAssetUrl,
@@ -9,6 +10,12 @@ function pageAssetUrl(path: string): string {
 
 export function avatarSvgAssetUrl(filename: string): string {
   return pageAssetUrl(`assets/avatar-svg/${filename}`);
+}
+
+export function avatarComposerAssetUrl(path: string): string {
+  return pageAssetUrl(
+    `assets/avatar-svg-v2/${AVATAR_COMPOSER_ASSET_VERSION}/${path}`,
+  );
 }
 
 export const emptyArtifactImg = pageAssetUrl("assets/empty-artifact.webp");

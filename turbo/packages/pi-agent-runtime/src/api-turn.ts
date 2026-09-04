@@ -13,6 +13,7 @@ import type {
   PiObservedServiceTier,
 } from "./api-types";
 import { UnsupportedPiResourceSnapshotError } from "./errors";
+import { classifyPiApiProviderFailure } from "./api-failure";
 
 function projectAssistantContent(
   message: AssistantMessage,
@@ -46,11 +47,18 @@ function projectAssistantContent(
 export function projectPiApiAssistantMessage(
   message: AssistantMessage,
 ): PiApiAssistantMessage {
+  const failureReason =
+    message.stopReason === "error" &&
+    message.api === "openai-codex-responses" &&
+    message.provider === "openai-codex"
+      ? classifyPiApiProviderFailure(message.errorMessage)
+      : undefined;
   return {
     content: projectAssistantContent(message),
     model: message.model,
     responseId: message.responseId,
     stopReason: message.stopReason,
+    ...(failureReason ? { failureReason } : {}),
     timestamp: message.timestamp,
     usage: {
       input: message.usage.input,

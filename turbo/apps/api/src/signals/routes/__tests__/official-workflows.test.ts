@@ -7735,6 +7735,7 @@ describe.sequential("Official Workflow Run admission", () => {
       expect(source.items).toStrictEqual([
         expect.objectContaining({
           public_brand: "okou",
+          subject: `Display ${definitionName}`,
           source_run_id: producer.runId,
           source_workflow_automation_id: producer.automationId,
           status: "pending",

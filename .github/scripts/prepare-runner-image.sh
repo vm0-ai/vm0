@@ -210,9 +210,7 @@ REMOTE_SCRIPT
   local gc_attempt gc_status
   gc_status=0
   for gc_attempt in 1 2; do
-    if ssh "$remote" sudo flock --exclusive \
-      /var/lib/vm0-runner/locks/deployment-gc.lock \
-      "${BIN_DIR}/runner" gc --keep-latest 6; then
+    if ssh "$remote" sudo "${BIN_DIR}/runner" gc --keep-latest 6; then
       gc_status=0
       break
     else

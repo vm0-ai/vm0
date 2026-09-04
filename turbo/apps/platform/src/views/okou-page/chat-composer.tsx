@@ -9439,7 +9439,7 @@ function ComposerSendButton({
       <Button
         showTooltip
         size="icon-sm"
-        variant="destructive"
+        variant="interrupt"
         className="shrink-0"
         onClick={onActivate}
         aria-label={t(($) => {
