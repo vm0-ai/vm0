@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -25,6 +26,7 @@ import { billingStatusRoutes } from "../billing-status";
 import { builtInGenerationRoutes } from "../built-in-generation";
 import { introVideoPresenterRoutes } from "../intro-video-presenter";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { seedOrgMembership$ } from "./helpers/org-membership";
 import { createRouteMocks } from "./helpers/route-test";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
@@ -115,6 +117,14 @@ async function seedFixture(): Promise<IntroVideoPresenterFixture> {
   return fixture;
 }
 
+async function enableIntroVideo(
+  fixture: IntroVideoPresenterFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.IntroVideo]: true,
+  });
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -174,6 +184,43 @@ describe("Intro Video HeyGen presenter route", () => {
     });
   });
 
+  it("rejects agent requests while Intro Video is disabled", async () => {
+    const fixture = await seedFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/presenter/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${okouToken({ ...fixture, runId })}` },
+      body: JSON.stringify({
+        avatarId: "Abigail_standing_office_front",
+        audioUrl: "https://example.com/narration.mp3",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        code: "FORBIDDEN",
+        message: "Intro Video is not enabled",
+      },
+    });
+  });
+
   it("rejects direct sessions and non-curated presenter IDs", async () => {
     const fixture = await seedFixture();
     const app = createIntroVideoPresenterTestApp(
@@ -192,6 +239,8 @@ describe("Intro Video HeyGen presenter route", () => {
       },
     );
     expect(sessionResponse.status).toBe(403);
+
+    await enableIntroVideo(fixture);
 
     const { composeId } = await store.set(
       seedCompose$,
@@ -228,6 +277,7 @@ describe("Intro Video HeyGen presenter route", () => {
 
   it("renders a curated presenter through HeyGen v3 idempotently", async () => {
     const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },

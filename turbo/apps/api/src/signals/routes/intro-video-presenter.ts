@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { command } from "ccstate";
+import { command, computed } from "ccstate";
 import { introVideoPresenterContract } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import type { BuiltInGenerationRealtimeSubscription } from "@okouai/api-contracts/contracts/built-in-generation";
+import { isFeatureEnabled } from "@okouai/core/feature-switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -33,15 +36,35 @@ import {
   type IntroVideoPresenterOptions,
 } from "../services/intro-video-presenter.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
 import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
-import { db$ } from "../external/db";
 
 const generateBody$ = bodyResultOf(introVideoPresenterContract.generate);
+
+const introVideoDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Intro Video is not enabled",
+      code: "FORBIDDEN" as const,
+    }),
+  }),
+});
+
+const introVideoEnabled$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const context = await loadUserFeatureSwitchContext(
+    get(db$),
+    auth.orgId,
+    auth.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.IntroVideo, context);
+});
 
 function acceptedIntroVideoPresenterResponse(
   generationId: string,
@@ -151,6 +174,10 @@ const postGenerateInner$ = command(
         "Intro Video presenter route requires run authentication",
       );
     }
+    if (!(await get(introVideoEnabled$))) {
+      return introVideoDisabled;
+    }
+    signal.throwIfAborted();
 
     const db = get(db$);
     const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
