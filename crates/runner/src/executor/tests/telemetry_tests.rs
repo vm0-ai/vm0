@@ -2011,6 +2011,20 @@ async fn reused_connector_account_context_unclassified_guest_failure_stops() {
 }
 
 #[tokio::test]
+async fn reused_connector_account_context_backend_crash_stops() {
+    assert_reused_connector_account_context_failure(
+        SandboxError::Operation {
+            operation: SandboxOperation::WriteFile,
+            reason: SandboxOperationReason::BackendCrashed,
+            message: "firecracker process crashed".into(),
+        },
+        None,
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn reused_required_private_files_timeout_records_bounded_stage_before_agent_start() {
     let context = context_with_env(HashMap::from([(
         "CUSTOM_ENV".to_string(),
