@@ -82,6 +82,7 @@ import {
   resolveWebChatSessionPrompt,
   type WebChatSessionPromptContext,
 } from "./web-chat-session-prompt.service";
+import { captureActiveCodexModelProviderAccount } from "./model-provider-account.service";
 
 type AgentRunCreateBody = z.infer<typeof runCreateBodySchema>;
 // Emitted as the agent_run_origin observability dimension. The values name what
@@ -1057,6 +1058,49 @@ interface AgentRunAfterPreCreate {
   readonly threadSessionResolution?: ChatThreadSessionResolution;
 }
 
+async function captureCodexSubscriptionAccount(
+  db: Db,
+  input: AgentRunAfterPreCreate,
+): Promise<AgentRunAfterPreCreate> {
+  const { command } = input;
+  if (
+    (!command.piExecution &&
+      !isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        input.featureSwitchContext,
+      )) ||
+    command.agentRunModelPin?.modelProvider !== "codex-oauth-token" ||
+    command.threadSessionRoute?.modelProvider !== "codex-oauth-token"
+  ) {
+    return input;
+  }
+  const account = await captureActiveCodexModelProviderAccount({
+    db,
+    orgId: command.auth.orgId,
+    userId: command.auth.userId,
+    modelProviderId: command.agentRunModelPin.modelProviderId,
+    featureSwitchContext: input.featureSwitchContext,
+  });
+  if (!account) {
+    return input;
+  }
+  return {
+    ...input,
+    command: {
+      ...command,
+      modelProviderId: account.id,
+      agentRunModelPin: {
+        ...command.agentRunModelPin,
+        modelProviderId: account.id,
+      },
+      threadSessionRoute: {
+        ...command.threadSessionRoute,
+        modelProviderId: account.id,
+      },
+    },
+  };
+}
+
 async function resolvePausedThreadGoalPrompt(
   db: Db,
   args: { readonly orgId: string; readonly threadId: string },
@@ -1165,15 +1209,20 @@ const THREAD_SESSION_PREPARATION_ATTEMPTS = 3;
 const createAgentRunAfterZeroPreCreate$ = command(
   async ({ set }, input: AgentRunAfterPreCreate, signal: AbortSignal) => {
     const db = set(writeDb$);
+    const capturedInput = await captureCodexSubscriptionAccount(db, input);
+    signal.throwIfAborted();
     for (
       let attempt = 0;
       attempt < THREAD_SESSION_PREPARATION_ATTEMPTS;
       attempt += 1
     ) {
-      const attemptInput = await resolveThreadSessionForAgentRun(db, input);
+      const attemptInput = await resolveThreadSessionForAgentRun(
+        db,
+        capturedInput,
+      );
       signal.throwIfAborted();
       const baseCreateAgentRunArgs = await measureZeroPreCreate(
-        input.timing,
+        capturedInput.timing,
         "api_dispatch_pre_create_zero_build_create_run_args",
         () => {
           return buildZeroCreateAgentRunArgs(attemptInput);
@@ -1188,27 +1237,27 @@ const createAgentRunAfterZeroPreCreate$ = command(
         },
       };
       const phaseTiming = new ApiDispatchPhaseCollector(
-        input.command.apiStartTime,
+        capturedInput.command.apiStartTime,
       );
-      input.timing.recordElapsed(
+      capturedInput.timing.recordElapsed(
         "api_dispatch_pre_create_agent_run",
         "top_level",
-        input.command.apiStartTime,
+        capturedInput.command.apiStartTime,
       );
       phaseTiming.checkpoint("api_dispatch_phase_pre_create", now());
       const preparedAgentRun = await set(
         prepareAgentRun$,
         {
           args: createAgentRunArgs,
-          timing: input.timing,
+          timing: capturedInput.timing,
           phaseTiming,
           checkOrgPlanStatusBeforeContext: false,
-          preloadedFeatureSwitchContext: input.featureSwitchContext,
-          preloadedUserTimezone: input.userInfo.timezone,
-          ...(input.connectorCatalogSelection.kind === "scoped"
+          preloadedFeatureSwitchContext: capturedInput.featureSwitchContext,
+          preloadedUserTimezone: capturedInput.userInfo.timezone,
+          ...(capturedInput.connectorCatalogSelection.kind === "scoped"
             ? {
                 preloadedConnectorCatalogSnapshot:
-                  input.connectorCatalogSelection.selection,
+                  capturedInput.connectorCatalogSelection.selection,
               }
             : {}),
         },

@@ -964,6 +964,50 @@ describe("Pi API facade", () => {
     });
   });
 
+  it("projects only a content-free usage-limit classification", () => {
+    const nativeMessage: AssistantMessage = {
+      role: "assistant",
+      content: [],
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      model: "gpt-5.6-terra",
+      errorMessage:
+        "You've hit your usage limit; private upstream response omitted",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        reasoning: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "error",
+      timestamp: 456,
+    };
+
+    expect(projectPiApiAssistantMessage(nativeMessage)).toMatchObject({
+      stopReason: "error",
+      failureReason: "usage_limit",
+    });
+    expect(projectPiApiAssistantMessage(nativeMessage)).not.toHaveProperty(
+      "errorMessage",
+    );
+    expect(
+      projectPiApiAssistantMessage({
+        ...nativeMessage,
+        api: "openai-responses",
+        provider: "deepseek",
+      }),
+    ).not.toHaveProperty("failureReason");
+  });
+
   it("projects native session state into a narrow inspection result", () => {
     const session = MemoryPiSession.create({
       cwd: "/home/user/workspace",
