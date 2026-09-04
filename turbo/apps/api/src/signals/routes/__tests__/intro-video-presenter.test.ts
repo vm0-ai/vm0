@@ -36,16 +36,27 @@ const store = createStore();
 const mocks = createRouteMocks(context);
 
 const HEYGEN_CREATE_URL = "https://api.heygen.com/v3/videos";
+const HEYGEN_VOICES_URL = "https://api.heygen.com/v3/voices";
+const HEYGEN_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
 const HEYGEN_VIDEO_ID = "heygen-video-123";
 const HEYGEN_STATUS_URL = `${HEYGEN_CREATE_URL}/${HEYGEN_VIDEO_ID}`;
 const HEYGEN_VIDEO_URL = "https://files.heygen.test/presenter.webm";
+const HEYGEN_AUDIO_URL = "https://files.heygen.test/narration.mp3";
 const VIDEO_BYTES = Buffer.from("generated intro video presenter");
+const AUDIO_BYTES = Buffer.from("generated intro video narration");
 const PRICING_ROWS = [
   {
     kind: "video",
     provider: "heygen-avatar-iii",
     category: "output_video_seconds",
     unitPrice: 1250,
+    unitSize: 60,
+  },
+  {
+    kind: "audio",
+    provider: "heygen-starfish-tts",
+    category: "output_audio_seconds",
+    unitPrice: 40,
     unitSize: 60,
   },
 ] as const satisfies readonly UsagePricingRow[];
@@ -273,6 +284,151 @@ describe("Intro Video HeyGen presenter route", () => {
     await expect(unknownAvatarResponse.json()).resolves.toMatchObject({
       error: { code: "BAD_REQUEST" },
     });
+  });
+
+  it("lists only public HeyGen Starfish voices for the wizard", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    let voiceRequests = 0;
+    server.use(
+      http.get(HEYGEN_VOICES_URL, ({ request }) => {
+        voiceRequests += 1;
+        const url = new URL(request.url);
+        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        expect(Object.fromEntries(url.searchParams)).toStrictEqual({
+          type: "public",
+          engine: "starfish",
+          limit: "24",
+          language: "English",
+          gender: "female",
+        });
+        return HttpResponse.json({
+          data: [
+            {
+              voice_id: "330290724a1b470fb63153f34d4c0183",
+              name: "Annie - Lifelike",
+              language: "English",
+              gender: "female",
+              preview_audio_url: "https://files.heygen.test/annie.wav",
+              type: "public",
+            },
+          ],
+          has_more: true,
+          next_token: "next-voice-page",
+        });
+      }),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request(
+      "/api/intro-video/voices?pageSize=24&language=English&gender=female",
+      { headers: authHeaders() },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      voices: [
+        {
+          id: "330290724a1b470fb63153f34d4c0183",
+          name: "Annie - Lifelike",
+          language: "English",
+          gender: "female",
+          sampleUrl: "https://files.heygen.test/annie.wav",
+        },
+      ],
+      hasMore: true,
+      nextToken: "next-voice-page",
+    });
+    expect(voiceRequests).toBe(1);
+  });
+
+  it("generates the selected HeyGen voice once for presenter and mix", async () => {
+    const fixture = await seedFixture();
+    await enableIntroVideo(fixture);
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    const voiceId = "330290724a1b470fb63153f34d4c0183";
+    let speechRequests = 0;
+    let audioDownloads = 0;
+    server.use(
+      http.post(HEYGEN_SPEECH_URL, async ({ request }) => {
+        speechRequests += 1;
+        expect(request.headers.get("x-api-key")).toBe("test-heygen-key");
+        await expect(request.json()).resolves.toStrictEqual({
+          text: "Welcome to the launch.",
+          voice_id: voiceId,
+          input_type: "text",
+          speed: 1,
+        });
+        return HttpResponse.json({
+          data: {
+            audio_url: HEYGEN_AUDIO_URL,
+            duration: 61,
+            request_id: "speech-request-123",
+          },
+        });
+      }),
+      http.get(HEYGEN_AUDIO_URL, () => {
+        audioDownloads += 1;
+        return new HttpResponse(AUDIO_BYTES, {
+          headers: { "content-type": "audio/mpeg" },
+        });
+      }),
+    );
+    const response = await createIntroVideoPresenterTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/intro-video/voice/generate", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${okouToken({
+          ...fixture,
+          runId,
+          publicBrand: "okou",
+        })}`,
+      },
+      body: JSON.stringify({
+        voiceId,
+        text: "Welcome to the launch.",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: expect.any(String),
+      filename: expect.stringMatching(/^intro-video-voice-.*\.mp3$/u),
+      contentType: "audio/mpeg",
+      size: AUDIO_BYTES.byteLength,
+      url: expect.any(String),
+      durationSeconds: 61,
+      creditsCharged: 41,
+      voiceId,
+    });
+    expect(speechRequests).toBe(1);
+    expect(audioDownloads).toBe(1);
+    expect(
+      context.mocks.s3.send.mock.calls.some(([command]) => {
+        return (
+          command instanceof PutObjectCommand &&
+          command.input.ContentType === "audio/mpeg" &&
+          command.input.Metadata?.["public-brand"] === "okou"
+        );
+      }),
+    ).toBeTruthy();
+    await expect(orgCredits(fixture)).resolves.toBe(9959);
   });
 
   it("renders a curated presenter through HeyGen v3 idempotently", async () => {

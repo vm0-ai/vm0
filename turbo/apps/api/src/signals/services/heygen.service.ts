@@ -11,6 +11,8 @@ const L = logger("HeyGen");
 
 const HEYGEN_API_BASE_URL = "https://api.heygen.com/v3";
 const HEYGEN_VIDEOS_URL = `${HEYGEN_API_BASE_URL}/videos`;
+const HEYGEN_VOICES_URL = `${HEYGEN_API_BASE_URL}/voices`;
+const HEYGEN_VOICE_SPEECH_URL = `${HEYGEN_VOICES_URL}/speech`;
 const HEYGEN_RATE_LIMIT_RETRY_MAX_MS = 30_000;
 
 type HeyGenErrorStatus = 400 | 502 | 503;
@@ -56,6 +58,40 @@ interface HeyGenDownloadedAvatarVideo {
   readonly contentType: "video/webm";
   readonly sourceUrl: string;
   readonly providerVideoId: string;
+  readonly durationSeconds: number;
+}
+
+interface HeyGenVoiceCatalogOptions {
+  readonly token: string | undefined;
+  readonly pageSize: number;
+  readonly language: string | undefined;
+  readonly gender: "female" | "male" | undefined;
+}
+
+interface HeyGenPublicVoice {
+  readonly id: string;
+  readonly name: string;
+  readonly sampleUrl?: string;
+  readonly language?: string;
+  readonly gender?: "female" | "male";
+}
+
+interface HeyGenPublicVoicePage {
+  readonly voices: readonly HeyGenPublicVoice[];
+  readonly hasMore: boolean;
+  readonly nextToken: string | null;
+}
+
+interface HeyGenSpeechOptions {
+  readonly voiceId: string;
+  readonly text: string;
+}
+
+export interface HeyGenGeneratedSpeech {
+  readonly audioBytes: Buffer;
+  readonly contentType: "audio/mpeg" | "audio/wav";
+  readonly sourceUrl: string;
+  readonly providerRequestId: string | undefined;
   readonly durationSeconds: number;
 }
 
@@ -108,6 +144,17 @@ function optionalString(value: unknown): string | undefined {
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
+    : undefined;
+}
+
+function optionalUrl(value: unknown): string | undefined {
+  const candidate = optionalString(value);
+  if (!candidate || !URL.canParse(candidate)) {
+    return undefined;
+  }
+  const url = new URL(candidate);
+  return url.protocol === "https:" || url.protocol === "http:"
+    ? candidate
     : undefined;
 }
 
@@ -191,12 +238,12 @@ function heyGenProviderError(
   }
   if (response.status === 401 || response.status === 403) {
     return serviceUnavailable(
-      "HeyGen avatar video generation is temporarily unavailable",
+      "HeyGen is temporarily unavailable",
       "HEYGEN_UNAVAILABLE",
     );
   }
   return badGateway(
-    `HeyGen avatar video generation failed: ${providerMessage}`,
+    `HeyGen request failed: ${providerMessage}`,
     "HEYGEN_REQUEST_FAILED",
   );
 }
@@ -222,6 +269,172 @@ function heyGenAspectRatio(
       return "1:1";
     }
   }
+}
+
+function parseHeyGenVoice(value: unknown): HeyGenPublicVoice | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = optionalString(value.voice_id)?.trim();
+  const name = optionalString(value.name)?.trim();
+  if (!id || !name) {
+    return null;
+  }
+  const sampleUrl = optionalUrl(value.preview_audio_url);
+  const language = optionalString(value.language)?.trim();
+  const normalizedGender = optionalString(value.gender)?.toLowerCase();
+  const gender =
+    normalizedGender === "female" || normalizedGender === "male"
+      ? normalizedGender
+      : undefined;
+  return {
+    id,
+    name,
+    ...(sampleUrl ? { sampleUrl } : {}),
+    ...(language ? { language } : {}),
+    ...(gender ? { gender } : {}),
+  };
+}
+
+export async function listHeyGenPublicVoices(
+  options: HeyGenVoiceCatalogOptions,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenPublicVoicePage | HeyGenErrorResponse> {
+  const url = new URL(HEYGEN_VOICES_URL);
+  url.searchParams.set("type", "public");
+  url.searchParams.set("engine", "starfish");
+  url.searchParams.set("limit", String(options.pageSize));
+  if (options.token) {
+    url.searchParams.set("token", options.token);
+  }
+  if (options.language) {
+    url.searchParams.set("language", options.language);
+  }
+  if (options.gender) {
+    url.searchParams.set("gender", options.gender);
+  }
+  const response = await requestHeyGen(
+    { method: "GET", url, retryRateLimit: true },
+    apiKey,
+    signal,
+  );
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  if (
+    !isRecord(body) ||
+    !Array.isArray(body.data) ||
+    typeof body.has_more !== "boolean"
+  ) {
+    return badGateway(
+      "HeyGen returned an invalid voice list",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const nextToken = optionalString(body.next_token) ?? null;
+  if (body.has_more && !nextToken) {
+    return badGateway(
+      "HeyGen returned an incomplete voice page",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  return {
+    voices: body.data.flatMap((value) => {
+      const voice = parseHeyGenVoice(value);
+      return voice ? [voice] : [];
+    }),
+    hasMore: body.has_more,
+    nextToken,
+  };
+}
+
+function heyGenSpeechContentType(
+  response: Response,
+  sourceUrl: string,
+): "audio/mpeg" | "audio/wav" | null {
+  const header = response.headers
+    .get("content-type")
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (
+    header === "audio/wav" ||
+    header === "audio/wave" ||
+    header === "audio/x-wav"
+  ) {
+    return "audio/wav";
+  }
+  if (header === "audio/mpeg" || header === "audio/mp3") {
+    return "audio/mpeg";
+  }
+  if (!header || header === "application/octet-stream") {
+    return new URL(sourceUrl).pathname.toLowerCase().endsWith(".wav")
+      ? "audio/wav"
+      : "audio/mpeg";
+  }
+  return null;
+}
+
+export async function generateHeyGenSpeech(
+  options: HeyGenSpeechOptions,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<HeyGenGeneratedSpeech | HeyGenErrorResponse> {
+  const response = await requestHeyGen(
+    {
+      method: "POST",
+      url: HEYGEN_VOICE_SPEECH_URL,
+      body: JSON.stringify({
+        text: options.text,
+        voice_id: options.voiceId,
+        input_type: "text",
+        speed: 1,
+      }),
+      retryRateLimit: true,
+    },
+    apiKey,
+    signal,
+  );
+  const body = await readHeyGenResponse(response);
+  if (isHeyGenErrorResponse(body)) {
+    return body;
+  }
+  const data = isRecord(body) && isRecord(body.data) ? body.data : null;
+  const sourceUrl = data ? optionalUrl(data.audio_url) : undefined;
+  const durationSeconds = data ? optionalNumber(data.duration) : undefined;
+  if (!sourceUrl || !durationSeconds || durationSeconds <= 0) {
+    return badGateway(
+      "HeyGen returned incomplete narration audio",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const audioResponse = await fetch(sourceUrl, { method: "GET", signal });
+  if (!audioResponse.ok) {
+    return badGateway(
+      "Could not download the generated HeyGen narration",
+      "AUDIO_DOWNLOAD_FAILED",
+    );
+  }
+  const contentType = heyGenSpeechContentType(audioResponse, sourceUrl);
+  if (!contentType) {
+    return badGateway(
+      "HeyGen returned an unsupported narration format",
+      "HEYGEN_BAD_RESPONSE",
+    );
+  }
+  const audioBytes = Buffer.from(await audioResponse.arrayBuffer());
+  if (audioBytes.byteLength === 0) {
+    return badGateway("HeyGen returned empty narration", "NO_AUDIO_RETURNED");
+  }
+  return {
+    audioBytes,
+    contentType,
+    sourceUrl,
+    providerRequestId: data ? optionalString(data.request_id) : undefined,
+    durationSeconds,
+  };
 }
 
 export async function submitHeyGenAvatarVideo(

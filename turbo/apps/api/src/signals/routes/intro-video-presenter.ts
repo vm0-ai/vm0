@@ -9,7 +9,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import type { RouteEntry } from "../route-entry";
@@ -22,7 +22,9 @@ import {
 } from "../services/built-in-generation.service";
 import { heyGenBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 import {
+  generateHeyGenSpeech,
   isHeyGenErrorResponse,
+  listHeyGenPublicVoices,
   submitHeyGenAvatarVideo,
 } from "../services/heygen.service";
 import {
@@ -35,6 +37,16 @@ import {
   parseIntroVideoPresenterOptions,
   type IntroVideoPresenterOptions,
 } from "../services/intro-video-presenter.service";
+import {
+  checkIntroVideoVoiceCredits$,
+  introVideoVoiceInsufficientCredits,
+  introVideoVoicePricing$,
+  introVideoVoiceRequiresPaidPlan,
+  introVideoVoiceServiceUnavailable,
+  isIntroVideoVoiceErrorResponse,
+  parseIntroVideoVoiceOptions,
+  recordGeneratedIntroVideoVoice$,
+} from "../services/intro-video-voice.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveProviderReferenceUrls$ } from "../services/provider-reference-url.service";
@@ -43,8 +55,13 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/run-built-in-admission.service";
+import { onRejection } from "../utils";
 
 const generateBody$ = bodyResultOf(introVideoPresenterContract.generate);
+const voicesQuery$ = queryOf(introVideoPresenterContract.voices);
+const voiceGenerateBody$ = bodyResultOf(
+  introVideoPresenterContract.voiceGenerate,
+);
 
 const introVideoDisabled = Object.freeze({
   status: 403 as const,
@@ -166,6 +183,138 @@ const submitIntroVideoPresenterJob$ = command(
   },
 );
 
+const getVoicesInner$ = command(async ({ get }, signal: AbortSignal) => {
+  if (!(await get(introVideoEnabled$))) {
+    return introVideoDisabled;
+  }
+  signal.throwIfAborted();
+  const apiKey = env("HEYGEN_API_KEY");
+  if (!apiKey) {
+    return introVideoVoiceServiceUnavailable(
+      "HeyGen Intro Video voices are not configured",
+    );
+  }
+  const query = get(voicesQuery$);
+  const result = await listHeyGenPublicVoices(
+    {
+      token: query.token,
+      pageSize: query.pageSize ?? 24,
+      language: query.language,
+      gender: query.gender,
+    },
+    apiKey,
+    signal,
+  );
+  if (isHeyGenErrorResponse(result)) {
+    return result;
+  }
+  return { status: 200 as const, body: result };
+});
+
+const postVoiceGenerateInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.tokenType !== "agent") {
+      throw new Error("Intro Video voice route requires run authentication");
+    }
+    if (!(await get(introVideoEnabled$))) {
+      return introVideoDisabled;
+    }
+    signal.throwIfAborted();
+
+    const capabilities = await loadOrgPlanCapabilities(get(db$), auth.orgId);
+    signal.throwIfAborted();
+    if (capabilities?.videoGenerationAllowed !== true) {
+      return introVideoVoiceRequiresPaidPlan();
+    }
+
+    const bodyResult = await get(voiceGenerateBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const options = parseIntroVideoVoiceOptions(bodyResult.data);
+    if (isIntroVideoVoiceErrorResponse(options)) {
+      return options;
+    }
+
+    const hasCredits = await set(
+      checkIntroVideoVoiceCredits$,
+      { orgId: auth.orgId, userId: auth.userId },
+      signal,
+    );
+    if (!hasCredits) {
+      return introVideoVoiceInsufficientCredits();
+    }
+
+    const pricing = await get(introVideoVoicePricing$);
+    signal.throwIfAborted();
+    if (!pricing) {
+      return introVideoVoiceServiceUnavailable(
+        "HeyGen Intro Video voice pricing is not configured",
+      );
+    }
+    const apiKey = env("HEYGEN_API_KEY");
+    if (!apiKey) {
+      return introVideoVoiceServiceUnavailable(
+        "HeyGen Intro Video voices are not configured",
+      );
+    }
+
+    const admission = await set(
+      startRunBuiltInAdmission$,
+      { runId: auth.runId, kind: "voice" },
+      signal,
+    );
+    if (isRunBuiltInAdmissionError(admission)) {
+      return admission;
+    }
+
+    const response = await onRejection(
+      (async () => {
+        const speech = await generateHeyGenSpeech(options, apiKey, signal);
+        signal.throwIfAborted();
+        if (isHeyGenErrorResponse(speech)) {
+          await set(completeRunBuiltInAdmission$, {
+            admission,
+            status: "failed",
+          });
+          signal.throwIfAborted();
+          return speech;
+        }
+        const body = await set(
+          recordGeneratedIntroVideoVoice$,
+          {
+            orgId: auth.orgId,
+            userId: auth.userId,
+            runId: auth.runId,
+            publicBrand: auth.publicBrand,
+            pricing,
+            options,
+            speech,
+          },
+          signal,
+        );
+        await set(completeRunBuiltInAdmission$, {
+          admission,
+          status: "completed",
+        });
+        signal.throwIfAborted();
+        return { status: 200 as const, body };
+      })(),
+      async () => {
+        await set(completeRunBuiltInAdmission$, {
+          admission,
+          status: "failed",
+        });
+        signal.throwIfAborted();
+      },
+    );
+    signal.throwIfAborted();
+    return response;
+  },
+);
+
 const postGenerateInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -273,6 +422,24 @@ const postGenerateInner$ = command(
 );
 
 export const introVideoPresenterRoutes: readonly RouteEntry[] = [
+  {
+    route: introVideoPresenterContract.voices,
+    handler: authRoute(
+      { requireOrganization: true, requiredCapability: "file:write" },
+      getVoicesInner$,
+    ),
+  },
+  {
+    route: introVideoPresenterContract.voiceGenerate,
+    handler: authRoute(
+      {
+        accept: ["agent"],
+        requireOrganization: true,
+        requiredCapability: "file:write",
+      },
+      postVoiceGenerateInner$,
+    ),
+  },
   {
     route: introVideoPresenterContract.generate,
     handler: authRoute(

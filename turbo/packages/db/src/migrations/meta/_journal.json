@@ -1863,6 +1863,13 @@
       "when": 1788527070895,
       "tag": "1073_add_heygen_avatar_iii_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 1074,
+      "version": "7",
+      "when": 1788528338646,
+      "tag": "1074_add_heygen_starfish_tts_pricing",
+      "breakpoints": true
     }
   ]
 }
