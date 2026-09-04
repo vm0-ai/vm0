@@ -3,6 +3,7 @@ import { SileroV5 } from "@ricky0123/vad-web/dist/models/v5";
 import sileroModelUrl from "@ricky0123/vad-web/dist/silero_vad_v5.onnx?url";
 import * as ort from "onnxruntime-web/wasm";
 import ortWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url";
+import { VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 
 import { logger } from "../log";
 import { bestEffort, settle, withCleanup } from "../utils";
@@ -14,7 +15,6 @@ import {
 
 const L = logger("VoiceIO:DraftAudio");
 
-export const VOICE_DRAFT_LONG_RECORDING_SECONDS = 90;
 const CHUNK_MINIMUM_SECONDS = 45;
 const CHUNK_TARGET_SECONDS = 60;
 const CHUNK_HORIZON_SECONDS = 75;
@@ -183,88 +183,6 @@ async function detectSileroPauses(
   );
 }
 
-function decibels(samples: Float32Array, start: number, end: number): number {
-  let energy = 0;
-  for (let index = start; index < end; index += 1) {
-    const sample = samples[index] ?? 0;
-    energy += sample * sample;
-  }
-  return 10 * Math.log10(energy / Math.max(1, end - start) + 1e-12);
-}
-
-function energyPauses(samples: Float32Array): readonly VoiceDraftPause[] {
-  const frameSamples = Math.round(VOICE_DRAFT_PCM_SAMPLE_RATE * 0.02);
-  if (samples.length < frameSamples * 3) {
-    return [];
-  }
-  const levels: number[] = [];
-  for (
-    let offset = 0;
-    offset + frameSamples <= samples.length;
-    offset += frameSamples
-  ) {
-    levels.push(decibels(samples, offset, offset + frameSamples));
-  }
-  if (levels.length === 0) {
-    return [];
-  }
-
-  const sorted = [...levels].sort((left, right) => {
-    return left - right;
-  });
-  const floor =
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length / 50))];
-  if (floor === undefined) {
-    return [];
-  }
-  const speechThreshold = Math.max(-65, floor + 8);
-  const speaking = levels.map((level) => {
-    return level > speechThreshold;
-  });
-  const minimumFrames = Math.max(1, Math.ceil(MINIMUM_PAUSE_SECONDS / 0.02));
-  const evidenceFrames = 5;
-  const evidenceWindow = 100;
-  const pauses: VoiceDraftPause[] = [];
-
-  let frame = 0;
-  while (frame < speaking.length) {
-    if (speaking[frame]) {
-      frame += 1;
-      continue;
-    }
-    const runStart = frame;
-    while (frame < speaking.length && !speaking[frame]) {
-      frame += 1;
-    }
-    const runEnd = frame;
-    if (runEnd - runStart < minimumFrames) {
-      continue;
-    }
-    const before = speaking
-      .slice(Math.max(0, runStart - evidenceWindow), runStart)
-      .filter(Boolean).length;
-    const after = speaking
-      .slice(runEnd, Math.min(speaking.length, runEnd + evidenceWindow))
-      .filter(Boolean).length;
-    if (before < evidenceFrames || after < evidenceFrames) {
-      continue;
-    }
-    const middleFrame = runStart + Math.floor((runEnd - runStart) / 2);
-    const seconds = middleFrame * 0.02;
-    const gapLevels = levels.slice(runStart, runEnd);
-    const gapLevel =
-      gapLevels.reduce((total, level) => {
-        return total + level;
-      }, 0) / gapLevels.length;
-    pauses.push({
-      seconds,
-      duration: (runEnd - runStart) * 0.02,
-      depth: Math.max(0, speechThreshold - gapLevel),
-    });
-  }
-  return pauses;
-}
-
 function boundaryScore(
   pause: VoiceDraftPause,
   relativeSeconds: number,
@@ -318,7 +236,7 @@ export function voiceDraftChunkRanges(
   pauses: readonly VoiceDraftPause[],
 ): readonly VoiceDraftChunkRange[] {
   const durationSeconds = sampleCount / VOICE_DRAFT_PCM_SAMPLE_RATE;
-  if (durationSeconds <= VOICE_DRAFT_LONG_RECORDING_SECONDS) {
+  if (durationSeconds <= VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS) {
     return [{ startSample: 0, endSample: sampleCount }];
   }
 
@@ -389,11 +307,11 @@ async function pausesForSamples(
     return detected.value.pauses;
   }
   if (!detected.ok) {
-    L.warn("Silero VAD unavailable; using energy-qualified pause detection", {
+    L.warn("Silero VAD unavailable; preserving the recording as one chunk", {
       error: detected.error,
     });
   }
-  return energyPauses(samples);
+  return [];
 }
 
 async function recordingSamples(
@@ -437,7 +355,7 @@ export async function prepareVoiceDraftAudio(
   }
   const durationSeconds = samples.length / VOICE_DRAFT_PCM_SAMPLE_RATE;
   const pauses =
-    durationSeconds > VOICE_DRAFT_LONG_RECORDING_SECONDS
+    durationSeconds > VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS
       ? await pausesForSamples(samples, signal)
       : [];
   signal.throwIfAborted();

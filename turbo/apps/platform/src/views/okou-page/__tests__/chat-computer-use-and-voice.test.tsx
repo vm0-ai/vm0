@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { FeatureSwitchKey } from "@okouai/core";
 import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
-import { voiceIoPolishContract } from "@okouai/api-contracts/contracts/voice-io-polish";
 import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-quota";
 import { computerUseHostsContract } from "@okouai/api-contracts/contracts/computer-use";
 import { billingStatusContract } from "@okouai/api-contracts/contracts/billing";
@@ -1465,7 +1464,6 @@ describe("chat lifecycle", () => {
     const polishedTranscript = "One complete recording.";
     let multimodalCalls = 0;
     let legacySttCalls = 0;
-    let legacyPolishCalls = 0;
     context.mocks.browser.voiceInput({ rms: 0.1 });
     mockChatLifecycle(context, { threadId });
     context.mocks.api(voiceIoQuotaContract.get, ({ respond }) => {
@@ -1484,10 +1482,6 @@ describe("chat lifecycle", () => {
       return new Response(JSON.stringify({ text: "Legacy STT" }), {
         headers: { "Content-Type": "application/json" },
       });
-    });
-    context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
-      legacyPolishCalls += 1;
-      return respond(200, { text: "This should not be used." });
     });
 
     detachedSetupPage({
@@ -1522,7 +1516,6 @@ describe("chat lifecycle", () => {
     });
     expect(multimodalCalls).toBe(1);
     expect(legacySttCalls).toBe(0);
-    expect(legacyPolishCalls).toBe(0);
   });
 
   it("restores a persisted voice draft as an actionable blocked item", async () => {
@@ -1541,10 +1534,6 @@ describe("chat lifecycle", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.api(voiceIoPolishContract.post, ({ body, respond }) => {
-      expect(body).toStrictEqual({ text: rawTranscript });
-      return respond(200, { text: "Email Alex on Tuesday." });
-    });
 
     detachedSetupPage({
       context,
@@ -1562,7 +1551,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.queryByLabelText("Voice draft")).not.toBeInTheDocument();
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveTextContent(
-        "Email Alex on Tuesday.",
+        rawTranscript,
       );
       expect(screen.getByLabelText("Send")).toBeEnabled();
     });
@@ -1895,7 +1884,6 @@ describe("chat lifecycle", () => {
     let continuedSilenceStartedAt: number | null = null;
     let multimodalCalls = 0;
     let transcriptionCalls = 0;
-    let polishCalls = 0;
     context.mocks.browser.voiceInput({
       rms: () => {
         sampleCount += 1;
@@ -1930,10 +1918,6 @@ describe("chat lifecycle", () => {
         headers: { "Content-Type": "application/json" },
       });
     });
-    context.mocks.api(voiceIoPolishContract.post, ({ respond }) => {
-      polishCalls += 1;
-      return respond(200, { text: "Extended voice draft." });
-    });
 
     detachedSetupPage({
       context,
@@ -1953,7 +1937,6 @@ describe("chat lifecycle", () => {
     expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     expect(multimodalCalls).toBe(0);
     expect(transcriptionCalls).toBe(0);
-    expect(polishCalls).toBe(0);
 
     await user.click(screen.getByLabelText("Stop recording"));
     await waitFor(() => {
@@ -1962,7 +1945,6 @@ describe("chat lifecycle", () => {
     });
     expect(multimodalCalls).toBe(1);
     expect(transcriptionCalls).toBe(0);
-    expect(polishCalls).toBe(0);
   });
 
   it("appends a delayed voice input segment to the current composer text", async () => {

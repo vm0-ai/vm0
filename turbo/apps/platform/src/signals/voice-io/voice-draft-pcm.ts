@@ -2,9 +2,7 @@ import { logger } from "../log";
 import {
   bestEffort,
   createDeferredPromise,
-  detach,
   onRejection,
-  Reason,
   settle,
   withCleanup,
 } from "../utils";
@@ -223,6 +221,9 @@ function disconnectCaptureGraph(
   source.disconnect(worklet);
 }
 
+// Browser-capability fallback for non-GA VoiceDraft: a null result keeps the
+// encoded MediaRecorder capture usable on browsers without AudioWorklet.
+// Remove with #31710 once the supported-browser baseline guarantees this path.
 export async function startVoiceDraftPcmCapture(
   stream: MediaStream,
   signal: AbortSignal,
@@ -280,6 +281,12 @@ export async function startVoiceDraftPcmCapture(
       const batches: Float32Array[] = [];
       let sampleCount = 0;
       let stopped = false;
+      let closePromise: Promise<void> | undefined;
+
+      const closeAudioContext = (): Promise<void> => {
+        closePromise ??= bestEffort(audioContext.close());
+        return closePromise;
+      };
 
       worklet.port.addEventListener(
         "message",
@@ -307,13 +314,7 @@ export async function startVoiceDraftPcmCapture(
           worklet.port.postMessage("stop");
           disconnectCaptureGraph(source, worklet);
           worklet.port.close();
-          // Abort handlers cannot await resource cleanup.
-          // eslint-disable-next-line ccstate/no-detach-in-signals
-          detach(
-            audioContext.close(),
-            Reason.DomCallback,
-            "cancel voice draft PCM capture",
-          );
+          closePromise = closeAudioContext();
         },
         async finish(finishSignal: AbortSignal): Promise<Blob | null> {
           if (stopped) {
@@ -334,7 +335,7 @@ export async function startVoiceDraftPcmCapture(
             async () => {
               disconnectCaptureGraph(source, worklet);
               worklet.port.close();
-              await bestEffort(audioContext.close());
+              await closeAudioContext();
             },
           );
         },

@@ -21,6 +21,7 @@ const MAX_CONCURRENT_VOICE_TRANSCRIPTIONS = 3;
 
 interface VoiceDraftTranscriptionInput {
   readonly files: readonly File[];
+  readonly longRecording: boolean;
   readonly lastAssistantMessage?: string;
 }
 
@@ -65,28 +66,55 @@ async function voiceAudio(
 async function mapWithConcurrency<T, Result>(
   values: readonly T[],
   maximumConcurrency: number,
-  map: (value: T) => Promise<Result>,
+  signal: AbortSignal,
+  map: (value: T, signal: AbortSignal) => Promise<Result>,
 ): Promise<readonly Result[]> {
   const results: (Result | undefined)[] = Array.from({
     length: values.length,
   });
+  const batchController = new AbortController();
+  const batchSignal = AbortSignal.any([signal, batchController.signal]);
   let nextIndex = 0;
+  let failed = false;
+  let firstError: unknown;
 
   const worker = async (): Promise<void> => {
-    while (nextIndex < values.length) {
+    while (!failed && nextIndex < values.length) {
       const index = nextIndex;
       nextIndex += 1;
       const value = values[index];
       if (value === undefined) {
-        throw new Error("Voice transcription worker received no input");
+        firstError = new Error("Voice transcription worker received no input");
+        failed = true;
+        batchController.abort(firstError);
+        return;
       }
-      results[index] = await map(value);
+      const [outcome] = await Promise.allSettled([map(value, batchSignal)]);
+      if (!outcome) {
+        firstError = new Error("Voice transcription worker did not settle");
+        failed = true;
+        batchController.abort(firstError);
+        return;
+      }
+      if (outcome.status === "rejected") {
+        if (!failed) {
+          firstError = outcome.reason;
+          failed = true;
+          batchController.abort(firstError);
+        }
+        return;
+      }
+      results[index] = outcome.value;
     }
   };
 
   await Promise.all(
     Array.from({ length: Math.min(maximumConcurrency, values.length) }, worker),
   );
+  signal.throwIfAborted();
+  if (failed) {
+    throw firstError;
+  }
   return results.map((result) => {
     if (result === undefined) {
       throw new Error("Voice transcription worker returned no result");
@@ -118,12 +146,13 @@ async function transcribeLongVoiceDraft(
   const pieces = await mapWithConcurrency(
     input.files,
     MAX_CONCURRENT_VOICE_TRANSCRIPTIONS,
-    async (file) => {
-      const audio = await voiceAudio(file, signal);
+    signal,
+    async (file, workerSignal) => {
+      const audio = await voiceAudio(file, workerSignal);
       const result = await transcribeVoice(
         audio,
         input.lastAssistantMessage,
-        signal,
+        workerSignal,
       );
       if (result === null) {
         throw new Error("OpenRouter voice transcription is not configured");
@@ -177,9 +206,9 @@ export const transcribeVoiceDraft$ = command(
     }
 
     const generated = await settle(
-      input.files.length === 1
-        ? transcribeShortVoiceDraft(input, requestSignal)
-        : transcribeLongVoiceDraft(input, requestSignal),
+      input.longRecording
+        ? transcribeLongVoiceDraft(input, requestSignal)
+        : transcribeShortVoiceDraft(input, requestSignal),
     );
     signal.throwIfAborted();
     if (!generated.ok) {

@@ -1183,6 +1183,8 @@ function createVoiceSegmentSession(
       stopped = true;
       silenceTimer.clear();
       if (options.captureOnly) {
+        // Complete the browser-capability fallback declared at
+        // startVoiceDraftPcmCapture. Remove the encoded path with #31710.
         const pcmRecording = options.pcmCapture
           ? await settle(options.pcmCapture.finish(stopSignal), stopSignal)
           : null;

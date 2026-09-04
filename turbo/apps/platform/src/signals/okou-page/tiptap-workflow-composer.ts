@@ -29,10 +29,7 @@ import {
   type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@okouai/api-contracts/contracts/chat-threads";
-import {
-  VOICE_IO_POLISH_MAX_TEXT_CHARS,
-  voiceIoPolishContract,
-} from "@okouai/api-contracts/contracts/voice-io-polish";
+import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/voice-io-polish";
 import {
   VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
   voiceIoTranscribeContract,
@@ -1703,12 +1700,11 @@ function createCompleteVoiceDraftRecordingCommand(
 function createFinishVoiceDraftCommand(
   editor: Editor,
   retryRecordings: Map<string, Blob>,
-  lastAssistantMessage$: Computed<string | undefined> | undefined,
   completeRecording$: WorkflowComposerVoiceDraftSignals["completeRecording$"],
 ): WorkflowComposerVoiceDraftSignals["finish$"] {
   return command(
     async (
-      { get, set },
+      { set },
       id: string,
       mode: VoiceDraftFinishMode,
       signal: AbortSignal,
@@ -1730,38 +1726,7 @@ function createFinishVoiceDraftCommand(
         removeVoiceDraft(editor, id, false);
         return true;
       }
-      const lastAssistantMessage = lastAssistantMessage$
-        ? get(lastAssistantMessage$)
-            ?.trim()
-            .slice(0, VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS)
-        : undefined;
-      setVoiceDraftAttributes(editor, id, {
-        status: "processing",
-        visible: mode === "retry",
-      });
-      const client = get(apiClient$)(voiceIoPolishContract);
-      const body =
-        lastAssistantMessage === undefined
-          ? { text }
-          : { text, lastAssistantMessage };
-      const result = await settle(
-        accept(client.post({ body, fetchOptions: { signal } }), [200], signal),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!result.ok) {
-        setVoiceDraftAttributes(editor, id, {
-          status: "failed",
-          visible: true,
-        });
-        return false;
-      }
-      replaceVoiceDraftWithText(
-        editor,
-        id,
-        result.value.body.text,
-        mode === "automatic",
-      );
+      replaceVoiceDraftWithText(editor, id, text, mode === "automatic");
       return true;
     },
   );
@@ -1805,7 +1770,6 @@ function createVoiceDraftSignals(
   const finish$ = createFinishVoiceDraftCommand(
     editor,
     retryRecordings,
-    lastAssistantMessage$,
     completeRecording$,
   );
   return {

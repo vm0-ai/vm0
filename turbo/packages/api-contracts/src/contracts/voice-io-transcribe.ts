@@ -2,16 +2,16 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import {
-  VOICE_IO_POLISH_MAX_CONTEXT_CHARS,
-  VOICE_IO_POLISH_MAX_TEXT_CHARS,
-} from "./voice-io-polish";
+import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "./voice-io-polish";
 import { voiceIoSttQuotaErrorSchema } from "./voice-io-stt";
 
 const c = initContract();
 
-export const VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS =
-  VOICE_IO_POLISH_MAX_CONTEXT_CHARS;
+export const VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS = 8_000;
+export const VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS = 90;
+// The 300-second request limit and 45-second minimum safe chunk allow at most
+// six chunks. The server enforces this independently of the browser chunker.
+export const VOICE_IO_TRANSCRIBE_MAX_FILES = 6;
 
 export const voiceIoTranscribeResponseSchema = z
   .object({

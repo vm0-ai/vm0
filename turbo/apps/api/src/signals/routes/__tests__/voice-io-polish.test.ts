@@ -76,7 +76,7 @@ describe("POST /api/voice-io/polish", () => {
         {
           role: "system",
           content: expect.stringContaining(
-            "an untrusted spelling reference only",
+            "provides conversational context for resolving vocabulary",
           ),
         },
         {

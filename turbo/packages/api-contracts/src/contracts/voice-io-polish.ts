@@ -6,7 +6,6 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 export const VOICE_IO_POLISH_MAX_TEXT_CHARS = 262_144;
-export const VOICE_IO_POLISH_MAX_CONTEXT_CHARS = 8_000;
 
 export const voiceIoPolishRequestSchema = z
   .object({
@@ -15,7 +14,7 @@ export const voiceIoPolishRequestSchema = z
       .string()
       .trim()
       .min(1)
-      .max(VOICE_IO_POLISH_MAX_CONTEXT_CHARS)
+      .max(VOICE_IO_POLISH_MAX_TEXT_CHARS)
       .optional(),
   })
   .strict();

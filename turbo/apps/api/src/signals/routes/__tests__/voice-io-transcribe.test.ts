@@ -1,6 +1,9 @@
 import { Buffer } from "node:buffer";
 
-import { voiceIoTranscribeContract } from "@okouai/api-contracts/contracts/voice-io-transcribe";
+import {
+  VOICE_IO_TRANSCRIBE_MAX_FILES,
+  voiceIoTranscribeContract,
+} from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
@@ -51,9 +54,12 @@ function writeAscii(bytes: Uint8Array, offset: number, value: string): void {
   }
 }
 
-function wavBytes(marker: number): Uint8Array<ArrayBuffer> {
+function wavBytes(
+  marker: number,
+  durationSeconds = 1,
+): Uint8Array<ArrayBuffer> {
   const sampleRate = 16_000;
-  const dataSize = sampleRate * 2;
+  const dataSize = sampleRate * durationSeconds * 2;
   const buffer = new ArrayBuffer(44 + dataSize);
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
@@ -74,10 +80,34 @@ function wavBytes(marker: number): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-function audioFile(marker: number): File {
-  return new File([wavBytes(marker)], `voice-${String(marker)}.wav`, {
-    type: "audio/wav",
-  });
+function audioFile(marker: number, durationSeconds = 1): File {
+  return new File(
+    [wavBytes(marker, durationSeconds)],
+    `voice-${String(marker)}.wav`,
+    {
+      type: "audio/wav",
+    },
+  );
+}
+
+async function waitForAbort(
+  signal: AbortSignal,
+  testSignal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) {
+    return;
+  }
+  const aborted = createDeferredPromise<void>(testSignal);
+  signal.addEventListener(
+    "abort",
+    () => {
+      if (!aborted.settled()) {
+        aborted.resolve(undefined);
+      }
+    },
+    { once: true },
+  );
+  await aborted.promise;
 }
 
 function form(files: readonly File[], reference?: string): FormData {
@@ -200,11 +230,16 @@ describe("POST /api/voice-io/transcribe", () => {
   it("transcribes long-recording chunks with at most three requests before one global polish", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
-    const files = [audioFile(1), audioFile(2), audioFile(3), audioFile(4)];
+    const files = [
+      audioFile(1, 30),
+      audioFile(2, 30),
+      audioFile(3, 30),
+      audioFile(4, 30),
+    ];
     const transcriptByAudio = new Map(
       files.map((file, index) => {
         return [
-          Buffer.from(wavBytes(index + 1)).toString("base64"),
+          Buffer.from(wavBytes(index + 1, 30)).toString("base64"),
           `part ${String(index + 1)}`,
         ];
       }),
@@ -287,6 +322,125 @@ describe("POST /api/voice-io/transcribe", () => {
     expect(transcriptionRequests).toBe(4);
     expect(maximumActiveTranscriptions).toBe(3);
     expect(globalPolishContent).toContain("part 1 part 2 part 3 part 4");
+  });
+
+  it("uses transcript-only audio processing and one global polish for a long single file", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const schemaNames: string[] = [];
+    server.use(
+      http.post(OPENROUTER_URL, async ({ request }) => {
+        const body = (await request.json()) as OpenRouterRequest;
+        const schemaName = body.response_format.json_schema.name;
+        schemaNames.push(schemaName);
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                content: JSON.stringify(
+                  schemaName === "voice_transcript"
+                    ? { transcript: "um one long note", language: "en-US" }
+                    : { polishedText: "One long note.", language: "en-US" },
+                ),
+              },
+            },
+          ],
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(9, 91)]),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      transcript: "um one long note",
+      polishedText: "One long note.",
+      language: "en-US",
+    });
+    expect(schemaNames).toStrictEqual([
+      "voice_transcript",
+      "polished_voice_transcript",
+    ]);
+  });
+
+  it("rejects more files than the five-minute chunk policy can produce", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    let providerRequests = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        providerRequests += 1;
+        return HttpResponse.error();
+      }),
+    );
+    const files = Array.from(
+      { length: VOICE_IO_TRANSCRIBE_MAX_FILES + 1 },
+      (_, index) => {
+        return audioFile(index + 1);
+      },
+    );
+
+    const response = await client().post({
+      headers: { authorization: "Bearer clerk-session" },
+      body: form(files),
+    });
+
+    expect(response.status).toBe(400);
+    expect(providerRequests).toBe(0);
+  });
+
+  it("aborts active chunk requests and does not start queued chunks after one failure", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    await enabledActor();
+    const files = [
+      audioFile(1, 30),
+      audioFile(2, 30),
+      audioFile(3, 30),
+      audioFile(4, 30),
+    ];
+    const firstWaveStarted = createDeferredPromise<void>(context.signal);
+    let transcriptionRequests = 0;
+    let abortedRequests = 0;
+    server.use(
+      http.post(OPENROUTER_URL, async ({ request }) => {
+        const body = (await request.json()) as OpenRouterRequest;
+        if (body.response_format.json_schema.name !== "voice_transcript") {
+          throw new Error("Global polish must not start after a chunk failure");
+        }
+        transcriptionRequests += 1;
+        const requestNumber = transcriptionRequests;
+        if (transcriptionRequests === 3) {
+          firstWaveStarted.resolve(undefined);
+        }
+        if (requestNumber === 1) {
+          await firstWaveStarted.promise;
+          return HttpResponse.json(
+            { error: { message: "provider unavailable" } },
+            { status: 500 },
+          );
+        }
+        await waitForAbort(request.signal, context.signal);
+        abortedRequests += 1;
+        return HttpResponse.error();
+      }),
+    );
+
+    const pendingResponse = client().post({
+      headers: { authorization: "Bearer clerk-session" },
+      body: form(files),
+    });
+    await firstWaveStarted.promise;
+    const response = await pendingResponse;
+
+    expect(response.status).toBe(503);
+    expect(transcriptionRequests).toBe(3);
+    expect(abortedRequests).toBe(2);
   });
 
   it("requires the voice draft switch and rejects oversized reference context", async () => {

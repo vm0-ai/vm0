@@ -1,5 +1,7 @@
 import {
+  VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS,
   VOICE_IO_TRANSCRIBE_MAX_CONTEXT_CHARS,
+  VOICE_IO_TRANSCRIBE_MAX_FILES,
   voiceIoTranscribeContract,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { isFeatureEnabled } from "@okouai/core/feature-switch";
@@ -115,6 +117,11 @@ const postVoiceIoTranscribe$ = command(
     if (!files) {
       return badRequest("No audio file provided");
     }
+    if (files.length > VOICE_IO_TRANSCRIBE_MAX_FILES) {
+      return badRequest(
+        `Too many voice draft audio files (max ${String(VOICE_IO_TRANSCRIBE_MAX_FILES)})`,
+      );
+    }
     const reference = lastAssistantReference(formData);
     if (reference === null) {
       return badRequest("Invalid last assistant message");
@@ -139,20 +146,26 @@ const postVoiceIoTranscribe$ = command(
       }),
     );
     signal.throwIfAborted();
-    if (
-      durations.some((duration) => {
-        return duration === null || duration <= 0;
-      })
-    ) {
+    const validDurations = durations.filter((duration): duration is number => {
+      return duration !== null && duration > 0;
+    });
+    if (validDurations.length !== durations.length) {
       return badRequest("Voice draft audio contains an invalid WAV file");
     }
-    const durationSeconds = durations.reduce<number>((total, duration) => {
-      return total + (duration ?? 0);
+    const durationSeconds = validDurations.reduce((total, duration) => {
+      return total + duration;
     }, 0);
     if (durationSeconds > MAX_STT_REQUEST_DURATION_SECONDS) {
       return badRequest(
         `Audio duration (${durationSeconds}s) exceeds maximum (${MAX_STT_REQUEST_DURATION_SECONDS}s)`,
         "AUDIO_DURATION_TOO_LONG",
+      );
+    }
+    const longRecording =
+      durationSeconds > VOICE_IO_TRANSCRIBE_LONG_RECORDING_SECONDS;
+    if (!longRecording && files.length !== 1) {
+      return badRequest(
+        "Short voice drafts must contain exactly one audio file",
       );
     }
 
@@ -171,6 +184,7 @@ const postVoiceIoTranscribe$ = command(
       transcribeVoiceDraft$,
       {
         files,
+        longRecording,
         ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
       },
       signal,
