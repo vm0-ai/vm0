@@ -2628,7 +2628,7 @@ describe.sequential("Official Workflow installations", () => {
     expect(morningBriefAutomation).toMatchObject({
       kind: "schedule",
       enabled: true,
-      chatThreadId: expect.any(String),
+      chatThreadId: null,
       schedule: {
         type: "cron",
         cronExpression: "0 7 * * *",
