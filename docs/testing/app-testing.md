@@ -1,352 +1,243 @@
-# App Testing Patterns
+# Platform Testing Patterns
 
-This document describes the testing patterns for `turbo/apps/platform`.
+This guide describes the canonical testing patterns for
+`turbo/apps/platform`.
 
-## Test Category
+## Test Categories
 
-App Vitest tests should be page-level by default:
+Platform Vitest tests are page-level integration tests by default. Enter
+through the same bootstrapped Router used by production and assert behavior a
+user can observe. Keep page tests in the relevant `views/**/__tests__`
+directory with a `.test.tsx` or `.test.ts` suffix.
 
-| Type                   | Location     | Suffix                 | Purpose                                |
-| ---------------------- | ------------ | ---------------------- | -------------------------------------- |
-| Page Tests             | `views/`     | `.test.tsx`/`.test.ts` | Test user interactions and UI state    |
-| Signal Bootstrap Tests | `signals/**` | `.test.ts`             | Test bootstrapped state without a page |
+Use a signal bootstrap test only when the behavior has no page-visible surface
+and still needs the production Platform bootstrap path. Direct pure tests are
+narrow exceptions for security-critical logic, complex algorithms, parsers or
+serializers with non-obvious invariants, and explicit protocol or state-machine
+contracts that cannot be expressed through a page.
 
-Do not add parser, helper, static config, or component-only unit tests under
-`turbo/apps/platform`. Cover behavior through a rendered page whenever there is
-a user-visible page surface. Use a signal bootstrap test only when the behavior
-has no page-visible surface and needs the same platform bootstrap path as
-production.
+Do not add helper-only, component-only, or static-configuration unit tests when
+a rendered page can cover the behavior.
 
-## Page Tests
+## Canonical Page Test
 
-Page tests are placed in `views/` directories with `.test.tsx` or `.test.ts`
-suffix. They must enter through `detachedSetupPage` and assert on page-visible
-behavior. Configure test-specific mocks through `context.mocks` before setup so
-mock handlers and browser mocks share the same test lifecycle signal.
+`setupPage` is the canonical public helper that starts Platform. It initializes
+the requested locale, renders the complete Router, and resolves after the first
+page content is observable. Always await it before the first page assertion.
 
-```typescript
-import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { testContext } from "../../../signals/__tests__/test-helpers";
-import { detachedSetupPage } from "../../../__tests__/page-helper";
+Every page test follows this order:
 
-const context = testContext();
-
-describe("ComponentName", () => {
-  it("should do something when user clicks button", async () => {
-    const user = userEvent.setup();
-
-    detachedSetupPage({
-      context,
-      path: "/page-path",
-    });
-
-    // Find UI elements
-    const button = await screen.findByRole("button", { name: "Submit" });
-
-    // Perform user interactions
-    await user.click(button);
-
-    // Verify UI state after interaction
-    await waitFor(() => {
-      expect(screen.getByText("Success")).toBeInTheDocument();
-    });
-  });
-});
-```
-
-Page setup may start long polling flows, so page tests should call
-`detachedSetupPage` without awaiting it and then wait for the rendered page
-state that matters to the story.
-
-Signal bootstrap tests that only need application-level initialization should
-use `setupBootstrap()`, await setup completion, and assert state transitions
-that cannot be observed through a rendered page. This follows the production
-`bootstrap$` path without starting the Router or long-running authenticated
-daemon loops.
-Use `setupPage({ withoutRender: true })` when route or page setup is part of the
-behavior. Both forms should configure API and browser behavior through
-`context.mocks` before setup.
-
-## Mock Infrastructure
-
-### Directory Structure
-
-```
-turbo/apps/platform/src/
-├── mocks/
-│   ├── server.ts          # MSW server setup for Node.js
-│   └── handlers/
-│       ├── index.ts       # Aggregates all handlers
-│       ├── api-org.ts     # Org API handlers
-│       ├── api-model-providers.ts  # Model provider handlers
-│       └── ...            # Other API handlers
-├── test/
-│   ├── setup.ts           # Global test setup
-│   └── mocks/             # Module mocks (e.g., Clerk)
-└── __tests__/
-    ├── page-helper.ts     # setupPage, detachedSetupPage, and utilities
-    └── mock-auth.ts       # Authentication mocks
-```
-
-### Handler Patterns
-
-#### Simple Static Handler
-
-For endpoints that return constant data:
+1. Configure fixtures and external mocks.
+2. Call `setupPage`.
+3. Observe the smallest page-visible state that proves the page is ready.
+4. Perform one user-visible action.
+5. Wait for and assert the resulting behavior.
+6. Repeat the action/result cycle for any remaining steps.
 
 ```typescript
-import { http, HttpResponse } from "msw";
+import { screen, waitFor, within } from "@testing-library/react";
+import { expect, test } from "vitest";
 
-export const apiOrgHandlers = [
-  http.get("/api/org", () => {
-    return HttpResponse.json({
-      id: "org_1",
-      slug: "user-12345678",
-    });
-  }),
-];
-```
-
-#### Stateful Handler with Reset
-
-For endpoints that need to track state across requests:
-
-```typescript
-import { http, HttpResponse } from "msw";
-
-let mockItems: Item[] = [{ id: "1", name: "Default" }];
-
-export function resetMockItems(): void {
-  mockItems = [{ id: "1", name: "Default" }];
-}
-
-export const itemHandlers = [
-  http.get("/api/items", () => {
-    return HttpResponse.json({ items: mockItems });
-  }),
-
-  http.post("/api/items", async ({ request }) => {
-    const body = (await request.json()) as { name: string };
-    const newItem = { id: crypto.randomUUID(), name: body.name };
-    mockItems.push(newItem);
-    return HttpResponse.json(newItem, { status: 201 });
-  }),
-
-  http.delete("/api/items/:id", ({ params }) => {
-    const { id } = params;
-    mockItems = mockItems.filter((item) => item.id !== id);
-    return new HttpResponse(null, { status: 204 });
-  }),
-];
-```
-
-#### Handler with Request Inspection
-
-For endpoints that need to check query params or request body:
-
-```typescript
-http.get("*/api/logs", ({ request }) => {
-  const url = new URL(request.url);
-  const cursor = url.searchParams.get("cursor");
-
-  if (!cursor) {
-    return HttpResponse.json({
-      data: [{ id: "run_1" }],
-      pagination: { hasMore: true, nextCursor: "run_1" },
-    });
-  }
-  return HttpResponse.json({
-    data: [{ id: "run_2" }],
-    pagination: { hasMore: false, nextCursor: null },
-  });
-});
-```
-
-### Handler Aggregation
-
-All handlers are collected in `handlers/index.ts`:
-
-```typescript
 import {
-  apiModelProvidersHandlers,
-  resetMockModelProviders,
-} from "./api-model-providers";
-import { apiOrgHandlers } from "./api-org";
-
-export const handlers = [...apiModelProvidersHandlers, ...apiOrgHandlers];
-
-export function resetAllMockHandlers(): void {
-  resetMockModelProviders();
-  // Add other reset functions as needed
-}
-```
-
-## External Network Requests
-
-**App tests do not allow any external network requests.** This is enforced through MSW configuration.
-
-### Default Configuration
-
-The global test setup (`test/setup.ts`) configures MSW to handle unmatched requests:
-
-```typescript
-beforeAll(() => {
-  server.listen({ onUnhandledRequest: "error" });
-});
-
-afterEach(() => server.resetHandlers());
-
-afterAll(() => server.close());
-```
-
-### Shared Happy Path Handlers
-
-Default handlers in `mocks/handlers/` provide working responses for most tests. These represent the "happy path" - a typical user with valid data.
-
-### Overriding API Behavior in Tests
-
-Use `context.mocks.api()` or `context.mocks.http()` to override handlers for
-specific test scenarios. Do not import the MSW `server` or call `server.use()`
-from page tests directly.
-
-```typescript
-import { orgContract } from "@okouai/api-contracts/contracts/org-routes";
-import { HttpResponse } from "msw";
-
-it("should show error when API returns 404", async () => {
-  context.mocks.api(orgContract.get, ({ respond }) => {
-    return respond(404, {
-      error: { code: "NOT_FOUND", message: "Not found" },
-    });
-  });
-
-  detachedSetupPage({ context, path: "/" });
-
-  expect(await screen.findByText("Not found")).toBeInTheDocument();
-});
-
-it("should handle empty list", async () => {
-  context.mocks.http.get("/api/items", () => {
-    return HttpResponse.json({ items: [] });
-  });
-
-  detachedSetupPage({ context, path: "/items" });
-
-  expect(await screen.findByText("No items found")).toBeInTheDocument();
-});
-```
-
-### Tracking Request Data
-
-Capture request data to verify what was sent:
-
-```typescript
-it("should send correct data when saving", async () => {
-  const user = userEvent.setup();
-  let capturedBody: unknown = null;
-
-  context.mocks.http.put("/api/items", async ({ request }) => {
-    capturedBody = await request.json();
-    return HttpResponse.json({ id: "1" }, { status: 200 });
-  });
-
-  detachedSetupPage({ context, path: "/" });
-
-  await user.type(await screen.findByRole("textbox"), "New Item");
-  await user.click(await screen.findByRole("button", { name: "Save" }));
-
-  await waitFor(() => {
-    expect(capturedBody).toEqual({ name: "New Item" });
-  });
-});
-```
-
-### Overriding Multiple Endpoints
-
-Override multiple endpoints when testing complex flows:
-
-```typescript
-it("should complete onboarding flow", async () => {
-  context.mocks.http.get("/api/org", () => {
-    return new HttpResponse(null, { status: 404 });
-  });
-  context.mocks.http.post("/api/org", () => {
-    return HttpResponse.json({}, { status: 201 });
-  });
-  context.mocks.http.put("/api/settings", () => {
-    return HttpResponse.json({ success: true });
-  });
-
-  detachedSetupPage({ context, path: "/" });
-  // Test onboarding flow...
-});
-```
-
-## Test Context
-
-The `testContext()` function provides automatic cleanup and isolation:
-
-```typescript
-import { testContext } from "../signals/__tests__/test-helpers";
+  click,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-describe("MyFeature", () => {
-  it("test case", async () => {
-    const { mocks, signal } = context;
-    // mocks and signal are scoped to the current test lifecycle
+function getButtonByName(
+  name: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return (
+      candidate.textContent?.trim() === name ||
+      candidate.getAttribute("aria-label") === name
+    );
+  });
+  if (!button) {
+    throw new Error(`Expected button named "${name}"`);
+  }
+  return button;
+}
+
+test("A user confirms the billing upgrade", async () => {
+  context.mocks.api(someContract.get, ({ respond }) => {
+    return respond(200, fixture);
+  });
+
+  await setupPage({
+    context,
+    path: "/settings?tab=billing",
+    host: "app.vm0.ai",
+    auth: {
+      user: { id: "user_123", fullName: "Test User" },
+      organization: {
+        activeOrg: { id: "org_123", name: "Test Organization" },
+        memberships: [{ id: "org_123" }],
+      },
+    },
+  });
+
+  expect(await screen.findByText("Billing")).toBeInTheDocument();
+
+  click(getButtonByName("Upgrade"));
+
+  const dialog = await screen.findByRole("dialog", {
+    name: "Confirm upgrade",
+  });
+  expect(within(dialog).getByText("$20/month")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(getButtonByName("Confirm", dialog)).toBeEnabled();
   });
 });
 ```
 
-Features:
+Install every mock before `setupPage`. Keep the loaded-state wait and first
+action on separate lines, and execute each action exactly once.
 
-- Creates fresh store for each test
-- Provides AbortSignal for cleanup
-- Tracks long-running promises until their test signal aborts
-- Provides `context.mocks` for API, browser, upload, Ably, and test data mocks
-- Automatically resets mock handlers after each test
-- Cleans up localStorage and sessionStorage keys written through their signal
-  abstractions
+## `setupPage` Options
 
-## setupPage Options
+`context` and `path` are required. `path` may include a query string and hash.
+`host` is a hostname without a scheme, path, or port and defaults to
+`localhost`; localhost uses HTTP and other hosts use HTTPS. Use `host` and
+`path` for the initial page URL. Lower-level browser URL mocks are reserved for
+pure URL or runtime-environment tests that need a port, complete URL, or custom
+API-origin marker.
+
+Initial authentication and organization state belongs in `auth`:
+
+- Omitting `auth` creates the standard signed-in user, session, active
+  organization, and membership.
+- `auth: null` creates a complete signed-out state with no user, session,
+  active organization, or memberships.
+- An auth object requires a user. Omitted organization and session values use
+  the standard signed-in defaults.
+- `session: null` inside an auth object means a known user without a token. It
+  is not the signed-out state.
+
+Use `featureSwitches` for ordinary cases; it initializes both the first visible
+cache state and the mocked response. Use `cachedFeatureSwitches` only when the
+case intentionally distinguishes cached state from the later SWR response.
+`debugLoggers` and the documented shared-database lifecycle options are also
+owned by the page's test context.
+
+## Synchronization and Queries
+
+Wait for the smallest observable state that proves readiness for the next
+action. Do not wait for a generic bootstrap promise, unrelated skeleton,
+arbitrary delay, or sleep.
+
+Testing Library's accessible-name calculation is slow for roles whose name is
+normally derived from subtree text. Do not use `getByRole`, `getAllByRole`,
+`findByRole`, or `findAllByRole` for these roles:
+
+```text
+button
+link
+menuitem
+menuitemcheckbox
+menuitemradio
+radio
+tab
+cell
+columnheader
+rowheader
+gridcell
+```
+
+Use `queryAllByRoleFast` and match exact trimmed `textContent` or `aria-label`.
+Pass the narrowest available container. Wrap a throwing getter in `waitFor`
+only when that element is itself the synchronization point.
+
+Regular `findByRole` remains appropriate for structural, form, and status
+roles such as `dialog`, `heading`, `alert`, `status`, `region`, `form`,
+`textbox`, `combobox`, `option`, `switch`, `group`, and `article`. Use
+`findByLabelText` for form controls, `findByText` for ordinary content, and
+`findByTestId` only when no stable accessible query exists.
+
+`waitFor` callbacks may run many times. They contain queries and assertions
+only: never actions, fixture mutation, mock triggers, or deferred resolution.
+Await one representative sentinel and synchronously assert other state from
+the same transition. Retain an element before passing it to
+`waitForElementToBeRemoved`. A negative assertion must follow a positive causal
+completion point.
+
+## User Actions
+
+- Use the synchronous `click(element)` helper for ordinary clicks. Do not await
+  it.
+- Use `await fill(element, value)` to replace input or contenteditable content.
+- Use `userEvent` only when full keyboard, hover, upload, focus, pointer, or
+  clipboard behavior matters. Await every `userEvent` operation.
+- Use `fireEvent` only for an exact low-level submit, scroll, load,
+  composition, drag, transition, or controlled-input event.
+- Trigger realtime, popup, visibility, and similar external events through
+  `context.mocks`, then wait for their observable page result.
+- Use `act` only when an external source bypasses Testing Library and
+  synchronously schedules a React update.
+- Do not replace a page action with `context.store.set` when the page exposes
+  the action.
+
+## Assertions
+
+Prefer presence, visibility, content, value, selected state, enabled or
+disabled state, focus, accessibility relationships, navigation, opened
+destinations, clipboard writes, and downloads. Scope assertions with
+`within(container)` after locating a dialog, form, card, or sidebar.
+
+Capture a request body only when request construction is part of the behavior.
+Assert third-party calls only when the call itself is the external contract.
+Never assert internal signal, store, service, helper, request-count, DOM
+identity, or cache-protocol details. Do not use snapshots in Platform page
+tests.
+
+## Network and External Boundaries
+
+All application HTTP traffic is intercepted by MSW, and unhandled requests
+fail the test. Prefer a typed contract mock:
 
 ```typescript
-detachedSetupPage({
-  context, // Required: test context
-  path: "/dashboard", // Required: initial route
-
-  // Optional: override authenticated user
-  user: { id: "user-1", fullName: "Test User" },
-  session: { token: "test-token" },
-
-  // Optional: set user to null for unauthenticated tests
-  user: null,
-
-  // Optional: enable debug loggers
-  debugLoggers: ["router", "api"],
-
-  // Optional: feature flags
-  featureSwitches: { newFeature: true },
+context.mocks.api(agentContract.get, ({ respond }) => {
+  return respond(200, agentFixture);
 });
 ```
 
-## Best Practices
+Use `context.mocks.http` only when no typed contract exists. Do not mock
+`fetch`, import the global MSW server into a page test, or call `server.use`
+directly. Return realistic status codes and contract-valid shapes. Keep
+stateful fixture ownership within the test mock lifecycle.
 
-1. **Use `waitFor()` for async assertions** - UI updates happen asynchronously
-2. **Override only what you need** - Let default handlers provide the happy path
-3. **Mock through `context.mocks`** - Test mocks should share the page setup signal
-4. **Use factories for complex mock data** - Create helper functions for repetitive mock responses
-5. **Test user flows, not implementation** - Focus on what users see and do
-6. **Capture request data when needed** - Verify correct data is sent to APIs
-7. **Use the Storage signal abstractions** - Do not write browser Storage
-   directly or remove keys in test cleanup hooks
-8. **Do not add file-level `afterEach` cleanup** - Bind external resources to
-   `context.signal` when they are created, and pass long-running promises to
-   `context.track()`. Vitest configuration owns spy, mock, global stub, and
-   environment stub restoration.
-9. **Use the Platform clock abstraction** - Production code reads time through
-   `lib/time.ts`'s `now()`. Tests call `mockNow(context.signal, value)` so the
-   override is released by the owning test signal; do not spy on `Date.now()`.
+Module mocks are limited to external packages that cannot run in the test
+environment, such as Clerk SDKs, analytics, error reporting, and
+browser-incompatible adapters. Never mock an internal relative import. Use a
+top-level `vi.mock`, `vi.hoisted` for factory state, typed `vi.importActual`
+for partial external replacement, and a local `vi.spyOn` for a single browser
+capability. Vitest and `testContext` own cleanup; do not add file-level cleanup
+hooks.
+
+## Time
+
+Use Platform's production clock abstraction with an explicit reference value:
+
+```typescript
+const NOW = new Date("2026-06-11T16:00:00.000Z");
+
+mockNow(NOW, context.signal);
+```
+
+`mockNow` always receives the value first and owning signal second. Derive
+time-dependent fixtures from that value. Production and test code use `now()`
+or `nowDate()` rather than `Date.now()`; only `lib/time.ts` may call
+`Date.now()`. Do not use fake timers, `vi.setSystemTime`, or a `Date.now()`
+spy. Continue using real timers with Testing Library queries and `waitFor`.
+
+## Test Context and Cleanup
+
+Create one `testContext()` at file scope. It provides a fresh store and worker
+store, an abort signal, and external mocks. Bind external resources to
+`context.signal`. Do not manually clear detached work, browser storage, spies,
+globals, or mocks in file-level cleanup hooks; the shared Vitest setup and test
+context own that lifecycle.

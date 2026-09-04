@@ -90,7 +90,12 @@
         "prefer-hooks-in-order": "deny",
         "prefer-hooks-on-top": "deny",
         "prefer-jest-mocked": "deny",
-        "prefer-lowercase-title": "deny",
+        "prefer-lowercase-title": [
+          "deny",
+          {
+            "ignore": ["test"]
+          }
+        ],
         "prefer-mock-promise-shorthand": "deny",
         "prefer-spy-on": "deny",
         "prefer-strict-equal": "deny",

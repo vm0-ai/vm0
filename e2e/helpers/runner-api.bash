@@ -186,7 +186,7 @@ runner_e2e_wait_for_run_status() {
 
 runner_e2e_shell_prompt() {
     local script="$1"
-    printf '@shell@\n%s\n@end-shell@' "$script"
+    printf '@shell@\nexport npm_config_audit=false\n%s\n@end-shell@' "$script"
 }
 
 runner_e2e_start_chat_run() {
