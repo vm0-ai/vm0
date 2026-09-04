@@ -55,6 +55,7 @@ pub(crate) struct VsockConfig {
 pub(crate) struct BalloonConfig {
     pub(crate) amount_mib: u32,
     pub(crate) deflate_on_oom: bool,
+    pub(crate) free_page_reporting: bool,
     pub(crate) stats_polling_interval_s: u32,
 }
 

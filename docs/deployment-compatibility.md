@@ -165,8 +165,8 @@ Use **sandbox** for provider-neutral runner lifecycle, ownership, status,
 network-policy, and operator concepts. Use **VM** only for concrete
 Firecracker/KVM implementation details such as the Firecracker `/vm` API, VM
 pause and resume, snapshots, vCPUs, VMGenID, KVM, and Firecracker processes.
-The VM0 brand, established environment-variable namespace, and fixed paths are
-not lifecycle terminology and remain unchanged.
+Product brand names, the established environment-variable namespace, and fixed
+paths are not lifecycle terminology and remain unchanged.
 
 Each runner version's `status.json` is a host-local persisted cross-version
 boundary. Current runner maintenance commands can inspect status files written

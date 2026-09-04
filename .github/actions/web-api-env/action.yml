@@ -422,11 +422,6 @@ runs:
         add_env GITHUB_APP_CLIENT_SECRET "$github_app_client_secret"
         add_env GITHUB_APP_WEBHOOK_SECRET "$github_app_webhook_secret"
         add_env GITHUB_APP_PRIVATE_KEY "$github_app_private_key"
-        add_var GCP_PROJECT_ID GCP_PROJECT_ID
-        add_var GCP_PROJECT_NUMBER GCP_PROJECT_NUMBER
-        add_var GCP_SERVICE_ACCOUNT_EMAIL GCP_SERVICE_ACCOUNT_EMAIL
-        add_var GCP_WORKLOAD_IDENTITY_POOL_ID GCP_WORKLOAD_IDENTITY_POOL_ID
-        add_var GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
         add_secret VERCEL_AUTOMATION_BYPASS_SECRET VERCEL_AUTOMATION_BYPASS_SECRET
 
         echo "file=$env_file" >> "$GITHUB_OUTPUT"
