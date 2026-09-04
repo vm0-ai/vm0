@@ -372,16 +372,12 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const gradientColorThemesEnabled =
     features[FeatureSwitchKey.GradientColorThemes] ?? false;
   const isDesktop = useMediaQuery(SIDEBAR_DESKTOP_MEDIA_QUERY);
-  const activeId = useGet(activeRoute$);
   const shellDocumentAttributesRef = useSet(shellDocumentAttributesRef$);
 
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className={cn(
-        "zero-app zero-viewport-shell flex w-full bg-background",
-        isChatRoute(activeId) && "zero-managed-bottom-safe-area",
-      )}
+      className="zero-app zero-viewport-shell zero-managed-bottom-safe-area flex w-full bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >

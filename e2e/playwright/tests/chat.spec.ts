@@ -6,6 +6,7 @@ const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const MOBILE_VIEWPORT = { width: 402, height: 874 } as const;
 const MOBILE_SAFE_BOTTOM_PX = 34;
 const HOME_BOTTOM_GAP_PX = 48;
+const CONNECTORS_BOTTOM_GAP_PX = 64;
 
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);
@@ -15,7 +16,7 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
-test("mobile chat assigns the bottom safe area to visible content", async ({
+test("mobile pages assign the bottom safe area to content and controls", async ({
   page,
 }) => {
   await page.setViewportSize(MOBILE_VIEWPORT);
@@ -29,26 +30,22 @@ test("mobile chat assigns the bottom safe area to visible content", async ({
   }, MOBILE_SAFE_BOTTOM_PX);
 
   const scrollViewport = page.locator("main").filter({ has: tagline });
-  const lastContent = page.getByTestId("start-cards");
-  await scrollViewport.evaluate((element) => {
-    if (!(element instanceof HTMLElement)) {
-      throw new Error("Expected the chat scroll viewport to be an element");
-    }
-    element.scrollTop = element.scrollHeight;
-  });
-
+  const scrollContent = page.getByTestId("agent-chat-scroll-content");
   const viewportBox = await scrollViewport.boundingBox();
-  const lastContentBox = await lastContent.boundingBox();
-  if (!viewportBox || !lastContentBox) {
+  if (!viewportBox) {
     throw new Error("Expected visible chat safe-area geometry");
   }
   expect(viewportBox.y + viewportBox.height).toBeCloseTo(
     MOBILE_VIEWPORT.height,
     0,
   );
-  expect(
-    MOBILE_VIEWPORT.height - (lastContentBox.y + lastContentBox.height),
-  ).toBeCloseTo(Math.max(HOME_BOTTOM_GAP_PX, MOBILE_SAFE_BOTTOM_PX), 0);
+  await expect
+    .poll(async () => {
+      return scrollContent.evaluate((element) => {
+        return Number.parseFloat(getComputedStyle(element).paddingBottom);
+      });
+    })
+    .toBe(Math.max(HOME_BOTTOM_GAP_PX, MOBILE_SAFE_BOTTOM_PX));
 
   await page.evaluate(() => {
     document.documentElement.dataset.keyboardOpen = "true";
@@ -89,6 +86,31 @@ test("mobile chat assigns the bottom safe area to visible content", async ({
   expect(drawerMetrics.lastControlBottom).toBeLessThanOrEqual(
     MOBILE_VIEWPORT.height - MOBILE_SAFE_BOTTOM_PX,
   );
+
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await page.goto(new URL("/connectors", appUrl).href);
+  const connectorsViewport = page.getByTestId("connectors-scroll-viewport");
+  const connectorsContent = page.getByTestId("connectors-scroll-content");
+  await expect(connectorsViewport).toBeVisible({ timeout: 20_000 });
+  await page.evaluate((safeBottom) => {
+    document.documentElement.style.setProperty("--sab", `${safeBottom}px`);
+  }, MOBILE_SAFE_BOTTOM_PX);
+
+  const connectorsViewportBox = await connectorsViewport.boundingBox();
+  if (!connectorsViewportBox) {
+    throw new Error("Expected visible connector safe-area geometry");
+  }
+  expect(connectorsViewportBox.y + connectorsViewportBox.height).toBeCloseTo(
+    MOBILE_VIEWPORT.height,
+    0,
+  );
+  await expect
+    .poll(async () => {
+      return connectorsContent.evaluate((element) => {
+        return Number.parseFloat(getComputedStyle(element).paddingBottom);
+      });
+    })
+    .toBe(Math.max(CONNECTORS_BOTTOM_GAP_PX, MOBILE_SAFE_BOTTOM_PX));
 });
 
 test("send a message through the deployed runner", async ({ page }) => {

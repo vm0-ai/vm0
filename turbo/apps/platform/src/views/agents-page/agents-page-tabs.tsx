@@ -137,7 +137,7 @@ export function AgentsPageTabs() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-[max(2rem,var(--sab))]">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <AgentTabsView
             activeTab={activeTab}

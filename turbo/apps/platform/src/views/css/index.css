@@ -139,7 +139,7 @@ body {
   padding-bottom: var(--sab);
 }
 
-/* Chat scrollports reach the physical viewport edge. Their scroll content,
+/* Workspace scrollports reach the physical viewport edge. Their scroll content,
    composer, and other bottom interactions own the safe inset instead. */
 .zero-managed-bottom-safe-area {
   padding-bottom: 0;
