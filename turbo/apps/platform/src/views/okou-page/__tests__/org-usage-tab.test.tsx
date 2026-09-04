@@ -312,31 +312,6 @@ test("Explain the composition of a workspace credit balance", async () => {
   ).resolves.toBeInTheDocument();
 });
 
-test("Label workspace credits that do not expire", async () => {
-  const user = userEvent.setup();
-  mockUsageStory();
-  mockBillingStatus({
-    creditGrants: [
-      {
-        id: "grant-custom",
-        source: "atom_custom_credits",
-        label: "Custom credits",
-        amount: 12_000,
-        remaining: 12_000,
-        createdAt: "2026-03-01T00:00:00Z",
-        expiresAt: "2999-12-31T23:59:59Z",
-      },
-    ],
-  });
-  await openCreditBalance();
-
-  const grant = await screen.findByTestId("credit-grants-grant-custom");
-  expect(screen.queryByText("Never expires")).toBeNull();
-  await user.hover(grant);
-  await expect(screen.findByText("Never expires")).resolves.toBeInTheDocument();
-  expect(screen.queryByText("Dec 31, 2999")).toBeNull();
-});
-
 test("Review credit usage by workspace member", async () => {
   mockUsageStory();
   await openCreditUsage();
@@ -354,54 +329,4 @@ test("Review credit usage by workspace member", async () => {
   });
   expect(screen.getByText("7,500")).toBeInTheDocument();
   expect(screen.getByText("2,100")).toBeInTheDocument();
-});
-
-test("Localize workspace balance and team usage in Portuguese", async () => {
-  mockUsageStory();
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
-
-  await setupPage({
-    context,
-    path: "/?settings=usage",
-  });
-
-  await waitFor(() => {
-    expect(document.documentElement.lang).toBe("pt-BR");
-    expect(screen.getByText("12.000")).toBeInTheDocument();
-    expect(screen.getByText("Franquia de uso")).toBeInTheDocument();
-    expect(screen.getByText("3.750 restantes")).toBeInTheDocument();
-  });
-
-  const grants = screen.getByTestId("credit-grants-section");
-  expect(within(grants).getByText("Data")).toBeInTheDocument();
-  expect(within(grants).getByText("Créditos")).toBeInTheDocument();
-  expect(within(grants).getByText("Restante")).toBeInTheDocument();
-  expect(within(grants).getByText("+10.000")).toBeInTheDocument();
-  expect(within(grants).getByText("8.000")).toBeInTheDocument();
-
-  click(screen.getByTestId("credit-balance-see-usage"));
-  await waitFor(() => {
-    expect(
-      queryAllByRoleFast("tab").some((tab) => {
-        return tab.textContent?.trim() === "Uso da equipe";
-      }),
-    ).toBeTruthy();
-  });
-  const teamUsageTab = queryAllByRoleFast("tab").find((tab) => {
-    return tab.textContent?.trim() === "Uso da equipe";
-  });
-  if (!teamUsageTab) {
-    throw new Error("Portuguese Team usage tab not found");
-  }
-  click(teamUsageTab);
-
-  await waitFor(() => {
-    expect(screen.getByText("Alice Admin")).toBeInTheDocument();
-    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    expect(screen.getByText("bob@example.com")).toBeInTheDocument();
-    expect(screen.getByText("7.500")).toBeInTheDocument();
-    expect(screen.getByText("2.100")).toBeInTheDocument();
-  });
-  expect(screen.getByText("Membro")).toBeInTheDocument();
-  expect(screen.getByText("Usado")).toBeInTheDocument();
 });

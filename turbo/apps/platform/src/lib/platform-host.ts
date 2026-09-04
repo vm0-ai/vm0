@@ -7,7 +7,7 @@ import {
 type PlatformEnvironment = "development" | "preview" | "production";
 type PlatformPublicBrand = "vm0" | "okou";
 
-export interface PlatformServiceStatusConfig {
+interface PlatformServiceStatusConfig {
   readonly issuesUrl: string;
   readonly pageBaseUrl: string;
 }
@@ -30,7 +30,7 @@ interface PlatformRuntimeConfig {
   readonly vapidPublicKey: string | null;
 }
 
-export interface PlatformClientTelemetryConfig {
+interface PlatformClientTelemetryConfig {
   readonly environment: PlatformEnvironment;
   readonly token: string | null;
 }

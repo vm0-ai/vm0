@@ -80,7 +80,7 @@ const internalAudioActivityMonitor$ = state<AudioActivityMonitor | null>(null);
 const internalStartingPromise$ =
   state<Promise<VoiceRecordingStartup | null> | null>(null);
 const internalStopAndTranscribePromise$ = state<Promise<void> | null>(null);
-export interface VoiceRecordingLifecycle {
+interface VoiceRecordingLifecycle {
   readonly started: () => void;
   readonly finish: () => Promise<void>;
   readonly fail: () => Promise<void>;

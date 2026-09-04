@@ -115,7 +115,7 @@ const DAY_MS = 24 * HOUR_MS;
 type ConnectorConnectLaunchMode = "browser-auth" | "no-auth" | "modal";
 type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
-export type ConnectorCatalogBrowserAuthMethodDetail =
+type ConnectorCatalogBrowserAuthMethodDetail =
   PublicConnectorCatalogAuthMethodDetail & {
     readonly grantKind: BrowserAuthGrantKind;
   };

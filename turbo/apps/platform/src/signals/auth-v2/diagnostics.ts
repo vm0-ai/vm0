@@ -62,18 +62,18 @@ const CONTINUATION_INITIALIZE_ATTEMPT$ = computed((): DiagnosticAttempt => {
   return { method: "session", step: "recovery" };
 });
 
-export interface AuthV2SignInDiagnosticOptions {
+interface AuthV2SignInDiagnosticOptions {
   readonly continuationState$: Computed<AuthV2ContinuationState>;
   readonly isBaseRoute: boolean;
   readonly isOAuthCallbackRoute: boolean;
 }
 
-export interface AuthV2SignUpDiagnosticOptions {
+interface AuthV2SignUpDiagnosticOptions {
   readonly continuationState$: Computed<AuthV2ContinuationState>;
   readonly isOAuthCallbackRoute: boolean;
 }
 
-export interface AuthV2Diagnostics {
+interface AuthV2Diagnostics {
   readonly instrumentContinuation: (
     signals: AuthV2ContinuationSignals,
   ) => AuthV2ContinuationSignals;

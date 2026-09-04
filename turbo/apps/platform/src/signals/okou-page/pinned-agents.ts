@@ -32,12 +32,9 @@ export const pinnedAgentIds$ = computed(async (get) => {
   });
 });
 
-/** Order pinned agents according to the user's saved preference. */
-export const pinnedAgentRenderOrder$ = pinnedAgentIds$;
-
 /** Pinned agent IDs resolved to full agent objects, in render order. */
 export const pinnedAgents$ = computed(async (get) => {
-  const order = await get(pinnedAgentRenderOrder$);
+  const order = await get(pinnedAgentIds$);
   const list = await get(sortedAgents$);
   const agentById = new Map(
     list.map((a) => {

@@ -672,28 +672,6 @@ export function setPermissionDraftGroupAllowPolicy({
   });
 }
 
-export function restorePermissionDraftPermission({
-  draft,
-  permissionName,
-}: {
-  readonly draft: PermissionDraftIntent;
-  readonly permissionName: string;
-}): PermissionDraftIntent {
-  return {
-    ...draft,
-    permissionPolicies: omitKey(draft.permissionPolicies, permissionName),
-    restoredPermissions: {
-      ...draft.restoredPermissions,
-      [permissionName]: true,
-    },
-    permissionExpirations: omitKey(draft.permissionExpirations, permissionName),
-    clearedPermissionExpirations: {
-      ...draft.clearedPermissionExpirations,
-      [permissionName]: true,
-    },
-  };
-}
-
 export function setPermissionDraftUnknownPolicy({
   draft,
   policy,
@@ -705,20 +683,6 @@ export function setPermissionDraftUnknownPolicy({
     ...draft,
     unknownPolicy: policy,
     ...(policy === "deny" ? { unknownExpiration: undefined } : {}),
-  };
-}
-
-export function restorePermissionDraftUnknown({
-  context,
-  draft,
-}: {
-  readonly context: PermissionDraftContext;
-  readonly draft: PermissionDraftIntent;
-}): PermissionDraftIntent {
-  return {
-    ...draft,
-    unknownPolicy: context.initialResolver.unknown(),
-    unknownExpiration: undefined,
   };
 }
 
@@ -787,7 +751,7 @@ export function clearPermissionDraftInheritedExpiration({
   };
 }
 
-export function setPermissionDraftGroupExpiration({
+function setPermissionDraftGroupExpiration({
   draft,
   category,
   permissions,

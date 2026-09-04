@@ -39,7 +39,7 @@ import {
   createAuthV2ResendCooldownStorage,
 } from "./resend-cooldown.ts";
 
-export const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
+const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS = 30;
 const AUTH_V2_SIGN_IN_RESEND_COOLDOWN_MS =
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_SECONDS * 1000;
 const signInResendCooldownStorage = createAuthV2ResendCooldownStorage(
@@ -154,7 +154,7 @@ interface SignInResourceSnapshot {
   readonly unknownFactorStrategies: readonly string[];
 }
 
-export interface AuthV2SignInFlowDependencies {
+interface AuthV2SignInFlowDependencies {
   readonly continuation: AuthV2ContinuationFlowHandoff;
   readonly isBaseRoute: boolean;
   readonly isOAuthCallbackRoute: boolean;
@@ -576,7 +576,7 @@ function selectedFactorForSnapshot(
   );
 }
 
-export const clerkSignInResource$ = computed(async (get) => {
+const clerkSignInResource$ = computed(async (get) => {
   const clerk = await get(clerk$);
   if (!clerk.client) {
     throw new Error("Loaded Clerk instance did not provide a client resource");

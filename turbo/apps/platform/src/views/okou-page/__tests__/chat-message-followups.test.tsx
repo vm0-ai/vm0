@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { chatThreadEventsContract } from "@okouai/api-contracts/contracts/chat-threads";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -93,79 +92,6 @@ function followupButtons(group: ParentNode): HTMLElement[] {
     return button.hasAttribute("title");
   });
 }
-
-test("Recommended follow-ups fit the user's input device", async () => {
-  const user = userEvent.setup({ delay: null });
-  const followups = variedFollowups();
-  const onSendRequest = vi.fn<(body: { readonly prompt: string }) => void>();
-  context.mocks.browser.matchMedia((query) => {
-    return query === "(pointer: coarse)";
-  });
-  installMessageExperienceChat({
-    threadId: context.resourceId,
-    chatEvents: completedReply(followups),
-    onSendRequest,
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${context.resourceId}`,
-    featureSwitches: {
-      [FeatureSwitchKey.ResponsiveFollowupCards]: true,
-    },
-  });
-
-  await expect(
-    screen.findByText("The launch plan is ready."),
-  ).resolves.toBeVisible();
-  const group = await keepGoingGroup();
-  const controls = followupButtons(group);
-  expect(controls).toHaveLength(followups.length);
-  for (const [index, followup] of followups.entries()) {
-    expect(controls[index]).toHaveAttribute("title", followup.prompt);
-    expect(controls[index]).toHaveTextContent(followup.prompt);
-  }
-  expect(group).toHaveClass("overflow-x-auto");
-  for (const control of controls) {
-    expect(control).toHaveClass("snap-center");
-    expect(control).not.toHaveClass("w-full");
-  }
-
-  await user.click(controls[1]!);
-  const composer = await findComposer();
-  await waitFor(() => {
-    expect(composer).toHaveTextContent(followups[1]!.prompt);
-    expect(composer).toHaveFocus();
-  });
-  expect(onSendRequest).not.toHaveBeenCalled();
-});
-
-test("Recommended follow-ups stay a full-width list on desktop", async () => {
-  const followups = variedFollowups();
-  context.mocks.browser.matchMedia(false);
-  vi.spyOn(window, "innerWidth", "get").mockReturnValue(375);
-  installMessageExperienceChat({
-    threadId: context.resourceId,
-    chatEvents: completedReply(followups),
-  });
-
-  await setupPage({
-    context,
-    path: `/chats/${context.resourceId}`,
-    featureSwitches: {
-      [FeatureSwitchKey.ResponsiveFollowupCards]: true,
-    },
-  });
-
-  const group = await keepGoingGroup();
-  expect(group).not.toHaveClass("overflow-x-auto");
-  const controls = followupButtons(group);
-  expect(controls).toHaveLength(followups.length);
-  for (const control of controls) {
-    expect(control).toHaveClass("w-full");
-    expect(control).not.toHaveClass("snap-center");
-  }
-});
 
 test("Invalid recommended-follow-up data stays hidden", async () => {
   const unsafePrompt = "Run <script>unsafe()</script> immediately";

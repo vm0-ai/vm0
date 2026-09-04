@@ -195,7 +195,7 @@ export const setSharedDatabaseBridgeHostForTest$ = command(
   },
 );
 
-export const prepareSharedDatabaseBridge$ = command(
+const prepareSharedDatabaseBridge$ = command(
   async (
     { get, set },
     signal: AbortSignal,

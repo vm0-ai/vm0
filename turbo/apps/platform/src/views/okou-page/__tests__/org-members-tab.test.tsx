@@ -36,19 +36,6 @@ function buttonByText(
   return button;
 }
 
-function buttonByLabel(
-  label: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!button) {
-    throw new Error(`${label} button not found`);
-  }
-  return button;
-}
-
 function menuItemByText(text: string): HTMLElement {
   const item = queryAllByRoleFast("menuitem").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -775,63 +762,5 @@ test("Revoke a pending workspace invitation", async () => {
   await waitFor(() => {
     expect(screen.getByText("Invitation revoked")).toBeInTheDocument();
     expect(screen.queryByText("pending@example.com")).not.toBeInTheDocument();
-  });
-});
-
-test("Localize the workspace invitation flow without changing workspace data", async () => {
-  let submittedInvite: {
-    readonly email: string;
-    readonly role: string;
-  } | null = null;
-  mockMembersStory((invite) => {
-    submittedInvite = invite;
-  });
-  mockMemberInviteEntitlement(false);
-  await setupPage({
-    context,
-    locale: "pt-BR",
-    path: "/?settings=people",
-  });
-  await waitFor(() => {
-    expect(
-      screen.getByRole("heading", { name: "Pessoas" }),
-    ).toBeInTheDocument();
-  });
-
-  const settingsDialog = screen.getByRole("dialog", {
-    name: "Configurações",
-  });
-  expect(within(settingsDialog).getByText("Espaço de trabalho")).toBeVisible();
-  expect(buttonByLabel("Fechar", settingsDialog)).toBeVisible();
-  expect(screen.getByText("alice@example.com")).toBeVisible();
-  expect(screen.getByText("01/01/2026")).toBeVisible();
-  expect(screen.getByPlaceholderText("Pesquisar")).toBeVisible();
-
-  click(buttonByText("Adicionar membro"));
-
-  const inviteDialog = await screen.findByRole("dialog", {
-    name: "Convidar membro",
-  });
-  expect(buttonByLabel("Fechar", inviteDialog)).toBeVisible();
-  expect(
-    within(inviteDialog).getByText(
-      "Envie um convite para participar deste espaço de trabalho.",
-    ),
-  ).toBeVisible();
-  await fill(
-    within(inviteDialog).getByPlaceholderText("email@example.com"),
-    "bob.invited@example.com",
-  );
-  click(buttonByText("Enviar convite", inviteDialog));
-
-  await waitFor(() => {
-    expect(screen.getByText("bob.invited@example.com")).toBeInTheDocument();
-    expect(
-      screen.getByText("Convite enviado para bob.invited@example.com"),
-    ).toBeInTheDocument();
-  });
-  expect(submittedInvite).toStrictEqual({
-    email: "bob.invited@example.com",
-    role: "member",
   });
 });

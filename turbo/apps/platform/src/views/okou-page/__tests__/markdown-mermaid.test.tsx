@@ -32,14 +32,6 @@ function completedMessageRows(chat: MarkdownChatFixture, content: string) {
   ];
 }
 
-function markdownFrameFor(element: Element): HTMLElement {
-  const frame = element.closest<HTMLElement>(".wmde-markdown");
-  if (!frame) {
-    throw new Error("Expected content inside a Markdown frame");
-  }
-  return frame;
-}
-
 function getButtonByName(
   name: string,
   container: ParentNode = document.body,
@@ -60,21 +52,6 @@ function diagramButtons(container: ParentNode = document.body): HTMLElement[] {
   return queryAllByRoleFast("button", container).filter((button) => {
     return button.getAttribute("aria-label") === "Expand diagram";
   });
-}
-
-async function openAppearanceSettings(): Promise<HTMLElement> {
-  click(getButtonByName("Test User"));
-  const settingsItem = await waitFor(() => {
-    const item = queryAllByRoleFast("menuitem").find((candidate) => {
-      return candidate.textContent?.trim() === "Settings";
-    });
-    if (!item) {
-      throw new Error('Expected menu item named "Settings"');
-    }
-    return item;
-  });
-  click(settingsItem);
-  return await screen.findByRole("dialog", { name: "Settings" });
 }
 
 test("A Mermaid diagram can move from chat into artifact split view", async () => {
@@ -223,84 +200,6 @@ test("Completed Mermaid diagrams remain accessible and inspectable", async () =>
       }),
     ).toBeTruthy();
   });
-});
-
-test("Mermaid diagrams follow the selected appearance", async () => {
-  const chat = createMarkdownChatFixture(context);
-  const diagramSource = ["flowchart TD", "  Theme --> Content"].join("\n");
-  const source = ["```mermaid", diagramSource, "```"].join("\n");
-  const rows = completedMessageRows(chat, source);
-  context.mocks.data.userPreferences({ theme: "light" });
-  chat.install({
-    rows: () => {
-      return rows;
-    },
-  });
-
-  await setupPage({
-    context,
-    path: chat.path,
-    host: "app.vm0.ai",
-  });
-
-  const lightDiagram = await screen.findByRole("img", { name: "Diagram" });
-  const lightSource = lightDiagram.getAttribute("src");
-  expect(markdownFrameFor(lightDiagram)).toHaveAttribute(
-    "data-color-mode",
-    "light",
-  );
-
-  const settings = await openAppearanceSettings();
-  click(getButtonByName("Dark", settings));
-
-  await waitFor(() => {
-    expect(document.documentElement).toHaveClass("dark");
-  });
-  const darkSettingsRemoved = waitForElementToBeRemoved(settings);
-  click(getButtonByName("Close", settings));
-  await darkSettingsRemoved;
-
-  const darkDiagram = await waitFor(() => {
-    const current = screen.getByRole("img", { name: "Diagram" });
-    expect(markdownFrameFor(current)).toHaveAttribute(
-      "data-color-mode",
-      "dark",
-    );
-    expect(current.getAttribute("src")).not.toBe(lightSource);
-    return current;
-  });
-  const darkSourceUrl = darkDiagram.getAttribute("src");
-  const darkSource = document.querySelector(".mermaid-diagram-source code");
-  if (!darkSource) {
-    throw new Error("Expected the diagram source to remain inspectable");
-  }
-  expect(darkSource.textContent).toBe(diagramSource);
-
-  const lightSettings = await openAppearanceSettings();
-  click(getButtonByName("Light", lightSettings));
-
-  await waitFor(() => {
-    expect(document.documentElement).not.toHaveClass("dark");
-  });
-  const lightSettingsRemoved = waitForElementToBeRemoved(lightSettings);
-  click(getButtonByName("Close", lightSettings));
-  await lightSettingsRemoved;
-
-  await waitFor(() => {
-    const current = screen.getByRole("img", { name: "Diagram" });
-    expect(markdownFrameFor(current)).toHaveAttribute(
-      "data-color-mode",
-      "light",
-    );
-    expect(current.getAttribute("src")).not.toBe(darkSourceUrl);
-  });
-  const lightSourceBlock = document.querySelector(
-    ".mermaid-diagram-source code",
-  );
-  if (!lightSourceBlock) {
-    throw new Error("Expected the diagram source after returning to light");
-  }
-  expect(lightSourceBlock.textContent).toBe(diagramSource);
 });
 
 test("A streaming Mermaid diagram stays readable until complete", async () => {

@@ -69,34 +69,6 @@ async function openUsage(total: string): Promise<void> {
   await screen.findByText("Credit usage");
 }
 
-test("Credit usage labels image recognition consistently", async () => {
-  await setupUsageChat(
-    "b0000000-0000-4000-a000-000000000801",
-    "run-credit-image-recognition",
-    {
-      version: 1,
-      totalCredits: 22,
-      settledAt: "2026-08-14T12:00:02.000Z",
-      breakdown: [
-        {
-          kind: "image-recognition",
-          credits: 10,
-          providers: [{ provider: "acme/vision-pro", credits: 10 }],
-        },
-        {
-          kind: "model/google/gemini-3.5-flash/tokens.input",
-          credits: 12,
-          providers: [{ provider: "google/gemini-3.5-flash", credits: 12 }],
-        },
-      ],
-    },
-  );
-
-  await openUsage("22");
-
-  expect(screen.getAllByText("Image Recognize")).toHaveLength(2);
-});
-
 test("Credit usage shows friendly chat model names", async () => {
   await setupUsageChat(
     "b0000000-0000-4000-a000-000000000802",

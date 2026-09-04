@@ -16,7 +16,7 @@ interface IndexedDbTransactionDetails {
   readonly template: string;
 }
 
-export type TrackIndexedDbRequest = <TResult>(
+type TrackIndexedDbRequest = <TResult>(
   request: Promise<TResult>,
 ) => Promise<TResult>;
 

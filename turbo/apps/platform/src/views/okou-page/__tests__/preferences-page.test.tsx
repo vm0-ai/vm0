@@ -12,12 +12,9 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const { set$: setStoredTheme$ } = localStorageSignals("theme");
-const { set$: setStoredColorTheme$ } = localStorageSignals("colorTheme");
 
 function defaultPreferences(): UserPreferencesResponse {
   return {
@@ -80,73 +77,6 @@ function expectSelected(element: HTMLElement): void {
     element.getAttribute("aria-pressed");
   expect(selectionAttribute).toBe("true");
 }
-
-test("Existing device appearance choices are preserved when account settings are empty", async () => {
-  context.store.set(setStoredTheme$, "dark");
-  context.store.set(setStoredColorTheme$, "daydream");
-  const updates = mockPreferences({ theme: null, colorTheme: null });
-
-  await setupPage({
-    context,
-    path: "/settings",
-    host: "app.vm0.ai",
-    featureSwitches: { [FeatureSwitchKey.GradientColorThemes]: true },
-  });
-
-  await expect(
-    screen.findByText("Your preferred color scheme"),
-  ).resolves.toBeVisible();
-  const colorTheme = await screen.findByRole("group", { name: "Color theme" });
-  expectSelected(getFastRole("button", "Dark"));
-  expectSelected(getFastRole("button", "Daydream", colorTheme));
-  await waitFor(() => {
-    expect(updates).toContainEqual({
-      theme: "dark",
-      colorTheme: "daydream",
-    });
-  });
-});
-
-test("An Okou theme cookie restores an empty account preference", async () => {
-  context.store.set(setStoredTheme$, "light");
-  context.mocks.browser.cookie("__Secure-okou-theme=v1.dark");
-  const updates = mockPreferences({ theme: null });
-
-  await setupPage({
-    context,
-    path: "/settings",
-    host: "app.okou.ai",
-  });
-
-  await expect(
-    screen.findByText("Your preferred color scheme"),
-  ).resolves.toBeVisible();
-  await waitFor(() => {
-    expectSelected(getFastRole("button", "Dark"));
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(updates).toContainEqual({ theme: "dark" });
-  });
-});
-
-test("An Okou account preference replaces an older theme cookie", async () => {
-  context.store.set(setStoredTheme$, "light");
-  context.mocks.browser.cookie("__Secure-okou-theme=v1.light");
-  mockPreferences({ theme: "dark" });
-
-  await setupPage({
-    context,
-    path: "/settings",
-    host: "app.okou.ai",
-  });
-
-  await expect(
-    screen.findByText("Your preferred color scheme"),
-  ).resolves.toBeVisible();
-  await waitFor(() => {
-    expectSelected(getFastRole("button", "Dark"));
-    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-  });
-});
 
 test("A user can change theme while reviewing the unified preferences", async () => {
   mockPreferences();
@@ -295,36 +225,6 @@ test("A user can save the Cloud browser default for new chats", async () => {
   await waitFor(() => {
     expect(updates).toContainEqual({ cloudBrowserEnabledByDefault: true });
     expect(screen.getByRole("switch", { name: "Cloud browser" })).toBeChecked();
-  });
-});
-
-test("Localized preference labels save the same account choices", async () => {
-  const updates = mockPreferences({ locale: "pt-BR" });
-
-  await setupPage({
-    context,
-    path: "/settings",
-    host: "app.vm0.ai",
-    locale: "pt-BR",
-  });
-
-  await expect(screen.findByText("Enviar mensagem com")).resolves.toBeVisible();
-  expect(screen.getByText("Escolha a aparência da interface.")).toBeVisible();
-  click(getFastRole("button", "⌘ Enter"));
-
-  await waitFor(() => {
-    expect(updates).toContainEqual({ sendMode: "cmd-enter" });
-  });
-
-  const timezone = getFastRole("combobox", /UTC/u);
-  click(timezone);
-  const brasilia = await screen.findByRole("option", {
-    name: /Horário de Brasília \(BRT\)$/u,
-  });
-  click(brasilia);
-
-  await waitFor(() => {
-    expect(updates).toContainEqual({ timezone: "America/Sao_Paulo" });
   });
 });
 

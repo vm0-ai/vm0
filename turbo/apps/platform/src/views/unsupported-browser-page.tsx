@@ -34,7 +34,7 @@ const UPGRADE_COPY = {
   { readonly action: string; readonly title: string }
 >;
 
-export function UnsupportedBrowserPage({
+function UnsupportedBrowserPage({
   assistantName,
   upgrade,
 }: {

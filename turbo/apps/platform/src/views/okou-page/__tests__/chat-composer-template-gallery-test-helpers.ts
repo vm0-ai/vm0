@@ -35,7 +35,7 @@ export { AGENT_ID, THREAD_ID, context };
 
 export const TEMPLATE_FEATURES = { presentationTemplates: true } as const;
 
-export interface TemplateChatCapture {
+interface TemplateChatCapture {
   readonly sentMessages: UserMessageDocument[];
   readonly selectedTemplates: GenerationTemplateRequest[];
   readonly runPrompts: string[];
@@ -127,7 +127,7 @@ export function mockTemplateObjectUrls(): void {
   });
 }
 
-export function presentationHtml(slideTitles: readonly string[]): string {
+function presentationHtml(slideTitles: readonly string[]): string {
   return `<!doctype html><html><body>${slideTitles
     .map((title, index) => {
       return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1 data-vm0-editable="text">${title}</h1></section>`;
@@ -143,12 +143,6 @@ export function mockPresentationHtml(
     return new HttpResponse(presentationHtml(slideTitles), {
       headers: { "Content-Type": "text/html" },
     });
-  });
-}
-
-export function mockPresentationHtmlFailure(embedUrl: string): void {
-  context.mocks.http.get(embedUrl, () => {
-    return new HttpResponse(null, { status: 503 });
   });
 }
 
@@ -222,7 +216,7 @@ function summaryOf(
   return summary;
 }
 
-export interface PresentationLibraryControl {
+interface PresentationLibraryControl {
   readonly requests: {
     readonly listCount: number;
     readonly updates: {

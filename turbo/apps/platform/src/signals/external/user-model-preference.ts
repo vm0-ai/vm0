@@ -26,7 +26,7 @@ export const userModelPreference$ = computed(async (get) => {
   return result.body;
 });
 
-export const reloadUserModelPreference$ = command(({ set }) => {
+const reloadUserModelPreference$ = command(({ set }) => {
   set(internalReloadUserModelPreference$, (value) => {
     return value + 1;
   });
