@@ -656,14 +656,12 @@ def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
 
     Called from ``response()`` before usage reporting. Pops
     ``_MODEL_JSON_USAGE_FINISH``, so repeated calls after the first are no-ops.
-    On success, writes ``metadata_keys.MODEL_PROVIDER_USAGE``; when a parser was
-    finalized, writes ``metadata_keys.MODEL_JSON_USAGE_FINALIZED`` so fallback
-    body parsing does not run. Parse failures are logged to ``proxy_log_path``.
+    On success, writes ``metadata_keys.MODEL_PROVIDER_USAGE``. Parse failures
+    are logged to ``proxy_log_path``.
     """
     finish = flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
     if finish is None:
         return
-    flow.metadata[metadata_keys.MODEL_JSON_USAGE_FINALIZED] = True
     usage_result, error = finish()
     if usage_result:
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_result
