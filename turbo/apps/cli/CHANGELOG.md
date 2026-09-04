@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.310.0](https://github.com/vm0-ai/vm0/compare/cli-v9.309.6...cli-v9.310.0) (2026-09-04)
+
+
+### Features
+
+* **registry:** pull current presentation templates ([#31614](https://github.com/vm0-ai/vm0/issues/31614)) ([0d9edac](https://github.com/vm0-ai/vm0/commit/0d9edacec1340f700362a7353564bab015c40cf6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.401.0
+    * @okouai/core bumped to 8.620.0
+    * @okouai/pi-agent-runtime bumped to 1.16.0
+
 ## [9.309.6](https://github.com/vm0-ai/vm0/compare/cli-v9.309.5...cli-v9.309.6) (2026-09-04)
 
 

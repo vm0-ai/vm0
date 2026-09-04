@@ -31,14 +31,20 @@ interface PendingRequest {
 export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   private readonly pendingRequests = new Map<string, PendingRequest>();
   private readonly handleMessage: (event: MessageEvent<unknown>) => void;
-  private ownerSignal: AbortSignal | null = null;
+  private readonly handleBridgeAbort: () => void;
+  private registered = false;
   private closed = false;
   private closeReason: unknown = new Error("Shared database bridge is closed");
 
   constructor(
     private readonly port: SharedDatabasePortLike,
     private readonly events: SharedDatabaseBridgeEvents,
+    private readonly bridgeSignal: AbortSignal,
   ) {
+    bridgeSignal.throwIfAborted();
+    this.handleBridgeAbort = () => {
+      this.close(bridgeSignal.reason, false);
+    };
     this.handleMessage = onDomEventFn(async (event) => {
       const message = sharedDatabaseWorkerMessageSchema.parse(event.data);
       L.debug("got message from worker", message);
@@ -50,8 +56,8 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         await this.events.databaseReconnected();
         return;
       }
-      if (message.type === "reload-required") {
-        this.events.reloadRequired();
+      if (message.type === "worker-unavailable") {
+        this.events.workerUnavailable(message.reason);
         return;
       }
       if (message.type === "reload-computed") {
@@ -81,10 +87,14 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     });
     this.port.addEventListener("message", this.handleMessage);
     this.port.start();
+    bridgeSignal.addEventListener("abort", this.handleBridgeAbort, {
+      once: true,
+    });
   }
 
   registerTab(signal: AbortSignal): Promise<void> {
-    this.bindOwner(signal);
+    AbortSignal.any([signal, this.bridgeSignal]).throwIfAborted();
+    this.registered = true;
     this.emit({ type: "register-tab" });
     return Promise.resolve();
   }
@@ -96,14 +106,12 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
   async getComputed<TKey extends ComputedKey>(
     computedKey: TKey,
   ): Promise<ComputedValue<TKey>> {
-    const value = await this.request(
-      {
-        type: "get-computed",
-        requestId: crypto.randomUUID(),
-        computedKey,
-      },
-      this.requireOwnerSignal(),
-    );
+    this.requireRegistration();
+    const value = await this.request({
+      type: "get-computed",
+      requestId: crypto.randomUUID(),
+      computedKey,
+    });
     return parseComputedValue(computedKey, value);
   }
 
@@ -122,24 +130,6 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return parseSharedDatabaseQueryResult(query.dataKey, value);
   }
 
-  private bindOwner(signal: AbortSignal): void {
-    if (this.ownerSignal === signal) {
-      return;
-    }
-    if (this.ownerSignal !== null) {
-      throw new Error("Shared database bridge already has a lifecycle owner");
-    }
-    signal.throwIfAborted();
-    this.ownerSignal = signal;
-    signal.addEventListener(
-      "abort",
-      () => {
-        this.close(signal.reason, false);
-      },
-      { once: true },
-    );
-  }
-
   private request(
     message: Extract<
       SharedDatabaseClientMessage,
@@ -147,8 +137,11 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
         readonly type: "query" | "get-computed";
       }
     >,
-    signal: AbortSignal,
+    callerSignal?: AbortSignal,
   ): Promise<unknown> {
+    const signal = callerSignal
+      ? AbortSignal.any([callerSignal, this.bridgeSignal])
+      : this.bridgeSignal;
     signal.throwIfAborted();
     if (this.closed) {
       throw this.closeReason;
@@ -175,11 +168,10 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     return deferred.promise;
   }
 
-  private requireOwnerSignal(): AbortSignal {
-    if (!this.ownerSignal) {
+  private requireRegistration(): void {
+    if (!this.registered) {
       throw new Error("Shared database tab registration is required first");
     }
-    return this.ownerSignal;
   }
 
   private emit(message: SharedDatabaseClientMessage): void {
@@ -196,6 +188,7 @@ export class MessagePortSharedDatabaseBridge implements SharedDatabaseBridge {
     } satisfies SharedDatabaseClientMessage);
     this.closed = true;
     this.closeReason = reason;
+    this.bridgeSignal.removeEventListener("abort", this.handleBridgeAbort);
     this.port.removeEventListener("message", this.handleMessage);
     this.port.close();
     for (const pending of this.pendingRequests.values()) {

@@ -3,7 +3,7 @@ import { getAvatarPresets } from "./avatars.ts";
 import {
   AVATAR_SVG_PREFIX,
   parseAvatarSvgConfig,
-  type AvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
 } from "./avatar-svg-utils.ts";
 
 /**
@@ -12,7 +12,7 @@ import {
  */
 export function resolveAvatarSvgConfig(
   avatarUrl: string | null | undefined,
-): AvatarSvgConfig | null {
+): ResolvedAvatarSvgConfig | null {
   if (!avatarUrl) {
     return null;
   }
@@ -21,16 +21,13 @@ export function resolveAvatarSvgConfig(
     const idx = Number(avatarUrl.slice(AVATAR_PRESET_PREFIX.length));
     return presets[idx] ?? presets[0];
   }
-  if (avatarUrl.startsWith(AVATAR_SVG_PREFIX)) {
-    return parseAvatarSvgConfig(avatarUrl);
-  }
-  return null;
+  return parseAvatarSvgConfig(avatarUrl);
 }
 
 /**
  * Resolve an avatarUrl value to a displayable image source.
  * - `preset:N` → null (rendered via AvatarSvgPreview)
- * - `svg:...`  → null (rendered via AvatarSvgPreview)
+ * - legacy `svg:...` and valid composer URLs → null (rendered via layers)
  * - any other string → treated as a URL (custom upload)
  * - null/undefined → null (caller should fall back)
  */
@@ -43,7 +40,10 @@ export function resolveAvatarUrl(
   if (avatarUrl.startsWith(AVATAR_PRESET_PREFIX)) {
     return null;
   }
-  if (avatarUrl.startsWith(AVATAR_SVG_PREFIX)) {
+  if (
+    avatarUrl.startsWith(AVATAR_SVG_PREFIX) ||
+    parseAvatarSvgConfig(avatarUrl)
+  ) {
     return null;
   }
   return avatarUrl;

@@ -27,12 +27,7 @@ import { orgCustomConnectorOauthConfigs } from "@okouai/db/schema/org-custom-con
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { secrets } from "@okouai/db/schema/secret";
 
-import {
-  badGateway,
-  badRequestMessage,
-  conflict,
-  notFound,
-} from "../../lib/error";
+import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import {
   connectorOAuthStateExpiresAt,
@@ -85,6 +80,7 @@ import {
 import { mcpOAuthSafeFetch } from "./mcp-oauth-safe-fetch.service";
 import {
   CustomConnectorAutomaticOAuthError,
+  customConnectorAutomaticOAuthErrorCode,
   isAutomaticOAuthInvalidClient,
   isAutomaticOAuthInvalidGrant,
   prepareCustomConnectorAutomaticOAuthAuthorization,
@@ -93,7 +89,7 @@ import {
   refreshCustomConnectorAutomaticOAuthToken,
   retireCustomConnectorDcrRegistration,
   type CustomConnectorAutomaticOAuthBinding,
-  type LegacyCustomConnectorAutomaticOAuthStateContext,
+  type CustomConnectorCanonicalAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
 } from "./custom-connector-automatic-oauth.service";
 import { configuredOkouMcpOAuthClientMetadata } from "./mcp-oauth-client-metadata.service";
 
@@ -266,14 +262,6 @@ const customConnectorOAuthStateContextSchema = z.union([
 type CustomConnectorOAuthStateContext = z.infer<
   typeof customConnectorOAuthStateContextSchema
 >;
-
-type CustomConnectorLegacyCustomOAuthStateContext = z.infer<
-  typeof customConnectorLegacyCustomOAuthStateContextSchema
->;
-
-type CustomConnectorLegacyOAuthStateContext =
-  | CustomConnectorLegacyCustomOAuthStateContext
-  | LegacyCustomConnectorAutomaticOAuthStateContext;
 
 export type CustomConnectorCustomOAuthStateContext = z.infer<
   typeof customConnectorCustomOAuthStateContextSchema
@@ -672,16 +660,22 @@ interface StartCustomConnectorOAuth2Args {
   };
 }
 
-interface PreparedOAuthStart {
-  readonly oauthSetup: "custom" | "automatic";
+type PreparedOAuthStart = {
   readonly redirectUri: string;
   readonly state: string;
   readonly authorizationUrl: string;
   readonly codeVerifier: string | null;
   readonly oauthRequestedScopes: string | null;
-  // Keep emitting the legacy callback state until #31471 is deployed.
-  readonly context: CustomConnectorLegacyOAuthStateContext;
-}
+} & (
+  | {
+      readonly authMode: "oauth";
+      readonly context: CustomConnectorCanonicalCustomOAuthStateContext;
+    }
+  | {
+      readonly authMode: "automatic";
+      readonly context: PreparedCustomConnectorAutomaticOAuthStateContext;
+    }
+);
 
 function connectorConnectionMutationFailure(
   resolution: ConnectorConnectionMutationResolution,
@@ -709,7 +703,7 @@ function prepareCustomOAuthStart(
   const codeVerifier =
     connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
   return {
-    oauthSetup: "custom",
+    authMode: "oauth",
     redirectUri: args.redirectUri,
     state,
     authorizationUrl: buildCustomConnectorOAuth2AuthorizationUrl({
@@ -721,7 +715,8 @@ function prepareCustomOAuthStart(
     codeVerifier,
     oauthRequestedScopes: null,
     context: {
-      oauthSetup: "custom",
+      version: 2,
+      authMode: "oauth",
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
       ...(connector.oauthConfig.providerAdapter === "feishu" &&
@@ -803,16 +798,29 @@ async function prepareAutomaticOAuthStart(
     if (!(error instanceof CustomConnectorAutomaticOAuthError)) {
       throw error;
     }
+    const code = customConnectorAutomaticOAuthErrorCode(error);
     const response =
       error.kind === "temporary"
-        ? badGateway(
-            "MCP OAuth provider is temporarily unavailable. Please try again.",
-          )
-        : badRequestMessage(
-            error.kind === "unsafe"
-              ? "MCP OAuth provider uses an unsafe URL"
-              : "MCP OAuth provider is not compatible with Automatic OAuth. Configure a Custom OAuth app instead.",
-          );
+        ? {
+            status: 502 as const,
+            body: {
+              error: {
+                code,
+                message:
+                  "The MCP OAuth provider is temporarily unavailable. Try again later.",
+              },
+            },
+          }
+        : {
+            status: 400 as const,
+            body: {
+              error: {
+                code,
+                message:
+                  "Automatic MCP OAuth setup failed. Check the server's OAuth configuration or choose another authentication method.",
+              },
+            },
+          };
     return { ok: false as const, response };
   }
   const prepared = automatic.value;
@@ -824,14 +832,14 @@ async function prepareAutomaticOAuthStart(
     result: {
       kind: "oauth" as const,
       prepared: {
-        oauthSetup: "automatic",
+        authMode: "automatic",
         redirectUri: client.redirectUri,
         state,
         authorizationUrl: prepared.authorizationUrl,
         codeVerifier: prepared.codeVerifier,
         oauthRequestedScopes: prepared.requestedScope,
         context:
-          prepared.context satisfies LegacyCustomConnectorAutomaticOAuthStateContext,
+          prepared.context satisfies PreparedCustomConnectorAutomaticOAuthStateContext,
       } satisfies PreparedOAuthStart,
     },
   };
@@ -855,7 +863,7 @@ async function persistCustomConnectorOAuthStart(
       orgId: args.orgId,
       connectorId: connector.id,
       storageVersion: connector.storageVersion,
-      authMode: prepared.oauthSetup === "automatic" ? "automatic" : "oauth",
+      authMode: prepared.authMode,
     });
     const resolution = await resolveConnectorConnectionMutation(tx, {
       orgId: args.orgId,
@@ -1158,11 +1166,28 @@ function automaticOAuthReauthorizationFailure(error: unknown) {
   if (!(error instanceof CustomConnectorAutomaticOAuthError)) {
     throw error;
   }
+  const code = customConnectorAutomaticOAuthErrorCode(error);
   return error.kind === "temporary"
-    ? badGateway(
-        "MCP OAuth provider is temporarily unavailable. Please try again.",
-      )
-    : conflict("MCP OAuth authority or client binding changed");
+    ? {
+        status: 502 as const,
+        body: {
+          error: {
+            code,
+            message:
+              "The MCP OAuth provider is temporarily unavailable. Try again later.",
+          },
+        },
+      }
+    : {
+        status: 409 as const,
+        body: {
+          error: {
+            code,
+            message:
+              "Automatic MCP OAuth authorization changed. Reconnect the account and try again.",
+          },
+        },
+      };
 }
 
 function automaticOAuthReauthorizationUnavailable(
@@ -1277,7 +1302,7 @@ export const startCustomConnectorAutomaticOAuthReauthorization$ = command(
         },
         featureContext,
         prepared: {
-          oauthSetup: "automatic",
+          authMode: "automatic",
           redirectUri,
           state,
           authorizationUrl: prepared.authorizationUrl,

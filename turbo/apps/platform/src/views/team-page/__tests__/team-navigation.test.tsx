@@ -3,6 +3,7 @@ import {
   chatThreadsContract,
   chatThreadEventsContract,
 } from "@okouai/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { expect, test } from "vitest";
 
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -158,6 +159,7 @@ test("A user opens avatar customization from an agent", async () => {
   await setupTeamPage({
     context,
     path: `/agents/${RESEARCH_AGENT_ID}`,
+    featureSwitches: { [FeatureSwitchKey.AvatarComposerV2]: true },
   });
 
   const agentHeading = await screen.findByRole("heading", {
@@ -172,7 +174,7 @@ test("A user opens avatar customization from an agent", async () => {
     name: "Give your agent a face",
   });
   expect(dialog).toBeVisible();
-  expect(within(dialog).getByText("Angle")).toBeVisible();
+  expect(within(dialog).getByText("Face")).toBeVisible();
 });
 
 test("A user starts a chat from an agent's detail page", async () => {

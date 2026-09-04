@@ -45,7 +45,7 @@ Add an entry to the `FEATURE_SWITCHES` record:
 
 ```typescript
 [FeatureSwitchKey.MyFeature]: {
-  maintainer: "you@vm0.ai",
+  maintainer: "you@okou.ai",
   enabled: false,
   enabledOrgIdHashes: STAFF_ORG_ID_HASHES, // optional: staff-only access
 },

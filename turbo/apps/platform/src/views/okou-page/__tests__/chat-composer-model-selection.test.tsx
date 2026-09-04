@@ -420,7 +420,8 @@ test("Explain model availability by plan and provider", async () => {
     modelPolicy("gpt-5.6-luna", 2),
     modelPolicy("gpt-5.6-sol", 3),
     modelPolicy("claude-fable-5-1", 4),
-    modelPolicy("claude-sonnet-4-6", 5, {
+    modelPolicy("gpt-6-astra", 5),
+    modelPolicy("claude-sonnet-4-6", 6, {
       providerType: "anthropic-api-key",
       credentialScope: "member",
     }),
@@ -439,7 +440,10 @@ test("Explain model availability by plan and provider", async () => {
   expect(
     screen.getByRole("option", { name: /^GPT 5\.6 Luna/iu }),
   ).toBeVisible();
-  expect(screen.getAllByText("Pro")).toHaveLength(3);
+  expect(
+    screen.getByRole("option", { name: /^GPT 6 Astra.*Pro/iu }),
+  ).toBeVisible();
+  expect(screen.getAllByText("Pro")).toHaveLength(4);
   expect(screen.getByText("BYOK")).toBeVisible();
 
   await user.click(

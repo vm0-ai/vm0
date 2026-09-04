@@ -1,89 +1,153 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import {
-  type AvatarSvgConfig,
-  randomAvatarSvgConfig,
-} from "../../../views/okou-page/avatar-svg-utils.ts";
+  updateAvatarComposerConfig,
+  type AvatarComposerSelection,
+} from "@okouai/core/agent-avatar";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
-export type Step =
+import {
+  isLegacyAvatarSvgConfig,
+  randomAvatarSvgConfig,
+  randomLegacyAvatarSvgConfig,
+  type LegacyAvatarSvgConfig,
+  type ResolvedAvatarSvgConfig,
+} from "../../../views/okou-page/avatar-svg-utils.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
+
+export type ComposerStep =
+  | "face"
+  | "hair"
+  | "expression"
+  | "skin"
+  | "hairColor";
+export type LegacyStep =
   | "rotation"
   | "skin"
   | "hairStyle"
   | "hairColor"
   | "expression"
   | "intensity";
+export type Step = ComposerStep | LegacyStep;
 
-export const AVATAR_MAKER_STEPS = [
+type LegacyAvatarMakerSelection =
+  | {
+      readonly mode: "legacy";
+      readonly field: "rotation";
+      readonly value: number;
+    }
+  | { readonly mode: "legacy"; readonly field: "skin"; readonly value: number }
+  | {
+      readonly mode: "legacy";
+      readonly field: "hairStyle";
+      readonly value: number;
+    }
+  | {
+      readonly mode: "legacy";
+      readonly field: "hairColor";
+      readonly value: number;
+    }
+  | {
+      readonly mode: "legacy";
+      readonly field: "expression";
+      readonly value: number;
+    }
+  | {
+      readonly mode: "legacy";
+      readonly field: "intensity";
+      readonly value: LegacyAvatarSvgConfig["intensity"];
+    };
+
+export type AvatarMakerSelection =
+  | ({ readonly mode: "composer" } & AvatarComposerSelection)
+  | LegacyAvatarMakerSelection;
+
+export const AVATAR_MAKER_STEPS: readonly Step[] = [
+  "face",
+  "hair",
+  "expression",
+  "skin",
+  "hairColor",
+];
+
+const LEGACY_AVATAR_MAKER_STEPS: readonly Step[] = [
   "rotation",
   "skin",
   "hairStyle",
   "hairColor",
   "expression",
   "intensity",
-] as const;
+];
 
-// ---------------------------------------------------------------------------
-// Dialog open state
-// ---------------------------------------------------------------------------
+function stepsForConfig(config: ResolvedAvatarSvgConfig): readonly Step[] {
+  return isLegacyAvatarSvgConfig(config)
+    ? LEGACY_AVATAR_MAKER_STEPS
+    : AVATAR_MAKER_STEPS;
+}
+
+function updateLegacyConfig(
+  config: LegacyAvatarSvgConfig,
+  selection: LegacyAvatarMakerSelection,
+): LegacyAvatarSvgConfig {
+  switch (selection.field) {
+    case "rotation": {
+      return { ...config, rotation: selection.value };
+    }
+    case "skin": {
+      return { ...config, skin: selection.value };
+    }
+    case "hairStyle": {
+      return { ...config, hairStyle: selection.value };
+    }
+    case "hairColor": {
+      return { ...config, hairColor: selection.value };
+    }
+    case "expression": {
+      return { ...config, expression: selection.value };
+    }
+    case "intensity": {
+      return { ...config, intensity: selection.value };
+    }
+  }
+}
 
 const internalOpen$ = state(false);
 export const avatarMakerOpen$ = computed((get) => {
   return get(internalOpen$);
 });
 
-// ---------------------------------------------------------------------------
-// Avatar config state
-// ---------------------------------------------------------------------------
-
-const internalConfig$ = state<AvatarSvgConfig>(randomAvatarSvgConfig());
+const internalConfig$ = state<ResolvedAvatarSvgConfig>(randomAvatarSvgConfig());
 export const avatarMakerConfig$ = computed((get) => {
   return get(internalConfig$);
 });
 
-// ---------------------------------------------------------------------------
-// Current step
-// ---------------------------------------------------------------------------
-
-const internalStep$ = state<Step>("rotation");
+const internalStep$ = state<Step>("face");
 export const avatarMakerStep$ = computed((get) => {
   return get(internalStep$);
 });
 
-export const avatarMakerStepIdx$ = computed((get) => {
-  const step = get(internalStep$);
-  return AVATAR_MAKER_STEPS.indexOf(step);
+export const avatarMakerSteps$ = computed((get) => {
+  return stepsForConfig(get(internalConfig$));
 });
 
-// ---------------------------------------------------------------------------
-// Just-picked state (for animation feedback)
-// ---------------------------------------------------------------------------
+export const avatarMakerStepIdx$ = computed((get) => {
+  return get(avatarMakerSteps$).indexOf(get(internalStep$));
+});
 
 const internalJustPicked$ = state<string | null>(null);
 export const avatarMakerJustPicked$ = computed((get) => {
   return get(internalJustPicked$);
 });
 
-// ---------------------------------------------------------------------------
-// Show sparkles state (separate from justPicked for animation timing)
-// ---------------------------------------------------------------------------
-
 const internalShowSparkles$ = state(false);
 export const avatarMakerShowSparkles$ = computed((get) => {
   return get(internalShowSparkles$);
 });
 
-// ---------------------------------------------------------------------------
-// Shuffling state (dice animation)
-// ---------------------------------------------------------------------------
-
 const internalShuffling$ = state(false);
 export const avatarMakerShuffling$ = computed((get) => {
   return get(internalShuffling$);
 });
-
-// ---------------------------------------------------------------------------
-// Saving state
-// ---------------------------------------------------------------------------
 
 const internalSaving$ = state(false);
 export const avatarMakerSaving$ = computed((get) => {
@@ -93,70 +157,86 @@ export const setAvatarMakerSaving$ = command(({ set }, value: boolean) => {
   set(internalSaving$, value);
 });
 
-// ---------------------------------------------------------------------------
-// Commands
-// ---------------------------------------------------------------------------
+export const shuffleAvatar$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const config = get(internalConfig$);
+    set(
+      internalConfig$,
+      isLegacyAvatarSvgConfig(config)
+        ? randomLegacyAvatarSvgConfig()
+        : randomAvatarSvgConfig(),
+    );
+    set(internalShuffling$, true);
+    set(internalShowSparkles$, true);
+    await delay(600, { signal });
+    set(internalShuffling$, false);
+    set(internalShowSparkles$, false);
+  },
+);
 
-/** Randomize the avatar config with dice animation and sparkles. */
-export const shuffleAvatar$ = command(async ({ set }, signal: AbortSignal) => {
-  set(internalConfig$, randomAvatarSvgConfig());
-  set(internalShuffling$, true);
-  set(internalShowSparkles$, true);
-  await delay(600, { signal });
-  set(internalShuffling$, false);
-  set(internalShowSparkles$, false);
-});
-
-/** Open the dialog with a fresh random avatar. */
-export const openAvatarMaker$ = command(({ set }) => {
-  set(internalConfig$, randomAvatarSvgConfig());
-  set(internalStep$, "rotation");
+export const openAvatarMaker$ = command(({ get, set }) => {
+  const composerEnabled =
+    get(featureSwitch$)[FeatureSwitchKey.AvatarComposerV2];
+  set(
+    internalConfig$,
+    composerEnabled ? randomAvatarSvgConfig() : randomLegacyAvatarSvgConfig(),
+  );
+  set(internalStep$, composerEnabled ? "face" : "rotation");
   set(internalJustPicked$, null);
   set(internalShowSparkles$, false);
   set(internalShuffling$, false);
   set(internalOpen$, true);
 });
 
-/** Select an option for the current step. Auto-advances after a delay. */
 export const selectAvatarOption$ = command(
   async (
     { get, set },
-    field: Step,
-    value: number | string,
+    selection: AvatarMakerSelection,
     signal: AbortSignal,
   ) => {
-    set(internalJustPicked$, `${field}-${value}`);
-    set(internalShowSparkles$, true);
-    const prev = get(internalConfig$);
-    set(internalConfig$, { ...prev, [field]: value });
+    const previous = get(internalConfig$);
+    if (isLegacyAvatarSvgConfig(previous)) {
+      if (selection.mode !== "legacy") {
+        return;
+      }
+      set(internalConfig$, updateLegacyConfig(previous, selection));
+    } else {
+      if (selection.mode !== "composer") {
+        return;
+      }
+      set(internalConfig$, updateAvatarComposerConfig(previous, selection));
+    }
 
+    set(internalJustPicked$, `${selection.field}-${selection.value}`);
+    set(internalShowSparkles$, true);
     await delay(350, { signal });
     set(internalJustPicked$, null);
     set(internalShowSparkles$, false);
-    const idx = AVATAR_MAKER_STEPS.indexOf(field);
-    if (idx + 1 < AVATAR_MAKER_STEPS.length) {
-      set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!);
+
+    const steps = stepsForConfig(previous);
+    const idx = steps.indexOf(selection.field);
+    if (idx + 1 < steps.length) {
+      set(internalStep$, steps[idx + 1]!);
     }
   },
 );
 
-/** Go back one step. */
 export const goBackStep$ = command(({ get, set }) => {
+  const steps = get(avatarMakerSteps$);
   const idx = get(avatarMakerStepIdx$);
   if (idx > 0) {
-    set(internalStep$, AVATAR_MAKER_STEPS[idx - 1]!);
+    set(internalStep$, steps[idx - 1]!);
   }
 });
 
-/** Go forward one step. */
 export const goForwardStep$ = command(({ get, set }) => {
+  const steps = get(avatarMakerSteps$);
   const idx = get(avatarMakerStepIdx$);
-  if (idx + 1 < AVATAR_MAKER_STEPS.length) {
-    set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!);
+  if (idx + 1 < steps.length) {
+    set(internalStep$, steps[idx + 1]!);
   }
 });
 
-/** Close the dialog. */
 export const closeAvatarMaker$ = command(({ set }) => {
   set(internalOpen$, false);
   set(internalShowSparkles$, false);

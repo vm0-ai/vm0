@@ -13,6 +13,7 @@ const context = testContext();
 const NOW = Date.parse("2026-08-25T00:00:00.000Z");
 const NOW_SECONDS = Math.floor(NOW / 1000);
 const SECRET = "a".repeat(64);
+const REDIRECT_URI = "https://app.vm0.ai/connectors/feishu/callback";
 
 function oauthClient() {
   return setupApp({ context, routes: feishuOauthRoutes })(feishuOauthContract);
@@ -24,6 +25,7 @@ function statePayload(): Readonly<Record<string, unknown>> {
     orgId: `org_${randomUUID()}`,
     userId: `user_${randomUUID()}`,
     callbackTarget: "app",
+    redirectUri: REDIRECT_URI,
     timestamp: NOW_SECONDS,
   };
 }
@@ -58,6 +60,7 @@ describe("Feishu OAuth state", () => {
   it.each(["vm0", "okou"] as const)(
     "passes an explicit %s public brand to installation validation",
     async (publicBrand) => {
+      expect.hasAssertions();
       await expectConnectError(
         signedState({ ...statePayload(), publicBrand }),
         "Feishu bot not found",
@@ -79,13 +82,24 @@ describe("Feishu OAuth state", () => {
       payload: { ...statePayload(), publicBrand: "zero" },
     },
   ])("rejects an $kind public brand", async ({ payload }) => {
+    expect.hasAssertions();
     await expectConnectError(
       signedState(payload),
       "Invalid or expired connect state",
     );
   });
 
+  it("rejects an omitted redirect URI", async () => {
+    expect.hasAssertions();
+    const { redirectUri: _redirectUri, ...payload } = statePayload();
+    await expectConnectError(
+      signedState({ ...payload, publicBrand: "vm0" }),
+      "Invalid or expired connect state",
+    );
+  });
+
   it("preserves the 10-minute expiration boundary", async () => {
+    expect.hasAssertions();
     await expectConnectError(
       signedState({
         ...statePayload(),
@@ -105,6 +119,7 @@ describe("Feishu OAuth state", () => {
   });
 
   it("rejects a state signed with a different secret", async () => {
+    expect.hasAssertions();
     await expectConnectError(
       signedState({ ...statePayload(), publicBrand: "vm0" }, "b".repeat(64)),
       "Invalid or expired connect state",

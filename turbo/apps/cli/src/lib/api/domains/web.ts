@@ -610,6 +610,20 @@ function statusForBuiltInGenerationError(code: string): number {
     return 504;
   }
   if (
+    code === "GENERATION_OUTPUT_SAFETY_BLOCKED" ||
+    code === "GENERATION_INPUT_SAFETY_REJECTED" ||
+    code === "GENERATION_INPUT_MEDIA_UNREACHABLE" ||
+    code === "GENERATION_INPUT_MEDIA_INVALID"
+  ) {
+    return 422;
+  }
+  if (code === "GENERATION_INVALID_PARAMETERS") {
+    return 400;
+  }
+  if (code === "GENERATION_PROVIDER_UNAVAILABLE") {
+    return 503;
+  }
+  if (
     code.startsWith("BYTEPLUS_INVALID_PARAMETER") ||
     code.startsWith("BYTEPLUS_INPUT_")
   ) {

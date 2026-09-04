@@ -12,7 +12,7 @@ metadata, native helper builds, and release verification all use the same
 minimum for Apple silicon artifacts. Intel Macs are not supported.
 
 When the user is signed in and the feature switch is enabled, the main process
-registers a Desktop Computer Use host through the Zero API command queue. It
+registers a Desktop Computer Use host through the platform API command queue. It
 uses the Electron session for auth, polls queued commands, executes them with a
 native macOS `computer-use-helper`, and completes commands back to the API.
 Electron only owns the app shell and command bridge; the helper owns macOS

@@ -167,6 +167,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "gpt-6-astra": "GPT 6 Astra",
   "gpt-5.6-sol": "GPT 5.6 Sol",
   "gpt-5.6-terra": "GPT 5.6 Terra",
   "gpt-5.6-luna": "GPT 5.6 Luna",
@@ -185,6 +186,7 @@ export function isSupportedRunModel(
 
 /** Models supported by the Codex Fast service tier. */
 export const CODEX_FAST_MODE_MODELS = [
+  "gpt-6-astra",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -338,6 +340,18 @@ export const VM0_MODEL_TO_PROVIDER = {
       },
     ],
   },
+  // Permanent Built-in availability routing: prefer OpenAI, then use
+  // OpenRouter when the primary candidate has no key or is in cooldown.
+  // This is operational routing, not a cross-version compatibility bridge.
+  "gpt-6-astra": {
+    candidates: [
+      { concreteType: "openai-api-key" },
+      {
+        concreteType: "openrouter-codex",
+        apiModel: "openai/gpt-6-astra",
+      },
+    ],
+  },
   "gpt-5.6-sol": {
     candidates: [
       { concreteType: "openai-api-key" },
@@ -465,6 +479,8 @@ export function isLimitedFree1RestrictedRunModel(
 export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
+  "gpt-6-astra",
+  "openai/gpt-6-astra",
   "claude-fable-5-1",
   "claude-fable-5",
   "claude-opus-5",
@@ -675,6 +691,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "openai/gpt-6-astra",
       "openai/gpt-5.6-sol",
       "openai/gpt-5.6-terra",
       "openai/gpt-5.6-luna",
@@ -719,6 +736,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -793,6 +811,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -966,6 +985,12 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "gpt-6-astra": [
+    "built-in",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+  ],
   "gpt-5.6-sol": [
     "built-in",
     "openai-api-key",
@@ -1018,6 +1043,7 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
   "openrouter-codex": {
+    "gpt-6-astra": "openai/gpt-6-astra",
     "gpt-5.6-sol": "openai/gpt-5.6-sol",
     "gpt-5.6-terra": "openai/gpt-5.6-terra",
     "gpt-5.6-luna": "openai/gpt-5.6-luna",

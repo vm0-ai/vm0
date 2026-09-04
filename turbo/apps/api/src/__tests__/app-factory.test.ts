@@ -42,7 +42,7 @@ const NEWER_WEB_CLIENT_VERSION = MINIMUM_WEB_CLIENT_VERSION.replace(
 const { mockFlushLogs } = vi.hoisted(() => {
   return {
     // eslint-disable-next-line api/no-test-vi-mocks
-    mockFlushLogs: vi.fn(),
+    mockFlushLogs: vi.fn<typeof import("../lib/log").flushLogs>(),
   };
 });
 

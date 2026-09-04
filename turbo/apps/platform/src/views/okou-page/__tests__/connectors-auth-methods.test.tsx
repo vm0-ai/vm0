@@ -35,6 +35,10 @@ import {
 
 const context = testContext();
 
+function legacyConnectorFeatureSwitches() {
+  return { [FeatureSwitchKey.ConnectorAccounts]: false };
+}
+
 function createAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
   Object.defineProperty(authWindow, "location", {
@@ -339,7 +343,11 @@ test("Choose a credential-free method among multiple connection methods", async 
       return respond(200, connectedConnector("stripe", body.authMethod));
     },
   );
-  await setupPage({ context, path: "/connectors?keywords=public+stripe" });
+  await setupPage({
+    context,
+    path: "/connectors?keywords=public+stripe",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect Public Stripe");
@@ -391,7 +399,11 @@ test("Authorize eligible agents after a manual connection", async () => {
     },
   );
   mockAgentConnectorAccess("axiom");
-  await setupPage({ context, path: "/connectors?keywords=axiom" });
+  await setupPage({
+    context,
+    path: "/connectors?keywords=axiom",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect Public Axiom");
@@ -439,7 +451,11 @@ test("Connect through device authorization", async () => {
     }),
   ]);
   const browserOpen = context.mocks.browser.open(createAuthWindow());
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect Base44");
@@ -492,7 +508,11 @@ test("Connect with a manual credential", async () => {
       return respond(200, connectedConnector("axiom", body.authMethod));
     },
   );
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect Public Axiom");
@@ -538,7 +558,11 @@ test("Enable a connector that needs no credentials", async () => {
     },
   );
   mockAgentConnectorAccess("stripe");
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
 
   click(
     await waitFor(() => {
@@ -651,7 +675,11 @@ test("Complete OAuth only after the selected connector changes", async () => {
   context.mocks.api(connectorsMainContract.list, ({ respond }) => {
     return respond(200, { connectors: listed, connectorProvidedBindings: [] });
   });
-  await setupPage({ context, path: "/connectors?keywords=public+stripe" });
+  await setupPage({
+    context,
+    path: "/connectors?keywords=public+stripe",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect Public Stripe");
@@ -1087,7 +1115,11 @@ test("Submit credentials only for the chosen manual method", async () => {
       return respond(200, connectedConnector("axiom", body.authMethod));
     },
   );
-  await setupPage({ context, path: "/connectors" });
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: legacyConnectorFeatureSwitches(),
+  });
   click(
     await waitFor(() => {
       return getConnectorAction("button", "Connect Public Axiom");

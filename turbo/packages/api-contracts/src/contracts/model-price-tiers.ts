@@ -14,6 +14,7 @@ export const SUPPORTED_RUN_MODELS = [
   "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
+  "gpt-6-astra",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -37,6 +38,7 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "claude-fable-5-1": "$$$$",
   "claude-fable-5": "$$$$",
   "claude-opus-5": "$$$",
+  "gpt-6-astra": "$$$$",
   "gpt-5.6-sol": "$$$",
   "gpt-5.6-terra": "$$",
   "gpt-5.6-luna": "$",
@@ -56,6 +58,7 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
 export const MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Readonly<
   Partial<Record<SupportedRunModel, number>>
 > = Object.freeze({
+  "gpt-6-astra": 272_001,
   "gpt-5.5": 272_001,
   "gpt-5.6-sol": 272_001,
   "gpt-5.6-terra": 272_001,

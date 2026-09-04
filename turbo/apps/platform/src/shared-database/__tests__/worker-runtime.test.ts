@@ -505,6 +505,47 @@ test("Rebuild chat data after its saved cursor expires", async () => {
   }
 });
 
+test("Report only non-empty tails from a batched chat catch-up", async () => {
+  const { runtime } = startRuntime();
+  const unchangedThreadId = crypto.randomUUID();
+  const updatedThreadId = crypto.randomUUID();
+  const updatedRow = chatEventRow(updatedThreadId, 1);
+  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+    expect(body).toStrictEqual([
+      [unchangedThreadId, 0],
+      [updatedThreadId, 0],
+    ]);
+    return respond(200, {
+      events: {
+        [unchangedThreadId]: [],
+        [updatedThreadId]: [updatedRow],
+      },
+      notFoundThreads: [],
+    });
+  });
+
+  await expect(
+    runtime.catchUpChatEvents(
+      [unchangedThreadId, updatedThreadId],
+      context.signal,
+    ),
+  ).resolves.toStrictEqual([updatedThreadId]);
+  await expect(
+    queryRuntime(runtime, {
+      dataKey: chatEventKey(unchangedThreadId),
+      afterSeqId: null,
+      consistency: "cache-only",
+    }),
+  ).resolves.toStrictEqual([]);
+  await expect(
+    queryRuntime(runtime, {
+      dataKey: chatEventKey(updatedThreadId),
+      afterSeqId: null,
+      consistency: "cache-only",
+    }),
+  ).resolves.toStrictEqual([updatedRow]);
+});
+
 test("Rebuild a cached chat when batched catch-up cannot continue its cursor", async () => {
   const { runtime } = startRuntime();
   const dataKey = chatEventKey(crypto.randomUUID());
@@ -585,7 +626,10 @@ test("Continue online when local chat storage becomes unavailable", async () => 
   await vi.waitFor(() => {
     expect(
       events.filter((event) => {
-        return event.type === "reload-required";
+        return (
+          event.type === "worker-unavailable" &&
+          event.reason === "indexeddb-version-changed"
+        );
       }),
     ).toHaveLength(1);
   });

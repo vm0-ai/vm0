@@ -1002,6 +1002,63 @@ export async function activePersonalModelProviderAccount(args: {
   return account ?? null;
 }
 
+/**
+ * Capture the concrete ChatGPT account selected for one run admission.
+ *
+ * A non-null candidate can name either the logical provider row or an already
+ * captured account row. Unknown/stale explicit IDs fail closed instead of
+ * falling back to whichever sibling account is active.
+ */
+export async function captureActiveCodexModelProviderAccount(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelProviderId: string | null;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<AccountRow | null> {
+  if (args.modelProviderId !== null) {
+    const exactAccount = await personalModelProviderAccountById({
+      db: args.db,
+      id: args.modelProviderId,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    if (exactAccount) {
+      return exactAccount.type === CODEX_TYPE ? exactAccount : null;
+    }
+  }
+
+  const [provider] = await args.db
+    .select()
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, args.orgId),
+        eq(modelProviders.userId, args.userId),
+        eq(modelProviders.type, CODEX_TYPE),
+        ...(args.modelProviderId === null
+          ? []
+          : [eq(modelProviders.id, args.modelProviderId)]),
+      ),
+    )
+    .limit(1);
+  if (!provider) {
+    return null;
+  }
+  await ensurePersonalModelProviderAccount({
+    db: args.db,
+    provider,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  const account = await activePersonalModelProviderAccount({
+    db: args.db,
+    modelProviderId: provider.id,
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  return account?.type === CODEX_TYPE ? account : null;
+}
+
 export async function personalModelProviderAccountById(args: {
   readonly db: Db;
   readonly id: string;

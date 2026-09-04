@@ -68,7 +68,7 @@ describe("POST /api/voice-io/polish", () => {
       text: "Ship the release on Monday.",
     });
     expect(requestBody).toMatchObject({
-      model: "google/gemini-3.1-flash-lite",
+      model: "google/gemini-3.8-flash",
       max_tokens: 65_536,
       temperature: 0,
       reasoning: { effort: "none" },

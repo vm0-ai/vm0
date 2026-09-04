@@ -785,6 +785,167 @@ describe("okou generate image command", () => {
     expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
   });
 
+  it("should explain an async output safety block with manual retry guidance", async () => {
+    let statusRequested = false;
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json(
+          {
+            generationId: IMAGE_GENERATION_ID,
+            type: "image",
+            status: "queued",
+            realtime: {
+              channelName: "user:user-1",
+              eventName: `built-in-generation:${IMAGE_GENERATION_ID}`,
+              tokenRequest: {
+                keyName: "test-key",
+                timestamp: 1_700_000_000_000,
+                capability: '{"user:user-1":["subscribe"]}',
+                clientId: "user-1",
+                nonce: "test-nonce",
+                mac: "test-mac",
+              },
+            },
+          },
+          { status: 202 },
+        );
+      }),
+      http.get(IMAGE_STATUS_URL, () => {
+        statusRequested = true;
+        return HttpResponse.json({
+          generationId: IMAGE_GENERATION_ID,
+          type: "image",
+          status: "failed",
+          error: {
+            message: "The generated image was blocked by the safety filter.",
+            code: "GENERATION_OUTPUT_SAFETY_BLOCKED",
+          },
+          createdAt: "2026-05-15T00:00:00.000Z",
+          startedAt: "2026-05-15T00:00:01.000Z",
+          completedAt: "2026-05-15T00:00:02.000Z",
+        });
+      }),
+    );
+
+    await expect(async () => {
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        "image",
+        "--raw-prompt",
+        "A safe landscape",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(statusRequested).toBe(true);
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("Generated image blocked");
+    expect(stderr).toContain(
+      "Try again once. If it is blocked again, change the prompt or reference image before retrying.",
+    );
+    expect(stderr).not.toContain("Generation failed");
+    expect(stderr).not.toContain("500");
+  });
+
+  it.each([
+    {
+      caseName: "input safety rejection",
+      code: "GENERATION_INPUT_SAFETY_REJECTED",
+      message:
+        "The prompt or reference image was blocked by the safety filter.",
+      title: "Image request blocked",
+      guidance:
+        "Change the prompt or reference image before trying again. Retrying the unchanged request is unlikely to help.",
+    },
+    {
+      caseName: "unreachable input image",
+      code: "GENERATION_INPUT_MEDIA_UNREACHABLE",
+      message:
+        "An input image could not be downloaded by the generation provider.",
+      title: "Input image unavailable",
+      guidance:
+        "Use a public URL that returns the image directly without authentication or a browser challenge, then try again.",
+    },
+    {
+      caseName: "invalid input image",
+      code: "GENERATION_INPUT_MEDIA_INVALID",
+      message: "An input image could not be read by the generation provider.",
+      title: "Input image invalid",
+      guidance:
+        "Replace or re-encode the image in a supported format, then try again.",
+    },
+    {
+      caseName: "invalid generation parameters",
+      code: "GENERATION_INVALID_PARAMETERS",
+      message: "The image generation request contains invalid parameters.",
+      title: "Invalid image generation options",
+      guidance: "Correct the image generation parameters before trying again.",
+    },
+    {
+      caseName: "unavailable generation provider",
+      code: "GENERATION_PROVIDER_UNAVAILABLE",
+      message: "The image generation provider is temporarily unavailable.",
+      title: "Image provider unavailable",
+      guidance:
+        "The image generation provider is temporarily unavailable. Please try again shortly.",
+    },
+  ])(
+    "should explain an async $caseName with actionable guidance",
+    async ({ code, message, title, guidance }) => {
+      server.use(
+        http.post(IMAGE_URL, () => {
+          return HttpResponse.json(
+            {
+              generationId: IMAGE_GENERATION_ID,
+              type: "image",
+              status: "queued",
+              realtime: {
+                channelName: "user:user-1",
+                eventName: `built-in-generation:${IMAGE_GENERATION_ID}`,
+                tokenRequest: {
+                  keyName: "test-key",
+                  timestamp: 1_700_000_000_000,
+                  capability: '{"user:user-1":["subscribe"]}',
+                  clientId: "user-1",
+                  nonce: "test-nonce",
+                  mac: "test-mac",
+                },
+              },
+            },
+            { status: 202 },
+          );
+        }),
+        http.get(IMAGE_STATUS_URL, () => {
+          return HttpResponse.json({
+            generationId: IMAGE_GENERATION_ID,
+            type: "image",
+            status: "failed",
+            error: { message, code },
+            createdAt: "2026-05-15T00:00:00.000Z",
+            startedAt: "2026-05-15T00:00:01.000Z",
+            completedAt: "2026-05-15T00:00:02.000Z",
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await generateCommand.parseAsync([
+          "node",
+          "cli",
+          "image",
+          "--raw-prompt",
+          "A safe landscape",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const stderr = mockConsoleError.mock.calls.flat().join("\n");
+      expect(stderr).toContain(title);
+      expect(stderr).toContain(guidance);
+      expect(stderr).not.toContain("Generation failed");
+      expect(stderr).not.toContain("Unexpected status code");
+    },
+  );
+
   it("should describe image generation model capabilities in help", () => {
     let helpOutput = "";
     imageCommand.configureOutput({
